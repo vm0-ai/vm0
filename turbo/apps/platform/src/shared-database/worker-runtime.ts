@@ -49,6 +49,7 @@ import {
 import {
   assertChatEventSchemaVersion,
   CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+  chatEventRowsQuery,
 } from "./chat-event-schema-version.ts";
 import { CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD } from "./event-log-policy.ts";
 
@@ -666,11 +667,7 @@ export class SharedDatabaseWorkerRuntime {
       const page = await client.rows({
         headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
         params: { threadId: actor.dataKey.threadId },
-        query: {
-          sinceSeqId: cursor.lastSeqId,
-          sinceEventId: cursor.lastEventId ?? undefined,
-          limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-        },
+        query: chatEventRowsQuery(cursor, CHAT_EVENT_ROWS_PAGE_LIMIT),
         fetchOptions: { signal },
       });
       signal.throwIfAborted();
@@ -771,7 +768,7 @@ export class SharedDatabaseWorkerRuntime {
     if (snapshot.status !== 200) {
       throw new SharedDatabaseHttpError(snapshot.status);
     }
-    if (snapshot.body.lastEventId === undefined) {
+    if (typeof snapshot.body.lastEventId !== "string") {
       throw new Error("ChatEvent snapshot response is missing lastEventId");
     }
     const response = await fetch(snapshot.body.url, { signal });

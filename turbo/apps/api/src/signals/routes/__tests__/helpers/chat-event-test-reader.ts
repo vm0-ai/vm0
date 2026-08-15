@@ -1,6 +1,11 @@
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
   chatEventSchema,
   chatThreadEventsContract,
   type ChatEvent,
@@ -29,7 +34,7 @@ export async function readProjectedChatEvents(
   args: {
     readonly threadId: string;
     readonly headers: Readonly<{ authorization?: string }>;
-    readonly sinceSeqId?: number;
+    readonly cursor?: ChatEventCursor;
     readonly limit?: number;
     readonly extraHeaders?: Readonly<Record<string, string>>;
   },
@@ -39,17 +44,32 @@ export async function readProjectedChatEvents(
   );
   const limit = args.limit ?? MAX_EVENT_ROWS_PER_PAGE;
   const rows: ChatEventRow[] = [];
-  let sinceSeqId = args.sinceSeqId ?? 0;
+  let cursor: ChatEventCursor = args.cursor ?? {
+    lastEventId: null,
+    lastSeqId: 0,
+  };
 
   while (true) {
     const response = await accept(
       client.rows({
-        headers: args.headers,
+        headers: {
+          ...args.headers,
+          [CHAT_EVENT_SCHEMA_VERSION_HEADER]: String(
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
+        },
         ...(args.extraHeaders === undefined
           ? {}
           : { extraHeaders: args.extraHeaders }),
         params: { threadId: args.threadId },
-        query: { sinceSeqId, limit },
+        query:
+          cursor.lastEventId === null
+            ? { sinceSeqId: 0, limit }
+            : {
+                sinceEventId: cursor.lastEventId,
+                sinceSeqId: cursor.lastSeqId,
+                limit,
+              },
       }),
       [200],
     );
@@ -58,12 +78,15 @@ export async function readProjectedChatEvents(
       return projectChatEventRows(rows);
     }
 
-    const nextSeqId = response.body.rows.at(-1)?.seqId;
-    if (nextSeqId === undefined || nextSeqId <= sinceSeqId) {
+    const nextRow = response.body.rows.at(-1);
+    if (nextRow === undefined || nextRow.seqId <= cursor.lastSeqId) {
       throw new Error(
         `Chat event row cursor did not advance for ${args.threadId}`,
       );
     }
-    sinceSeqId = nextSeqId;
+    cursor = {
+      lastEventId: nextRow.id,
+      lastSeqId: nextRow.seqId,
+    };
   }
 }

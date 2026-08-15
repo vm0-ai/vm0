@@ -26,11 +26,9 @@ import {
   type RecordedChatEventPut,
 } from "./helpers/fake-chat-event-r2";
 import {
-  advanceChatEventSequenceAsPreviousApi,
+  advanceChatEventSequence,
   readChatEventSnapshotHead,
-  replaceChatEventSnapshotHeadAsPreviousApi,
   setChatEventSnapshotHeadVersion,
-  validateChatEventSnapshotRollout,
 } from "./helpers/runtime-state";
 
 const context = testContext();
@@ -38,7 +36,7 @@ const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
-const PREVIOUS_ARCHIVE_SCHEMA_VERSION = 4;
+const UNSUPPORTED_ARCHIVE_SCHEMA_VERSION = 3;
 const DUPLICATE_EVENT_ID_NAMESPACE = "46842b1d-a596-47fb-86b3-4f51962751c7";
 const DUPLICATE_EVENT_ID_WARNING =
   "Normalized duplicate chat event IDs in snapshot";
@@ -385,42 +383,6 @@ describe("cron snapshot chat events", () => {
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);
 
-  it("keeps the previous API writer legal across the pointer migrations", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Snapshot rollout agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `snapshot-rollout-${randomUUID()}`,
-    });
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-
-    const put = putsForThread(threadId)[0];
-    if (put === undefined) {
-      throw new Error("Expected a Snapshot rollout object");
-    }
-    const lastEvent = expectArchiveInvariants(put, threadId).at(-1);
-    if (lastEvent === undefined) {
-      throw new Error("Expected a terminal Snapshot rollout event");
-    }
-
-    const rollout = await validateChatEventSnapshotRollout(context, {
-      threadId,
-      lastSeqId: lastEvent.seqId,
-      lastEventId: lastEvent.id,
-      archiveSchemaVersion: 5,
-    });
-    expect(rollout).toStrictEqual({
-      pre_migration_schema_available: false,
-      pre_migration_last_event_id: lastEvent.id,
-      pre_migration_snapshot_count: 2,
-      migrated_last_event_id: lastEvent.id,
-      migrated_snapshot_count: 2,
-    });
-  }, 60_000);
-
   it("keeps no-conflict prefix and tail bytes and observability unchanged", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
@@ -443,11 +405,10 @@ describe("cron snapshot chat events", () => {
       threadId,
       prompt: `no-conflict-tail-${randomUUID()}`,
     });
-    const tailRows = await chat.listThreadEventRows(
-      owner,
-      threadId,
-      parentHead.last_seq_id,
-    );
+    const tailRows = await chat.listThreadEventRows(owner, threadId, {
+      lastEventId: parentHead.last_event_id,
+      lastSeqId: parentHead.last_seq_id,
+    });
     await projectChatEventSearch(threadId);
 
     const expectedBody = gzipSync(
@@ -827,7 +788,7 @@ describe("cron snapshot chat events", () => {
       agentId: agent.agentId,
       title: "Sparse snapshot thread",
     });
-    await advanceChatEventSequenceAsPreviousApi(context, thread.id, 3);
+    await advanceChatEventSequence(context, thread.id, 3);
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       threadId: thread.id,
@@ -842,7 +803,7 @@ describe("cron snapshot chat events", () => {
     expect(firstPhysicalRow.seqId).toBeGreaterThan(1);
     const coveredSeqId = lastPhysicalRow.seqId + 1;
 
-    await advanceChatEventSequenceAsPreviousApi(context, threadId, 1);
+    await advanceChatEventSequence(context, threadId, 1);
     await projectChatEventSearch(threadId);
     const result = await runSnapshotCron([threadId]);
     expect(result.success).toBeTruthy();
@@ -870,7 +831,10 @@ describe("cron snapshot chat events", () => {
       threadId,
       prompt: `sparse-snapshot-tail-${randomUUID()}`,
     });
-    const tail = await chat.listThreadEventRows(owner, threadId, coveredSeqId);
+    const tail = await chat.listThreadEventRows(owner, threadId, {
+      lastEventId: head.last_event_id,
+      lastSeqId: coveredSeqId,
+    });
     expect(tail.length).toBeGreaterThan(0);
     let previousSeqId = coveredSeqId;
     for (const row of tail) {
@@ -910,7 +874,7 @@ describe("cron snapshot chat events", () => {
         await setChatEventSnapshotHeadVersion(
           context,
           fixture.threadId,
-          PREVIOUS_ARCHIVE_SCHEMA_VERSION,
+          UNSUPPORTED_ARCHIVE_SCHEMA_VERSION,
         );
       } else if (fixture.kind === "unreadable") {
         await setChatEventSnapshotHeadVersion(
@@ -1016,89 +980,5 @@ describe("cron snapshot chat events", () => {
     expect(head.archive_schema_version).toBe(5);
     expect(head.last_seq_id).toBeGreaterThan(parentHead.last_seq_id);
     expect(head.object_key).not.toBe(parentHead.object_key);
-  }, 90_000);
-
-  it("does not re-head a stale pointer after the previous API publishes", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Snapshot legacy-writer CAS agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `snapshot-legacy-cas-${randomUUID()}`,
-    });
-    await projectChatEventSearch(threadId);
-    const initialRows = await chat.listThreadEventRows(owner, threadId);
-    await runSnapshotCron([threadId]);
-    const parentHead = await readChatEventSnapshotHead(context, threadId);
-
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      threadId,
-      prompt: `snapshot-stale-publisher-tail-${randomUUID()}`,
-    });
-    await projectChatEventSearch(threadId);
-
-    const uploadStarted = createDeferredPromise<void>(context.signal);
-    const releaseUpload = createDeferredPromise<void>(context.signal);
-    installFakeChatEventR2(context, recordedPuts, async (put) => {
-      if (!put.key.startsWith(`chat-events/${threadId}/`)) {
-        return;
-      }
-      uploadStarted.resolve(undefined);
-      await releaseUpload.promise;
-    });
-    const stalePublication = runSnapshotCron([threadId]);
-    await uploadStarted.promise;
-
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      threadId,
-      prompt: `snapshot-newer-legacy-head-${randomUUID()}`,
-    });
-    await projectChatEventSearch(threadId);
-    const currentRows = [
-      ...initialRows,
-      ...(await chat.listThreadEventRows(
-        owner,
-        threadId,
-        parentHead.last_seq_id,
-      )),
-    ];
-    const legacyLastRow = currentRows.at(-1);
-    if (legacyLastRow === undefined) {
-      throw new Error("Expected a terminal row for the previous API head");
-    }
-    const legacyBody = gzipSync(
-      Buffer.from(
-        currentRows
-          .map((row) => {
-            return JSON.stringify(row);
-          })
-          .join("\n") + "\n",
-      ),
-    );
-    const legacyObjectKey = `chat-events/${threadId}/${legacyLastRow.seqId.toString()}-${createHash("sha256").update(legacyBody).digest("hex")}.ndjson.gz`;
-    writeFakeChatEventObject(legacyObjectKey, legacyBody);
-    await replaceChatEventSnapshotHeadAsPreviousApi(context, {
-      threadId,
-      lastSeqId: legacyLastRow.seqId,
-      archiveSchemaVersion: 5,
-      objectKey: legacyObjectKey,
-    });
-    const previousApiHead = await readChatEventSnapshotHead(context, threadId);
-    expect(previousApiHead).toMatchObject({
-      last_event_id: legacyLastRow.id,
-      last_seq_id: legacyLastRow.seqId,
-      object_key: legacyObjectKey,
-      snapshot_count: 2,
-    });
-
-    releaseUpload.resolve(undefined);
-    await stalePublication;
-
-    await expect(
-      readChatEventSnapshotHead(context, threadId),
-    ).resolves.toStrictEqual(previousApiHead);
   }, 90_000);
 });

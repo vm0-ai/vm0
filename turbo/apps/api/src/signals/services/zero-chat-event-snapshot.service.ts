@@ -1,40 +1,23 @@
-import { createHash } from "node:crypto";
-import { promisify } from "node:util";
-import { gunzip, gzip } from "node:zlib";
-
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
-import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, desc, eq, gt, or } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { env } from "../../lib/env";
 import { db$, type ReadonlyDb } from "../external/db";
-import {
-  downloadS3Buffer,
-  generatePresignedGetUrl,
-  putImmutableS3Object,
-} from "../external/s3";
-import {
-  decodeChatEventSnapshotBody,
-  downgradeChatEventSnapshotBody,
-  downgradeChatEventRow,
-} from "./chat-event-row-downgrade.service";
-import { chatEventSnapshotLastEventId } from "./chat-event-snapshot-schema.service";
+import { generatePresignedGetUrl } from "../external/s3";
 import {
   chatEventRowFromDbRow,
   migrateCurrentChatEventSnapshot$,
 } from "./cron-snapshot-chat-events.service";
 
 const SNAPSHOT_URL_TTL_SECONDS = 900;
-const SNAPSHOT_CONTENT_TYPE = "application/x-ndjson";
-const SNAPSHOT_CONTENT_ENCODING = "gzip";
-const gzipAsync = promisify(gzip);
-const gunzipAsync = promisify(gunzip);
-/** Cursor that reads a thread from its very first event. */
-const THREAD_START_SEQ_ID = 0;
 
 type ChatEventSnapshotDownload =
   | { readonly kind: "thread-not-found" }
@@ -55,9 +38,7 @@ type ChatEventRowsPage =
 interface ChatEventRowsArgs {
   readonly threadId: string;
   readonly userId: string;
-  readonly schemaVersion: number;
-  readonly sinceSeqId: number;
-  readonly sinceEventId: string | undefined;
+  readonly cursor: ChatEventCursor;
   readonly limit: number;
 }
 
@@ -67,160 +48,69 @@ const ownedThread = (threadId: string, userId: string) => {
 
 interface SnapshotPointer {
   readonly objectKey: string;
-  readonly lastEventId: string | null;
+  readonly lastEventId: string;
   readonly lastSeqId: number;
-  readonly schemaVersion: number;
 }
 
 async function snapshotPointer(
   db: ReadonlyDb,
   threadId: string,
-  schemaVersion: number,
 ): Promise<SnapshotPointer | null> {
   const [pointer] = await db
     .select({
       objectKey: chatEventSnapshots.objectKey,
-      lastEventId: chatEventSnapshotLastEventId,
+      lastEventId: chatEventSnapshots.lastEventId,
       lastSeqId: chatEventSnapshots.lastSeqId,
-      schemaVersion: chatEventSnapshots.archiveSchemaVersion,
     })
     .from(chatEventSnapshots)
     .where(
       and(
         eq(chatEventSnapshots.chatThreadId, threadId),
-        eq(chatEventSnapshots.archiveSchemaVersion, schemaVersion),
+        eq(
+          chatEventSnapshots.archiveSchemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        ),
       ),
-    )
-    .orderBy(
-      desc(chatEventSnapshots.isHead),
-      desc(chatEventSnapshots.lastSeqId),
-      desc(chatEventSnapshots.createdAt),
-      desc(chatEventSnapshots.id),
     )
     .limit(1);
   return pointer ?? null;
 }
 
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
-
-async function snapshotBody(
-  get: ComputedGetter,
-  bucket: string,
-  pointer: SnapshotPointer,
-): Promise<Buffer> {
-  return await gunzipAsync(
-    await get(downloadS3Buffer(bucket, pointer.objectKey)),
-  );
-}
-
-function terminalEventIdFromSnapshotBody(
-  body: Buffer,
-  threadId: string,
-  lastSeqId: number,
-): string {
-  const last = decodeChatEventSnapshotBody(body).at(-1);
-  if (
-    last === undefined ||
-    last.chatThreadId !== threadId ||
-    last.seqId > lastSeqId
-  ) {
-    throw new Error("Chat Event Snapshot body does not match its cursor");
-  }
-  return last.id;
-}
-
-async function validSnapshotCursor(
-  get: ComputedGetter,
+async function cursorMatchesSnapshotState(
   db: ReadonlyDb,
   args: ChatEventRowsArgs,
 ): Promise<boolean> {
-  const [[storedSnapshot], [matchingSnapshotCursor]] = await Promise.all([
-    db
+  if (args.cursor.lastEventId === null) {
+    const [storedSnapshot] = await db
       .select({ id: chatEventSnapshots.id })
       .from(chatEventSnapshots)
       .where(eq(chatEventSnapshots.chatThreadId, args.threadId))
-      .limit(1),
-    db
-      .select({
-        id: chatEventSnapshots.id,
-        lastEventId: chatEventSnapshotLastEventId,
-        lastSeqId: chatEventSnapshots.lastSeqId,
-        objectKey: chatEventSnapshots.objectKey,
-        schemaVersion: chatEventSnapshots.archiveSchemaVersion,
-      })
-      .from(chatEventSnapshots)
-      .where(
-        and(
-          eq(chatEventSnapshots.chatThreadId, args.threadId),
-          or(
-            eq(
-              chatEventSnapshots.archiveSchemaVersion,
-              CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-            ),
-            eq(chatEventSnapshots.archiveSchemaVersion, args.schemaVersion),
-          ),
-          eq(chatEventSnapshots.lastSeqId, args.sinceSeqId),
+      .limit(1);
+    return storedSnapshot === undefined;
+  }
+
+  const [matchingSnapshotCursor] = await db
+    .select({ id: chatEventSnapshots.id })
+    .from(chatEventSnapshots)
+    .where(
+      and(
+        eq(chatEventSnapshots.chatThreadId, args.threadId),
+        eq(
+          chatEventSnapshots.archiveSchemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         ),
-      )
-      .orderBy(
-        desc(chatEventSnapshots.isHead),
-        desc(chatEventSnapshots.archiveSchemaVersion),
-        desc(chatEventSnapshots.createdAt),
-        desc(chatEventSnapshots.id),
-      )
-      .limit(1),
-  ]);
-  // The cold-start cursor precedes every event, so it owns no row. It is
-  // only valid while nothing has ever been archived; once any Snapshot exists
-  // the client must start from a Snapshot cursor instead.
-  if (
-    args.sinceSeqId === THREAD_START_SEQ_ID &&
-    args.sinceEventId === undefined &&
-    storedSnapshot === undefined
-  ) {
-    return true;
-  }
-  if (matchingSnapshotCursor === undefined) {
-    return false;
-  }
-  if (args.sinceEventId === undefined) {
-    // Previous app clients send sequence-only cursors for about 2 days, while
-    // existing runner/sandbox CLI contexts can remain old for up to 2 hours.
-    // Require the paired event ID through #27194 after both windows drain.
-    return true;
-  }
-  const matchingSnapshotEventId =
-    matchingSnapshotCursor.lastEventId ??
-    terminalEventIdFromSnapshotBody(
-      await snapshotBody(
-        get,
-        env("R2_USER_STORAGES_BUCKET_NAME"),
-        matchingSnapshotCursor,
+        eq(chatEventSnapshots.lastSeqId, args.cursor.lastSeqId),
+        eq(chatEventSnapshots.lastEventId, args.cursor.lastEventId),
       ),
-      args.threadId,
-      matchingSnapshotCursor.lastSeqId,
-    );
-  return matchingSnapshotEventId === args.sinceEventId;
+    )
+    .limit(1);
+  return matchingSnapshotCursor !== undefined;
 }
 
-function snapshotObjectKey(
-  threadId: string,
-  lastSeqId: number,
-  compressed: Buffer,
-): string {
-  const digest = createHash("sha256").update(compressed).digest("hex");
-  return `chat-events/${threadId}/${lastSeqId.toString()}-${digest}.ndjson.gz`;
-}
-
-/**
- * Resolve the requested Snapshot version. Current-version upgrades persist a
- * new pointer; older versions are generated transiently from the current
- * immutable object and never create an older database row.
- */
+/** Resolve the current immutable Snapshot pointer for a thread. */
 export function zeroChatThreadEventSnapshot(args: {
   readonly threadId: string;
   readonly userId: string;
-  readonly schemaVersion: number;
 }) {
   return command(
     async (
@@ -238,28 +128,16 @@ export function zeroChatThreadEventSnapshot(args: {
         return { kind: "thread-not-found" } as const;
       }
 
+      let pointer = await snapshotPointer(db, args.threadId);
       signal.throwIfAborted();
-      let pointer = await snapshotPointer(
-        db,
-        args.threadId,
-        CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-      );
-      signal.throwIfAborted();
-      if (
-        pointer === null &&
-        args.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
-      ) {
+      if (pointer === null) {
         const migrated = await set(
           migrateCurrentChatEventSnapshot$,
           args.threadId,
           signal,
         );
         if (migrated) {
-          pointer = await snapshotPointer(
-            db,
-            args.threadId,
-            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          );
+          pointer = await snapshotPointer(db, args.threadId);
           signal.throwIfAborted();
         }
       }
@@ -268,56 +146,19 @@ export function zeroChatThreadEventSnapshot(args: {
         return { kind: "snapshot-not-found" };
       }
 
-      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      let objectKey = pointer.objectKey;
-      let downloadedBody: Buffer | undefined;
-      const readBody = async (): Promise<Buffer> => {
-        downloadedBody ??= await snapshotBody(get, bucket, pointer);
-        return downloadedBody;
-      };
-      const lastEventId =
-        pointer.lastEventId ??
-        terminalEventIdFromSnapshotBody(
-          await readBody(),
-          args.threadId,
-          pointer.lastSeqId,
-        );
-      if (pointer.schemaVersion > args.schemaVersion) {
-        const body = await readBody();
-        signal.throwIfAborted();
-        const downgraded = downgradeChatEventSnapshotBody(
-          body,
-          pointer.schemaVersion,
-          args.schemaVersion,
-        );
-        const downgradedCompressed = await gzipAsync(downgraded);
-        signal.throwIfAborted();
-        objectKey = snapshotObjectKey(
-          args.threadId,
-          pointer.lastSeqId,
-          downgradedCompressed,
-        );
-        await get(
-          putImmutableS3Object(
-            bucket,
-            objectKey,
-            downgradedCompressed,
-            SNAPSHOT_CONTENT_TYPE,
-            { signal, contentEncoding: SNAPSHOT_CONTENT_ENCODING },
-          ),
-        );
-        signal.throwIfAborted();
-      }
-
       const url = await get(
-        generatePresignedGetUrl(bucket, objectKey, SNAPSHOT_URL_TTL_SECONDS),
+        generatePresignedGetUrl(
+          env("R2_USER_STORAGES_BUCKET_NAME"),
+          pointer.objectKey,
+          SNAPSHOT_URL_TTL_SECONDS,
+        ),
       );
       signal.throwIfAborted();
       return {
         kind: "ok",
         url,
         expiresInSeconds: SNAPSHOT_URL_TTL_SECONDS,
-        lastEventId,
+        lastEventId: pointer.lastEventId,
         lastSeqId: pointer.lastSeqId,
       };
     },
@@ -325,13 +166,10 @@ export function zeroChatThreadEventSnapshot(args: {
 }
 
 /**
- * Raw-row tail after a seq cursor. The cursor must still exist: a missing row
- * means the range below it is unavailable and the client has to rebuild from
- * a fresh snapshot. A cursor equal to the current head's last_seq_id is always
- * valid because the snapshot endpoint just handed it out. `sinceSeqId: 0` is
- * the cold start for a thread the archiver has not reached yet: it precedes
- * every event, so it owns no row of its own, and it stays valid only while the
- * thread has no current head.
+ * Raw-row tail after a paired cursor. A cursor equal to the current Snapshot
+ * terminal position remains valid after its Raw Event has been reclaimed.
+ * The sole cursor without an event identity is `{ lastSeqId: 0 }`, and it is
+ * valid only while the thread has no Snapshot pointer.
  */
 export function zeroChatThreadEventRows(
   args: ChatEventRowsArgs,
@@ -348,23 +186,23 @@ export function zeroChatThreadEventRows(
     }
 
     const [cursor] = await db
-      .select({ id: chatEvents.id, seqId: chatEvents.seqId })
+      .select({ id: chatEvents.id })
       .from(chatEvents)
       .where(
         and(
           eq(chatEvents.chatThreadId, args.threadId),
-          eq(chatEvents.seqId, args.sinceSeqId),
+          eq(chatEvents.seqId, args.cursor.lastSeqId),
         ),
       )
       .limit(1);
     if (
       cursor !== undefined &&
-      args.sinceEventId !== undefined &&
-      cursor.id !== args.sinceEventId
+      (args.cursor.lastEventId === null ||
+        cursor.id !== args.cursor.lastEventId)
     ) {
       return { kind: "expired" } as const;
     }
-    if (!cursor && !(await validSnapshotCursor(get, db, args))) {
+    if (cursor === undefined && !(await cursorMatchesSnapshotState(db, args))) {
       return { kind: "expired" } as const;
     }
 
@@ -387,7 +225,7 @@ export function zeroChatThreadEventRows(
       .where(
         and(
           eq(chatEvents.chatThreadId, args.threadId),
-          gt(chatEvents.seqId, args.sinceSeqId),
+          gt(chatEvents.seqId, args.cursor.lastSeqId),
         ),
       )
       .orderBy(asc(chatEvents.seqId))
@@ -395,13 +233,7 @@ export function zeroChatThreadEventRows(
 
     return {
       kind: "ok",
-      rows: rows.map((row) => {
-        return downgradeChatEventRow(
-          chatEventRowFromDbRow(row),
-          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          args.schemaVersion,
-        );
-      }),
+      rows: rows.map(chatEventRowFromDbRow),
     } as const;
   });
 }

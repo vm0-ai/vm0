@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command } from "ccstate";
 import { and, desc, eq, inArray, lte, max } from "drizzle-orm";
 import {
@@ -356,14 +357,23 @@ export const coverRetentionThread$ = command(
     if (terminal === undefined) {
       throw new Error("Expected retention fixture snapshot terminal event");
     }
-    const objectKey = `chat-events/${args.chatThreadId}/${lastSeqId.toString()}-${"a".repeat(64)}.ndjson.gz`;
+    const archiveSchemaVersion =
+      args.archiveSchemaVersion ?? CURRENT_CHAT_EVENT_SCHEMA_VERSION;
+    const objectDigest =
+      archiveSchemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
+        ? "a".repeat(64)
+        : "b".repeat(64);
+    const objectKey = `chat-events/${args.chatThreadId}/${lastSeqId.toString()}-${objectDigest}.ndjson.gz`;
     const [head] = await database
       .select({ id: chatEventSnapshots.id })
       .from(chatEventSnapshots)
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, args.chatThreadId),
-          eq(chatEventSnapshots.isHead, true),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
         ),
       )
       .limit(1);
@@ -373,9 +383,8 @@ export const coverRetentionThread$ = command(
         chatThreadId: args.chatThreadId,
         lastSeqId,
         lastEventId: terminal.id,
-        archiveSchemaVersion: args.archiveSchemaVersion ?? 5,
+        archiveSchemaVersion,
         objectKey,
-        isHead: true,
       });
     } else {
       await database
@@ -383,7 +392,7 @@ export const coverRetentionThread$ = command(
         .set({
           lastSeqId,
           lastEventId: terminal.id,
-          archiveSchemaVersion: args.archiveSchemaVersion ?? 5,
+          archiveSchemaVersion,
           objectKey,
         })
         .where(eq(chatEventSnapshots.id, head.id));

@@ -203,7 +203,7 @@ describe("chat event retention cron", () => {
     await expect(eventRows(retainedEventId)).resolves.toHaveLength(1);
   }, 60_000);
 
-  it("requires reusable v5 snapshot and durable search coverage", async () => {
+  it("requires a current snapshot and durable search coverage", async () => {
     const snapshotThreadId = await createFixtureThread("snapshot-gate");
     const searchThreadId = await createFixtureThread("search-gate");
     const snapshotEventId = await store.set(
@@ -218,7 +218,7 @@ describe("chat event retention cron", () => {
     );
     await store.set(
       coverRetentionThread$,
-      { chatThreadId: snapshotThreadId, archiveSchemaVersion: 4 },
+      { chatThreadId: snapshotThreadId, archiveSchemaVersion: 3 },
       context.signal,
     );
     const searchLastSeqId = await store.set(

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { CHAT_EVENT_TYPES, type ChatEventType } from "../chat-events";
 import { chatEventFromRow } from "../chat-event-row-projection";
 import { chatEventRowSchema, type ChatEventRow } from "../chat-event-rows";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "../chat-event-schema-version";
+import { chatThreadEventsContract } from "../chat-threads";
 
 const CREATED_AT = "2026-08-08T10:00:00.000Z";
 
-function v4Row(overrides: Partial<ChatEventRow>): ChatEventRow {
+function canonicalRow(overrides: Partial<ChatEventRow>): ChatEventRow {
   return {
     id: "00000000-0000-4000-8000-000000000003",
     chatThreadId: "00000000-0000-4000-8000-000000000002",
@@ -23,7 +25,7 @@ function v4Row(overrides: Partial<ChatEventRow>): ChatEventRow {
   };
 }
 
-function projectableV4Row(eventType: ChatEventType): ChatEventRow {
+function projectableRow(eventType: ChatEventType): ChatEventRow {
   const runId = "00000000-0000-4000-8000-000000000013";
   const revokesEventId = "00000000-0000-4000-8000-000000000014";
   const userMessage = {
@@ -79,19 +81,19 @@ function projectableV4Row(eventType: ChatEventType): ChatEventRow {
       },
     },
   };
-  return v4Row({ eventType, ...variants[eventType] });
+  return canonicalRow({ eventType, ...variants[eventType] });
 }
 
 describe("canonical chat event row schema", () => {
-  it("accepts v4 rows", () => {
-    const v4 = v4Row({ payload: { content: "canonical" } });
+  it("accepts canonical rows", () => {
+    const row = canonicalRow({ payload: { content: "canonical" } });
     expect(
-      chatEventRowSchema.parse(JSON.parse(JSON.stringify(v4))),
-    ).toStrictEqual(v4);
+      chatEventRowSchema.parse(JSON.parse(JSON.stringify(row))),
+    ).toStrictEqual(row);
   });
 
   it("preserves canonical multi-leaf payloads and nested JSON nulls", () => {
-    const row = v4Row({
+    const row = canonicalRow({
       payload: {
         content: "historical content",
         userMessage: {
@@ -126,7 +128,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
     expect(
       CHAT_EVENT_TYPES.map((eventType) => {
         const wireRow = JSON.parse(
-          JSON.stringify(projectableV4Row(eventType)),
+          JSON.stringify(projectableRow(eventType)),
         ) as unknown;
         return chatEventFromRow(chatEventRowSchema.parse(wireRow)).eventType;
       }),
@@ -136,7 +138,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
   it("emits the canonical interrupt run as interruptsRunId, never runId", () => {
     const target = "00000000-0000-4000-8000-000000000010";
     const projected = chatEventFromRow(
-      v4Row({ eventType: "control.interrupt", runId: target }),
+      canonicalRow({ eventType: "control.interrupt", runId: target }),
     );
     expect(projected).toMatchObject({
       eventType: "control.interrupt",
@@ -148,7 +150,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
   it("emits goal context pointers as runGroupId", () => {
     const goalId = "00000000-0000-4000-8000-000000000011";
     const projected = chatEventFromRow(
-      v4Row({
+      canonicalRow({
         payload: { content: "goal result" },
         contextType: "goal",
         contextId: goalId,
@@ -170,7 +172,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
     };
     const runId = "00000000-0000-4000-8000-000000000013";
     const projected = chatEventFromRow(
-      v4Row({
+      canonicalRow({
         eventType: "usage.recorded",
         runId,
         payload: { usage },
@@ -183,7 +185,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
     });
 
     const failed = chatEventFromRow(
-      v4Row({
+      canonicalRow({
         eventType: "run.failed",
         runId,
         payload: { content: "run failed", error: "runner error" },
@@ -196,5 +198,41 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
       error: "runner error",
       runLifecycleEvent: "failed",
     });
+  });
+});
+
+describe("chat event read contract", () => {
+  const eventId = "00000000-0000-4000-8000-000000000003";
+
+  it("requires an explicit schema version header", () => {
+    expect(
+      chatThreadEventsContract.snapshot.headers.safeParse({}).success,
+    ).toBe(false);
+    expect(
+      chatThreadEventsContract.snapshot.headers.safeParse({
+        [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("requires paired non-cold-start cursors", () => {
+    expect(
+      chatThreadEventsContract.rows.query.safeParse({ sinceSeqId: 0 }).success,
+    ).toBe(true);
+    expect(
+      chatThreadEventsContract.rows.query.safeParse({ sinceSeqId: 1 }).success,
+    ).toBe(false);
+    expect(
+      chatThreadEventsContract.rows.query.safeParse({
+        sinceSeqId: 1,
+        sinceEventId: eventId,
+      }).success,
+    ).toBe(true);
+    expect(
+      chatThreadEventsContract.rows.query.safeParse({
+        sinceSeqId: 0,
+        sinceEventId: eventId,
+      }).success,
+    ).toBe(false);
   });
 });

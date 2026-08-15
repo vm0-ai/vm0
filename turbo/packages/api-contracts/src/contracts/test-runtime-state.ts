@@ -119,7 +119,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     thread_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("advance-chat-event-sequence-as-previous-api"),
+    action: z.literal("advance-chat-event-sequence"),
     thread_id: z.uuid(),
     count: z.int().positive(),
   }),
@@ -129,20 +129,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     archive_schema_version: z.int().positive(),
     object_key: z.string().optional(),
     last_seq_id: z.int().nonnegative().optional(),
-  }),
-  z.object({
-    action: z.literal("replace-chat-event-snapshot-head-as-previous-api"),
-    thread_id: z.uuid(),
-    last_seq_id: z.int().positive(),
-    archive_schema_version: z.int().positive(),
-    object_key: z.string().min(1),
-  }),
-  z.object({
-    action: z.literal("validate-chat-event-snapshot-rollout"),
-    thread_id: z.uuid(),
-    last_seq_id: z.int().positive(),
-    last_event_id: z.uuid(),
-    archive_schema_version: z.int().positive(),
   }),
   z.object({
     action: z.literal("clear-run-api-start"),
@@ -237,15 +223,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
       snapshot_count: z.int().positive(),
     })
     .nullable()
-    .optional(),
-  chat_event_snapshot_rollout: z
-    .object({
-      pre_migration_schema_available: z.boolean(),
-      pre_migration_last_event_id: z.uuid(),
-      pre_migration_snapshot_count: z.int().positive(),
-      migrated_last_event_id: z.uuid(),
-      migrated_snapshot_count: z.int().positive(),
-    })
     .optional(),
   api_started_at: z.string().nullable().optional(),
   thread_session_binding: z

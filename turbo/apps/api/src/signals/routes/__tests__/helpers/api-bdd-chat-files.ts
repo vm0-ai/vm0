@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
   chatEventsContract,
   chatSearchContract,
   chatThreadArtifactsContract,
@@ -156,6 +161,18 @@ function authenticate(
     actor.orgRole,
   );
   return authHeaders(actor);
+}
+
+function authenticateChatEventRead(
+  context: TestContext,
+  actor: ApiTestUser | null,
+) {
+  return {
+    ...authenticate(context, actor),
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]: String(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    ),
+  };
 }
 
 function commandName(command: unknown): string {
@@ -972,7 +989,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       query: {
-        readonly sinceSeqId?: number;
+        readonly cursor?: ChatEventCursor;
         readonly limit?: number;
       } = {},
     ): Promise<{ readonly events: readonly ChatEvent[] }> {
@@ -989,19 +1006,26 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       query: {
-        readonly sinceSeqId?: number;
+        readonly cursor?: ChatEventCursor;
         readonly limit?: number;
       },
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 410)[],
     ) {
       const response = await accept(
         threadEventsClient().rows({
-          headers: authenticate(context, actor),
+          headers: authenticateChatEventRead(context, actor),
           params: { threadId },
-          query: {
-            sinceSeqId: query.sinceSeqId ?? 0,
-            ...(query.limit === undefined ? {} : { limit: query.limit }),
-          },
+          query:
+            query.cursor?.lastEventId === null || query.cursor === undefined
+              ? {
+                  sinceSeqId: 0,
+                  ...(query.limit === undefined ? {} : { limit: query.limit }),
+                }
+              : {
+                  sinceEventId: query.cursor.lastEventId,
+                  sinceSeqId: query.cursor.lastSeqId,
+                  ...(query.limit === undefined ? {} : { limit: query.limit }),
+                },
         }),
         statuses,
       );
@@ -1017,13 +1041,19 @@ export function createChatFilesBddApi(context: TestContext) {
     async listThreadEventRows(
       actor: ApiTestUser,
       threadId: string,
-      sinceSeqId = 0,
+      cursor: ChatEventCursor = { lastEventId: null, lastSeqId: 0 },
     ) {
       const response = await accept(
         threadEventsClient().rows({
-          headers: authenticate(context, actor),
+          headers: authenticateChatEventRead(context, actor),
           params: { threadId },
-          query: { sinceSeqId },
+          query:
+            cursor.lastEventId === null
+              ? { sinceSeqId: 0 }
+              : {
+                  sinceEventId: cursor.lastEventId,
+                  sinceSeqId: cursor.lastSeqId,
+                },
         }),
         [200],
       );

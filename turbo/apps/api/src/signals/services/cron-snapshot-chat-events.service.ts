@@ -18,10 +18,8 @@ import {
   gt,
   inArray,
   isNotNull,
-  isNull,
   lt,
   lte,
-  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -49,8 +47,7 @@ import {
   prepareChatEventArchiveWithNormalizedIds,
   type DuplicateEventIdNormalizationStats,
 } from "./chat-event-snapshot-duplicate-id-normalization";
-import { decodeChatEventSnapshotBody } from "./chat-event-row-downgrade.service";
-import { chatEventSnapshotCursorSchemaAvailable } from "./chat-event-snapshot-schema.service";
+import { decodeChatEventSnapshotBody } from "./chat-event-snapshot-codec.service";
 import { upgradeChatEventSnapshotBody } from "./chat-event-snapshot-upgrade.service";
 
 const log = logger("api:cron:snapshot-chat-events");
@@ -104,11 +101,7 @@ type ChatEventSnapshotScope =
 interface SnapshotCandidate {
   readonly chatThreadId: string;
   readonly indexedSeqId: number;
-  readonly headId: string | null;
-  readonly headLastSeqId: number | null;
-  readonly headLastEventId: string | null;
-  readonly headObjectKey: string | null;
-  readonly headArchiveSchemaVersion: number | null;
+  readonly currentPointer: SnapshotSource | null;
 }
 
 /**
@@ -179,38 +172,6 @@ function hoursBefore(now: Date, hours: number): Date {
 
 function encodeArchiveLine(line: ChatEventRow): Buffer {
   return Buffer.from(`${JSON.stringify(line)}\n`);
-}
-
-async function snapshotStatsBeforeCursorMigration(
-  db: Db,
-  chatThreadIds: readonly string[] | null,
-  signal: AbortSignal,
-): Promise<ChatEventSnapshotStats> {
-  signal.throwIfAborted();
-  const convergence = await chatEventSnapshotConvergence(db, chatThreadIds);
-  signal.throwIfAborted();
-  return {
-    snapshots: 0,
-    archivedEvents: 0,
-    unreadableParents: 0,
-    skippedUnreadableHeads: 0,
-    skippedUndecodableHeads: 0,
-    skippedIncompleteHeads: 0,
-    skippedUnsupportedHeads: 0,
-    duplicateEventIdConflictThreads: 0,
-    duplicateEventIdConflicts: 0,
-    duplicateEventIdsRemapped: 0,
-    duplicateEventReferencesRemapped: 0,
-    retiredSnapshotReferencesDeleted: 0,
-    r2ObjectsScanned: 0,
-    r2ObjectsMeasured: 0,
-    r2ObjectsDeleted: 0,
-    r2BytesMeasured: 0,
-    r2BytesDeleted: 0,
-    r2GcShardsScanned: 0,
-    r2GcSubpartitionedShards: 0,
-    ...convergence,
-  };
 }
 
 /**
@@ -330,28 +291,13 @@ type SnapshotSourceResolution =
   | { readonly kind: "reusable"; readonly source: SnapshotSource }
   | { readonly kind: "skipped"; readonly reason: SnapshotSkipReason };
 
-interface SnapshotSourceMetadata {
-  readonly id: string;
-  readonly lastSeqId: number | null;
-  readonly lastEventId: string | null;
-  readonly objectKey: string | null;
-  readonly schemaVersion: number | null;
-}
-
 function resolveSnapshotSource(
-  source: SnapshotSourceMetadata | undefined,
+  source: SnapshotSource | undefined,
 ): SnapshotSourceResolution {
   if (source === undefined) {
     return { kind: "initial" };
   }
-  if (
-    source.lastSeqId === null ||
-    source.lastSeqId <= 0 ||
-    source.lastEventId === null ||
-    source.objectKey === null ||
-    source.objectKey.trim().length === 0 ||
-    source.schemaVersion === null
-  ) {
+  if (source.lastSeqId <= 0 || source.objectKey.trim().length === 0) {
     return { kind: "skipped", reason: "incomplete" };
   }
   if (source.schemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
@@ -372,17 +318,7 @@ function resolveSnapshotSource(
 function candidateCurrentSource(
   candidate: SnapshotCandidate,
 ): SnapshotSource | null {
-  const resolved = resolveSnapshotSource(
-    candidate.headId === null
-      ? undefined
-      : {
-          id: candidate.headId,
-          lastSeqId: candidate.headLastSeqId,
-          lastEventId: candidate.headLastEventId,
-          objectKey: candidate.headObjectKey,
-          schemaVersion: candidate.headArchiveSchemaVersion,
-        },
-  );
+  const resolved = resolveSnapshotSource(candidate.currentPointer ?? undefined);
   if (resolved.kind === "initial") {
     return null;
   }
@@ -396,14 +332,8 @@ async function storedSnapshotSource(
   db: Db,
   candidate: SnapshotCandidate,
 ): Promise<SnapshotSourceResolution> {
-  if (candidate.headId !== null) {
-    return resolveSnapshotSource({
-      id: candidate.headId,
-      lastSeqId: candidate.headLastSeqId,
-      lastEventId: candidate.headLastEventId,
-      objectKey: candidate.headObjectKey,
-      schemaVersion: candidate.headArchiveSchemaVersion,
-    });
+  if (candidate.currentPointer !== null) {
+    return resolveSnapshotSource(candidate.currentPointer);
   }
   const sources = await db
     .select({
@@ -416,7 +346,6 @@ async function storedSnapshotSource(
     .from(chatEventSnapshots)
     .where(eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId))
     .orderBy(
-      desc(chatEventSnapshots.isHead),
       desc(chatEventSnapshots.lastSeqId),
       desc(chatEventSnapshots.archiveSchemaVersion),
       desc(chatEventSnapshots.createdAt),
@@ -492,7 +421,6 @@ async function readSnapshotPrefix(
 function exactSnapshotPointer(source: SnapshotSource) {
   return and(
     eq(chatEventSnapshots.id, source.id),
-    eq(chatEventSnapshots.isHead, true),
     eq(chatEventSnapshots.lastSeqId, source.lastSeqId),
     eq(chatEventSnapshots.lastEventId, source.lastEventId),
     eq(chatEventSnapshots.objectKey, source.objectKey),
@@ -521,7 +449,6 @@ async function publishSnapshotVersion(
           lastSeqId,
           lastEventId,
           objectKey,
-          parentSnapshotId: null,
           createdAt: nowDate(),
         })
         .where(exactSnapshotPointer(current))
@@ -529,19 +456,6 @@ async function publishSnapshotVersion(
       if (updated.length === 0) {
         return false;
       }
-      await tx
-        .update(chatEventSnapshots)
-        .set({ isHead: false })
-        .where(
-          and(
-            eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId),
-            ne(chatEventSnapshots.id, current.id),
-          ),
-        );
-      await tx
-        .update(chatEventSnapshots)
-        .set({ isHead: true })
-        .where(eq(chatEventSnapshots.id, current.id));
       return true;
     }
 
@@ -552,7 +466,6 @@ async function publishSnapshotVersion(
           archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           lastSeqId,
           lastEventId,
-          parentSnapshotId: null,
           createdAt: nowDate(),
         })
         .where(exactSnapshotPointer(source))
@@ -560,50 +473,25 @@ async function publishSnapshotVersion(
       if (upgraded.length === 0) {
         return false;
       }
-      await tx
-        .update(chatEventSnapshots)
-        .set({ isHead: false })
-        .where(
-          and(
-            eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId),
-            ne(chatEventSnapshots.id, source.id),
-          ),
-        );
-      await tx
-        .update(chatEventSnapshots)
-        .set({ isHead: true })
-        .where(eq(chatEventSnapshots.id, source.id));
       return true;
     }
 
     if (source !== null) {
-      const matched = await tx
-        .update(chatEventSnapshots)
-        .set({ isHead: false })
+      const deleted = await tx
+        .delete(chatEventSnapshots)
         .where(exactSnapshotPointer(source))
         .returning({ id: chatEventSnapshots.id });
-      if (matched.length === 0) {
+      if (deleted.length === 0) {
         return false;
       }
     }
-    await tx
-      .update(chatEventSnapshots)
-      .set({ isHead: false })
-      .where(eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId));
     await tx.insert(chatEventSnapshots).values({
       chatThreadId: candidate.chatThreadId,
-      parentSnapshotId: null,
       lastSeqId,
       lastEventId,
       archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       objectKey,
-      isHead: true,
     });
-    if (source !== null) {
-      await tx
-        .delete(chatEventSnapshots)
-        .where(eq(chatEventSnapshots.id, source.id));
-    }
     return true;
   });
 }
@@ -795,10 +683,6 @@ export const migrateCurrentChatEventSnapshot$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const db = set(writeDb$);
-    if (!(await chatEventSnapshotCursorSchemaAvailable(db))) {
-      signal.throwIfAborted();
-      return false;
-    }
     const [thread] = await db
       .select({ indexedSeqId: chatThreads.lastChatEventSeqId })
       .from(chatThreads)
@@ -808,19 +692,14 @@ export const migrateCurrentChatEventSnapshot$ = command(
     if (thread === undefined) {
       return false;
     }
-    const [head] = await db
+    const [currentPointer] = await db
       .select({
-        headId: chatEventSnapshots.id,
-        headLastSeqId: chatEventSnapshots.lastSeqId,
-        headLastEventId: chatEventSnapshots.lastEventId,
-        headObjectKey: chatEventSnapshots.objectKey,
-        headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+        id: chatEventSnapshots.id,
       })
       .from(chatEventSnapshots)
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, chatThreadId),
-          eq(chatEventSnapshots.isHead, true),
           eq(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
@@ -829,7 +708,7 @@ export const migrateCurrentChatEventSnapshot$ = command(
       )
       .limit(1);
     signal.throwIfAborted();
-    if (head !== undefined) {
+    if (currentPointer !== undefined) {
       return true;
     }
     const [stored] = await db
@@ -848,11 +727,7 @@ export const migrateCurrentChatEventSnapshot$ = command(
       {
         chatThreadId,
         indexedSeqId: thread.indexedSeqId,
-        headId: null,
-        headLastSeqId: null,
-        headLastEventId: null,
-        headObjectKey: null,
-        headArchiveSchemaVersion: null,
+        currentPointer: null,
       },
       signal,
     );
@@ -872,12 +747,9 @@ async function chatEventSnapshotConvergence(
     })
     .from(chatEventSnapshots)
     .where(
-      and(
-        eq(chatEventSnapshots.isHead, true),
-        chatThreadIds === null
-          ? undefined
-          : inArray(chatEventSnapshots.chatThreadId, chatThreadIds),
-      ),
+      chatThreadIds === null
+        ? undefined
+        : inArray(chatEventSnapshots.chatThreadId, chatThreadIds),
     )
     .groupBy(chatEventSnapshots.archiveSchemaVersion)
     .orderBy(asc(chatEventSnapshots.archiveSchemaVersion));
@@ -940,8 +812,7 @@ const deleteRetiredSnapshotVersions$ = command(
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           ),
           // Never discard the only durable historical prefix. Once a current
-          // pointer exists, older versions are transient read projections and
-          // their stored pointers are superseded.
+          // pointer exists, older migration-source pointers are superseded.
           exists(
             db
               .select({ id: currentSnapshot.id })
@@ -1162,11 +1033,13 @@ async function loadSnapshotCandidates(
     .select({
       chatThreadId: chatThreads.id,
       indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId,
-      headId: chatEventSnapshots.id,
-      headLastSeqId: chatEventSnapshots.lastSeqId,
-      headLastEventId: chatEventSnapshots.lastEventId,
-      headObjectKey: chatEventSnapshots.objectKey,
-      headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+      currentPointer: {
+        id: chatEventSnapshots.id,
+        lastSeqId: chatEventSnapshots.lastSeqId,
+        lastEventId: chatEventSnapshots.lastEventId,
+        objectKey: chatEventSnapshots.objectKey,
+        schemaVersion: chatEventSnapshots.archiveSchemaVersion,
+      },
     })
     .from(chatThreads)
     .innerJoin(
@@ -1177,7 +1050,6 @@ async function loadSnapshotCandidates(
       chatEventSnapshots,
       and(
         eq(chatEventSnapshots.chatThreadId, chatThreads.id),
-        eq(chatEventSnapshots.isHead, true),
         eq(
           chatEventSnapshots.archiveSchemaVersion,
           CURRENT_CHAT_EVENT_SCHEMA_VERSION,
@@ -1197,7 +1069,6 @@ async function loadSnapshotCandidates(
           and(
             isNotNull(chatEventSnapshots.id),
             or(
-              isNull(chatEventSnapshots.lastEventId),
               lte(chatEventSnapshots.lastSeqId, 0),
               sql`btrim(${chatEventSnapshots.objectKey}) = ''`,
             ),
@@ -1231,13 +1102,6 @@ export const snapshotChatEvents$ = command(
   ): Promise<ChatEventSnapshotStats> => {
     const db = set(writeDb$);
     const chatThreadIds = scope.kind === "global" ? null : scope.chatThreadIds;
-    if (!(await chatEventSnapshotCursorSchemaAvailable(db))) {
-      return await snapshotStatsBeforeCursorMigration(
-        db,
-        chatThreadIds,
-        signal,
-      );
-    }
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const ownedObjectKeys =
       scope.kind === "global" ? null : new Set(scope.r2ObjectKeys);

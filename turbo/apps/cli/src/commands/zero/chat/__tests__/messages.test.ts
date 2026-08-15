@@ -286,9 +286,10 @@ describe("okou chat messages command", () => {
         throw new Error("Snapshot endpoint must not be called");
       }),
       http.get(ROWS_URL, () => {
-        return HttpResponse.json({
-          rows: [rawEventRow(7), rawEventRow(6)],
-        });
+        return HttpResponse.json(
+          { rows: [rawEventRow(7), rawEventRow(6)] },
+          { headers: CHAT_EVENT_SCHEMA_HEADERS },
+        );
       }),
     );
 
@@ -332,11 +333,15 @@ describe("okou chat messages command", () => {
     const cursors: { eventId: string | null; seqId: string | null }[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
-        return HttpResponse.json({
-          url: SNAPSHOT_DOWNLOAD_URL,
-          expiresInSeconds: 900,
-          lastSeqId: 10,
-        });
+        return HttpResponse.json(
+          {
+            url: SNAPSHOT_DOWNLOAD_URL,
+            expiresInSeconds: 900,
+            lastEventId: freshSnapshotRow.id,
+            lastSeqId: 10,
+          },
+          { headers: CHAT_EVENT_SCHEMA_HEADERS },
+        );
       }),
       http.get(SNAPSHOT_DOWNLOAD_URL, () => {
         return new HttpResponse(freshSnapshot);
@@ -359,11 +364,14 @@ describe("okou chat messages command", () => {
                 message: "Chat events cursor has expired",
               },
             },
-            { status: 410 },
+            { status: 410, headers: CHAT_EVENT_SCHEMA_HEADERS },
           );
         }
         expect(seqId).toBe("10");
-        return HttpResponse.json({ rows: [rawEventRow(11)] });
+        return HttpResponse.json(
+          { rows: [rawEventRow(11)] },
+          { headers: CHAT_EVENT_SCHEMA_HEADERS },
+        );
       }),
     );
 
@@ -398,6 +406,38 @@ describe("okou chat messages command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("OKOU_CHAT_THREAD_ID is not set");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("rejects a response without the schema version header", async () => {
+    const outputDirectory = await createOutputDirectory();
+    server.use(
+      http.get(SNAPSHOT_URL, () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+              message: "Chat event snapshot not found",
+            },
+          },
+          { status: 404 },
+        );
+      }),
+    );
+
+    await expect(async () => {
+      await zeroChatCommand.parseAsync([
+        "node",
+        "cli",
+        "messages",
+        "--output-dir",
+        outputDirectory,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Unexpected Chat Event schema version null",
+    );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

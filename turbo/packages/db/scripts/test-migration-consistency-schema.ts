@@ -1851,16 +1851,6 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
-  // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
-  // Previous API revisions omit last_event_id when publishing a Snapshot.
-  // Remove in #27174 after those writers and their rollback window drain.
-  {
-    definition:
-      "CREATE TRIGGER chat_event_snapshots_fill_last_event_id BEFORE INSERT OR UPDATE OF last_seq_id ON public.chat_event_snapshots FOR EACH ROW EXECUTE FUNCTION set_chat_event_snapshot_last_event_id()",
-    schemaName: "public",
-    tableName: "chat_event_snapshots",
-    triggerName: "chat_event_snapshots_fill_last_event_id",
-  },
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
@@ -2063,14 +2053,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "519c7504c787a49c4c6bea8a588711fc",
     functionName: "reject_chat_event_source_update",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  // Same DB/API rollout fallback and #27174 removal gate as its trigger.
-  {
-    bodyHash: "52760733123de7ce0c19385757029432",
-    functionName: "set_chat_event_snapshot_last_event_id",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -9609,6 +9591,151 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
   }
 }
 
+const CHAT_EVENT_SNAPSHOT_POINTER_CONTRACTION_PREVIOUS_MIGRATION =
+  "0926_cooing_gladiator";
+const CHAT_EVENT_SNAPSHOT_POINTER_DATA_CONTRACTION_MIGRATION =
+  "0927_contract_chat_event_snapshot_pointers";
+const CHAT_EVENT_SNAPSHOT_POINTER_SCHEMA_CONTRACTION_MIGRATION =
+  "0928_contract_chat_event_snapshot_schema";
+
+async function validateChatEventSnapshotPointerContraction(): Promise<void> {
+  console.log("=== Validate Chat Event Snapshot pointer contraction ===\n");
+  const testDb = "migration_chat_event_snapshot_pointer_contraction_test";
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CHAT_EVENT_SNAPSHOT_POINTER_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    await client.query(`SET session_replication_role = replica`);
+    await client.query(`
+      INSERT INTO "chat_event_snapshots" (
+        "id",
+        "chat_thread_id",
+        "last_seq_id",
+        "last_event_id",
+        "archive_schema_version",
+        "object_key",
+        "is_head",
+        "created_at"
+      ) VALUES
+        ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000000', 10, '10000000-0000-4000-8000-000000000101', 5, 'contraction/greatest/10', false, '2026-08-14 01:00:00'),
+        ('10000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000000', 20, '10000000-0000-4000-8000-000000000102', 5, 'contraction/greatest/20', true,  '2026-08-14 01:00:00'),
+        ('10000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000000', 15, '10000000-0000-4000-8000-000000000103', 5, 'contraction/greatest/15', false, '2026-08-14 03:00:00'),
+        ('20000000-0000-4000-8000-000000000011', '20000000-0000-4000-8000-000000000000', 20, '20000000-0000-4000-8000-000000000111', 5, 'contraction/head/older', true,  '2026-08-14 01:00:00'),
+        ('20000000-0000-4000-8000-000000000012', '20000000-0000-4000-8000-000000000000', 20, '20000000-0000-4000-8000-000000000112', 5, 'contraction/head/newer', false, '2026-08-14 02:00:00'),
+        ('30000000-0000-4000-8000-000000000021', '30000000-0000-4000-8000-000000000000', 30, '30000000-0000-4000-8000-000000000121', 5, 'contraction/created/older', false, '2026-08-14 01:00:00'),
+        ('30000000-0000-4000-8000-000000000022', '30000000-0000-4000-8000-000000000000', 30, '30000000-0000-4000-8000-000000000122', 5, 'contraction/created/newer', false, '2026-08-14 02:00:00'),
+        ('40000000-0000-4000-8000-000000000031', '40000000-0000-4000-8000-000000000000', 40, '40000000-0000-4000-8000-000000000131', 5, 'contraction/id/lower', false, '2026-08-14 01:00:00'),
+        ('40000000-0000-4000-8000-000000000032', '40000000-0000-4000-8000-000000000000', 40, '40000000-0000-4000-8000-000000000132', 5, 'contraction/id/greater', false, '2026-08-14 01:00:00'),
+        ('50000000-0000-4000-8000-000000000041', '50000000-0000-4000-8000-000000000000', 50, NULL, 5, 'contraction/null/preflight', false, '2026-08-14 01:00:00')
+    `);
+    await client.query(`SET session_replication_role = origin`);
+
+    const dataContractionSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${CHAT_EVENT_SNAPSHOT_POINTER_DATA_CONTRACTION_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
+    await expectDatabaseError(client, {
+      code: "P0001",
+      messageIncludes: "has no terminal event ID",
+      query: dataContractionSql,
+    });
+    await client.query(`
+      DELETE FROM "chat_event_snapshots"
+      WHERE "id" = '50000000-0000-4000-8000-000000000041'
+    `);
+
+    await applyMigrationsUpToTag(
+      client,
+      CHAT_EVENT_SNAPSHOT_POINTER_DATA_CONTRACTION_MIGRATION,
+    );
+    const retained = await client.query<{ id: string }>(`
+      SELECT "id"::text AS "id"
+      FROM "chat_event_snapshots"
+      ORDER BY "id"
+    `);
+    assert.deepEqual(retained.rows, [
+      { id: "10000000-0000-4000-8000-000000000002" },
+      { id: "20000000-0000-4000-8000-000000000011" },
+      { id: "30000000-0000-4000-8000-000000000022" },
+      { id: "40000000-0000-4000-8000-000000000032" },
+    ]);
+
+    const compatibilityObjects = await client.query<{
+      triggerName: string | null;
+      functionName: string | null;
+    }>(`
+      SELECT
+        (
+          SELECT "tgname"
+          FROM "pg_trigger"
+          WHERE "tgname" = 'chat_event_snapshots_fill_last_event_id'
+            AND NOT "tgisinternal"
+          LIMIT 1
+        ) AS "triggerName",
+        to_regprocedure(
+          'set_chat_event_snapshot_last_event_id()'
+        )::text AS "functionName"
+    `);
+    assert.deepEqual(compatibilityObjects.rows, [
+      { triggerName: null, functionName: null },
+    ]);
+
+    await applyMigrationsUpToTag(
+      client,
+      CHAT_EVENT_SNAPSHOT_POINTER_SCHEMA_CONTRACTION_MIGRATION,
+    );
+    const columns = await client.query<{
+      columnName: string;
+      isNullable: string;
+    }>(`
+      SELECT
+        "column_name" AS "columnName",
+        "is_nullable" AS "isNullable"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = 'chat_event_snapshots'
+        AND "column_name" IN (
+          'last_event_id',
+          'parent_snapshot_id',
+          'is_head'
+        )
+      ORDER BY "column_name"
+    `);
+    assert.deepEqual(columns.rows, [
+      { columnName: "last_event_id", isNullable: "NO" },
+    ]);
+
+    const versionIndex = await client.query<{ isUnique: boolean }>(`
+      SELECT "indisunique" AS "isUnique"
+      FROM "pg_index"
+      WHERE "indexrelid" =
+        to_regclass('chat_event_snapshots_thread_version_idx')
+    `);
+    assert.deepEqual(versionIndex.rows, [{ isUnique: true }]);
+
+    console.log("   ✅ greatest terminal watermarks are retained");
+    console.log(
+      "   ✅ equal watermarks follow head, creation time, and UUID order",
+    );
+    console.log("   ✅ temporary cursor writer objects are removed");
+    console.log("   ✅ missing terminal identities fail closed");
+    console.log(
+      "   ✅ terminal cursors and thread/version identity are contracted\n",
+    );
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -9643,6 +9770,7 @@ async function main(): Promise<void> {
     await validateConnectionScopedVariableUniqueness();
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
+    await validateChatEventSnapshotPointerContraction();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();

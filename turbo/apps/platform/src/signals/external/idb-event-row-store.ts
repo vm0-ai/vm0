@@ -63,9 +63,13 @@ function storedChatEventCursor(raw: unknown): ChatEventCursor {
     !("lastSeqId" in raw) ||
     typeof raw.lastSeqId !== "number" ||
     !Number.isSafeInteger(raw.lastSeqId) ||
-    raw.lastSeqId < 0
+    raw.lastSeqId < 0 ||
+    (raw.lastSeqId === 0) !== (raw.lastEventId === null)
   ) {
     throw new Error("Invalid cached Chat Event cursor");
+  }
+  if (raw.lastEventId === null) {
+    return { lastEventId: null, lastSeqId: 0 };
   }
   return {
     lastEventId: raw.lastEventId,

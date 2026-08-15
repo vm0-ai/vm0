@@ -1,7 +1,5 @@
-import { sql } from "drizzle-orm";
 import {
   bigint,
-  boolean,
   index,
   integer,
   pgTable,
@@ -9,7 +7,6 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
-  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 
@@ -21,8 +18,7 @@ import { chatThreads } from "./chat-thread";
  * Raw Events after its cursor; full PostgreSQL rebuilds are valid only when a
  * thread has never had a Snapshot.
  *
- * is_head and parent_snapshot_id are retained for deployment compatibility but
- * are not reader identity. The (thread, schema version) key owns that role.
+ * The (thread, schema version) key is the pointer identity.
  */
 export const chatEventSnapshots = pgTable(
   "chat_event_snapshots",
@@ -36,37 +32,19 @@ export const chatEventSnapshots = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    parentSnapshotId: uuid("parent_snapshot_id").references(
-      (): AnyPgColumn => {
-        return chatEventSnapshots.id;
-      },
-      { onDelete: "set null" },
-    ),
     /** The snapshot object contains every logical thread event through this watermark. */
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
-    /**
-     * Last physical event represented by the Snapshot's terminal cursor.
-     *
-     * Nullable only for the DB/API rollout window: the previous API omits the
-     * column, and migration 0923 fills it with a trigger until that API has
-     * drained. #27174 owns the later NOT NULL contraction.
-     */
-    lastEventId: uuid("last_event_id"),
+    /** Last physical event represented by the Snapshot's terminal cursor. */
+    lastEventId: uuid("last_event_id").notNull(),
     /** Version of the NDJSON line shape inside the archive object. */
     archiveSchemaVersion: integer("archive_schema_version").notNull(),
     objectKey: text("object_key").notNull().unique(),
-    isHead: boolean("is_head").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
     return [
-      uniqueIndex("chat_event_snapshots_thread_head_unique")
-        .on(table.chatThreadId)
-        .where(sql`${table.isHead}`),
       index("chat_event_snapshots_thread_idx").on(table.chatThreadId),
-      // The previous API can create duplicate version rows while it drains.
-      // #27174 makes this unique after the DB/API rollback window closes.
-      index("chat_event_snapshots_thread_version_idx").on(
+      uniqueIndex("chat_event_snapshots_thread_version_idx").on(
         table.chatThreadId,
         table.archiveSchemaVersion,
       ),

@@ -21,8 +21,21 @@ import {
 
 const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
-  [CHAT_EVENT_SCHEMA_VERSION_HEADER]: z.string().optional(),
+  [CHAT_EVENT_SCHEMA_VERSION_HEADER]: z.string(),
 });
+const chatEventRowsLimitSchema = z.coerce.number().min(1).max(50).default(50);
+const chatEventRowsQuerySchema = z.union([
+  z.object({
+    sinceSeqId: z.coerce.number().pipe(z.literal(0)),
+    sinceEventId: z.undefined().optional(),
+    limit: chatEventRowsLimitSchema,
+  }),
+  z.object({
+    sinceSeqId: z.coerce.number().int().positive(),
+    sinceEventId: z.string().uuid(),
+    limit: chatEventRowsLimitSchema,
+  }),
+]);
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -1523,11 +1536,11 @@ export const chatSearchContract = c.router({
 /** Canonical ChatEvent read contract. */
 export const chatThreadEventsContract = c.router({
   /**
-   * Snapshot-read cold start: a presigned download for the thread's head
-   * archive object. The object is gzip NDJSON of chatEventRowSchema lines
-   * stored with `Content-Encoding: gzip`, so a browser fetch decompresses it
-   * transparently. The request header selects the Chat Event schema version;
-   * a missing header temporarily means V5 for rollout compatibility.
+   * Snapshot-read cold start: a presigned download for the thread's
+   * current-version archive object. The object is gzip NDJSON of
+   * chatEventRowSchema lines stored with `Content-Encoding: gzip`, so a browser
+   * fetch decompresses it transparently. The required request header selects
+   * the Chat Event schema version.
    */
   snapshot: {
     method: "GET",
@@ -1538,9 +1551,7 @@ export const chatThreadEventsContract = c.router({
       200: z.object({
         url: z.string().url(),
         expiresInSeconds: z.number().int().positive(),
-        // Optional only while a current CLI context may reach the previous API
-        // during its rollback window. Require this through #27194 afterward.
-        lastEventId: z.string().uuid().optional(),
+        lastEventId: z.string().uuid(),
         lastSeqId: z.number().int().positive(),
       }),
       400: apiErrorSchema,
@@ -1563,14 +1574,7 @@ export const chatThreadEventsContract = c.router({
     path: "/api/okou/chat-threads/:threadId/event-rows",
     headers: chatEventReadHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
-    query: z.object({
-      sinceSeqId: z.coerce.number().int().nonnegative(),
-      // Previous app clients can remain sequence-only for about 2 days, and
-      // existing runner/sandbox CLI contexts for up to 2 hours. Require this
-      // paired cursor through #27194 after both windows have drained.
-      sinceEventId: z.string().uuid().optional(),
-      limit: z.coerce.number().min(1).max(50).default(50),
-    }),
+    query: chatEventRowsQuerySchema,
     responses: {
       200: z.object({
         rows: z.array(chatEventRowSchema),
@@ -1583,7 +1587,7 @@ export const chatThreadEventsContract = c.router({
       410: apiErrorSchema,
       426: apiErrorSchema,
     },
-    summary: "Get raw chat event rows after a seq cursor",
+    summary: "Get raw chat event rows after a paired cursor",
   },
 });
 

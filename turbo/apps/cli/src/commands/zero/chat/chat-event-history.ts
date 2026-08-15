@@ -174,8 +174,8 @@ async function localHistoryState(args: {
 async function downloadSnapshot(args: {
   readonly url: string;
   readonly threadId: string;
-  readonly expectedLastEventId: string | undefined;
-}): Promise<{ readonly text: string; readonly lastEventId: string }> {
+  readonly expectedLastEventId: string;
+}): Promise<{ readonly text: string }> {
   const response = await fetch(args.url);
   if (!response.ok) {
     throw new Error(
@@ -184,13 +184,10 @@ async function downloadSnapshot(args: {
   }
   const text = await response.text();
   const parsed = parseSnapshot({ text, threadId: args.threadId });
-  if (
-    args.expectedLastEventId !== undefined &&
-    args.expectedLastEventId !== parsed.lastEventId
-  ) {
+  if (args.expectedLastEventId !== parsed.lastEventId) {
     throw new Error("Chat event snapshot terminal event ID does not match");
   }
-  return { text, lastEventId: parsed.lastEventId };
+  return { text };
 }
 
 async function syncRows(args: {
@@ -202,8 +199,7 @@ async function syncRows(args: {
   for (;;) {
     const page = await listZeroChatEventRows({
       threadId: args.threadId,
-      sinceEventId: cursor.lastEventId,
-      sinceSeqId: cursor.lastSeqId,
+      cursor,
       limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
     });
     if (page.kind === "expired") {
@@ -296,11 +292,8 @@ async function rebuildRawChatHistory(args: {
         downloaded.text,
         "utf8",
       );
-      // The previous API omits lastEventId. Derive it from the immutable body
-      // only during the backend rollout/rollback window (observed maximum:
-      // 102 minutes); remove this tolerance with #27194 after that window.
       cursor = {
-        lastEventId: snapshot.lastEventId ?? downloaded.lastEventId,
+        lastEventId: snapshot.lastEventId,
         lastSeqId: snapshot.lastSeqId,
       };
     }
