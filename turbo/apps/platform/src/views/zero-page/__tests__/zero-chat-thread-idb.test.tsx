@@ -548,6 +548,7 @@ describe("okou chat thread IndexedDB fallback", () => {
       return respond(200, {
         url: snapshotUrl,
         expiresInSeconds: 900,
+        lastEventId: snapshotRows.at(-1)!.id,
         lastSeqId: 3,
       });
     });
