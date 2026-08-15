@@ -64,6 +64,16 @@ export function createPlatformSentryOptions(
     // Preserve native fetch errors for application-level error handling.
     enhanceFetchErrorMessages: false,
 
+    ...(runtime === "shared-worker"
+      ? {
+          // Worker console output is controlled by the local debug loggers and
+          // must not be attached to later Sentry error events as breadcrumbs.
+          beforeBreadcrumb(breadcrumb) {
+            return breadcrumb.category === "console" ? null : breadcrumb;
+          },
+        }
+      : {}),
+
     // Filter out expected errors
     beforeSend(event, hint) {
       // Filter out 4xx client errors that are expected

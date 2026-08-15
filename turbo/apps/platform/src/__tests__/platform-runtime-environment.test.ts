@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BrowserOptions } from "@sentry/browser";
 import { isOkouProductionHostname } from "../lib/platform-host.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { initSharedDatabaseWorkerSentry } from "../shared-database/worker-sentry.ts";
@@ -25,9 +26,9 @@ const {
   return {
     browserSentryCaptureException: vi.fn(),
     browserSentryCaptureMessage: vi.fn(),
-    browserSentryInit: vi.fn(),
+    browserSentryInit: vi.fn<(options: BrowserOptions) => void>(),
     posthogInit: vi.fn(),
-    sentryInit: vi.fn(),
+    sentryInit: vi.fn<(options: BrowserOptions) => void>(),
   };
 });
 
@@ -217,6 +218,8 @@ describe("portable platform runtime environment", () => {
         environment: "production",
       }),
     );
+    const [pageSentryOptions] = sentryInit.mock.lastCall ?? [];
+    expect(pageSentryOptions).not.toHaveProperty("beforeBreadcrumb");
   });
 
   it("preserves preview services and suppresses production telemetry", async () => {
@@ -279,6 +282,22 @@ describe("portable platform runtime environment", () => {
           },
         },
       }),
+    );
+
+    const [workerSentryOptions] = browserSentryInit.mock.lastCall ?? [];
+    const warningBreadcrumb = {
+      category: "console",
+      message: "recoverable worker warning",
+    };
+    expect(
+      workerSentryOptions?.beforeBreadcrumb?.(warningBreadcrumb),
+    ).toBeNull();
+    const fetchBreadcrumb = {
+      category: "fetch",
+      message: "GET /api/zero/shared-database",
+    };
+    expect(workerSentryOptions?.beforeBreadcrumb?.(fetchBreadcrumb)).toBe(
+      fetchBreadcrumb,
     );
 
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
