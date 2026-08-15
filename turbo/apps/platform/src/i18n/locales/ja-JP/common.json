@@ -1089,11 +1089,9 @@
       "creditsRemaining_other": "{{value}} クレジットが残っています",
       "expires": "{{date}}に期限切れ",
       "grantsTable": {
-        "added": "追加日",
-        "amount": "金額",
-        "expires": "有効期限",
-        "left": "残り",
-        "source": "種別"
+        "credits": "クレジット",
+        "date": "日付",
+        "left": "残り"
       },
       "left": "{{value}} 残り",
       "member": "メンバー",

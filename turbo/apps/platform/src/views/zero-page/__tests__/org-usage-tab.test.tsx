@@ -6,7 +6,8 @@ import {
 import { zeroOrgMembersContract } from "@okouai/api-contracts/contracts/zero-org-members";
 import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -212,7 +213,8 @@ describe("organization usage settings", () => {
     await waitFor(() => {
       expect(screen.getByText("12,000")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("usage-allowance-section")).toBeInTheDocument();
+    const allowance = screen.getByTestId("usage-allowance-section");
+    expect(allowance).toBeInTheDocument();
     expect(screen.getByText("Usage allowance")).toBeInTheDocument();
     expect(screen.getByText("5h")).toBeInTheDocument();
     expect(screen.getByText("1w")).toBeInTheDocument();
@@ -224,12 +226,21 @@ describe("organization usage settings", () => {
     expect(
       screen.getByText(expectedAllowanceResetText(WEEKLY_ALLOWANCE_RESET)),
     ).toBeInTheDocument();
+    for (const progressbar of within(allowance).getAllByRole("progressbar")) {
+      expect(progressbar).toHaveClass("bg-muted/40");
+      expect(progressbar.firstElementChild).toHaveClass("bg-usage-kind-model");
+    }
 
-    // The additions table replaces the legend, so every number is printed once.
-    expect(screen.getByTestId("credit-grants-section")).toBeInTheDocument();
-    expect(screen.getByText("March Pro credits")).toBeInTheDocument();
-    expect(screen.getByText("+10,000")).toBeInTheDocument();
-    expect(screen.getByText("8,000")).toBeInTheDocument();
+    // The compact additions table keeps only the three values needed for
+    // scanning; source and expiry details are available from each row tooltip.
+    const grants = screen.getByTestId("credit-grants-section");
+    expect(within(grants).getByText("Date")).toBeInTheDocument();
+    expect(within(grants).getByText("Credits")).toBeInTheDocument();
+    expect(within(grants).getByText("Left")).toBeInTheDocument();
+    expect(within(grants).getByText("Mar 1, 2026")).toBeInTheDocument();
+    expect(within(grants).getByText("+10,000")).toBeInTheDocument();
+    expect(within(grants).getByText("8,000")).toBeInTheDocument();
+    expect(within(grants).queryByText("March Pro credits")).toBeNull();
     expect(screen.queryByTestId("credit-grants-toggle")).toBeNull();
     expect(screen.queryByText("Pro credits")).toBeNull();
     expect(screen.queryByText("Purchased credits")).toBeNull();
@@ -299,14 +310,14 @@ describe("organization usage settings", () => {
     });
     await openCreditBalance();
 
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("credit-balance-segment-payAsYouGo"),
-      ).toBeInTheDocument();
-    });
+    const segment = await screen.findByTestId(
+      "credit-balance-segment-payAsYouGo",
+    );
+    expect(segment).toHaveClass("bg-usage-kind-other");
   });
 
   it("labels far-future credit grant expiries as never expiring", async () => {
+    const user = userEvent.setup();
     mockUsageStory();
     mockBillingStatus({
       creditGrants: [
@@ -323,8 +334,12 @@ describe("organization usage settings", () => {
     });
     await openCreditBalance();
 
-    const neverExpires = await screen.findByText("Never expires");
-    expect(neverExpires).toBeInTheDocument();
+    const grant = await screen.findByTestId("credit-grants-grant-custom");
+    expect(screen.queryByText("Never expires")).toBeNull();
+    await user.hover(grant);
+    await expect(
+      screen.findByText("Never expires"),
+    ).resolves.toBeInTheDocument();
     expect(screen.queryByText("Dec 31, 2999")).toBeNull();
   });
 
@@ -401,8 +416,12 @@ describe("organization usage settings", () => {
       expect(screen.getByText("3.750 restantes")).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("credit-grants-section")).toBeInTheDocument();
-    expect(screen.getByText("March Pro credits")).toBeInTheDocument();
+    const grants = screen.getByTestId("credit-grants-section");
+    expect(within(grants).getByText("Data")).toBeInTheDocument();
+    expect(within(grants).getByText("Créditos")).toBeInTheDocument();
+    expect(within(grants).getByText("Restante")).toBeInTheDocument();
+    expect(within(grants).getByText("+10.000")).toBeInTheDocument();
+    expect(within(grants).getByText("8.000")).toBeInTheDocument();
   });
 
   it("localizes team usage in Portuguese", async () => {

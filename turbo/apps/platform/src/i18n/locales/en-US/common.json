@@ -1089,11 +1089,9 @@
       "creditsRemaining_other": "{{value}} credits remaining",
       "expires": "Expires {{date}}",
       "grantsTable": {
-        "added": "Added",
-        "amount": "Amount",
-        "expires": "Expires",
-        "left": "Left",
-        "source": "Source"
+        "credits": "Credits",
+        "date": "Date",
+        "left": "Left"
       },
       "left": "{{value}} left",
       "member": "Member",
