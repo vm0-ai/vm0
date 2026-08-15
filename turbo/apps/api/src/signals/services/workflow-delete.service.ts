@@ -12,15 +12,15 @@ import { writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
-interface DeleteZeroWorkflowInput {
+interface DeleteWorkflowInput {
   readonly orgId: string;
   readonly workflowId: string;
 }
 
-export const deleteZeroWorkflow$ = command(
+export const deleteWorkflow$ = command(
   async (
     { get, set },
-    args: DeleteZeroWorkflowInput,
+    args: DeleteWorkflowInput,
     signal: AbortSignal,
   ): Promise<boolean> => {
     const writeDb = set(writeDb$);

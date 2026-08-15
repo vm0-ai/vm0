@@ -43,7 +43,7 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
-import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
+import { deleteWorkflow$ } from "../services/workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
 import {
   ensureWorkflowUserAutomationThread,
@@ -693,7 +693,7 @@ const deleteWorkflowInner$ = command(
     }
 
     const deleted = await set(
-      deleteZeroWorkflow$,
+      deleteWorkflow$,
       { orgId: auth.orgId, workflowId: params.workflowId },
       signal,
     );
