@@ -94,13 +94,12 @@ import {
   openSettingsBillingPlans$,
   openSettingsMemberUsagePacks$,
 } from "../../../../signals/zero-page/settings/settings-dialog.ts";
-import { formatUsd } from "../../../../i18n/format.ts";
+import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { UserAvatar } from "../../../components/avatar.tsx";
 import {
   parseUsagePackOption,
   usagePackOptionLabel,
 } from "./usage-pack-options.ts";
-import { UsagePackPaymentSummary } from "./usage-pack-pricing-page.tsx";
 
 const ROW_GRID = "grid gap-x-4 items-center";
 
@@ -589,6 +588,31 @@ function InvitePurchaseConfirmationDialog() {
   const pageSignal = useGet(pageSignal$);
   const confirming = confirmationLoadable.state === "loading";
   const error = confirmationLoadable.state === "hasError";
+  const inviteAsSummary = preview
+    ? t(
+        ($) => {
+          return $.settings.workspace.members.invite.purchase.inviteAsSummary;
+        },
+        {
+          role:
+            preview.role === "admin"
+              ? t(($) => {
+                  return $.settings.workspace.members.admin;
+                })
+              : t(($) => {
+                  return $.settings.workspace.members.member;
+                }),
+          credits: t(
+            ($) => {
+              return $.billing.plans.usagePacks.packCredits;
+            },
+            {
+              credits: formatLocalizedNumber(preview.payment.totalCredits),
+            },
+          ),
+        },
+      )
+    : null;
 
   return (
     <Dialog
@@ -600,36 +624,21 @@ function InvitePurchaseConfirmationDialog() {
       }}
     >
       <DialogContent
+        className="max-w-[26.5rem] gap-0"
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
       >
-        <DialogHeader>
+        <DialogHeader className="pb-4">
           <DialogTitle>
             {t(($) => {
               return $.settings.workspace.members.invite.purchase.title;
             })}
           </DialogTitle>
-          <DialogDescription>
-            {t(($) => {
-              return $.settings.workspace.members.invite.purchase.description;
-            })}
-          </DialogDescription>
         </DialogHeader>
         {preview && (
-          <>
-            <UsagePackPaymentSummary
-              preview={{
-                immediateAmountCents: preview.payment.immediateAmountCents,
-                immediateCreditGrant: {
-                  purchasedCredits: preview.payment.purchasedCredits,
-                  bonusCredits: preview.payment.bonusCredits,
-                  totalCredits: preview.payment.totalCredits,
-                  expiresAt: preview.payment.currentPeriodEnd,
-                },
-              }}
-            />
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 pt-1 text-sm">
+          <div className="divide-y divide-border/70 border-y border-border/70">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-3 text-sm">
               <span className="text-muted-foreground">
                 {t(($) => {
                   return $.settings.workspace.members.invite.purchase.invitee;
@@ -638,44 +647,37 @@ function InvitePurchaseConfirmationDialog() {
               <span className="max-w-64 truncate text-right font-medium text-foreground">
                 {preview.email}
               </span>
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-3 text-sm">
               <span className="text-muted-foreground">
                 {t(($) => {
-                  return $.settings.workspace.members.invite.roleLabel;
+                  return $.settings.workspace.members.invite.purchase.inviteAs;
                 })}
               </span>
               <span className="text-right font-medium text-foreground">
-                {preview.role === "admin"
-                  ? t(($) => {
-                      return $.settings.workspace.members.admin;
-                    })
-                  : t(($) => {
-                      return $.settings.workspace.members.member;
-                    })}
-              </span>
-              <span className="text-muted-foreground">
-                {t(($) => {
-                  return $.billing.plans.usagePacks.memberPackages;
-                })}
-              </span>
-              <span className="text-right font-medium text-foreground">
-                {t(
-                  ($) => {
-                    return $.billing.plans.pricePerMonth;
-                  },
-                  { price: formatUsd(preview.payment.usagePackUsd, 0) },
-                )}
+                {inviteAsSummary}
               </span>
             </div>
-          </>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-3 text-sm">
+              <span className="text-muted-foreground">
+                {t(($) => {
+                  return $.settings.workspace.members.invite.purchase.dueToday;
+                })}
+              </span>
+              <span className="text-right text-xl font-semibold tabular-nums tracking-tight text-foreground">
+                {formatUsd(preview.payment.immediateAmountCents / 100)}
+              </span>
+            </div>
+          </div>
         )}
         {error && (
-          <p className="text-xs text-destructive">
+          <p className="mt-3 text-xs text-destructive">
             {t(($) => {
               return $.settings.workspace.members.invite.purchase.error;
             })}
           </p>
         )}
-        <DialogFooter>
+        <DialogFooter className="pt-4">
           <Button
             type="button"
             variant="outline"
@@ -700,7 +702,8 @@ function InvitePurchaseConfirmationDialog() {
                   return $.billing.common.updating;
                 })
               : t(($) => {
-                  return $.billing.common.confirm;
+                  return $.settings.workspace.members.invite.purchase
+                    .payAndInvite;
                 })}
           </Button>
         </DialogFooter>
