@@ -8,7 +8,7 @@ import {
   type SlideRendererOptions,
 } from "@aiden0z/pptx-renderer";
 import { domToBlob } from "modern-screenshot";
-import { animationFrame } from "signal-timers";
+import { animationFrame, delay } from "signal-timers";
 
 import {
   createChildAbortController,
@@ -349,14 +349,16 @@ function waitWithDeadline<T>(
   const deadlineSignal = deadlineController.signal;
   const operationPromise = operation(deadlineSignal);
   const waitPromise = waitForAbortablePromise(operationPromise, deadlineSignal);
-  const timeoutId = window.setTimeout(() => {
-    if (!deadlineController.signal.aborted) {
-      deadlineController.abort(timeoutError);
-    }
-  }, PPTX_RENDER_LIMITS.resourceTimeoutMs);
-  return withCleanup(waitPromise, () => {
-    window.clearTimeout(timeoutId);
-    if (!deadlineController.signal.aborted) {
+  const waitForDeadline = async (): Promise<never> => {
+    await delay(PPTX_RENDER_LIMITS.resourceTimeoutMs, {
+      signal: deadlineSignal,
+    });
+    deadlineController.abort(timeoutError);
+    throw timeoutError;
+  };
+  const deadlinePromise = waitForDeadline();
+  return withCleanup(Promise.race([waitPromise, deadlinePromise]), () => {
+    if (!deadlineSignal.aborted) {
       deadlineController.abort(
         new DOMException("PPTX resource operation settled", "AbortError"),
       );
