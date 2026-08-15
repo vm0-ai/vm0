@@ -1084,19 +1084,18 @@ async fn execute_cli_inner(
     }
 
     // Stuck-tool watchdog: workaround for Claude Code bug where
-    // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
-    // if a network tool exceeds STUCK_TOOL_TIMEOUT_SECS without producing
-    // a tool_result, kill the process. Keyed by tool_use_id to handle
-    // parallel tool calls correctly.
+    // WebSearch/WebFetch hang indefinitely. Track bounded in-flight network
+    // tool calls; if one exceeds STUCK_TOOL_TIMEOUT_SECS without producing a
+    // tool_result, kill the process. Keyed by tool_use_id to handle parallel
+    // tool calls correctly. Tracker admission is best-effort: an oversized ID
+    // or a full tracker is ignored without affecting the run.
     // See: https://github.com/anthropics/claude-code/issues/11650
-    let mut stuck_tool_tracker: HashMap<String, (String, tokio::time::Instant)> = HashMap::new();
+    let mut stuck_tool_tracker = claude::StuckToolTracker::new();
     let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
     let mut stuck_tool_check = tokio::time::interval_at(
         tokio::time::Instant::now() + stuck_tool_interval,
         stuck_tool_interval,
     );
-    // MAINTENANCE: update if Claude Code adds new network tools that can hang.
-    const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
 
     // Background event sender: HTTP POSTs happen here, never in the stdout
     // reading loop. Admission is non-blocking and bounded by count and bytes;
@@ -1389,6 +1388,8 @@ async fn execute_cli_inner(
                                 }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
+                            // Watchdog tracking is auxiliary state and must never make the
+                            // ordinary event stream or the run fail.
                             claude::track_claude_tool_events(&event, &mut stuck_tool_tracker);
                             termination_runtime.record_post_result_activity(
                                 post_result_cleanup_was_armed,
@@ -1531,14 +1532,7 @@ async fn execute_cli_inner(
             _ = stuck_tool_check.tick(), if cli_status.is_none() => {
                 let timeout_secs = runtime.stuck_tool_timeout_secs;
                 // Find the oldest network tool that has exceeded the timeout.
-                let stuck = stuck_tool_tracker
-                    .values()
-                    .filter(|(name, started)| {
-                        started.elapsed().as_secs() >= timeout_secs
-                            && STUCK_TOOL_NAMES.contains(&name.as_str())
-                    })
-                    .min_by_key(|(_, started)| *started)
-                    .map(|(name, started)| (name.clone(), started.elapsed().as_secs()));
+                let stuck = stuck_tool_tracker.oldest_expired(timeout_secs);
                 if let Some((name, elapsed)) = stuck
                 {
                     match try_observe_cli_exit(
@@ -1555,12 +1549,16 @@ async fn execute_cli_inner(
                         CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                     }
                     let timeout_error = AgentError::Execution(format!(
-                        "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
+                        "Tool timeout: {} exceeded {timeout_secs}s without returning a result",
+                        name.as_str()
                     ));
                     termination_runtime.begin_control_failure(
                         TerminationReason::StuckTool,
                         timeout_error,
-                        ControlTerminationLog::StuckTool { name, elapsed },
+                        ControlTerminationLog::StuckTool {
+                            name: name.as_str().to_owned(),
+                            elapsed,
+                        },
                         termination_deadline.as_mut(),
                     );
                 }
