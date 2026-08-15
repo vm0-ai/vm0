@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.451.6](https://github.com/vm0-ai/vm0/compare/api-v1.451.5...api-v1.451.6) (2026-08-15)
+
+
+### Bug Fixes
+
+* **chat:** serialize search projection with thread deletion ([#27364](https://github.com/vm0-ai/vm0/issues/27364)) ([9a291de](https://github.com/vm0-ai/vm0/commit/9a291de8c758132dfa0871509a6728fc844f13f1))
+
+
+### Refactoring
+
+* **billing:** neutralize invoice service naming ([#27459](https://github.com/vm0-ai/vm0/issues/27459)) ([09ba74c](https://github.com/vm0-ai/vm0/commit/09ba74c5c728c43bcb84dc7ac1f3c6451cd8339d))
+* **browser:** neutralize the authorization service filename ([#27458](https://github.com/vm0-ai/vm0/issues/27458)) ([abb2e09](https://github.com/vm0-ai/vm0/commit/abb2e09f71d799fffaa56c318565559ebc69f525))
+* **chat:** neutralize chat search service naming ([#27448](https://github.com/vm0-ai/vm0/issues/27448)) ([9710cdd](https://github.com/vm0-ai/vm0/commit/9710cdd0a0758a441282d72d2a94479b19f8e069))
+* **chat:** neutralize run-state helper service filenames ([#27449](https://github.com/vm0-ai/vm0/issues/27449)) ([a1f5569](https://github.com/vm0-ai/vm0/commit/a1f55696adfa7d81f2a2caca8af052aad2ce479a))
+* **host:** neutralize the host service filename ([#27462](https://github.com/vm0-ai/vm0/issues/27462)) ([d9f01a5](https://github.com/vm0-ai/vm0/commit/d9f01a5a4cd7f7eff9b7cd2d2f84d1bf72022c04))
+* **model-provider:** neutralize the gateway service filename ([#27461](https://github.com/vm0-ai/vm0/issues/27461)) ([199fbc6](https://github.com/vm0-ai/vm0/commit/199fbc639944f75554c34a7782d434afaf10beba))
+* **prompt:** use okou browser product names in agent instructions ([#27431](https://github.com/vm0-ai/vm0/issues/27431)) ([926d572](https://github.com/vm0-ai/vm0/commit/926d572bfd86513e6bab8e7de8bc1c047b6a23ce))
+* **run:** neutralize mcp connector and model-selection service naming ([#27446](https://github.com/vm0-ai/vm0/issues/27446)) ([d233a75](https://github.com/vm0-ai/vm0/commit/d233a7510ea222ba1c8d7b1603f4b318df6e6c4b))
+* **telegram:** neutralize callback persistence filename ([#27422](https://github.com/vm0-ai/vm0/issues/27422)) ([efc4175](https://github.com/vm0-ai/vm0/commit/efc417521fbdd90eb3c6e3e9c7d1344cc838b115))
+* **usage:** neutralize managed usage service filename ([#27450](https://github.com/vm0-ai/vm0/issues/27450)) ([8a7e397](https://github.com/vm0-ai/vm0/commit/8a7e397feba1557c2dfc18a2ba7a16948cd89068))
+* **usage:** neutralize usage member service naming ([#27460](https://github.com/vm0-ai/vm0/issues/27460)) ([d82f2ba](https://github.com/vm0-ai/vm0/commit/d82f2baa41858ebc7ef9f8b3af95a1eebb128b80))
+* **workflows:** neutralize the automation access service filename ([#27439](https://github.com/vm0-ai/vm0/issues/27439)) ([7cc48f2](https://github.com/vm0-ai/vm0/commit/7cc48f28711a45877e38f6390d69d8c1173382f2))
+* **workflows:** neutralize workflow deletion service naming ([#27457](https://github.com/vm0-ai/vm0/issues/27457)) ([64ee323](https://github.com/vm0-ai/vm0/commit/64ee323012ac4a46622ecc0ac66f1ef97c45bdd7))
+
+
+### Performance Improvements
+
+* **api:** attribute pre-queue launch phases ([#27447](https://github.com/vm0-ai/vm0/issues/27447)) ([cbb239b](https://github.com/vm0-ai/vm0/commit/cbb239beaaf965b8c901c6df94505680faaf3806))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.6
+    * @okouai/core bumped to 8.562.3
+    * @okouai/db bumped to 1.200.6
+
 ## [1.451.5](https://github.com/vm0-ai/vm0/compare/api-v1.451.4...api-v1.451.5) (2026-08-15)
 
 

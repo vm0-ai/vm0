@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.63](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.62...guest-mock-claude-v0.21.63) (2026-08-15)
+
+
+### Bug Fixes
+
+* **runner:** gate active-input smoke readiness ([#27389](https://github.com/vm0-ai/vm0/issues/27389)) ([79d358a](https://github.com/vm0-ai/vm0/commit/79d358a4a45bb3e4454156159813d23561af3e91))
+
 ## [0.21.62](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.61...guest-mock-claude-v0.21.62) (2026-08-14)
 
 ## [0.21.61](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.60...guest-mock-claude-v0.21.61) (2026-08-14)

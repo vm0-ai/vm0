@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.219](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.218...sandbox-fc-v0.37.219) (2026-08-15)
+
+
+### Documentation
+
+* **sandbox-fc:** refresh snapshot workflow documentation ([#27365](https://github.com/vm0-ai/vm0/issues/27365)) ([fdcefcb](https://github.com/vm0-ai/vm0/commit/fdcefcb0aca80a16a714d80541893d25e83a3a0f))
+
 ## [0.37.218](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.217...sandbox-fc-v0.37.218) (2026-08-14)
 
 ## [0.37.217](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.216...sandbox-fc-v0.37.217) (2026-08-14)

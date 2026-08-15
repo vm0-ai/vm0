@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.21](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.20...guest-session-prune-v0.3.21) (2026-08-15)
+
+
+### Bug Fixes
+
+* **guest-agent:** remove session history marker authority ([#27284](https://github.com/vm0-ai/vm0/issues/27284)) ([1bf8617](https://github.com/vm0-ai/vm0/commit/1bf8617d3a04b6beccba5f81795d57476e728ffe))
+
 ## [0.3.20](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.19...guest-session-prune-v0.3.20) (2026-08-14)
 
 ## [0.3.19](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.18...guest-session-prune-v0.3.19) (2026-08-14)
