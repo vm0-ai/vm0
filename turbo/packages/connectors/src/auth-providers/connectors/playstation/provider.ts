@@ -6,6 +6,7 @@ import {
   buildPlaystationNpssoUrl,
   exchangePlaystationAccessCodeForAuthTokens,
   exchangePlaystationNpssoForAccessCode,
+  exchangePlaystationNpssoForWebSessionToken,
   fetchPlaystationIdentity,
   normalizePlaystationNpsso,
   playstationUserInfo,
@@ -37,13 +38,16 @@ function createPlaystationExternalCodeGrantProvider(): ExternalCodeConnectorAuth
         },
         signal,
       );
-      const token = await exchangePlaystationAccessCodeForAuthTokens(
-        {
-          accessCode,
-          clientId: args.authClient.clientId,
-        },
-        signal,
-      );
+      const [token, webSessionToken] = await Promise.all([
+        exchangePlaystationAccessCodeForAuthTokens(
+          {
+            accessCode,
+            clientId: args.authClient.clientId,
+          },
+          signal,
+        ),
+        exchangePlaystationNpssoForWebSessionToken(npsso, signal),
+      ]);
       const identity = await fetchPlaystationIdentity(
         {
           accessToken: token.accessToken,
@@ -57,6 +61,7 @@ function createPlaystationExternalCodeGrantProvider(): ExternalCodeConnectorAuth
           refreshToken: token.refreshToken,
           idToken: token.idToken,
           npsso,
+          webSessionToken,
           accountId: identity.accountId,
           onlineId: identity.onlineId ?? "",
         },
@@ -75,18 +80,22 @@ function createPlaystationRefreshTokenAccessProvider(): RefreshTokenAccessProvid
   return {
     kind: "refresh-token",
     refresh: async (args, signal: AbortSignal) => {
-      const token = await refreshPlaystationAuthTokens(
-        {
-          refreshToken: args.inputs.refreshToken,
-          clientId: args.authClient.clientId,
-        },
-        signal,
-      );
+      const [token, webSessionToken] = await Promise.all([
+        refreshPlaystationAuthTokens(
+          {
+            refreshToken: args.inputs.refreshToken,
+            clientId: args.authClient.clientId,
+          },
+          signal,
+        ),
+        exchangePlaystationNpssoForWebSessionToken(args.inputs.npsso, signal),
+      ]);
       return {
         outputs: {
           accessToken: token.accessToken,
           refreshToken: token.refreshToken,
           idToken: token.idToken,
+          webSessionToken,
         },
         expiresIn: token.expiresIn,
       };

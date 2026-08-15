@@ -1406,13 +1406,19 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
           "npsso",
           "onlineId",
           "refreshToken",
+          "webSessionToken",
         ],
         startOptionNames: [],
       },
       access: {
         kind: "refresh-token",
-        inputNames: ["refreshToken"],
-        outputNames: ["accessToken", "idToken", "refreshToken"],
+        inputNames: ["npsso", "refreshToken"],
+        outputNames: [
+          "accessToken",
+          "idToken",
+          "refreshToken",
+          "webSessionToken",
+        ],
         platformSecrets: [],
       },
       revoke: {
