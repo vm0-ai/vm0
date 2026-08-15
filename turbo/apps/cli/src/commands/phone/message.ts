@@ -1,8 +1,8 @@
 import { readFileSync } from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
-import { sendPhoneMessage } from "../../../lib/api/domains/integrations-phone";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { sendPhoneMessage } from "../../lib/api/domains/integrations-phone";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 export const messageCommand = new Command()
   .name("message")
@@ -18,7 +18,7 @@ Examples:
   From stdin:     printf "Hello!" | okou phone message --to +15551234567
 
 Notes:
-  - The phone handle must already be connected to the authenticated VM0 user
+  - The phone handle must already be connected to the authenticated Okou user
   - AgentPhone agent ID is inferred from the conversation when omitted`,
   )
   .action(

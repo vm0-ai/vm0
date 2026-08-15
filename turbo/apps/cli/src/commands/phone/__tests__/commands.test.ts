@@ -4,7 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { downloadFileCommand } from "../download-file";
 import { messageCommand } from "../message";
 import { uploadFileCommand } from "../upload-file";
