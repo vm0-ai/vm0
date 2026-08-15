@@ -46,7 +46,7 @@ import {
   MODEL_TOKEN_USAGE_KINDS,
 } from "./model-token-categories";
 import { getOrgBillingPeriod$ } from "./org-billing-period.service";
-import { resolveEmails } from "./zero-usage.service";
+import { resolveEmails } from "./usage.service";
 import {
   fixedRangeToPeriod,
   type UsagePeriod,

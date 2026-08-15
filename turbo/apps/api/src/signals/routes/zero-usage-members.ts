@@ -6,7 +6,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { zeroUsageMembers$ } from "../services/zero-usage.service";
+import { usageMembers$ } from "../services/usage.service";
 import { isValidTimeZone } from "../utils";
 
 function forbidden() {
@@ -36,7 +36,7 @@ const getUsageMembersInner$ = command(
     }
 
     const body = await set(
-      zeroUsageMembers$,
+      usageMembers$,
       { orgId: auth.orgId, range, tz },
       signal,
     );
