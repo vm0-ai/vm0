@@ -240,7 +240,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "goal",
     description: "Manage the current thread goal",
     load: async () => {
-      return (await import("./commands/zero/goal")).zeroGoalCommand;
+      return (await import("./commands/goal")).goalCommand;
     },
   },
   {
