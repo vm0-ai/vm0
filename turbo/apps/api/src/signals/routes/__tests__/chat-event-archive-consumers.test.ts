@@ -382,13 +382,19 @@ describe("archived chat event consumers", () => {
       await Promise.allSettled([heldReads.done, deletionDone, createRequest]);
     });
 
-    await expect.poll(heldReads.blockedWaiterCount).toBe(1);
+    await expect.poll(heldReads.blockedStatementCounts).toStrictEqual({
+      hotSnapshotReads: 1,
+      physicalDeletions: 0,
+    });
     const deletion = await queueChatEventPhysicalDeletionFixture({
       eventId: hotEventId,
       signal: context.signal,
     });
     deletionDone = deletion.done;
-    await expect.poll(heldReads.blockedWaiterCount).toBe(2);
+    await expect.poll(heldReads.blockedStatementCounts).toStrictEqual({
+      hotSnapshotReads: 1,
+      physicalDeletions: 1,
+    });
 
     heldReads.release();
     const [created] = await Promise.all([

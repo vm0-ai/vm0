@@ -67,6 +67,11 @@ const blockedQueryRowSchema = z.object({ query: z.string() });
 
 type ChatThreadBlockedStatementKind = "select_for_update" | "update" | "other";
 
+interface ChatEventBlockedStatementCounts {
+  readonly hotSnapshotReads: number;
+  readonly physicalDeletions: number;
+}
+
 interface ChatEventContextFixture {
   readonly id: string;
   readonly revokesEventId: string | null;
@@ -950,7 +955,7 @@ export async function holdChatEventReadsFixture(args: {
 }): Promise<{
   readonly release: () => void;
   readonly done: Promise<void>;
-  readonly blockedWaiterCount: () => Promise<number>;
+  readonly blockedStatementCounts: () => Promise<ChatEventBlockedStatementCounts>;
 }> {
   const started = createDeferredPromise<number>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
@@ -977,8 +982,8 @@ export async function holdChatEventReadsFixture(args: {
       }
     },
     done,
-    blockedWaiterCount: async () => {
-      return await directBlockedWaiterCount(holderPid);
+    blockedStatementCounts: async () => {
+      return await directBlockedChatEventStatementCounts(holderPid);
     },
   };
 }
@@ -1218,6 +1223,52 @@ async function directBlockedWaiterCount(holderPid: number): Promise<number> {
   return rows[0]?.waiterCount ?? 0;
 }
 
+function normalizeBlockedQuery(query: string): string {
+  return query.toLowerCase().replaceAll(/\s+/g, " ").trim();
+}
+
+function isSharedThreadHotSnapshotRead(query: string): boolean {
+  return (
+    query.startsWith(
+      `select "id", "event_type", "payload"->>'content', "payload"->'usermessage', "run_id"`,
+    ) &&
+    query.includes('from "chat_events" where') &&
+    query.includes('"chat_events"."chat_thread_id" = $') &&
+    query.includes('"chat_events"."id" in (') &&
+    query.endsWith('order by "chat_events"."seq_id" asc')
+  );
+}
+
+function isChatEventPhysicalDeletion(query: string): boolean {
+  return query === 'lock table "chat_events" in access exclusive mode';
+}
+
+async function directBlockedChatEventStatementCounts(
+  holderPid: number,
+): Promise<ChatEventBlockedStatementCounts> {
+  const rows = await executeRawRows(
+    db(),
+    sql`
+      SELECT activity.query AS "query"
+      FROM pg_stat_activity AS activity
+      WHERE ${holderPid} = ANY(pg_blocking_pids(activity.pid))
+    `,
+    blockedQueryRowSchema,
+  );
+  let hotSnapshotReads = 0;
+  let physicalDeletions = 0;
+  for (const row of rows) {
+    const query = normalizeBlockedQuery(row.query);
+    if (isSharedThreadHotSnapshotRead(query)) {
+      hotSnapshotReads++;
+    }
+    if (isChatEventPhysicalDeletion(query)) {
+      physicalDeletions++;
+    }
+  }
+  return { hotSnapshotReads, physicalDeletions };
+}
+
 async function firstDirectBlockedStatementKind(
   holderPid: number,
 ): Promise<ChatThreadBlockedStatementKind | null> {
@@ -1232,7 +1283,7 @@ async function firstDirectBlockedStatementKind(
     `,
     blockedQueryRowSchema,
   );
-  const query = rows[0]?.query.toLowerCase().replaceAll(/\s+/g, " ").trim();
+  const query = rows[0] ? normalizeBlockedQuery(rows[0].query) : undefined;
   if (!query) {
     return null;
   }
