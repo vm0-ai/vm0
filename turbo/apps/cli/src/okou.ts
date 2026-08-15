@@ -283,7 +283,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "host",
     description: "Publish static sites and clone owned hosted site files",
     load: async () => {
-      return (await import("./commands/zero/host")).zeroHostCommand;
+      return (await import("./commands/host")).hostCommand;
     },
   },
   {

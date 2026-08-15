@@ -1,12 +1,12 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   cloneHostedSite,
   publicSlugFromSite,
-} from "../../../lib/host/clone-hosted-site";
-import { formatBytes } from "../../../lib/utils/file-utils";
+} from "../../lib/host/clone-hosted-site";
+import { formatBytes } from "../../lib/utils/file-utils";
 
 interface CloneOptions {
   readonly json?: boolean;

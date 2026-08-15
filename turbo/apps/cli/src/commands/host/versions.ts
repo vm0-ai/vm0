@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
 
-import { getHostedSiteDeployments } from "../../../lib/api/domains/zero-host";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { getHostedSiteDeployments } from "../../lib/api/domains/zero-host";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface VersionsOptions {
   readonly json?: boolean;

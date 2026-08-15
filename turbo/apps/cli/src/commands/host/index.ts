@@ -4,8 +4,8 @@ import {
   hostedArtifactKindSchema,
   type HostedArtifactKind,
 } from "@okouai/api-contracts/contracts/zero-host";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { publishStaticSite } from "../../../lib/host/publish-static-site";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { publishStaticSite } from "../../lib/host/publish-static-site";
 import { cloneHostedSiteCommand } from "./clone";
 import { versionsHostedSiteCommand } from "./versions";
 
@@ -27,7 +27,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export const zeroHostCommand = new Command()
+export const hostCommand = new Command()
   .name("host")
   .description("Publish and inspect owned static hosted sites")
   .argument("<dir>", "Static build directory, for example ./dist")
