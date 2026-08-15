@@ -813,7 +813,6 @@
       "concurrentRun_other": "{{value}}개의 동시 실행",
       "continueToStripe": "Stripe로 계속",
       "decreaseAria": "추가 동시 실행 수 감소",
-      "dueNow": "지금 결제",
       "dueToday": "오늘 결제",
       "emptyDescription": "이 워크스페이스에 추가 동시 실행을 구매하세요.",
       "emptyTitle": "동시 실행 구독 없음",
@@ -844,15 +843,19 @@
       "amount": "금액",
       "amountRangeError": "{{minimum}}에서 {{maximum}} 사이로 입력하세요",
       "anyAmount": "임의 금액",
+      "creditsAdded": "추가되는 크레딧",
       "custom": "사용자 지정",
       "customAmountAria": "사용자 지정 금액",
+      "dueNow": "지금 결제",
       "exchangeRate": "크레딧은 만료되지 않습니다. 1 USD = {{credits}} 크레딧.",
+      "payAndAddCredits": "결제하고 크레딧 추가",
       "quickBuy": "빠른 구매",
       "quickBuyAmount": "빠른 구매 {{amount}}",
       "reviewDescription": "저장된 결제 수단으로 이번 일회성 결제를 확인하세요.",
       "reviewError": "크레딧 구매를 완료할 수 없습니다. 결제 정보를 확인한 후 다시 시도하세요.",
       "reviewTitle": "크레딧 구매 검토",
-      "title": "크레딧 구매"
+      "title": "크레딧 구매",
+      "today": "오늘"
     },
     "downgrade": {
       "cancelSubscription": "구독 취소",

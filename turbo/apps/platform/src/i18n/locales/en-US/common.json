@@ -813,7 +813,6 @@
       "concurrentRun_other": "{{value}} concurrent runs",
       "continueToStripe": "Continue to Stripe",
       "decreaseAria": "Decrease additional concurrency quantity",
-      "dueNow": "Due now",
       "dueToday": "Due today",
       "emptyDescription": "Buy additional concurrent runs for this workspace.",
       "emptyTitle": "No concurrency subscriptions",
@@ -844,15 +843,19 @@
       "amount": "Amount",
       "amountRangeError": "Enter between {{minimum}} and {{maximum}}",
       "anyAmount": "Any amount",
+      "creditsAdded": "Credits added",
       "custom": "Custom",
       "customAmountAria": "Custom dollar amount",
+      "dueNow": "Due now",
       "exchangeRate": "Credits never expire. 1 USD = {{credits}} credits.",
+      "payAndAddCredits": "Pay and add credits",
       "quickBuy": "Quick buy",
       "quickBuyAmount": "Quick buy {{amount}}",
       "reviewDescription": "Confirm this one-time charge with your saved payment method.",
       "reviewError": "Could not complete this credit purchase. Review your billing details and try again.",
       "reviewTitle": "Review credit purchase",
-      "title": "Buy credits"
+      "title": "Buy credits",
+      "today": "Today"
     },
     "downgrade": {
       "cancelSubscription": "Cancel subscription",

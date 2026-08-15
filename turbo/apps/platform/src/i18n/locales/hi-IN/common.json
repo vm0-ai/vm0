@@ -813,7 +813,6 @@
       "concurrentRun_other": "{{value}} समवर्ती चलता है",
       "continueToStripe": "Stripe पर जारी रखें",
       "decreaseAria": "अतिरिक्त समवर्ती मात्रा कम करें",
-      "dueNow": "अभी देय",
       "dueToday": "आज देय",
       "emptyDescription": "इस वर्कस्पेस के लिए अतिरिक्त समवर्ती रन खरीदें।",
       "emptyTitle": "कोई समवर्ती सदस्यता नहीं",
@@ -844,15 +843,19 @@
       "amount": "मात्रा",
       "amountRangeError": "{{minimum}} और {{maximum}} के बीच दर्ज करें",
       "anyAmount": "कोई भी राशि",
+      "creditsAdded": "क्रेडिट जोड़े गए",
       "custom": "रिवाज़",
       "customAmountAria": "कस्टम डॉलर राशि",
+      "dueNow": "अभी देय",
       "exchangeRate": "क्रेडिट कभी समाप्त नहीं होते. 1 USD = {{credits}} क्रेडिट।",
+      "payAndAddCredits": "भुगतान करें और क्रेडिट जोड़ें",
       "quickBuy": "जल्दी खरीदो",
       "quickBuyAmount": "जल्दी से {{amount}} खरीदें",
       "reviewDescription": "अपने सहेजे गए भुगतान तरीके से इस एकमुश्त शुल्क की पुष्टि करें।",
       "reviewError": "यह क्रेडिट खरीद पूरी नहीं हो सकी। अपनी बिलिंग जानकारी जांचें और फिर कोशिश करें।",
       "reviewTitle": "क्रेडिट खरीद की समीक्षा करें",
-      "title": "क्रेडिट खरीदें"
+      "title": "क्रेडिट खरीदें",
+      "today": "आज"
     },
     "downgrade": {
       "cancelSubscription": "सदस्यता रद्द करें",

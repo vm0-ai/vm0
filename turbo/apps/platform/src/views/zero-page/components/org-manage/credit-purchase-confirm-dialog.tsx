@@ -74,27 +74,32 @@ export function CreditPurchaseConfirmDialog() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-1 divide-y divide-border/70 border-y border-border/70">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-4">
-              <p className="text-sm font-semibold text-foreground">
+          <div className="mt-1">
+            <p className="pb-0.5 pt-1 text-xs font-medium text-muted-foreground">
+              {t(($) => {
+                return $.billing.credits.today;
+              })}
+            </p>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-border py-3.5">
+              <p className="text-sm font-medium text-foreground">
                 {t(($) => {
-                  return $.billing.concurrency.dueNow;
+                  return $.billing.credits.dueNow;
                 })}
               </p>
-              <p className="text-right text-2xl font-semibold tabular-nums tracking-tight text-primary">
+              <p className="text-right text-3xl font-light tracking-tight tabular-nums text-foreground">
                 {formatCreditPurchaseAmount(
                   preview.amountCents,
                   preview.currency,
                 )}
               </p>
             </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-4">
-              <p className="text-sm font-semibold text-foreground">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-[hsl(var(--gray-100))] py-2.5">
+              <p className="text-sm font-medium text-foreground">
                 {t(($) => {
-                  return $.billing.common.credits;
+                  return $.billing.credits.creditsAdded;
                 })}
               </p>
-              <p className="text-right text-2xl font-semibold tabular-nums tracking-tight text-primary">
+              <p className="text-right text-sm font-medium tabular-nums text-foreground">
                 +{formatLocalizedNumber(preview.credits)}
               </p>
             </div>
@@ -125,7 +130,7 @@ export function CreditPurchaseConfirmDialog() {
                     return $.billing.common.updating;
                   })
                 : t(($) => {
-                    return $.billing.common.confirm;
+                    return $.billing.credits.payAndAddCredits;
                   })}
             </Button>
           </DialogFooter>

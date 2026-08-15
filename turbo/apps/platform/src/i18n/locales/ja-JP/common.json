@@ -813,7 +813,6 @@
       "concurrentRun_other": "{{value}} 同時実行数",
       "continueToStripe": "Stripe に進む",
       "decreaseAria": "追加の同時実行数を減らす",
-      "dueNow": "今回のお支払い",
       "dueToday": "本日のお支払い",
       "emptyDescription": "このワークスペースに対して追加の同時実行を購入します。",
       "emptyTitle": "同時実行サブスクリプションなし",
@@ -844,15 +843,19 @@
       "amount": "金額",
       "amountRangeError": "{{minimum}} と {{maximum}} の間を入力してください",
       "anyAmount": "いくらでも",
+      "creditsAdded": "追加されるクレジット",
       "custom": "カスタム",
       "customAmountAria": "カスタムドル額",
+      "dueNow": "今回のお支払い",
       "exchangeRate": "クレジットに有効期限はありません。 1 USD = {{credits}} クレジット。",
+      "payAndAddCredits": "支払ってクレジットを追加",
       "quickBuy": "すぐに購入",
       "quickBuyAmount": "クイック購入 {{amount}}",
       "reviewDescription": "保存済みのお支払い方法で今回の請求を確定します。",
       "reviewError": "クレジットの購入を完了できませんでした。請求情報を確認して、もう一度お試しください。",
       "reviewTitle": "クレジット購入を確認",
-      "title": "クレジットを購入する"
+      "title": "クレジットを購入する",
+      "today": "本日"
     },
     "downgrade": {
       "cancelSubscription": "サブスクリプションをキャンセルする",
