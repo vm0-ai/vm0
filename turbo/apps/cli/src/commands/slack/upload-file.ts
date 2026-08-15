@@ -11,9 +11,9 @@ import {
   completeSlackFileUpload,
   initSlackFileUpload,
   materializeSlackFileUpload,
-} from "../../../lib/api/domains/integrations-slack";
-import { inferWebUploadContentType } from "../../../lib/api/domains/web";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/integrations-slack";
+import { inferWebUploadContentType } from "../../lib/api/domains/web";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface UploadFileOptions {
   readonly file: string;

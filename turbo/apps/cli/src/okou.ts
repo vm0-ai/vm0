@@ -161,7 +161,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description:
       "Send messages, upload files, and download files from Slack as the bot",
     load: async () => {
-      return (await import("./commands/zero/slack")).zeroSlackCommand;
+      return (await import("./commands/slack")).slackCommand;
     },
   },
   {

@@ -1,14 +1,14 @@
 import { Command } from "commander";
-import { zeroSlackMessageCommand } from "./message";
+import { slackMessageCommand } from "./message";
 import { uploadFileCommand } from "./upload-file";
 import { downloadFileCommand } from "./download-file";
 
-export const zeroSlackCommand = new Command()
+export const slackCommand = new Command()
   .name("slack")
   .description(
     "Send messages, upload files, and download files from Slack as the bot",
   )
-  .addCommand(zeroSlackMessageCommand)
+  .addCommand(slackMessageCommand)
   .addCommand(uploadFileCommand)
   .addCommand(downloadFileCommand)
   .addHelpText(
