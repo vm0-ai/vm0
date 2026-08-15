@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../mocks/server";
-import { zeroCreditCommand } from "../credit";
+import { server } from "../../mocks/server";
+import { creditCommand } from "../credit";
 
 function buildZeroToken(capabilities: readonly string[]): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -80,7 +80,7 @@ describe("okou credit command", () => {
   it("shows current credit status without creating checkout", async () => {
     server.use(stubBillingStatus());
 
-    await zeroCreditCommand.parseAsync(["node", "cli"]);
+    await creditCommand.parseAsync(["node", "cli"]);
 
     expect(output()).toContain("Credit status:");
     expect(output()).toContain("Tier: pro");
@@ -117,7 +117,7 @@ describe("okou credit command", () => {
     );
 
     try {
-      await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);
+      await creditCommand.parseAsync(["node", "cli", "20000"]);
 
       const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
       expect(errorOutput).toContain("Only org admins can buy credits");
@@ -142,7 +142,7 @@ describe("okou credit command", () => {
       ),
     );
 
-    await zeroCreditCommand.parseAsync([
+    await creditCommand.parseAsync([
       "node",
       "cli",
       "20000",
@@ -183,7 +183,7 @@ describe("okou credit command", () => {
       ),
     );
 
-    await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);
+    await creditCommand.parseAsync(["node", "cli", "20000"]);
 
     expect(output()).toContain(
       "Credit purchases are not available for this workspace plan.",
@@ -203,7 +203,7 @@ describe("okou credit command", () => {
       .mockImplementation(() => {});
 
     try {
-      await zeroCreditCommand.parseAsync([
+      await creditCommand.parseAsync([
         "node",
         "cli",
         "20000",
@@ -234,7 +234,7 @@ describe("okou credit command", () => {
     vi.stubEnv("OKOU_TOKEN", buildZeroToken(["billing:write"]));
 
     try {
-      await zeroCreditCommand.parseAsync(["node", "cli"]);
+      await creditCommand.parseAsync(["node", "cli"]);
 
       const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
       expect(errorOutput).toContain(
@@ -257,7 +257,7 @@ describe("okou credit command", () => {
     vi.stubEnv("OKOU_TOKEN", buildZeroToken(["billing:read"]));
 
     try {
-      await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);
+      await creditCommand.parseAsync(["node", "cli", "20000"]);
 
       const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
       expect(errorOutput).toContain(

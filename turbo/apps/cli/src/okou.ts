@@ -130,7 +130,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "credit",
     description: "View or buy credits",
     load: async () => {
-      return (await import("./commands/zero/credit")).zeroCreditCommand;
+      return (await import("./commands/credit")).creditCommand;
     },
   },
   {
