@@ -3025,9 +3025,9 @@ describe("organization billing settings", () => {
       name: "Slots",
     });
     expect(quantityInput).toHaveValue("2");
-    const increaseQuantity = within(changeDialog).getByRole("button", {
-      name: "Increase additional concurrency quantity",
-    });
+    const increaseQuantity = within(changeDialog).getByLabelText(
+      "Increase additional concurrency quantity",
+    );
     click(increaseQuantity);
     click(increaseQuantity);
 
@@ -3272,9 +3272,9 @@ describe("organization billing settings", () => {
       name: "Slots",
     });
     expect(quantityInput).toHaveValue("5");
-    const decreaseQuantity = within(dialog).getByRole("button", {
-      name: "Decrease additional concurrency quantity",
-    });
+    const decreaseQuantity = within(dialog).getByLabelText(
+      "Decrease additional concurrency quantity",
+    );
     click(decreaseQuantity);
     click(decreaseQuantity);
     expect(quantityInput).toHaveValue("3");
@@ -3363,9 +3363,7 @@ describe("organization billing settings", () => {
     expect(buttonByText("Cancel subscription", dialog)).toBeEnabled();
     click(within(dialog).getByRole("radio", { name: /Change slots/u }));
     click(
-      within(dialog).getByRole("button", {
-        name: "Increase additional concurrency quantity",
-      }),
+      within(dialog).getByLabelText("Increase additional concurrency quantity"),
     );
     click(buttonByText("Continue to Stripe", dialog));
 
