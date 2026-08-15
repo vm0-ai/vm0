@@ -88,15 +88,14 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "model",
     description: "List available models and model-switching guidance",
     load: async () => {
-      return (await import("./commands/zero/model")).zeroModelCommand;
+      return (await import("./commands/model")).modelCommand;
     },
   },
   {
     name: "model-provider",
     description: "Inspect model provider routing",
     load: async () => {
-      return (await import("./commands/zero/model-provider"))
-        .zeroModelProviderCommand;
+      return (await import("./commands/model-provider")).modelProviderCommand;
     },
   },
   {
