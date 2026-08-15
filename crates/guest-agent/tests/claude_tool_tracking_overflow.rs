@@ -7,8 +7,8 @@ use serde_json::json;
 use std::time::Duration;
 
 // Keep this one above MAX_TRACKED_STUCK_TOOLS in cli::claude.rs. The stream is
-// intentionally made of supported network tools so the tracker, rather than
-// event delivery or the stuck-tool timeout, is the terminating condition.
+// intentionally made of supported network tools so the test exercises tracker
+// admission without involving event delivery or the stuck-tool timeout.
 const TRACKED_TOOL_CAPACITY_PLUS_ONE: usize = 257;
 
 #[tokio::test]
