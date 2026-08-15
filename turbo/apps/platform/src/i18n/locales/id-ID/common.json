@@ -813,7 +813,6 @@
       "concurrentRun_other": "{{value}} eksekusi concurrent",
       "continueToStripe": "Lanjutkan ke Stripe",
       "decreaseAria": "Kurangi jumlah concurrency tambahan",
-      "dueNow": "Jatuh tempo sekarang",
       "dueToday": "Jatuh tempo hari ini",
       "emptyDescription": "Beli eksekusi concurrent tambahan untuk ruang kerja ini.",
       "emptyTitle": "Tidak ada langganan concurrency",
@@ -844,15 +843,19 @@
       "amount": "Jumlah",
       "amountRangeError": "Masukkan antara {{minimum}} dan {{maximum}}",
       "anyAmount": "Jumlah apa pun",
+      "creditsAdded": "Kredit ditambahkan",
       "custom": "Kustom",
       "customAmountAria": "Jumlah dolar kustom",
+      "dueNow": "Jatuh tempo sekarang",
       "exchangeRate": "Kredit tidak pernah kedaluwarsa. 1 USD = {{credits}} kredit.",
+      "payAndAddCredits": "Bayar dan tambahkan kredit",
       "quickBuy": "Beli cepat",
       "quickBuyAmount": "Beli cepat {{amount}}",
       "reviewDescription": "Konfirmasikan tagihan satu kali ini dengan metode pembayaran tersimpan.",
       "reviewError": "Pembelian kredit ini tidak dapat diselesaikan. Periksa detail penagihan Anda dan coba lagi.",
       "reviewTitle": "Tinjau pembelian kredit",
-      "title": "Beli kredit"
+      "title": "Beli kredit",
+      "today": "Hari ini"
     },
     "downgrade": {
       "cancelSubscription": "Batalkan langganan",

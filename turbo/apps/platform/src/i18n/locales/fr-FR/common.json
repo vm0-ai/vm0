@@ -833,7 +833,6 @@
       "concurrentRun_other": "{{value}} exécutions concurrentes",
       "continueToStripe": "Continuer vers Stripe",
       "decreaseAria": "Diminuer la quantité de concurrence supplémentaire",
-      "dueNow": "À payer maintenant",
       "dueToday": "À payer aujourd’hui",
       "emptyDescription": "Acheter des exécutions concurrentes supplémentaires pour cet espace de travail.",
       "emptyTitle": "Aucun abonnement de concurrence",
@@ -865,15 +864,19 @@
       "amount": "Montant",
       "amountRangeError": "Entrez entre {{minimum}} et {{maximum}}",
       "anyAmount": "N'importe quel montant",
+      "creditsAdded": "Crédits ajoutés",
       "custom": "Personnalisé",
       "customAmountAria": "Montant en dollars personnalisé",
+      "dueNow": "À payer maintenant",
       "exchangeRate": "Les crédits n'expirent jamais. 1 USD = {{credits}} crédits.",
+      "payAndAddCredits": "Payer et ajouter des crédits",
       "quickBuy": "Achat rapide",
       "quickBuyAmount": "Achat rapide {{amount}}",
       "reviewDescription": "Confirmez ce paiement unique avec votre moyen de paiement enregistré.",
       "reviewError": "Impossible de finaliser cet achat de crédits. Vérifiez vos informations de facturation et réessayez.",
       "reviewTitle": "Vérifier l'achat de crédits",
-      "title": "Acheter des crédits"
+      "title": "Acheter des crédits",
+      "today": "Aujourd’hui"
     },
     "downgrade": {
       "cancelSubscription": "Annuler l'abonnement",

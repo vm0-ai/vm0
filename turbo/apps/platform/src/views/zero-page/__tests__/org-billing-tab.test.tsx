@@ -3736,6 +3736,10 @@ describe("organization billing settings", () => {
         "Confirm this one-time charge with your saved payment method.",
       ),
     ).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Today")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Due now")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Credits added")).toBeInTheDocument();
+    expect(within(reviewDialog).queryByText("Every month")).toBeNull();
     expect(within(reviewDialog).getByText("$18.00")).toBeInTheDocument();
     expect(within(reviewDialog).getByText("+20,000")).toBeInTheDocument();
     expect(startRequest).toMatchObject({
@@ -3744,7 +3748,7 @@ describe("organization billing settings", () => {
     });
     expect(window.location.href).toBe(locationBeforePurchase);
 
-    click(buttonByText("Confirm", reviewDialog));
+    click(buttonByText("Pay and add credits", reviewDialog));
 
     await waitFor(() => {
       expect(
