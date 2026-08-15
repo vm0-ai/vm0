@@ -120,25 +120,34 @@ impl SessionHistoryLaunchSource {
     }
 }
 
-pub(crate) fn is_pi_session_history_path(session_path: &str) -> bool {
+pub(crate) fn is_pi_session_history_path(session_path: &str, session_id: &str) -> bool {
+    if !is_valid_cli_agent_session_id(session_id) {
+        return false;
+    }
     let path = Path::new(session_path);
-    path.parent()
+    let valid_parent = path.parent()
         == Some(Path::new(
             api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
-        ))
-        && path.extension().and_then(|extension| extension.to_str()) == Some("jsonl")
-        && path.file_name().is_some()
+        ));
+    let valid_extension =
+        path.extension().and_then(|extension| extension.to_str()) == Some("jsonl");
+    let valid_stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .is_some_and(|stem| {
+            stem == session_id
+                || stem
+                    .strip_suffix(session_id)
+                    .is_some_and(|prefix| prefix.ends_with('-') || prefix.ends_with('_'))
+        });
+    valid_parent && valid_extension && valid_stem
 }
 
 fn pi_session_history_source(
     session_path: &str,
     session_id: &str,
 ) -> Option<FinalSessionHistorySourceRef> {
-    let file_name = Path::new(session_path).file_name()?.to_str()?;
-    if !is_valid_cli_agent_session_id(session_id)
-        || !is_pi_session_history_path(session_path)
-        || !file_name.contains(session_id)
-    {
+    if !is_pi_session_history_path(session_path, session_id) {
         return None;
     }
     Some(FinalSessionHistorySourceRef::Pi {
@@ -402,6 +411,32 @@ mod tests {
         );
 
         capture.capture_pi_session_id(session_id, Some("/tmp/untrusted.jsonl"));
+
+        assert_eq!(
+            store.captured(),
+            Some(&CapturedSessionMetadata {
+                cli_agent_session_id: session_id.to_string(),
+                history_source: None,
+            })
+        );
+    }
+
+    #[test]
+    fn pi_nonterminal_session_id_keeps_identity_without_source() {
+        let temp = tempfile::tempdir().unwrap();
+        let session_id = "00000000-0000-4000-8000-000000000001";
+        let session_path = format!(
+            "{}/{session_id}-backup.jsonl",
+            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+        );
+        let store = SessionMetadataStore::default();
+        let capture = SessionMetadataCapture::new(
+            SessionHistoryLaunchSource::Pi,
+            store.clone(),
+            temp.path().join("session-id").to_str().unwrap(),
+        );
+
+        capture.capture_pi_session_id(session_id, Some(&session_path));
 
         assert_eq!(
             store.captured(),

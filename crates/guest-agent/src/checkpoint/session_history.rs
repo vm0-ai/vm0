@@ -1168,7 +1168,7 @@ fn validate_session_history_line(index: usize, line: &str) -> Result<(), String>
     if line.trim().is_empty() {
         return Err(format!("Session history line {index} is empty"));
     }
-    serde_json::from_str::<serde_json::Value>(line)
+    serde_json::from_str::<serde::de::IgnoredAny>(line)
         .map_err(|e| format!("Session history line {index} is not valid JSON: {e}"))?;
     Ok(())
 }

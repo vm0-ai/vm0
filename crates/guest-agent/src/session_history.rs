@@ -234,14 +234,7 @@ pub(crate) fn resolve_session_history_from_source(
             session_path,
             session_id,
         } => {
-            let valid_session_id = is_valid_cli_agent_session_id(session_id)
-                && Path::new(session_path)
-                    .file_name()
-                    .and_then(OsStr::to_str)
-                    .is_some_and(|file_name| file_name.contains(session_id));
-            if !valid_session_id
-                || !crate::session_metadata::is_pi_session_history_path(session_path)
-            {
+            if !crate::session_metadata::is_pi_session_history_path(session_path, session_id) {
                 return Err(AgentError::Checkpoint(
                     "Invalid Pi session history source".to_string(),
                 ));
