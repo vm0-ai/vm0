@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.755.0](https://github.com/vm0-ai/vm0/compare/app-v0.754.1...app-v0.755.0) (2026-08-14)
+
+
+### Features
+
+* **platform:** add shared worker chat database facade ([#27270](https://github.com/vm0-ai/vm0/issues/27270)) ([8474271](https://github.com/vm0-ai/vm0/commit/8474271fa52d8874fa7b40f2cb90fdac08b54788))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#27296](https://github.com/vm0-ai/vm0/issues/27296)) ([64196f0](https://github.com/vm0-ai/vm0/commit/64196f0525787984b6ca842f8692c186f2f3e9a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.3
+    * @okouai/core bumped to 8.562.0
+
 ## [0.754.1](https://github.com/vm0-ai/vm0/compare/app-v0.754.0...app-v0.754.1) (2026-08-14)
 
 
