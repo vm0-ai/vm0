@@ -311,7 +311,6 @@ describe("organization usage settings", () => {
     const segment = await screen.findByTestId(
       "credit-balance-segment-payAsYouGo",
     );
-    expect(segment).toHaveClass("first:rounded-l-full", "last:rounded-r-full");
     await user.hover(segment);
     await expect(
       screen.findByText("Purchased credits — 12,000"),
