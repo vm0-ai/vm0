@@ -268,8 +268,15 @@ const RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES = [
   "runner_poll_due_to_job_discovered",
   "runner_poll_http_request",
 ] as const;
+const API_DISPATCH_PHASE_ACTION_TYPES = [
+  "api_dispatch_phase_pre_create",
+  "api_dispatch_phase_prepare_context",
+  "api_dispatch_phase_prepare_launch",
+  "api_dispatch_phase_queue_insert",
+] as const;
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_agent_run",
+  ...API_DISPATCH_PHASE_ACTION_TYPES,
   "api_dispatch_check_run_admission",
   "api_dispatch_prepare_run_callbacks",
   "api_dispatch_prepare_run_context",
@@ -1451,6 +1458,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const prompt = "api dispatch timing should not leak prompt";
+    const apiCommitSha = "a".repeat(40);
+    mockEnv("GIT_COMMIT_SHA", apiCommitSha);
 
     const created = await api.createRun(actor, {
       agentId,
@@ -1466,6 +1475,31 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_PHASE_ACTION_TYPES,
+      "top_level",
+    );
+    const phaseEvents = API_DISPATCH_PHASE_ACTION_TYPES.map((actionType) => {
+      return singleApiDispatchEvent(timingEvents, actionType);
+    });
+    for (const event of phaseEvents) {
+      expect(event.api_start_source).toBe("request");
+      expect(event.api_commit_sha).toBe(apiCommitSha);
+      expect(event.run_preparation_retry_count).toBe("0");
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+    }
+    const apiStartedAtIso = await readRunApiStart(context, created.runId);
+    if (apiStartedAtIso === null) {
+      throw new Error("Expected the run to retain its API start time");
+    }
+    let previousBoundaryAt = Date.parse(apiStartedAtIso);
+    for (const event of phaseEvents) {
+      const finishedAt = Date.parse(String(event._time));
+      expect(finishedAt - Number(event.duration_ms)).toBe(previousBoundaryAt);
+      previousBoundaryAt = finishedAt;
+    }
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
@@ -1480,11 +1514,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "miss",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
-      validation: { outcome: "attested" },
+      validation: {
+        outcome: "full_fallback",
+        fallbackReason: "different_authority",
+      },
     });
-    expectNoApiDispatchActions(
+    expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+      "nested",
     );
     expectNoApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchActions(

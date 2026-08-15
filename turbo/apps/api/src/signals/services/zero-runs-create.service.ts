@@ -21,6 +21,7 @@ import type { z } from "zod";
 
 import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import { now } from "../../lib/time";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -40,6 +41,7 @@ import {
   type ChatThreadSessionRoute,
 } from "./chat-session-continuity.service";
 import {
+  ApiDispatchPhaseCollector,
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
   type ApiDispatchTimingActionType,
@@ -533,10 +535,16 @@ function buildZeroRunExtraEnvironment(args: {
 
 function zeroRunTimingDimensions(args: {
   readonly origin: ZeroRunOrigin;
+  readonly command: AnyCreateZeroRunCommandArgs;
   readonly source?: ZeroPreCreateSource;
 }): ApiDispatchTimingDimensions {
+  const apiStartSource =
+    "queueFirstAssociation" in args.command
+      ? args.command.queueFirstAssociation.kind
+      : "request";
   return {
     zero_run_origin: args.origin,
+    api_start_source: apiStartSource,
     ...(args.source ? { zero_pre_create_source: args.source } : {}),
   };
 }
@@ -847,6 +855,7 @@ function buildZeroCreateAgentRunArgs(args: {
       origin: zeroRunOrigin({
         command,
       }),
+      command,
       source: command.zeroPreCreateSource,
     }),
   };
@@ -935,7 +944,7 @@ const createAgentRunAfterZeroPreCreate$ = command(
     ) {
       const attemptInput = await resolveThreadSessionForZeroRun(db, input);
       signal.throwIfAborted();
-      const createAgentRunArgs = await measureZeroPreCreate(
+      const baseCreateAgentRunArgs = await measureZeroPreCreate(
         input.timing,
         "api_dispatch_pre_create_zero_build_create_run_args",
         () => {
@@ -943,16 +952,28 @@ const createAgentRunAfterZeroPreCreate$ = command(
         },
       );
       signal.throwIfAborted();
+      const createAgentRunArgs: CreateAgentRunArgs = {
+        ...baseCreateAgentRunArgs,
+        timingDimensions: {
+          ...baseCreateAgentRunArgs.timingDimensions,
+          run_preparation_retry_count: String(attempt),
+        },
+      };
+      const phaseTiming = new ApiDispatchPhaseCollector(
+        input.command.apiStartTime,
+      );
       input.timing.recordElapsed(
         "api_dispatch_pre_create_agent_run",
         "top_level",
         input.command.apiStartTime,
       );
+      phaseTiming.checkpoint("api_dispatch_phase_pre_create", now());
       const preparedAgentRun = await set(
         prepareAgentRun$,
         {
           args: createAgentRunArgs,
           timing: input.timing,
+          phaseTiming,
           checkOrgPlanStatusBeforeContext: false,
           preloadedFeatureSwitchContext: input.featureSwitchContext,
           preloadedUserTimezone: input.userInfo.timezone,
