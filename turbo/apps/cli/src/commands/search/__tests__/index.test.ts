@@ -1,13 +1,13 @@
 /**
  * Tests for okou search command scaffold (#10244).
  *
- * Entry point: zeroSearchCommand.parseAsync()
+ * Entry point: searchCommand.parseAsync()
  * Mock (external): none — no API calls in the scaffold
  * Real (internal): all CLI validation and help wiring
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { zeroSearchCommand, SEARCH_EXPLAINER } from "../index";
+import { searchCommand, SEARCH_EXPLAINER } from "../index";
 
 describe("okou search command (scaffold)", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -22,7 +22,7 @@ describe("okou search command (scaffold)", () => {
     // Commander retains parsed option state across parseAsync calls on the
     // same Command instance. Reset the collector value before each test so
     // ordering does not leak state between cases.
-    zeroSearchCommand.setOptionValue("source", []);
+    searchCommand.setOptionValue("source", []);
   });
 
   afterEach(() => {
@@ -32,7 +32,7 @@ describe("okou search command (scaffold)", () => {
   });
 
   it("prints the explainer and exits 0 when --source is omitted", async () => {
-    await zeroSearchCommand.parseAsync(["node", "cli", "hello"]);
+    await searchCommand.parseAsync(["node", "cli", "hello"]);
 
     expect(mockExit).not.toHaveBeenCalled();
     const logs = mockConsoleLog.mock.calls.flat().join("\n");
@@ -44,7 +44,7 @@ describe("okou search command (scaffold)", () => {
 
   it("rejects multiple --source flags", async () => {
     await expect(
-      zeroSearchCommand.parseAsync([
+      searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -61,13 +61,7 @@ describe("okou search command (scaffold)", () => {
 
   it("rejects an unknown --source value", async () => {
     await expect(
-      zeroSearchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "nope",
-      ]),
+      searchCommand.parseAsync(["node", "cli", "hello", "--source", "nope"]),
     ).rejects.toThrow("process.exit called");
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
@@ -76,7 +70,7 @@ describe("okou search command (scaffold)", () => {
   });
 
   it("routes --source agent-session to local file guidance", async () => {
-    await zeroSearchCommand.parseAsync([
+    await searchCommand.parseAsync([
       "node",
       "cli",
       "hello",
@@ -91,7 +85,7 @@ describe("okou search command (scaffold)", () => {
 
   it("--help output includes the three source descriptions", () => {
     let captured = "";
-    zeroSearchCommand.configureOutput({
+    searchCommand.configureOutput({
       writeOut: (s) => {
         captured += s;
       },
@@ -99,7 +93,7 @@ describe("okou search command (scaffold)", () => {
         captured += s;
       },
     });
-    zeroSearchCommand.outputHelp();
+    searchCommand.outputHelp();
     expect(captured).toContain("agent-session  locates local Claude Code");
     expect(captured).toContain("chat           user/assistant text messages");
     expect(captured).toContain("slack          returns a recipe");

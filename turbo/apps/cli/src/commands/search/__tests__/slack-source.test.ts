@@ -1,7 +1,7 @@
 /**
  * Tests for okou search --source slack (#10263).
  *
- * Entry point: zeroSearchCommand.parseAsync()
+ * Entry point: searchCommand.parseAsync()
  * Mock (external): none — the CLI must make zero outbound HTTP calls.
  *   MSW's global setup (src/test/setup.ts) uses onUnhandledRequest: "error",
  *   so any accidental network call would fail the test. That IS the guard.
@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { zeroSearchCommand, buildSlackRecipe } from "../index";
+import { searchCommand, buildSlackRecipe } from "../index";
 
 describe("okou search --source slack", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -23,7 +23,7 @@ describe("okou search --source slack", () => {
   beforeEach(() => {
     // Commander retains parsed option state across parseAsync calls on the
     // same Command instance — match the pattern in the scaffold test.
-    zeroSearchCommand.setOptionValue("source", []);
+    searchCommand.setOptionValue("source", []);
   });
 
   afterEach(() => {
@@ -35,13 +35,7 @@ describe("okou search --source slack", () => {
   describe("zero outbound HTTP", () => {
     it("rejects whitespace-only queries", async () => {
       await expect(
-        zeroSearchCommand.parseAsync([
-          "node",
-          "cli",
-          "   ",
-          "--source",
-          "slack",
-        ]),
+        searchCommand.parseAsync(["node", "cli", "   ", "--source", "slack"]),
       ).rejects.toThrow("process.exit called");
 
       const errors = mockConsoleError.mock.calls.flat().join("\n");
@@ -49,7 +43,7 @@ describe("okou search --source slack", () => {
     });
 
     it("makes no network call (MSW would error on any unhandled request)", async () => {
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -64,7 +58,7 @@ describe("okou search --source slack", () => {
 
   describe("recipe content", () => {
     it("includes the Slack search.messages endpoint and SLACK_TOKEN", async () => {
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -78,7 +72,7 @@ describe("okou search --source slack", () => {
     });
 
     it("includes both diagnostic pointers", async () => {
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -92,7 +86,7 @@ describe("okou search --source slack", () => {
     });
 
     it("links to Slack's search.messages docs", async () => {
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -105,7 +99,7 @@ describe("okou search --source slack", () => {
     });
 
     it("notes that CLI-local flags are ignored for this source", async () => {
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -122,7 +116,7 @@ describe("okou search --source slack", () => {
 
   describe("keyword substitution", () => {
     it("URL-encodes the query with encodeURIComponent", async () => {
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "bug report",
@@ -135,7 +129,7 @@ describe("okou search --source slack", () => {
     });
 
     it("encodes special URL characters in the query", async () => {
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "foo&bar",
@@ -152,7 +146,7 @@ describe("okou search --source slack", () => {
     it("prints the recipe regardless of connector state (no branching)", async () => {
       // The recipe path does not import getZeroConnector — emission cannot
       // depend on connector state. Calling twice yields identical output.
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -162,9 +156,9 @@ describe("okou search --source slack", () => {
       const first = mockConsoleLog.mock.calls.flat().join("\n");
 
       mockConsoleLog.mockClear();
-      zeroSearchCommand.setOptionValue("source", []);
+      searchCommand.setOptionValue("source", []);
 
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "hello",
@@ -177,7 +171,7 @@ describe("okou search --source slack", () => {
     });
 
     it("ignores unrelated flags without erroring", async () => {
-      await zeroSearchCommand.parseAsync([
+      await searchCommand.parseAsync([
         "node",
         "cli",
         "hello",

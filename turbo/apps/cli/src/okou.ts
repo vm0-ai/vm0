@@ -197,7 +197,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "search",
     description: "Search chat or locate sources for direct analysis",
     load: async () => {
-      return (await import("./commands/zero/search")).zeroSearchCommand;
+      return (await import("./commands/search")).searchCommand;
     },
   },
   {
