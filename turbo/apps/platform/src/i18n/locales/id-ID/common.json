@@ -970,7 +970,6 @@
         "configurePackages": "Konfigurasikan paket anggota",
         "credits": "Kredit",
         "currentMember": "Anggota saat ini",
-        "existingPackagesUnchanged": "Paket anggota yang ada tetap tidak berubah.",
         "management": {
           "comparison": "Perbandingan langganan saat ini dan baru",
           "current": "Saat ini",

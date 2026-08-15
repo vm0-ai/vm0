@@ -706,11 +706,9 @@ function MemberUsageConfiguration({
 function PlanPrice({
   basePriceUsd,
   catalog,
-  keepsMemberPackages,
 }: {
   readonly basePriceUsd: number;
   readonly catalog: readonly UsagePackCatalogItem[];
-  readonly keepsMemberPackages: boolean;
 }) {
   const packagePrices = catalog.map((item) => {
     return item.priceUsd;
@@ -733,20 +731,16 @@ function PlanPrice({
         </span>
       </p>
       <p className="mt-2 text-sm leading-snug text-muted-foreground">
-        {keepsMemberPackages
-          ? i18n.t(($) => {
-              return $.billing.plans.usagePacks.existingPackagesUnchanged;
-            })
-          : i18n.t(
-              ($) => {
-                return $.billing.plans.usagePacks.planPlusPackages;
-              },
-              {
-                highest: formatUsd(highestPackageUsd, 0),
-                lowest: formatUsd(lowestPackageUsd, 0),
-                plan: formatUsd(basePriceUsd, 0),
-              },
-            )}
+        {i18n.t(
+          ($) => {
+            return $.billing.plans.usagePacks.planPlusPackages;
+          },
+          {
+            highest: formatUsd(highestPackageUsd, 0),
+            lowest: formatUsd(lowestPackageUsd, 0),
+            plan: formatUsd(basePriceUsd, 0),
+          },
+        )}
       </p>
     </div>
   );
@@ -863,7 +857,6 @@ function PlanSelectionCard({
   busy,
   catalog,
   divided,
-  keepsMemberPackages,
   onAction,
   plan,
 }: {
@@ -871,7 +864,6 @@ function PlanSelectionCard({
   readonly busy: boolean;
   readonly catalog: readonly UsagePackCatalogItem[];
   readonly divided: boolean;
-  readonly keepsMemberPackages: boolean;
   readonly onAction: () => void;
   readonly plan: UsagePackPlan;
 }) {
@@ -928,11 +920,7 @@ function PlanSelectionCard({
         {planDescription(plan.tier)}
       </p>
 
-      <PlanPrice
-        basePriceUsd={plan.basePriceUsd}
-        catalog={catalog}
-        keepsMemberPackages={keepsMemberPackages}
-      />
+      <PlanPrice basePriceUsd={plan.basePriceUsd} catalog={catalog} />
 
       <PlanComparison tier={plan.tier} />
 
@@ -1285,7 +1273,6 @@ function PlanSelectionStep({
               busy={false}
               catalog={catalog}
               divided={index > 0}
-              keepsMemberPackages={managedTier !== null}
               plan={plan}
               onAction={() => {
                 onAction(plan.tier, action);
@@ -2204,7 +2191,8 @@ function ManagedSubscriptionOrderSummary({
     restoresScheduledDowngrade,
   } = managedSubscriptionChangeState({ management, members, plan, selections });
   const hasSubscriptionAction =
-    hasConfigurationChange || restoresScheduledDowngrade;
+    (hasConfigurationChange || restoresScheduledDowngrade) &&
+    (!hasPendingChange || hasScheduledDowngrade);
   const openPreview = async (): Promise<void> => {
     if (!members) {
       return;
@@ -2888,7 +2876,6 @@ export function UsagePackMigrationPlanSelectionPage({
                 busy={false}
                 catalog={catalog}
                 divided={index > 0}
-                keepsMemberPackages={configuration !== null}
                 plan={plan}
                 onAction={() => {
                   setMemberUsageSelections(

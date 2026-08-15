@@ -970,7 +970,6 @@
         "configurePackages": "Mitgliederpakete konfigurieren",
         "credits": "Credits",
         "currentMember": "Aktuelles Mitglied",
-        "existingPackagesUnchanged": "Bestehende Mitgliederpakete bleiben unverändert.",
         "management": {
           "comparison": "Vergleich des aktuellen und neuen Abonnements",
           "current": "Aktuell",
