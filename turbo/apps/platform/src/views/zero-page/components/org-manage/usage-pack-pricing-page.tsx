@@ -1633,56 +1633,107 @@ function ManagedSubscriptionComparison({
   const monthlyTotal = rows.at(-1);
 
   /* The ledger above this already states what the workspace will pay, so the
-     row-by-row comparison opens on demand and keeps only the number that
-     decides the change on screen. The migration screens keep theirs open --
-     there the comparison is the whole point of the page. */
+     row-by-row comparison opens on demand. Its summary and body share the same
+     four rails: disclosure, label, current value, and new value. The migration
+     screens keep their comparison contained -- there it is the whole point of
+     the page. */
   return (
-    <details className="group mt-4">
-      <summary
-        className={`flex cursor-pointer list-none items-center gap-3 py-2.5 ${REVIEW_RULE}`}
-      >
-        <ChevronRight
-          size={14}
-          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
-        />
-        <span className="min-w-0 flex-1 text-[13px] text-muted-foreground">
+    <details className={`group mt-3.5 ${REVIEW_HAIRLINE}`}>
+      <summary className="grid cursor-pointer list-none grid-cols-[2.5rem_minmax(0,1fr)_30%_30%] items-center py-3">
+        <span className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
+          <ChevronRight
+            size={14}
+            className="transition-transform group-open:rotate-90"
+          />
+        </span>
+        <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
           {i18n.t(($) => {
             return $.billing.plans.usagePacks.management.comparison;
           })}
         </span>
         {monthlyTotal && (
-          <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
-            {monthlyTotal.current} → {monthlyTotal.next}
-          </span>
+          <>
+            <span className="col-start-3 row-start-1 text-right text-[13px] tabular-nums text-muted-foreground group-open:hidden">
+              {monthlyTotal.current}
+            </span>
+            <span className="col-start-4 row-start-1 text-right text-[13px] tabular-nums text-muted-foreground group-open:hidden">
+              {monthlyTotal.next}
+            </span>
+            <span className="col-start-3 row-start-1 hidden text-right text-[13px] text-muted-foreground group-open:block">
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.management.current;
+              })}
+            </span>
+            <span className="col-start-4 row-start-1 hidden text-right text-[13px] text-muted-foreground group-open:block">
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.management.new;
+              })}
+            </span>
+          </>
         )}
       </summary>
-      <SubscriptionComparisonTable rows={rows} />
+      <SubscriptionComparisonTable presentation="flat" rows={rows} />
     </details>
   );
 }
 
 function SubscriptionComparisonTable({
+  presentation = "contained",
   rows,
 }: {
+  readonly presentation?: "contained" | "flat";
   readonly rows: readonly SubscriptionComparisonRow[];
 }) {
+  const flat = presentation === "flat";
   return (
-    <div className="mt-4 overflow-hidden rounded-lg border border-border/70">
+    <div
+      className={
+        flat
+          ? "pb-2"
+          : "mt-4 overflow-hidden rounded-lg border border-border/70"
+      }
+    >
       <table
         aria-label={i18n.t(($) => {
           return $.billing.plans.usagePacks.management.comparison;
         })}
-        className="w-full table-fixed text-sm"
+        className={
+          flat ? "w-full table-fixed text-[13px]" : "w-full table-fixed text-sm"
+        }
       >
-        <thead className="bg-muted/40 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+        {flat && (
+          <colgroup>
+            <col className="w-10" />
+            <col />
+            <col className="w-[30%]" />
+            <col className="w-[30%]" />
+          </colgroup>
+        )}
+        <thead
+          className={
+            flat
+              ? "sr-only"
+              : "bg-muted/40 text-sm font-medium uppercase tracking-wide text-muted-foreground"
+          }
+        >
           <tr>
-            <th scope="col" className="w-[40%] px-3 py-2 text-left" />
-            <th scope="col" className="w-[30%] px-3 py-2 text-right">
+            {flat && <th scope="col" />}
+            <th
+              scope="col"
+              className={flat ? "text-left" : "w-[40%] px-3 py-2 text-left"}
+            />
+            <th
+              scope="col"
+              className={flat ? "text-right" : "w-[30%] px-3 py-2 text-right"}
+            >
               {i18n.t(($) => {
                 return $.billing.plans.usagePacks.management.current;
               })}
             </th>
-            <th scope="col" className="w-[30%] px-3 py-2 text-right">
+            <th
+              scope="col"
+              className={flat ? "text-right" : "w-[30%] px-3 py-2 text-right"}
+            >
               {i18n.t(($) => {
                 return $.billing.plans.usagePacks.management.new;
               })}
@@ -1695,23 +1746,40 @@ function SubscriptionComparisonTable({
             return (
               <tr
                 key={row.label}
-                className={`border-t border-border/60 ${monthlyTotal ? "bg-muted/20" : ""}`}
+                className={
+                  flat
+                    ? ""
+                    : `border-t border-border/60 ${monthlyTotal ? "bg-muted/20" : ""}`
+                }
               >
+                {flat && <td aria-hidden="true" />}
                 <th
                   scope="row"
-                  className={`px-3 py-2.5 text-left ${monthlyTotal ? "font-medium text-foreground" : "font-normal text-muted-foreground"}`}
+                  className={
+                    flat
+                      ? `${monthlyTotal ? "pb-1.5 pt-3 font-medium text-foreground" : "py-1.5 font-normal text-muted-foreground"} text-left`
+                      : `px-3 py-2.5 text-left ${monthlyTotal ? "font-medium text-foreground" : "font-normal text-muted-foreground"}`
+                  }
                 >
                   {row.label}
                 </th>
                 <td
-                  className={`px-3 py-2.5 text-right text-muted-foreground ${monthlyTotal ? "font-medium" : ""}`}
+                  className={
+                    flat
+                      ? `${monthlyTotal ? "pb-1.5 pt-3 font-medium" : "py-1.5"} text-right tabular-nums text-muted-foreground`
+                      : `px-3 py-2.5 text-right text-muted-foreground ${monthlyTotal ? "font-medium" : ""}`
+                  }
                 >
                   {row.current}
                 </td>
-                {/* Weight alone marks what changed: the numerals are ink, and
-                    the brand colour stays on the action. */}
+                {/* Contained comparisons use weight to mark a changed value.
+                    The flat management disclosure keeps both columns quiet. */}
                 <td
-                  className={`px-3 py-2.5 text-right text-foreground ${monthlyTotal || row.changed ? "font-semibold" : "font-medium"}`}
+                  className={
+                    flat
+                      ? `${monthlyTotal ? "pb-1.5 pt-3 font-medium" : "py-1.5"} text-right tabular-nums text-muted-foreground`
+                      : `px-3 py-2.5 text-right text-foreground ${monthlyTotal || row.changed ? "font-semibold" : "font-medium"}`
+                  }
                 >
                   {row.next}
                 </td>

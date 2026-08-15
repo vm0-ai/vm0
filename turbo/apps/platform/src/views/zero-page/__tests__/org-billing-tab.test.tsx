@@ -1629,11 +1629,14 @@ describe("organization billing settings", () => {
       }),
     );
     // The comparison folds away behind its own totals until it is asked for.
-    const comparisonDisclosure = within(orderSummary)
+    const comparisonSummary = within(orderSummary)
       .getByText("Current and new subscription comparison")
-      .closest("details");
+      .closest("summary");
+    const comparisonDisclosure = comparisonSummary?.closest("details");
     expect(comparisonDisclosure).not.toHaveAttribute("open");
-    expect(comparisonDisclosure).toHaveTextContent("$20/month → $50/month");
+    expect(comparisonSummary).toHaveTextContent("$20/month");
+    expect(comparisonSummary).toHaveTextContent("$50/month");
+    expect(comparisonSummary).not.toHaveTextContent("→");
     click(
       within(orderSummary).getByText("Current and new subscription comparison"),
     );
@@ -1663,7 +1666,6 @@ describe("organization billing settings", () => {
         name: /Monthly total \$20\/month \$50\/month/u,
       }),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$50/month")).toBeInTheDocument();
     expect(screen.queryByText("Review")).not.toBeInTheDocument();
     const locationBeforeConfirmation = window.location.href;
     click(buttonByText("Confirm", orderSummary));
