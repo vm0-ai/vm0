@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { creditCommand } from "./credit";
 
-export const zeroDoctorCommand = new Command()
+export const doctorCommand = new Command()
   .name("doctor")
   .description("Diagnose account and runtime issues")
   .addCommand(creditCommand)

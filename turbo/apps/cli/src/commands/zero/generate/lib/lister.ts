@@ -3,7 +3,7 @@ import type { ZeroConnectorCatalogStatus } from "../../../../lib/api/domains/zer
 import { getZeroBillingStatus } from "../../../../lib/api/domains/zero-billing";
 import { getZeroAgentUserConnectors } from "../../../../lib/api/domains/zero-agents";
 import { listZeroConnectorCatalogStatus } from "../../../../lib/api/domains/zero-connectors";
-import { getPlatformOrigin } from "../../doctor/platform-url";
+import { getPlatformOrigin } from "../../../doctor/platform-url";
 import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,

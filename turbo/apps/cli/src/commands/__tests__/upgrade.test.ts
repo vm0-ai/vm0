@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
 
-import { zeroUpgradeCommand } from "../upgrade";
+import { upgradeCommand } from "../upgrade";
 
 describe("okou upgrade command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -17,7 +17,7 @@ describe("okou upgrade command", () => {
   });
 
   it("prints the plan link recognized by web chat", async () => {
-    await zeroUpgradeCommand.parseAsync(["node", "cli", "pro"]);
+    await upgradeCommand.parseAsync(["node", "cli", "pro"]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Upgrade to Pro");

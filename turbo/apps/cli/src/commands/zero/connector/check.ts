@@ -14,7 +14,7 @@ import {
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { getOkouAgentId } from "../../../lib/okou-env";
-import { toPlatformUrl } from "../doctor/platform-url";
+import { toPlatformUrl } from "../../doctor/platform-url";
 import {
   isComputerUsePermissionTarget,
   printComputerUsePermissionGuidance,
