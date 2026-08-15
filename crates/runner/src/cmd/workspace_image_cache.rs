@@ -1,6 +1,7 @@
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
+use crate::byte_size::human_bytes;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RunnerPaths};
 use crate::workspace_image_cache::{
@@ -292,22 +293,6 @@ fn status_rank(status: WorkspaceImageCacheInspectionStatus) -> u8 {
         WorkspaceImageCacheInspectionStatus::Stale => 2,
         WorkspaceImageCacheInspectionStatus::TemporaryOnly => 3,
         WorkspaceImageCacheInspectionStatus::Reusable => 4,
-    }
-}
-
-fn human_bytes(bytes: u64) -> String {
-    const KIB: f64 = 1024.0;
-    const MIB: f64 = KIB * 1024.0;
-    const GIB: f64 = MIB * 1024.0;
-    let b = bytes as f64;
-    if b >= GIB {
-        format!("{:.1} GiB", b / GIB)
-    } else if b >= MIB {
-        format!("{:.1} MiB", b / MIB)
-    } else if b >= KIB {
-        format!("{:.1} KiB", b / KIB)
-    } else {
-        format!("{bytes} B")
     }
 }
 

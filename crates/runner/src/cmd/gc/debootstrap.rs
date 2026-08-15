@@ -3,13 +3,14 @@ use std::time::SystemTime;
 
 use tracing::info;
 
+use crate::byte_size::human_bytes;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
 use super::GC_MIN_AGE;
 use super::filesystem::{next_entry_warn_or_stop, read_dir_or_missing};
 use super::lock_file::{LockProbe, probe_lock};
-use super::report::{GcReport, human_bytes};
+use super::report::GcReport;
 
 /// Remove cached debootstrap tarballs, keeping the `keep_latest` most recent.
 pub(super) async fn gc_debootstrap(

@@ -9,13 +9,14 @@ use std::time::SystemTime;
 use nix::fcntl::Flock;
 use tracing::{info, warn};
 
+use crate::byte_size::human_bytes;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, base_dir_lock_name};
 
 use super::GC_MIN_AGE;
 use super::filesystem::{GcDirStatus, dir_stats, gc_path_dir_status};
 use super::lock_file::{ExistingLockProbe, probe_existing_lock, remove_unused_lock_after_probe};
-use super::report::{GcReport, human_bytes};
+use super::report::GcReport;
 
 type RemoveDirAllFuture<'a> = Pin<Box<dyn Future<Output = std::io::Result<()>> + 'a>>;
 type RemoveDirAllFn = for<'a> fn(&'a Path) -> RemoveDirAllFuture<'a>;

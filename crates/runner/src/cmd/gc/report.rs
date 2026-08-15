@@ -1,3 +1,4 @@
+use crate::byte_size::human_bytes;
 use tracing::info;
 
 #[derive(Debug, Default, Eq, PartialEq)]
@@ -77,22 +78,6 @@ pub(super) fn log_gc_summary(report: &GcReport, dry_run: bool) {
     }
 }
 
-pub(super) fn human_bytes(bytes: u64) -> String {
-    const KIB: f64 = 1024.0;
-    const MIB: f64 = KIB * 1024.0;
-    const GIB: f64 = MIB * 1024.0;
-    let b = bytes as f64;
-    if b >= GIB {
-        format!("{:.1} GiB", b / GIB)
-    } else if b >= MIB {
-        format!("{:.1} MiB", b / MIB)
-    } else if b >= KIB {
-        format!("{:.1} KiB", b / KIB)
-    } else {
-        format!("{bytes} B")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,15 +97,6 @@ mod tests {
             .filter_map(|event| event.fields.get("message").cloned())
             .collect()
     }
-    #[test]
-    fn human_bytes_formats_correctly() {
-        assert_eq!(human_bytes(0), "0 B");
-        assert_eq!(human_bytes(512), "512 B");
-        assert_eq!(human_bytes(1024), "1.0 KiB");
-        assert_eq!(human_bytes(1024 * 1024), "1.0 MiB");
-        assert_eq!(human_bytes(1024 * 1024 * 1024), "1.0 GiB");
-    }
-
     #[test]
     fn gc_report_composition_preserves_all_summary_fields() {
         let mut report = GcReport::cleanup(2, 512);

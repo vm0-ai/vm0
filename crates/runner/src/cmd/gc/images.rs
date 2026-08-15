@@ -4,6 +4,7 @@ use std::time::SystemTime;
 
 use tracing::{info, warn};
 
+use crate::byte_size::human_bytes;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
@@ -14,7 +15,7 @@ use super::filesystem::{
 };
 use super::image_refs::{ProtectedImageRefs, is_protected_image_ref};
 use super::lock_file::{LockProbe, probe_lock};
-use super::report::{GcReport, human_bytes};
+use super::report::GcReport;
 
 const TEMPLATE_WARM_DIR_PREFIX: &str = "template-warm-";
 

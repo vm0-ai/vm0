@@ -3,11 +3,12 @@ use std::time::{Duration, SystemTime};
 
 use tracing::{info, warn};
 
+use crate::byte_size::human_bytes;
 use crate::error::RunnerResult;
 use crate::paths::{HomePaths, LogPaths};
 
 use super::filesystem::{next_entry_warn_or_stop, read_dir_or_missing};
-use super::report::{GcReport, human_bytes};
+use super::report::GcReport;
 
 /// Per-job log files older than this are eligible for GC.
 const JOB_LOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
