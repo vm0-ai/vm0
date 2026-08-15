@@ -5,6 +5,11 @@ the same Chat Event schema. Clients select that schema with
 `X-Chat-Event-Schema-Version` on both read endpoints, and successful responses
 echo the selected version in the same header.
 
+Platform readers require that echoed header and require Snapshot responses to
+include the paired `lastEventId`; they do not reconstruct missing response
+metadata from the immutable NDJSON body. The remaining request-side and CLI
+rollout compatibility is tracked by #27194.
+
 ## Version negotiation
 
 - The current version is V5 and the downgrade floor is V4, so the supported

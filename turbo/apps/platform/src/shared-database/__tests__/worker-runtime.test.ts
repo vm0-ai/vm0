@@ -40,6 +40,13 @@ const context = testContext();
 const SNAPSHOT_URL = "https://r2.example.com/shared-worker-chat-events.ndjson";
 const CREATED_AT = "2026-08-14T08:00:00.000Z";
 
+function chatEventSchemaVersionResponseHeaders(): Record<string, string> {
+  return {
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+  };
+}
+
 type WorkerEvent = Extract<
   SharedDatabaseWorkerMessage,
   { readonly type: "append" | "reload-required" | "status" }
@@ -744,17 +751,23 @@ describe("shared database worker runtime", () => {
           failedRequests += 1;
           return HttpResponse.json(
             { error: { code: "INTERNAL_ERROR", message: "try again" } },
-            { status: 500 },
+            {
+              status: 500,
+              headers: chatEventSchemaVersionResponseHeaders(),
+            },
           );
         }
         const sinceSeqId = Number(
           new URL(request.url).searchParams.get("sinceSeqId"),
         );
-        return HttpResponse.json({
-          rows: availableRows.filter((row) => {
-            return row.seqId > sinceSeqId;
-          }),
-        });
+        return HttpResponse.json(
+          {
+            rows: availableRows.filter((row) => {
+              return row.seqId > sinceSeqId;
+            }),
+          },
+          { headers: chatEventSchemaVersionResponseHeaders() },
+        );
       },
     );
 
@@ -858,6 +871,7 @@ describe("shared database worker runtime", () => {
         return respond(200, {
           url: SNAPSHOT_URL,
           expiresInSeconds: 900,
+          lastEventId: rebuiltRow.id,
           lastSeqId: 10,
         });
       },
