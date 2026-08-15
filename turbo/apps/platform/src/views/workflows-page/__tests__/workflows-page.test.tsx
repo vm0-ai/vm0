@@ -1400,6 +1400,44 @@ describe("workflows routes", () => {
     await expect(screen.findByText("TU")).resolves.toBeInTheDocument();
   });
 
+  it("shows workflow visibility on hover", async () => {
+    const user = userEvent.setup();
+    mockWorkflowApis([salesResearch(), opsPlaybook()]);
+
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+    });
+
+    const publicWorkflow = await waitFor(() => {
+      return articleByText("Sales Research");
+    });
+    const publicIcon = within(publicWorkflow).getByLabelText("Public");
+    await user.hover(publicIcon);
+    await expect(
+      screen.findByText("Public", {
+        selector: '[data-slot="tooltip-content"]',
+      }),
+    ).resolves.toBeInTheDocument();
+
+    await user.unhover(publicIcon);
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Public", {
+          selector: '[data-slot="tooltip-content"]',
+        }),
+      ).not.toBeInTheDocument();
+    });
+
+    const privateWorkflow = articleByText("Ops Playbook");
+    await user.hover(within(privateWorkflow).getByLabelText("Private"));
+    await expect(
+      screen.findByText("Private", {
+        selector: '[data-slot="tooltip-content"]',
+      }),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("labels existing Stripe automations on the workspace workflows index", async () => {
     mockWorkflowApis([
       {
