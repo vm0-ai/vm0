@@ -9,7 +9,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db$, type ReadonlyDb } from "../external/db";
 import { tapError } from "../utils";
-import { resolveZeroRunModelSelection } from "./zero-run-model-selection.service";
+import { resolveRunModelSelection } from "./run-model-selection.service";
 
 async function resolveAgentLabel(
   db: ReadonlyDb,
@@ -35,7 +35,7 @@ async function resolveModelLabel(
   db: ReadonlyDb,
   runId: string,
 ): Promise<string | undefined> {
-  const row = await resolveZeroRunModelSelection(db, runId);
+  const row = await resolveRunModelSelection(db, runId);
   if (!row || row.selectedModel === null) {
     return undefined;
   }

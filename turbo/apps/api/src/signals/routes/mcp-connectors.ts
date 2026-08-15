@@ -4,7 +4,7 @@ import { mcpConnectorsContract } from "@okouai/api-contracts/contracts/mcp-conne
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import type { RouteEntry } from "../route-entry";
-import { zeroRunMcpConnectorList } from "../services/zero-run-mcp-connectors.service";
+import { runMcpConnectorList } from "../services/run-mcp-connectors.service";
 
 const listRunMcpConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -12,7 +12,7 @@ const listRunMcpConnectorsInner$ = computed(async (get) => {
     throw new Error("Run MCP connector route requires Zero authentication");
   }
   const connectors = await get(
-    zeroRunMcpConnectorList({
+    runMcpConnectorList({
       orgId: auth.orgId,
       userId: auth.userId,
       runId: auth.runId,

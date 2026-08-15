@@ -20,7 +20,7 @@ import {
   serialiseCustomConnector,
 } from "./zero-custom-connector.service";
 
-export function zeroRunMcpConnectorList(args: {
+export function runMcpConnectorList(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
