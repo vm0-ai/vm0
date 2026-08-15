@@ -4262,6 +4262,7 @@
         "apiKeyDescription": "공유 워크스페이스 키입니다. 팀이 하나의 계정으로 청구할 때 가장 적합합니다.",
         "apiKeyPlaceholder": "API 키 입력",
         "apiKeyRequired": "API 키가 필요합니다.",
+        "availableModels": "사용 가능한 모델",
         "builtIn": "내장형",
         "builtInDescription": "워크스페이스 크레딧으로 사용량을 충당합니다.",
         "claudeSubscription": "Claude 구독",
@@ -4280,16 +4281,17 @@
         "model": "모델",
         "noAvailableModels": "사용 가능한 모델 없음",
         "noMappedGateway": "이 모델에 매핑된 공급자 연결이 없습니다.",
+        "pricing": "요금",
         "providedBy": "제공자",
         "provider": "공급자",
         "providerApiKey": "{{provider}} API 키",
+        "runsThrough": "실행 경로",
         "secretStored": "워크스페이스 비밀에 저장됨.",
         "selectDefaultModel": "기본 모델 선택",
         "selectGateway": "공급자 연결 선택",
         "selectModel": "모델 선택",
         "selectProvider": "공급자 선택",
-        "workspaceDescription": "이 워크스페이스의 모든 사용자에게 제공됨.",
-        "workspaceTitle": "워크스페이스"
+        "workspaceDescription": "이 워크스페이스의 모든 사용자에게 제공됨."
       },
       "reset": {
         "confirmDescription": "현재 사용량 창을 재설정하려면 Codex 재설정 1회를 사용하세요. 남은 횟수: {{remaining}}.",

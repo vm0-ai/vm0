@@ -27,10 +27,10 @@ export function OrgProvidersTab() {
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
 
   return (
-    <div className="flex flex-col gap-8">
-      {isAdmin && <ModelProviderConnectionsSection />}
+    <div className="flex flex-col gap-6">
       {isAdmin && <OrgModelPoliciesSection />}
       <StaleBannerSection />
+      {isAdmin && <ModelProviderConnectionsSection />}
       <ClaudeCodeDeviceAuthDialog />
       <CodexDeviceAuthDialog />
       {isAdmin && (

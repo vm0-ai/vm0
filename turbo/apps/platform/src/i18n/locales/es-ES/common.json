@@ -4313,6 +4313,7 @@
         "apiKeyDescription": "Una clave compartida por el espacio de trabajo, ideal cuando el equipo factura mediante una sola cuenta.",
         "apiKeyPlaceholder": "Introduce tu clave API",
         "apiKeyRequired": "Se requiere clave API",
+        "availableModels": "Modelos disponibles",
         "builtIn": "Integrado",
         "builtInDescription": "Los créditos de espacio de trabajo cubren el uso.",
         "claudeSubscription": "Suscripción de Claude",
@@ -4331,16 +4332,17 @@
         "model": "Modelo",
         "noAvailableModels": "No hay modelos disponibles",
         "noMappedGateway": "Ninguna conexión de proveedor asigna este modelo.",
+        "pricing": "Precios",
         "providedBy": "Proporcionado por",
         "provider": "Proveedor",
         "providerApiKey": "Clave API de {{provider}}",
+        "runsThrough": "Se ejecuta mediante",
         "secretStored": "Almacenado en secretos del espacio de trabajo.",
         "selectDefaultModel": "Seleccionar un modelo por defecto",
         "selectGateway": "Seleccionar una conexión de proveedor",
         "selectModel": "Seleccionar un modelo",
         "selectProvider": "Seleccionar un proveedor",
-        "workspaceDescription": "Disponible para todos en este espacio de trabajo.",
-        "workspaceTitle": "Espacio de trabajo"
+        "workspaceDescription": "Disponible para todos en este espacio de trabajo."
       },
       "reset": {
         "confirmDescription": "Usa un restablecimiento de Codex para reiniciar tus periodos de consumo actuales. Te quedan {{remaining}}.",

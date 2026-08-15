@@ -4263,6 +4263,7 @@
         "apiKeyDescription": "एक साझा वर्कस्पेस कुंजी। सबसे अच्छा तब होता है जब टीम एक खाते के माध्यम से बिल देती है।",
         "apiKeyPlaceholder": "अपनी API कुंजी दर्ज करें",
         "apiKeyRequired": "API कुंजी आवश्यक है",
+        "availableModels": "उपलब्ध मॉडल",
         "builtIn": "में निर्मित",
         "builtInDescription": "वर्कस्पेस क्रेडिट उपयोग को कवर करता है।",
         "claudeSubscription": "Claude सदस्यता",
@@ -4281,16 +4282,17 @@
         "model": "मॉडल",
         "noAvailableModels": "कोई उपलब्ध मॉडल नहीं",
         "noMappedGateway": "कोई प्रदाता कनेक्शन इस मॉडल से मैप नहीं है।",
+        "pricing": "मूल्य",
         "providedBy": "द्वारा उपलब्ध कराया गया",
         "provider": "प्रोवाइडर",
         "providerApiKey": "{{provider}} API कुंजी",
+        "runsThrough": "रन का माध्यम",
         "secretStored": "वर्कस्पेस में रहस्य संग्रहीत।",
         "selectDefaultModel": "एक डिफ़ॉल्ट मॉडल चुनें",
         "selectGateway": "प्रदाता कनेक्शन चुनें",
         "selectModel": "एक मॉडल चुनें",
         "selectProvider": "एक प्रोवाइडर चुनें",
-        "workspaceDescription": "इस वर्कस्पेस में सभी के लिए उपलब्ध है।",
-        "workspaceTitle": "वर्कस्पेस"
+        "workspaceDescription": "इस वर्कस्पेस में सभी के लिए उपलब्ध है।"
       },
       "reset": {
         "confirmDescription": "अपनी वर्तमान उपयोग विंडो को रीसेट करने के लिए एक Codex रीसेट का उपयोग करें। आपके पास {{remaining}} है।",
