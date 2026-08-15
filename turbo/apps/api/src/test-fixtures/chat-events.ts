@@ -25,7 +25,16 @@ import { chatEvents } from "@okouai/db/schema/chat-event";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
-import { and, count, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  inArray,
+  isNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
@@ -61,6 +70,10 @@ const VM0_BDD_API_KEY_PREFIXES = [
   "vm0-key-bdd-dev-seed-",
 ] as const;
 const databasePidRowSchema = z.object({ pid: z.int() });
+const databaseConnectionOwnerRowSchema = z.object({
+  applicationName: z.string().min(1),
+  pid: z.int(),
+});
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
 const blockedByPidRowSchema = z.object({ blocked: z.boolean() });
 const blockedQueryRowSchema = z.object({ query: z.string() });
@@ -957,23 +970,30 @@ export async function holdChatEventReadsFixture(args: {
   readonly done: Promise<void>;
   readonly blockedStatementCounts: () => Promise<ChatEventBlockedStatementCounts>;
 }> {
-  const started = createDeferredPromise<number>(args.signal);
+  const started = createDeferredPromise<{
+    readonly applicationName: string;
+    readonly pid: number;
+  }>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
-    const pidRows = await executeRawRows(
+    const ownerRows = await executeRawRows(
       tx,
-      sql`SELECT pg_backend_pid() AS "pid"`,
-      databasePidRowSchema,
+      sql`
+        SELECT
+          current_setting('application_name') AS "applicationName",
+          pg_backend_pid() AS "pid"
+      `,
+      databaseConnectionOwnerRowSchema,
     );
-    const holderPid = pidRows[0]?.pid;
-    if (!holderPid) {
-      throw new Error("Expected the chat-event read lock holder pid");
+    const owner = ownerRows[0];
+    if (!owner) {
+      throw new Error("Expected the chat-event read lock holder owner");
     }
     await tx.execute(sql`LOCK TABLE ${chatEvents} IN ACCESS EXCLUSIVE MODE`);
-    started.resolve(holderPid);
+    started.resolve(owner);
     await released.promise;
   });
-  const holderPid = await started.promise;
+  const owner = await started.promise;
 
   return {
     release: () => {
@@ -983,8 +1003,48 @@ export async function holdChatEventReadsFixture(args: {
     },
     done,
     blockedStatementCounts: async () => {
-      return await directBlockedChatEventStatementCounts(holderPid);
+      return await directBlockedChatEventStatementCounts(owner);
     },
+  };
+}
+
+/**
+ * Queues a chat-event read under a distinct database owner. This simulates an
+ * unrelated Vitest worker sharing the same test database and lock boundary.
+ */
+export async function queueOtherWorkerChatEventReadFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly blocked: () => Promise<boolean>;
+  readonly done: Promise<void>;
+}> {
+  const started = createDeferredPromise<void>(args.signal);
+  const applicationName = `vm0-api-test-other-${randomUUID()}`;
+  const missingEventId = randomUUID();
+  const done = onRejection(
+    db().transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT set_config('application_name', ${applicationName}, true)`,
+      );
+      started.resolve(undefined);
+      await tx
+        .select({ id: chatEvents.id })
+        .from(chatEvents)
+        .where(eq(chatEvents.id, missingEventId))
+        .orderBy(asc(chatEvents.seqId));
+    }),
+    (error) => {
+      if (!started.settled()) {
+        started.reject(error);
+      }
+    },
+  );
+  await started.promise;
+  return {
+    blocked: async () => {
+      return await databaseOwnerHasBlockedWaiter(applicationName);
+    },
+    done,
   };
 }
 
@@ -1223,18 +1283,32 @@ async function directBlockedWaiterCount(holderPid: number): Promise<number> {
   return rows[0]?.waiterCount ?? 0;
 }
 
+async function databaseOwnerHasBlockedWaiter(
+  applicationName: string,
+): Promise<boolean> {
+  const rows = await executeRawRows(
+    db(),
+    sql`
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_stat_activity AS activity
+        WHERE activity.application_name = ${applicationName}
+          AND cardinality(pg_blocking_pids(activity.pid)) > 0
+      ) AS "blocked"
+    `,
+    blockedByPidRowSchema,
+  );
+  return rows[0]?.blocked ?? false;
+}
+
 function normalizeBlockedQuery(query: string): string {
   return query.toLowerCase().replaceAll(/\s+/g, " ").trim();
 }
 
 function isSharedThreadHotSnapshotRead(query: string): boolean {
   return (
-    query.startsWith(
-      `select "id", "event_type", "payload"->>'content', "payload"->'usermessage', "run_id"`,
-    ) &&
-    query.includes('from "chat_events" where') &&
-    query.includes('"chat_events"."chat_thread_id" = $') &&
-    query.includes('"chat_events"."id" in (') &&
+    query.startsWith("select ") &&
+    query.includes(' from "chat_events" ') &&
     query.endsWith('order by "chat_events"."seq_id" asc')
   );
 }
@@ -1243,15 +1317,17 @@ function isChatEventPhysicalDeletion(query: string): boolean {
   return query === 'lock table "chat_events" in access exclusive mode';
 }
 
-async function directBlockedChatEventStatementCounts(
-  holderPid: number,
-): Promise<ChatEventBlockedStatementCounts> {
+async function directBlockedChatEventStatementCounts(owner: {
+  readonly applicationName: string;
+  readonly pid: number;
+}): Promise<ChatEventBlockedStatementCounts> {
   const rows = await executeRawRows(
     db(),
     sql`
       SELECT activity.query AS "query"
       FROM pg_stat_activity AS activity
-      WHERE ${holderPid} = ANY(pg_blocking_pids(activity.pid))
+      WHERE ${owner.pid} = ANY(pg_blocking_pids(activity.pid))
+        AND activity.application_name = ${owner.applicationName}
     `,
     blockedQueryRowSchema,
   );

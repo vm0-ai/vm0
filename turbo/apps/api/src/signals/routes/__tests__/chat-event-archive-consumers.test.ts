@@ -22,6 +22,7 @@ import {
 import {
   holdChatEventReadsFixture,
   queueChatEventPhysicalDeletionFixture,
+  queueOtherWorkerChatEventReadFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { sharedThreadRoutes } from "../shared-threads";
@@ -371,16 +372,31 @@ describe("archived chat event consumers", () => {
     const heldReads = await holdChatEventReadsFixture({
       signal: context.signal,
     });
+    const otherWorkerRead = await queueOtherWorkerChatEventReadFixture({
+      signal: context.signal,
+    });
+    let createRequestDone: Promise<unknown> = Promise.resolve();
+    let deletionDone: Promise<void> = Promise.resolve();
+    onTestFinished(async () => {
+      heldReads.release();
+      await Promise.allSettled([
+        heldReads.done,
+        otherWorkerRead.done,
+        deletionDone,
+        createRequestDone,
+      ]);
+    });
+    await expect.poll(otherWorkerRead.blocked).toBe(true);
+    await expect.poll(heldReads.blockedStatementCounts).toStrictEqual({
+      hotSnapshotReads: 0,
+      physicalDeletions: 0,
+    });
     const createRequest = sharedThreadClient().create({
       params: { threadId: fixture.threadId },
       headers: authenticate(fixture.actor),
       body: { eventIds: [hotEventId] },
     });
-    let deletionDone: Promise<void> = Promise.resolve();
-    onTestFinished(async () => {
-      heldReads.release();
-      await Promise.allSettled([heldReads.done, deletionDone, createRequest]);
-    });
+    createRequestDone = createRequest;
 
     await expect.poll(heldReads.blockedStatementCounts).toStrictEqual({
       hotSnapshotReads: 1,
@@ -400,6 +416,7 @@ describe("archived chat event consumers", () => {
     const [created] = await Promise.all([
       accept(createRequest, [201]),
       heldReads.done,
+      otherWorkerRead.done,
       deletionDone,
     ]);
     await expect(
