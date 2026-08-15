@@ -19,7 +19,7 @@ interface UsageMembersArgs {
   readonly tz: string;
 }
 
-export const zeroUsageMembers$ = command(
+export const usageMembers$ = command(
   async (
     { get, set },
     args: UsageMembersArgs,
