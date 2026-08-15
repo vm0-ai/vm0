@@ -8,7 +8,7 @@ import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { checkConnectorCommand } from "../check";
 
 const API_BASE_URL = "https://app.vm0.ai";

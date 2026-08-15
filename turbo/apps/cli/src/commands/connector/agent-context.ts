@@ -2,8 +2,8 @@ import {
   getZeroAgent,
   getZeroAgentCustomConnectorGrants,
   getZeroAgentUserConnectors,
-} from "../../../lib/api/domains/zero-agents";
-import { getOkouAgentId } from "../../../lib/okou-env";
+} from "../../lib/api/domains/zero-agents";
+import { getOkouAgentId } from "../../lib/okou-env";
 
 interface AgentContext {
   agentId: string;

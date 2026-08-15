@@ -7,7 +7,7 @@ import { statusCommand } from "./status";
 import { customConnectorCommand } from "./custom";
 import { permissionRequestCommand } from "./permission-request";
 
-export const zeroConnectorCommand = new Command()
+export const connectorCommand = new Command()
   .name("connector")
   .description("Manage and diagnose third-party service connections")
   .addCommand(checkConnectorCommand)

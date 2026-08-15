@@ -4,15 +4,15 @@ import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/ze
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { createZeroCustomConnector } from "../../../../lib/api/domains/zero-connectors";
-import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
-import { withErrorHandler } from "../../../../lib/command/with-error-handler";
-import { getOkouAgentId } from "../../../../lib/okou-env";
+import { createZeroCustomConnector } from "../../../lib/api/domains/zero-connectors";
+import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../../lib/okou-env";
 import {
   connectorActionUrl,
   printCallbackActionUrlExample,
 } from "../action-url";
-import { getPlatformOrigin } from "../../../doctor/platform-url";
+import { getPlatformOrigin } from "../../doctor/platform-url";
 import { createCustomConnectorDefinitionFileSchema } from "./definition";
 
 interface CreateOptions {

@@ -6,15 +6,15 @@ import type {
   ConnectorCheckRequest,
 } from "@okouai/api-contracts/contracts/connector-check";
 
-import { getApiUrl } from "../../../lib/api/config";
+import { getApiUrl } from "../../lib/api/config";
 import {
   diagnoseConnectorCheck,
   getZeroConnector,
-} from "../../../lib/api/domains/zero-connectors";
-import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { getOkouAgentId } from "../../../lib/okou-env";
-import { toPlatformUrl } from "../../doctor/platform-url";
+} from "../../lib/api/domains/zero-connectors";
+import { getZeroAgentUserConnectors } from "../../lib/api/domains/zero-agents";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../lib/okou-env";
+import { toPlatformUrl } from "../doctor/platform-url";
 import {
   isComputerUsePermissionTarget,
   printComputerUsePermissionGuidance,

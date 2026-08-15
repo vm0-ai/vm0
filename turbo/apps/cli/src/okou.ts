@@ -108,7 +108,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "connector",
     description: "Check third-party service connections (GitHub, Slack, etc.)",
     load: async () => {
-      return (await import("./commands/zero/connector")).zeroConnectorCommand;
+      return (await import("./commands/connector")).connectorCommand;
     },
   },
   {

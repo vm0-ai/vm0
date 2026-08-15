@@ -3,8 +3,8 @@ import chalk from "chalk";
 import {
   listZeroConnectorCatalogStatus,
   listZeroCustomConnectors,
-} from "../../../lib/api/domains/zero-connectors";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { resolveConnectorDiscoveryAgentContext } from "./agent-context";
 import { padEndAnsi, stripAnsi } from "./connected-as";
 import {

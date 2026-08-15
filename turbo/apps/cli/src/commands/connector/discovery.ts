@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import type { ZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
+import type { ZeroConnectorCatalogStatus } from "../../lib/api/domains/zero-connectors";
 import type { ConnectorDiscoveryAgentContext } from "./agent-context";
 import { renderConnectedAsCell } from "./connected-as";
 

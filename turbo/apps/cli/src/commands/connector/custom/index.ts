@@ -3,13 +3,13 @@ import chalk from "chalk";
 import {
   getZeroAgent,
   getZeroAgentCustomConnectorGrants,
-} from "../../../../lib/api/domains/zero-agents";
+} from "../../../lib/api/domains/zero-agents";
 import {
   getZeroCustomConnector,
   listZeroCustomConnectors,
-} from "../../../../lib/api/domains/zero-connectors";
-import { withErrorHandler } from "../../../../lib/command/with-error-handler";
-import { getOkouAgentId } from "../../../../lib/okou-env";
+} from "../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../../lib/okou-env";
 import { createCustomConnectorCommand } from "./create";
 import { updateCustomConnectorCommand } from "./update";
 

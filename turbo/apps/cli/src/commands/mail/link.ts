@@ -7,7 +7,7 @@ import {
   addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,
   printCallbackTurnInstruction,
-} from "../zero/connector/action-url";
+} from "../connector/action-url";
 import { currentAgentId } from "./shared";
 
 function currentChatThreadId(): string {

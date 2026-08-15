@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { updateZeroCustomConnector } from "../../../../lib/api/domains/zero-connectors";
-import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
-import { withErrorHandler } from "../../../../lib/command/with-error-handler";
+import { updateZeroCustomConnector } from "../../../lib/api/domains/zero-connectors";
+import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { updateCustomConnectorDefinitionFileSchema } from "./definition";
 
 interface UpdateOptions {

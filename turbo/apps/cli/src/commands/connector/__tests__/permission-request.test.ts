@@ -14,7 +14,7 @@ import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { permissionRequestCommand } from "../permission-request";
 
 const SLACK_READ_PERMISSION = "admin.conversations:read";
@@ -680,15 +680,13 @@ describe("okou connector permission-request command", () => {
 
   it("outputs a delegated authorization link for computer-use enable when authenticated", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "zero-run-token");
+    vi.stubEnv("OKOU_TOKEN", "run-token");
 
     server.use(
       http.post(
         "http://localhost:3000/api/okou/computer-use/authorization-requests",
         ({ request }) => {
-          expect(request.headers.get("authorization")).toBe(
-            "Bearer zero-run-token",
-          );
+          expect(request.headers.get("authorization")).toBe("Bearer run-token");
           return HttpResponse.json({
             authorizationUrl:
               "https://app.vm0.ai/computer-use/authorize/vm0_computer_use_authorization_request_test",
@@ -763,15 +761,13 @@ describe("okou connector permission-request command", () => {
 
   it("outputs a delegated authorization link for cloud browser enable", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "zero-run-token");
+    vi.stubEnv("OKOU_TOKEN", "run-token");
 
     server.use(
       http.post(
         "http://localhost:3000/api/okou/browser/authorization-requests",
         ({ request }) => {
-          expect(request.headers.get("authorization")).toBe(
-            "Bearer zero-run-token",
-          );
+          expect(request.headers.get("authorization")).toBe("Bearer run-token");
           return HttpResponse.json({
             authorizationUrl:
               "https://app.vm0.ai/browser/authorize/vm0_browser_authorization_request_test",

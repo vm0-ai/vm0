@@ -26,7 +26,7 @@ import { server } from "../../../mocks/server";
 import {
   runMcpConnector,
   stubRunMcpConnectors,
-} from "../../zero/__tests__/helpers/custom-connectors";
+} from "../../__tests__/helpers/custom-connectors";
 import { mcpCommand } from "../index";
 
 const CONNECTOR_ID = "44444444-4444-4444-8444-444444444444";

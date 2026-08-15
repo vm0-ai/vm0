@@ -13,7 +13,7 @@ import { server } from "../../../mocks/server";
 import {
   catalogPermissionDetail,
   stubConnectorCatalogPermissions,
-} from "../../zero/__tests__/helpers/connector-catalog";
+} from "../../__tests__/helpers/connector-catalog";
 import { viewCommand } from "../view";
 import chalk from "chalk";
 
