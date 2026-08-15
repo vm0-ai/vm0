@@ -20,9 +20,9 @@ import {
   type WebsiteTemplateArchiveVersion,
 } from "@okouai/core/resource-registry";
 
-import { getRegistryResourceDownload } from "../../../lib/api/domains/registry-resources";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { websiteTemplateArchiveVersionFromEnvironment } from "../../shared/website-template-archive-version";
+import { getRegistryResourceDownload } from "../../lib/api/domains/registry-resources";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { websiteTemplateArchiveVersionFromEnvironment } from "../shared/website-template-archive-version";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
 
@@ -92,7 +92,7 @@ function verifyArchive(buffer: Buffer, expectedSha256: string): void {
   }
 }
 
-export const zeroResourceCommand = new Command()
+export const resourceCommand = new Command()
   .name("resource")
   .description("Pull registry resources from private R2-backed archives")
   .addCommand(
@@ -140,7 +140,7 @@ export const zeroResourceCommand = new Command()
           verifyArchive(buffer, archive.sha256);
 
           const outputDir = path.resolve(options.dir);
-          const tmpDir = await mkdtemp(path.join(tmpdir(), "zero-resource-"));
+          const tmpDir = await mkdtemp(path.join(tmpdir(), "resource-"));
           const archivePath = path.join(tmpDir, "resource.tar.gz");
           await mkdir(outputDir, { recursive: true });
           await writeFile(archivePath, buffer);
