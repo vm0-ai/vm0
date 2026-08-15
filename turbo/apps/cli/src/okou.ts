@@ -80,8 +80,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "__agent-loop",
     description: "Internal sandbox agent loop",
     load: async () => {
-      return (await import("./commands/zero/__agent-loop"))
-        .zeroAgentLoopCommand;
+      return (await import("./commands/__agent-loop")).agentLoopCommand;
     },
   },
   {

@@ -3,9 +3,9 @@ import { Command } from "commander";
 import {
   piSandboxAgentConfigFromEnv,
   runPiSandboxAgentLoop,
-} from "../../lib/pi-agent-loop";
+} from "../lib/pi-agent-loop";
 
-export const zeroAgentLoopCommand = new Command()
+export const agentLoopCommand = new Command()
   .name("__agent-loop")
   .description("Internal sandbox Pi agent loop")
   .action(async () => {
