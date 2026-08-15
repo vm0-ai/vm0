@@ -311,7 +311,7 @@ describe("okou browser route", () => {
     }
     const claim = await runs.claimRunnerJob(sent.body.runId);
     expect(claim.appendSystemPrompt ?? "").toContain(
-      "Zero Browser is currently off for this chat thread",
+      "Okou Browser is currently off for this chat thread",
     );
     const browserToken = runs.zeroTokenForRunWithCapabilities(
       actor,
@@ -349,10 +349,13 @@ describe("okou browser route", () => {
     const claim = await runs.claimRunnerJob(sent.body.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain(
-      "`okou browser use` creates, reuses, or resumes a remote browser",
+      "Okou Browser and Okou Computer Use are separate surfaces. `okou browser use` creates, reuses, or resumes a remote browser",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Okou Browser lifetime: `okou browser use` and `okou browser lease` each extend the session's idle lease by a fixed 10 minutes",
     );
     expect(appendSystemPrompt).not.toContain(
-      "Zero Browser is currently off for this chat thread",
+      "Okou Browser is currently off for this chat thread",
     );
   });
 
