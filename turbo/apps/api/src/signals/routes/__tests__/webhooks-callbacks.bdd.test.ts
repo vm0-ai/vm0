@@ -5440,8 +5440,13 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       type: "organization.deleted",
       data: { id: orgOf(actor) },
     });
-    const redelivery = await api.requestClerkWebhook("{}", {}, [200]);
+    const redelivery = await compactionLock.withAcquisitionAttemptTracking(
+      () => {
+        return api.requestClerkWebhook("{}", {}, [200]);
+      },
+    );
     expect(redelivery.body).toBe("OK");
+    await compactionLock.acquisitionAttempted;
     await expect.poll(compactionLock.waiterCount).toBeGreaterThanOrEqual(1);
     await expect(
       store.set(
@@ -5928,8 +5933,11 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       type: "user.deleted",
       data: { id: doomed.userId },
     });
-    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    const response = await compactionLock.withAcquisitionAttemptTracking(() => {
+      return api.requestClerkWebhook("{}", {}, [200]);
+    });
     expect(response.body).toBe("OK");
+    await compactionLock.acquisitionAttempted;
     await expect.poll(compactionLock.waiterCount).toBeGreaterThanOrEqual(1);
     await expect(
       store.set(
