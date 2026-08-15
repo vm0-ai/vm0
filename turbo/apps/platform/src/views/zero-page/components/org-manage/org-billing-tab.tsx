@@ -1539,6 +1539,7 @@ interface ConcurrencyConfirmCopy {
 
 function concurrencyConfirmCopy(
   action: "change" | "restore",
+  changeMode: ConcurrencyChangeMode,
   reviewing: boolean,
   scheduled: boolean,
 ): ConcurrencyConfirmCopy {
@@ -1566,12 +1567,22 @@ function concurrencyConfirmCopy(
       }),
     };
   }
+  if (changeMode === "cancel") {
+    return {
+      title: i18n.t(($) => {
+        return $.billing.concurrency.cancelEntireOption;
+      }),
+      description: i18n.t(($) => {
+        return $.billing.concurrency.cancelDescription;
+      }),
+    };
+  }
   return {
     title: i18n.t(($) => {
       return $.billing.concurrency.changeTitle;
     }),
     description: i18n.t(($) => {
-      return $.billing.concurrency.changeDescription;
+      return $.billing.concurrency.changeQuantityOptionDescription;
     }),
   };
 }
@@ -1671,21 +1682,17 @@ function concurrencyConfirmDisabled(
   );
 }
 
-function ConcurrencyChangeOptions({
+function ConcurrencyQuantityEditor({
   currentQuantity,
   canReduce,
-  changeMode,
   targetQuantity,
   loading,
-  onModeChange,
   onQuantityChange,
 }: {
   readonly currentQuantity: number;
   readonly canReduce: boolean;
-  readonly changeMode: ConcurrencyChangeMode;
   readonly targetQuantity: number | null;
   readonly loading: boolean;
-  readonly onModeChange: (mode: ConcurrencyChangeMode) => void;
   readonly onQuantityChange: (quantity: number | null) => void;
 }) {
   const minimumChangeQuantity = concurrencyMinimumChangeQuantity(
@@ -1699,92 +1706,29 @@ function ConcurrencyChangeOptions({
   );
 
   return (
-    <div className="mt-4 flex flex-col gap-3">
-      <div
-        role="radiogroup"
-        aria-label={i18n.t(($) => {
-          return $.billing.concurrency.changeOptionsAria;
+    <div className="mt-4 divide-y divide-border/70 border-y border-border/70 text-sm">
+      <ConcurrencyQuantityControl
+        autoFocus
+        disabled={loading}
+        label={i18n.t(($) => {
+          return $.billing.concurrency.slots;
         })}
-        className="grid gap-2 sm:grid-cols-2"
-      >
-        <button
-          type="button"
-          role="radio"
-          aria-checked={changeMode === "quantity"}
-          disabled={loading}
-          className={`flex flex-col rounded-xl border px-4 py-3 text-left transition-colors ${
-            changeMode === "quantity"
-              ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-              : "border-border/70 hover:bg-state-hover"
-          }`}
-          onClick={() => {
-            onModeChange("quantity");
-          }}
-        >
-          <span className="text-sm font-medium text-foreground">
-            {i18n.t(($) => {
-              return $.billing.concurrency.changeQuantityOption;
-            })}
-          </span>
-          <span className="mt-1 text-[13px] text-muted-foreground">
-            {i18n.t(($) => {
-              return $.billing.concurrency.changeQuantityOptionDescription;
-            })}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={changeMode === "cancel"}
-          disabled={loading}
-          className={`flex flex-col rounded-xl border px-4 py-3 text-left transition-colors ${
-            changeMode === "cancel"
-              ? "border-destructive bg-destructive/5 ring-1 ring-destructive/20"
-              : "border-border/70 hover:bg-state-hover"
-          }`}
-          onClick={() => {
-            onModeChange("cancel");
-          }}
-        >
-          <span className="text-sm font-medium text-foreground">
-            {i18n.t(($) => {
-              return $.billing.concurrency.cancelEntireOption;
-            })}
-          </span>
-          <span className="mt-1 text-[13px] text-muted-foreground">
-            {i18n.t(($) => {
-              return $.billing.concurrency.cancelDescription;
-            })}
-          </span>
-        </button>
+        minimum={minimumChangeQuantity}
+        onQuantityChange={onQuantityChange}
+        quantity={targetQuantity}
+      />
+      <div className="flex items-center justify-between gap-4 py-3">
+        <span className="text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.concurrency.monthlyTotal;
+          })}
+        </span>
+        <span className="font-medium tabular-nums text-foreground">
+          {quantityAllowed && targetQuantity !== null
+            ? concurrencyMonthlyPrice(targetQuantity)
+            : "—"}
+        </span>
       </div>
-
-      {changeMode === "quantity" ? (
-        <div className="divide-y divide-border/70 border-y border-border/70 text-sm">
-          <ConcurrencyQuantityControl
-            autoFocus
-            disabled={loading}
-            label={i18n.t(($) => {
-              return $.billing.concurrency.slots;
-            })}
-            minimum={minimumChangeQuantity}
-            onQuantityChange={onQuantityChange}
-            quantity={targetQuantity}
-          />
-          <div className="flex items-center justify-between gap-4 py-3">
-            <span className="text-muted-foreground">
-              {i18n.t(($) => {
-                return $.billing.concurrency.monthlyTotal;
-              })}
-            </span>
-            <span className="font-medium tabular-nums text-foreground">
-              {quantityAllowed && targetQuantity !== null
-                ? concurrencyMonthlyPrice(targetQuantity)
-                : "—"}
-            </span>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -1901,6 +1845,7 @@ function ConcurrencyConfirmDialogContent({
   );
   const copy = concurrencyConfirmCopy(
     action,
+    changeMode,
     reviewing,
     preview?.effectiveAt !== undefined,
   );
@@ -1958,9 +1903,55 @@ function ConcurrencyConfirmDialogContent({
       Reason.DomCallback,
     );
   };
+  const handleSecondaryAction = () => {
+    if (action === "change" && changeMode === "cancel") {
+      setChangeMode("quantity");
+      return;
+    }
+    onClose();
+  };
+  const dialogActions = (
+    <>
+      <Button
+        variant="outline"
+        disabled={loading}
+        onClick={handleSecondaryAction}
+      >
+        {i18n.t(($) => {
+          return action === "change" && changeMode === "cancel"
+            ? $.billing.common.back
+            : $.billing.common.cancel;
+        })}
+      </Button>
+      <Button
+        variant={
+          action === "change" && changeMode === "cancel"
+            ? "destructive"
+            : "default"
+        }
+        disabled={concurrencyConfirmDisabled(
+          action,
+          changeMode,
+          loading,
+          changeQuantityValid,
+        )}
+        onClick={handleConfirm}
+      >
+        {concurrencyConfirmButtonLabel(
+          action,
+          changeMode,
+          canChangeInApp,
+          preview,
+          loading,
+        )}
+      </Button>
+    </>
+  );
+  const showCancellationEntry =
+    action === "change" && changeMode === "quantity" && !reviewing;
 
   return (
-    <DialogContent className="sm:max-w-[420px]">
+    <DialogContent className="sm:max-w-[480px]">
       <DialogHeader>
         <DialogTitle>{copy.title}</DialogTitle>
         {copy.description ? (
@@ -1970,47 +1961,37 @@ function ConcurrencyConfirmDialogContent({
 
       {reviewing && preview ? (
         <ConcurrencyChangeReview preview={preview} />
-      ) : action === "change" ? (
-        <ConcurrencyChangeOptions
+      ) : action === "change" && changeMode === "quantity" ? (
+        <ConcurrencyQuantityEditor
           currentQuantity={dialog.currentQuantity}
           canReduce={dialog.canReduce}
-          changeMode={changeMode}
           targetQuantity={targetQuantity}
           loading={loading}
-          onModeChange={setChangeMode}
           onQuantityChange={setTargetQuantity}
         />
       ) : null}
 
-      <DialogFooter>
-        <Button variant="outline" disabled={loading} onClick={onClose}>
-          {i18n.t(($) => {
-            return $.billing.common.cancel;
-          })}
-        </Button>
-        <Button
-          variant={
-            action === "change" && changeMode === "cancel"
-              ? "destructive"
-              : "default"
-          }
-          disabled={concurrencyConfirmDisabled(
-            action,
-            changeMode,
-            loading,
-            changeQuantityValid,
-          )}
-          onClick={handleConfirm}
-        >
-          {concurrencyConfirmButtonLabel(
-            action,
-            changeMode,
-            canChangeInApp,
-            preview,
-            loading,
-          )}
-        </Button>
-      </DialogFooter>
+      {showCancellationEntry ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="quiet"
+            size="sm"
+            className="-ml-3 font-normal"
+            disabled={loading}
+            onClick={() => {
+              setChangeMode("cancel");
+            }}
+          >
+            {i18n.t(($) => {
+              return $.billing.concurrency.cancelEntireOption;
+            })}
+          </Button>
+          <div className="ml-auto flex justify-end gap-2">{dialogActions}</div>
+        </div>
+      ) : (
+        <DialogFooter>{dialogActions}</DialogFooter>
+      )}
     </DialogContent>
   );
 }
