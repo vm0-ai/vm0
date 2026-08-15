@@ -707,6 +707,89 @@ mod tests {
     }
 
     #[test]
+    fn disconnect_reports_locked_and_claim_failure_without_netlink() {
+        let candidate = NbdOrphanCandidate::from_dead_owner_observation(3, 123);
+        let locked = disconnect_with(
+            candidate,
+            |_| Ok::<Option<()>, std::io::Error>(None),
+            |_, _| panic!("locked candidate must not be re-read"),
+            |_| panic!("locked candidate must not check liveness"),
+            |_| panic!("locked candidate must not check membership"),
+            |_| panic!("locked candidate must not be disconnected"),
+        );
+        assert!(matches!(locked, NbdOrphanDisconnect::Locked));
+
+        let failed = disconnect_with(
+            candidate,
+            |_| Err::<Option<()>, std::io::Error>(std::io::Error::other("boom")),
+            |_, _| panic!("failed claim must not be re-read"),
+            |_| panic!("failed claim must not check liveness"),
+            |_| panic!("failed claim must not check membership"),
+            |_| panic!("failed claim must not disconnect"),
+        );
+        match failed {
+            NbdOrphanDisconnect::Failed(NbdOrphanError::Claim {
+                device_index,
+                source,
+            }) => {
+                assert_eq!(device_index, 3);
+                assert_eq!(source.to_string(), "boom");
+            }
+            other => panic!("expected claim failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn disconnect_reports_changed_without_netlink_when_state_changes_or_clears() {
+        let candidate = NbdOrphanCandidate::from_dead_owner_observation(3, 123);
+        let changed = disconnect_with(
+            candidate,
+            |_| Ok(Some(())),
+            |_, _| Some(state(456, None)),
+            |_| panic!("changed owner must not check liveness"),
+            |_| panic!("changed owner must not check membership"),
+            |_| panic!("changed owner must not be disconnected"),
+        );
+        assert!(matches!(changed, NbdOrphanDisconnect::Changed));
+
+        let cleared = disconnect_with(
+            candidate,
+            |_| Ok(Some(())),
+            |_, _| None,
+            |_| panic!("cleared owner must not check liveness"),
+            |_| panic!("cleared owner must not check membership"),
+            |_| panic!("cleared owner must not be disconnected"),
+        );
+        assert!(matches!(cleared, NbdOrphanDisconnect::Changed));
+    }
+
+    #[test]
+    fn disconnect_reports_changed_without_netlink_when_size_becomes_zero() {
+        let outcome = disconnect_with(
+            local_or_dead_candidate(3, 123, 8),
+            |_| Ok(Some(())),
+            |_, _| Some(state(123, Some(0))),
+            |_| panic!("zero size must be rejected before liveness"),
+            |_| panic!("zero size must be rejected before membership"),
+            |_| panic!("zero-size candidate must not be disconnected"),
+        );
+        assert!(matches!(outcome, NbdOrphanDisconnect::Changed));
+    }
+
+    #[test]
+    fn disconnect_reports_live_without_netlink_when_dead_owner_revives() {
+        let outcome = disconnect_with(
+            NbdOrphanCandidate::from_dead_owner_observation(3, 123),
+            |_| Ok(Some(())),
+            |_, _| Some(state(123, None)),
+            |_| true,
+            |_| panic!("dead-owner policy must not inspect current-process membership"),
+            |_| panic!("live owner must not be disconnected"),
+        );
+        assert!(matches!(outcome, NbdOrphanDisconnect::Live));
+    }
+
+    #[test]
     fn disconnect_holds_claim_through_netlink_and_returns_revalidated_state() {
         let dropped = Rc::new(Cell::new(false));
         let dropped_for_claim = dropped.clone();
