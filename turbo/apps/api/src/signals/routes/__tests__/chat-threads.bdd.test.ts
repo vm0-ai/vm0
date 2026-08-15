@@ -426,6 +426,7 @@ async function completeChatRunInThread(
   const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId);
   chatCallbacks.mockChatOutputEvents([]);
   await completeChatRunOk(run.runId, sandboxHeaders);
+  await flushWaitUntilForTest();
   await waitForThreadEvents(actor, run.threadId, (events) => {
     return events.some((event) => {
       return event.runId === run.runId && event.eventType === "run.completed";
@@ -1565,6 +1566,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(activeRun.runId, activeClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     await waitForThreadEvents(owner, activeRun.threadId, (events) => {
       return events.some((event) => {
         return (
@@ -1708,6 +1710,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(runningRun.runId, runningClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     await waitForThreadEvents(owner, runningRun.threadId, (events) => {
       return events.some((event) => {
         return (
@@ -1858,6 +1861,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(runningRun.runId, runningClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     await waitForThreadEvents(owner, runningRun.threadId, (events) => {
       return events.some((event) => {
         return (
