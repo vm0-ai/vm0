@@ -1,10 +1,10 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { listZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { resolveAgentContext } from "../connector/agent-context";
-import { findConnectorStatusItem } from "../connector/public-catalog";
+import { listZeroConnectorCatalogStatus } from "../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { resolveAgentContext } from "../zero/connector/agent-context";
+import { findConnectorStatusItem } from "../zero/connector/public-catalog";
 import { MAIL_CONNECTOR_SLUG_BY_PROVIDER, currentAgentId } from "./shared";
 
 export const listCommand = new Command()

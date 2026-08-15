@@ -2,13 +2,13 @@ import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import {
   authCodeMethod,
   catalogStatusItem,
   stubConnectorCatalogStatus,
-} from "../../__tests__/helpers/connector-catalog";
-import { zeroMailCommand } from "../index";
+} from "../../zero/__tests__/helpers/connector-catalog";
+import { mailCommand } from "../index";
 
 const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
 const THREAD_ID = "550e8400-e29b-41d4-a716-446655440001";
@@ -66,7 +66,7 @@ describe("okou mail", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
@@ -79,7 +79,7 @@ describe("okou mail", () => {
   it("lists agent-authorized mail accounts and returns a connect link", async () => {
     server.use(mailCatalog(), ...stubAgentContext(["gmail"]));
 
-    await zeroMailCommand.parseAsync(["node", "cli", "list"]);
+    await mailCommand.parseAsync(["node", "cli", "list"]);
 
     const listOutput = mockConsoleLog.mock.calls.flat().join("\n");
     expect(listOutput).toContain("gmail");
@@ -89,7 +89,7 @@ describe("okou mail", () => {
     expect(listOutput).toContain("connect");
 
     mockConsoleLog.mockClear();
-    await zeroMailCommand.parseAsync([
+    await mailCommand.parseAsync([
       "node",
       "cli",
       "connect",
@@ -112,7 +112,7 @@ describe("okou mail", () => {
         "http://localhost:3000/api/okou/mail/drafts/link",
         async ({ request }) => {
           expect(request.headers.get("authorization")).toBe(
-            "Bearer test-zero-token",
+            "Bearer test-token",
           );
           expect(await request.json()).toStrictEqual({
             threadId: THREAD_ID,
@@ -130,7 +130,7 @@ describe("okou mail", () => {
       ),
     );
 
-    await zeroMailCommand.parseAsync(["node", "cli", "link", "r-test-draft"]);
+    await mailCommand.parseAsync(["node", "cli", "link", "r-test-draft"]);
 
     expect(mockConsoleLog).toHaveBeenCalledOnce();
     expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -151,7 +151,7 @@ describe("okou mail", () => {
       }),
     );
 
-    await zeroMailCommand.parseAsync([
+    await mailCommand.parseAsync([
       "node",
       "cli",
       "link",
