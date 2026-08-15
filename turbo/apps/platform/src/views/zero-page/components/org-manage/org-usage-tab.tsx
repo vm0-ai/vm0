@@ -696,7 +696,7 @@ function CreditBreakdownBar({
                 <TooltipTrigger asChild>
                   <div
                     data-testid={`credit-balance-segment-${segmentKey(s)}`}
-                    className={`${splitLayout ? "h-2 rounded-[2px]" : "h-2.5 first:rounded-l-full last:rounded-r-full"} ${color} cursor-default ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
+                    className={`${splitLayout ? "h-2" : "h-2.5"} first:rounded-l-full last:rounded-r-full ${color} cursor-default ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
                     style={{
                       width: `${(s.credits / total) * 100}%`,
                     }}
