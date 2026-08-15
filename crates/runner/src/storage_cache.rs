@@ -33,7 +33,7 @@
 //! staged under [`GUEST_STAGE_DIR`]. `guest-download` supports that scheme and
 //! treats missing local archives as a broken staging contract.
 
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::fmt;
 use std::future::Future;
 use std::io;
@@ -43,12 +43,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
+use futures_util::FutureExt;
 use reqwest::Client;
 use sandbox::{Sandbox, WriteFileEntry};
 use tokio::fs;
 use tokio::io::AsyncReadExt as _;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
-use tokio::task::JoinSet;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
+use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -56,7 +57,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, short_digest, touch_mtime};
 use crate::storage_plan::{ArchiveHandle, StoragePlan};
-use crate::telemetry::{JobTelemetry, SandboxOpRecord};
+use crate::telemetry::{JobTelemetry, SandboxOpRecord, SandboxOpReporter};
 
 /// Archive sizes strictly larger than this are passthrough.
 const CACHE_MAX_SIZE: u64 = 8 * 1024 * 1024;
@@ -64,6 +65,10 @@ const BODY_BUFFER_FALLBACK_CAPACITY: usize = 64 * 1024;
 
 /// Parallel (probe GET / full GET / flock / vsock) operations per `populate_cache` call.
 const CONCURRENCY: usize = 4;
+/// Maximum number of cache-fill groups that may be active across the runner.
+const BACKGROUND_FILL_ACTIVE_LIMIT: usize = CONCURRENCY;
+/// Maximum number of unique cache-fill groups waiting for a worker across the runner.
+const BACKGROUND_FILL_QUEUE_CAPACITY: usize = 32;
 const FRESH_DELIVERY_SCAN_LIMIT: usize = 16;
 const FRESH_DELIVERY_PER_RUN_LIMIT: usize = 4;
 const FRESH_DELIVERY_RUNNER_LIMIT: usize = 8;
@@ -103,6 +108,13 @@ const STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED: &str =
 const STORAGE_CACHE_BACKGROUND_FILL_SKIPPED: &str = "storage_cache_background_fill_skipped";
 const STORAGE_CACHE_BACKGROUND_FILL_FAILED: &str = "storage_cache_background_fill_failed";
 const STORAGE_CACHE_BACKGROUND_FILL_FAILED_ERROR: &str = "background-fill-failed";
+const STORAGE_CACHE_BACKGROUND_FILL_DEDUPLICATED: &str =
+    "storage_cache_background_fill_deduplicated";
+const STORAGE_CACHE_BACKGROUND_FILL_QUEUE_SATURATED: &str =
+    "storage_cache_background_fill_queue_saturated";
+const STORAGE_CACHE_BACKGROUND_FILL_SHUTDOWN_CANCELLED: &str =
+    "storage_cache_background_fill_shutdown_cancelled";
+const STORAGE_CACHE_BACKGROUND_FILL_SHUTDOWN_ERROR: &str = "background-fill-shutdown";
 const STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY: &str =
     "storage_cache_background_fill_deferred_delay";
 const STORAGE_CACHE_FRESH_DELIVERY_ADMITTED: &str = "storage_cache_fresh_delivery_admitted";
@@ -174,6 +186,458 @@ impl FreshArchiveDeliveryAdmission {
     pub(crate) fn new() -> Self {
         Self {
             permits: Arc::new(Semaphore::new(FRESH_DELIVERY_RUNNER_LIMIT)),
+        }
+    }
+}
+
+/// Admission result for one deferred cache-fill group.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BackgroundFillAdmission {
+    Accepted,
+    Deduplicated,
+    QueueSaturated,
+    Closed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BackgroundFillEntryState {
+    Queued,
+    Active,
+}
+
+struct BackgroundFillEntry {
+    group: CacheTargetGroup,
+    home: HomePaths,
+    subscribers: Vec<SandboxOpReporter>,
+    state: BackgroundFillEntryState,
+}
+
+struct BackgroundFillAdmissionState {
+    entries: HashMap<(String, String), BackgroundFillEntry>,
+    queued: usize,
+    active: usize,
+    closed: bool,
+}
+
+enum BackgroundFillCommand {
+    Start((String, String)),
+    Shutdown(oneshot::Sender<()>),
+}
+
+struct BackgroundFillCoordinatorInner {
+    state: Mutex<BackgroundFillAdmissionState>,
+    commands: mpsc::Sender<BackgroundFillCommand>,
+    http: Client,
+    active_limit: usize,
+    queue_capacity: usize,
+    shutdown: CancellationToken,
+}
+
+struct BackgroundFillCoordinatorLifecycle {
+    inner: Arc<BackgroundFillCoordinatorInner>,
+    supervisor: Mutex<Option<JoinHandle<()>>>,
+}
+
+/// Runner-owned coordinator for deferred storage-cache warming.
+///
+/// All executor handles clone the same coordinator. The coordinator bounds
+/// active and queued work across jobs, deduplicates keys while work is queued
+/// or active, and owns the supervisor task until explicit runner shutdown.
+#[derive(Clone)]
+pub(crate) struct StorageCacheBackgroundFillCoordinator {
+    lifecycle: Arc<BackgroundFillCoordinatorLifecycle>,
+}
+
+struct BackgroundFillWork {
+    key: (String, String),
+    group: CacheTargetGroup,
+    home: HomePaths,
+}
+
+struct BackgroundFillWorkerResult {
+    key: (String, String),
+    report: BackgroundFillReport,
+}
+
+impl StorageCacheBackgroundFillCoordinator {
+    pub(crate) fn new() -> RunnerResult<Self> {
+        Self::new_with_limits(BACKGROUND_FILL_ACTIVE_LIMIT, BACKGROUND_FILL_QUEUE_CAPACITY)
+    }
+
+    fn new_with_limits(active_limit: usize, queue_capacity: usize) -> RunnerResult<Self> {
+        assert!(
+            active_limit > 0,
+            "background fill active limit must be positive"
+        );
+        assert!(
+            queue_capacity > 0,
+            "background fill queue capacity must be positive"
+        );
+        let http = Client::builder().build().map_err(|error| {
+            RunnerError::Internal(format!("build background fill http client: {error}"))
+        })?;
+        let (commands, receiver) = mpsc::channel(queue_capacity);
+        let inner = Arc::new(BackgroundFillCoordinatorInner {
+            state: Mutex::new(BackgroundFillAdmissionState {
+                entries: HashMap::new(),
+                queued: 0,
+                active: 0,
+                closed: false,
+            }),
+            commands,
+            http,
+            active_limit,
+            queue_capacity,
+            shutdown: CancellationToken::new(),
+        });
+        let lifecycle = Arc::new(BackgroundFillCoordinatorLifecycle {
+            inner: Arc::clone(&inner),
+            supervisor: Mutex::new(None),
+        });
+        let supervisor = tokio::spawn(run_background_fill_supervisor(inner, receiver));
+        *lifecycle
+            .supervisor
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(supervisor);
+        Ok(Self { lifecycle })
+    }
+
+    fn submit(
+        &self,
+        group: CacheTargetGroup,
+        home: HomePaths,
+        reporter: SandboxOpReporter,
+    ) -> BackgroundFillAdmission {
+        let Some(key) = group_key(&group) else {
+            warn!("storage_cache: refusing empty background fill group");
+            return BackgroundFillAdmission::Closed;
+        };
+        let inner = &self.lifecycle.inner;
+        let mut state = inner
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.closed {
+            return BackgroundFillAdmission::Closed;
+        }
+        if let Some(entry) = state.entries.get_mut(&key) {
+            entry.subscribers.push(reporter);
+            return BackgroundFillAdmission::Deduplicated;
+        }
+        if state.queued >= inner.queue_capacity {
+            return BackgroundFillAdmission::QueueSaturated;
+        }
+        state.entries.insert(
+            key.clone(),
+            BackgroundFillEntry {
+                group,
+                home,
+                subscribers: vec![reporter],
+                state: BackgroundFillEntryState::Queued,
+            },
+        );
+        state.queued += 1;
+        drop(state);
+
+        let command_closed = match inner
+            .commands
+            .try_send(BackgroundFillCommand::Start(key.clone()))
+        {
+            Ok(()) => return BackgroundFillAdmission::Accepted,
+            Err(mpsc::error::TrySendError::Full(_)) => false,
+            Err(mpsc::error::TrySendError::Closed(_)) => true,
+        };
+
+        let mut state = inner
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(entry) = state.entries.remove(&key)
+            && entry.state == BackgroundFillEntryState::Queued
+        {
+            state.queued = state.queued.saturating_sub(1);
+        }
+        if state.closed || command_closed {
+            BackgroundFillAdmission::Closed
+        } else {
+            BackgroundFillAdmission::QueueSaturated
+        }
+    }
+
+    pub(crate) async fn shutdown(&self) {
+        {
+            let mut state = self
+                .lifecycle
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if state.closed {
+                return;
+            }
+            state.closed = true;
+        }
+        let supervisor = self
+            .lifecycle
+            .supervisor
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        let Some(supervisor) = supervisor else {
+            return;
+        };
+
+        let (complete, completed) = oneshot::channel();
+        if self
+            .lifecycle
+            .inner
+            .commands
+            .send(BackgroundFillCommand::Shutdown(complete))
+            .await
+            .is_ok()
+        {
+            let _ = completed.await;
+        } else {
+            self.lifecycle.inner.shutdown.cancel();
+        }
+        if let Err(error) = supervisor.await {
+            warn!(%error, "storage_cache: background fill supervisor failed during shutdown");
+        }
+    }
+
+    #[cfg(test)]
+    fn is_closed_for_test(&self) -> bool {
+        self.lifecycle
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .closed
+    }
+}
+
+impl Drop for BackgroundFillCoordinatorLifecycle {
+    fn drop(&mut self) {
+        self.inner.shutdown.cancel();
+        if let Some(supervisor) = self
+            .supervisor
+            .get_mut()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+        {
+            supervisor.abort();
+        }
+    }
+}
+
+async fn run_background_fill_supervisor(
+    inner: Arc<BackgroundFillCoordinatorInner>,
+    mut receiver: mpsc::Receiver<BackgroundFillCommand>,
+) {
+    let mut pending = VecDeque::new();
+    let mut workers = JoinSet::new();
+    let mut reports = JoinSet::new();
+    let mut shutdown_complete: Option<oneshot::Sender<()>> = None;
+    let mut shutdown_requested = false;
+
+    loop {
+        while workers.len() < inner.active_limit {
+            let Some(key) = pending.pop_front() else {
+                break;
+            };
+            let Some(work) = take_background_fill_work(&inner, &key) else {
+                continue;
+            };
+            let worker_key = work.key.clone();
+            let http = inner.http.clone();
+            workers.spawn(async move {
+                match std::panic::AssertUnwindSafe(run_background_fill_work(work, http))
+                    .catch_unwind()
+                    .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        warn!(
+                            key = ?worker_key,
+                            "storage_cache: background fill worker panicked"
+                        );
+                        BackgroundFillWorkerResult {
+                            key: worker_key,
+                            report: BackgroundFillReport::failed(Duration::ZERO),
+                        }
+                    }
+                }
+            });
+        }
+
+        if shutdown_requested {
+            let cancelled = cancel_queued_background_fills(&inner);
+            spawn_background_fill_reports(
+                &mut reports,
+                cancelled,
+                BackgroundFillReport::shutdown_cancelled().into_records(),
+            );
+            while let Some(result) = workers.join_next().await {
+                handle_background_fill_worker_result(&inner, &mut reports, Some(result));
+            }
+            while let Some(result) = reports.join_next().await {
+                if let Err(error) = result {
+                    warn!(%error, "storage_cache: background fill telemetry task failed during shutdown");
+                }
+            }
+            inner.shutdown.cancel();
+            if let Some(complete) = shutdown_complete.take() {
+                let _ = complete.send(());
+            }
+            return;
+        }
+
+        tokio::select! {
+            biased;
+            command = receiver.recv() => {
+                match command {
+                    Some(BackgroundFillCommand::Start(key)) => pending.push_back(key),
+                    Some(BackgroundFillCommand::Shutdown(complete)) => {
+                        let mut state = inner
+                            .state
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        state.closed = true;
+                        shutdown_complete = Some(complete);
+                        shutdown_requested = true;
+                    }
+                    None => {
+                        let mut state = inner
+                            .state
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        state.closed = true;
+                        shutdown_requested = true;
+                    }
+                }
+            }
+            () = inner.shutdown.cancelled(), if !shutdown_requested => {
+                let mut state = inner
+                    .state
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.closed = true;
+                shutdown_requested = true;
+            }
+            result = workers.join_next(), if !workers.is_empty() => {
+                handle_background_fill_worker_result(&inner, &mut reports, result);
+            }
+        }
+    }
+}
+
+fn take_background_fill_work(
+    inner: &BackgroundFillCoordinatorInner,
+    key: &(String, String),
+) -> Option<BackgroundFillWork> {
+    let mut state = inner
+        .state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (group, home) = {
+        let entry = state.entries.get_mut(key)?;
+        if entry.state != BackgroundFillEntryState::Queued {
+            return None;
+        }
+        entry.state = BackgroundFillEntryState::Active;
+        (entry.group.clone(), entry.home.clone())
+    };
+    state.queued = state.queued.saturating_sub(1);
+    state.active += 1;
+    Some(BackgroundFillWork {
+        key: key.clone(),
+        group,
+        home,
+    })
+}
+
+fn cancel_queued_background_fills(
+    inner: &BackgroundFillCoordinatorInner,
+) -> Vec<Vec<SandboxOpReporter>> {
+    let mut state = inner
+        .state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let queued_keys = state
+        .entries
+        .iter()
+        .filter_map(|(key, entry)| {
+            (entry.state == BackgroundFillEntryState::Queued).then_some(key.clone())
+        })
+        .collect::<Vec<_>>();
+    let mut subscribers = Vec::with_capacity(queued_keys.len());
+    for key in queued_keys {
+        if let Some(entry) = state.entries.remove(&key) {
+            state.queued = state.queued.saturating_sub(1);
+            subscribers.push(entry.subscribers);
+        }
+    }
+    subscribers
+}
+
+async fn run_background_fill_work(
+    work: BackgroundFillWork,
+    http: Client,
+) -> BackgroundFillWorkerResult {
+    let started_at = Instant::now();
+    let report = match process_group_background_fill(&work.group, &http, &work.home).await {
+        Ok(outcome) => BackgroundFillReport::from_outcome(outcome, started_at.elapsed()),
+        Err(error) => {
+            warn!(%error, "storage_cache: background fill failed");
+            BackgroundFillReport::failed(started_at.elapsed())
+        }
+    };
+    BackgroundFillWorkerResult {
+        key: work.key,
+        report,
+    }
+}
+
+fn handle_background_fill_worker_result(
+    inner: &BackgroundFillCoordinatorInner,
+    reports: &mut JoinSet<()>,
+    result: Option<Result<BackgroundFillWorkerResult, tokio::task::JoinError>>,
+) {
+    let Some(result) = result else {
+        return;
+    };
+    let worker = match result {
+        Ok(worker) => worker,
+        Err(error) => {
+            warn!(%error, "storage_cache: background fill worker failed");
+            return;
+        }
+    };
+    let subscribers = {
+        let mut state = inner
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(entry) = state.entries.remove(&worker.key) else {
+            return;
+        };
+        state.active = state.active.saturating_sub(1);
+        entry.subscribers
+    };
+    spawn_background_fill_reports(reports, vec![subscribers], worker.report.into_records());
+}
+
+fn spawn_background_fill_reports(
+    reports: &mut JoinSet<()>,
+    subscribers: Vec<Vec<SandboxOpReporter>>,
+    records: Vec<SandboxOpRecord>,
+) {
+    for subscriber_group in subscribers {
+        for reporter in subscriber_group {
+            let records = records.clone();
+            reports.spawn(async move {
+                reporter.report(records).await;
+            });
         }
     }
 }
@@ -427,27 +891,55 @@ pub(crate) struct DeferredBackgroundFill {
 }
 
 impl DeferredBackgroundFill {
+    #[cfg(test)]
     async fn run(self) -> Vec<SandboxOpRecord> {
         run_background_fill_groups(self.groups, self.home).await
     }
 
-    pub(crate) fn start(self, telemetry: &mut JobTelemetry) {
+    pub(crate) fn start(
+        self,
+        coordinator: &StorageCacheBackgroundFillCoordinator,
+        telemetry: &mut JobTelemetry,
+    ) {
         telemetry.record(
             STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY,
             self.selected_at.elapsed(),
             true,
             None,
         );
-        telemetry.record(
-            background_fill_scheduled_count_action(self.groups.len()),
-            Duration::ZERO,
-            true,
-            None,
-        );
         let reporter = telemetry.reporter();
-        tokio::spawn(async move {
-            reporter.report(self.run().await).await;
-        });
+        let mut accepted = 0;
+        for group in self.groups {
+            match coordinator.submit(group, self.home.clone(), reporter.clone()) {
+                BackgroundFillAdmission::Accepted => accepted += 1,
+                BackgroundFillAdmission::Deduplicated => telemetry.record(
+                    STORAGE_CACHE_BACKGROUND_FILL_DEDUPLICATED,
+                    Duration::ZERO,
+                    true,
+                    None,
+                ),
+                BackgroundFillAdmission::QueueSaturated => telemetry.record(
+                    STORAGE_CACHE_BACKGROUND_FILL_QUEUE_SATURATED,
+                    Duration::ZERO,
+                    true,
+                    Some("queue-capacity"),
+                ),
+                BackgroundFillAdmission::Closed => telemetry.record(
+                    STORAGE_CACHE_BACKGROUND_FILL_SHUTDOWN_CANCELLED,
+                    Duration::ZERO,
+                    false,
+                    Some(STORAGE_CACHE_BACKGROUND_FILL_SHUTDOWN_ERROR),
+                ),
+            }
+        }
+        if accepted > 0 {
+            telemetry.record(
+                background_fill_scheduled_count_action(accepted),
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
     }
 }
 
@@ -616,6 +1108,18 @@ impl BackgroundFillReport {
                 duration,
                 false,
                 Some(STORAGE_CACHE_BACKGROUND_FILL_FAILED_ERROR),
+            ),
+            size_bucket: None,
+        }
+    }
+
+    fn shutdown_cancelled() -> Self {
+        Self {
+            outcome: SandboxOpRecord::new(
+                STORAGE_CACHE_BACKGROUND_FILL_SHUTDOWN_CANCELLED,
+                Duration::ZERO,
+                false,
+                Some(STORAGE_CACHE_BACKGROUND_FILL_SHUTDOWN_ERROR),
             ),
             size_bucket: None,
         }
@@ -1142,6 +1646,7 @@ fn should_background_fill(outcome: &TargetOutcome) -> bool {
     matches!(outcome, TargetOutcome::MissPassthrough { .. })
 }
 
+#[cfg(test)]
 async fn run_background_fill_groups(
     groups: Vec<CacheTargetGroup>,
     home: HomePaths,
@@ -1194,6 +1699,7 @@ async fn run_background_fill_groups(
     reports
 }
 
+#[cfg(test)]
 async fn join_next_background_fill(
     fills: &mut JoinSet<BackgroundFillReport>,
 ) -> Option<BackgroundFillReport> {
@@ -2745,7 +3251,10 @@ mod tests {
     use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
     use sandbox_mock::{MockLifecycleGate, MockSandbox};
     use std::collections::{HashMap, HashSet};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
     use tokio::io::AsyncWriteExt as _;
     use tokio::net::TcpListener;
 
@@ -3211,6 +3720,93 @@ mod tests {
         (format!("http://{addr}/archive.tar.gz"), handle)
     }
 
+    struct GatedArchiveServer {
+        url: String,
+        requests: tokio::sync::mpsc::Receiver<usize>,
+        release: Arc<Semaphore>,
+        max_active: Arc<AtomicUsize>,
+        task: tokio::task::JoinHandle<std::io::Result<()>>,
+    }
+
+    async fn gated_archive_server(body: Vec<u8>, connections: usize) -> GatedArchiveServer {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (request_tx, request_rx) = tokio::sync::mpsc::channel(connections);
+        let release = Arc::new(Semaphore::new(0));
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+        let task_release = Arc::clone(&release);
+        let task_active = Arc::clone(&active);
+        let task_max_active = Arc::clone(&max_active);
+        let task = tokio::spawn(async move {
+            let mut handlers = JoinSet::new();
+            for index in 0..connections {
+                let (mut socket, _) = listener.accept().await?;
+                let body = body.clone();
+                let request_tx = request_tx.clone();
+                let release = Arc::clone(&task_release);
+                let active = Arc::clone(&task_active);
+                let max_active = Arc::clone(&task_max_active);
+                handlers.spawn(async move {
+                    let _ = read_http_request(&mut socket).await;
+                    let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_active.fetch_max(current, Ordering::SeqCst);
+                    request_tx.send(index).await.map_err(|_| {
+                        io::Error::new(io::ErrorKind::BrokenPipe, "request receiver dropped")
+                    })?;
+                    let permit = release.acquire_owned().await.map_err(|_| {
+                        io::Error::new(io::ErrorKind::BrokenPipe, "release semaphore closed")
+                    })?;
+                    socket.write_all(&ok_response(&body)).await?;
+                    drop(permit);
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok::<(), io::Error>(())
+                });
+            }
+            while let Some(result) = handlers.join_next().await {
+                result.map_err(|error| io::Error::other(error.to_string()))??;
+            }
+            Ok(())
+        });
+        GatedArchiveServer {
+            url: format!("http://{addr}/archive.tar.gz"),
+            requests: request_rx,
+            release,
+            max_active,
+            task,
+        }
+    }
+
+    async fn telemetry_capture_server(
+        expected_requests: usize,
+    ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let mut requests = Vec::with_capacity(expected_requests);
+            for _ in 0..expected_requests {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                requests.push(read_http_request(&mut socket).await);
+                socket
+                    .write_all(
+                        concat!(
+                            "HTTP/1.1 200 OK\r\n",
+                            "content-length: 16\r\n",
+                            "content-type: application/json\r\n",
+                            "connection: close\r\n",
+                            "\r\n",
+                            r#"{"success":true}"#
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+            }
+            requests
+        });
+        (format!("http://{addr}"), task)
+    }
+
     async fn await_raw_http_sequence(handle: tokio::task::JoinHandle<std::io::Result<()>>) {
         tokio::time::timeout(Duration::from_secs(5), handle)
             .await
@@ -3291,6 +3887,24 @@ mod tests {
             format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
         response.extend_from_slice(body);
         response
+    }
+
+    fn background_fill_group(
+        url: String,
+        name: &str,
+        version: &str,
+        archive_size: Option<u64>,
+    ) -> CacheTargetGroup {
+        CacheTargetGroup {
+            targets: vec![CacheTarget {
+                handle: ArchiveHandle::storage(0),
+                name: name.to_string(),
+                version: version.to_string(),
+                archive_url: url,
+                archive_size,
+            }],
+            archive_size,
+        }
     }
 
     fn truncated_ok_response(body: &[u8]) -> Vec<u8> {
@@ -4519,7 +5133,8 @@ mod tests {
         assert_no_op(&ops, "storage_cache_background_fill_scheduled_count_1");
         assert_no_op(&ops, STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY);
 
-        deferred.start(&mut telemetry);
+        let coordinator = StorageCacheBackgroundFillCoordinator::new().unwrap();
+        deferred.start(&coordinator, &mut telemetry);
         tokio::time::timeout(Duration::from_secs(5), &mut request_rx)
             .await
             .expect("started background fill should contact archive server")
@@ -4538,6 +5153,7 @@ mod tests {
             true,
         );
         assert_op(&ops, STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY, true);
+        coordinator.shutdown().await;
     }
 
     #[tokio::test]
@@ -4621,10 +5237,11 @@ mod tests {
         let name = "background-report";
         let version = "v1";
         let mut plan = fresh_storage_plan(archive_url, name, version);
+        let coordinator = StorageCacheBackgroundFillCoordinator::new().unwrap();
 
         select_background_fill(&mut plan, &sandbox, &home, &mut telemetry)
             .await
-            .start(&mut telemetry);
+            .start(&coordinator, &mut telemetry);
 
         await_raw_http_sequence(archive_server).await;
         assert_eq!(wait_cached_archive(&home, name, version).await, body);
@@ -4639,6 +5256,242 @@ mod tests {
         assert!(!request.contains(name));
         assert!(!request.contains(version));
         assert!(!request.contains("archive.tar.gz"));
+        coordinator.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn background_fill_coordinator_bounds_distinct_keys_globally() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let body = b"background-fill-body".to_vec();
+        let mut server = gated_archive_server(body.clone(), 3).await;
+        let coordinator = StorageCacheBackgroundFillCoordinator::new_with_limits(2, 4).unwrap();
+        let reporter = new_telemetry().reporter();
+
+        for (name, version) in [("global-a", "v1"), ("global-b", "v1"), ("global-c", "v1")] {
+            assert_eq!(
+                coordinator.submit(
+                    background_fill_group(
+                        server.url.clone(),
+                        name,
+                        version,
+                        Some(body.len() as u64),
+                    ),
+                    home.clone(),
+                    reporter.clone(),
+                ),
+                BackgroundFillAdmission::Accepted
+            );
+        }
+
+        for _ in 0..2 {
+            tokio::time::timeout(Duration::from_secs(5), server.requests.recv())
+                .await
+                .expect("two admitted workers should reach the archive server")
+                .expect("archive request channel should remain open");
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), server.requests.recv())
+                .await
+                .is_err(),
+            "the queued third key must not start before an active worker completes"
+        );
+        assert_eq!(server.max_active.load(Ordering::SeqCst), 2);
+
+        server.release.add_permits(3);
+        tokio::time::timeout(Duration::from_secs(5), server.task)
+            .await
+            .expect("archive server should finish after all workers are released")
+            .expect("archive server task should not panic")
+            .expect("archive server should not fail");
+        coordinator.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn background_fill_coordinator_deduplicates_same_key_and_reports_subscribers() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let body = tarball_bytes();
+        let (archive_url, archive_server) = raw_http_sequence_url(vec![ok_response(&body)]).await;
+        let (telemetry_url, telemetry_server) = telemetry_capture_server(2).await;
+        let coordinator = StorageCacheBackgroundFillCoordinator::new_with_limits(1, 4).unwrap();
+        let first_reporter = new_telemetry_for_api_url(&telemetry_url).reporter();
+        let second_reporter = new_telemetry_for_api_url(&telemetry_url).reporter();
+        let group =
+            background_fill_group(archive_url, "deduplicated", "v1", Some(body.len() as u64));
+
+        assert_eq!(
+            coordinator.submit(group.clone(), home.clone(), first_reporter),
+            BackgroundFillAdmission::Accepted
+        );
+        assert_eq!(
+            coordinator.submit(group, home.clone(), second_reporter),
+            BackgroundFillAdmission::Deduplicated
+        );
+
+        await_raw_http_sequence(archive_server).await;
+        assert_eq!(wait_cached_archive(&home, "deduplicated", "v1").await, body);
+        coordinator.shutdown().await;
+
+        let reports = tokio::time::timeout(Duration::from_secs(5), telemetry_server)
+            .await
+            .expect("both deduplicated subscribers should receive terminal telemetry")
+            .expect("telemetry server task should not panic");
+        assert_eq!(reports.len(), 2);
+        assert!(reports.iter().all(|request| {
+            request.contains(r#""action_type":"storage_cache_background_fill_filled""#)
+        }));
+    }
+
+    #[tokio::test]
+    async fn background_fill_coordinator_saturates_queue_without_starting_excess_work() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let body = b"queue-body".to_vec();
+        let mut server = gated_archive_server(body.clone(), 3).await;
+        let coordinator = StorageCacheBackgroundFillCoordinator::new_with_limits(1, 1).unwrap();
+        let first_reporter = new_telemetry().reporter();
+        let first_group = background_fill_group(
+            server.url.clone(),
+            "queue-active",
+            "v1",
+            Some(body.len() as u64),
+        );
+        assert_eq!(
+            coordinator.submit(first_group, home.clone(), first_reporter),
+            BackgroundFillAdmission::Accepted
+        );
+        tokio::time::timeout(Duration::from_secs(5), server.requests.recv())
+            .await
+            .expect("the active queue test worker should reach the archive server")
+            .expect("archive request channel should remain open");
+
+        let mut telemetry = new_telemetry();
+        DeferredBackgroundFill {
+            groups: vec![
+                background_fill_group(
+                    server.url.clone(),
+                    "queue-waiting",
+                    "v1",
+                    Some(body.len() as u64),
+                ),
+                background_fill_group(
+                    server.url.clone(),
+                    "queue-rejected",
+                    "v1",
+                    Some(body.len() as u64),
+                ),
+            ],
+            home: home.clone(),
+            selected_at: Instant::now(),
+        }
+        .start(&coordinator, &mut telemetry);
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, STORAGE_CACHE_BACKGROUND_FILL_QUEUE_SATURATED, true);
+        assert_op(
+            &ops,
+            "storage_cache_background_fill_scheduled_count_1",
+            true,
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), server.requests.recv())
+                .await
+                .is_err(),
+            "a saturated queue must not start a third key"
+        );
+
+        server.release.add_permits(1);
+        tokio::time::timeout(Duration::from_secs(5), server.requests.recv())
+            .await
+            .expect("the admitted queued key should start after the active key completes")
+            .expect("archive request channel should remain open");
+        server.release.add_permits(1);
+        assert_eq!(
+            wait_cached_archive(&home, "queue-waiting", "v1").await,
+            body
+        );
+        server.task.abort();
+        let _ = server.task.await;
+        assert!(!home.storage_cache_dir("queue-rejected", "v1").exists());
+        coordinator.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn background_fill_coordinator_cancels_queued_work_during_shutdown() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let body = tarball_bytes();
+        let mut server = gated_archive_server(body.clone(), 1).await;
+        let (telemetry_url, telemetry_server) = telemetry_capture_server(2).await;
+        let coordinator = StorageCacheBackgroundFillCoordinator::new_with_limits(1, 1).unwrap();
+        let reporter = new_telemetry_for_api_url(&telemetry_url).reporter();
+
+        assert_eq!(
+            coordinator.submit(
+                background_fill_group(
+                    server.url.clone(),
+                    "shutdown-active",
+                    "v1",
+                    Some(body.len() as u64),
+                ),
+                home.clone(),
+                reporter.clone(),
+            ),
+            BackgroundFillAdmission::Accepted
+        );
+        tokio::time::timeout(Duration::from_secs(5), server.requests.recv())
+            .await
+            .expect("active shutdown worker should reach the archive server")
+            .expect("archive request channel should remain open");
+        assert_eq!(
+            coordinator.submit(
+                background_fill_group(
+                    server.url.clone(),
+                    "shutdown-queued",
+                    "v1",
+                    Some(body.len() as u64),
+                ),
+                home.clone(),
+                reporter,
+            ),
+            BackgroundFillAdmission::Accepted
+        );
+
+        let shutdown_coordinator = coordinator.clone();
+        let shutdown_task = tokio::spawn(async move {
+            shutdown_coordinator.shutdown().await;
+        });
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !coordinator.is_closed_for_test() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown should close admissions before draining workers");
+        server.release.add_permits(1);
+        shutdown_task.await.expect("shutdown task should not panic");
+        tokio::time::timeout(Duration::from_secs(5), server.task)
+            .await
+            .expect("active archive server should finish during shutdown")
+            .expect("archive server task should not panic")
+            .expect("archive server should not fail");
+        assert_eq!(
+            wait_cached_archive(&home, "shutdown-active", "v1").await,
+            body
+        );
+        assert!(!home.storage_cache_dir("shutdown-queued", "v1").exists());
+
+        let reports = tokio::time::timeout(Duration::from_secs(5), telemetry_server)
+            .await
+            .expect("active and queued shutdown outcomes should be reported")
+            .expect("telemetry server task should not panic");
+        assert!(reports.iter().any(|request| {
+            request.contains(r#""action_type":"storage_cache_background_fill_filled""#)
+        }));
+        assert!(reports.iter().any(|request| {
+            request.contains(r#""action_type":"storage_cache_background_fill_shutdown_cancelled""#)
+        }));
     }
 
     #[test]
