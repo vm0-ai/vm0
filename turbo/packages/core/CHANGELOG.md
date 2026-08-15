@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.562.2](https://github.com/vm0-ai/vm0/compare/core-v8.562.1...core-v8.562.2) (2026-08-15)
+
+
+### Bug Fixes
+
+* assign a preset avatar to agents created without one ([#24922](https://github.com/vm0-ai/vm0/issues/24922)) ([2d35842](https://github.com/vm0-ai/vm0/commit/2d35842bcde8818dc5fadf7248067f11aec339b1))
+
+
+### Refactoring
+
+* remove composer connector permissions feature switch ([#27357](https://github.com/vm0-ai/vm0/issues/27357)) ([c5a74f0](https://github.com/vm0-ai/vm0/commit/c5a74f01738e3a6340c96022107780c2b1fe474d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.5
+
 ## [8.562.1](https://github.com/vm0-ai/vm0/compare/core-v8.562.0...core-v8.562.1) (2026-08-15)
 
 
