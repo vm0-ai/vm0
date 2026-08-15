@@ -6,6 +6,7 @@ import {
   zeroAgentsByIdContract,
   type ZeroAgentResponse,
 } from "@okouai/api-contracts/contracts/zero-agents";
+import { AVATAR_PRESET_COUNT } from "@okouai/core/agent-avatar";
 
 import {
   click,
@@ -53,14 +54,14 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
-function prepareAgentProfile(): void {
+function prepareAgentProfile(avatarUrl = "preset:0"): void {
   let detail: ZeroAgentResponse = {
     agentId: AGENT_ID,
     ownerId: "test-user-123",
     description: "A helpful agent",
     displayName: "Research Agent",
     sound: "professional",
-    avatarUrl: "preset:0",
+    avatarUrl,
     visibility: "public",
     modelProviderId: null,
     selectedModel: null,
@@ -171,6 +172,24 @@ function prepareMatchingAgentProfiles(): void {
 }
 
 describe("zero settings tab", () => {
+  it("renders the highest preset the API can assign", async () => {
+    prepareAgentProfile(`preset:${AVATAR_PRESET_COUNT - 1}`);
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+    await findAgentNameInput();
+    const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+    const avatarRow = avatarLabel.parentElement?.parentElement;
+    if (!avatarRow) {
+      throw new Error("Avatar profile row not found");
+    }
+
+    expect(renderedAvatarSvgLayerSrcs(avatarRow)).toStrictEqual([
+      expect.stringContaining("/head-r5-s4.svg"),
+      expect.stringContaining("/face-r5-f5-m.svg"),
+      expect.stringContaining("/hair-r5-h2-c2.svg"),
+    ]);
+  });
+
   it("loads only the visible avatar SVG layers", async () => {
     prepareAgentProfile();
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
