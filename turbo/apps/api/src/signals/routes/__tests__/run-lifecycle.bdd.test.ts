@@ -5470,10 +5470,16 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(third.status).toBe("queued");
+    const fourth = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run four",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(fourth.status).toBe("queued");
 
     const queued = await api.readRunQueue(actor);
     expect(queued.body.concurrency.active).toBe(2);
-    expect(queued.body.queue).toHaveLength(1);
+    expect(queued.body.queue).toHaveLength(2);
     expect(queued.body.queue[0]?.runId).toBe(third.runId);
 
     const promotedAt = now() + 5000;
@@ -5482,8 +5488,16 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
 
     const promoted = await waitForRunStatus(api, actor, third.runId, "pending");
     expect(promoted.status).toBe("pending");
-    const drained = await waitForRunQueueLength(api, actor, 0);
-    expect(drained.body.queue).toHaveLength(0);
+    expect(
+      sandboxOperationEventsForRunByAction(third.runId, "dequeue_zero_run"),
+    ).toStrictEqual([
+      expect.objectContaining({
+        success: true,
+        queue_depth_at_dequeue_bucket: "1",
+      }),
+    ]);
+    const drained = await waitForRunQueueLength(api, actor, 1);
+    expect(drained.body.queue).toHaveLength(1);
     const promotedStorageState = await readRunnerJobStorageState(
       context,
       third.runId,
@@ -5505,6 +5519,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.heartbeatRunner(runnerGroup);
     const thirdClaim = await api.claimRunnerJob(third.runId);
     expect(thirdClaim.prompt).toBe("queued run three");
+    expect(thirdClaim.queueEnqueuedAt).toStrictEqual(expect.any(Number));
     const okouToken = thirdClaim.environment?.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the promoted claim to expose the Okou token");
@@ -5608,7 +5623,23 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(kms.decryptCalls).toBe(decryptCountBeforeClaim);
 
     await api.requestCancelRun(actor, second.runId, [200]);
+    const fourthPromoted = await waitForRunStatus(
+      api,
+      actor,
+      fourth.runId,
+      "pending",
+    );
+    expect(fourthPromoted.status).toBe("pending");
+    expect(
+      sandboxOperationEventsForRunByAction(fourth.runId, "dequeue_zero_run"),
+    ).toStrictEqual([
+      expect.objectContaining({
+        success: true,
+        queue_depth_at_dequeue_bucket: "0",
+      }),
+    ]);
     await api.requestCancelRun(actor, third.runId, [200]);
+    await api.requestCancelRun(actor, fourth.runId, [200]);
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
   });
@@ -5719,6 +5750,17 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
 
     await api.requestCancelRun(actor, queued.runId, [200]);
+    expect(
+      sandboxOperationEventsForRunByAction(
+        queued.runId,
+        "organization_queue_terminal",
+      ),
+    ).toStrictEqual([
+      expect.objectContaining({
+        success: false,
+        outcome: "cancelled",
+      }),
+    ]);
     await api.requestCancelRun(actor, first.runId, [200]);
     await api.requestCancelRun(actor, second.runId, [200]);
   });
@@ -8088,6 +8130,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(failedMissingRun.error).toBe(
       "Runner job missing valid execution context",
     );
+    expect(
+      sandboxOperationEventsForRunByAction(
+        missingRun.runId,
+        "organization_queue_terminal",
+      ),
+    ).toHaveLength(0);
     const invalidRun = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "materialize invalid masking metadata",

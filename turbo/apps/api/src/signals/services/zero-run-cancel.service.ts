@@ -14,7 +14,7 @@ import {
 import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
 import { now } from "../../lib/time";
-import { tapError } from "../utils";
+import { safeSync, tapError } from "../utils";
 import {
   chatCallbackIdForRun,
   dispatchFailedRunCallbacks,
@@ -23,6 +23,7 @@ import {
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
+import { recordOrganizationQueueTerminal } from "./organization-queue-telemetry.service";
 
 const L = logger("ZeroRunCancel");
 
@@ -38,6 +39,7 @@ export interface CancelRunResult {
   readonly cancellationRecoveryCompleted: boolean | null;
   readonly runnerCancellationMode: RunnerCancellationMode;
   readonly alreadyCancelled: boolean;
+  readonly queueEnqueuedAt: Date | null;
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -48,6 +50,35 @@ type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
 
 function isActiveStatus(status: string): status is ActiveStatus {
   return (ACTIVE_STATUSES as readonly string[]).includes(status);
+}
+
+function recordCancelledQueueTelemetry(result: CancelRunResult): void {
+  if (result.alreadyCancelled || result.previousStatus !== "queued") {
+    return;
+  }
+
+  const queueEnqueuedAt = result.queueEnqueuedAt?.getTime();
+  const timestamp = new Date(result.apiStartTime).toISOString();
+  const telemetryResult = safeSync(() => {
+    recordOrganizationQueueTerminal({
+      runId: result.runId,
+      outcome:
+        queueEnqueuedAt === undefined
+          ? "missing_enqueue_boundary"
+          : "cancelled",
+      durationMs:
+        queueEnqueuedAt === undefined
+          ? undefined
+          : Math.max(0, result.apiStartTime - queueEnqueuedAt),
+      timestamp,
+    });
+  });
+  if ("error" in telemetryResult) {
+    L.warn("Failed to record cancelled organization queue telemetry", {
+      runId: result.runId,
+      error: telemetryResult.error,
+    });
+  }
 }
 
 /**
@@ -118,6 +149,7 @@ export const cancelRun$ = command(
           cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
           runnerCancellationMode: args.runnerCancellationMode,
           alreadyCancelled: true,
+          queueEnqueuedAt: null,
         };
       }
 
@@ -126,6 +158,15 @@ export const cancelRun$ = command(
           `Run cannot be cancelled: current status is '${run.status}'`,
         );
       }
+
+      const [queueRow] =
+        run.status === "queued"
+          ? await tx
+              .select({ createdAt: agentRunQueue.createdAt })
+              .from(agentRunQueue)
+              .where(eq(agentRunQueue.runId, args.runId))
+              .limit(1)
+          : [];
 
       const [updated] = await tx
         .update(agentRuns)
@@ -158,9 +199,13 @@ export const cancelRun$ = command(
         cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
         runnerCancellationMode: args.runnerCancellationMode,
         alreadyCancelled: false,
+        queueEnqueuedAt: queueRow?.createdAt ?? null,
       };
     });
     signal.throwIfAborted();
+    if ("previousStatus" in result) {
+      recordCancelledQueueTelemetry(result);
+    }
 
     return result;
   },

@@ -12,7 +12,8 @@ use sandbox::{
 use sandbox_mock::MockSandboxFactory;
 
 use super::super::telemetry::{
-    RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_to_spawn, record_reuse_result,
+    RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_to_spawn,
+    record_queue_terminal_if_unspawned, record_queue_to_spawn, record_reuse_result,
 };
 use super::super::{
     ExactReuseSpeculationTiming, ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnOperationTiming,
@@ -88,6 +89,63 @@ fn api_to_spawn_records_the_effective_startup_path_and_exact_reuse_result() {
         assert_eq!(operation.runner_startup_path, Some(expected_path));
         assert_eq!(operation.sandbox_reuse_result, Some(reuse_result));
     }
+}
+
+#[test]
+fn queue_to_spawn_records_once_at_the_real_spawn_boundary() {
+    let mut context = minimal_context();
+    context.queue_enqueued_at =
+        Some(chrono::Utc::now().timestamp_millis().saturating_sub(1_250) as u64);
+    let mut telemetry = new_telemetry();
+
+    record_queue_to_spawn(
+        &context,
+        &mut telemetry,
+        SandboxReuseResult::PoolMiss,
+        WorkspaceReuseResult::CacheMiss,
+    );
+    record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+
+    let operations = telemetry.pending_ops_with_duration_snapshot();
+    assert_eq!(operations.len(), 1);
+    assert_eq!(operations[0].0, "queue_to_spawn");
+    assert!(operations[0].1 >= 1_000);
+    assert!(operations[0].2);
+}
+
+#[test]
+fn queue_terminal_records_when_spawn_never_happens() {
+    let mut context = minimal_context();
+    context.queue_enqueued_at = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+    let mut telemetry = new_telemetry();
+
+    record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+
+    let operations = telemetry.pending_ops_with_duration_snapshot();
+    assert_eq!(
+        operations,
+        vec![("queue_to_spawn".to_string(), 0, false, None)]
+    );
+}
+
+#[test]
+fn invalid_queue_timestamp_is_missing_without_fabricating_terminal_failure() {
+    let mut context = minimal_context();
+    context.queue_enqueued_at = Some(1_700_000_000);
+    let mut telemetry = new_telemetry();
+
+    record_queue_to_spawn(
+        &context,
+        &mut telemetry,
+        SandboxReuseResult::PoolMiss,
+        WorkspaceReuseResult::CacheMiss,
+    );
+    record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+
+    assert_eq!(
+        telemetry.pending_ops_with_duration_snapshot(),
+        vec![("queue_to_spawn".to_string(), 0, false, None)]
+    );
 }
 
 // -----------------------------------------------------------------------

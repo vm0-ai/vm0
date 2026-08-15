@@ -112,6 +112,10 @@ pub struct ExecutionContext {
     pub real_agent_in_preview: Option<bool>,
     #[serde(default)]
     pub api_start_time: Option<u64>,
+    // Organization queue insertion timestamp used for end-to-end queue latency
+    // telemetry. It is optional for direct launches and older API payloads.
+    #[serde(default)]
+    pub queue_enqueued_at: Option<u64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
     #[serde(default)]
@@ -1827,6 +1831,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "pi",
+            "queueEnqueuedAt": 1700000000000u64,
             "piSessionId": "22222222-2222-4222-8222-222222222222",
             "piLaunchConfig": {
                 "schemaVersion": 2
@@ -1860,6 +1865,7 @@ mod tests {
                 .map(|config| config.model.as_str()),
             Some("deepseek-v4-flash")
         );
+        assert_eq!(context.queue_enqueued_at, Some(1_700_000_000_000));
     }
 
     #[test]

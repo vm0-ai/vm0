@@ -24,7 +24,11 @@ import { logger } from "../../lib/log";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
-import { recordSandboxOperation } from "../external/sandbox-op-log";
+import {
+  recordOrganizationQueueDequeued,
+  recordOrganizationQueueFailure,
+  recordOrganizationQueueTerminal,
+} from "./organization-queue-telemetry.service";
 import {
   revokeQueuedRunAssistantMarkers,
   type QueueMarkerRevokeNotification,
@@ -34,7 +38,7 @@ import {
   loadOrgConcurrencyState,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
-import { tapError } from "../utils";
+import { safeSync, settle, tapError } from "../utils";
 import type { Tx } from "../../lib/db-types";
 import {
   activatePendingRun$,
@@ -84,6 +88,8 @@ interface PromotedRunnerJob {
   readonly createdAt: Date;
   readonly apiStartedAt: number;
   readonly profile: string;
+  readonly queueWaitMs: number;
+  readonly remainingQueueDepth: number;
 }
 
 type PreparedPendingRunActivation = Omit<PendingRunActivation, "timing">;
@@ -97,6 +103,8 @@ interface PromotedQueuedCandidateTransactionResult {
   readonly status: "promoted";
   readonly pendingActivation: PreparedPendingRunActivation;
   readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+  readonly queueWaitMs: number;
+  readonly remainingQueueDepth: number;
 }
 
 type PromotionResult =
@@ -108,6 +116,8 @@ type PromoteQueuedCandidateResult =
       readonly status: "promoted";
       readonly pendingActivation: PreparedPendingRunActivation;
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+      readonly queueWaitMs: number;
+      readonly remainingQueueDepth: number;
       readonly transactionReturnedAt: number;
     }
   | PromoteQueuedCandidateNonPromotedResult;
@@ -124,6 +134,7 @@ interface TimedOutQueuedRunRow {
   readonly runId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly queueEnqueuedAt: Date | null;
 }
 
 export interface QueuedRunMaintenanceTimeout {
@@ -131,6 +142,7 @@ export interface QueuedRunMaintenanceTimeout {
   readonly orgId: string;
   readonly userId: string;
   readonly error: string;
+  readonly queueEnqueuedAt: Date | null;
   readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
 }
 
@@ -158,6 +170,52 @@ async function timedOutQueuedRunsWithMarkerNotifications(
   return timedOutRuns;
 }
 
+function recordQueueTelemetrySafely(
+  runId: string,
+  operation: () => void,
+): void {
+  const result = safeSync(operation);
+  if ("error" in result) {
+    L.warn("Failed to record organization queue telemetry", {
+      runId,
+      error: result.error,
+    });
+  }
+}
+
+function recordQueuedTerminalTelemetry(
+  run: Pick<QueuedRunMaintenanceTimeout, "runId" | "queueEnqueuedAt">,
+  outcome: "expired" | "missing_enqueue_boundary",
+  terminalAt: Date,
+): void {
+  const queueEnqueuedAt = run.queueEnqueuedAt?.getTime();
+  recordQueueTelemetrySafely(run.runId, () => {
+    recordOrganizationQueueTerminal({
+      runId: run.runId,
+      outcome,
+      durationMs:
+        queueEnqueuedAt === undefined
+          ? undefined
+          : Math.max(0, terminalAt.getTime() - queueEnqueuedAt),
+      timestamp: terminalAt.toISOString(),
+    });
+  });
+}
+
+function recordQueuePromotionFailureTelemetry(
+  row: Pick<QueueCandidate, "runId" | "createdAt">,
+): void {
+  const failedAt = now();
+  recordQueueTelemetrySafely(row.runId, () => {
+    recordOrganizationQueueFailure({
+      runId: row.runId,
+      outcome: "promotion_failed",
+      durationMs: Math.max(0, failedAt - row.createdAt.getTime()),
+      timestamp: new Date(failedAt).toISOString(),
+    });
+  });
+}
+
 async function insertPromotedRunnerJob(
   tx: DbTransaction,
   args: {
@@ -173,16 +231,10 @@ async function insertPromotedRunnerJob(
     .from(agentRunQueue)
     .where(eq(agentRunQueue.orgId, args.orgId));
 
-  recordSandboxOperation({
-    sandboxType: "runner",
-    actionType: "dequeue_zero_run",
-    durationMs: Math.max(0, promotedAt - args.queuedAt.getTime()),
-    success: true,
-    runId: args.runId,
-    dimensions: {
-      queue_depth_at_dequeue: Number(remainingRow?.depth ?? 0),
-    },
-  });
+  const queueWaitMs = Math.max(0, promotedAt - args.queuedAt.getTime());
+  // The promoted row was removed before this count, so the query already
+  // represents the remaining organization queue depth.
+  const remainingQueueDepth = Math.max(0, Number(remainingRow?.depth ?? 0));
 
   await writeRunMetadataInTransaction(tx, {
     patch: { apiStartedAt: new Date(promotedAt) },
@@ -202,6 +254,7 @@ async function insertPromotedRunnerJob(
       executionContext: {
         ...args.payload.executionContext,
         apiStartTime: promotedAt,
+        queueEnqueuedAt: args.queuedAt.getTime(),
       },
       ...timestamps,
     })
@@ -213,6 +266,8 @@ async function insertPromotedRunnerJob(
     createdAt: runnerJob.createdAt,
     apiStartedAt: promotedAt,
     profile,
+    queueWaitMs,
+    remainingQueueDepth,
   };
 }
 
@@ -244,6 +299,112 @@ async function loadDrainCandidates(
   });
 }
 
+async function promoteQueuedCandidateInTransaction(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly row: QueueCandidate;
+    readonly payload: QueuedRunnerJobPayload | null;
+  },
+): Promise<PromotionResult> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`);
+
+  const concurrency = await effectiveOrgConcurrencyState(tx, args.orgId);
+  if (concurrency.activeRunCount >= concurrency.limit) {
+    return { status: "full" };
+  }
+
+  const [lockedRun] = await tx
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, args.row.runId))
+    .for("update");
+  if (!lockedRun) {
+    await tx
+      .delete(agentRunQueue)
+      .where(eq(agentRunQueue.runId, args.row.runId));
+    return { status: "removed-stale" };
+  }
+  if (lockedRun.status !== "queued") {
+    await tx
+      .delete(agentRunQueue)
+      .where(eq(agentRunQueue.runId, args.row.runId));
+    return { status: "removed-stale" };
+  }
+  if (args.row.runStatus !== "queued") {
+    return { status: "lost" };
+  }
+
+  const [queueRow] = await tx
+    .select({ runId: agentRunQueue.runId })
+    .from(agentRunQueue)
+    .where(
+      and(
+        eq(agentRunQueue.runId, args.row.runId),
+        eq(agentRunQueue.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  if (!queueRow) {
+    return { status: "lost" };
+  }
+
+  if (args.payload === null) {
+    throw new Error(
+      `Queued run "${args.row.runId}" is missing its runner job payload`,
+    );
+  }
+  const payload = args.payload;
+  const runValues = {
+    status: "pending",
+    lastHeartbeatAt: nowDate(),
+    runnerGroup: payload.runnerGroup,
+  };
+  const [updated] = await tx
+    .update(agentRuns)
+    .set(runValues)
+    .where(
+      and(eq(agentRuns.id, args.row.runId), eq(agentRuns.status, "queued")),
+    )
+    .returning({ id: agentRuns.id });
+  if (!updated) {
+    return { status: "lost" };
+  }
+
+  await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.row.runId));
+
+  const queueMarkerNotification = await revokeQueuedRunAssistantMarkers(tx, {
+    runId: args.row.runId,
+    userId: args.row.userId,
+  });
+
+  const runnerJob = await insertPromotedRunnerJob(tx, {
+    orgId: args.orgId,
+    runId: args.row.runId,
+    queuedAt: args.row.createdAt,
+    payload,
+  });
+  return {
+    status: "promoted",
+    queueMarkerNotification,
+    pendingActivation: {
+      apiStartTime: runnerJob.apiStartedAt,
+      chatThreadId: args.row.chatThreadId ?? undefined,
+      runnerNotification: {
+        runId: args.row.runId,
+        runnerGroup: payload.runnerGroup,
+        profile: runnerJob.profile,
+        reuseKey: payload.reuseKey,
+        cliAgentSessionId: payload.cliAgentSessionId,
+        historyGenerationRunId: payload.historyGenerationRunId,
+        createdAt: runnerJob.createdAt,
+      },
+    },
+    queueWaitMs: runnerJob.queueWaitMs,
+    remainingQueueDepth: runnerJob.remainingQueueDepth,
+  };
+}
+
 async function promoteQueuedCandidate(
   db: Db,
   args: {
@@ -252,110 +413,28 @@ async function promoteQueuedCandidate(
     readonly payload: QueuedRunnerJobPayload | null;
   },
 ): Promise<PromoteQueuedCandidateResult> {
-  const result = await db.transaction(async (tx): Promise<PromotionResult> => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
-    );
-
-    const concurrency = await effectiveOrgConcurrencyState(tx, args.orgId);
-    if (concurrency.activeRunCount >= concurrency.limit) {
-      return { status: "full" };
-    }
-
-    const [lockedRun] = await tx
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, args.row.runId))
-      .for("update");
-    if (!lockedRun) {
-      await tx
-        .delete(agentRunQueue)
-        .where(eq(agentRunQueue.runId, args.row.runId));
-      return { status: "removed-stale" };
-    }
-    if (lockedRun.status !== "queued") {
-      await tx
-        .delete(agentRunQueue)
-        .where(eq(agentRunQueue.runId, args.row.runId));
-      return { status: "removed-stale" };
-    }
-    if (args.row.runStatus !== "queued") {
-      return { status: "lost" };
-    }
-
-    const [queueRow] = await tx
-      .select({ runId: agentRunQueue.runId })
-      .from(agentRunQueue)
-      .where(
-        and(
-          eq(agentRunQueue.runId, args.row.runId),
-          eq(agentRunQueue.orgId, args.orgId),
-        ),
-      )
-      .limit(1);
-    if (!queueRow) {
-      return { status: "lost" };
-    }
-
-    if (args.payload === null) {
-      throw new Error(
-        `Queued run "${args.row.runId}" is missing its runner job payload`,
-      );
-    }
-    const payload = args.payload;
-    const runValues = {
-      status: "pending",
-      lastHeartbeatAt: nowDate(),
-      runnerGroup: payload.runnerGroup,
-    };
-    const [updated] = await tx
-      .update(agentRuns)
-      .set(runValues)
-      .where(
-        and(eq(agentRuns.id, args.row.runId), eq(agentRuns.status, "queued")),
-      )
-      .returning({ id: agentRuns.id });
-    if (!updated) {
-      return { status: "lost" };
-    }
-
-    await tx
-      .delete(agentRunQueue)
-      .where(eq(agentRunQueue.runId, args.row.runId));
-
-    const queueMarkerNotification = await revokeQueuedRunAssistantMarkers(tx, {
-      runId: args.row.runId,
-      userId: args.row.userId,
-    });
-
-    const runnerJob = await insertPromotedRunnerJob(tx, {
-      orgId: args.orgId,
-      runId: args.row.runId,
-      queuedAt: args.row.createdAt,
-      payload,
-    });
-    return {
-      status: "promoted",
-      queueMarkerNotification,
-      pendingActivation: {
-        apiStartTime: runnerJob.apiStartedAt,
-        chatThreadId: args.row.chatThreadId ?? undefined,
-        runnerNotification: {
-          runId: args.row.runId,
-          runnerGroup: payload.runnerGroup,
-          profile: runnerJob.profile,
-          reuseKey: payload.reuseKey,
-          cliAgentSessionId: payload.cliAgentSessionId,
-          historyGenerationRunId: payload.historyGenerationRunId,
-          createdAt: runnerJob.createdAt,
-        },
-      },
-    };
-  });
+  const transactionResult = await settle(
+    db.transaction((tx) => {
+      return promoteQueuedCandidateInTransaction(tx, args);
+    }),
+  );
+  if (!transactionResult.ok) {
+    recordQueuePromotionFailureTelemetry(args.row);
+    throw transactionResult.error;
+  }
+  const result = transactionResult.value;
   const transactionReturnedAt = now();
   if (result.status !== "promoted") {
     return result;
   }
+  recordQueueTelemetrySafely(args.row.runId, () => {
+    recordOrganizationQueueDequeued({
+      runId: args.row.runId,
+      queueWaitMs: result.queueWaitMs,
+      remainingQueueDepth: result.remainingQueueDepth,
+      timestamp: new Date(transactionReturnedAt).toISOString(),
+    });
+  });
   return {
     ...result,
     transactionReturnedAt,
@@ -441,10 +520,17 @@ export const drainOrgQueue$ = command(
     signal.throwIfAborted();
 
     for (const row of queueRows) {
-      const payload =
+      const payloadResult = await settle(
         row.runStatus === "queued"
-          ? await decryptQueuedRunnerJobPayload(row.encryptedParams)
-          : null;
+          ? decryptQueuedRunnerJobPayload(row.encryptedParams)
+          : Promise.resolve(null),
+        signal,
+      );
+      if (!payloadResult.ok) {
+        recordQueuePromotionFailureTelemetry(row);
+        throw payloadResult.error;
+      }
+      const payload = payloadResult.value;
       signal.throwIfAborted();
       const result = await promoteQueuedCandidateWithSideEffects(writeDb, {
         orgId: args.orgId,
@@ -533,8 +619,10 @@ export const cleanupExpiredQueueEntries$ = command(
       const candidates = await tx
         .select({
           runId: agentRuns.id,
+          queueEnqueuedAt: agentRunQueue.createdAt,
         })
         .from(agentRuns)
+        .innerJoin(agentRunQueue, eq(agentRunQueue.runId, agentRuns.id))
         .where(
           and(
             inArray(agentRuns.id, expiredRunIds),
@@ -570,9 +658,19 @@ export const cleanupExpiredQueueEntries$ = command(
                 orgId: agentRuns.orgId,
                 userId: agentRuns.userId,
               });
+      const queueEnqueuedAtByRunId = new Map(
+        candidates.map((candidate) => {
+          return [candidate.runId, candidate.queueEnqueuedAt] as const;
+        }),
+      );
       const timedOutRuns = await timedOutQueuedRunsWithMarkerNotifications(
         tx,
-        timedOut,
+        timedOut.map((run) => {
+          return {
+            ...run,
+            queueEnqueuedAt: queueEnqueuedAtByRunId.get(run.runId) ?? null,
+          };
+        }),
         QUEUED_RUN_EXPIRED_REASON,
       );
 
@@ -610,6 +708,14 @@ export const cleanupExpiredQueueEntries$ = command(
       };
     });
     signal.throwIfAborted();
+
+    for (const run of result.timedOutRuns) {
+      recordQueuedTerminalTelemetry(
+        run,
+        run.queueEnqueuedAt === null ? "missing_enqueue_boundary" : "expired",
+        currentTime,
+      );
+    }
 
     if (result.deletedCount > 0 || result.timedOutRuns.length > 0) {
       L.debug("Cleaned up expired queue entries", {
@@ -693,13 +799,23 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
         });
       const timedOutRuns = await timedOutQueuedRunsWithMarkerNotifications(
         tx,
-        timedOut,
+        timedOut.map((run) => {
+          return { ...run, queueEnqueuedAt: null };
+        }),
         QUEUED_RUN_LAUNCH_ORPHAN_REASON,
       );
 
       return { deletedCount: 0, timedOutRuns };
     });
     signal.throwIfAborted();
+
+    for (const run of result.timedOutRuns) {
+      recordQueuedTerminalTelemetry(
+        run,
+        "missing_enqueue_boundary",
+        currentTime,
+      );
+    }
 
     if (result.timedOutRuns.length > 0) {
       L.debug("Cleaned up queued run launch orphans", {

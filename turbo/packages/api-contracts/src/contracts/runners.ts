@@ -17,6 +17,14 @@ const c = initContract();
 
 export const MIN_EPOCH_MS_TIMESTAMP = 1_000_000_000_000;
 const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
+const queueEnqueuedAtSchema = z.preprocess((value) => {
+  // Keep malformed historical queue timestamps from making a claim fail.
+  // The runner validates the epoch boundary before recording latency.
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return value;
+  }
+  return undefined;
+}, z.number().int().nonnegative().optional());
 
 export const CANONICAL_GUEST_HOME_DIR = "/home/user";
 export const CANONICAL_WORKING_DIR = `${CANONICAL_GUEST_HOME_DIR}/workspace`;
@@ -826,6 +834,10 @@ const storedExecutionContextObjectSchema = z.object({
   captureNetworkBodies: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics, as Unix epoch milliseconds
   apiStartTime: apiStartTimeSchema.optional(),
+  // Organization queue insertion timestamp, as Unix epoch milliseconds. This
+  // is added only when a queued run is promoted and is independent of the
+  // promotion-time apiStartTime boundary.
+  queueEnqueuedAt: queueEnqueuedAtSchema,
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
   // Firewall entries for proxy-side token replacement. Built-ins stay compact;
@@ -925,6 +937,9 @@ const executionContextObjectSchema = z.object({
   captureNetworkBodies: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics, as Unix epoch milliseconds
   apiStartTime: apiStartTimeSchema.optional(),
+  // Organization queue insertion timestamp, as Unix epoch milliseconds. This
+  // is present only for runs that spent time in the organization queue.
+  queueEnqueuedAt: queueEnqueuedAtSchema,
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
   // Firewall entries for proxy-side token replacement. Built-ins stay compact;

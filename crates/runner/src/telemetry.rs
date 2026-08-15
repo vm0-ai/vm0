@@ -46,6 +46,7 @@ pub struct JobTelemetry {
     pending_ops: Vec<SandboxOp>,
     oldest_pending: Option<Instant>,
     in_flight_flushes: Vec<JoinHandle<()>>,
+    queue_lifecycle_recorded: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -56,6 +57,8 @@ struct SandboxOp {
     success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    outcome: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     runner_startup_path: Option<RunnerStartupPath>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,6 +84,7 @@ impl JobTelemetry {
             pending_ops: Vec::new(),
             oldest_pending: None,
             in_flight_flushes: Vec::new(),
+            queue_lifecycle_recorded: false,
         }
     }
 
@@ -128,6 +132,44 @@ impl JobTelemetry {
         op.runner_startup_path = Some(runner_startup_path);
         op.sandbox_reuse_result = Some(sandbox_reuse_result);
         self.push_operation(op);
+    }
+
+    pub(crate) fn record_queue_to_spawn(
+        &mut self,
+        duration: Duration,
+        runner_startup_path: RunnerStartupPath,
+        sandbox_reuse_result: SandboxReuseResult,
+    ) {
+        let mut op = sandbox_op("queue_to_spawn", duration, true, None, None);
+        op.outcome = Some("spawned".to_string());
+        op.runner_startup_path = Some(runner_startup_path);
+        op.sandbox_reuse_result = Some(sandbox_reuse_result);
+        self.queue_lifecycle_recorded = true;
+        self.push_operation(op);
+    }
+
+    pub(crate) fn record_queue_boundary_missing(
+        &mut self,
+        runner_startup_path: RunnerStartupPath,
+        sandbox_reuse_result: SandboxReuseResult,
+    ) {
+        let mut op = sandbox_op("queue_to_spawn", Duration::ZERO, false, None, None);
+        op.outcome = Some("missing_enqueue_boundary".to_string());
+        op.runner_startup_path = Some(runner_startup_path);
+        op.sandbox_reuse_result = Some(sandbox_reuse_result);
+        self.queue_lifecycle_recorded = true;
+        self.push_operation(op);
+    }
+
+    pub(crate) fn record_queue_terminal(&mut self, outcome: &str) {
+        let mut op = sandbox_op("queue_to_spawn", Duration::ZERO, false, None, None);
+        op.outcome = Some(outcome.to_string());
+        self.queue_lifecycle_recorded = true;
+        self.push_operation(op);
+    }
+
+    pub(crate) fn queue_lifecycle_recorded(&self) -> bool {
+        self.queue_lifecycle_recorded
     }
 
     /// Record a timed operation with low-cardinality session-history transport
@@ -364,6 +406,7 @@ fn sandbox_op_at(
         duration_ms: duration_ms(duration),
         success,
         error: error.map(String::from),
+        outcome: None,
         runner_startup_path: None,
         sandbox_reuse_result: None,
         session_history: metadata.map(SessionHistoryTelemetryFields::from),
@@ -495,6 +538,7 @@ mod tests {
             duration_ms: 1500,
             success: true,
             error: None,
+            outcome: None,
             runner_startup_path: None,
             sandbox_reuse_result: None,
             session_history: None,
@@ -550,6 +594,7 @@ mod tests {
                 duration_ms: 100,
                 success: true,
                 error: None,
+                outcome: None,
                 runner_startup_path: None,
                 sandbox_reuse_result: None,
                 session_history: Some(metadata.into()),

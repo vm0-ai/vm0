@@ -67,7 +67,9 @@ pub(crate) use telemetry::{
     ExactReuseSpeculationTiming, RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase,
     RunnerPreSpawnTiming,
 };
-use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
+use telemetry::{
+    RunnerSpawnTiming, record_api_latency, record_queue_terminal_if_unspawned, record_reuse_result,
+};
 
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationSignals;
@@ -657,6 +659,16 @@ pub(crate) async fn execute_job_with_prepared_notifier(
         },
     };
 
+    record_queue_terminal_if_unspawned(
+        &context,
+        &mut telemetry,
+        if outcome.failure.is_some() {
+            "pre_spawn_failed"
+        } else {
+            "cancelled_before_spawn"
+        },
+    );
+
     (outcome, telemetry)
 }
 
@@ -739,23 +751,21 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     {
         Ok(workspace_image) => workspace_image,
         Err(failure) => {
-            return (
-                ExecuteOutcome::reused_sandbox_failure(failure, sandbox, source_ip, None),
-                telemetry,
-            );
+            let outcome = ExecuteOutcome::reused_sandbox_failure(failure, sandbox, source_ip, None);
+            record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+            return (outcome, telemetry);
         }
     };
 
     if let Some(error) = resume_session_error {
-        return (
-            ExecuteOutcome::reused_sandbox_failure(
-                ExecutionFailure::from_error(error),
-                sandbox,
-                source_ip,
-                workspace_image,
-            ),
-            telemetry,
+        let outcome = ExecuteOutcome::reused_sandbox_failure(
+            ExecutionFailure::from_error(error),
+            sandbox,
+            source_ip,
+            workspace_image,
         );
+        record_queue_terminal_if_unspawned(&context, &mut telemetry, "pre_spawn_failed");
+        return (outcome, telemetry);
     }
 
     let workspace_image = match (config.workspace_cache.as_ref(), workspace_image) {
@@ -814,6 +824,16 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             outcome
         }
     };
+
+    record_queue_terminal_if_unspawned(
+        &context,
+        &mut telemetry,
+        if outcome.failure.is_some() {
+            "pre_spawn_failed"
+        } else {
+            "cancelled_before_spawn"
+        },
+    );
 
     (outcome, telemetry)
 }

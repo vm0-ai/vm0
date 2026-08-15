@@ -243,6 +243,7 @@ import {
 import { currentConnectorCatalogValidatorIdentity } from "./connector-catalog-validator-authority";
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
+import { recordOrganizationQueueEnqueued } from "./organization-queue-telemetry.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import type {
   ChatThreadSessionResolution,
@@ -583,7 +584,7 @@ type PersistedAtomicLaunchRows =
       readonly kind: "queued";
       readonly run: RunRecord;
       readonly queueDepth: number;
-      readonly telemetryTimestamp: string;
+      readonly queueCreatedAt: Date;
       readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
     };
 
@@ -636,7 +637,7 @@ type AtomicLaunchCommitResult =
       readonly run: RunRecord;
       readonly runnerJobPayload: RunnerJobPayload;
       readonly queueDepth: number;
-      readonly telemetryTimestamp: string;
+      readonly queueCreatedAt: Date;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
       readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
       readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
@@ -6024,17 +6025,7 @@ function recordQueuedRunEnqueueTelemetry(args: {
   readonly timestamp: string;
 }): void {
   const result = safeSync(() => {
-    recordSandboxOperation({
-      sandboxType: "runner",
-      actionType: "enqueue_zero_run",
-      durationMs: 0,
-      success: true,
-      runId: args.runId,
-      timestamp: args.timestamp,
-      dimensions: {
-        queue_depth: args.queueDepth,
-      },
-    });
+    recordOrganizationQueueEnqueued(args);
   });
   if ("error" in result) {
     L.warn("Failed to record queued run enqueue telemetry", {
@@ -6767,7 +6758,10 @@ async function persistQueuedAtomicLaunch(
         createdAt: context.createdAt,
         expiresAt: sql`now() + interval '2 hours'`,
       })
-      .returning({ runId: agentRunQueue.runId }),
+      .returning({
+        runId: agentRunQueue.runId,
+        createdAt: agentRunQueue.createdAt,
+      }),
   );
   const ctes = [...context.ctes, insertedQueue];
   if (context.updatedThread) {
@@ -6783,6 +6777,7 @@ async function persistQueuedAtomicLaunch(
     .select({
       runId: context.insertedRun.id,
       createdAt: context.insertedRun.createdAt,
+      queueCreatedAt: insertedQueue.createdAt,
       queueDepth: sql`(${visibleQueueDepth.depth} + 1)`.mapWith(
         pgInt8ToBigIntDecoder,
       ),
@@ -6804,7 +6799,7 @@ async function persistQueuedAtomicLaunch(
       row.createdAt,
     ),
     queueDepth: Number(row.queueDepth),
-    telemetryTimestamp: nowDate().toISOString(),
+    queueCreatedAt: row.queueCreatedAt,
     threadSessionBinding: atomicThreadSessionBinding({
       context,
       commit: args.commit,
@@ -8608,7 +8603,7 @@ function committedAtomicLaunchResponse(args: {
     recordQueuedRunEnqueueTelemetry({
       runId: args.committed.run.id,
       queueDepth: args.committed.queueDepth,
-      timestamp: args.committed.telemetryTimestamp,
+      timestamp: args.committed.queueCreatedAt.toISOString(),
     });
     ingestRunContextSnapshot(args.committed.runContextSnapshot);
     args.timing.flush({

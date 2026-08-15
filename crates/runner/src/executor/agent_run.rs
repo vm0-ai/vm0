@@ -52,7 +52,7 @@ use super::session_restore::{
     MaterializedResumeSession, SessionRestoreDiagnostics, restore_session,
 };
 use super::storage::download_storages;
-use super::telemetry::{RunnerSpawnTiming, record_api_to_spawn};
+use super::telemetry::{RunnerSpawnTiming, record_api_to_spawn, record_queue_to_spawn};
 use super::workspace_session_history_materializer::{
     WorkspaceSessionHistoryMaterialization, WorkspaceSessionHistoryPhaseTiming,
     WorkspaceSessionHistoryTimings,
@@ -2198,6 +2198,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // Claude Code process has a PID now — record end-to-end startup latency.
     record_api_to_spawn(
+        context,
+        telemetry,
+        start.reuse_result,
+        start.workspace_reuse_result,
+    );
+    record_queue_to_spawn(
         context,
         telemetry,
         start.reuse_result,

@@ -14,6 +14,7 @@ use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
 
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
+static INVALID_QUEUE_ENQUEUED_AT_WARNED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy)]
 pub(crate) enum RunnerPreSpawnPhase {
@@ -347,6 +348,39 @@ pub(super) fn record_api_to_spawn(
     }
 }
 
+pub(super) fn record_queue_to_spawn(
+    context: &ExecutionContext,
+    telemetry: &mut JobTelemetry,
+    sandbox_reuse_result: SandboxReuseResult,
+    workspace_reuse_result: WorkspaceReuseResult,
+) {
+    let Some(queue_enqueued_at) = context.queue_enqueued_at else {
+        return;
+    };
+    let runner_startup_path = if sandbox_reuse_result == SandboxReuseResult::Reused {
+        RunnerStartupPath::Sandbox
+    } else if workspace_reuse_result == WorkspaceReuseResult::Reused {
+        RunnerStartupPath::Workspace
+    } else {
+        RunnerStartupPath::Cold
+    };
+    let Some(duration) = queue_latency_duration(context, queue_enqueued_at) else {
+        telemetry.record_queue_boundary_missing(runner_startup_path, sandbox_reuse_result);
+        return;
+    };
+    telemetry.record_queue_to_spawn(duration, runner_startup_path, sandbox_reuse_result);
+}
+
+pub(super) fn record_queue_terminal_if_unspawned(
+    context: &ExecutionContext,
+    telemetry: &mut JobTelemetry,
+    outcome: &str,
+) {
+    if context.queue_enqueued_at.is_some() && !telemetry.queue_lifecycle_recorded() {
+        telemetry.record_queue_terminal(outcome);
+    }
+}
+
 fn api_latency_duration(action_type: &str, context: &ExecutionContext) -> Option<Duration> {
     if let Some(api_start_ms) = context.api_start_time {
         let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
@@ -355,6 +389,22 @@ fn api_latency_duration(action_type: &str, context: &ExecutionContext) -> Option
         } else {
             warn_invalid_api_start_time_once(action_type, context, api_start_ms);
         }
+    }
+    None
+}
+
+fn queue_latency_duration(context: &ExecutionContext, queue_enqueued_at: u64) -> Option<Duration> {
+    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    if let Some(duration) = elapsed_since_api_start_ms(queue_enqueued_at, now_ms) {
+        return Some(duration);
+    }
+    if !INVALID_QUEUE_ENQUEUED_AT_WARNED.swap(true, Ordering::Relaxed) {
+        warn!(
+            run_id = %context.run_id,
+            queue_enqueued_at,
+            min_epoch_ms_timestamp = MIN_PLAUSIBLE_EPOCH_MILLISECONDS,
+            "skipping queue latency telemetry for invalid epoch-ms enqueue timestamp"
+        );
     }
     None
 }

@@ -1788,6 +1788,39 @@ describe("runner apiStartTime contract", () => {
   });
 });
 
+describe("runner queueEnqueuedAt contract", () => {
+  it("accepts an optional Unix epoch millisecond queue boundary", () => {
+    const timestamp = 1_700_000_000_000;
+
+    expect(
+      storedExecutionContextSchema.shape.queueEnqueuedAt.safeParse(timestamp)
+        .success,
+    ).toBe(true);
+    expect(
+      executionContextSchema.shape.queueEnqueuedAt.safeParse(timestamp).success,
+    ).toBe(true);
+  });
+
+  it("keeps the boundary optional for direct and older runner launches", () => {
+    expect(
+      storedExecutionContextSchema.shape.queueEnqueuedAt.safeParse(undefined)
+        .success,
+    ).toBe(true);
+    expect(
+      executionContextSchema.shape.queueEnqueuedAt.safeParse(undefined).success,
+    ).toBe(true);
+  });
+
+  it("tolerates malformed historical values without rejecting the context", () => {
+    expect(
+      storedExecutionContextSchema.shape.queueEnqueuedAt.safeParse(-1).success,
+    ).toBe(true);
+    expect(
+      executionContextSchema.shape.queueEnqueuedAt.safeParse("legacy").success,
+    ).toBe(true);
+  });
+});
+
 describe("runner Claude tool list contracts", () => {
   it("keeps runner context schemas tolerant of legacy tool list values", () => {
     expect(
