@@ -409,7 +409,7 @@ function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="shrink-0 cursor-help text-xs font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
+          <span className="inline-flex h-7 min-w-10 shrink-0 cursor-help items-center justify-center rounded-lg bg-gray-50 px-2 text-xs font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 transition-colors hover:bg-state-hover hover:text-foreground hover:decoration-muted-foreground dark:bg-gray-100">
             {tier}
           </span>
         </TooltipTrigger>
@@ -538,9 +538,9 @@ function PolicyActionsMenu({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
+          className="shrink-0 rounded-lg"
           disabled={disabled}
           aria-label={t(
             ($) => {
@@ -651,11 +651,15 @@ function PolicyRow({
   return (
     <div
       data-testid={`org-model-policy-row-${policy.model}`}
-      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_236px_96px_36px]"
+      className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-lg px-3 py-3.5 transition-colors after:pointer-events-none after:absolute after:bottom-0 after:left-[3.75rem] after:right-3 after:h-px after:bg-border/50 after:content-[''] last:after:hidden hover:bg-gray-50 dark:hover:bg-gray-100 lg:grid-cols-[minmax(0,1fr)_236px_96px_36px]"
     >
       <div className="col-start-1 row-start-1 flex min-w-0 flex-col justify-center">
         <div className="flex min-w-0 items-center gap-2">
-          {modelIconType && <ProviderIcon type={modelIconType} size={18} />}
+          {modelIconType && (
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gray-50 dark:bg-gray-100">
+              <ProviderIcon type={modelIconType} size={18} />
+            </span>
+          )}
           <p className="min-w-0 truncate text-sm font-medium text-foreground">
             {policy.modelLabel}
           </p>
@@ -689,7 +693,9 @@ function PolicyRow({
       </div>
       <div className="col-start-1 row-start-2 flex min-w-0 flex-col justify-center lg:col-start-2 lg:row-start-1">
         <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-          <ProviderIcon type={routeSummary.iconType} size={16} />
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-100">
+            <ProviderIcon type={routeSummary.iconType} size={16} />
+          </span>
           <span className="min-w-0 truncate">{routeSummary.label}</span>
         </div>
       </div>
@@ -1831,7 +1837,7 @@ export function OrgModelPoliciesSection() {
           className="overflow-hidden rounded-xl bg-card"
           style={{ border: "0.7px solid hsl(var(--gray-400))" }}
         >
-          <div className="hidden grid-cols-[minmax(0,1fr)_236px_96px_36px] gap-3 border-b border-border/50 bg-muted/20 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid">
+          <div className="hidden grid-cols-[minmax(0,1fr)_236px_96px_36px] gap-3 border-b border-border/50 px-5 py-3 text-xs font-medium text-muted-foreground lg:grid">
             <span>
               {t(($) => {
                 return $.settings.models.policies.model;
@@ -1849,7 +1855,7 @@ export function OrgModelPoliciesSection() {
             </span>
             <span />
           </div>
-          <div className="divide-y divide-border/50">
+          <div className="p-2">
             {visiblePolicies.map((policy) => {
               return (
                 <PolicyRow
