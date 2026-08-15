@@ -24,7 +24,7 @@ import {
 } from "./zero-run-queue.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainStaleChatThreadQueues$ } from "./chat-thread-queue-drain.service";
-import type { QueueMarkerRevokeNotification } from "./zero-chat-queue-marker.service";
+import type { QueueMarkerRevokeNotification } from "./chat-queue-marker.service";
 import { drainStaleCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
 import { drainStaleCanonicalFeishuIngress$ } from "./canonical-feishu-ingress-processor.service";
 import { retryPendingFeishuConnectWelcomes$ } from "./zero-feishu-welcome.service";

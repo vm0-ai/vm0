@@ -16,7 +16,7 @@ import {
   usagePricingResolution$,
   type UsagePricingResolution,
 } from "../context/usage-pricing-resolution";
-import { maybeEmitRunUsageEvent$ } from "./zero-chat-usage-event.service";
+import { maybeEmitRunUsageEvent$ } from "./chat-usage-event.service";
 import {
   enqueueCreditLowBalanceAlert$,
   LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS,
