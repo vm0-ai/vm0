@@ -191,7 +191,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "phone",
     description: "Send AgentPhone messages, upload files, and download media",
     load: async () => {
-      return (await import("./commands/zero/phone")).zeroPhoneCommand;
+      return (await import("./commands/phone")).phoneCommand;
     },
   },
   {

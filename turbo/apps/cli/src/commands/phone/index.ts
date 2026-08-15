@@ -3,7 +3,7 @@ import { downloadFileCommand } from "./download-file";
 import { messageCommand } from "./message";
 import { uploadFileCommand } from "./upload-file";
 
-export const zeroPhoneCommand = new Command()
+export const phoneCommand = new Command()
   .name("phone")
   .description("Send AgentPhone messages, upload files, and download media")
   .addCommand(messageCommand)

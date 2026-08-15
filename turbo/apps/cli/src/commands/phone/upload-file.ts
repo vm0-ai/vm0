@@ -4,8 +4,8 @@ import { Command } from "commander";
 import {
   completePhoneFileUpload,
   initPhoneFileUpload,
-} from "../../../lib/api/domains/integrations-phone";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/integrations-phone";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
