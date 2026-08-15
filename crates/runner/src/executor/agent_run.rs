@@ -169,18 +169,16 @@ impl SessionHistoryIdentityReason {
 
     const fn from_final_metadata_error(error: FinalSessionHistoryIdentityError) -> Self {
         match error {
-            FinalSessionHistoryIdentityError::MetadataTooLarge
-            | FinalSessionHistoryIdentityError::HistoryTooLarge => {
+            FinalSessionHistoryIdentityError::MetadataTooLarge => {
                 Self::FinalizeUnverifiableMetadata
             }
             FinalSessionHistoryIdentityError::InvalidJson
-            | FinalSessionHistoryIdentityError::UnsupportedVersion
             | FinalSessionHistoryIdentityError::InvalidFramework
             | FinalSessionHistoryIdentityError::InvalidHistoryRefKind
             | FinalSessionHistoryIdentityError::InvalidSessionIdHash
             | FinalSessionHistoryIdentityError::InvalidHistoryHash
             | FinalSessionHistoryIdentityError::InvalidHistorySize
-            | FinalSessionHistoryIdentityError::MissingHistoryMarker => {
+            | FinalSessionHistoryIdentityError::InvalidHistorySource => {
                 Self::FinalizeInvalidMetadata
             }
         }

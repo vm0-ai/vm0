@@ -1,4 +1,4 @@
-//! Codex session-resume marker logging should not expose session identifiers.
+//! Codex session metadata logging should not expose session identifiers.
 //!
 //! This test lives in its own binary because `SystemLogOverrideGuard` configures
 //! a process-global system log sink.
@@ -85,7 +85,7 @@ impl CodexResumeLogFixture {
 }
 
 #[test]
-fn codex_session_marker_log_does_not_leak_thread_id_or_marker_payload() -> TestResult {
+fn codex_session_metadata_log_does_not_leak_thread_id() -> TestResult {
     let fixture = CodexResumeLogFixture::new()?;
     let log_dir = tempfile::tempdir()?;
     let system_log_path = log_dir.path().join("system.log");
@@ -100,24 +100,15 @@ fn codex_session_marker_log_does_not_leak_thread_id_or_marker_payload() -> TestR
 
     fixture.send_event(event, &masker)?;
 
-    let marker = std::fs::read_to_string(fixture.paths.session_history_path_file())?;
     drop(system_log_guard);
     let system_log = std::fs::read_to_string(&system_log_path)?;
     assert!(
-        system_log.contains("Session history marker written to"),
-        "system log should confirm marker creation, got: {system_log}"
+        system_log.contains("Captured session ID"),
+        "system log should confirm session metadata capture, got: {system_log}"
     );
     assert!(
         !system_log.contains(thread_id),
         "system log must not contain the raw thread id, got: {system_log}"
-    );
-    assert!(
-        !system_log.contains("CODEX_SEARCH"),
-        "system log must not contain the codex marker payload, got: {system_log}"
-    );
-    assert!(
-        !system_log.contains(&marker),
-        "system log must not contain the full marker payload, got: {system_log}"
     );
     Ok(())
 }

@@ -8,6 +8,7 @@ use crate::env;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::run_context::GuestRuntime;
+use crate::session_metadata::CapturedSessionMetadata;
 use api_contracts::generated::types::webhooks::agent::checkpoints;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
@@ -34,10 +35,6 @@ impl CheckpointMode {
             Self::Success => "checkpoint",
             Self::Recovery => "recovery checkpoint",
         }
-    }
-
-    fn validate_history(self) -> bool {
-        matches!(self, Self::Recovery)
     }
 
     fn can_prune_history(self) -> bool {
@@ -71,23 +68,22 @@ struct CheckpointInputs<'a> {
     run_id: &'a str,
     framework: env::Framework,
     session_history_limits: session_history::CheckpointSessionHistoryLimits,
-    home_dir: &'a str,
     artifact_entries: &'a [env::ArtifactEnv],
-    session_id_file: Cow<'a, str>,
-    session_history_path_file: Cow<'a, str>,
+    session_metadata: &'a CapturedSessionMetadata,
     final_session_history_identity_file: Cow<'a, str>,
 }
 
 impl<'a> CheckpointInputs<'a> {
-    fn from_runtime(runtime: &'a GuestRuntime) -> Self {
+    fn from_runtime(
+        runtime: &'a GuestRuntime,
+        session_metadata: &'a CapturedSessionMetadata,
+    ) -> Self {
         Self {
             run_id: &runtime.config.run_id,
             framework: runtime.config.framework,
             session_history_limits: session_history::CheckpointSessionHistoryLimits::Production,
-            home_dir: &runtime.config.home_dir,
             artifact_entries: &runtime.config.artifacts,
-            session_id_file: Cow::Borrowed(runtime.paths.session_id_file()),
-            session_history_path_file: Cow::Borrowed(runtime.paths.session_history_path_file()),
+            session_metadata,
             final_session_history_identity_file: Cow::Borrowed(
                 runtime.paths.final_session_history_identity_file(),
             ),
@@ -96,8 +92,11 @@ impl<'a> CheckpointInputs<'a> {
 }
 
 /// Create a checkpoint after a successful run using the explicit runtime snapshot.
-pub async fn create_checkpoint_for_runtime(runtime: &GuestRuntime) -> Result<(), AgentError> {
-    let inputs = CheckpointInputs::from_runtime(runtime);
+pub async fn create_checkpoint_for_runtime(
+    runtime: &GuestRuntime,
+    session_metadata: &CapturedSessionMetadata,
+) -> Result<(), AgentError> {
+    let inputs = CheckpointInputs::from_runtime(runtime, session_metadata);
     create_checkpoint_with_inputs(&runtime.http, &inputs).await
 }
 
@@ -105,10 +104,11 @@ pub async fn create_checkpoint_for_runtime(runtime: &GuestRuntime) -> Result<(),
 #[doc(hidden)]
 pub async fn create_checkpoint_for_runtime_with_history_limits_for_test(
     runtime: &GuestRuntime,
+    session_metadata: &CapturedSessionMetadata,
     candidate_max_bytes: u64,
     checkpoint_max_bytes: u64,
 ) -> Result<(), AgentError> {
-    let mut inputs = CheckpointInputs::from_runtime(runtime);
+    let mut inputs = CheckpointInputs::from_runtime(runtime, session_metadata);
     inputs.session_history_limits =
         session_history::CheckpointSessionHistoryLimits::BoundedForTest {
             candidate_max_bytes,
@@ -120,8 +120,9 @@ pub async fn create_checkpoint_for_runtime_with_history_limits_for_test(
 /// Create a best-effort recovery checkpoint using the explicit runtime snapshot.
 pub async fn create_recovery_checkpoint_for_runtime(
     runtime: &GuestRuntime,
+    session_metadata: &CapturedSessionMetadata,
 ) -> Result<(), AgentError> {
-    let inputs = CheckpointInputs::from_runtime(runtime);
+    let inputs = CheckpointInputs::from_runtime(runtime, session_metadata);
     create_recovery_checkpoint_with_inputs(&runtime.http, &inputs).await
 }
 
@@ -129,10 +130,11 @@ pub async fn create_recovery_checkpoint_for_runtime(
 #[doc(hidden)]
 pub async fn create_recovery_checkpoint_for_runtime_with_history_limits_for_test(
     runtime: &GuestRuntime,
+    session_metadata: &CapturedSessionMetadata,
     candidate_max_bytes: u64,
     checkpoint_max_bytes: u64,
 ) -> Result<(), AgentError> {
-    let mut inputs = CheckpointInputs::from_runtime(runtime);
+    let mut inputs = CheckpointInputs::from_runtime(runtime, session_metadata);
     inputs.session_history_limits =
         session_history::CheckpointSessionHistoryLimits::BoundedForTest {
             candidate_max_bytes,
@@ -223,15 +225,28 @@ async fn create_checkpoint_impl(
             };
             (payload, None)
         }
+        session_history::CheckpointSessionHistory::Unavailable {
+            cli_agent_session_id,
+        } => {
+            let payload = checkpoints::Request {
+                run_id: inputs.run_id.to_string(),
+                cli_agent_type: cli_agent_type.to_string(),
+                cli_agent_session_id,
+                cli_agent_session_history_hash: None,
+                cli_agent_session_history_disposition: Some(
+                    checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable,
+                ),
+                artifact_snapshots,
+                volume_versions_snapshot: None,
+            };
+            (payload, None)
+        }
     };
 
     log_info!(LOG_TAG, "Calling checkpoint API...");
     let api_start = std::time::Instant::now();
     let url = http.checkpoint_url()?;
-    let result = match http
-        .post_json(url, &payload, constants::HTTP_MAX_ATTEMPTS)
-        .await
-    {
+    let result = match post_checkpoint_with_unavailable_compatibility(http, url, &payload).await {
         Ok(v) => v,
         Err(e) => {
             record_sandbox_op("checkpoint_api_call", api_start.elapsed(), false, None);
@@ -256,7 +271,7 @@ async fn create_checkpoint_impl(
                 &uploaded_history.cli_agent_session_id,
                 &uploaded_history.history_hash,
                 uploaded_history.history_size,
-                &uploaded_history.history_marker_payload,
+                &uploaded_history.history_source,
                 inputs.framework,
                 inputs.final_session_history_identity_file.as_ref(),
             );
@@ -271,6 +286,35 @@ async fn create_checkpoint_impl(
             api_start,
             "Invalid checkpoint API response",
         ))
+    }
+}
+
+async fn post_checkpoint_with_unavailable_compatibility(
+    http: &HttpClient,
+    url: &str,
+    payload: &checkpoints::Request,
+) -> Result<Option<serde_json::Value>, AgentError> {
+    match http
+        .post_json(url, payload, constants::HTTP_MAX_ATTEMPTS)
+        .await
+    {
+        Err(AgentError::HttpStatus { status: 400, .. })
+            if payload.cli_agent_session_history_disposition
+                == Some(checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable) =>
+        {
+            // Rollout compatibility: remove after API versions predating
+            // `unavailable` can no longer receive runner traffic or be restored.
+            log_warn!(
+                LOG_TAG,
+                "Checkpoint API rejected the unavailable history disposition; retrying with the legacy historyless disposition"
+            );
+            let mut fallback = payload.clone();
+            fallback.cli_agent_session_history_disposition =
+                Some(checkpoints::RequestCliAgentSessionHistoryDisposition::DiscardedOversized);
+            http.post_json(url, &fallback, constants::HTTP_MAX_ATTEMPTS)
+                .await
+        }
+        result => result,
     }
 }
 
@@ -304,7 +348,6 @@ mod tests {
 
     fn cleanup_checkpoint_files(guest_paths: &crate::paths::GuestPaths) {
         let _ = std::fs::remove_file(guest_paths.session_id_file());
-        let _ = std::fs::remove_file(guest_paths.session_history_path_file());
     }
 
     fn http_status(status: u16) -> HttpMockResponse {
@@ -331,24 +374,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unavailable_history_retries_once_with_legacy_disposition_after_http_400() {
+        let server = MockServer::start();
+        let unavailable = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints")
+                .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
+            then.status(400);
+        });
+        let legacy = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints")
+                .json_body_includes(
+                    r#"{"cliAgentSessionHistoryDisposition":"discarded_oversized"}"#,
+                );
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({"checkpointId": "legacy-compatible-checkpoint"}));
+        });
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
+        let payload = checkpoints::Request {
+            run_id: "test-run-001".to_string(),
+            cli_agent_type: "claude-code".to_string(),
+            cli_agent_session_id: "history-unavailable-session".to_string(),
+            cli_agent_session_history_hash: None,
+            cli_agent_session_history_disposition: Some(
+                checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable,
+            ),
+            artifact_snapshots: None,
+            volume_versions_snapshot: None,
+        };
+
+        let response = post_checkpoint_with_unavailable_compatibility(
+            &http,
+            http.checkpoint_url().unwrap(),
+            &payload,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            response
+                .as_ref()
+                .and_then(|value| value.get("checkpointId"))
+                .and_then(serde_json::Value::as_str),
+            Some("legacy-compatible-checkpoint")
+        );
+        unavailable.assert_calls_async(1).await;
+        legacy.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
     async fn checkpoint_missing_mount_fails_before_final_checkpoint_api_call() {
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
         let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
         let _files_guard = CheckpointFilesGuard::new(&guest_paths);
-        let history_path = dir.path().join("history.jsonl");
-        let home_dir = dir.path().join("home").to_string_lossy().into_owned();
-        std::fs::write(&history_path, r#"{"type":"system"}"#).unwrap();
-        crate::paths::write_private(
-            guest_paths.session_id_file(),
-            "session-with-missing-artifact",
-        )
-        .unwrap();
-        crate::paths::write_private(
-            guest_paths.session_history_path_file(),
-            history_path.to_string_lossy().as_ref(),
-        )
-        .unwrap();
 
         let _history_prepare = server.mock(|when, then| {
             when.method(POST)
@@ -386,15 +474,15 @@ mod tests {
             version_id: "parent-version".to_string(),
             missing_root_policy: None,
         }];
+        let session_metadata =
+            CapturedSessionMetadata::for_test("session-checkpoint-missing-mount", None);
 
         let inputs = CheckpointInputs {
             run_id: "checkpoint-missing-mount",
             framework: env::Framework::ClaudeCode,
             session_history_limits: session_history::CheckpointSessionHistoryLimits::Production,
-            home_dir: &home_dir,
             artifact_entries: &entries,
-            session_id_file: guest_paths.session_id_file().into(),
-            session_history_path_file: guest_paths.session_history_path_file().into(),
+            session_metadata: &session_metadata,
             final_session_history_identity_file: guest_paths
                 .final_session_history_identity_file()
                 .into(),
@@ -437,8 +525,6 @@ mod tests {
             &compressed,
         )
         .unwrap();
-        crate::paths::write_private(guest_paths.session_id_file(), thread_id).unwrap();
-
         let upload_url = server.url("/test/session-history-upload");
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -481,14 +567,24 @@ mod tests {
         )
         .unwrap();
         let home_dir = home_dir.to_string_lossy().into_owned();
+        let session_metadata = CapturedSessionMetadata::for_test(
+            thread_id,
+            Some(
+                guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Codex {
+                    sessions_dir: std::path::Path::new(&home_dir)
+                        .join(".codex/sessions")
+                        .to_string_lossy()
+                        .into_owned(),
+                    thread_id: thread_id.to_string(),
+                },
+            ),
+        );
         let inputs = CheckpointInputs {
             run_id: "checkpoint-codex-zstd-reuse",
             framework: env::Framework::Codex,
             session_history_limits: session_history::CheckpointSessionHistoryLimits::Production,
-            home_dir: &home_dir,
             artifact_entries: &[],
-            session_id_file: guest_paths.session_id_file().into(),
-            session_history_path_file: guest_paths.session_history_path_file().into(),
+            session_metadata: &session_metadata,
             final_session_history_identity_file: guest_paths
                 .final_session_history_identity_file()
                 .into(),

@@ -3,7 +3,7 @@ mod common;
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+    FinalSessionHistorySourceRef, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
@@ -28,6 +28,32 @@ use tokio::process::Command;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const SESSION_HISTORY_HELPER_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn claude_history_fixture(
+    root: &Path,
+    session_id: &str,
+) -> TestResult<(PathBuf, FinalSessionHistorySourceRef)> {
+    let config_dir = root.join(format!("{session_id}-config"));
+    let history_path = config_dir
+        .join("projects/-home-user-workspace")
+        .join(format!("{session_id}.jsonl"));
+    let history_parent = history_path
+        .parent()
+        .ok_or("Claude history has no parent")?;
+    std::fs::create_dir_all(history_parent)?;
+    Ok((
+        history_path,
+        FinalSessionHistorySourceRef::ClaudeCode {
+            config_dir: config_dir.to_string_lossy().into_owned(),
+            working_dir: guest_agent::paths::CANONICAL_WORKING_DIR.to_string(),
+            session_id: session_id.to_string(),
+        },
+    ))
+}
+
+fn session_id_hash(session_id: &str) -> String {
+    sha256_hex(session_id.as_bytes())
+}
 
 struct VerifyCase {
     name: &'static str,
@@ -62,12 +88,33 @@ impl SourceOpenWatch {
     fn assert_opened_once(self) -> TestResult {
         #[cfg(target_os = "linux")]
         {
-            let events = self.inotify.read_events()?;
+            let events = match self.inotify.read_events() {
+                Ok(events) => events,
+                Err(nix::errno::Errno::EAGAIN) => Vec::new(),
+                Err(error) => return Err(error.into()),
+            };
             let open_count = events
                 .iter()
                 .filter(|event| event.mask.contains(AddWatchFlags::IN_OPEN))
                 .count();
             assert_eq!(open_count, 1, "source events: {events:?}");
+        }
+        Ok(())
+    }
+
+    fn assert_not_opened(self) -> TestResult {
+        #[cfg(target_os = "linux")]
+        {
+            let events = match self.inotify.read_events() {
+                Ok(events) => events,
+                Err(nix::errno::Errno::EAGAIN) => Vec::new(),
+                Err(error) => return Err(error.into()),
+            };
+            let open_count = events
+                .iter()
+                .filter(|event| event.mask.contains(AddWatchFlags::IN_OPEN))
+                .count();
+            assert_eq!(open_count, 0, "source events: {events:?}");
         }
         Ok(())
     }
@@ -78,30 +125,32 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
     let dir = tempfile::tempdir()?;
 
     let matching_history = br#"{"type":"system"}"#;
-    let matching_history_path = dir.path().join("matching-history.jsonl");
+    let matching_session_id = "matching-history";
+    let (matching_history_path, matching_source) =
+        claude_history_fixture(dir.path(), matching_session_id)?;
     std::fs::write(&matching_history_path, matching_history)?;
     let matching_history_hash = sha256_hex(matching_history);
     let matching_identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
+        session_id_hash(matching_session_id),
         FinalSessionHistoryRefKind::Blob,
         matching_history_hash.clone(),
         matching_history.len() as u64,
-        matching_history_path.to_string_lossy(),
+        matching_source.clone(),
     )?;
     let matching_metadata_path =
         write_metadata(dir.path(), "matching-identity.json", &matching_identity)?;
 
     let invalid_metadata_path = dir.path().join("invalid-identity.json");
-    std::fs::write(&invalid_metadata_path, b"not-json")?;
+    guest_contracts::runtime_paths::write_private(&invalid_metadata_path, b"not-json")?;
 
     let framework_mismatch_identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::Codex,
-        "a".repeat(64),
+        FinalSessionHistoryFramework::ClaudeCode,
+        session_id_hash("different-session"),
         FinalSessionHistoryRefKind::Blob,
         matching_history_hash,
         matching_history.len() as u64,
-        matching_history_path.to_string_lossy(),
+        matching_source.clone(),
     )?;
     let framework_mismatch_metadata_path = write_metadata(
         dir.path(),
@@ -109,14 +158,16 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
         &framework_mismatch_identity,
     )?;
 
-    let missing_history_path = dir.path().join("missing-history.jsonl");
+    let missing_session_id = "missing-history";
+    let (_missing_history_path, missing_source) =
+        claude_history_fixture(dir.path(), missing_session_id)?;
     let history_read_identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
+        session_id_hash(missing_session_id),
         FinalSessionHistoryRefKind::Blob,
         "b".repeat(64),
         1,
-        missing_history_path.to_string_lossy(),
+        missing_source,
     )?;
     let history_read_metadata_path = write_metadata(
         dir.path(),
@@ -124,15 +175,17 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
         &history_read_identity,
     )?;
 
-    let mismatched_history_path = dir.path().join("mismatched-history.jsonl");
+    let mismatch_session_id = "mismatched-history";
+    let (mismatched_history_path, mismatch_source) =
+        claude_history_fixture(dir.path(), mismatch_session_id)?;
     std::fs::write(&mismatched_history_path, b"actual!")?;
     let history_mismatch_identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
+        session_id_hash(mismatch_session_id),
         FinalSessionHistoryRefKind::Blob,
         sha256_hex(b"expect!"),
         7,
-        mismatched_history_path.to_string_lossy(),
+        mismatch_source,
     )?;
     let history_mismatch_metadata_path = write_metadata(
         dir.path(),
@@ -142,11 +195,11 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
 
     let history_too_large_identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
+        session_id_hash(matching_session_id),
         FinalSessionHistoryRefKind::Blob,
         "b".repeat(64),
         RESUME_SESSION_HISTORY_MAX_BYTES + 1,
-        matching_history_path.to_string_lossy(),
+        matching_source,
     )?;
     let history_too_large_metadata_path = write_metadata(
         dir.path(),
@@ -230,15 +283,16 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
 async fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
     let dir = tempfile::tempdir()?;
     let history = br#"{"type":"system"}"#;
-    let history_path = dir.path().join("history.jsonl");
+    let session_id = "raw-sidecar-history";
+    let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     std::fs::write(&history_path, history)?;
     let identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
+        session_id_hash(session_id),
         FinalSessionHistoryRefKind::Blob,
         sha256_hex(history),
         history.len() as u64,
-        history_path.to_string_lossy(),
+        history_source,
     )?;
     let metadata_path = write_metadata(dir.path(), "raw-identity.json", &identity)?;
     let export_path = dir.path().join("raw-sidecar");
@@ -265,6 +319,94 @@ async fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
 }
 
 #[tokio::test]
+async fn export_session_history_sidecar_rejects_proc_magic_link_source_without_output() -> TestResult
+{
+    let dir = tempfile::tempdir()?;
+    let sentinel = b"parent-only-secret-sentinel";
+    let session_id = "proc-magic-link-source";
+    let identity = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        session_id_hash(session_id),
+        FinalSessionHistoryRefKind::Blob,
+        sha256_hex(sentinel),
+        sentinel.len() as u64,
+        FinalSessionHistorySourceRef::ClaudeCode {
+            config_dir: "/proc/self".to_string(),
+            working_dir: guest_agent::paths::CANONICAL_WORKING_DIR.to_string(),
+            session_id: session_id.to_string(),
+        },
+    )?;
+    let metadata_path = write_metadata(dir.path(), "proc-magic-link.json", &identity)?;
+    let export_path = dir.path().join("proc-magic-link-sidecar");
+
+    let output = run_export_helper(&metadata_path, &export_path).await?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ)
+    );
+    assert!(!export_path.exists());
+    assert!(
+        !output
+            .stdout
+            .windows(sentinel.len())
+            .any(|bytes| bytes == sentinel)
+    );
+    assert!(
+        !output
+            .stderr
+            .windows(sentinel.len())
+            .any(|bytes| bytes == sentinel)
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn export_session_history_sidecar_rejects_final_symlink_without_output() -> TestResult {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir()?;
+    let sentinel = b"parent-only-secret-sentinel";
+    let session_id = "symlink-source";
+    let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
+    let outside_path = dir.path().join("outside-history.jsonl");
+    std::fs::write(&outside_path, sentinel)?;
+    symlink(&outside_path, &history_path)?;
+    let identity = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        session_id_hash(session_id),
+        FinalSessionHistoryRefKind::Blob,
+        sha256_hex(sentinel),
+        sentinel.len() as u64,
+        history_source,
+    )?;
+    let metadata_path = write_metadata(dir.path(), "symlink-source.json", &identity)?;
+    let export_path = dir.path().join("symlink-sidecar");
+
+    let output = run_export_helper(&metadata_path, &export_path).await?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ)
+    );
+    assert!(!export_path.exists());
+    assert!(
+        !output
+            .stdout
+            .windows(sentinel.len())
+            .any(|bytes| bytes == sentinel)
+    );
+    assert!(
+        !output
+            .stderr
+            .windows(sentinel.len())
+            .any(|bytes| bytes == sentinel)
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestResult {
     let dir = tempfile::tempdir()?;
     let sessions_dir = dir.path().join("sessions");
@@ -275,18 +417,17 @@ async fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestRe
     let encoded = zstd::encode_all(history.as_slice(), 0)?;
     let history_path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
     std::fs::write(&history_path, &encoded)?;
-    let sessions_dir = sessions_dir.to_string_lossy();
-    let marker = format!(
-        "CODEX_SEARCH:{}:{sessions_dir}:{thread_id}",
-        sessions_dir.len()
-    );
+    let history_source = FinalSessionHistorySourceRef::Codex {
+        sessions_dir: sessions_dir.to_string_lossy().into_owned(),
+        thread_id: thread_id.to_string(),
+    };
     let identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::Codex,
-        "a".repeat(64),
+        session_id_hash(thread_id),
         FinalSessionHistoryRefKind::Blob,
         sha256_hex(history),
         history.len() as u64,
-        marker,
+        history_source,
     )?;
     let metadata_path = write_metadata(dir.path(), "codex-identity.json", &identity)?;
     let export_path = dir.path().join("codex-sidecar");
@@ -316,14 +457,15 @@ async fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestRe
 async fn export_session_history_sidecar_rejects_metadata_above_resume_limit_before_reading()
 -> TestResult {
     let dir = tempfile::tempdir()?;
-    let history_path = dir.path().join("missing-oversized-history.jsonl");
+    let session_id = "missing-oversized-history";
+    let (_history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     let identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
+        session_id_hash(session_id),
         FinalSessionHistoryRefKind::Blob,
         "b".repeat(64),
         RESUME_SESSION_HISTORY_MAX_BYTES + 1,
-        history_path.to_string_lossy(),
+        history_source,
     )?;
     let metadata_path = write_metadata(dir.path(), "oversized-identity.json", &identity)?;
     let export_path = dir.path().join("oversized-sidecar");
@@ -345,14 +487,15 @@ async fn export_session_history_sidecar_rejects_metadata_above_resume_limit_befo
 #[tokio::test]
 async fn export_session_history_sidecar_keeps_source_read_failures() -> TestResult {
     let dir = tempfile::tempdir()?;
-    let history_path = dir.path().join("missing-history.jsonl");
+    let session_id = "missing-source-history";
+    let (_history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     let identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
+        session_id_hash(session_id),
         FinalSessionHistoryRefKind::Blob,
         "b".repeat(64),
         1,
-        history_path.to_string_lossy(),
+        history_source,
     )?;
     let metadata_path = write_metadata(dir.path(), "missing-source-identity.json", &identity)?;
     let export_path = dir.path().join("missing-source-sidecar");
@@ -377,15 +520,16 @@ async fn export_session_history_sidecar_keeps_source_read_failures() -> TestResu
 async fn export_session_history_sidecar_reports_safe_output_write_failure() -> TestResult {
     let dir = tempfile::tempdir()?;
     let history = br#"{"type":"system"}"#;
-    let history_path = dir.path().join("history.jsonl");
+    let session_id = "output-failure-history";
+    let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     std::fs::write(&history_path, history)?;
     let identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
+        session_id_hash(session_id),
         FinalSessionHistoryRefKind::Blob,
         sha256_hex(history),
         history.len() as u64,
-        history_path.to_string_lossy(),
+        history_source,
     )?;
     let metadata_path = write_metadata(dir.path(), "output-failure-identity.json", &identity)?;
     let target_dir = dir.path().join("target");
@@ -419,15 +563,16 @@ async fn export_session_history_sidecar_reports_safe_output_write_failure() -> T
 async fn export_session_history_sidecar_rejects_history_mismatch() -> TestResult {
     let dir = tempfile::tempdir()?;
     let history = b"actual";
-    let history_path = dir.path().join("mismatched-history.jsonl");
+    let session_id = "sidecar-mismatched-history";
+    let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     std::fs::write(&history_path, history)?;
     let identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        "a".repeat(64),
+        session_id_hash(session_id),
         FinalSessionHistoryRefKind::Blob,
         sha256_hex(b"expect"),
         history.len() as u64,
-        history_path.to_string_lossy(),
+        history_source,
     )?;
     let metadata_path = write_metadata(dir.path(), "mismatched-identity.json", &identity)?;
     let export_path = dir.path().join("mismatched-sidecar");
@@ -445,13 +590,52 @@ async fn export_session_history_sidecar_rejects_history_mismatch() -> TestResult
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn export_session_history_sidecar_rejects_symlinked_metadata_without_opening_target()
+-> TestResult {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir()?;
+    let history = b"parent-only sentinel";
+    let session_id = "symlinked-metadata";
+    let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
+    std::fs::write(&history_path, history)?;
+    let identity = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        session_id_hash(session_id),
+        FinalSessionHistoryRefKind::Blob,
+        sha256_hex(history),
+        history.len() as u64,
+        history_source,
+    )?;
+    let target_path = write_metadata(dir.path(), "target-identity.json", &identity)?;
+    let target_watch = SourceOpenWatch::new(&target_path)?;
+    let metadata_path = dir.path().join("symlinked-identity.json");
+    symlink(&target_path, &metadata_path)?;
+    let export_path = dir.path().join("symlinked-metadata-sidecar");
+
+    let output = run_export_helper(&metadata_path, &export_path).await?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ),
+        "stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!export_path.exists());
+    target_watch.assert_not_opened()?;
+    Ok(())
+}
+
 fn write_metadata(
     dir: &Path,
     name: &str,
     identity: &FinalSessionHistoryIdentity,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let path = dir.join(name);
-    std::fs::write(&path, identity.to_json_vec()?)?;
+    guest_contracts::runtime_paths::write_private(&path, identity.to_json_vec()?)?;
     Ok(path)
 }
 

@@ -276,7 +276,6 @@ impl MockCallObserver {
 fn cleanup_session_checkpoint_files() {
     let paths = shared_guest_paths();
     let _ = std::fs::remove_file(paths.session_id_file());
-    let _ = std::fs::remove_file(paths.session_history_path_file());
     let _ = std::fs::remove_file(paths.final_session_history_identity_file());
     let _ = std::fs::remove_file(paths.checkpoint_error_file());
     let _ = std::fs::remove_file(paths.failure_diagnostic_file());

@@ -153,6 +153,20 @@ runner can also survive briefly talking to an old backend.
 Runner and guest binaries are deployed as one runner artifact. Compatibility is
 not required between a runner binary and a guest binary from a different version.
 
+Each sandbox is owned exclusively by the runner process that created it. A
+different runner never adopts that sandbox, and stopping the owning runner also
+destroys its sandboxes. Sandbox-local runtime files are therefore private to one
+runner artifact and one sandbox lifetime. They do not need schema versions or
+cross-version readers; this includes metadata exchanged only between the runner
+and its bundled guest binaries, such as final session-history identity metadata.
+
+Workspace caches have a different lifetime. A cache image, its metadata, and
+its session-history sidecar can outlive the runner process that produced them
+and be consumed by a later runner artifact. Treat workspace-cache formats as a
+persisted cross-runner compatibility boundary. A format change must either keep
+older cache entries readable or explicitly invalidate and purge incompatible
+entries before a new reader depends on the change.
+
 ## What Requires Compatibility
 
 Compatibility is required across deployable boundaries:
@@ -166,6 +180,8 @@ Compatibility is required across deployable boundaries:
   the new code.
 - Queue, persisted job payload, and run/session state consumed by runner or
   backend code from different versions.
+- Workspace-cache images, metadata, and sidecars that can be written by one
+  runner artifact and read by a later runner artifact.
 
 Compatibility is not required inside one deployed artifact:
 
@@ -173,6 +189,8 @@ Compatibility is not required inside one deployed artifact:
 - Backend package internals that are deployed as one API build.
 - Runner internals shipped in the same runner binary.
 - Runner-to-guest binary internals shipped in the same runner artifact.
+- Sandbox-local files and state that exist only for one runner-owned sandbox
+  lifetime.
 
 ## Required Change Patterns
 

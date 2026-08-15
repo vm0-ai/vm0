@@ -7,9 +7,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Current final session-history identity metadata format version.
-pub const FINAL_SESSION_HISTORY_IDENTITY_VERSION: u8 = 1;
-
 /// Maximum size of the serialized final identity metadata file.
 pub const FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES: u64 = 16 * 1024;
 
@@ -23,7 +20,7 @@ pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS: i32 = 2;
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ: i32 = 3;
 /// Guest helper exit code for invalid metadata.
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA: i32 = 4;
-/// Guest helper exit code for framework/marker mismatch.
+/// Guest helper exit code for framework/source mismatch.
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH: i32 = 5;
 /// Guest helper exit code for expected identity mismatch.
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH: i32 = 6;
@@ -56,6 +53,67 @@ pub enum FinalSessionHistoryFramework {
 pub enum FinalSessionHistoryRefKind {
     /// Hash-backed blob storage.
     Blob,
+}
+
+/// Canonical framework-owned source for final session-history bytes.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum FinalSessionHistorySourceRef {
+    /// Claude Code history derived from its effective config directory and cwd.
+    ClaudeCode {
+        /// Effective Claude config directory from the finalized child environment.
+        #[serde(rename = "configDir")]
+        config_dir: String,
+        /// Explicit working directory used to launch Claude Code.
+        #[serde(rename = "workingDir")]
+        working_dir: String,
+        /// Validated Claude Code session identifier captured from the event stream.
+        #[serde(rename = "sessionId")]
+        session_id: String,
+    },
+    /// Codex history discovered below its finalized sessions directory.
+    Codex {
+        /// Final guest-agent-controlled Codex sessions directory.
+        #[serde(rename = "sessionsDir")]
+        sessions_dir: String,
+        /// Canonical Codex thread identifier captured from the event stream.
+        #[serde(rename = "threadId")]
+        thread_id: String,
+    },
+    /// Pi official JSONL history reported for the captured session.
+    Pi {
+        /// Absolute path below the canonical Pi session directory.
+        #[serde(rename = "sessionPath")]
+        session_path: String,
+        /// Session identifier bound to the reported filename.
+        #[serde(rename = "sessionId")]
+        session_id: String,
+    },
+}
+
+impl FinalSessionHistorySourceRef {
+    fn validate(&self) -> Result<(), FinalSessionHistoryIdentityError> {
+        let valid = match self {
+            Self::ClaudeCode {
+                config_dir,
+                working_dir,
+                session_id,
+            } => !config_dir.is_empty() && !working_dir.is_empty() && !session_id.is_empty(),
+            Self::Codex {
+                sessions_dir,
+                thread_id,
+            } => !sessions_dir.is_empty() && !thread_id.is_empty(),
+            Self::Pi {
+                session_path,
+                session_id,
+            } => !session_path.is_empty() && !session_id.is_empty(),
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(FinalSessionHistoryIdentityError::InvalidHistorySource)
+        }
+    }
 }
 
 /// Native on-disk representation used for cached session-history sidecars.
@@ -119,8 +177,6 @@ pub struct SessionHistorySidecarExportFailure {
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalSessionHistoryIdentity {
-    /// Metadata schema version.
-    pub version: u8,
     /// CLI framework.
     pub framework: FinalSessionHistoryFramework,
     /// SHA-256 hash of the framework-normalized CLI session id.
@@ -131,8 +187,8 @@ pub struct FinalSessionHistoryIdentity {
     pub history_hash: String,
     /// Exact final session-history byte length.
     pub history_size_bytes: u64,
-    /// Private guest marker used to read final framework history.
-    pub history_marker_payload: String,
+    /// Canonical structured source used to read final framework history.
+    pub history_source: FinalSessionHistorySourceRef,
 }
 
 impl FinalSessionHistoryIdentity {
@@ -143,16 +199,15 @@ impl FinalSessionHistoryIdentity {
         history_ref_kind: FinalSessionHistoryRefKind,
         history_hash: impl Into<String>,
         history_size_bytes: u64,
-        history_marker_payload: impl Into<String>,
+        history_source: FinalSessionHistorySourceRef,
     ) -> Result<Self, FinalSessionHistoryIdentityError> {
         let identity = Self {
-            version: FINAL_SESSION_HISTORY_IDENTITY_VERSION,
             framework,
             session_id_hash: session_id_hash.into(),
             history_ref_kind,
             history_hash: history_hash.into(),
             history_size_bytes,
-            history_marker_payload: history_marker_payload.into(),
+            history_source,
         };
         identity.validate()?;
         Ok(identity)
@@ -182,9 +237,6 @@ impl FinalSessionHistoryIdentity {
 
     /// Validate final identity metadata invariants.
     pub fn validate(&self) -> Result<(), FinalSessionHistoryIdentityError> {
-        if self.version != FINAL_SESSION_HISTORY_IDENTITY_VERSION {
-            return Err(FinalSessionHistoryIdentityError::UnsupportedVersion);
-        }
         if !is_sha256_hex(&self.session_id_hash) {
             return Err(FinalSessionHistoryIdentityError::InvalidSessionIdHash);
         }
@@ -194,8 +246,21 @@ impl FinalSessionHistoryIdentity {
         if self.history_size_bytes == 0 {
             return Err(FinalSessionHistoryIdentityError::InvalidHistorySize);
         }
-        if self.history_marker_payload.trim().is_empty() {
-            return Err(FinalSessionHistoryIdentityError::MissingHistoryMarker);
+        self.history_source.validate()?;
+        if !matches!(
+            (self.framework, &self.history_source),
+            (
+                FinalSessionHistoryFramework::ClaudeCode,
+                FinalSessionHistorySourceRef::ClaudeCode { .. }
+            ) | (
+                FinalSessionHistoryFramework::Codex,
+                FinalSessionHistorySourceRef::Codex { .. }
+            ) | (
+                FinalSessionHistoryFramework::Pi,
+                FinalSessionHistorySourceRef::Pi { .. }
+            )
+        ) {
+            return Err(FinalSessionHistoryIdentityError::InvalidHistorySource);
         }
         Ok(())
     }
@@ -328,13 +393,12 @@ impl FinalSessionHistoryIdentityExpectation {
 impl fmt::Debug for FinalSessionHistoryIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FinalSessionHistoryIdentity")
-            .field("version", &self.version)
             .field("framework", &self.framework)
             .field("session_id_hash", &"[redacted]")
             .field("history_ref_kind", &self.history_ref_kind)
             .field("history_hash", &"[redacted]")
             .field("history_size_bytes", &self.history_size_bytes)
-            .field("history_marker_payload", &"[redacted]")
+            .field("history_source", &"[redacted]")
             .finish()
     }
 }
@@ -346,8 +410,6 @@ pub enum FinalSessionHistoryIdentityError {
     MetadataTooLarge,
     /// Metadata is not valid JSON.
     InvalidJson,
-    /// Metadata version is unsupported.
-    UnsupportedVersion,
     /// Framework value is not recognized.
     InvalidFramework,
     /// History ref kind value is not recognized.
@@ -358,14 +420,8 @@ pub enum FinalSessionHistoryIdentityError {
     InvalidHistoryHash,
     /// History size is zero.
     InvalidHistorySize,
-    /// History size exceeds a verifier work budget.
-    ///
-    /// Final identity metadata no longer owns this runtime policy, but the
-    /// variant remains part of the shared error contract for callers that may
-    /// still classify older validator results.
-    HistoryTooLarge,
-    /// History marker payload is missing.
-    MissingHistoryMarker,
+    /// Metadata contains an invalid structured history source.
+    InvalidHistorySource,
 }
 
 impl fmt::Display for FinalSessionHistoryIdentityError {
@@ -373,9 +429,6 @@ impl fmt::Display for FinalSessionHistoryIdentityError {
         match self {
             Self::MetadataTooLarge => f.write_str("final session history identity is too large"),
             Self::InvalidJson => f.write_str("final session history identity is invalid JSON"),
-            Self::UnsupportedVersion => {
-                f.write_str("final session history identity version is unsupported")
-            }
             Self::InvalidFramework => {
                 f.write_str("final session history identity framework is invalid")
             }
@@ -391,11 +444,8 @@ impl fmt::Display for FinalSessionHistoryIdentityError {
             Self::InvalidHistorySize => {
                 f.write_str("final session history identity history size is invalid")
             }
-            Self::HistoryTooLarge => {
-                f.write_str("final session history identity history is too large")
-            }
-            Self::MissingHistoryMarker => {
-                f.write_str("final session history identity marker is missing")
+            Self::InvalidHistorySource => {
+                f.write_str("final session history identity source is invalid")
             }
         }
     }
@@ -413,6 +463,14 @@ fn is_sha256_hex(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn valid_source() -> FinalSessionHistorySourceRef {
+        FinalSessionHistorySourceRef::ClaudeCode {
+            config_dir: "/home/user/.claude".to_string(),
+            working_dir: "/home/user/workspace".to_string(),
+            session_id: "session".to_string(),
+        }
+    }
 
     #[test]
     fn session_history_identity_verify_exit_codes_are_stable() {
@@ -456,7 +514,7 @@ mod tests {
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
             12,
-            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+            valid_source(),
         )
         .unwrap()
     }
@@ -465,11 +523,15 @@ mod tests {
     fn final_identity_round_trips_json() {
         let identity = valid_identity();
         let bytes = identity.to_json_vec().unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
 
         assert_eq!(
             FinalSessionHistoryIdentity::from_json_slice(&bytes).unwrap(),
             identity
         );
+        assert!(value.get("version").is_none());
+        assert!(value.get("historySource").is_some());
+        assert!(value.get("historyMarkerPayload").is_none());
     }
 
     #[test]
@@ -480,7 +542,7 @@ mod tests {
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
             12,
-            "/history.jsonl",
+            valid_source(),
         )
         .unwrap_err();
         assert_eq!(err, FinalSessionHistoryIdentityError::InvalidSessionIdHash);
@@ -491,7 +553,7 @@ mod tests {
             FinalSessionHistoryRefKind::Blob,
             "not-a-hash",
             12,
-            "/history.jsonl",
+            valid_source(),
         )
         .unwrap_err();
         assert_eq!(err, FinalSessionHistoryIdentityError::InvalidHistoryHash);
@@ -505,7 +567,7 @@ mod tests {
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
             0,
-            "/history.jsonl",
+            valid_source(),
         )
         .unwrap_err();
         assert_eq!(err, FinalSessionHistoryIdentityError::InvalidHistorySize);
@@ -519,7 +581,7 @@ mod tests {
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
             u64::MAX,
-            "/history.jsonl",
+            valid_source(),
         )
         .unwrap();
 
@@ -531,17 +593,36 @@ mod tests {
     }
 
     #[test]
-    fn final_identity_rejects_missing_marker() {
+    fn final_identity_rejects_invalid_history_source() {
         let err = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
             12,
-            " ",
+            FinalSessionHistorySourceRef::ClaudeCode {
+                config_dir: String::new(),
+                working_dir: "/home/user/workspace".to_string(),
+                session_id: "session".to_string(),
+            },
         )
         .unwrap_err();
-        assert_eq!(err, FinalSessionHistoryIdentityError::MissingHistoryMarker);
+        assert_eq!(err, FinalSessionHistoryIdentityError::InvalidHistorySource);
+    }
+
+    #[test]
+    fn final_identity_rejects_history_source_from_another_framework() {
+        let err = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::Codex,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            "b".repeat(64),
+            12,
+            valid_source(),
+        )
+        .unwrap_err();
+
+        assert_eq!(err, FinalSessionHistoryIdentityError::InvalidHistorySource);
     }
 
     #[test]
@@ -552,7 +633,8 @@ mod tests {
         assert!(debug.contains("[redacted]"));
         assert!(!debug.contains(&identity.session_id_hash));
         assert!(!debug.contains(&identity.history_hash));
-        assert!(!debug.contains(&identity.history_marker_payload));
+        assert!(!debug.contains("/home/user/.claude"));
+        assert!(!debug.contains("/home/user/workspace"));
     }
 
     #[test]

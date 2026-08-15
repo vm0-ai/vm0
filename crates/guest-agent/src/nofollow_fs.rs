@@ -69,6 +69,10 @@ impl Dir {
         )))
     }
 
+    pub(crate) fn try_clone(&self) -> io::Result<Self> {
+        self.0.try_clone().map(Self)
+    }
+
     pub(crate) fn open_absolute(path: &Path) -> io::Result<Self> {
         if !path.is_absolute() {
             return Err(io::Error::new(
@@ -116,6 +120,49 @@ impl Dir {
             name,
             libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
         )
+    }
+
+    pub(crate) fn create_child_file(&self, name: &OsStr) -> io::Result<File> {
+        let name = child_name_c_string(name)?;
+        // SAFETY: the directory fd is live, `name` is a validated NUL-terminated
+        // basename, and O_CREAT supplies the explicit private file mode.
+        let fd = unsafe {
+            libc::openat(
+                self.0.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0o600,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: a non-negative openat result is a newly owned descriptor.
+        Ok(unsafe { File::from_raw_fd(fd) })
+    }
+
+    pub(crate) fn rename_child(&self, from: &OsStr, to: &OsStr) -> io::Result<()> {
+        let from = child_name_c_string(from)?;
+        let to = child_name_c_string(to)?;
+        // SAFETY: both names are validated basenames and the same live parent
+        // descriptor anchors source and destination.
+        let result = unsafe {
+            libc::renameat(
+                self.0.as_raw_fd(),
+                from.as_ptr(),
+                self.0.as_raw_fd(),
+                to.as_ptr(),
+            )
+        };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+
+    pub(crate) fn unlink_child_file(&self, name: &OsStr) -> io::Result<()> {
+        unlink_child(&self.0, name, 0)
     }
 
     pub(crate) fn remove_child_tree(
@@ -175,14 +222,7 @@ fn file_identity(file: &File) -> io::Result<FileIdentity> {
 
 #[cfg(target_os = "linux")]
 fn open_child(parent: &File, name: &OsStr, flags: i32) -> io::Result<File> {
-    let bytes = name.as_bytes();
-    if bytes.is_empty() || bytes == b"." || bytes == b".." || bytes.contains(&b'/') {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "child name must be a non-empty basename",
-        ));
-    }
-    let name = CString::new(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    let name = child_name_c_string(name)?;
     // SAFETY: `parent.as_raw_fd()` is an open directory fd owned by `Dir`,
     // `name` is a NUL-terminated child basename produced by `CString`, and
     // the flags do not request a mode argument.
@@ -193,6 +233,18 @@ fn open_child(parent: &File, name: &OsStr, flags: i32) -> io::Result<File> {
     // SAFETY: a non-negative `openat` result is a newly owned fd. Converting
     // it into `File` transfers close responsibility to Rust.
     Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+#[cfg(target_os = "linux")]
+fn child_name_c_string(name: &OsStr) -> io::Result<CString> {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes == b"." || bytes == b".." || bytes.contains(&b'/') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "child name must be a non-empty basename",
+        ));
+    }
+    CString::new(bytes).map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))
 }
 
 #[cfg(target_os = "linux")]

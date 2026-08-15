@@ -130,13 +130,23 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
     )?;
     let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(runtime.paths.sandbox_ops_file());
 
-    let history_path = temp_dir.path().join("history.jsonl");
+    let session_id = "session-abc";
+    let config_dir = Path::new(&runtime.config.home_dir).join(".claude");
+    let history_path = config_dir
+        .join("projects/-home-user-workspace")
+        .join(format!("{session_id}.jsonl"));
+    std::fs::create_dir_all(history_path.parent().unwrap())?;
     std::fs::write(&history_path, r#"{"type":"system"}"#)?;
-    guest_agent::paths::write_private(runtime.paths.session_id_file(), "session-abc")?;
-    guest_agent::paths::write_private(
-        runtime.paths.session_history_path_file(),
-        history_path.to_string_lossy().as_ref(),
-    )?;
+    let session_metadata = guest_agent::session_metadata::CapturedSessionMetadata::for_test(
+        session_id,
+        Some(
+            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::ClaudeCode {
+                config_dir: config_dir.to_string_lossy().into_owned(),
+                working_dir: guest_agent::paths::CANONICAL_WORKING_DIR.to_string(),
+                session_id: session_id.to_string(),
+            },
+        ),
+    );
 
     let history_prepare = server.mock(|when, then| {
         when.method(POST)
@@ -173,7 +183,7 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
             .json_body(json!({"checkpointId": "checkpoint-with-unchanged-artifact"}));
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await?;
+    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime, &session_metadata).await?;
 
     history_prepare.assert_calls_async(1).await;
     storage_prepare.assert_calls_async(0).await;

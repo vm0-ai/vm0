@@ -25,7 +25,7 @@ describe("agent checkpoint session history", () => {
     cliAgentSessionId: "00000000-0000-4000-8000-000000000001",
   };
 
-  it("accepts exactly one uploaded hash or discarded disposition", () => {
+  it("accepts exactly one uploaded hash or historyless disposition", () => {
     expect(
       webhookCheckpointsContract.create.body.safeParse({
         ...baseBody,
@@ -36,6 +36,12 @@ describe("agent checkpoint session history", () => {
       webhookCheckpointsContract.create.body.safeParse({
         ...baseBody,
         cliAgentSessionHistoryDisposition: "discarded_oversized",
+      }).success,
+    ).toBe(true);
+    expect(
+      webhookCheckpointsContract.create.body.safeParse({
+        ...baseBody,
+        cliAgentSessionHistoryDisposition: "unavailable",
       }).success,
     ).toBe(true);
   });

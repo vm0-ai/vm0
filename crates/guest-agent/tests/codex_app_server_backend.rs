@@ -153,12 +153,9 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
     }
     let stored_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert_eq!(stored_id, thread_id);
-    let marker = std::fs::read_to_string(runtime.paths.session_history_path_file())?;
-    assert!(marker.starts_with("CODEX_SEARCH:"));
-    assert!(marker.ends_with(&format!(":{thread_id}")));
     assert_eq!(masker.mask_string(thread_id), thread_id);
 
-    let session_events = read_codex_session_history_events(&runtime.paths)?;
+    let session_events = read_codex_session_history_events(&runtime, thread_id)?;
     let input_event = session_events
         .iter()
         .find(|event| event.get("type").and_then(Value::as_str) == Some("mock.app_server.input"))
@@ -237,15 +234,40 @@ fn read_agent_log_events(
 }
 
 fn read_codex_session_history_events(
-    paths: &guest_agent::paths::GuestPaths,
+    runtime: &guest_agent::run_context::GuestRuntime,
+    thread_id: &str,
 ) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    let history =
-        guest_agent::session_history::read_session_history(paths.session_history_path_file())?;
+    let root = std::path::Path::new(&runtime.config.home_dir).join(".codex/sessions");
+    let filename_key = thread_id.replace('-', "");
+    let history_path = find_file(&root, &|name| {
+        name.replace('-', "").contains(&filename_key)
+            && (name.ends_with(".jsonl") || name.ends_with(".jsonl.zst"))
+    })
+    .ok_or("missing Codex session history")?;
+    let history = std::fs::read(history_path)?;
     let history = String::from_utf8(history)?;
     history
         .lines()
         .map(|line| serde_json::from_str(line).map_err(Into::into))
         .collect()
+}
+
+fn find_file(
+    directory: &std::path::Path,
+    matches: &impl Fn(&str) -> bool,
+) -> Option<std::path::PathBuf> {
+    for entry in std::fs::read_dir(directory).ok()? {
+        let entry = entry.ok()?;
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_file(&path, matches) {
+                return Some(found);
+            }
+        } else if entry.file_name().to_str().is_some_and(matches) {
+            return Some(path);
+        }
+    }
+    None
 }
 
 fn assert_event_type_sequence(events: &[Value], expected: &[&str]) {

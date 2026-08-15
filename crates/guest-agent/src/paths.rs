@@ -24,7 +24,6 @@ use std::path::{Path, PathBuf};
 pub struct GuestPaths {
     runtime_dir: PathBuf,
     session_id_file: String,
-    session_history_path_file: String,
     checkpoint_error_file: String,
     final_session_history_identity_file: String,
     failure_diagnostic_file: String,
@@ -46,9 +45,6 @@ impl GuestPaths {
             session_id_file: path_to_string(guest_contracts::runtime_paths::session_id_file(
                 &runtime_dir,
             )),
-            session_history_path_file: path_to_string(
-                guest_contracts::runtime_paths::session_history_marker_file(&runtime_dir),
-            ),
             checkpoint_error_file: path_to_string(
                 guest_contracts::runtime_paths::checkpoint_error_file(&runtime_dir),
             ),
@@ -122,10 +118,6 @@ impl GuestPaths {
 
     pub fn session_id_file(&self) -> &str {
         &self.session_id_file
-    }
-
-    pub fn session_history_path_file(&self) -> &str {
-        &self.session_history_path_file
     }
 
     pub fn checkpoint_error_file(&self) -> &str {
@@ -208,11 +200,6 @@ mod tests {
         assert_eq!(
             paths.session_id_file(),
             guest_contracts::runtime_paths::session_id_file(&runtime_dir).to_string_lossy()
-        );
-        assert_eq!(
-            paths.session_history_path_file(),
-            guest_contracts::runtime_paths::session_history_marker_file(&runtime_dir)
-                .to_string_lossy()
         );
         assert_eq!(
             paths.checkpoint_error_file(),

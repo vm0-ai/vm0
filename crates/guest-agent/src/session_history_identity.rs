@@ -9,7 +9,7 @@ use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
     FinalSessionHistoryIdentityExpectation, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+    FinalSessionHistorySourceRef, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
@@ -22,7 +22,7 @@ use guest_contracts::session_history_identity::{
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
-use std::io::{self, Read};
+use std::io;
 use std::path::Path;
 
 /// Build final session-history identity metadata for a successful checkpoint.
@@ -31,7 +31,7 @@ pub(crate) fn build_final_session_history_identity(
     cli_agent_session_id: &str,
     history_hash: &str,
     history_size_bytes: u64,
-    history_marker_payload: &str,
+    history_source: &FinalSessionHistorySourceRef,
 ) -> Result<FinalSessionHistoryIdentity, FinalSessionHistoryIdentityBuildError> {
     let session_id_hash = session_id_hash(framework, cli_agent_session_id)
         .ok_or(FinalSessionHistoryIdentityBuildError::InvalidSessionId)?;
@@ -42,7 +42,7 @@ pub(crate) fn build_final_session_history_identity(
         FinalSessionHistoryRefKind::Blob,
         history_hash,
         history_size_bytes,
-        history_marker_payload,
+        history_source.clone(),
     )
     .map_err(FinalSessionHistoryIdentityBuildError::InvalidMetadata)
 }
@@ -81,7 +81,7 @@ pub fn verify_final_session_history_identity_file(
 /// Export a verified final session-history sidecar from one source snapshot.
 ///
 /// The bounded metadata at `metadata_path` is validated before the declared
-/// framework and decoded history size are checked against the marker shape and
+/// framework and decoded history size are checked against the source shape and
 /// guest resume budget. The resolved history source is then consumed once: the
 /// decoded size and SHA-256 identity are verified from the same snapshot that
 /// supplies the exported bytes.
@@ -113,8 +113,6 @@ pub fn verify_final_session_history_identity_file(
 ///
 /// # Errors
 ///
-/// Returns:
-///
 /// Returns [`FinalSessionHistorySidecarExportError::Verification`] when identity
 /// metadata or source history cannot be verified. Returns
 /// [`FinalSessionHistorySidecarExportError::OutputWrite`] when the verified
@@ -124,9 +122,10 @@ pub fn export_final_session_history_sidecar_file(
     export_path: impl AsRef<Path>,
 ) -> Result<SessionHistorySidecarExportMetadata, FinalSessionHistorySidecarExportError> {
     let identity = read_final_session_history_identity(metadata_path)?;
+    let history_source = validated_history_source(&identity)?;
     verify_final_session_history_identity_constraints(&identity)?;
-    let prepared = session_history::prepare_session_history_sidecar_from_payload_bounded(
-        &identity.history_marker_payload,
+    let prepared = session_history::prepare_session_history_sidecar_from_source_bounded(
+        history_source,
         identity.history_size_bytes,
         RESUME_SESSION_HISTORY_MAX_BYTES,
     )
@@ -152,13 +151,24 @@ pub fn export_final_session_history_sidecar_file(
 fn read_final_session_history_identity(
     metadata_path: impl AsRef<Path>,
 ) -> Result<FinalSessionHistoryIdentity, FinalSessionHistoryIdentityVerifyError> {
-    let mut file = std::fs::File::open(metadata_path)
-        .map_err(|_| FinalSessionHistoryIdentityVerifyError::MetadataRead)?;
-    let mut bytes = Vec::new();
-    file.by_ref()
-        .take(FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| FinalSessionHistoryIdentityVerifyError::MetadataRead)?;
+    let metadata_path = metadata_path.as_ref();
+    let read_limit =
+        usize::try_from(FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1).map_err(|_| {
+            FinalSessionHistoryIdentityVerifyError::InvalidMetadata(
+                FinalSessionHistoryIdentityError::MetadataTooLarge,
+            )
+        })?;
+    let bytes =
+        match guest_contracts::runtime_paths::read_private_bounded(metadata_path, read_limit) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => return Err(FinalSessionHistoryIdentityVerifyError::MetadataRead),
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                return Err(FinalSessionHistoryIdentityVerifyError::InvalidMetadata(
+                    FinalSessionHistoryIdentityError::MetadataTooLarge,
+                ));
+            }
+            Err(_) => return Err(FinalSessionHistoryIdentityVerifyError::MetadataRead),
+        };
     if bytes.len() as u64 > FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES {
         return Err(FinalSessionHistoryIdentityVerifyError::InvalidMetadata(
             FinalSessionHistoryIdentityError::MetadataTooLarge,
@@ -171,9 +181,10 @@ fn read_final_session_history_identity(
 fn verify_final_session_history_identity(
     identity: &FinalSessionHistoryIdentity,
 ) -> Result<(), FinalSessionHistoryIdentityVerifyError> {
+    let history_source = validated_history_source(identity)?;
     verify_final_session_history_identity_constraints(identity)?;
-    let digest = session_history::digest_session_history_from_payload_bounded(
-        &identity.history_marker_payload,
+    let digest = session_history::digest_session_history_from_source_bounded(
+        history_source,
         identity.history_size_bytes,
     )
     .map_err(map_session_history_digest_error)?;
@@ -183,30 +194,38 @@ fn verify_final_session_history_identity(
 fn verify_final_session_history_identity_constraints(
     identity: &FinalSessionHistoryIdentity,
 ) -> Result<(), FinalSessionHistoryIdentityVerifyError> {
-    match identity.framework {
-        FinalSessionHistoryFramework::ClaudeCode => {
-            if session_history::is_codex_marker(&identity.history_marker_payload) {
-                return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
-            }
-        }
-        FinalSessionHistoryFramework::Codex => {
-            if !session_history::is_codex_marker(&identity.history_marker_payload) {
-                return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
-            }
-        }
-        FinalSessionHistoryFramework::Pi => {
-            if !crate::session_metadata::is_pi_session_history_path(
-                &identity.history_marker_payload,
-            ) {
-                return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
-            }
-        }
-    }
-
     if identity.history_size_bytes > RESUME_SESSION_HISTORY_MAX_BYTES {
         return Err(FinalSessionHistoryIdentityVerifyError::HistoryTooLarge);
     }
     Ok(())
+}
+
+fn validated_history_source(
+    identity: &FinalSessionHistoryIdentity,
+) -> Result<&FinalSessionHistorySourceRef, FinalSessionHistoryIdentityVerifyError> {
+    let source_session_id = match (&identity.framework, &identity.history_source) {
+        (
+            FinalSessionHistoryFramework::ClaudeCode,
+            FinalSessionHistorySourceRef::ClaudeCode { session_id, .. },
+        ) => session_id.as_str(),
+        (
+            FinalSessionHistoryFramework::Codex,
+            FinalSessionHistorySourceRef::Codex { thread_id, .. },
+        ) => thread_id.as_str(),
+        (FinalSessionHistoryFramework::Pi, FinalSessionHistorySourceRef::Pi { session_id, .. }) => {
+            session_id.as_str()
+        }
+        _ => return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch),
+    };
+    let framework = match identity.framework {
+        FinalSessionHistoryFramework::ClaudeCode => env::Framework::ClaudeCode,
+        FinalSessionHistoryFramework::Codex => env::Framework::Codex,
+        FinalSessionHistoryFramework::Pi => env::Framework::Pi,
+    };
+    if session_id_hash(framework, source_session_id).as_deref() != Some(&identity.session_id_hash) {
+        return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
+    }
+    Ok(&identity.history_source)
 }
 
 fn verify_final_session_history_digest(
@@ -320,7 +339,7 @@ pub enum FinalSessionHistoryIdentityVerifyError {
     MetadataRead,
     /// Metadata failed shared contract validation.
     InvalidMetadata(FinalSessionHistoryIdentityError),
-    /// Metadata framework does not match the marker shape.
+    /// Metadata framework does not match its history source.
     FrameworkMismatch,
     /// Metadata does not match the identity runner expected to verify.
     ExpectedIdentityMismatch,
@@ -374,17 +393,17 @@ impl std::error::Error for FinalSessionHistoryIdentityVerifyError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
     const PREVIOUS_GUEST_VERIFY_CAP_BYTES: u64 = 32 * 1024 * 1024;
+    const CLAUDE_SESSION_ID: &str = "session-identity-test";
 
     fn write_metadata(
         dir: &tempfile::TempDir,
         identity: &FinalSessionHistoryIdentity,
     ) -> std::path::PathBuf {
         let path = dir.path().join("identity.json");
-        std::fs::write(&path, identity.to_json_vec().unwrap()).unwrap();
+        crate::paths::write_private(&path, identity.to_json_vec().unwrap()).unwrap();
         path
     }
 
@@ -398,6 +417,45 @@ mod tests {
             remaining -= chunk_len as u64;
         }
         hex::encode(hasher.finalize())
+    }
+
+    fn session_hash(session_id: &str) -> String {
+        hex::encode(Sha256::digest(session_id.as_bytes()))
+    }
+
+    fn claude_history_source(
+        dir: &tempfile::TempDir,
+    ) -> (std::path::PathBuf, FinalSessionHistorySourceRef) {
+        let config_dir = dir.path().join("claude-config");
+        let history_path = config_dir
+            .join("projects")
+            .join("-home-user-workspace")
+            .join(format!("{CLAUDE_SESSION_ID}.jsonl"));
+        std::fs::create_dir_all(history_path.parent().unwrap()).unwrap();
+        (
+            history_path,
+            FinalSessionHistorySourceRef::ClaudeCode {
+                config_dir: config_dir.to_string_lossy().into_owned(),
+                working_dir: crate::paths::CANONICAL_WORKING_DIR.to_string(),
+                session_id: CLAUDE_SESSION_ID.to_string(),
+            },
+        )
+    }
+
+    fn claude_identity(
+        source: FinalSessionHistorySourceRef,
+        history_hash: impl Into<String>,
+        history_size: u64,
+    ) -> FinalSessionHistoryIdentity {
+        FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            session_hash(CLAUDE_SESSION_ID),
+            FinalSessionHistoryRefKind::Blob,
+            history_hash,
+            history_size,
+            source,
+        )
+        .unwrap()
     }
 
     #[cfg(target_os = "linux")]
@@ -420,17 +478,13 @@ mod tests {
     fn verifies_claude_literal_history() {
         let dir = tempfile::tempdir().unwrap();
         let history = br#"{"type":"system"}"#;
-        let history_path = dir.path().join("history.jsonl");
+        let (history_path, source) = claude_history_source(&dir);
         std::fs::write(&history_path, history).unwrap();
-        let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+        let identity = claude_identity(
+            source,
             hex::encode(Sha256::digest(history)),
             history.len() as u64,
-            history_path.to_string_lossy(),
-        )
-        .unwrap();
+        );
         let metadata_path = write_metadata(&dir, &identity);
 
         verify_final_session_history_identity_file(metadata_path, None).unwrap();
@@ -444,17 +498,21 @@ mod tests {
             "{}/restored-{session_id}.jsonl",
             api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
         );
+        let history_source = FinalSessionHistorySourceRef::Pi {
+            session_path: history_path,
+            session_id: session_id.to_string(),
+        };
         let identity = build_final_session_history_identity(
             env::Framework::Pi,
             session_id,
             &hex::encode(Sha256::digest(history)),
             history.len() as u64,
-            &history_path,
+            &history_source,
         )
         .unwrap();
 
         assert_eq!(identity.framework, FinalSessionHistoryFramework::Pi);
-        assert_eq!(identity.history_marker_payload, history_path);
+        assert_eq!(identity.history_source, history_source);
         assert_eq!(
             identity.session_id_hash,
             hex::encode(Sha256::digest(session_id.as_bytes()))
@@ -462,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn verifies_codex_marker_history() {
+    fn verifies_codex_history_source() {
         let dir = tempfile::tempdir().unwrap();
         let sessions_dir = dir.path().join("sessions");
         let history_dir = sessions_dir.join("2026").join("06").join("29");
@@ -474,14 +532,17 @@ mod tests {
             history,
         )
         .unwrap();
-        let marker = session_history::codex_marker_payload(&sessions_dir, thread_id);
+        let source = FinalSessionHistorySourceRef::Codex {
+            sessions_dir: sessions_dir.to_string_lossy().into_owned(),
+            thread_id: thread_id.to_string(),
+        };
         let identity = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::Codex,
-            "a".repeat(64),
+            session_hash(thread_id),
             FinalSessionHistoryRefKind::Blob,
             hex::encode(Sha256::digest(history)),
             history.len() as u64,
-            marker,
+            source,
         )
         .unwrap();
         let metadata_path = write_metadata(&dir, &identity);
@@ -490,7 +551,7 @@ mod tests {
     }
 
     #[test]
-    fn verifies_codex_zstd_marker_history() {
+    fn verifies_codex_zstd_history_source() {
         let dir = tempfile::tempdir().unwrap();
         let sessions_dir = dir.path().join("sessions");
         let history_dir = sessions_dir.join("2026").join("06").join("29");
@@ -504,14 +565,17 @@ mod tests {
             compressed,
         )
         .unwrap();
-        let marker = session_history::codex_marker_payload(&sessions_dir, thread_id);
+        let source = FinalSessionHistorySourceRef::Codex {
+            sessions_dir: sessions_dir.to_string_lossy().into_owned(),
+            thread_id: thread_id.to_string(),
+        };
         let identity = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::Codex,
-            "a".repeat(64),
+            session_hash(thread_id),
             FinalSessionHistoryRefKind::Blob,
             hex::encode(Sha256::digest(history)),
             history.len() as u64,
-            marker,
+            source,
         )
         .unwrap();
         let metadata_path = write_metadata(&dir, &identity);
@@ -522,17 +586,9 @@ mod tests {
     #[test]
     fn rejects_history_mismatch() {
         let dir = tempfile::tempdir().unwrap();
-        let history_path = dir.path().join("history.jsonl");
+        let (history_path, source) = claude_history_source(&dir);
         std::fs::write(&history_path, b"changed").unwrap();
-        let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
-            "b".repeat(64),
-            7,
-            history_path.to_string_lossy(),
-        )
-        .unwrap();
+        let identity = claude_identity(source, "b".repeat(64), 7);
         let metadata_path = write_metadata(&dir, &identity);
 
         let err = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
@@ -546,11 +602,10 @@ mod tests {
     fn rejects_oversized_metadata_file() {
         let dir = tempfile::tempdir().unwrap();
         let metadata_path = dir.path().join("identity.json");
-        let mut file = std::fs::File::create(&metadata_path).unwrap();
-        file.write_all(&vec![
-            b'x';
-            FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES as usize + 1
-        ])
+        crate::paths::write_private(
+            &metadata_path,
+            vec![b'x'; FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES as usize + 1],
+        )
         .unwrap();
 
         let err = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
@@ -564,15 +619,15 @@ mod tests {
 
     #[test]
     fn build_allows_large_history_metadata() {
-        let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+        let identity = claude_identity(
+            FinalSessionHistorySourceRef::ClaudeCode {
+                config_dir: "/claude-config".to_string(),
+                working_dir: crate::paths::CANONICAL_WORKING_DIR.to_string(),
+                session_id: CLAUDE_SESSION_ID.to_string(),
+            },
             "b".repeat(64),
             LARGE_SESSION_HISTORY_SIZE_BYTES as u64,
-            "/history.jsonl",
-        )
-        .unwrap();
+        );
 
         assert_eq!(
             identity.history_size_bytes,
@@ -583,18 +638,14 @@ mod tests {
     #[test]
     fn verifies_large_claude_literal_history() {
         let dir = tempfile::tempdir().unwrap();
-        let history_path = dir.path().join("history.jsonl");
+        let (history_path, source) = claude_history_source(&dir);
         let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
         std::fs::write(&history_path, &history).unwrap();
-        let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+        let identity = claude_identity(
+            source,
             hex::encode(Sha256::digest(&history)),
             history.len() as u64,
-            history_path.to_string_lossy(),
-        )
-        .unwrap();
+        );
         let metadata_path = write_metadata(&dir, &identity);
 
         verify_final_session_history_identity_file(metadata_path, None).unwrap();
@@ -606,20 +657,12 @@ mod tests {
         assert!(history_size < RESUME_SESSION_HISTORY_MAX_BYTES);
 
         let dir = tempfile::tempdir().unwrap();
-        let history_path = dir.path().join("history.jsonl");
+        let (history_path, source) = claude_history_source(&dir);
         std::fs::File::create(&history_path)
             .unwrap()
             .set_len(history_size)
             .unwrap();
-        let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
-            repeated_byte_sha256(0, history_size),
-            history_size,
-            history_path.to_string_lossy(),
-        )
-        .unwrap();
+        let identity = claude_identity(source, repeated_byte_sha256(0, history_size), history_size);
         let metadata_path = write_metadata(&dir, &identity);
 
         verify_final_session_history_identity_file(metadata_path, None).unwrap();
@@ -628,19 +671,15 @@ mod tests {
     #[test]
     fn rejects_current_history_larger_than_identity_size() {
         let dir = tempfile::tempdir().unwrap();
-        let history_path = dir.path().join("history.jsonl");
+        let (history_path, source) = claude_history_source(&dir);
         let expected_history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES - 1];
         let oversized_history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
         std::fs::write(&history_path, oversized_history).unwrap();
-        let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+        let identity = claude_identity(
+            source,
             hex::encode(Sha256::digest(&expected_history)),
             expected_history.len() as u64,
-            history_path.to_string_lossy(),
-        )
-        .unwrap();
+        );
         let metadata_path = write_metadata(&dir, &identity);
 
         let err = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
@@ -653,17 +692,10 @@ mod tests {
     #[test]
     fn rejects_history_above_resume_cap() {
         let dir = tempfile::tempdir().unwrap();
-        let history_path = dir.path().join("history.jsonl");
+        let (history_path, source) = claude_history_source(&dir);
         std::fs::write(&history_path, b"small").unwrap();
-        let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
-            "b".repeat(64),
-            RESUME_SESSION_HISTORY_MAX_BYTES + 1,
-            history_path.to_string_lossy(),
-        )
-        .unwrap();
+        let identity =
+            claude_identity(source, "b".repeat(64), RESUME_SESSION_HISTORY_MAX_BYTES + 1);
         let metadata_path = write_metadata(&dir, &identity);
 
         let err = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
@@ -677,20 +709,16 @@ mod tests {
     fn rejects_expected_identity_mismatch() {
         let dir = tempfile::tempdir().unwrap();
         let history = br#"{"type":"system"}"#;
-        let history_path = dir.path().join("history.jsonl");
+        let (history_path, source) = claude_history_source(&dir);
         std::fs::write(&history_path, history).unwrap();
-        let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+        let identity = claude_identity(
+            source,
             hex::encode(Sha256::digest(history)),
             history.len() as u64,
-            history_path.to_string_lossy(),
-        )
-        .unwrap();
+        );
         let expected = FinalSessionHistoryIdentityExpectation::new(
             FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
+            session_hash(CLAUDE_SESSION_ID),
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
             history.len() as u64,

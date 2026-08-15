@@ -13,13 +13,11 @@ use crate::failure_patterns::{
 use crate::http::{HttpAttemptObserver, HttpClient};
 use crate::masker::SecretMasker;
 use crate::paths;
-use crate::session_metadata;
+use crate::session_metadata::{self, SessionHistoryLaunchSource, SessionMetadataStore};
 use bytes::Bytes;
-use guest_common::{log_error, log_info};
 use guest_contracts::diagnostics::FailureReason;
 use serde_json::{Map, Value, json};
 
-const LOG_TAG: &str = "sandbox:guest-agent";
 const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
 const FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
 const EVENT_PAYLOAD_RUN_ID_PREFIX: &[u8] = b"{\"runId\":";
@@ -51,11 +49,10 @@ pub async fn send_event_for_config(
     config: &GuestConfig,
     paths: &paths::GuestPaths,
 ) -> Result<(), AgentError> {
-    let capture = SessionMetadataCapture::from_values(
-        config.framework,
-        &config.home_dir,
+    let capture = SessionMetadataCapture::new(
+        SessionHistoryLaunchSource::for_config(config),
+        SessionMetadataStore::default(),
         paths.session_id_file(),
-        paths.session_history_path_file(),
     );
     capture.capture_event(&event);
 
@@ -411,7 +408,7 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
     results
 }
 
-/// Capture session metadata files needed by checkpoint.
+/// Capture session metadata needed by checkpoint.
 ///
 /// Both frameworks emit a single id-bearing event near the top of their
 /// JSONL stream:
@@ -419,33 +416,25 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 /// - Codex:       `{type: thread.started, thread_id: <uuid>}`
 /// - Pi:          `{type: system, subtype: init, session_id: <chat-thread-id>, session_file: <path>}`
 ///
-/// Checkpoint resolves missing markers when it consumes session metadata.
-///
-/// The on-disk format of `session_history_path_file()` differs by framework:
-/// - Claude: literal `~/.claude/projects/-{cwd}/{session_id}.jsonl` path.
-/// - Codex: length-prefixed `CODEX_SEARCH:{dir_len}:{sessions_dir}:{thread_id}`
-///   marker — codex doesn't write the session file until turn-completion, so
-///   resolution is deferred to checkpoint time.
-/// - Pi: literal path to the official JSONL session file.
 pub(crate) struct SessionMetadataCapture {
     framework: Framework,
-    home_dir: String,
-    session_id_file: String,
-    session_history_path_file: String,
+    capture: session_metadata::SessionMetadataCapture,
 }
 
 impl SessionMetadataCapture {
-    pub(crate) fn from_values(
-        framework: Framework,
-        home_dir: &str,
+    pub(crate) fn new(
+        launch_source: SessionHistoryLaunchSource,
+        store: SessionMetadataStore,
         session_id_file: &str,
-        session_history_path_file: &str,
     ) -> Self {
+        let framework = launch_source.framework();
         Self {
             framework,
-            home_dir: home_dir.to_string(),
-            session_id_file: session_id_file.to_string(),
-            session_history_path_file: session_history_path_file.to_string(),
+            capture: session_metadata::SessionMetadataCapture::new(
+                launch_source,
+                store,
+                session_id_file,
+            ),
         }
     }
 
@@ -458,56 +447,14 @@ impl SessionMetadataCapture {
         let Some(session_id) = session_id else {
             return;
         };
-        let history_path_payload = match self.framework {
-            Framework::Pi => session_metadata::pi_history_path_payload(event, &session_id),
-            _ => session_metadata::history_marker_payload_for_session_id_with_home(
-                self.framework,
-                &self.home_dir,
-                &session_id,
-            ),
-        };
-        let Some(history_path_payload) = history_path_payload else {
-            return;
-        };
-
-        // Idempotency: only the first id-bearing event of the run wins, but allow
-        // a retry of the same session to repair a missing history marker after a
-        // partial metadata write.
-        match std::fs::read_to_string(&self.session_id_file) {
-            Ok(existing_session_id) => {
-                let existing_session_id = existing_session_id.trim();
-                if existing_session_id == session_id {
-                    session_metadata::ensure_history_marker_payload_at(
-                        &self.session_history_path_file,
-                        &history_path_payload,
-                    );
-                }
-                return;
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => {
-                log_error!(
-                    LOG_TAG,
-                    "Failed to read existing session ID from {}: {e}",
-                    self.session_id_file
-                );
-                return;
+        match self.framework {
+            Framework::Pi => self
+                .capture
+                .capture_pi_session_id(&session_id, string_field(event, "session_file")),
+            Framework::ClaudeCode | Framework::Codex => {
+                self.capture.capture_session_id(&session_id);
             }
         }
-
-        log_info!(LOG_TAG, "Captured session ID");
-        match paths::write_private(&self.session_id_file, &session_id) {
-            Ok(()) => log_info!(LOG_TAG, "Session ID written to {}", self.session_id_file),
-            Err(e) => log_error!(
-                LOG_TAG,
-                "Failed to write session ID to {}: {e}",
-                self.session_id_file
-            ),
-        }
-        session_metadata::write_session_history_marker_at(
-            &self.session_history_path_file,
-            &history_path_payload,
-        );
     }
 }
 

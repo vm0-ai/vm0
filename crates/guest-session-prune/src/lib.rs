@@ -298,6 +298,19 @@ pub fn select_claude_compact_generation(
     )
 }
 
+/// Select Claude Code's latest compact generation from an already-open source.
+pub fn select_claude_compact_generation_from_file(
+    source: &mut File,
+    expected_session_id: &str,
+) -> io::Result<ClaudeHistorySelection> {
+    select_opened_with_limits_and_hook(
+        source,
+        expected_session_id,
+        SelectionLimits::PRODUCTION,
+        || {},
+    )
+}
+
 /// Select a Claude compact generation with a bounded integration-test window.
 #[doc(hidden)]
 pub fn select_claude_compact_generation_with_candidate_limit_for_test(
@@ -316,6 +329,24 @@ pub fn select_claude_compact_generation_with_candidate_limit_for_test(
     )
 }
 
+/// Select a Claude compact generation from an open file with a bounded test window.
+#[doc(hidden)]
+pub fn select_claude_compact_generation_from_file_with_candidate_limit_for_test(
+    source: &mut File,
+    expected_session_id: &str,
+    candidate_max_bytes: u64,
+) -> io::Result<ClaudeHistorySelection> {
+    select_opened_with_limits_and_hook(
+        source,
+        expected_session_id,
+        SelectionLimits {
+            candidate_max_bytes,
+            ..SelectionLimits::PRODUCTION
+        },
+        || {},
+    )
+}
+
 fn select_with_limits_and_hook(
     source_path: &Path,
     expected_session_id: &str,
@@ -323,6 +354,15 @@ fn select_with_limits_and_hook(
     before_final_check: impl FnOnce(),
 ) -> io::Result<ClaudeHistorySelection> {
     let mut file = File::open(source_path)?;
+    select_opened_with_limits_and_hook(&mut file, expected_session_id, limits, before_final_check)
+}
+
+fn select_opened_with_limits_and_hook(
+    file: &mut File,
+    expected_session_id: &str,
+    limits: SelectionLimits,
+    before_final_check: impl FnOnce(),
+) -> io::Result<ClaudeHistorySelection> {
     let source_size = file.metadata()?.len();
     if source_size <= limits.candidate_max_bytes {
         return Ok(ClaudeHistorySelection::Ineligible(

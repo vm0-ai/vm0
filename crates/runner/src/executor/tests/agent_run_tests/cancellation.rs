@@ -11,8 +11,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
 use super::support::{
-    claude_history_path, final_identity_metadata_bytes, final_identity_runtime_paths,
-    local_sidecar_restore_plan,
+    final_identity_metadata_bytes, final_identity_runtime_paths, local_sidecar_restore_plan,
 };
 use crate::executor::agent_run::{ProcessCancelTimeouts, RunControls, RunStart, run_in_sandbox};
 use crate::executor::diagnostics::AgentStdoutStreamDiagnostics;
@@ -48,11 +47,7 @@ async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
     let session_id = "sess-late-cancel-123";
     let history = br#"{"type":"done"}"#;
     let (metadata_path, _) = final_identity_runtime_paths(&ctx);
-    overrides.push_read_file_result(Ok(Some(final_identity_metadata_bytes(
-        session_id,
-        history,
-        claude_history_path(session_id),
-    ))));
+    overrides.push_read_file_result(Ok(Some(final_identity_metadata_bytes(session_id, history))));
     let cancel = tokio_util::sync::CancellationToken::new();
     overrides.cancel_after_next_wait_process_result(cancel.clone());
     let sandbox = create_overridden_sandbox(overrides).await;

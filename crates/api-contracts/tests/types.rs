@@ -100,6 +100,31 @@ fn generated_checkpoint_request_serializes_discarded_oversized_history() {
 }
 
 #[test]
+fn generated_checkpoint_request_serializes_unavailable_history() {
+    let request = checkpoints::Request {
+        run_id: "run-1".to_string(),
+        cli_agent_type: "claude-code".to_string(),
+        cli_agent_session_id: "session-1".to_string(),
+        cli_agent_session_history_hash: None,
+        cli_agent_session_history_disposition: Some(
+            checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable,
+        ),
+        artifact_snapshots: None,
+        volume_versions_snapshot: None,
+    };
+
+    assert_eq!(
+        serde_json::to_value(request).unwrap(),
+        json!({
+            "runId": "run-1",
+            "cliAgentType": "claude-code",
+            "cliAgentSessionId": "session-1",
+            "cliAgentSessionHistoryDisposition": "unavailable",
+        })
+    );
+}
+
+#[test]
 fn generated_prepare_request_serializes_wire_shape() {
     let hash = "a".repeat(64);
     let request = prepare::Request {

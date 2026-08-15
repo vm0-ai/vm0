@@ -12,7 +12,7 @@ use api_contracts::generated::constants::runners::{
 use async_trait::async_trait;
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+    FinalSessionHistorySourceRef, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
     SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistorySidecarExportFailure,
     SessionHistorySidecarExportMetadata, SessionHistorySidecarIoErrorClass,
     SessionHistorySidecarRepresentation,
@@ -62,7 +62,11 @@ fn test_restored_session_identity(session_id: &str, history: &[u8]) -> RestoredS
         FinalSessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
-        format!("/home/user/.claude/projects/-home-user-workspace/{session_id}.jsonl"),
+        FinalSessionHistorySourceRef::ClaudeCode {
+            config_dir: "/home/user/.claude".to_string(),
+            working_dir: CANONICAL_WORKING_DIR.to_string(),
+            session_id: session_id.to_string(),
+        },
     )
     .unwrap();
     RestoredSessionIdentity::from_final_metadata(

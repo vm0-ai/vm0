@@ -5,8 +5,7 @@ use sha2::{Digest, Sha256};
 use super::{LARGE_SESSION_HISTORY_SIZE_BYTES, assert_successful_action, serve_history_once};
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::agent_run_tests::support::{
-    assert_failed_action_error_once, claude_history_path, final_identity_metadata_bytes,
-    final_identity_runtime_paths,
+    assert_failed_action_error_once, final_identity_metadata_bytes, final_identity_runtime_paths,
 };
 use crate::executor::tests::support::{
     minimal_context, sandbox_read_file_error, test_executor_config, test_telemetry,
@@ -78,7 +77,6 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
     sandbox.push_read_file_result(Ok(Some(final_identity_metadata_bytes(
         session_id,
         final_history,
-        claude_history_path(session_id),
     ))));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
@@ -148,11 +146,7 @@ async fn run_in_sandbox_uses_final_identity_without_resume_request() {
     let ctx = minimal_context();
     let session_id = "sess-first-turn-final-123";
     let (metadata_path, _) = final_identity_runtime_paths(&ctx);
-    sandbox.push_read_file_result(Ok(Some(final_identity_metadata_bytes(
-        session_id,
-        history,
-        claude_history_path(session_id),
-    ))));
+    sandbox.push_read_file_result(Ok(Some(final_identity_metadata_bytes(session_id, history))));
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
@@ -238,8 +232,7 @@ async fn run_in_sandbox_records_oversized_final_identity_metadata_reason() {
     let session_id = "sess-oversized-final-123";
     let history = br#"{"type":"init"}"#;
     let (metadata_path, _) = final_identity_runtime_paths(&ctx);
-    let mut metadata =
-        final_identity_metadata_bytes(session_id, history, claude_history_path(session_id));
+    let mut metadata = final_identity_metadata_bytes(session_id, history);
     let oversized_metadata_len = FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES as usize + 1;
     assert!(metadata.len() < oversized_metadata_len);
     metadata.resize(oversized_metadata_len, b' ');
@@ -293,14 +286,19 @@ async fn run_in_sandbox_records_large_final_identity_metadata() {
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let ctx = minimal_context();
     let (metadata_path, _) = final_identity_runtime_paths(&ctx);
+    let session_id = "large-history";
     let metadata = serde_json::json!({
-        "version": 1,
         "framework": "claude-code",
-        "sessionIdHash": "a".repeat(64),
+        "sessionIdHash": hex::encode(Sha256::digest(session_id.as_bytes())),
         "historyRefKind": "blob",
         "historyHash": "b".repeat(64),
         "historySizeBytes": LARGE_SESSION_HISTORY_SIZE_BYTES,
-        "historyMarkerPayload": "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+        "historySource": {
+            "kind": "claude-code",
+            "configDir": "/home/user/.claude",
+            "workingDir": "/home/user/workspace",
+            "sessionId": session_id,
+        },
     });
     sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&metadata).unwrap())));
     let mut telemetry = test_telemetry(&config, &ctx);

@@ -1,21 +1,4 @@
-//! Session-history reader — abstracts over Claude (literal jsonl path) and
-//! codex (`CODEX_SEARCH:{dir_len}:{dir}:{id}` marker → bounded layout scan +
-//! optional zstd decode).
-//!
-//! The event metadata capture path writes one of two payloads to the
-//! `GuestPaths::session_history_path_file()` runtime file:
-//!
-//! - Claude: a literal filesystem path to the `.jsonl` history file.
-//! - Codex:  a length-prefixed
-//!   `CODEX_SEARCH:{dir_len}:{sessions_dir}:{thread_id}` marker. The codex
-//!   CLI only writes the session file out at turn-completion time, so we defer
-//!   resolution until checkpoint time when the file is on disk.
-//!
-//! `read_session_history` is the file-backed entry point. Checkpoint resolves
-//! missing marker payloads first, then calls the bounded payload reader. Both
-//! paths return history bytes, decompressing legacy `.zst` files when needed.
-//!
-//! See parent epic #11386, sub-issue #11419 for the design rationale.
+//! Descriptor-safe session-history resolution for typed framework sources.
 //!
 //! The codex sessions layout is `${CODEX_HOME}/sessions/YYYY/MM/DD/<file>.jsonl[.zst]`.
 //! Filenames are not stably keyed to thread_id in the real codex CLI
@@ -25,89 +8,27 @@
 //! unbounded filesystem walk. If no filename matches, we fail fast — silently
 //! picking "the most recent file in the tree" would risk uploading an unrelated
 //! session as the resume context, which is a multi-tenant correctness hazard.
-//! The descriptive `Codex session file not found` error from
-//! `read_session_history` surfaces the failure without logging the session id.
+//! Resolution fails when there is no unique bounded match; it never selects a
+//! newest or otherwise unrelated fallback.
 
 use crate::error::AgentError;
 #[cfg(target_os = "linux")]
 use crate::nofollow_fs::Dir;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::codex_thread_id_filename_key;
+use guest_contracts::session_history_identity::FinalSessionHistorySourceRef;
 use sha2::{Digest, Sha256};
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
-use std::io::{self, BufReader, Read, Seek};
+use std::io::{self, BufReader, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 
-const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
-pub(crate) const SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES: usize = 64 * 1024;
 // Checkpoint must resolve Codex history from user-controlled guest-home state.
 // Keep the budget comfortably above normal date-partitioned histories while
 // preventing layout-shaped trees from turning session lookup into an
 // unbounded synchronous walk.
 const CODEX_SESSION_LOOKUP_SCAN_BUDGET: usize = 16_384;
 const CODEX_SESSION_LOOKUP_SCAN_BUDGET_ERROR: &str = "Codex session lookup exceeded scan budget";
-
-/// Build the persisted Codex session-history marker payload.
-pub(crate) fn codex_marker_payload(sessions_dir: &Path, thread_id: &str) -> String {
-    let sessions_dir = sessions_dir.display().to_string();
-    format!(
-        "{CODEX_MARKER_PREFIX}{}:{sessions_dir}:{thread_id}",
-        sessions_dir.len()
-    )
-}
-
-/// Return whether a persisted session-history payload is a Codex marker.
-pub(crate) fn is_codex_marker(payload: &str) -> bool {
-    payload.starts_with(CODEX_MARKER_PREFIX)
-}
-
-/// Read the session history bytes pointed to by `path_file`.
-///
-/// The file content is either a literal path (Claude) or a
-/// codex marker. Returns the file contents, decompressed if the resolved path
-/// ends in `.zst`.
-pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
-    let raw = read_history_marker_payload_file(path_file).map_err(|e| {
-        AgentError::Checkpoint(format!("Failed to read history-path file {path_file}: {e}"))
-    })?;
-    read_session_history_from_payload(raw.trim())
-}
-
-pub(crate) fn read_history_marker_payload_file(path_file: &str) -> io::Result<String> {
-    let file = std::fs::File::open(path_file)?;
-    let mut bytes = Vec::new();
-    file.take((SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1) as u64)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "session history marker exceeds maximum size of {SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES} bytes"
-            ),
-        ));
-    }
-    String::from_utf8(bytes).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
-}
-
-/// Read session history bytes from an already-resolved marker payload.
-///
-/// The payload is either a literal path (Claude) or a
-/// codex marker.
-pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>, AgentError> {
-    read_session_history_from_payload_impl(payload, None)
-}
-
-/// Read decoded session history bytes without returning more than `max_bytes`.
-///
-/// The implementation reads one extra decoded byte to detect over-limit
-/// histories without consuming an unbounded stream.
-#[cfg(test)]
-pub(crate) fn read_session_history_from_payload_bounded(
-    payload: &str,
-    max_bytes: u64,
-) -> Result<Vec<u8>, AgentError> {
-    read_session_history_from_payload_impl(payload, Some(max_bytes))
-}
 
 pub(crate) fn session_history_exceeds_max_error(max_bytes: u64) -> AgentError {
     AgentError::CheckpointHistoryTooLarge { max_bytes }
@@ -128,19 +49,106 @@ pub(crate) struct PreparedSessionHistorySidecar {
     source: SessionHistoryCheckpointSource,
 }
 
-pub(crate) struct ResolvedCodexSessionHistory {
+pub(crate) struct SafeHistoryReplacementTarget {
+    #[cfg(target_os = "linux")]
+    parent: Dir,
+    parent_path: PathBuf,
+    leaf_name: OsString,
+}
+
+impl SafeHistoryReplacementTarget {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn stage(&self, candidate: &[u8]) -> io::Result<SafeHistoryReplacement> {
+        let parent = self.parent.try_clone()?;
+        let staged_name =
+            OsString::from(format!(".vm0-session-history-{}.tmp", uuid::Uuid::new_v4()));
+        let mut staged_file = parent.create_child_file(&staged_name)?;
+        let replacement = SafeHistoryReplacement {
+            parent,
+            parent_path: self.parent_path.clone(),
+            staged_name,
+            target_name: self.leaf_name.clone(),
+            persisted: false,
+        };
+        staged_file.write_all(candidate)?;
+        staged_file.flush()?;
+        drop(staged_file);
+        Ok(replacement)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn stage(&self, _candidate: &[u8]) -> io::Result<SafeHistoryReplacement> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "safe session history replacement is unsupported on this platform",
+        ))
+    }
+}
+
+pub(crate) struct SafeHistoryReplacement {
+    #[cfg(target_os = "linux")]
+    parent: Dir,
+    parent_path: PathBuf,
+    staged_name: OsString,
+    target_name: OsString,
+    persisted: bool,
+}
+
+impl SafeHistoryReplacement {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn persist(mut self) -> io::Result<()> {
+        self.ensure_parent_path_still_matches()?;
+        self.parent
+            .rename_child(&self.staged_name, &self.target_name)?;
+        self.persisted = true;
+        self.ensure_parent_path_still_matches()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn persist(self) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "safe session history replacement is unsupported on this platform",
+        ))
+    }
+
+    #[cfg(target_os = "linux")]
+    fn ensure_parent_path_still_matches(&self) -> io::Result<()> {
+        let current = Dir::open_absolute(&self.parent_path)?;
+        if current.identity()? == self.parent.identity()? {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "session history parent path changed before replacement",
+            ))
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for SafeHistoryReplacement {
+    fn drop(&mut self) {
+        if !self.persisted {
+            let _ = self.parent.unlink_child_file(&self.staged_name);
+        }
+    }
+}
+
+pub(crate) struct ResolvedSessionHistory {
     path: PathBuf,
     file: File,
     is_zstd: bool,
+    replacement_target: SafeHistoryReplacementTarget,
 }
 
-impl ResolvedCodexSessionHistory {
-    pub(crate) fn path(&self) -> &Path {
-        &self.path
-    }
-
+impl ResolvedSessionHistory {
     pub(crate) fn plain_file_mut(&mut self) -> Option<&mut File> {
         (!self.is_zstd).then_some(&mut self.file)
+    }
+
+    pub(crate) fn replacement_target(&self) -> &SafeHistoryReplacementTarget {
+        &self.replacement_target
     }
 
     pub(crate) fn into_checkpoint_source_bounded(
@@ -149,12 +157,199 @@ impl ResolvedCodexSessionHistory {
     ) -> Result<SessionHistoryCheckpointSource, AgentError> {
         read_open_codex_checkpoint_source_bounded(self.path, self.file, self.is_zstd, max_bytes)
     }
+
+    fn into_decoded_reader(self) -> Result<DecodedSessionHistoryReader, AgentError> {
+        DecodedSessionHistoryReader::open(self.path, self.file)
+    }
+
+    pub(crate) fn encoded_len(&self) -> Result<u64, AgentError> {
+        self.file
+            .metadata()
+            .map(|metadata| metadata.len())
+            .map_err(|error| read_history_error(&self.path, error))
+    }
+
+    fn into_zstd_bytes(self, max_encoded_bytes: u64) -> Result<Vec<u8>, AgentError> {
+        read_zstd_encoded_session_history(self.file, &self.path, max_encoded_bytes)
+    }
 }
 
 impl PreparedSessionHistorySidecar {
     pub(crate) fn into_source(self) -> SessionHistoryCheckpointSource {
         self.source
     }
+}
+
+/// Resolve one canonical framework source and return its already-open regular file.
+pub(crate) fn resolve_session_history_from_source(
+    source: &FinalSessionHistorySourceRef,
+) -> Result<ResolvedSessionHistory, AgentError> {
+    match source {
+        FinalSessionHistorySourceRef::ClaudeCode {
+            config_dir,
+            working_dir,
+            session_id,
+        } => {
+            if !is_valid_cli_agent_session_id(session_id) {
+                return Err(AgentError::Checkpoint(
+                    "Invalid Claude session history source".to_string(),
+                ));
+            }
+            let config_dir = validated_absolute_source_path(config_dir)?;
+            let working_dir = validated_absolute_source_path(working_dir)?;
+            let project_name = working_dir
+                .strip_prefix("/")
+                .map_err(|_| {
+                    AgentError::Checkpoint(
+                        "Invalid Claude session history working directory".to_string(),
+                    )
+                })?
+                .to_string_lossy()
+                .replace('/', "-");
+            let project_dir = format!("-{project_name}");
+            let leaf = format!("{session_id}.jsonl");
+            open_exact_session_history(&config_dir, &["projects", &project_dir], OsStr::new(&leaf))
+        }
+        FinalSessionHistorySourceRef::Codex {
+            sessions_dir,
+            thread_id,
+        } => {
+            let sessions_dir = validated_absolute_source_path(sessions_dir)?;
+            let Some(session) = resolve_codex_session_history(&sessions_dir, thread_id)? else {
+                return Err(codex_session_not_found_error(&sessions_dir));
+            };
+            #[cfg(target_os = "linux")]
+            {
+                Ok(session.into_resolved())
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = session;
+                Err(AgentError::Checkpoint(
+                    "Safe session history resolution is unsupported on this platform".to_string(),
+                ))
+            }
+        }
+        FinalSessionHistorySourceRef::Pi {
+            session_path,
+            session_id,
+        } => {
+            if !crate::session_metadata::is_pi_session_history_path(session_path, session_id) {
+                return Err(AgentError::Checkpoint(
+                    "Invalid Pi session history source".to_string(),
+                ));
+            }
+            let path = Path::new(session_path);
+            let parent = path.parent().ok_or_else(|| {
+                AgentError::Checkpoint("Invalid Pi session history source".to_string())
+            })?;
+            let leaf = path.file_name().ok_or_else(|| {
+                AgentError::Checkpoint("Invalid Pi session history source".to_string())
+            })?;
+            open_exact_session_history(parent, &[], leaf)
+        }
+    }
+}
+
+pub(crate) fn digest_session_history_from_source_bounded(
+    source: &FinalSessionHistorySourceRef,
+    max_bytes: u64,
+) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
+    resolve_session_history_from_source(source)?
+        .into_decoded_reader()?
+        .digest(max_bytes)
+}
+
+pub(crate) fn prepare_session_history_sidecar_from_source_bounded(
+    source: &FinalSessionHistorySourceRef,
+    max_decoded_bytes: u64,
+    max_encoded_bytes: u64,
+) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
+    let resolved = resolve_session_history_from_source(source)?;
+    if resolved.is_zstd {
+        if resolved.encoded_len()? <= max_encoded_bytes {
+            let encoded = resolved.into_zstd_bytes(max_encoded_bytes)?;
+            let digest = digest_zstd_session_history_bytes(&encoded, max_decoded_bytes)?;
+            return Ok(PreparedSessionHistorySidecar {
+                digest,
+                source: SessionHistoryCheckpointSource::CodexZstd { encoded },
+            });
+        }
+        return resolved
+            .into_decoded_reader()?
+            .prepare_sidecar(max_decoded_bytes);
+    }
+    resolved
+        .into_decoded_reader()?
+        .prepare_sidecar(max_decoded_bytes)
+}
+
+fn validated_absolute_source_path(value: &str) -> Result<PathBuf, AgentError> {
+    let path = Path::new(value);
+    if !path.is_absolute()
+        || path.components().any(|component| {
+            !matches!(
+                component,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            )
+        })
+    {
+        return Err(AgentError::Checkpoint(
+            "Session history source path is not canonical absolute path".to_string(),
+        ));
+    }
+    Ok(path.to_path_buf())
+}
+
+#[cfg(target_os = "linux")]
+fn open_exact_session_history(
+    root: &Path,
+    directories: &[&str],
+    leaf_name: &OsStr,
+) -> Result<ResolvedSessionHistory, AgentError> {
+    let mut parent = Dir::open_absolute(root).map_err(|error| read_history_error(root, error))?;
+    let mut path = root.to_path_buf();
+    for directory in directories {
+        path.push(directory);
+        parent = parent
+            .open_child_dir(OsStr::new(directory))
+            .map_err(|error| read_history_error(&path, error))?;
+    }
+    path.push(leaf_name);
+    let file = parent
+        .open_child_file(leaf_name)
+        .map_err(|error| read_history_error(&path, error))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| read_history_error(&path, error))?;
+    if !metadata.file_type().is_file() {
+        return Err(AgentError::Checkpoint(format!(
+            "Session history source is not a regular file: {}",
+            path.display()
+        )));
+    }
+    Ok(ResolvedSessionHistory {
+        replacement_target: SafeHistoryReplacementTarget {
+            parent,
+            parent_path: path.parent().unwrap_or(root).to_path_buf(),
+            leaf_name: leaf_name.to_os_string(),
+        },
+        path,
+        file,
+        is_zstd: false,
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_exact_session_history(
+    root: &Path,
+    _directories: &[&str],
+    _leaf_name: &OsStr,
+) -> Result<ResolvedSessionHistory, AgentError> {
+    Err(AgentError::Checkpoint(format!(
+        "Safe session history resolution is unsupported on this platform: {}",
+        root.display()
+    )))
 }
 
 #[derive(Debug)]
@@ -166,30 +361,6 @@ pub(crate) enum SessionHistoryDigestError {
 impl From<AgentError> for SessionHistoryDigestError {
     fn from(error: AgentError) -> Self {
         Self::Read(error)
-    }
-}
-
-/// Compute decoded session-history size and hash without returning the bytes.
-pub(crate) fn digest_session_history_from_payload_bounded(
-    payload: &str,
-    max_bytes: u64,
-) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
-    resolve_session_history_source(payload)?.digest(max_bytes)
-}
-
-pub(crate) fn read_session_history_checkpoint_source_from_payload_bounded(
-    payload: &str,
-    max_bytes: u64,
-) -> Result<SessionHistoryCheckpointSource, AgentError> {
-    match resolve_session_history_source(payload)? {
-        ResolvedSessionHistorySource::Codex(session) => {
-            let is_zstd = session.is_zstd();
-            let (path, file) = session.into_file()?;
-            read_open_codex_checkpoint_source_bounded(path, file, is_zstd, max_bytes)
-        }
-        source => source
-            .read(Some(max_bytes))
-            .map(SessionHistoryCheckpointSource::Decoded),
     }
 }
 
@@ -215,131 +386,6 @@ fn read_open_codex_checkpoint_source_bounded(
     DecodedSessionHistoryReader::open(path, file)?
         .read(Some(max_bytes))
         .map(SessionHistoryCheckpointSource::Decoded)
-}
-
-pub(crate) fn prepare_session_history_sidecar_from_payload_bounded(
-    payload: &str,
-    max_decoded_bytes: u64,
-    max_encoded_bytes: u64,
-) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
-    match resolve_session_history_source(payload)? {
-        ResolvedSessionHistorySource::Codex(session) if session.is_zstd() => {
-            if session.encoded_len()? <= max_encoded_bytes {
-                let encoded = session.into_zstd_bytes(max_encoded_bytes)?;
-                let digest = digest_zstd_session_history_bytes(&encoded, max_decoded_bytes)?;
-                Ok(PreparedSessionHistorySidecar {
-                    digest,
-                    source: SessionHistoryCheckpointSource::CodexZstd { encoded },
-                })
-            } else {
-                ResolvedSessionHistorySource::Codex(session)
-                    .open_decoded_reader()?
-                    .prepare_sidecar(max_decoded_bytes)
-            }
-        }
-        source => source
-            .open_decoded_reader()?
-            .prepare_sidecar(max_decoded_bytes),
-    }
-}
-
-pub(crate) fn resolve_codex_session_history_from_payload(
-    payload: &str,
-) -> Result<ResolvedCodexSessionHistory, AgentError> {
-    if !is_codex_marker(payload) {
-        return Err(AgentError::Checkpoint(
-            "Invalid Codex session history marker".to_string(),
-        ));
-    }
-    let Some((sessions_dir, thread_id)) = decode_marker(payload) else {
-        return Err(AgentError::Checkpoint(
-            "Invalid Codex session history marker".to_string(),
-        ));
-    };
-    let Some(session) = resolve_codex_session_history(&sessions_dir, thread_id)? else {
-        return Err(codex_session_not_found_error(&sessions_dir));
-    };
-    let is_zstd = session.is_zstd();
-    let (path, file) = session.into_file()?;
-    Ok(ResolvedCodexSessionHistory {
-        path,
-        file,
-        is_zstd,
-    })
-}
-
-fn read_session_history_from_payload_impl(
-    payload: &str,
-    max_bytes: Option<u64>,
-) -> Result<Vec<u8>, AgentError> {
-    resolve_session_history_source(payload)?.read(max_bytes)
-}
-
-fn resolve_session_history_source(
-    payload: &str,
-) -> Result<ResolvedSessionHistorySource, AgentError> {
-    if is_codex_marker(payload) {
-        let Some((sessions_dir, thread_id)) = decode_marker(payload) else {
-            return Err(AgentError::Checkpoint(
-                "Invalid Codex session history marker".to_string(),
-            ));
-        };
-        return resolve_codex_session_history(&sessions_dir, thread_id)?
-            .map(ResolvedSessionHistorySource::Codex)
-            .ok_or_else(|| codex_session_not_found_error(&sessions_dir));
-    }
-
-    Ok(ResolvedSessionHistorySource::Literal(PathBuf::from(
-        payload,
-    )))
-}
-
-enum ResolvedSessionHistorySource {
-    Literal(PathBuf),
-    Codex(ResolvedCodexSession),
-}
-
-impl ResolvedSessionHistorySource {
-    fn read(self, max_bytes: Option<u64>) -> Result<Vec<u8>, AgentError> {
-        self.open_decoded_reader()?.read(max_bytes)
-    }
-
-    fn digest(self, max_bytes: u64) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
-        self.open_decoded_reader()?.digest(max_bytes)
-    }
-
-    fn open_decoded_reader(self) -> Result<DecodedSessionHistoryReader, AgentError> {
-        let (path, file) = match self {
-            Self::Literal(path) => open_session_history_file(path)?,
-            Self::Codex(session) => session.into_file()?,
-        };
-        DecodedSessionHistoryReader::open(path, file)
-    }
-}
-
-/// Parse a Codex marker into `(dir, thread_id)`. Markers are length-prefixed so
-/// paths containing `:` cannot be confused with decorated thread IDs.
-fn decode_marker(content: &str) -> Option<(PathBuf, &str)> {
-    if let Some(rest) = content.strip_prefix(CODEX_MARKER_PREFIX) {
-        return decode_len_prefixed_marker(rest);
-    }
-
-    None
-}
-
-fn decode_len_prefixed_marker(rest: &str) -> Option<(PathBuf, &str)> {
-    let (dir_len, payload) = rest.split_once(':')?;
-    let dir_len: usize = dir_len.parse().ok()?;
-    if dir_len == 0 || payload.len() <= dir_len || !payload.is_char_boundary(dir_len) {
-        return None;
-    }
-
-    let (dir, delimiter_and_thread_id) = payload.split_at(dir_len);
-    let thread_id = delimiter_and_thread_id.strip_prefix(':')?;
-    if thread_id.is_empty() {
-        return None;
-    }
-    Some((PathBuf::from(dir), thread_id))
 }
 
 fn resolve_codex_session_history(
@@ -498,7 +544,7 @@ impl CodexSessionDir {
 
     #[cfg(target_os = "linux")]
     fn open_root_impl(path: &Path) -> Result<Option<Self>, AgentError> {
-        match Dir::open(path) {
+        match Dir::open_absolute(path) {
             Ok(dir) => Ok(Some(Self {
                 path: path.to_path_buf(),
                 dir,
@@ -510,14 +556,10 @@ impl CodexSessionDir {
 
     #[cfg(not(target_os = "linux"))]
     fn open_root_impl(path: &Path) -> Result<Option<Self>, AgentError> {
-        match std::fs::symlink_metadata(path) {
-            Ok(metadata) if metadata.file_type().is_dir() => Ok(Some(Self {
-                path: path.to_path_buf(),
-            })),
-            Ok(_) => Ok(None),
-            Err(err) if should_skip_unusable_codex_entry(&err) => Ok(None),
-            Err(err) => Err(read_history_error(path, err)),
-        }
+        Err(AgentError::Checkpoint(format!(
+            "Safe session history resolution is unsupported on this platform: {}",
+            path.display()
+        )))
     }
 
     fn path(&self) -> &Path {
@@ -571,7 +613,16 @@ impl CodexSessionDir {
         if !metadata.file_type().is_file() {
             return Ok(None);
         }
-        Ok(Some(ResolvedCodexSession { path, file }))
+        let parent = self
+            .dir
+            .try_clone()
+            .map_err(|err| read_history_error(&path, err))?;
+        Ok(Some(ResolvedCodexSession {
+            path,
+            file,
+            parent,
+            leaf_name: name.to_os_string(),
+        }))
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -613,6 +664,10 @@ struct ResolvedCodexSession {
     path: PathBuf,
     #[cfg(target_os = "linux")]
     file: File,
+    #[cfg(target_os = "linux")]
+    parent: Dir,
+    #[cfg(target_os = "linux")]
+    leaf_name: OsString,
 }
 
 impl ResolvedCodexSession {
@@ -620,46 +675,27 @@ impl ResolvedCodexSession {
         is_zstd_session_history(&self.path)
     }
 
-    fn into_file(self) -> Result<(PathBuf, File), AgentError> {
-        #[cfg(target_os = "linux")]
-        {
-            Ok((self.path, self.file))
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            open_session_history_file(self.path)
-        }
-    }
-
-    fn encoded_len(&self) -> Result<u64, AgentError> {
-        #[cfg(target_os = "linux")]
-        {
-            self.file
-                .metadata()
-                .map(|metadata| metadata.len())
-                .map_err(|error| read_history_error(&self.path, error))
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            std::fs::metadata(&self.path)
-                .map(|metadata| metadata.len())
-                .map_err(|error| read_history_error(&self.path, error))
-        }
-    }
-
-    fn into_zstd_bytes(self, max_encoded_bytes: u64) -> Result<Vec<u8>, AgentError> {
-        #[cfg(target_os = "linux")]
-        {
-            read_zstd_encoded_session_history(self.file, &self.path, max_encoded_bytes)
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            let file =
-                File::open(&self.path).map_err(|error| read_history_error(&self.path, error))?;
-            read_zstd_encoded_session_history(file, &self.path, max_encoded_bytes)
+    #[cfg(target_os = "linux")]
+    fn into_resolved(self) -> ResolvedSessionHistory {
+        let is_zstd = self.is_zstd();
+        let Self {
+            path,
+            file,
+            parent,
+            leaf_name,
+        } = self;
+        ResolvedSessionHistory {
+            replacement_target: SafeHistoryReplacementTarget {
+                parent,
+                parent_path: path
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| path.clone()),
+                leaf_name,
+            },
+            path,
+            file,
+            is_zstd,
         }
     }
 }
@@ -761,11 +797,6 @@ fn is_filesystem_loop_error(err: &io::Error) -> bool {
 #[cfg(not(target_os = "linux"))]
 fn is_filesystem_loop_error(_: &io::Error) -> bool {
     false
-}
-
-fn open_session_history_file(path: PathBuf) -> Result<(PathBuf, File), AgentError> {
-    let file = File::open(&path).map_err(|e| read_history_error(&path, e))?;
-    Ok((path, file))
 }
 
 fn read_history_error(_path: &Path, source: io::Error) -> AgentError {
@@ -954,6 +985,111 @@ fn prepare_session_history_sidecar_reader(
 mod tests {
     use super::*;
 
+    const TEST_CLAUDE_SESSION_ID: &str = "session-history-source-test";
+
+    fn claude_source(config_dir: &Path) -> FinalSessionHistorySourceRef {
+        FinalSessionHistorySourceRef::ClaudeCode {
+            config_dir: config_dir.to_string_lossy().into_owned(),
+            working_dir: crate::paths::CANONICAL_WORKING_DIR.to_string(),
+            session_id: TEST_CLAUDE_SESSION_ID.to_string(),
+        }
+    }
+
+    fn claude_history_path(config_dir: &Path) -> PathBuf {
+        config_dir
+            .join("projects/-home-user-workspace")
+            .join(format!("{TEST_CLAUDE_SESSION_ID}.jsonl"))
+    }
+
+    fn codex_source(sessions_dir: &Path, thread_id: &str) -> FinalSessionHistorySourceRef {
+        FinalSessionHistorySourceRef::Codex {
+            sessions_dir: sessions_dir.to_string_lossy().into_owned(),
+            thread_id: thread_id.to_string(),
+        }
+    }
+
+    fn resolve_test_payload(payload: &str) -> Result<ResolvedSessionHistory, AgentError> {
+        let path = Path::new(payload);
+        let parent_path = path.parent().ok_or_else(|| {
+            AgentError::Checkpoint("test session history has no parent".to_string())
+        })?;
+        let leaf_name = path.file_name().ok_or_else(|| {
+            AgentError::Checkpoint("test session history has no file name".to_string())
+        })?;
+        #[cfg(target_os = "linux")]
+        {
+            let parent = Dir::open_absolute(parent_path)
+                .map_err(|error| read_history_error(parent_path, error))?;
+            let file = parent
+                .open_child_file(leaf_name)
+                .map_err(|error| read_history_error(path, error))?;
+            let is_zstd = is_zstd_session_history(path);
+            Ok(ResolvedSessionHistory {
+                replacement_target: SafeHistoryReplacementTarget {
+                    parent,
+                    parent_path: parent_path.to_path_buf(),
+                    leaf_name: leaf_name.to_os_string(),
+                },
+                path: path.to_path_buf(),
+                file,
+                is_zstd,
+            })
+        }
+        #[cfg(not(target_os = "linux"))]
+        Err(AgentError::Checkpoint(
+            "Safe session history resolution is unsupported on this platform".to_string(),
+        ))
+    }
+
+    fn read_session_history_from_payload_bounded(
+        payload: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, AgentError> {
+        match resolve_test_payload(payload)?.into_checkpoint_source_bounded(max_bytes)? {
+            SessionHistoryCheckpointSource::Decoded(bytes) => Ok(bytes),
+            SessionHistoryCheckpointSource::CodexZstd { encoded } => {
+                let decoder = zstd::stream::read::Decoder::new(encoded.as_slice())
+                    .map_err(zstd_session_history_error)?;
+                read_history_reader(decoder, Some(max_bytes), zstd_session_history_error)
+            }
+        }
+    }
+
+    fn read_session_history_from_source_for_test_bounded(
+        source: &FinalSessionHistorySourceRef,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, AgentError> {
+        match resolve_session_history_from_source(source)?
+            .into_checkpoint_source_bounded(max_bytes)?
+        {
+            SessionHistoryCheckpointSource::Decoded(bytes) => Ok(bytes),
+            SessionHistoryCheckpointSource::CodexZstd { encoded } => {
+                let decoder = zstd::stream::read::Decoder::new(encoded.as_slice())
+                    .map_err(zstd_session_history_error)?;
+                read_history_reader(decoder, Some(max_bytes), zstd_session_history_error)
+            }
+        }
+    }
+
+    fn prepare_session_history_sidecar_from_payload_bounded(
+        payload: &str,
+        max_decoded_bytes: u64,
+        max_encoded_bytes: u64,
+    ) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
+        let resolved = resolve_test_payload(payload)?;
+        if resolved.is_zstd && resolved.encoded_len()? <= max_encoded_bytes {
+            let encoded = resolved.into_zstd_bytes(max_encoded_bytes)?;
+            let digest = digest_zstd_session_history_bytes(&encoded, max_decoded_bytes)?;
+            return Ok(PreparedSessionHistorySidecar {
+                digest,
+                source: SessionHistoryCheckpointSource::CodexZstd { encoded },
+            });
+        }
+        resolved
+            .into_decoded_reader()?
+            .prepare_sidecar(max_decoded_bytes)
+    }
+
     fn write_history_file(dir: &tempfile::TempDir, name: &str, bytes: &[u8]) -> PathBuf {
         let path = dir.path().join(name);
         std::fs::write(&path, bytes).unwrap();
@@ -967,6 +1103,113 @@ mod tests {
             } => assert_eq!(actual_max_bytes, max_bytes),
             other => panic!("expected typed over-limit error, got: {other}"),
         }
+    }
+
+    #[test]
+    fn resolves_claude_history_from_custom_config_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("custom-claude");
+        let history_path = claude_history_path(&config_dir);
+        std::fs::create_dir_all(history_path.parent().unwrap()).unwrap();
+        std::fs::write(&history_path, b"custom history").unwrap();
+
+        let source = resolve_session_history_from_source(&claude_source(&config_dir)).unwrap();
+        let bytes = match source.into_checkpoint_source_bounded(32).unwrap() {
+            SessionHistoryCheckpointSource::Decoded(bytes) => bytes,
+            SessionHistoryCheckpointSource::CodexZstd { .. } => {
+                panic!("Claude history must use decoded bytes")
+            }
+        };
+
+        assert_eq!(bytes, b"custom history");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rejects_claude_history_through_intermediate_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("claude-config");
+        let outside_projects = dir.path().join("outside-projects");
+        let outside_history = outside_projects
+            .join("-home-user-workspace")
+            .join(format!("{TEST_CLAUDE_SESSION_ID}.jsonl"));
+        std::fs::create_dir_all(outside_history.parent().unwrap()).unwrap();
+        std::fs::write(&outside_history, b"parent-only sentinel").unwrap();
+        std::fs::create_dir(&config_dir).unwrap();
+        symlink(&outside_projects, config_dir.join("projects")).unwrap();
+
+        let error = resolve_session_history_from_source(&claude_source(&config_dir))
+            .err()
+            .expect("intermediate symlink must be rejected");
+
+        assert!(error.to_string().contains("Failed to read session history"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rejects_claude_history_final_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("claude-config");
+        let history_path = claude_history_path(&config_dir);
+        let outside_history = dir.path().join("outside-history.jsonl");
+        std::fs::create_dir_all(history_path.parent().unwrap()).unwrap();
+        std::fs::write(&outside_history, b"parent-only sentinel").unwrap();
+        symlink(&outside_history, &history_path).unwrap();
+
+        let error = resolve_session_history_from_source(&claude_source(&config_dir))
+            .err()
+            .expect("final symlink must be rejected");
+
+        assert!(error.to_string().contains("Failed to read session history"));
+    }
+
+    #[test]
+    fn rejects_missing_and_duplicate_codex_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions_dir = dir.path().join("sessions");
+        let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        let source = codex_source(&sessions_dir, thread_id);
+
+        let missing = resolve_session_history_from_source(&source)
+            .err()
+            .expect("missing Codex source must be unavailable");
+        assert!(missing.to_string().contains("not found"));
+
+        for day in ["02", "03"] {
+            let day_dir = sessions_dir.join("2026/07").join(day);
+            std::fs::create_dir_all(&day_dir).unwrap();
+            std::fs::write(
+                day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl"),
+                b"history",
+            )
+            .unwrap();
+        }
+
+        let duplicate = resolve_session_history_from_source(&source)
+            .err()
+            .expect("duplicate Codex source must be unavailable");
+        assert!(
+            duplicate
+                .to_string()
+                .contains("Multiple Codex session files")
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rejects_proc_magic_link_source() {
+        let source = FinalSessionHistorySourceRef::ClaudeCode {
+            config_dir: "/proc/self".to_string(),
+            working_dir: crate::paths::CANONICAL_WORKING_DIR.to_string(),
+            session_id: TEST_CLAUDE_SESSION_ID.to_string(),
+        };
+
+        assert!(resolve_session_history_from_source(&source).is_err());
     }
 
     #[test]
@@ -1024,23 +1267,7 @@ mod tests {
     }
 
     #[test]
-    fn read_session_history_rejects_oversized_marker_payload_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let payload = vec![b'a'; SESSION_HISTORY_MARKER_PAYLOAD_MAX_BYTES + 1];
-        let path = write_history_file(&dir, "session-history-marker", &payload);
-
-        let err = read_session_history(path.to_str().unwrap())
-            .expect_err("session history marker file read must reject oversized payloads");
-
-        let message = err.to_string();
-        assert!(
-            message.contains("session history marker exceeds maximum size"),
-            "expected oversized marker error, got: {message}"
-        );
-    }
-
-    #[test]
-    fn bounded_read_rejects_codex_marker_history_over_limit() {
+    fn bounded_read_rejects_codex_history_over_limit() {
         let dir = tempfile::tempdir().unwrap();
         let sessions_dir = dir.path().join("sessions");
         let day_dir = sessions_dir.join("2026").join("07").join("02");
@@ -1048,16 +1275,16 @@ mod tests {
         let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl");
         std::fs::write(path, b"abcde").unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
-        let err = read_session_history_from_payload_bounded(&payload, 4)
-            .expect_err("bounded codex marker read must reject over-limit history");
+        let err = read_session_history_from_source_for_test_bounded(&source, 4)
+            .expect_err("bounded Codex read must reject over-limit history");
 
         assert_over_limit(err, 4);
     }
 
     #[test]
-    fn codex_zstd_marker_read_and_digest_are_consistent() {
+    fn codex_zstd_read_and_digest_are_consistent() {
         let dir = tempfile::tempdir().unwrap();
         let sessions_dir = dir.path().join("sessions");
         let day_dir = sessions_dir.join("2026").join("07").join("02");
@@ -1067,12 +1294,13 @@ mod tests {
         let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
         std::fs::write(path, &compressed).unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
         let bytes =
-            read_session_history_from_payload_bounded(&payload, history.len() as u64).unwrap();
+            read_session_history_from_source_for_test_bounded(&source, history.len() as u64)
+                .unwrap();
         let digest =
-            digest_session_history_from_payload_bounded(&payload, history.len() as u64).unwrap();
+            digest_session_history_from_source_bounded(&source, history.len() as u64).unwrap();
 
         assert_eq!(bytes, history);
         assert_eq!(digest.size_bytes, history.len() as u64);
@@ -1094,13 +1322,12 @@ mod tests {
         );
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
         std::fs::write(path, compressed).unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
-        let source = read_session_history_checkpoint_source_from_payload_bounded(
-            &payload,
-            history.len() as u64,
-        )
-        .unwrap();
+        let source = resolve_session_history_from_source(&source)
+            .unwrap()
+            .into_checkpoint_source_bounded(history.len() as u64)
+            .unwrap();
 
         match source {
             SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),
@@ -1152,10 +1379,10 @@ mod tests {
         assert!(compressed.len() > history.len());
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
         std::fs::write(path, &compressed).unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
-        let prepared = prepare_session_history_sidecar_from_payload_bounded(
-            &payload,
+        let prepared = prepare_session_history_sidecar_from_source_bounded(
+            &source,
             history.len() as u64,
             compressed.len() as u64,
         )
@@ -1169,8 +1396,8 @@ mod tests {
             }
         }
 
-        let prepared = prepare_session_history_sidecar_from_payload_bounded(
-            &payload,
+        let prepared = prepare_session_history_sidecar_from_source_bounded(
+            &source,
             history.len() as u64,
             history.len() as u64,
         )
@@ -1202,10 +1429,10 @@ mod tests {
         let encoded_limit = compressed.len() as u64;
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
         std::fs::write(path, compressed).unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
-        let result = prepare_session_history_sidecar_from_payload_bounded(
-            &payload,
+        let result = prepare_session_history_sidecar_from_source_bounded(
+            &source,
             history.len() as u64,
             encoded_limit,
         );
@@ -1275,17 +1502,3 @@ mod tests {
         assert_over_limit(err, max_bytes);
     }
 }
-
-// Note: integration coverage for the public `read_session_history` entry
-// (both Claude literal-path and codex marker -> bounded layout scan + zstd
-// decode) lives in `crates/guest-agent/tests/session_history_read.rs`.
-// The internal helpers
-// (`resolve_session_history_source`, `codex_session_filename_matches`,
-// `DecodedSessionHistoryReader`, `decode_marker`) are exercised transitively by
-// those integration tests. Inline coverage above focuses on the bounded read
-// cap contract and read/digest parity because the public entry point cannot
-// pass a small test cap.
-//
-// `decode_marker` is the one piece of non-trivial parsing logic; if it
-// regresses, the integration tests will catch it because the codex flow
-// can't resolve a session without a valid marker.

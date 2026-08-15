@@ -241,9 +241,11 @@ async fn run_codex_app_server(
         user_cancellation,
         codex_startup,
         workload_containment,
+        session_metadata,
     } = controls;
     let mut agent_log = BestEffortAgentLog::open(runtime.agent_log_file.as_ref());
-    let mut ingestor = CliEventIngestor::new(runtime, codex_startup);
+    let mut ingestor =
+        CliEventIngestor::new_with_session_metadata(runtime, codex_startup, session_metadata);
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(

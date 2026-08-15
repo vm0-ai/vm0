@@ -89,8 +89,12 @@ async fn claude_receipts_delivery_only_after_follow_up_reaches_stdin()
         .is_empty()
     );
 
-    let history_path = std::fs::read_to_string(runtime.paths.session_history_path_file())?;
-    let history = std::fs::read_to_string(history_path.trim())?;
+    let session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
+    let history_path = common::claude_history_path_for_home(
+        std::path::Path::new(&runtime.config.home_dir),
+        session_id.trim(),
+    );
+    let history = std::fs::read_to_string(history_path)?;
     let delivered_user_frames = history
         .lines()
         .map(serde_json::from_str::<Value>)

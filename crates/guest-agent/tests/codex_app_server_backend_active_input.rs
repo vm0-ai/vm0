@@ -98,7 +98,7 @@ async fn codex_app_server_backend_steers_active_input_into_active_turn()
         .is_empty()
     );
 
-    let input_events = common::read_codex_session_history_events_for_paths(&runtime.paths)?
+    let input_events = common::read_codex_session_history_events_for_runtime(&runtime)?
         .into_iter()
         .filter(|event| event.get("type").and_then(Value::as_str) == Some("mock.app_server.input"))
         .collect::<Vec<_>>();
