@@ -1597,9 +1597,9 @@ describe("organization billing settings", () => {
     expect(buttonByText("Manage", proPlan)).not.toBeDisabled();
     expect(proPlan).toHaveTextContent("from $20/month");
     expect(teamPlan).toHaveTextContent("from $180/month");
-    expect(
-      within(teamPlan).getByText("Existing member packages stay unchanged."),
-    ).toBeInTheDocument();
+    expect(teamPlan).toHaveTextContent(
+      "Plan $160 · member packages $20–$200 each",
+    );
     click(buttonByText("Manage", proPlan));
 
     await screen.findByRole("heading", {
@@ -1621,7 +1621,7 @@ describe("organization billing settings", () => {
     expect(
       within(orderSummary).queryByText("Concurrent slots"),
     ).not.toBeInTheDocument();
-    expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
+    expect(queryAllByRoleFast("button", orderSummary)).toHaveLength(0);
     click(packageSelect);
     click(
       await screen.findByRole("option", {
@@ -1753,6 +1753,12 @@ describe("organization billing settings", () => {
       name: "Configure member packages",
     });
     await screen.findByText("Change is processing");
+    expect(
+      queryAllByRoleFast(
+        "button",
+        screen.getByRole("region", { name: "Order summary" }),
+      ),
+    ).toHaveLength(0);
     expect(confirmationRequests).toBe(1);
     expect(successToast).toHaveBeenCalledWith("Subscription change confirmed.");
     expect(window.location.href).toBe(locationBeforeConfirmation);
@@ -1777,6 +1783,12 @@ describe("organization billing settings", () => {
     await expect(
       screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
     ).resolves.toHaveTextContent("54,321 credits · 8% off");
+    expect(
+      queryAllByRoleFast(
+        "button",
+        screen.getByRole("region", { name: "Order summary" }),
+      ),
+    ).toHaveLength(0);
   });
 
   it("hides a retained allocation after its member leaves the workspace", async () => {
@@ -1873,7 +1885,7 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
+    expect(queryAllByRoleFast("button", orderSummary)).toHaveLength(0);
 
     const packageSelect = within(memberUsage).getByRole("combobox", {
       name: "Usage for Alex Chen",
@@ -2019,7 +2031,7 @@ describe("organization billing settings", () => {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
-    expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
+    expect(queryAllByRoleFast("button", orderSummary)).toHaveLength(0);
 
     click(packageSelect);
     click(
@@ -2054,11 +2066,11 @@ describe("organization billing settings", () => {
       screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
     ).not.toBeInTheDocument();
     expect(
-      buttonByText(
-        "Current plan",
+      queryAllByRoleFast(
+        "button",
         screen.getByRole("region", { name: "Order summary" }),
       ),
-    ).toBeDisabled();
+    ).toHaveLength(0);
   });
 
   it("allows replacing a scheduled member package downgrade", async () => {

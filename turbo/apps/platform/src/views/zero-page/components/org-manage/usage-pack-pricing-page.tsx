@@ -708,11 +708,9 @@ function MemberUsageConfiguration({
 function PlanPrice({
   basePriceUsd,
   catalog,
-  keepsMemberPackages,
 }: {
   readonly basePriceUsd: number;
   readonly catalog: readonly UsagePackCatalogItem[];
-  readonly keepsMemberPackages: boolean;
 }) {
   const packagePrices = catalog.map((item) => {
     return item.priceUsd;
@@ -735,20 +733,16 @@ function PlanPrice({
         </span>
       </p>
       <p className="mt-2 text-sm leading-snug text-muted-foreground">
-        {keepsMemberPackages
-          ? i18n.t(($) => {
-              return $.billing.plans.usagePacks.existingPackagesUnchanged;
-            })
-          : i18n.t(
-              ($) => {
-                return $.billing.plans.usagePacks.planPlusPackages;
-              },
-              {
-                highest: formatUsd(highestPackageUsd, 0),
-                lowest: formatUsd(lowestPackageUsd, 0),
-                plan: formatUsd(basePriceUsd, 0),
-              },
-            )}
+        {i18n.t(
+          ($) => {
+            return $.billing.plans.usagePacks.planPlusPackages;
+          },
+          {
+            highest: formatUsd(highestPackageUsd, 0),
+            lowest: formatUsd(lowestPackageUsd, 0),
+            plan: formatUsd(basePriceUsd, 0),
+          },
+        )}
       </p>
     </div>
   );
@@ -865,7 +859,6 @@ function PlanSelectionCard({
   busy,
   catalog,
   divided,
-  keepsMemberPackages,
   onAction,
   plan,
 }: {
@@ -873,7 +866,6 @@ function PlanSelectionCard({
   readonly busy: boolean;
   readonly catalog: readonly UsagePackCatalogItem[];
   readonly divided: boolean;
-  readonly keepsMemberPackages: boolean;
   readonly onAction: () => void;
   readonly plan: UsagePackPlan;
 }) {
@@ -930,11 +922,7 @@ function PlanSelectionCard({
         {planDescription(plan.tier)}
       </p>
 
-      <PlanPrice
-        basePriceUsd={plan.basePriceUsd}
-        catalog={catalog}
-        keepsMemberPackages={keepsMemberPackages}
-      />
+      <PlanPrice basePriceUsd={plan.basePriceUsd} catalog={catalog} />
 
       <PlanComparison tier={plan.tier} />
 
@@ -1252,12 +1240,10 @@ function CheckoutOrderSummary({
 
 function PlanSelectionStep({
   catalog,
-  keepsMemberPackages,
   onAction,
   resolveAction,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
-  readonly keepsMemberPackages: boolean;
   readonly onAction: (
     plan: UsagePackPlanTier,
     action: PlanSelectionAction,
@@ -1282,7 +1268,6 @@ function PlanSelectionStep({
               busy={false}
               catalog={catalog}
               divided={index > 0}
-              keepsMemberPackages={keepsMemberPackages}
               plan={plan}
               onAction={() => {
                 onAction(plan.tier, action);
@@ -2128,7 +2113,6 @@ function hasUsagePackDowngrade(
 }
 
 function managedSubscriptionActionLabel(args: {
-  readonly hasConfigurationChange: boolean;
   readonly previewing: boolean;
   readonly restoresScheduledDowngrade: boolean;
 }): string {
@@ -2142,13 +2126,9 @@ function managedSubscriptionActionLabel(args: {
       return $.billing.common.restore;
     });
   }
-  return args.hasConfigurationChange
-    ? i18n.t(($) => {
-        return $.billing.common.confirm;
-      })
-    : i18n.t(($) => {
-        return $.billing.plans.currentPlan;
-      });
+  return i18n.t(($) => {
+    return $.billing.common.confirm;
+  });
 }
 
 function managedSubscriptionChangeState({
@@ -2205,6 +2185,9 @@ function ManagedSubscriptionOrderSummary({
     hasScheduledDowngrade,
     restoresScheduledDowngrade,
   } = managedSubscriptionChangeState({ management, members, plan, selections });
+  const hasSubscriptionAction =
+    (hasConfigurationChange || restoresScheduledDowngrade) &&
+    (!hasPendingChange || hasScheduledDowngrade);
   const openPreview = async (): Promise<void> => {
     if (!members) {
       return;
@@ -2248,28 +2231,28 @@ function ManagedSubscriptionOrderSummary({
           })}
         </p>
       )}
-      <div className={STEP_ACTION_BAR}>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button
-          type="button"
-          className="h-10 w-full text-sm font-medium"
-          disabled={
-            !members ||
-            (hasPendingChange && !hasScheduledDowngrade) ||
-            (!hasConfigurationChange && !restoresScheduledDowngrade) ||
-            previewing
-          }
-          onClick={() => {
-            detach(openPreview(), Reason.DomCallback);
-          }}
-        >
-          {managedSubscriptionActionLabel({
-            hasConfigurationChange,
-            previewing,
-            restoresScheduledDowngrade,
-          })}
-        </Button>
-      </div>
+      {hasSubscriptionAction && (
+        <div className={STEP_ACTION_BAR}>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button
+            type="button"
+            className="h-10 w-full text-sm font-medium"
+            disabled={
+              !members ||
+              (hasPendingChange && !hasScheduledDowngrade) ||
+              previewing
+            }
+            onClick={() => {
+              detach(openPreview(), Reason.DomCallback);
+            }}
+          >
+            {managedSubscriptionActionLabel({
+              previewing,
+              restoresScheduledDowngrade,
+            })}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }
@@ -2877,7 +2860,6 @@ export function UsagePackMigrationPlanSelectionPage({
     return catalog ? (
       <PlanSelectionStep
         catalog={catalog}
-        keepsMemberPackages={configuration !== null}
         onAction={(targetTier) => {
           selectPlan(targetTier);
         }}
@@ -2917,7 +2899,6 @@ export function UsagePackMigrationPlanSelectionPage({
                 busy={false}
                 catalog={catalog}
                 divided={index > 0}
-                keepsMemberPackages={configuration !== null}
                 plan={plan}
                 onAction={() => {
                   selectPlan(plan.tier);
@@ -3152,7 +3133,6 @@ export function UsagePackPricingDialogs({
       ) : (
         <PlanSelectionStep
           catalog={catalog}
-          keepsMemberPackages={management !== null}
           onAction={(plan, action) => {
             if (action === "disabled") {
               return;
