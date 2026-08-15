@@ -40,7 +40,10 @@ test("credit balance bars render with matching outer corner radii", async ({
   await mockCreditBalance(page);
   await openCreditBalanceSettings(page);
 
-  const allowanceBar = page.getByRole("progressbar").first();
+  const allowanceBar = page
+    .getByTestId("usage-allowance-section")
+    .getByRole("progressbar")
+    .locator("span");
   const firstOrgCreditBar = page.getByTestId("credit-balance-segment-plan:pro");
   const lastOrgCreditBar = page.getByTestId(
     "credit-balance-segment-payAsYouGo",
