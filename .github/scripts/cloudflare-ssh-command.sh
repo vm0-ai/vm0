@@ -396,6 +396,13 @@ PROBE_TIMEOUT_SECONDS=20
 PROBE_KILL_AFTER_SECONDS=5
 CONTROL_TIMEOUT_SECONDS=5
 CONTROL_KILL_AFTER_SECONDS=2
+OPERATION_TIMEOUT_SECONDS="${VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS:-600}"
+OPERATION_KILL_AFTER_SECONDS=5
+
+if [[ ! "$OPERATION_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Invalid Cloudflare SSH operation timeout: ${OPERATION_TIMEOUT_SECONDS}" >&2
+  exit 2
+fi
 
 is_transient_probe_status() {
   local status=$1
@@ -549,8 +556,8 @@ rm -rf "$probe_dir"
 release_transport_lock
 trap - EXIT
 
-# From this point the caller operation is single-shot. Preserve its streams and
-# status through exec; never infer replay safety from the real client's result.
+# From this point the caller operation is single-shot. Never infer replay
+# safety from the real client's result.
 connection_args=()
 if [ "$TARGET_USER_EXPLICIT" = "false" ]; then
   connection_args=(-o "User=${TARGET_USER}")
@@ -560,4 +567,37 @@ if [ -n "$selected_control_path" ]; then
     -o "ControlPath=${selected_control_path}"
   )
 fi
-exec "$REAL_BINARY" "${connection_args[@]}" "${ORIGINAL_ARGS[@]}"
+
+operation_pid=""
+cleanup_pid=""
+# GNU timeout creates a separate process group for the caller. Keep this shell
+# alive so GitHub cancellation can terminate that group and its ProxyCommand.
+trap '
+  trap - EXIT
+  trap "" HUP INT TERM
+
+  cleanup_pid=$operation_pid
+  if [ -z "$cleanup_pid" ]; then
+    cleanup_pid=$!
+  fi
+  if [ -n "$cleanup_pid" ]; then
+    kill -TERM -- "-${cleanup_pid}" 2>/dev/null || true
+    sleep "$OPERATION_KILL_AFTER_SECONDS"
+    kill -KILL -- "-${cleanup_pid}" 2>/dev/null || true
+    wait "$cleanup_pid" 2>/dev/null || true
+  fi
+' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+timeout \
+  --kill-after="${OPERATION_KILL_AFTER_SECONDS}s" \
+  "${OPERATION_TIMEOUT_SECONDS}s" \
+  "$REAL_BINARY" "${connection_args[@]}" "${ORIGINAL_ARGS[@]}" <&0 &
+operation_pid=$!
+operation_status=0
+wait "$operation_pid" || operation_status=$?
+trap - EXIT HUP INT TERM
+operation_pid=""
+exit "$operation_status"

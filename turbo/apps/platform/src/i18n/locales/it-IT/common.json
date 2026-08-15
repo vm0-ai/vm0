@@ -840,8 +840,10 @@
       "dueToday": "Da pagare oggi",
       "emptyDescription": "Acquista ulteriori esecuzioni simultanee per questa area di lavoro.",
       "emptyTitle": "Nessun abbonamento simultaneo",
+      "includedWithPlan": "inclusi nel tuo piano",
       "increaseAria": "Aumentare la quantità aggiuntiva di concorrenza",
       "monthlyTotal": "Totale mensile",
+      "paidAddOn": "componente aggiuntivo a pagamento",
       "payAndAddSlots": "Paga e aggiungi slot",
       "payAndUpdate": "Paga e aggiorna",
       "restoreDescription": "Questo riprende il rinnovo per questa sottoscrizione simultanea.",
@@ -1115,11 +1117,9 @@
       "creditsRemaining_other": "{{value}} crediti rimanenti",
       "expires": "Scadenza {{date}}",
       "grantsTable": {
-        "added": "Aggiunto",
-        "amount": "Importo",
-        "expires": "Scade",
-        "left": "Rimanenti",
-        "source": "Origine"
+        "credits": "Crediti",
+        "date": "Data",
+        "left": "Rimanenti"
       },
       "left": "{{value}} rimanenti",
       "member": "Membro",

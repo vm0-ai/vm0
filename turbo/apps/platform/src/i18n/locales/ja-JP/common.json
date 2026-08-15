@@ -820,8 +820,10 @@
       "dueToday": "本日のお支払い",
       "emptyDescription": "このワークスペースに対して追加の同時実行を購入します。",
       "emptyTitle": "同時実行サブスクリプションなし",
+      "includedWithPlan": "プランに含まれる",
       "increaseAria": "追加の同時実行数を増やす",
       "monthlyTotal": "月額合計",
+      "paidAddOn": "有料アドオン",
       "payAndAddSlots": "支払ってスロットを追加",
       "payAndUpdate": "支払って更新",
       "restoreDescription": "これにより、この同時実行サブスクリプションの更新が再開されます。",
@@ -1093,11 +1095,9 @@
       "creditsRemaining_other": "{{value}} クレジットが残っています",
       "expires": "{{date}}に期限切れ",
       "grantsTable": {
-        "added": "追加日",
-        "amount": "金額",
-        "expires": "有効期限",
-        "left": "残り",
-        "source": "種別"
+        "credits": "クレジット",
+        "date": "日付",
+        "left": "残り"
       },
       "left": "{{value}} 残り",
       "member": "メンバー",

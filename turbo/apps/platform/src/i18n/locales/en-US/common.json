@@ -820,8 +820,10 @@
       "dueToday": "Due today",
       "emptyDescription": "Buy additional concurrent runs for this workspace.",
       "emptyTitle": "No concurrency subscriptions",
+      "includedWithPlan": "included with your plan",
       "increaseAria": "Increase additional concurrency quantity",
       "monthlyTotal": "Monthly total",
+      "paidAddOn": "paid add-on",
       "payAndAddSlots": "Pay and add slots",
       "payAndUpdate": "Pay and update",
       "restoreDescription": "This resumes renewal for this concurrency subscription.",
@@ -1093,11 +1095,9 @@
       "creditsRemaining_other": "{{value}} credits remaining",
       "expires": "Expires {{date}}",
       "grantsTable": {
-        "added": "Added",
-        "amount": "Amount",
-        "expires": "Expires",
-        "left": "Left",
-        "source": "Source"
+        "credits": "Credits",
+        "date": "Date",
+        "left": "Left"
       },
       "left": "{{value}} left",
       "member": "Member",

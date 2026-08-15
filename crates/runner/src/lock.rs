@@ -100,23 +100,32 @@ enum LockAcquire {
     Busy,
 }
 
-async fn acquire_result_with(path: PathBuf, mode: LockMode) -> RunnerResult<LockAcquire> {
+async fn acquire_result_once(path: &Path, mode: LockMode) -> RunnerResult<LockAcquire> {
+    let attempt_path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || acquire_result_blocking(&attempt_path, mode, |_| Ok(())))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+}
+
+async fn acquire_after_busy(path: &Path, mode: LockMode) -> RunnerResult<Flock<File>> {
+    debug_assert!(mode.waits());
     let mut retry_delay = LOCK_RETRY_INITIAL_DELAY;
     loop {
-        let attempt_path = path.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            acquire_result_blocking(&attempt_path, mode, |_| Ok(()))
-        })
-        .await
-        .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))??;
-
-        match result {
-            LockAcquire::Busy if mode.waits() => {
-                tokio::time::sleep(retry_delay).await;
-                retry_delay = (retry_delay * 2).min(LOCK_RETRY_MAX_DELAY);
-            }
-            result => return Ok(result),
+        tokio::time::sleep(retry_delay).await;
+        retry_delay = (retry_delay * 2).min(LOCK_RETRY_MAX_DELAY);
+        match acquire_result_once(path, mode).await? {
+            LockAcquire::Acquired(lock) => return Ok(lock),
+            LockAcquire::Busy => {}
         }
+    }
+}
+
+async fn acquire_result_with(path: PathBuf, mode: LockMode) -> RunnerResult<LockAcquire> {
+    match acquire_result_once(&path, mode).await? {
+        LockAcquire::Busy if mode.waits() => acquire_after_busy(&path, mode)
+            .await
+            .map(LockAcquire::Acquired),
+        result => Ok(result),
     }
 }
 
@@ -255,6 +264,29 @@ pub async fn acquire_shared(path: PathBuf) -> RunnerResult<Flock<File>> {
 /// The returned guard holds the lock until dropped.
 pub async fn try_acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
     acquire_with(path, LockMode::TryExclusive).await
+}
+
+/// Acquire an exclusive flock, bounding only the wait after observed contention.
+///
+/// Scheduling delay before the first acquisition attempt does not consume the timeout.
+pub async fn acquire_with_contention_timeout(
+    path: PathBuf,
+    contention_timeout: Duration,
+) -> RunnerResult<TryLock> {
+    match acquire_result_once(&path, LockMode::Exclusive).await? {
+        LockAcquire::Acquired(lock) => Ok(TryLock::Acquired(lock)),
+        LockAcquire::Busy => {
+            match tokio::time::timeout(
+                contention_timeout,
+                acquire_after_busy(&path, LockMode::Exclusive),
+            )
+            .await
+            {
+                Ok(result) => result.map(TryLock::Acquired),
+                Err(_) => Ok(TryLock::Busy),
+            }
+        }
+    }
 }
 
 pub async fn try_acquire_or_busy(path: PathBuf) -> RunnerResult<TryLock> {

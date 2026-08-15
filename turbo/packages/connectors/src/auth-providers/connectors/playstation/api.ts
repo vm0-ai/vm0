@@ -79,7 +79,7 @@ function invalidNpssoError(): OAuthProviderHttpError {
   );
 }
 
-export function normalizePlaystationNpsso(input: string): string {
+function normalizePlaystationNpsso(input: string): string {
   const trimmed = input.trim();
   let value = trimmed;
 
