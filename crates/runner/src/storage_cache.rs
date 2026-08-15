@@ -69,6 +69,8 @@ const CONCURRENCY: usize = 4;
 const BACKGROUND_FILL_ACTIVE_LIMIT: usize = CONCURRENCY;
 /// Maximum number of unique cache-fill groups waiting for a worker across the runner.
 const BACKGROUND_FILL_QUEUE_CAPACITY: usize = 32;
+/// Maximum number of completed telemetry tasks reaped between scheduler polls.
+const BACKGROUND_FILL_REPORT_REAP_BATCH: usize = 32;
 const FRESH_DELIVERY_SCAN_LIMIT: usize = 16;
 const FRESH_DELIVERY_PER_RUN_LIMIT: usize = 4;
 const FRESH_DELIVERY_RUNNER_LIMIT: usize = 8;
@@ -442,6 +444,11 @@ async fn run_background_fill_supervisor(
     let mut shutdown_requested = false;
 
     loop {
+        // Command and worker branches are intentionally prioritized below.
+        // Reap a bounded batch here so a sustained stream of either branch
+        // cannot retain completed reporter tasks indefinitely.
+        reap_completed_background_fill_reports(&mut reports);
+
         while workers.len() < inner.active_limit {
             let Some(key) = pending.pop_front() else {
                 break;
@@ -545,6 +552,11 @@ fn take_background_fill_work(
         .state
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Shutdown closes admission before its command reaches the supervisor;
+    // never promote queued work after that point.
+    if state.closed {
+        return None;
+    }
     let (group, home) = {
         let entry = state.entries.get_mut(key)?;
         if entry.state != BackgroundFillEntryState::Queued {
@@ -559,6 +571,17 @@ fn take_background_fill_work(
         group,
         home,
     })
+}
+
+fn reap_completed_background_fill_reports(reports: &mut JoinSet<()>) {
+    for _ in 0..BACKGROUND_FILL_REPORT_REAP_BATCH {
+        let Some(result) = reports.try_join_next() else {
+            break;
+        };
+        if let Err(error) = result {
+            warn!(%error, "storage_cache: background fill telemetry task failed");
+        }
+    }
 }
 
 fn cancel_queued_background_fills(
