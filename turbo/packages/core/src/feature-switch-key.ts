@@ -69,7 +69,6 @@ export enum FeatureSwitchKey {
   FeishuIntegration = "feishuIntegration",
   StrapiIntegration = "strapiIntegration",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
-  ComposerConnectorPermissions = "composerConnectorPermissions",
   CustomConnectorMcp = "customConnectorMcp",
   ThreeColumnNav = "threeColumnNav",
   SharedThreadSharing = "sharedThreadSharing",
