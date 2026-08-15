@@ -395,19 +395,19 @@ impl WorkspaceImageCache {
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
         let lock_path = self.entry_lock_path(&cache_key);
-        let lock = match tokio::time::timeout(
+        let lock = match crate::lock::acquire_with_contention_timeout(
+            lock_path,
             WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT,
-            crate::lock::acquire(lock_path),
         )
         .await
         {
-            Ok(Ok(lock)) => lock,
-            Ok(Err(e)) => {
+            Ok(crate::lock::TryLock::Acquired(lock)) => lock,
+            Ok(crate::lock::TryLock::Busy) => {
                 info!(
                     run_id = %common.run_id,
                     cache_key,
-                    error = %e,
-                    "workspace image cache lock unavailable; using fresh workspace image"
+                    wait_ms = duration_ms(WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT),
+                    "workspace image cache lock remained busy; using fresh workspace image"
                 );
                 return workspace_drive(
                     WorkspaceCacheCheckoutResult::LockBusy,
@@ -418,12 +418,12 @@ impl WorkspaceImageCache {
                     true,
                 );
             }
-            Err(_) => {
+            Err(e) => {
                 info!(
                     run_id = %common.run_id,
                     cache_key,
-                    wait_ms = duration_ms(WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT),
-                    "workspace image cache lock remained busy; using fresh workspace image"
+                    error = %e,
+                    "workspace image cache lock unavailable; using fresh workspace image"
                 );
                 return workspace_drive(
                     WorkspaceCacheCheckoutResult::LockBusy,
