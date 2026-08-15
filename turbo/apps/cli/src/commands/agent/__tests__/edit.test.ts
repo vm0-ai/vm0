@@ -12,7 +12,7 @@ import { http, HttpResponse } from "msw";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { editCommand } from "../edit";
 import chalk from "chalk";
 
