@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { downloadFileCommand } from "./download-file";
 import { uploadFileCommand } from "./upload-file";
 
-export const zeroGithubCommand = new Command()
+export const githubCommand = new Command()
   .name("github")
   .description("Upload and download GitHub files")
   .addCommand(downloadFileCommand)

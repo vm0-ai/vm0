@@ -153,7 +153,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "github",
     description: "Upload and download GitHub files",
     load: async () => {
-      return (await import("./commands/zero/github")).zeroGithubCommand;
+      return (await import("./commands/github")).githubCommand;
     },
   },
   {
