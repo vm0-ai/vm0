@@ -6910,8 +6910,7 @@ function UserMessageTemplateReference({
   }
   const specText = videoModelSelectionEnabled
     ? videoTemplateSpecText(spec)
-    : (legacyVideoTemplateSpecText(part.template) ??
-      videoTemplateSpecText(spec));
+    : legacyVideoTemplateSpecText(part.template);
   return (
     <>
       <span

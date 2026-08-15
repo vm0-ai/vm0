@@ -70,10 +70,12 @@ export function videoTemplateSpecText(spec: VideoTemplateSpec): string {
  */
 export function legacyVideoTemplateSpecText(
   template: GenerationTemplateRequest,
-): string | null {
+): string {
   const videoTemplate = regularVideoTemplate(template);
   if (videoTemplate === null) {
-    return null;
+    throw new Error(
+      "Legacy video template text requires a regular video template",
+    );
   }
   const resolved = resolveVideoGenerationOptions(
     videoTemplate.selection.videoOptions,
