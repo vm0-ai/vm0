@@ -1951,7 +1951,7 @@ function ConcurrencyConfirmDialogContent({
     action === "change" && changeMode === "quantity" && !reviewing;
 
   return (
-    <DialogContent className="sm:max-w-[420px]">
+    <DialogContent className="sm:max-w-[480px]">
       <DialogHeader>
         <DialogTitle>{copy.title}</DialogTitle>
         {copy.description ? (
