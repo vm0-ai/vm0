@@ -1,13 +1,13 @@
 import { Command, Option } from "commander";
 
-import { linkZeroMailDraft } from "../../../lib/api/domains/zero-mail";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { getOkouChatThreadId } from "../../../lib/okou-env";
+import { linkZeroMailDraft } from "../../lib/api/domains/zero-mail";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { getOkouChatThreadId } from "../../lib/okou-env";
 import {
   addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,
   printCallbackTurnInstruction,
-} from "../connector/action-url";
+} from "../zero/connector/action-url";
 import { currentAgentId } from "./shared";
 
 function currentChatThreadId(): string {

@@ -123,7 +123,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "mail",
     description: "Review and send mail through Gmail or Outlook Mail",
     load: async () => {
-      return (await import("./commands/zero/mail")).zeroMailCommand;
+      return (await import("./commands/mail")).mailCommand;
     },
   },
   {
