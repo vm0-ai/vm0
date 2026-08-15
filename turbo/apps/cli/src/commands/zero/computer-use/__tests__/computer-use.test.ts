@@ -1,7 +1,7 @@
 /**
  * Tests for computer-use command registration and visibility.
  *
- * Entry points: registerZeroCommands(), formatComputerUseResultForConsole()
+ * Entry points: registerCommands(), formatComputerUseResultForConsole()
  * Mock (external): none
  * Real (internal): Command registration, capability checking, filesystem output
  */
@@ -25,7 +25,7 @@ import {
   zeroComputerUseCommand,
 } from "../index";
 import { computerUseOutputDir } from "../output-artifacts";
-import { registerZeroCommands } from "../../../../okou";
+import { registerCommands } from "../../../../okou";
 
 let testOutputDir = "";
 
@@ -100,7 +100,7 @@ describe("computer-use command visibility", () => {
 
   it("should be visible when no OKOU_TOKEN is set", () => {
     const prog = new Command();
-    registerZeroCommands(prog);
+    registerCommands(prog);
 
     const cmd = prog.commands.find((c) => {
       return c.name() === "computer-use";
@@ -121,7 +121,7 @@ describe("computer-use command visibility", () => {
     vi.stubEnv("OKOU_TOKEN", token);
 
     const prog = new Command();
-    registerZeroCommands(prog);
+    registerCommands(prog);
 
     expect(visibleCommandNames(prog)).toContain("computer-use");
   });
@@ -139,14 +139,14 @@ describe("computer-use command visibility", () => {
     vi.stubEnv("OKOU_TOKEN", token);
 
     const prog = new Command();
-    registerZeroCommands(prog);
+    registerCommands(prog);
 
     expect(hiddenCommandNames(prog)).toContain("computer-use");
   });
 
   it("should have Desktop-backed agent command subcommands", () => {
     const prog = new Command();
-    registerZeroCommands(prog, [zeroComputerUseCommand]);
+    registerCommands(prog, [zeroComputerUseCommand]);
 
     const computerUse = prog.commands.find((c) => {
       return c.name() === "computer-use";
@@ -172,7 +172,7 @@ describe("computer-use command visibility", () => {
 
   it("should not expose host targeting options on agent-facing commands", () => {
     const prog = new Command();
-    registerZeroCommands(prog, [zeroComputerUseCommand]);
+    registerCommands(prog, [zeroComputerUseCommand]);
 
     const computerUse = prog.commands.find((c) => {
       return c.name() === "computer-use";
