@@ -1,36 +1,12 @@
 import { command } from "ccstate";
-import { getLoggers, Level, logger } from "../log";
-import type { DebugLoggers } from "../../types/global-method";
+import { createDebugLoggers } from "../../lib/debug-loggers.ts";
 import { getBuildCommitSha, getBuildVersion } from "../../lib/build-info";
+import { logger } from "../log";
 import { inspectLogInput$ } from "./inspect-log-input";
 import { extendDebugLoggerLocalStorage$ } from "./loggers";
 
 const L = logger("GlobalMethod");
 const ENABLE_DEBUG_LOGGER_EVENT = "vm0:enable-debug-logger";
-
-function createLoggerControl(name: string) {
-  const loggers = getLoggers();
-  const loggerInstance = loggers[name];
-  if (!loggerInstance) {
-    throw new Error(`Logger "${name}" not found`);
-  }
-
-  return {
-    get debug() {
-      return loggerInstance.shouldLog(Level.Debug);
-    },
-    set debug(value: boolean) {
-      if (value) {
-        loggerInstance.level = Level.Debug;
-        window.dispatchEvent(
-          new CustomEvent(ENABLE_DEBUG_LOGGER_EVENT, { detail: name }),
-        );
-      } else if (loggerInstance.level === Level.Debug) {
-        loggerInstance.level = Level.Info;
-      }
-    },
-  };
-}
 
 export const setupGlobalMethod$ = command(
   ({ get, set }, signal: AbortSignal) => {
@@ -52,12 +28,11 @@ export const setupGlobalMethod$ = command(
 
     window._vm0 = {
       get loggers() {
-        const loggers = getLoggers();
-        const result: DebugLoggers = {};
-        for (const name of Object.keys(loggers)) {
-          result[name] = createLoggerControl(name);
-        }
-        return result;
+        return createDebugLoggers((name) => {
+          window.dispatchEvent(
+            new CustomEvent(ENABLE_DEBUG_LOGGER_EVENT, { detail: name }),
+          );
+        });
       },
       inspectLogs() {
         get(inspectLogInput$)?.click();

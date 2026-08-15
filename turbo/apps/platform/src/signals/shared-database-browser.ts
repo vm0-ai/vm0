@@ -1,7 +1,9 @@
 import { command } from "ccstate";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
+import { sentryLogContext } from "../lib/sentry-config.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
 import { authRecovery$, authenticatedIdentity$ } from "./auth.ts";
+import { logger } from "./log.ts";
 import { jsonParseOr, onDomEventFn, setLoop } from "./utils.ts";
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
 import { ReconnectingSharedDatabaseBridge } from "../shared-database/reconnecting-client.ts";
@@ -13,6 +15,7 @@ import {
 } from "./shared-database.ts";
 
 const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
+const L = logger("SharedDatabaseBrowser");
 
 interface JwtLifetime {
   readonly exp: number;
@@ -73,6 +76,23 @@ export const setupSharedDatabaseBridge$ = command(
         const worker = new SharedWorker(
           new URL("../shared-database-worker.ts", import.meta.url),
           { name: "okou core service", type: "module" },
+        );
+        worker.addEventListener(
+          "error",
+          (event) => {
+            const workerError: unknown = event.error;
+            L.error(
+              "Shared database worker failed to load",
+              workerError instanceof Error ? workerError : event.message,
+              sentryLogContext({
+                tags: {
+                  runtime: "shared-worker",
+                  worker: "shared-database",
+                },
+              }),
+            );
+          },
+          { signal },
         );
         return new MessagePortSharedDatabaseBridge(
           worker.port,

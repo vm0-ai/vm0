@@ -13,7 +13,12 @@ import type { InboundMessage, TokenRequest } from "ably";
 import type { IDBPDatabase } from "idb";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
+import {
+  captureSentryLogError,
+  sentryLogContext,
+} from "../lib/sentry-config.ts";
 import { now } from "../lib/time.ts";
+import { logger } from "../signals/log.ts";
 import { createChatIdbOpener } from "../signals/external/chat-idb-store.ts";
 import { createIdbEventRowStores } from "../signals/external/idb-event-row-store.ts";
 import { createStrictIdbChatThreadEventStores } from "../signals/external/idb-chat-thread-event-store.ts";
@@ -21,6 +26,7 @@ import {
   createChildAbortController,
   createDeferredPromise,
   detach,
+  isAbortError,
   Reason,
   settle,
   withCleanup,
@@ -56,6 +62,7 @@ const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
 const STALE_CLIENT_AFTER_MS = 3 * 60 * 1000;
 const REALTIME_CATCH_UP_RETRY_DELAYS_MS = [1000, 2000, 5000] as const;
+const L = logger("SharedDatabaseWorker");
 
 type WorkerClientEvent = Extract<
   SharedDatabaseWorkerMessage,
@@ -150,7 +157,7 @@ class SharedDatabaseAuthBlockedError extends Error {
 }
 
 class SharedDatabaseHttpError extends Error {
-  constructor(status: number) {
+  constructor(readonly status: number) {
     super(`Shared database request failed with status ${status}`);
     this.name = "SharedDatabaseHttpError";
   }
@@ -161,6 +168,72 @@ class SharedDatabaseClientNotConnectedError extends Error {
     super("Shared database client is not connected");
     this.name = SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME;
   }
+}
+
+function actorDiagnosticDetails(actor: DatasetActor): {
+  readonly dataset: DatasetActor["kind"];
+  readonly orgId: string;
+  readonly userId: string;
+} {
+  return {
+    dataset: actor.kind,
+    orgId: actor.dataKey.orgId,
+    userId: actor.dataKey.userId,
+  };
+}
+
+function reportActorError(
+  actor: DatasetActor,
+  operation: string,
+  error: unknown,
+): void {
+  if (isAbortError(error) || error instanceof SharedDatabaseAuthBlockedError) {
+    L.debug(operation, { ...actorDiagnosticDetails(actor), error });
+    return;
+  }
+  const details = actorDiagnosticDetails(actor);
+  const context = sentryLogContext({
+    contexts: {
+      shared_database: { org_id: actor.dataKey.orgId },
+      ...(error instanceof SharedDatabaseHttpError
+        ? { response: { status_code: error.status } }
+        : {}),
+    },
+    tags: {
+      "shared_database.dataset": actor.kind,
+      "shared_database.operation": operation,
+    },
+    user: { id: actor.dataKey.userId },
+  });
+  L.debug(operation, { ...details, error });
+  captureSentryLogError("SharedDatabaseWorker", [
+    operation,
+    error,
+    details,
+    context,
+  ]);
+}
+
+function markActorDegraded(
+  actor: DatasetActor,
+  operation: string,
+  error: unknown,
+): void {
+  if (actor.degraded) {
+    return;
+  }
+  actor.degraded = true;
+  reportActorError(actor, operation, error);
+}
+
+function markActorPersistenceRecovered(
+  actor: DatasetActor,
+  operation: string,
+): void {
+  if (actor.degraded) {
+    L.debug(operation, actorDiagnosticDetails(actor));
+  }
+  actor.degraded = false;
 }
 
 function advanceObservedSeqId(
@@ -196,6 +269,44 @@ function mergeChatEventRows(
   return Array.from(byId.values()).sort((left, right) => {
     return left.seqId - right.seqId;
   });
+}
+
+async function persistChatEventRows(
+  input: {
+    readonly stores: ReturnType<typeof createIdbEventRowStores>;
+    readonly actor: ChatEventActor;
+    readonly remoteRows: readonly ChatEventRow[];
+    readonly cursor: ChatEventCursor;
+    readonly replacedCache: boolean;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const { stores, actor, remoteRows, cursor, replacedCache } = input;
+  if (!replacedCache && remoteRows.length === 0) {
+    return;
+  }
+  const write = replacedCache
+    ? stores.writeStore.replaceRowsAndCursor(
+        actor.dataKey.threadId,
+        remoteRows,
+        cursor,
+        signal,
+      )
+    : stores.writeStore.upsertRowsAndCursor(
+        actor.dataKey.threadId,
+        remoteRows,
+        cursor,
+        signal,
+      );
+  const written = await settle(write, signal);
+  if (written.ok) {
+    markActorPersistenceRecovered(
+      actor,
+      "indexeddb.chat-event.write.recovered",
+    );
+  } else {
+    markActorDegraded(actor, "indexeddb.chat-event.write.error", written.error);
+  }
 }
 
 function chatThreadEventCursor(
@@ -250,6 +361,7 @@ export class SharedDatabaseWorkerRuntime {
     rootSignal.addEventListener(
       "abort",
       () => {
+        L.debug("runtime.abort");
         for (const session of this.realtimeSessions.values()) {
           session.close();
         }
@@ -280,6 +392,7 @@ export class SharedDatabaseWorkerRuntime {
       apiBaseUrl: null,
       lastHeartbeatAt: now(),
     });
+    L.debug("client.register", { clientId });
     emit({ type: "status", status: "connecting" });
   }
 
@@ -334,6 +447,11 @@ export class SharedDatabaseWorkerRuntime {
       credential.token = identity.token;
     }
     if (resumesAuthentication) {
+      L.debug("auth.resume", {
+        clientId,
+        orgId: identity.orgId,
+        userId: identity.userId,
+      });
       credential.authBlocked = false;
       credential.rejectedToken = null;
       client.emit({ type: "status", status: "connecting" });
@@ -346,6 +464,12 @@ export class SharedDatabaseWorkerRuntime {
         ? "disconnected"
         : this.realtimeStatusForUser(identity.userId),
     });
+    L.debug("client.heartbeat", {
+      authBlocked: credential.authBlocked,
+      clientId,
+      orgId: identity.orgId,
+      userId: identity.userId,
+    });
   }
 
   disconnectClient(clientId: string): void {
@@ -356,6 +480,7 @@ export class SharedDatabaseWorkerRuntime {
     const credentialId = client.identity
       ? sharedDatabaseCredentialId(client.identity)
       : null;
+    L.debug("client.unregister", { clientId });
     client.subscriptions.clear();
     this.clients.delete(clientId);
     this.removeUnusedActors();
@@ -371,6 +496,11 @@ export class SharedDatabaseWorkerRuntime {
     dataKey: SharedDatabaseDataKey,
   ): void {
     const client = this.requireClientForDataKey(clientId, dataKey);
+    L.debug("subscription.add", {
+      clientId,
+      dataset: dataKey.kind,
+      subscriptionId,
+    });
     client.subscriptions.set(subscriptionId, dataKey);
     this.getOrCreateActor(dataKey);
     this.ensureRealtimeForUser(dataKey.userId);
@@ -378,6 +508,7 @@ export class SharedDatabaseWorkerRuntime {
 
   unsubscribe(clientId: string, subscriptionId: string): void {
     const client = this.clients.get(clientId);
+    L.debug("subscription.remove", { clientId, subscriptionId });
     client?.subscriptions.delete(subscriptionId);
     this.removeUnusedActors();
     this.closeUnusedRealtimeSessions();
@@ -490,6 +621,8 @@ export class SharedDatabaseWorkerRuntime {
     actor: ChatEventActor,
     credential: CredentialState,
   ): Promise<ChatEventSyncResult> {
+    const startedAt = now();
+    L.debug("sync.start", actorDiagnosticDetails(actor));
     const [settled] = await Promise.allSettled([
       this.runSubscribedSyncWithRetries(actor, credential, () => {
         return this.syncChatEvents(actor, credential, this.rootSignal);
@@ -505,11 +638,17 @@ export class SharedDatabaseWorkerRuntime {
       }
       this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
       this.removeUnusedActors();
+      L.debug("sync.finish", {
+        ...actorDiagnosticDetails(actor),
+        changed: settled.value.changed,
+        durationMs: now() - startedAt,
+      });
       return settled.value;
     }
     credential.dirtyDataKeyIds.add(sharedDatabaseDataKeyId(actor.dataKey));
     this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
     this.removeUnusedActors();
+    reportActorError(actor, "sync.error", settled?.reason);
     throw settled?.reason;
   }
 
@@ -529,6 +668,8 @@ export class SharedDatabaseWorkerRuntime {
     actor: ChatThreadEventActor,
     credential: CredentialState,
   ): Promise<ChatThreadEventSyncResult> {
+    const startedAt = now();
+    L.debug("sync.start", actorDiagnosticDetails(actor));
     const [settled] = await Promise.allSettled([
       this.runSubscribedSyncWithRetries(actor, credential, () => {
         return this.syncChatThreadEvents(actor, credential, this.rootSignal);
@@ -544,11 +685,17 @@ export class SharedDatabaseWorkerRuntime {
       }
       this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
       this.removeUnusedActors();
+      L.debug("sync.finish", {
+        ...actorDiagnosticDetails(actor),
+        changed: settled.value.changed,
+        durationMs: now() - startedAt,
+      });
       return settled.value;
     }
     credential.dirtyDataKeyIds.add(sharedDatabaseDataKeyId(actor.dataKey));
     this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
     this.removeUnusedActors();
+    reportActorError(actor, "sync.error", settled?.reason);
     throw settled?.reason;
   }
 
@@ -572,6 +719,12 @@ export class SharedDatabaseWorkerRuntime {
     ) {
       throw result.error;
     }
+    L.debug("sync.retry", {
+      ...actorDiagnosticDetails(actor),
+      error: result.error,
+      retry: retryIndex + 1,
+      retryInMs: retryDelayMs,
+    });
     await delay(IN_VITEST ? 0 : retryDelayMs, { signal: this.rootSignal });
     this.rootSignal.throwIfAborted();
     if (credential.authBlocked || !this.isActorSubscribed(actorId)) {
@@ -622,7 +775,11 @@ export class SharedDatabaseWorkerRuntime {
       : null;
     initializeObservedSeqId(actor, cachedCursor?.lastSeqId ?? null);
     if (!cachedCursorResult.ok) {
-      actor.degraded = true;
+      markActorDegraded(
+        actor,
+        "indexeddb.chat-event-cursor.read.error",
+        cachedCursorResult.error,
+      );
     }
 
     const requestToken = credential.token;
@@ -714,24 +871,16 @@ export class SharedDatabaseWorkerRuntime {
         confirmColdStartTail || pageRows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
     }
 
-    const shouldWrite = replacedCache || remoteRows.length > 0;
-    if (shouldWrite) {
-      const write = replacedCache
-        ? stores.writeStore.replaceRowsAndCursor(
-            actor.dataKey.threadId,
-            remoteRows,
-            cursor,
-            signal,
-          )
-        : stores.writeStore.upsertRowsAndCursor(
-            actor.dataKey.threadId,
-            remoteRows,
-            cursor,
-            signal,
-          );
-      const written = await settle(write, signal);
-      actor.degraded = !written.ok;
-    }
+    await persistChatEventRows(
+      {
+        stores,
+        actor,
+        remoteRows,
+        cursor,
+        replacedCache,
+      },
+      signal,
+    );
     const changed = advanceObservedSeqId(actor, cursor.lastSeqId);
     return {
       remoteRows,
@@ -875,7 +1024,18 @@ export class SharedDatabaseWorkerRuntime {
           )
         : stores.writeStore.upsertEvents(state.newEvents, signal);
       const written = await settle(write, signal);
-      actor.degraded = !written.ok;
+      if (written.ok) {
+        markActorPersistenceRecovered(
+          actor,
+          "indexeddb.chat-thread-event.write.recovered",
+        );
+      } else {
+        markActorDegraded(
+          actor,
+          "indexeddb.chat-thread-event.write.error",
+          written.error,
+        );
+      }
     }
     return {
       result: state.result,
@@ -975,6 +1135,10 @@ export class SharedDatabaseWorkerRuntime {
       if (credential.authBlocked) {
         throw rebasedSnapshot.error;
       }
+      L.debug("snapshot-rebase.skip", {
+        ...actorDiagnosticDetails(actor),
+        error: rebasedSnapshot.error,
+      });
       return state;
     }
     const result = { snapshot: rebasedSnapshot.value, events: [] };
@@ -1028,7 +1192,7 @@ export class SharedDatabaseWorkerRuntime {
       signal,
     );
     if (!result.ok) {
-      actor.degraded = true;
+      markActorDegraded(actor, "indexeddb.chat-event.read.error", result.error);
       return [];
     }
     return result.value;
@@ -1049,7 +1213,11 @@ export class SharedDatabaseWorkerRuntime {
       signal,
     );
     if (!result.ok) {
-      actor.degraded = true;
+      markActorDegraded(
+        actor,
+        "indexeddb.chat-thread-event.read.error",
+        result.error,
+      );
       return { snapshot: null, events: [] };
     }
     const [snapshot, eventLog] = result.value;
@@ -1177,6 +1345,10 @@ export class SharedDatabaseWorkerRuntime {
     if (credential.token !== rejectedToken) {
       return;
     }
+    L.debug("auth.block", {
+      orgId: credential.orgId,
+      userId: credential.userId,
+    });
     credential.authBlocked = true;
     credential.rejectedToken = rejectedToken;
     for (const [id, actor] of this.actors) {
