@@ -11,8 +11,8 @@ import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroChatCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { chatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
@@ -67,7 +67,7 @@ describe("okou chat model command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
@@ -86,7 +86,7 @@ describe("okou chat model command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync(["node", "cli", "model", "--help"]);
+    await chatCommand.parseAsync(["node", "cli", "model", "--help"]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Usage: chat model");
@@ -101,9 +101,7 @@ describe("okou chat model command", () => {
   it("prints the current chat model and switchable models without an argument", async () => {
     server.use(
       http.get(GET_URL, ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer test-zero-token",
-        );
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
         return HttpResponse.json({
           id: THREAD_ID,
           title: "Launch plan",
@@ -115,7 +113,7 @@ describe("okou chat model command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync(["node", "cli", "model"]);
+    await chatCommand.parseAsync(["node", "cli", "model"]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Chat thread loaded");
@@ -139,7 +137,7 @@ describe("okou chat model command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "model",
@@ -159,9 +157,7 @@ describe("okou chat model command", () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
       }),
       http.post(OTHER_MODEL_SELECTION_URL, async ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer test-zero-token",
-        );
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
         await expect(request.json()).resolves.toStrictEqual({
           model: "claude-sonnet-5",
         });
@@ -169,7 +165,7 @@ describe("okou chat model command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "model",
@@ -192,7 +188,7 @@ describe("okou chat model command", () => {
     );
 
     await expect(async () => {
-      await zeroChatCommand.parseAsync(["node", "cli", "model", "gpt-5.5"]);
+      await chatCommand.parseAsync(["node", "cli", "model", "gpt-5.5"]);
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");

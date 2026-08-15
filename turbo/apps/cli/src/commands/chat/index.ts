@@ -9,7 +9,7 @@ import { modelCommand } from "./model";
 import { renameCommand } from "./rename";
 import { sendCommand } from "./send";
 
-export const zeroChatCommand = new Command()
+export const chatCommand = new Command()
   .name("chat")
   .description("Manage web chat threads")
   .addCommand(createCommand)

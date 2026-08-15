@@ -9,12 +9,12 @@ import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   getZeroChatThread,
   updateZeroChatThreadModelSelection,
-} from "../../../lib/api/domains/zero-chat";
-import { listZeroModelPolicies } from "../../../lib/api/domains/zero-model-policies";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { formatModelProviderRoute } from "../../../lib/domain/model-policy-display";
-import { isUuid } from "../../../lib/utils/uuid";
-import { getOkouChatThreadId } from "../../../lib/okou-env";
+} from "../../lib/api/domains/zero-chat";
+import { listZeroModelPolicies } from "../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { formatModelProviderRoute } from "../../lib/domain/model-policy-display";
+import { isUuid } from "../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../lib/okou-env";
 
 interface ModelOptions {
   readonly help?: boolean;

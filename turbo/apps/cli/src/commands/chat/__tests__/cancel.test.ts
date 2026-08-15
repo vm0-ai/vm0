@@ -2,8 +2,8 @@ import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroChatCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { chatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const AGENT_ID = "00000000-0000-4000-8000-000000000010";
@@ -24,7 +24,7 @@ describe("okou chat cancel command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
     server.use(
       http.get(METADATA_URL, () => {
@@ -68,7 +68,7 @@ describe("okou chat cancel command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "cancel",
@@ -108,7 +108,7 @@ describe("okou chat cancel command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "cancel",
@@ -123,7 +123,7 @@ describe("okou chat cancel command", () => {
 
   it("requires exactly one cancellation target", async () => {
     await expect(async () => {
-      await zeroChatCommand.parseAsync([
+      await chatCommand.parseAsync([
         "node",
         "cli",
         "cancel",

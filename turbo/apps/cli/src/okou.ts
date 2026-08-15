@@ -203,7 +203,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "chat",
     description: "Manage the current web chat thread",
     load: async () => {
-      return (await import("./commands/zero/chat")).zeroChatCommand;
+      return (await import("./commands/chat")).chatCommand;
     },
   },
   {

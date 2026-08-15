@@ -11,8 +11,8 @@ import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroChatCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { chatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
@@ -31,7 +31,7 @@ describe("okou chat rename command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
@@ -45,9 +45,7 @@ describe("okou chat rename command", () => {
   it("renames the current chat thread and prints a human-readable summary", async () => {
     server.use(
       http.post(RENAME_URL, async ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer test-zero-token",
-        );
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
         await expect(request.json()).resolves.toStrictEqual({
           title: "Launch plan",
         });
@@ -55,13 +53,7 @@ describe("okou chat rename command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
-      "node",
-      "cli",
-      "rename",
-      "Launch",
-      "plan",
-    ]);
+    await chatCommand.parseAsync(["node", "cli", "rename", "Launch", "plan"]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Chat title updated");
@@ -79,7 +71,7 @@ describe("okou chat rename command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "rename",
@@ -107,7 +99,7 @@ describe("okou chat rename command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "rename",
@@ -128,7 +120,7 @@ describe("okou chat rename command", () => {
 
   it("rejects whitespace-only titles before calling the API", async () => {
     await expect(async () => {
-      await zeroChatCommand.parseAsync(["node", "cli", "rename", "   "]);
+      await chatCommand.parseAsync(["node", "cli", "rename", "   "]);
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
@@ -141,12 +133,7 @@ describe("okou chat rename command", () => {
     vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
 
     await expect(async () => {
-      await zeroChatCommand.parseAsync([
-        "node",
-        "cli",
-        "rename",
-        "Launch plan",
-      ]);
+      await chatCommand.parseAsync(["node", "cli", "rename", "Launch plan"]);
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");

@@ -1,7 +1,7 @@
 import chalk from "chalk";
 
-import { isUuid } from "../../../lib/utils/uuid";
-import { getOkouChatThreadId } from "../../../lib/okou-env";
+import { isUuid } from "../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../lib/okou-env";
 
 export function printChatUsageError(message: string, hint: string): never {
   console.error(chalk.red(`✗ ${message}`));
