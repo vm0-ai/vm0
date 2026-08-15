@@ -1633,38 +1633,38 @@ function ManagedSubscriptionComparison({
   const monthlyTotal = rows.at(-1);
 
   /* The ledger above this already states what the workspace will pay, so the
-     row-by-row comparison opens on demand. Its summary and body share the same
-     four rails: disclosure, label, current value, and new value. The migration
-     screens keep their comparison contained -- there it is the whole point of
-     the page. */
+     row-by-row comparison opens on demand. The disclosure and copy follow the
+     same icon and text rails as the note above, while the values keep their
+     shared right edges. The migration screens keep their comparison contained
+     -- there it is the whole point of the page. */
   return (
-    <details className={`group mt-3.5 ${REVIEW_HAIRLINE}`}>
-      <summary className="grid cursor-pointer list-none grid-cols-[2.5rem_minmax(0,1fr)_30%_30%] items-center py-3">
-        <span className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
+    <details className="group">
+      <summary className="grid cursor-pointer list-none grid-cols-[1.25rem_minmax(0,1fr)_30%_30%] items-center gap-x-2 py-3">
+        <span className="flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
           <ChevronRight
             size={14}
             className="transition-transform group-open:rotate-90"
           />
         </span>
-        <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
+        <span className="min-w-0 truncate text-[13px] font-medium leading-5 text-foreground">
           {i18n.t(($) => {
             return $.billing.plans.usagePacks.management.comparison;
           })}
         </span>
         {monthlyTotal && (
           <>
-            <span className="col-start-3 row-start-1 text-right text-[13px] tabular-nums text-muted-foreground group-open:hidden">
+            <span className="col-start-3 row-start-1 text-right text-[13px] leading-5 tabular-nums text-muted-foreground group-open:hidden">
               {monthlyTotal.current}
             </span>
-            <span className="col-start-4 row-start-1 text-right text-[13px] tabular-nums text-muted-foreground group-open:hidden">
+            <span className="col-start-4 row-start-1 text-right text-[13px] leading-5 tabular-nums text-muted-foreground group-open:hidden">
               {monthlyTotal.next}
             </span>
-            <span className="col-start-3 row-start-1 hidden text-right text-[13px] text-muted-foreground group-open:block">
+            <span className="col-start-3 row-start-1 hidden text-right text-[13px] leading-5 text-muted-foreground group-open:block">
               {i18n.t(($) => {
                 return $.billing.plans.usagePacks.management.current;
               })}
             </span>
-            <span className="col-start-4 row-start-1 hidden text-right text-[13px] text-muted-foreground group-open:block">
+            <span className="col-start-4 row-start-1 hidden text-right text-[13px] leading-5 text-muted-foreground group-open:block">
               {i18n.t(($) => {
                 return $.billing.plans.usagePacks.management.new;
               })}
