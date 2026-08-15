@@ -3,7 +3,7 @@ import { zeroCustomConnectorsContract } from "@okouai/api-contracts/contracts/ze
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { zeroCustomConnectorList } from "../services/zero-catalog-data.service";
+import { customConnectorList } from "../services/custom-connector-list.service";
 import type { RouteEntry } from "../route-entry";
 import { zeroCustomConnectorsCreateRoutes } from "./zero-custom-connectors-create";
 import { zeroCustomConnectorsDeleteRoutes } from "./zero-custom-connectors-delete";
@@ -17,7 +17,7 @@ import { zeroCustomConnectorsValuesSetRoutes } from "./zero-custom-connectors-va
 const listCustomConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const connectors = await get(
-    zeroCustomConnectorList({ orgId: auth.orgId, userId: auth.userId }),
+    customConnectorList({ orgId: auth.orgId, userId: auth.userId }),
   );
   return { status: 200 as const, body: { connectors: [...connectors] } };
 });
