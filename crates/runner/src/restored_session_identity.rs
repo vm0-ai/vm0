@@ -27,30 +27,12 @@ use sha2::{Digest, Sha256};
 
 use crate::types::ResumeSessionHistoryRefKind;
 
-const CLAUDE_CODE_RESTORE_FORMAT_VERSION: u8 = 1;
-const CODEX_RESTORE_FORMAT_VERSION: u8 = 1;
-const PI_RESTORE_FORMAT_VERSION: u8 = 1;
-
 /// CLI framework namespace used by a restored-session identity.
-///
-/// Each framework controls both session-id normalization and the restore
-/// format version included in structural comparisons.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RestoredSessionFramework {
     ClaudeCode,
     Codex,
     Pi,
-}
-
-impl RestoredSessionFramework {
-    /// Returns the current restore format version for this framework.
-    pub(crate) const fn restore_format_version(self) -> u8 {
-        match self {
-            Self::ClaudeCode => CLAUDE_CODE_RESTORE_FORMAT_VERSION,
-            Self::Codex => CODEX_RESTORE_FORMAT_VERSION,
-            Self::Pi => PI_RESTORE_FORMAT_VERSION,
-        }
-    }
 }
 
 /// Reason a resume request cannot use a retained identity.
@@ -62,7 +44,6 @@ impl RestoredSessionFramework {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RestoredSessionIdentityMismatchReason {
     Framework,
-    RestoreFormatVersion,
     SessionIdentity,
     HistoryRefKind,
     HistoryHash(RestoredSessionHistoryHashSizeRelationship),
@@ -74,9 +55,6 @@ impl RestoredSessionIdentityMismatchReason {
     pub(crate) const fn action_type(self) -> &'static str {
         match self {
             Self::Framework => "session_history_identity_mismatch_framework",
-            Self::RestoreFormatVersion => {
-                "session_history_identity_mismatch_restore_format_version"
-            }
             Self::SessionIdentity => "session_history_identity_mismatch_session_identity",
             Self::HistoryRefKind => "session_history_identity_mismatch_history_ref_kind",
             Self::HistoryHash(_) => "session_history_identity_mismatch_history_hash",
@@ -137,7 +115,6 @@ impl RestoredSessionHistoryHashSizeRelationship {
 #[derive(Clone, Eq)]
 pub(crate) struct RestoredSessionIdentity {
     framework: RestoredSessionFramework,
-    restore_format_version: u8,
     session_id_hash: String,
     history_ref_kind: ResumeSessionHistoryRefKind,
     history_hash: String,
@@ -205,7 +182,6 @@ impl RestoredSessionIdentity {
     ) -> Self {
         Self {
             framework,
-            restore_format_version: framework.restore_format_version(),
             session_id_hash: hex::encode(Sha256::digest(identity_session_id.as_bytes())),
             history_ref_kind,
             history_hash: history_hash.into(),
@@ -229,7 +205,6 @@ impl RestoredSessionIdentity {
         let history_ref_kind = resume_history_ref_kind_from_final(metadata.history_ref_kind);
         let identity = Self {
             framework,
-            restore_format_version: framework.restore_format_version(),
             session_id_hash: metadata.session_id_hash,
             history_ref_kind,
             history_hash: metadata.history_hash,
@@ -369,20 +344,16 @@ impl RestoredSessionIdentity {
 
     /// Returns the first identity difference relevant to a resume request.
     ///
-    /// Mismatches take precedence in this order: framework, restore format
-    /// version, session identity, history ref kind, history hash, then history
-    /// size. History size is a constraint only when `requested` supplies one,
-    /// so `None` can describe a structural match that is still not eligible
-    /// for a verified restore skip.
+    /// Mismatches take precedence in this order: framework, session identity,
+    /// history ref kind, history hash, then history size. History size is a
+    /// constraint only when `requested` supplies one, so `None` can describe a
+    /// structural match that is still not eligible for a verified restore skip.
     pub(crate) fn mismatch_reason_for_request(
         &self,
         requested: &Self,
     ) -> Option<RestoredSessionIdentityMismatchReason> {
         if self.framework != requested.framework {
             return Some(RestoredSessionIdentityMismatchReason::Framework);
-        }
-        if self.restore_format_version != requested.restore_format_version {
-            return Some(RestoredSessionIdentityMismatchReason::RestoreFormatVersion);
         }
         if self.session_id_hash != requested.session_id_hash {
             return Some(RestoredSessionIdentityMismatchReason::SessionIdentity);
@@ -445,15 +416,14 @@ impl RestoredSessionHistoryPrefixAttribution {
 
 /// Compares the structural content identity only.
 ///
-/// Equality includes framework, restore format version, hashed normalized
-/// session identity, history ref kind, and history hash. It intentionally
-/// excludes history size and verifier provenance. Equality alone therefore
-/// cannot authorize a verified restore skip; use
+/// Equality includes framework, hashed normalized session identity, history
+/// ref kind, and history hash. It intentionally excludes history size and
+/// verifier provenance. Equality alone therefore cannot authorize a verified
+/// restore skip; use
 /// [`RestoredSessionIdentity::is_verified_match_for_request`] at that boundary.
 impl PartialEq for RestoredSessionIdentity {
     fn eq(&self, other: &Self) -> bool {
         self.framework == other.framework
-            && self.restore_format_version == other.restore_format_version
             && self.session_id_hash == other.session_id_hash
             && self.history_ref_kind == other.history_ref_kind
             && self.history_hash == other.history_hash
@@ -466,7 +436,6 @@ impl fmt::Debug for RestoredSessionIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RestoredSessionIdentity")
             .field("framework", &self.framework)
-            .field("restore_format_version", &self.restore_format_version)
             .field("session_id_hash", &"[redacted]")
             .field("history_ref_kind", &self.history_ref_kind)
             .field("history_hash", &"[redacted]")
