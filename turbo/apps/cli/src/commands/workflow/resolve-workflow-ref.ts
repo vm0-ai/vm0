@@ -1,5 +1,5 @@
-import { listWorkflows } from "../../../lib/api/domains/zero-workflows";
-import { getOkouAgentId } from "../../../lib/okou-env";
+import { listWorkflows } from "../../lib/api/domains/zero-workflows";
+import { getOkouAgentId } from "../../lib/okou-env";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

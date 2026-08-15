@@ -231,7 +231,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "workflow",
     description: "Manage workflows",
     load: async () => {
-      return (await import("./commands/zero/workflow")).zeroWorkflowCommand;
+      return (await import("./commands/workflow")).workflowCommand;
     },
   },
   {

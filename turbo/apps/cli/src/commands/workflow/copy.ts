@@ -3,8 +3,8 @@ import chalk from "chalk";
 import {
   copyWorkflow,
   listWorkflowAutomations,
-} from "../../../lib/api/domains/zero-workflows";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/zero-workflows";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { printWorkflowAutomationsTable } from "./automation/display";
 import { formatWorkflowAgentName } from "./format";
 import {

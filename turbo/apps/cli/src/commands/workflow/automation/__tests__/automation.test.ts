@@ -14,8 +14,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../../mocks/server";
-import { zeroWorkflowCommand } from "../../index";
+import { server } from "../../../../mocks/server";
+import { workflowCommand } from "../../index";
 import { automationCommand, createAutomationAddCommand } from "../index";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import chalk from "chalk";
@@ -1364,7 +1364,7 @@ describe("okou workflow automation commands", () => {
     it("should add a Google Forms response automation and print its warning", async () => {
       const captured = captureCreateAutomation(googleFormsAutomation);
 
-      await zeroWorkflowCommand.parseAsync([
+      await workflowCommand.parseAsync([
         "node",
         "cli",
         "trigger",
@@ -1892,7 +1892,7 @@ describe("okou workflow automation commands", () => {
       mockExistingAutomation(googleFormsAutomation);
 
       await expect(async () => {
-        await zeroWorkflowCommand.parseAsync([
+        await workflowCommand.parseAsync([
           "node",
           "cli",
           "trigger",

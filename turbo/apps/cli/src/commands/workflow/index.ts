@@ -7,7 +7,7 @@ import { deleteCommand } from "./delete";
 import { copyCommand } from "./copy";
 import { automationCommand } from "./automation";
 
-export const zeroWorkflowCommand = new Command("workflow")
+export const workflowCommand = new Command("workflow")
   .description("Manage workflows")
   .addCommand(createCommand)
   .addCommand(editCommand)
