@@ -984,10 +984,12 @@
           "processing": "Änderung wird verarbeitet",
           "reviewDescription": "Mit der Bestätigung wird Ihre gespeicherte Zahlungsmethode belastet.",
           "reviewTitle": "Paketänderung prüfen",
+          "scheduledDowngradeDescription": "Das kleinere Paket beginnt am {{date}} · Vorhandene Credits bleiben bis zu ihrem Ablauf verfügbar",
+          "scheduledDowngradeTitle": "Downgrade geplant",
           "scheduledFor": "Geplant für {{date}}",
           "today": "Heute"
         },
-        "memberExclusive": "Jedes Paket gehört einem Mitglied und kann nicht geteilt werden. Wenn ein Paket aufgebraucht ist, wird die Nutzung über nutzungsabhängige Credits abgerechnet. Sie können später auf ein neues Paket upgraden.",
+        "memberExclusive": "Ein Paket pro Mitglied. Jede Mehrnutzung wird über nutzungsabhängige Credits abgerechnet.",
         "memberPackages": "Mitgliederpakete",
         "memberUsage": "Nutzung des Mitglieds",
         "migration": {

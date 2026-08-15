@@ -984,10 +984,12 @@
           "processing": "변경 처리 중",
           "reviewDescription": "확인하면 저장된 결제 수단으로 청구됩니다.",
           "reviewTitle": "패키지 변경 검토",
+          "scheduledDowngradeDescription": "하위 패키지는 {{date}}부터 시작됩니다 · 기존 크레딧은 만료될 때까지 사용할 수 있습니다",
+          "scheduledDowngradeTitle": "다운그레이드 예약됨",
           "scheduledFor": "{{date}}에 변경 예정",
           "today": "오늘"
         },
-        "memberExclusive": "각 패키지는 한 구성원에게만 속하며 공유할 수 없습니다. 패키지를 모두 사용하면 종량제 크레딧으로 전환됩니다. 나중에 새 패키지로 업그레이드할 수 있습니다.",
+        "memberExclusive": "구성원당 하나의 패키지가 제공됩니다. 초과 사용량에는 종량제 크레딧이 사용됩니다.",
         "memberPackages": "구성원 패키지",
         "memberUsage": "구성원 사용량",
         "migration": {

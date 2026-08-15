@@ -984,10 +984,12 @@
           "processing": "Perubahan sedang diproses",
           "reviewDescription": "Konfirmasi akan menagih metode pembayaran tersimpan Anda.",
           "reviewTitle": "Tinjau perubahan paket",
+          "scheduledDowngradeDescription": "Paket yang lebih rendah dimulai pada {{date}} · Kredit yang ada tetap tersedia hingga kedaluwarsa",
+          "scheduledDowngradeTitle": "Penurunan paket dijadwalkan",
           "scheduledFor": "Dijadwalkan untuk {{date}}",
           "today": "Hari ini"
         },
-        "memberExclusive": "Setiap paket hanya untuk satu anggota dan tidak dapat dibagikan. Saat paket habis, penggunaan kembali memakai kredit bayar sesuai pemakaian. Anda dapat meningkatkan ke paket baru nanti.",
+        "memberExclusive": "Satu paket per anggota. Penggunaan berlebih memakai kredit bayar sesuai pemakaian.",
         "memberPackages": "Paket anggota",
         "memberUsage": "Penggunaan anggota",
         "migration": {

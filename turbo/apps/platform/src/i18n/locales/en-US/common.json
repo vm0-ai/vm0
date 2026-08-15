@@ -984,10 +984,12 @@
           "processing": "Change is processing",
           "reviewDescription": "Confirming charges your saved payment method.",
           "reviewTitle": "Review package change",
+          "scheduledDowngradeDescription": "Lower package starts {{date}} · Existing credits remain available until they expire",
+          "scheduledDowngradeTitle": "Downgrade scheduled",
           "scheduledFor": "Scheduled for {{date}}",
           "today": "Today"
         },
-        "memberExclusive": "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
+        "memberExclusive": "One package per member. Any overage uses pay-as-you-go credits.",
         "memberPackages": "Member packages",
         "memberUsage": "Member usage",
         "migration": {
