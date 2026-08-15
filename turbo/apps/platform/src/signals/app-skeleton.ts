@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { onRef, resetSignal, setLoop } from "./utils.ts";
+import { completeOnLocalAbort, onRef, resetSignal, setLoop } from "./utils.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
 import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 import { i18n } from "../i18n/index.ts";
@@ -10,6 +10,7 @@ import { locale$ } from "./locale.ts";
 // ---------------------------------------------------------------------------
 
 const internalVisible$ = state(true);
+const internalOverlayMounted$ = state(true);
 
 const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
 const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
@@ -28,6 +29,7 @@ export const initBootstrapSkeleton$ = command(({ set }) => {
   if (active) {
     queueAppSkeletonVisibleEvent();
   }
+  set(internalOverlayMounted$, !active);
   set(internalBootstrapSkeletonActive$, active);
 });
 
@@ -149,19 +151,37 @@ const MAX_SKELETON_CYCLES = 3;
 export const startSkeletonCycling$ = command(
   async ({ set }, parentSignal: AbortSignal) => {
     let cycles = 0;
-    await setLoop(
-      () => {
-        set(cycleSkeletonCopy$);
-        return ++cycles >= MAX_SKELETON_CYCLES;
-      },
-      4000,
-      set(resetSkeletonCycling$, parentSignal),
+    const loopSignal = set(resetSkeletonCycling$, parentSignal);
+    // The local reset is the normal completion path when the page becomes
+    // ready. Parent cancellation still belongs to the command caller and must
+    // propagate through bootstrap.
+    await completeOnLocalAbort(
+      setLoop(
+        () => {
+          set(cycleSkeletonCopy$);
+          return ++cycles >= MAX_SKELETON_CYCLES;
+        },
+        4000,
+        loopSignal,
+      ),
+      loopSignal,
+      parentSignal,
     );
   },
 );
 
 export const appSkeletonVisible$ = computed((get) => {
   return get(internalVisible$);
+});
+
+export const appSkeletonOverlayMounted$ = computed((get) => {
+  return get(internalOverlayMounted$);
+});
+
+export const unmountAppSkeletonOverlay$ = command(({ get, set }) => {
+  if (!get(internalVisible$)) {
+    set(internalOverlayMounted$, false);
+  }
 });
 
 /**
@@ -172,8 +192,9 @@ export const appSkeletonVisible$ = computed((get) => {
  * restart the cycling itself by awaiting `startSkeletonCycling$` in its
  * own async context.
  */
-export const showAppSkeleton$ = command(({ set }) => {
+export const showAppSkeleton$ = command(({ get, set }) => {
   set(internalVisible$, true);
+  set(internalOverlayMounted$, !get(internalBootstrapSkeletonActive$));
   set(skeletonFirstCycle$, true);
 });
 

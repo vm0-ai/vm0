@@ -1,44 +1,45 @@
 import { command } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
-
 import {
   githubDeploymentStatusCreatedEventConfigSchema,
   githubIssueCommentCreatedEventConfigSchema,
+  githubPullRequestActionSchema,
+  githubPullRequestEventConfigSchema,
   githubPullRequestReviewSubmittedEventConfigSchema,
   githubWorkflowJobCompletedEventConfigSchema,
   type GithubDeploymentState,
   type GithubDeploymentStatusCreatedEventConfig,
   type GithubIssueCommentCreatedEventConfig,
+  type GithubPullRequestAction,
+  type GithubPullRequestEventConfig,
   type GithubPullRequestReviewState,
   type GithubPullRequestReviewSubmittedEventConfig,
   type GithubWorkflowJobCompletedEventConfig,
   type GithubWorkflowRunConclusion,
-  type GithubWorkflowEventConfig,
-  type ZeroWorkflowEventType,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
+  type GithubAutomationEventConfig,
+  type WorkflowAutomationEventType,
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflowGithubProcessedEvents,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
-
+  workflowAutomations,
+  workflowGithubProcessedEvents,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
-import {
-  runWorkflowAutomationNow$,
-  type AutomationRow,
-} from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import {
-  WorkflowEventSourceTiming,
-  type WorkflowEventRunTiming,
-} from "./workflow-event-source-timing.service";
+  AutomationEventSourceTiming,
+  type AutomationEventRunTiming,
+} from "./automation-event-source-timing.service";
 
 const log = logger("api:github-webhook-automation-event");
 
@@ -138,6 +139,28 @@ export interface GithubDeploymentStatusEventPayload {
   readonly sender: GithubWebhookUser;
 }
 
+export interface GithubPullRequestEventPayload {
+  readonly action: string;
+  readonly pull_request: {
+    readonly number: number;
+    readonly title: string;
+    readonly html_url: string;
+    readonly draft: boolean;
+    readonly merged: boolean | null;
+    readonly merged_at: string | null;
+    readonly merge_commit_sha: string | null;
+    readonly merged_by: GithubWebhookUser | null;
+    readonly user: GithubWebhookUser;
+    readonly base: { readonly ref: string };
+    readonly head: { readonly ref: string; readonly sha: string };
+    readonly labels: readonly { readonly name: string }[];
+  };
+  readonly label?: { readonly name: string };
+  readonly repository: GithubWebhookRepository;
+  readonly installation: GithubWebhookInstallation;
+  readonly sender: GithubWebhookUser;
+}
+
 export interface GithubIssueCommentEventPayload {
   readonly action: string;
   readonly issue: {
@@ -159,17 +182,19 @@ export interface GithubIssueCommentEventPayload {
 }
 
 type GithubWebhookAutomationEventType = Extract<
-  ZeroWorkflowEventType,
+  WorkflowAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
+  | "github-pull-request"
   | "github-pull-request-review-submitted"
   | "github-workflow-job-completed"
 >;
 
 type GithubWebhookAutomationEventConfig = Extract<
-  GithubWorkflowEventConfig,
+  GithubAutomationEventConfig,
   | { readonly event: "deployment_status_created" }
   | { readonly event: "issue_comment_created" }
+  | { readonly event: "pull_request" }
   | { readonly event: "pull_request_review_submitted" }
   | { readonly event: "workflow_job_completed" }
 >;
@@ -179,6 +204,11 @@ type GithubWebhookAutomationEvent =
       readonly eventType: "github-workflow-job-completed";
       readonly webhookEvent: "workflow_job";
       readonly payload: GithubWorkflowJobEventPayload;
+    }
+  | {
+      readonly eventType: "github-pull-request";
+      readonly webhookEvent: "pull_request";
+      readonly payload: GithubPullRequestEventPayload;
     }
   | {
       readonly eventType: "github-pull-request-review-submitted";
@@ -214,6 +244,10 @@ function parseConfigForEventType(
     case "github-workflow-job-completed": {
       const parsed =
         githubWorkflowJobCompletedEventConfigSchema.safeParse(eventConfig);
+      return parsed.success ? parsed.data : null;
+    }
+    case "github-pull-request": {
+      const parsed = githubPullRequestEventConfigSchema.safeParse(eventConfig);
       return parsed.success ? parsed.data : null;
     }
     case "github-pull-request-review-submitted": {
@@ -333,6 +367,43 @@ function workflowJobMatchesConfig(
   );
 }
 
+function pullRequestMatchesConfig(
+  config: GithubPullRequestEventConfig,
+  payload: GithubPullRequestEventPayload,
+): boolean {
+  if (payload.action !== config.action) {
+    return false;
+  }
+  if (
+    config.merged !== undefined &&
+    (payload.pull_request.merged ?? false) !== config.merged
+  ) {
+    return false;
+  }
+  const { filters } = config;
+  const matchedLabels =
+    config.action === "labeled" || config.action === "unlabeled"
+      ? [payload.label?.name]
+      : payload.pull_request.labels.map((label) => {
+          return label.name;
+        });
+  return (
+    matchesNormalizedFilter(
+      [config.repository],
+      [payload.repository.full_name, payload.repository.id],
+    ) &&
+    matchesExactFilter(filters.baseBranches, payload.pull_request.base.ref) &&
+    matchesNormalizedFilter(filters.authors, [
+      payload.pull_request.user.login,
+      payload.pull_request.user.id,
+    ]) &&
+    matchesNormalizedFilter(filters.pullRequestNumbers, [
+      payload.pull_request.number,
+    ]) &&
+    matchesNormalizedFilter(filters.labels, matchedLabels)
+  );
+}
+
 function pullRequestReviewMatchesConfig(
   config: GithubPullRequestReviewSubmittedEventConfig,
   payload: GithubPullRequestReviewEventPayload,
@@ -417,6 +488,10 @@ function eventCanDispatch(event: GithubWebhookAutomationEvent): boolean {
         event.payload.workflow_job.conclusion !== null
       );
     }
+    case "github-pull-request": {
+      return githubPullRequestActionSchema.safeParse(event.payload.action)
+        .success;
+    }
     case "github-pull-request-review-submitted": {
       return event.payload.action === "submitted";
     }
@@ -439,6 +514,12 @@ function eventMatchesAutomation(
         githubWorkflowJobCompletedEventConfigSchema.safeParse(config);
       return (
         parsed.success && workflowJobMatchesConfig(parsed.data, event.payload)
+      );
+    }
+    case "github-pull-request": {
+      const parsed = githubPullRequestEventConfigSchema.safeParse(config);
+      return (
+        parsed.success && pullRequestMatchesConfig(parsed.data, event.payload)
       );
     }
     case "github-pull-request-review-submitted": {
@@ -484,49 +565,48 @@ async function findActiveInstallation(args: {
   return installation ?? null;
 }
 
-async function loadGithubWebhookAutomations(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly eventType: GithubWebhookAutomationEventType;
-  readonly signal: AbortSignal;
-}): Promise<readonly GithubWebhookAutomationRow[]> {
+async function loadGithubWebhookAutomations(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly eventType: GithubWebhookAutomationEventType;
+  },
+  signal: AbortSignal,
+): Promise<readonly GithubWebhookAutomationRow[]> {
   const rows = await args.db
     .select({
-      automation: zeroWorkflowAutomations,
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      automation: workflowAutomationColumns(),
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(zeroWorkflowAutomations.eventType, args.eventType),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventType, args.eventType),
       ),
     )
-    .orderBy(asc(zeroWorkflowAutomations.createdAt));
-  args.signal.throwIfAborted();
+    .orderBy(asc(workflowAutomations.createdAt));
+  signal.throwIfAborted();
 
   const automations: GithubWebhookAutomationRow[] = [];
   const currentTime = nowDate();
@@ -538,12 +618,15 @@ async function loadGithubWebhookAutomations(args: {
     if (!config) {
       continue;
     }
-    const canFire = await workflowAutomationCanFire(args.db, {
-      automation: row.automation,
-      agentId: row.agentId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const canFire = await workflowAutomationCanFire(
+      args.db,
+      {
+        automation: row.automation,
+        agentId: row.agentId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (!canFire) {
       continue;
     }
@@ -559,7 +642,7 @@ async function loadGithubWebhookAutomations(args: {
           currentTime,
         });
       }));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     automations.push({
       automation: row.automation,
       agentId: row.agentId,
@@ -588,6 +671,7 @@ function eventSubject(event: GithubWebhookAutomationEvent): {
   readonly number: number | null;
 } {
   switch (event.eventType) {
+    case "github-pull-request":
     case "github-pull-request-review-submitted": {
       return {
         type: "pull_request",
@@ -618,7 +702,7 @@ async function recordProcessedDelivery(args: {
 }): Promise<string | null> {
   const subject = eventSubject(args.event);
   const [row] = await args.db
-    .insert(zeroWorkflowGithubProcessedEvents)
+    .insert(workflowGithubProcessedEvents)
     .values({
       automationId: args.automation.automation.id,
       githubDeliveryId: args.deliveryId,
@@ -630,8 +714,51 @@ async function recordProcessedDelivery(args: {
       createdAt: nowDate(),
     })
     .onConflictDoNothing()
-    .returning({ id: zeroWorkflowGithubProcessedEvents.id });
+    .returning({ id: workflowGithubProcessedEvents.id });
   return row?.id ?? null;
+}
+
+function pullRequestPromptSummary(
+  payload: GithubPullRequestEventPayload,
+): string {
+  const subject = `pull request #${payload.pull_request.number}`;
+  const action: GithubPullRequestAction = githubPullRequestActionSchema.parse(
+    payload.action,
+  );
+  switch (action) {
+    case "opened": {
+      return `GitHub user "${payload.pull_request.user.login}" opened ${subject}`;
+    }
+    case "reopened": {
+      return `GitHub user "${payload.pull_request.user.login}" reopened ${subject}`;
+    }
+    case "closed": {
+      return payload.pull_request.merged
+        ? `GitHub ${subject} was merged into "${payload.pull_request.base.ref}"`
+        : `GitHub ${subject} was closed without merging`;
+    }
+    case "ready_for_review": {
+      return `GitHub ${subject} was marked ready for review`;
+    }
+    case "converted_to_draft": {
+      return `GitHub ${subject} was converted to a draft`;
+    }
+    case "synchronize": {
+      return `GitHub ${subject} was updated with new commits`;
+    }
+    case "enqueued": {
+      return `GitHub ${subject} was added to the merge queue`;
+    }
+    case "dequeued": {
+      return `GitHub ${subject} was removed from the merge queue`;
+    }
+    case "labeled": {
+      return `GitHub label "${payload.label?.name}" was applied to ${subject}`;
+    }
+    case "unlabeled": {
+      return `GitHub label "${payload.label?.name}" was removed from ${subject}`;
+    }
+  }
 }
 
 function eventPromptSummary(event: GithubWebhookAutomationEvent): string {
@@ -639,6 +766,9 @@ function eventPromptSummary(event: GithubWebhookAutomationEvent): string {
     case "github-workflow-job-completed": {
       const job = event.payload.workflow_job;
       return `the GitHub Actions job "${job.name}" completed with conclusion "${job.conclusion}"`;
+    }
+    case "github-pull-request": {
+      return pullRequestPromptSummary(event.payload);
     }
     case "github-pull-request-review-submitted": {
       const review = event.payload.review;
@@ -654,6 +784,32 @@ function eventPromptSummary(event: GithubWebhookAutomationEvent): string {
   }
 }
 
+function pullRequestPromptMetadata(
+  payload: GithubPullRequestEventPayload,
+): Readonly<Record<string, unknown>> {
+  const pullRequest = payload.pull_request;
+  return {
+    pullRequest: {
+      number: pullRequest.number,
+      title: pullRequest.title,
+      url: pullRequest.html_url,
+      draft: pullRequest.draft,
+      merged: pullRequest.merged ?? false,
+      mergedAt: pullRequest.merged_at,
+      mergeCommitSha: pullRequest.merge_commit_sha,
+      mergedBy: pullRequest.merged_by,
+      author: pullRequest.user,
+      baseBranch: pullRequest.base.ref,
+      headBranch: pullRequest.head.ref,
+      headSha: pullRequest.head.sha,
+      labels: pullRequest.labels.map((label) => {
+        return label.name;
+      }),
+    },
+    ...(payload.label ? { label: payload.label } : {}),
+  };
+}
+
 function eventPromptMetadata(
   event: GithubWebhookAutomationEvent,
 ): Readonly<Record<string, unknown>> {
@@ -664,6 +820,12 @@ function eventPromptMetadata(
     repository: { id: repository.id, fullName: repository.full_name },
   };
   switch (event.eventType) {
+    case "github-pull-request": {
+      return {
+        ...common,
+        ...pullRequestPromptMetadata(event.payload),
+      };
+    }
     case "github-workflow-job-completed": {
       const job = event.payload.workflow_job;
       return {
@@ -774,9 +936,14 @@ function githubWebhookTriggerContext(args: {
     workflowName: args.automation.workflowName,
     eventType: args.event.eventType,
     trigger: `${eventPromptSummary(args.event)} (GitHub webhook delivery ${args.deliveryId}).`,
-    notes: [
-      "Not included below: user-authored review and comment bodies, logs, and artifacts. Connected GitHub tools and the GitHub API return them.",
-    ],
+    notes:
+      args.event.eventType === "github-pull-request"
+        ? [
+            "Not included below: the pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
+          ]
+        : [
+            "Not included below: user-authored review and comment bodies, logs, and artifacts. Connected GitHub tools and the GitHub API return them.",
+          ],
     event: {
       automationId: args.automation.automation.id,
       deliveryId: args.deliveryId,
@@ -793,7 +960,7 @@ const startGithubWebhookAutomation$ = command(
       readonly deliveryId: string;
       readonly event: GithubWebhookAutomationEvent;
       readonly apiStartTime: number;
-      readonly timing: WorkflowEventRunTiming;
+      readonly timing: AutomationEventRunTiming;
     },
     signal: AbortSignal,
   ): Promise<"ok" | "error"> => {
@@ -808,7 +975,7 @@ const startGithubWebhookAutomation$ = command(
         },
         automationContext: context,
         apiStartTime: args.apiStartTime,
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },
@@ -838,20 +1005,20 @@ export const dispatchGithubWebhookAutomations$ = command(
       return { kind: "ok", dispatched: 0, duplicates: 0 };
     }
 
-    const sourceTiming = new WorkflowEventSourceTiming(
+    const sourceTiming = new AutomationEventSourceTiming(
       "github",
       args.apiStartTime,
     );
     if (args.backgroundScheduledAt !== undefined) {
       sourceTiming.recordElapsed(
-        "api_dispatch_pre_create_zero_workflow_event_background_start_gap",
+        "api_dispatch_pre_create_zero_automation_event_background_start_gap",
         args.backgroundScheduledAt,
       );
     }
 
     const db = set(writeDb$);
     const installation = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      "api_dispatch_pre_create_zero_automation_event_load_source_state",
       async () => {
         return await findActiveInstallation({
           db,
@@ -870,14 +1037,16 @@ export const dispatchGithubWebhookAutomations$ = command(
     }
 
     const automations = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_load_automations",
+      "api_dispatch_pre_create_zero_automation_event_load_automations",
       async () => {
-        return await loadGithubWebhookAutomations({
-          db,
-          orgId: installation.orgId,
-          eventType: args.event.eventType,
+        return await loadGithubWebhookAutomations(
+          {
+            db,
+            orgId: installation.orgId,
+            eventType: args.event.eventType,
+          },
           signal,
-        });
+        );
       },
     );
     signal.throwIfAborted();
@@ -887,7 +1056,7 @@ export const dispatchGithubWebhookAutomations$ = command(
     for (const automation of automations) {
       const runTiming = sourceTiming.createRunTiming();
       const matches = await runTiming.measure(
-        "api_dispatch_pre_create_zero_workflow_event_match_automations",
+        "api_dispatch_pre_create_zero_automation_event_match_automations",
         () => {
           return eventMatchesAutomation(args.event, automation.config);
         },
@@ -897,7 +1066,7 @@ export const dispatchGithubWebhookAutomations$ = command(
         continue;
       }
       const processedId = await runTiming.measure(
-        "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+        "api_dispatch_pre_create_zero_automation_event_record_processed_event",
         async () => {
           return await recordProcessedDelivery({
             db,
@@ -930,8 +1099,8 @@ export const dispatchGithubWebhookAutomations$ = command(
         continue;
       }
       await db
-        .delete(zeroWorkflowGithubProcessedEvents)
-        .where(eq(zeroWorkflowGithubProcessedEvents.id, processedId));
+        .delete(workflowGithubProcessedEvents)
+        .where(eq(workflowGithubProcessedEvents.id, processedId));
       signal.throwIfAborted();
       log.warn("Failed to start GitHub webhook automation", {
         automationId: automation.automation.id,

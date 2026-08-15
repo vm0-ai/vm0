@@ -1,5 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
@@ -130,7 +131,7 @@ describe("AUTH-02: CLI device authorization", () => {
 });
 
 describe("AUTH-02: desktop auth handoff", () => {
-  it("requires a session, returns a safe callback URL, and consumes the handoff once", async () => {
+  it("requires a session, returns a safe legacy Zero callback URL, and consumes the handoff once", async () => {
     authDevice.mockDesktopSignInToken("ticket_desktop_bdd");
 
     const unauthenticated = await authDevice.requestDesktopHandoff(
@@ -187,6 +188,30 @@ describe("AUTH-02: desktop auth handoff", () => {
     const missingCode = await authDevice.requestDesktopConsume("", [400]);
     expectApiError(missingCode.body);
     expect(missingCode.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("creates and consumes an Okou desktop auth callback", async () => {
+    authDevice.mockDesktopSignInToken("ticket_okou_desktop_bdd");
+
+    const handoff = await authDevice.requestDesktopHandoff(
+      bdd.user(),
+      { callbackScheme: "ai.okou.desktop" },
+      [200],
+    );
+    if (handoff.status !== 200) {
+      throw new Error(
+        `Expected Okou desktop handoff to succeed, got ${handoff.status}`,
+      );
+    }
+
+    const callbackUrl = new URL(handoff.body.callbackUrl);
+    expect(callbackUrl.protocol).toBe("ai.okou.desktop:");
+    expect(callbackUrl.hostname).toBe("auth");
+    expect(callbackUrl.pathname).toBe("/callback");
+
+    const code = authDevice.callbackCode(handoff.body.callbackUrl);
+    const consumed = await authDevice.requestDesktopConsume(code, [200]);
+    expect(consumed.body).toStrictEqual({ token: "ticket_okou_desktop_bdd" });
   });
 
   it("tracks handoff status through consume and complete for the creating user only", async () => {
@@ -575,6 +600,355 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
     );
   });
 
+  it("adds, switches, reconnects, deduplicates, and deletes concrete Codex accounts", async () => {
+    const member = bdd.user({ orgRole: "org:member" });
+    await support.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "codex-account-a",
+      workspaceName: "Account A",
+    });
+    const startedA = await authDevice.requestCodexStart(
+      member,
+      "personal",
+      [200],
+      { mode: "add" },
+    );
+    if (startedA.status !== 200) {
+      throw new Error("Expected account A device auth to start");
+    }
+    const completedA = await authDevice.requestCodexComplete(
+      member,
+      startedA.body.sessionToken,
+      [200],
+    );
+    if (
+      !("status" in completedA.body) ||
+      completedA.body.status !== "complete" ||
+      !completedA.body.provider.isActive
+    ) {
+      throw new Error("Expected account A to be the first active account");
+    }
+    const accountAId = completedA.body.provider.id;
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "codex-account-b",
+      workspaceName: "Account B",
+    });
+    const startedB = await authDevice.requestCodexStart(
+      member,
+      "personal",
+      [200],
+      { mode: "add" },
+    );
+    if (startedB.status !== 200) {
+      throw new Error("Expected account B device auth to start");
+    }
+    const completedB = await authDevice.requestCodexComplete(
+      member,
+      startedB.body.sessionToken,
+      [200],
+    );
+    if (
+      !("status" in completedB.body) ||
+      completedB.body.status !== "complete"
+    ) {
+      throw new Error("Expected account B device auth to complete");
+    }
+    const accountBId = completedB.body.provider.id;
+    expect(completedB.body.provider.isActive).toBeFalsy();
+
+    await support.activatePersonalModelProviderAccount(member, accountBId);
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "codex-account-b",
+      workspaceName: "Account B reconnected",
+    });
+    const reconnectA = await authDevice.requestCodexStart(
+      member,
+      "personal",
+      [200],
+      { mode: "reconnect", modelProviderId: accountAId },
+    );
+    if (reconnectA.status !== 200) {
+      throw new Error("Expected account A reconnect to start");
+    }
+    await authDevice.requestCodexComplete(
+      member,
+      reconnectA.body.sessionToken,
+      [200],
+    );
+
+    const deduplicated = await support.listPersonalModelProviders(
+      member,
+      [200],
+    );
+    if (!("modelProviders" in deduplicated.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(deduplicated.body.modelProviders).toHaveLength(1);
+    expect(deduplicated.body.modelProviders[0]).toMatchObject({
+      id: accountAId,
+      isActive: true,
+      workspaceName: "Account B reconnected",
+    });
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "codex-account-c",
+      workspaceName: "Account C",
+    });
+    const startedC = await authDevice.requestCodexStart(
+      member,
+      "personal",
+      [200],
+      { mode: "add" },
+    );
+    if (startedC.status !== 200) {
+      throw new Error("Expected account C device auth to start");
+    }
+    const completedC = await authDevice.requestCodexComplete(
+      member,
+      startedC.body.sessionToken,
+      [200],
+    );
+    if (
+      !("status" in completedC.body) ||
+      completedC.body.status !== "complete"
+    ) {
+      throw new Error("Expected account C device auth to complete");
+    }
+
+    await support.deletePersonalModelProviderAccount(member, accountAId);
+    const afterActiveDelete = await support.listPersonalModelProviders(
+      member,
+      [200],
+    );
+    if (!("modelProviders" in afterActiveDelete.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(afterActiveDelete.body.modelProviders).toHaveLength(1);
+    expect(afterActiveDelete.body.modelProviders[0]).toMatchObject({
+      id: completedC.body.provider.id,
+      isActive: true,
+    });
+
+    await support.deletePersonalModelProvider(
+      member,
+      "codex-oauth-token",
+      [204],
+    );
+  });
+
+  it("adds, switches, and deduplicates concrete Claude Code accounts by email and workspace", async () => {
+    const member = bdd.user({ orgRole: "org:member" });
+    await support.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+
+    const completeClaudeAccount = async (mutation: {
+      readonly mode: "add" | "reconnect";
+      readonly modelProviderId?: string;
+    }) => {
+      const started = await authDevice.requestClaudeCodeStart(
+        member,
+        "personal",
+        [200],
+        mutation,
+      );
+      if (started.status !== 200) {
+        throw new Error("Expected Claude Code device auth to start");
+      }
+      const state = new URL(started.body.browserUrl).searchParams.get("state");
+      if (!state) {
+        throw new Error("Missing state in Claude Code browser URL");
+      }
+      const completed = await authDevice.requestClaudeCodeComplete(
+        member,
+        started.body.sessionToken,
+        `claude_code_test#${state}`,
+        [200],
+      );
+      if (completed.status !== 200) {
+        throw new Error("Expected Claude Code device auth to complete");
+      }
+      return completed.body;
+    };
+
+    mockClaudeCodeTokenEndpoint({
+      accountEmail: "first@example.com",
+      organizationName: "First Workspace",
+    });
+    const first = await completeClaudeAccount({ mode: "add" });
+    expect(first.provider.isActive).toBeTruthy();
+    const firstAccountId = first.provider.id;
+
+    // A different email is a different identity, so it is added rather than
+    // deduplicated onto the first account.
+    mockClaudeCodeTokenEndpoint({
+      accountEmail: "second@example.com",
+      organizationName: "Second Workspace",
+    });
+    const second = await completeClaudeAccount({ mode: "add" });
+    expect(second.provider.isActive).toBeFalsy();
+    const secondAccountId = second.provider.id;
+    expect(secondAccountId).not.toBe(firstAccountId);
+
+    await support.activatePersonalModelProviderAccount(member, secondAccountId);
+
+    const bothConnected = await support.listPersonalModelProviders(
+      member,
+      [200],
+    );
+    if (!("modelProviders" in bothConnected.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(bothConnected.body.modelProviders).toHaveLength(2);
+    expect(bothConnected.body.modelProviders[0]).toMatchObject({
+      id: secondAccountId,
+      isActive: true,
+      accountEmail: "second@example.com",
+      workspaceName: "Second Workspace",
+    });
+
+    // Re-adding the same email and workspace matches the existing identity and
+    // updates it in place instead of creating a third account.
+    mockClaudeCodeTokenEndpoint({
+      accountEmail: "FIRST@example.com",
+      organizationName: "First Workspace",
+    });
+    const readded = await completeClaudeAccount({ mode: "add" });
+    expect(readded.provider.id).toBe(firstAccountId);
+    expect(readded.created).toBeFalsy();
+
+    const afterDedup = await support.listPersonalModelProviders(member, [200]);
+    if (!("modelProviders" in afterDedup.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(afterDedup.body.modelProviders).toHaveLength(2);
+    expect(
+      afterDedup.body.modelProviders.find((provider) => {
+        return provider.id === firstAccountId;
+      }),
+    ).toMatchObject({
+      accountEmail: "first@example.com",
+      workspaceName: "First Workspace",
+      isActive: false,
+    });
+
+    await support.deletePersonalModelProvider(
+      member,
+      "claude-code-oauth-token",
+      [204],
+    );
+  });
+
+  it("returns bad requests after the tenth personal subscription account", async () => {
+    const member = bdd.user({ orgRole: "org:member" });
+    await support.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+
+    const completeCodexAccount = async (
+      index: number,
+      statuses: readonly (200 | 400)[],
+    ) => {
+      mockCodexDeviceAuthProvider({
+        tokenScope: "personal",
+        accountId: `codex-limit-account-${index}`,
+        workspaceName: `Codex Account ${index}`,
+      });
+      const started = await authDevice.requestCodexStart(
+        member,
+        "personal",
+        [200],
+        { mode: "add" },
+      );
+      if (started.status !== 200) {
+        throw new Error("Expected Codex device auth to start");
+      }
+      return await authDevice.requestCodexComplete(
+        member,
+        started.body.sessionToken,
+        statuses,
+      );
+    };
+
+    for (let index = 0; index < 10; index += 1) {
+      await completeCodexAccount(index, [200]);
+    }
+    const codexLimit = await completeCodexAccount(10, [400]);
+    if (codexLimit.status !== 400) {
+      throw new Error("Expected Codex account limit to return bad request");
+    }
+    expectApiError(codexLimit.body);
+    expect(codexLimit.body.error).toMatchObject({
+      code: "BAD_REQUEST",
+      message: "A maximum of 10 codex-oauth-token accounts can be connected",
+    });
+
+    const completeClaudeCodeAccount = async (
+      index: number,
+      statuses: readonly (200 | 400)[],
+    ) => {
+      mockClaudeCodeTokenEndpoint({
+        accountEmail: `claude-limit-${index}@example.com`,
+        organizationName: `Claude Account ${index}`,
+      });
+      const started = await authDevice.requestClaudeCodeStart(
+        member,
+        "personal",
+        [200],
+        { mode: "add" },
+      );
+      if (started.status !== 200) {
+        throw new Error("Expected Claude Code device auth to start");
+      }
+      const state = new URL(started.body.browserUrl).searchParams.get("state");
+      if (!state) {
+        throw new Error("Missing state in Claude Code browser URL");
+      }
+      return await authDevice.requestClaudeCodeComplete(
+        member,
+        started.body.sessionToken,
+        `claude_code_test#${state}`,
+        statuses,
+      );
+    };
+
+    for (let index = 0; index < 10; index += 1) {
+      await completeClaudeCodeAccount(index, [200]);
+    }
+    const claudeCodeLimit = await completeClaudeCodeAccount(10, [400]);
+    if (claudeCodeLimit.status !== 400) {
+      throw new Error(
+        "Expected Claude Code account limit to return bad request",
+      );
+    }
+    expectApiError(claudeCodeLimit.body);
+    expect(claudeCodeLimit.body.error).toMatchObject({
+      code: "BAD_REQUEST",
+      message:
+        "A maximum of 10 claude-code-oauth-token accounts can be connected",
+    });
+
+    await support.deletePersonalModelProvider(
+      member,
+      "codex-oauth-token",
+      [204],
+    );
+    await support.deletePersonalModelProvider(
+      member,
+      "claude-code-oauth-token",
+      [204],
+    );
+  });
+
   it("completes org-scope Claude Code device auth with a pasted code fragment", async () => {
     const calls = mockClaudeCodeTokenEndpoint();
     const admin = bdd.user();
@@ -610,7 +984,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       provider: {
         type: "claude-code-oauth-token",
         secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-        workspaceName: "claude.user@example.com",
+        workspaceName: "Claude User's Organization",
         planType: "pro",
         subscriptionResetPeriod: "weekly",
         subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
@@ -637,7 +1011,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
         return provider.type === "claude-code-oauth-token";
       }),
     ).toMatchObject({
-      workspaceName: "claude.user@example.com",
+      workspaceName: "Claude User's Organization",
       planType: "pro",
     });
 
@@ -684,7 +1058,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       status: "complete",
       provider: {
         type: "claude-code-oauth-token",
-        workspaceName: "claude.user@example.com",
+        workspaceName: "Claude User's Organization",
         planType: "pro",
       },
     });
@@ -701,7 +1075,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
         return provider.type === "claude-code-oauth-token";
       }),
     ).toMatchObject({
-      workspaceName: "claude.user@example.com",
+      workspaceName: "Claude User's Organization",
       planType: "pro",
       subscriptionUsage: {
         fiveHour: {

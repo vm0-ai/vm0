@@ -323,7 +323,14 @@ def _compile_base_segments_for_match(
         parsed_segment = _parse_segment(segment)
         if isinstance(parsed_segment, SegmentError):
             has_malformed_segment = True
-            parsed.append(SegmentParam("", f"__malformed_base_segment_{index}", "", ""))
+            parsed.append(
+                SegmentParam(
+                    parsed_segment.prefix,
+                    f"__malformed_base_segment_{index}",
+                    parsed_segment.suffix,
+                    "",
+                )
+            )
         elif (
             isinstance(parsed_segment, SegmentParam)
             and parsed_segment.greedy
@@ -422,7 +429,7 @@ def static_firewall_base_config_key(raw_base: str) -> str | None:
     )
     if parts is None:
         return None
-    return f"{parts.scheme.lower()}://{parts.authority}{parts.path.rstrip('/')}"
+    return f"{parts.scheme.lower()}://{parts.authority}{parts.path}"
 
 
 def static_firewall_base_authority_key(raw_base: str) -> str | None:

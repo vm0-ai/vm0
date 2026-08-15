@@ -1,8 +1,8 @@
 import {
   testWorkflowSkillStoragePresignedUrlCacheStateContract,
   type TestWorkflowSkillStoragePresignedUrlCacheStateActionBody,
-} from "@vm0/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
-import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
+} from "@okouai/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
+import { systemStoragePresignedUrlCache } from "@okouai/db/schema/system-storage-presigned-url-cache";
 import { command } from "ccstate";
 import { and, eq, like, sql } from "drizzle-orm";
 
@@ -10,11 +10,14 @@ import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { workflowSkillStoragePresignedUrlCacheKey } from "../services/system-storage-presigned-url-cache.service";
+import {
+  readOnlyStoragePresignedUrlCacheKey,
+  workflowSkillStoragePresignedUrlCacheKey,
+} from "../services/system-storage-presigned-url-cache.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const actionBody$ = bodyResultOf(
   testWorkflowSkillStoragePresignedUrlCacheStateContract.action,
@@ -39,9 +42,15 @@ function escapedLikePrefix(value: string): string {
     .replaceAll("_", String.raw`\_`)}%`;
 }
 
-function objectKeyPrefixCondition(prefix: string) {
+type CacheScope = "workflow_skill_storage" | "readonly_storage";
+
+function cacheScope(scope: CacheScope | undefined): CacheScope {
+  return scope ?? "workflow_skill_storage";
+}
+
+function objectKeyPrefixCondition(prefix: string, scope: CacheScope) {
   return and(
-    eq(systemStoragePresignedUrlCache.scope, "workflow_skill_storage"),
+    eq(systemStoragePresignedUrlCache.scope, scope),
     sql`${like(systemStoragePresignedUrlCache.objectKey, escapedLikePrefix(prefix))} escape '\\'`,
   );
 }
@@ -53,7 +62,9 @@ async function cleanupForAction(
 ) {
   await db
     .delete(systemStoragePresignedUrlCache)
-    .where(objectKeyPrefixCondition(body.object_key_prefix));
+    .where(
+      objectKeyPrefixCondition(body.object_key_prefix, cacheScope(body.scope)),
+    );
   signal.throwIfAborted();
   return actionOk();
 }
@@ -63,17 +74,22 @@ async function seedCacheRowForAction(
   body: CacheStateAction<"seed-cache-row">,
   signal: AbortSignal,
 ) {
+  const scope = cacheScope(body.scope);
+  const keyInput = {
+    bucket: body.bucket,
+    objectKey: body.object_key,
+    storageVersionId: body.storage_version_id,
+    resolvedOrgId: body.resolved_org_id,
+    publicEndpoint: body.public_endpoint,
+  };
   await db
     .insert(systemStoragePresignedUrlCache)
     .values({
-      cacheKey: workflowSkillStoragePresignedUrlCacheKey({
-        bucket: body.bucket,
-        objectKey: body.object_key,
-        storageVersionId: body.storage_version_id,
-        resolvedOrgId: body.resolved_org_id,
-        publicEndpoint: body.public_endpoint,
-      }),
-      scope: "workflow_skill_storage",
+      cacheKey:
+        scope === "workflow_skill_storage"
+          ? workflowSkillStoragePresignedUrlCacheKey(keyInput)
+          : readOnlyStoragePresignedUrlCacheKey(keyInput),
+      scope,
       bucket: body.bucket,
       objectKey: body.object_key,
       storageVersionId: body.storage_version_id,
@@ -127,7 +143,9 @@ async function readCacheByObjectKeyPrefixForAction(
       lastRequestedAt: systemStoragePresignedUrlCache.lastRequestedAt,
     })
     .from(systemStoragePresignedUrlCache)
-    .where(objectKeyPrefixCondition(body.object_key_prefix));
+    .where(
+      objectKeyPrefixCondition(body.object_key_prefix, cacheScope(body.scope)),
+    );
   signal.throwIfAborted();
   return actionOk({
     rows: rows.map((row) => {

@@ -173,6 +173,7 @@ describe("PlayStation external-code provider", () => {
         accessToken: "playstation-access-token",
         refreshToken: "playstation-refresh-token",
         idToken: jwtPayload({ sub: "psn-account-123" }),
+        npsso: "test-npsso",
         accountId: "psn-account-123",
         onlineId: "vm0-player",
       },

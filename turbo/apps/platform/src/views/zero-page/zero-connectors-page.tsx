@@ -9,29 +9,24 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import {
-  IconSearch,
-  IconPlus,
-  IconFilter,
-  IconChevronDown,
-  IconCheck,
-} from "@tabler/icons-react";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogCategoryMetadata } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
   setConnectorsPageTab$,
   openCustomConnectorCreateDialog$,
 } from "../../signals/zero-page/settings/custom-connectors.ts";
-import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import {
-  allConnectorCatalogItems$,
+  connectorCatalogDiscovery$,
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
   connectFlowConnectorSlug$,
@@ -46,6 +41,7 @@ import {
   pollingOAuthAuthCodeConnectorSlug$,
   pollingOAuthDeviceAuthConnectorSlug$,
   justConnectedSlugs$,
+  relatedCatalogItems$,
   scopeReviewConnectorSlug$,
   setScopeReviewConnectorSlug$,
   getAvailableStatusAuthCodeAuthMethod,
@@ -67,13 +63,14 @@ import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
+import { ConnectorAgentAccessButton } from "./components/settings/connector-agent-access-button.tsx";
 import {
   closeConnectorAccessManagement$,
   connectorAuthorizedAgentsBySlug$,
   managedConnectorAccessSlug$,
   setManagedConnectorAccessSlug$,
 } from "../../signals/zero-page/settings/connector-access-management.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -84,11 +81,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from "@vm0/ui";
+  Input,
+} from "@okouai/ui";
 import { i18n } from "../../i18n/index.ts";
-
-const CONNECTOR_CARD_AGENT_NAME_LIMIT = 2;
-const CONNECTOR_CARD_AGENT_NAME_MAX_CHARS = 12;
 
 function connectorCategoryTranslation(
   id: string,
@@ -439,9 +434,7 @@ function ConnectorFilterOption({
   return (
     <DropdownMenuItem className="justify-between gap-2" onClick={onSelect}>
       <span className="flex min-w-0 items-center gap-2">{children}</span>
-      {active && (
-        <IconCheck size={15} stroke={2} className="shrink-0 text-foreground" />
-      )}
+      {active && <Check size={15} className="shrink-0 text-foreground" />}
     </DropdownMenuItem>
   );
 }
@@ -488,11 +481,7 @@ function ConnectorFilterDropdown({
           })}
           className="zero-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
         >
-          <IconFilter
-            size={14}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
+          <Filter size={14} className="" />
           {activeAgent && (
             <AvatarFromUrl
               avatarUrl={activeAgent.avatarUrl}
@@ -502,16 +491,12 @@ function ConnectorFilterDropdown({
             />
           )}
           <span className="max-w-[140px] truncate">{triggerLabel}</span>
-          <IconChevronDown
-            size={14}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
+          <ChevronDown size={14} className="" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-56 overflow-y-auto"
+        className="max-h-[min(420px,var(--available-height))] w-56 overflow-y-auto"
       >
         <ConnectorFilterOption
           active={value.kind === "all"}
@@ -609,12 +594,11 @@ function ConnectorsToolbarActions({
     <div className="flex items-center gap-2">
       {activeTab === "builtin" && (
         <div className="relative w-40 sm:w-52">
-          <IconSearch
+          <Search
             size={15}
-            stroke={1.5}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
           />
-          <input
+          <Input
             type="text"
             placeholder={t(($) => {
               return $.connectors.catalog.search;
@@ -623,7 +607,7 @@ function ConnectorsToolbarActions({
             onChange={(e) => {
               return setSearch(e.target.value);
             }}
-            className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+            className="pl-9 pr-3"
           />
         </div>
       )}
@@ -641,7 +625,7 @@ function ConnectorsToolbarActions({
           className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
           onClick={onCreateCustom}
         >
-          <IconPlus size={14} stroke={2} />
+          <Plus size={14} />
           {t(($) => {
             return $.connectors.catalog.newConnector;
           })}
@@ -719,13 +703,6 @@ function connectorAgentName(agent: TeamComposeItem): string {
   );
 }
 
-function truncateAgentName(name: string): string {
-  if (name.length <= CONNECTOR_CARD_AGENT_NAME_MAX_CHARS) {
-    return name;
-  }
-  return `${name.slice(0, CONNECTOR_CARD_AGENT_NAME_MAX_CHARS - 1)}…`;
-}
-
 function ConnectorAccessButton({
   connectorSlug,
   connectorLabel,
@@ -735,7 +712,6 @@ function ConnectorAccessButton({
   readonly connectorLabel: string;
   readonly onClick: () => void;
 }) {
-  const { t } = useTranslation();
   const agentsBySlugLoadable = useLastLoadable(
     connectorAuthorizedAgentsBySlug$,
   );
@@ -744,57 +720,13 @@ function ConnectorAccessButton({
       ? (agentsBySlugLoadable.data.get(connectorSlug) ?? [])
       : [];
   const loading = agentsBySlugLoadable.state === "loading";
-  const visibleNames = agents
-    .slice(0, CONNECTOR_CARD_AGENT_NAME_LIMIT)
-    .map((agent) => {
-      return truncateAgentName(connectorAgentName(agent));
-    });
-  const overflowCount = agents.length - visibleNames.length;
-
   return (
-    <button
-      type="button"
-      className="inline-flex h-7 min-w-0 shrink items-center gap-0 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-50))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      aria-label={t(
-        ($) => {
-          return $.connectors.catalog.access.manage;
-        },
-        { connector: connectorLabel },
-      )}
+    <ConnectorAgentAccessButton
+      agents={agents}
+      loading={loading}
+      connectorLabel={connectorLabel}
       onClick={onClick}
-    >
-      {loading ? (
-        <span className="block h-3 w-20 animate-pulse rounded bg-muted" />
-      ) : agents.length === 0 ? (
-        <span
-          className="underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
-          data-testid="connector-card-access-empty"
-        >
-          {t(($) => {
-            return $.connectors.catalog.access.add;
-          })}
-        </span>
-      ) : (
-        <>
-          <span className="shrink-0">
-            {t(($) => {
-              return $.connectors.catalog.access.usedBy;
-            })}
-          </span>
-          <span
-            className="min-w-0 truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
-            data-testid="connector-card-access-names"
-          >
-            {visibleNames.join(", ")}
-          </span>
-          {overflowCount > 0 && (
-            <span className="ml-0.5 shrink-0 text-muted-foreground/70">
-              +{overflowCount}
-            </span>
-          )}
-        </>
-      )}
-    </button>
+    />
   );
 }
 
@@ -914,11 +846,13 @@ function connectorLabelForSlug(
 
 export function ZeroConnectorsPage() {
   const { t } = useTranslation();
-  const allCatalogItemsLoadable = useLastLoadable(allConnectorCatalogItems$);
+  const relatedCatalogItemsLoadable = useLastLoadable(relatedCatalogItems$);
   const filteredCatalogItemsLoadable = useLastLoadable(
     filteredConnectorCatalogItems$,
   );
-  const catalogStatusLoadable = useLastLoadable(connectorCatalogStatus$);
+  const catalogStatusLoadable = useLastLoadable(connectorCatalogDiscovery$);
+  const connectorCatalogCountEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -966,9 +900,14 @@ export function ZeroConnectorsPage() {
       : undefined,
   );
   const allConnectors =
-    allCatalogItemsLoadable.state === "hasData"
-      ? allCatalogItemsLoadable.data
+    relatedCatalogItemsLoadable.state === "hasData"
+      ? relatedCatalogItemsLoadable.data
       : [];
+  const selectedConnector = selectedConnectorSlug
+    ? allConnectors.find((connector) => {
+        return connector.slug === selectedConnectorSlug;
+      })
+    : undefined;
   const managedConnectorLabel = connectorLabelForSlug(
     allConnectors,
     managedConnectorSlug,
@@ -1094,11 +1033,22 @@ export function ZeroConnectorsPage() {
                 return $.connectors.catalog.title;
               })}
             </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {t(($) => {
-                return $.connectors.catalog.description;
-              })}
-            </p>
+            {connectorCatalogCountEnabled ? (
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {t(
+                  ($) => {
+                    return $.connectors.catalog.descriptionWithCount;
+                  },
+                  { value: "700+" },
+                )}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {t(($) => {
+                  return $.connectors.catalog.description;
+                })}
+              </p>
+            )}
           </div>
         </div>
       </header>
@@ -1154,8 +1104,9 @@ export function ZeroConnectorsPage() {
         </div>
       </main>
 
-      {selectedConnectorSlug && (
+      {selectedConnector && (
         <ConnectModal
+          item={selectedConnector}
           authorizeVisibleAgentsOnConnect
           onClose={() => {
             return setSelected(null);

@@ -733,7 +733,7 @@ proptest! {
     }
 
     #[test]
-    fn generated_nested_message_data_uses_documented_json_conversion(case in encoded_json_strategy()) {
+    fn generated_nested_message_data_matches_documented_decoder_conversion(case in encoded_json_strategy()) {
         let EncodedJson {
             wire,
             json,

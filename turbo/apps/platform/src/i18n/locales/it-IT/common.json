@@ -110,23 +110,40 @@
         "title": "Nessun log di rete"
       },
       "notFound": {
-        "back": "Torna all'attività",
+        "back": "Torna alle chat",
         "description": "Questo log non esiste oppure non disponi dell'autorizzazione per visualizzarlo nell'area di lavoro corrente.",
         "title": "Log non trovato"
       },
       "runner": {
+        "cacheMiss": "Nessuno spazio di lavoro nella cache corrispondeva alla chiave di riutilizzo.",
         "deviceLimitMismatch": "Esiste una voce del pool inattivo ma lo stato del limitatore di velocità del dispositivo non corrisponde.",
+        "diskPressure": "Il riutilizzo dello spazio di lavoro è stato ignorato a causa della pressione sul disco del runner.",
         "featureDisabled": "Il riutilizzo del sandbox è disabilitato per questa esecuzione.",
+        "invalidMetadata": "I metadati dello spazio di lavoro nella cache non erano validi.",
+        "invalidWorkingDir": "Non è stato possibile riutilizzare la directory di lavoro richiesta.",
+        "lockBusy": "Un'altra esecuzione stava preparando lo stesso spazio di lavoro.",
         "noReuseKey": "Non era disponibile alcuna chiave di riutilizzo per trovare una sandbox inattiva.",
         "noSessionId": "Risultato legacy: il motivo esatto per cui la sandbox non è stata riutilizzata non è disponibile.",
+        "notConfigured": "Il riutilizzo dello spazio di lavoro non era configurato per questa esecuzione.",
         "notReused": "Non riutilizzato",
         "poolMiss": "Nessun sandbox corrispondente trovato nel pool inattivo.",
         "profileMismatch": "La voce del pool inattivo esiste ma il suo profilo non corrisponde.",
+        "provisioning": "Provisioning",
         "reused": "Riutilizzato",
         "reusedDescription": "La sandbox è stata riattivata dal pool inattivo.",
         "sandbox": "Sandbox",
-        "unknown": "Sconosciuto (esecuzione precedente, registrata prima dell'aggiunta del monitoraggio del riutilizzo del sandbox).",
-        "unparkFailed": "Impossibile riattivare la sandbox; ne è stata predisposta una nuova."
+        "sandboxPrepareFallback": "È stato trovato uno spazio di lavoro nella cache, ma non è stato possibile utilizzarlo dopo la preparazione della sandbox.",
+        "sandboxReusedDescription": "Lo spazio di lavoro è rimasto disponibile nella sandbox riutilizzata.",
+        "startup": "Avvio",
+        "startupCold": "Avvio a freddo",
+        "startupSandbox": "Riutilizzo della sandbox",
+        "startupUnknown": "Sconosciuto",
+        "startupWorkspace": "Riutilizzo dello spazio di lavoro",
+        "unavailable": "Non disponibile",
+        "unparkFailed": "Impossibile riattivare la sandbox; ne è stata predisposta una nuova.",
+        "workspace": "Spazio di lavoro",
+        "workspaceNoReuseKey": "Non era disponibile alcuna chiave di riutilizzo dello spazio di lavoro.",
+        "workspaceReusedDescription": "Lo spazio di lavoro è stato ripristinato dalla cache del runner."
       },
       "steps": {
         "matched": "({{matched}}/{{total}} corrispondenti)",
@@ -217,22 +234,6 @@
         "title": "Nessun registro caricato",
         "upload": "Carica JSON"
       }
-    },
-    "list": {
-      "description": "Log ed esecuzioni dei tuoi agenti.",
-      "errors": {
-        "description": "Qualcosa è andato storto. Riprova più tardi.",
-        "title": "Impossibile caricare i dati dell'attività"
-      },
-      "filters": {
-        "agent": "Filtro agente",
-        "allAgents": "Tutti gli agenti",
-        "allSources": "Tutte le fonti",
-        "allStatuses": "Tutti gli stati",
-        "source": "Filtro sorgente",
-        "status": "Filtro di stato"
-      },
-      "title": "Attività"
     },
     "network": {
       "actions": {
@@ -334,30 +335,21 @@
       "unknown": "sconosciuto",
       "yes": "Sì"
     },
-    "pagination": {
-      "backTwo": "Indietro 2 pagine",
-      "forwardTwo": "Avanti 2 pagine",
-      "next": "Pagina successiva",
-      "page": "Pagina {{current}}",
-      "pageOf": "Pagina {{current}} di {{total}}",
-      "previous": "Pagina precedente",
-      "rowsPerPage": "Righe per pagina"
-    },
     "sources": {
       "agent": "Agente",
       "agentphone": "AgentPhone",
-      "agentWithName": "Agente ({{name}})",
+      "automationEvent": "Evento di automazione",
+      "automationSchedule": "Pianificazione dell'automazione",
       "email": "E-mail",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "Obiettivo",
       "slack": "Slack",
       "teams": "Microsoft Teams",
       "telegram": "Telegram",
       "test": "Test",
       "web": "Rete",
-      "webhook": "Webhook",
-      "workflowEvent": "Evento del flusso di lavoro",
-      "workflowSchedule": "Pianificazione del flusso di lavoro"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "Annullato",
@@ -367,34 +359,6 @@
       "queued": "In coda",
       "running": "In esecuzione",
       "timeout": "Timeout"
-    },
-    "statusFilters": {
-      "cancelled": "Annullato",
-      "completed": "Completato",
-      "failed": "Fallito",
-      "pending": "In sospeso",
-      "queued": "In coda",
-      "running": "In esecuzione",
-      "timeout": "Timeout"
-    },
-    "table": {
-      "empty": {
-        "description": "Quando i tuoi agenti inizieranno a lavorare, la loro attività verrà visualizzata qui.",
-        "title": "Tutto tranquillo per ora"
-      },
-      "filteredEmpty": {
-        "description": "Prova diversi filtri per trovare quello che stai cercando.",
-        "title": "Niente corrisponde a questi filtri"
-      },
-      "headers": {
-        "agent": "Agente",
-        "description": "Descrizione",
-        "duration": "Durata",
-        "session": "Sessione",
-        "source": "Fonte",
-        "startTime": "Ora di inizio",
-        "status": "Stato"
-      }
     }
   },
   "appShell": {
@@ -486,19 +450,15 @@
         "overlay": "Sovrapposizione della barra laterale"
       },
       "navigation": {
-        "activity": "Log attività",
         "agents": "Agenti",
         "artifacts": "Artefatti",
         "connectors": "Connettori",
-        "insights": "Insights",
-        "insightsAndUsage": "Insights e utilizzo",
         "newChat": "Nuova chat",
         "settings": "Impostazioni",
         "workflows": "Flussi di lavoro",
         "works": "Dove lavora {{agentName}}"
       },
       "rail": {
-        "activity": "Attività",
         "new": "Nuovo",
         "workflows": "Flussi di lavoro",
         "works": "Integrazioni"
@@ -520,7 +480,6 @@
       "backToArtifacts": "Torna agli artefatti",
       "close": "Chiudi",
       "closeArtifact": "Chiudi artefatto",
-      "closeDownloadMenu": "Chiudi il menu di download",
       "closeNamed": "Chiudi {{title}}",
       "closePreviewMenu": "Chiudi il menu di anteprima",
       "download": "Scarica",
@@ -552,6 +511,8 @@
       "emptyTitle": "Nessun artefatto trovato",
       "error": "Impossibile caricare gli artefatti. Riprova più tardi.",
       "filters": {
+        "avatar": "Avatar",
+        "avatarAria": "Mostra artefatti avatar",
         "file": "File",
         "fileAria": "Mostra gli artefatti del file",
         "image": "Immagini",
@@ -559,6 +520,8 @@
         "label": "Filtri di tipo artefatto",
         "presentation": "Presentazioni",
         "presentationAria": "Mostra gli artefatti della presentazione",
+        "sharedConversation": "Conversazioni condivise",
+        "sharedConversationAria": "Mostra gli artefatti delle conversazioni condivise",
         "video": "Video",
         "videoAria": "Mostra artefatti video",
         "website": "Siti web",
@@ -596,6 +559,7 @@
     },
     "kinds": {
       "audio": "Audio",
+      "avatar": "Avatar",
       "code": "Codice",
       "csv": "CSV",
       "data": "Dati",
@@ -606,6 +570,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Presentazione",
+      "sharedConversation": "Conversazione condivisa",
       "text": "Testo",
       "video": "Video"
     },
@@ -636,6 +601,7 @@
       "videoLabel": "Anteprima video per {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Apri la conversazione condivisa",
       "panelTitle": "Artefatti",
       "singularTitle": "Artefatto",
       "unavailable": "Questo artefatto non è più disponibile."
@@ -643,8 +609,25 @@
     "templates": {
       "activeHtmlPreview": "{{title}} attivo HTML anteprima",
       "all": "Tutto",
+      "avatar": "Avatar",
+      "avatarWithId": "Avatar {{id}}",
+      "backToAvatars": "Torna agli avatar",
       "categories": "Categorie di modelli",
       "category": "Categoria modello",
+      "chooseVoice": "Scegli una voce per {{title}}",
+      "filters": {
+        "age": "Età",
+        "all": "Tutti",
+        "aspectRatio": "Proporzioni",
+        "clear": "Cancella",
+        "ethnicity": "Etnia",
+        "gender": "Genere",
+        "language": "Lingua",
+        "scene": "Scena",
+        "style": "Stile",
+        "title": "Filtri",
+        "useCase": "Caso d’uso"
+      },
       "fullPreview": "{{title}} anteprima completa del sito web",
       "htmlPreview": "{{title}} HTML anteprima",
       "illustration": "Illustrazione",
@@ -654,17 +637,21 @@
       "noMatches": "Nessuna corrispondenza",
       "placeholder": "{{title}} segnaposto anteprima sito web",
       "playVideo": "Riproduci l'anteprima del modello video {{title}}",
+      "previewAvatarVideo": "Anteprima del video avatar {{title}}",
       "previewCurrentSlide": "Anteprima {{title}} nella diapositiva corrente",
       "previewSlide": "Diapositiva di anteprima {{slideNumber}}",
+      "previewVoice": "Ascolta la voce {{title}}",
       "previewWebsite": "Anteprima del modello di sito web {{title}}",
       "previousHtmlPreview": "{{title}} anteprima HTML precedente",
       "previousSlide": "Anteprima della diapositiva precedente",
-      "searchConnector": "Cerca connettore...",
-      "searchConnectors": "Cerca connettori",
+      "recommended": "Consigliato",
+      "searchConnector": "Cerca modelli",
+      "searchConnectors": "Cerca modelli",
       "selected": "Modello: {{title}}",
       "selectStyle": "Seleziona lo stile {{style}}",
       "selectTemplate": "Seleziona il modello {{title}}",
       "selectVideo": "Seleziona il modello video {{title}}",
+      "selectVoice": "Seleziona la voce {{title}}",
       "selectWebsite": "Seleziona il modello di sito web {{title}}",
       "selectWorkflow": "Seleziona il modello di flusso di lavoro {{title}}",
       "showVariant": "Mostra variante {{variantNumber}}",
@@ -739,7 +726,7 @@
       "lastSeen": "Visto l'ultima volta {{date}}",
       "linkExpires": "Il collegamento scade {{date}}.",
       "macRequirement": "Richiede un Mac Apple Silicon con macOS 14 o successivo. I Mac Intel non sono supportati.",
-      "noHostsDescription": "Apri Zero Computer Use sul tuo Mac e aggiorna questa pagina quando è online.",
+      "noHostsDescription": "Apri {{desktopApplicationName}} sul tuo Mac e aggiorna questa pagina quando è online.",
       "noHostsTitle": "Nessun computer online",
       "sources": {
         "chat": "questo thread di chat",
@@ -818,8 +805,10 @@
     "common": {
       "back": "Indietro",
       "cancel": "Annulla",
+      "confirm": "Conferma",
       "credits": "crediti",
       "manage": "Gestisci",
+      "preparing": "Preparazione...",
       "redirecting": "Reindirizzamento...",
       "restore": "Ripristina",
       "retry": "Riprova",
@@ -830,22 +819,39 @@
       "activeUntil": "Attivo fino al {{date}}",
       "billedMonthly": "Fatturazione mensile",
       "buyAmount": "Acquista {{amount}}",
-      "buyButton": "Acquista simultaneo",
-      "buyDescription": "Aggiungi un abbonamento mensile per più esecuzioni simultanee.",
+      "buyButton": "Acquista concorrenza",
+      "buyDescription": "Scegli quanti slot aggiuntivi desideri.",
       "buyTitle": "Acquista concorrenza",
       "cancelDescription": "Ciò interrompe il rinnovo alla fine del periodo di fatturazione corrente. Gli slot esistenti rimarranno attivi fino ad allora.",
+      "cancelEntireOption": "Annulla l'intero abbonamento",
       "cancellationScheduled": "Cancellazione prevista",
-      "cancelTitle": "Annullare l'abbonamento alla concorrenza?",
+      "changeButton": "Modifica",
+      "changeDescription": "Scegli una nuova quantità totale di slot o interrompi il rinnovo.",
+      "changeOptionsAria": "Opzioni di modifica dell'abbonamento alla concorrenza",
+      "changeQuantityOption": "Modifica gli slot",
+      "changeQuantityOptionDescription": "Gli aumenti si applicano subito. Le riduzioni iniziano alla prossima data di fatturazione.",
+      "changeTitle": "Modifica concorrenza",
       "concurrentRun_one": "{{value}} esecuzione simultanea",
       "concurrentRun_many": "{{value}} esecuzioni simultanee",
       "concurrentRun_other": "{{value}} esecuzioni simultanee",
+      "continueToStripe": "Continua su Stripe",
       "decreaseAria": "Diminuire la quantità di concorrenza aggiuntiva",
+      "dueNow": "Da pagare ora",
       "emptyDescription": "Acquista ulteriori esecuzioni simultanee per questa area di lavoro.",
       "emptyTitle": "Nessun abbonamento simultaneo",
       "increaseAria": "Aumentare la quantità aggiuntiva di concorrenza",
+      "monthlyTotal": "Totale mensile",
+      "newQuantity": "Nuovo numero totale di slot",
+      "orderSummary": "Riepilogo ordine",
+      "quantityRange": "Inserisci un valore da {{minimum}} a {{maximum}}. Attualmente hai {{current}} slot.",
       "restoreDescription": "Questo riprende il rinnovo per questa sottoscrizione simultanea.",
       "restoreSubscription": "Ripristina l'abbonamento",
       "restoreTitle": "Ripristinare la sottoscrizione di concorrenza?",
+      "reviewChange": "Rivedi modifica",
+      "reviewDescription": "Controlla l'importo da pagare ora e l'abbonamento mensile aggiornato.",
+      "reviewTitle": "Rivedi modifica della concorrenza",
+      "scheduledChange": "Passa a {{quantity}} il {{date}}",
+      "scheduledReviewDescription": "Gli slot attuali restano attivi per questo periodo di fatturazione. La quantità inferiore inizia al rinnovo, senza rimborso né credito sull'account.",
       "slot_one": "{{value}} slot",
       "slot_many": "{{value}} slot",
       "slot_other": "{{value}} slot",
@@ -861,6 +867,9 @@
       "exchangeRate": "I crediti non scadono mai. 1 USD = {{credits}} crediti.",
       "quickBuy": "Acquisto veloce",
       "quickBuyAmount": "Acquisto veloce {{amount}}",
+      "reviewDescription": "Conferma questo addebito una tantum con il metodo di pagamento salvato.",
+      "reviewError": "Impossibile completare questo acquisto di crediti. Controlla i dati di fatturazione e riprova.",
+      "reviewTitle": "Rivedi l'acquisto di crediti",
       "title": "Acquista crediti"
     },
     "downgrade": {
@@ -890,15 +899,30 @@
       "selectMonth": "Seleziona il mese",
       "to": "A"
     },
-    "manage": {
-      "description": "Abbonamento, metodo di pagamento e fatture in Stripe.",
-      "title": "Gestisci la fatturazione"
+    "paymentMethods": {
+      "description": "Gestisci i metodi di pagamento utilizzati per la fatturazione in Stripe.",
+      "title": "Metodi di pagamento"
     },
     "plans": {
       "cancellationNotice": "Il tuo piano {{plan}} è stato annullato e terminerà il {{date}}.",
       "changeAnytime": "Aggiorna o esegui il downgrade in qualsiasi momento.",
       "compare": "Confronta i piani",
       "compareAll": "Confronta tutti i piani",
+      "comparison": {
+        "addOnConcurrency": "Concorrenza aggiuntiva",
+        "available": "Disponibile",
+        "concurrentRuns": "Esecuzioni simultanee",
+        "included": "Sì",
+        "ownLlmKeys": "Le tue chiavi LLM",
+        "privateAgents": "Agenti privati",
+        "sharedAgents": "Agenti condivisi",
+        "support": "Assistenza",
+        "supportEmail": "E-mail",
+        "supportPriority": "Prioritaria",
+        "unlimited": "Illimitati",
+        "voiceInput": "Input vocale",
+        "voiceInputValue": "{{requests}}/giorno · {{minutes}} min"
+      },
       "currentPlan": "Piano attuale",
       "custom": {
         "name": "Personalizzato"
@@ -916,20 +940,21 @@
         "communitySupport": "Supporto comunitario",
         "emailSupport": "Supporto via e-mail",
         "existingCredits": "Solo crediti gratuiti esistenti",
-        "monthlyCredits": "{{value}} crediti/mese",
         "oneConcurrentRun": "1 esecuzione simultanea",
-        "payAsYouGo": "Poi paghi in base al consumo",
         "prioritySupport": "Supporto prioritario",
+        "sharedAndPrivateAgents": "7 agent condivisi, agent privati illimitati",
         "tenConcurrentRuns": "10 esecuzioni simultanee",
         "twoConcurrentRuns": "2 esecuzioni simultanee",
         "unlimitedAgents": "Agenti totali illimitati",
-        "voiceInput": "Ingresso vocale",
-        "voiceInputLifetime": "Input vocale (10 utilizzi a vita per membro)"
+        "voiceInputFree": "Input vocale (10 richieste totali · 10 min/giorno per membro)",
+        "voiceInputPro": "Input vocale (300 richieste/giorno · 200 min/giorno per membro)",
+        "voiceInputTeam": "Input vocale (500 richieste/giorno · 500 min/giorno per membro)"
       },
       "free": {
         "description": "Accesso gratuito precedente per le aree di lavoro esistenti.",
         "name": "Gratuito"
       },
+      "legacy": "Precedente",
       "limitedFree": {
         "name": "Gratuito limitato"
       },
@@ -945,7 +970,7 @@
       "popular": "Popolare",
       "pricePerMonth": "{{price}}/mese",
       "pro": {
-        "description": "Più potenza e collaborazione perfetta per il tuo team.",
+        "description": "Più crediti e concorrenza per i team che eseguono agenti IA ogni giorno.",
         "name": "Pro"
       },
       "renews": "Rinnova {{date}}",
@@ -953,11 +978,72 @@
       "sectionTitle": "Piano",
       "selectedPlan": "il piano selezionato",
       "team": {
-        "description": "Scala velocemente con zero attriti e massima flessibilità.",
+        "description": "Spazio per un team di dipendenti IA: molti crediti e 10 agent in esecuzione contemporaneamente.",
         "name": "Team"
       },
       "upgrade": "Aggiorna",
-      "upgradeTo": "Passa a {{plan}}"
+      "upgradeTo": "Passa a {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "Crediti bonus",
+        "bonusIncluded": "{{credits}} bonus inclusi",
+        "choosePlan": "Scegli un piano",
+        "concurrentSlots": "Slot simultanei",
+        "configurePackages": "Configura i pacchetti dei membri",
+        "credits": "Crediti",
+        "currentMember": "Membro attuale",
+        "existingPackagesUnchanged": "I pacchetti esistenti dei membri restano invariati.",
+        "management": {
+          "comparison": "Confronto tra abbonamento attuale e nuovo",
+          "current": "Attuale",
+          "downgradeDescription": "Il pacchetto inferiore inizia alla prossima data di fatturazione. I crediti esistenti restano disponibili fino alla scadenza.",
+          "downgradesToDate": "Passa a {{package}} il {{date}}.",
+          "downgradesToPeriod": "Passa a {{package}} alla prossima data di fatturazione.",
+          "everyMonth": "Ogni mese",
+          "immediateAmount": "Da pagare ora",
+          "immediateAmountNote": "Per il resto di questo periodo di fatturazione",
+          "immediateCredits": "Crediti aggiunti dopo il pagamento",
+          "new": "Nuovo",
+          "processing": "Modifica in elaborazione",
+          "reviewDescription": "Confermando verrà addebitato il metodo di pagamento salvato.",
+          "reviewTitle": "Rivedi modifica del pacchetto",
+          "scheduledFor": "Programmato per il {{date}}",
+          "today": "Oggi"
+        },
+        "memberExclusive": "Ogni pacchetto appartiene a un membro e non può essere condiviso. Quando un pacchetto si esaurisce, l’utilizzo torna ai crediti a consumo. In seguito puoi passare a un nuovo pacchetto.",
+        "memberPackages": "Pacchetti dei membri",
+        "memberUsage": "Utilizzo del membro",
+        "migration": {
+          "action": "Converti piano",
+          "confirmDescription": "Il piano e i diritti attuali restano attivi fino alla fine di questo periodo di fatturazione. Stripe addebita il nuovo totale ricorrente all’avvio del nuovo piano.",
+          "convertPlan": "Converti piano",
+          "description": "Converti il workspace {{plan}} precedente in un nuovo piano con un pacchetto di utilizzo mensile individuale per ogni membro.",
+          "error": "Impossibile migrare questo abbonamento. Aggiorna la pagina e riprova.",
+          "invoice": "Visualizza fattura",
+          "processing": "Pianificazione della conversione con Stripe.",
+          "ready": "Scegli un pacchetto mensile obbligatorio per ogni membro e invito in sospeso.",
+          "review": "Rivedi conversione",
+          "reviewDescription": "Confronta il piano precedente attuale con il nuovo piano ricorrente prima di pianificare la conversione.",
+          "reviewTitle": "Rivedi conversione del piano",
+          "scheduled": "La conversione è pianificata per il {{date}}. Il piano e i diritti attuali restano attivi fino ad allora.",
+          "switchesOn": "Passa al piano {{plan}} il {{date}}",
+          "title": "Converti piano precedente"
+        },
+        "monthlyTotal": "Totale mensile",
+        "orderSummary": "Riepilogo dell’ordine",
+        "packagePerMemberNote": "Ogni membro ha bisogno di un pacchetto. Li scegli nel passaggio successivo.",
+        "packCredits": "{{credits}} crediti",
+        "packCreditsDiscount": "{{credits}} crediti · {{discount}}% di sconto",
+        "packOption": "{{price}} · {{credits}} crediti · {{discount}}% di sconto",
+        "planChangeError": "Impossibile preparare la modifica dell’abbonamento. Riprova.",
+        "planPlusPackages": "Piano {{plan}} · pacchetti per membro da {{lowest}} a {{highest}}",
+        "planStep": "Piano",
+        "priceFrom": "da",
+        "purchasedCredits": "Crediti acquistati",
+        "selectPlan": "Inizia con {{plan}}",
+        "selectUsage": "Utilizzo per {{name}}",
+        "stepOfTotal": "Passaggio {{current}} di {{total}}",
+        "totalCreditsWithBonus": "{{credits}} crediti · {{bonus}} bonus"
+      }
     },
     "restore": {
       "cancellationDescription": "Questa operazione annullerà la cancellazione programmata del piano {{plan}}.",
@@ -978,20 +1064,25 @@
       "concurrencyAdded": "Aggiunta la concorrenza. I tuoi nuovi slot saranno disponibili dopo che Stripe avrà confermato l'abbonamento.",
       "concurrencyCanceled": "Sottoscrizione simultanea annullata.",
       "concurrencyCanceledDate": "Sottoscrizione simultanea annullata. Gli slot rimangono attivi fino al {{date}}.",
+      "concurrencyChanged": "Modifica della concorrenza confermata. Il numero di slot verrà aggiornato dopo l'elaborazione della modifica da parte di Stripe.",
+      "concurrencyReduced": "La riduzione della concorrenza è programmata per la prossima data di fatturazione.",
       "concurrencyRestored": "Sottoscrizione simultanea ripristinata.",
+      "creditPurchaseConfirmed": "Pagamento confermato. I crediti appariranno dopo che Stripe avrà elaborato la fattura.",
       "creditsAdded": "Crediti aggiunti. Puoi continuare a chattare con Zero.",
       "downgradeScheduledDate": "Downgrade programmato. Il tuo piano attuale rimane attivo fino al {{date}}.",
       "downgradeScheduledPeriod": "Downgrade programmato. Il tuo piano attuale rimane attivo fino al termine del periodo di fatturazione.",
       "planRestored": "Piano ripristinato. Il tuo abbonamento si rinnoverà normalmente.",
       "preparingReceiptDownload": "Preparazione download ricevuta...",
       "receiptDownloadFailed": "Impossibile scaricare le ricevute",
-      "receiptsDownloaded": "Ricevute scaricate"
+      "receiptsDownloaded": "Ricevute scaricate",
+      "subscriptionChangeConfirmed": "La modifica dell'abbonamento è stata confermata."
     },
     "usage": {
       "added": "Aggiunto {{date}}",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} rimanenti",
         "minute": "{{value}}m",
         "remaining": "{{remaining}} / {{total}} crediti",
         "remainingAria": "Limite di utilizzo {{label}} rimanente",
@@ -1000,6 +1091,7 @@
         "title": "Limite di utilizzo",
         "week": "{{value}}w"
       },
+      "autoRechargeOn": "Ricarica automatica attiva",
       "breakdown": {
         "currentPlanDescription": "Crediti del piano mensile, reimposta ogni ciclo di fatturazione",
         "freeDescription": "Crediti iniziali, da utilizzare fino ad esaurimento",
@@ -1017,12 +1109,33 @@
       "creditsRemaining_many": "{{value}} crediti rimanenti",
       "creditsRemaining_other": "{{value}} crediti rimanenti",
       "expires": "Scadenza {{date}}",
+      "grantsTable": {
+        "added": "Aggiunto",
+        "amount": "Importo",
+        "expires": "Scade",
+        "left": "Rimanenti",
+        "source": "Origine"
+      },
       "left": "{{value}} rimanenti",
       "member": "Membro",
       "neverExpires": "Non scade mai",
+      "orgCredits": "Crediti dell'organizzazione",
+      "seeUsageRecords": "Vedi dove sono finiti questi crediti",
       "unavailable": "Saldo del credito non disponibile.",
       "upgradeDescription": "Pro include crediti mensili e sblocca opzioni di credito aggiuntive.",
       "upgradeTitle": "Passa a Pro per ottenere più crediti",
+      "usagePack": {
+        "bonus": "Bonus",
+        "members": "Membri",
+        "membersDescription": "Controlla i crediti rimanenti e le aggiunte di crediti del pacchetto di ogni membro.",
+        "membersTitle": "Crediti dei pacchetti dei membri",
+        "nextExpiry": "Prossima scadenza",
+        "purchased": "Acquistati",
+        "remaining": "Rimanenti",
+        "title": "Crediti del pacchetto di utilizzo",
+        "totalRemaining": "Totale rimanente",
+        "viewMembers": "Visualizza saldi membri"
+      },
       "used": "Usato"
     }
   },
@@ -1030,9 +1143,10 @@
     "cardTitle": "Browser cloud",
     "close": "Chiudi il browser live",
     "documentTitle": "Browser in tempo reale",
+    "fitAction": "Adatta",
     "fitWindow": "Adatta il browser alla finestra",
     "iframeTitle": "Browser live: {{name}}",
-    "invalidLink": "Collegamento del browser non valido",
+    "notFound": "Browser non trovato",
     "open": "Apri il browser {{name}}",
     "openAction": "Aperto",
     "openNewPage": "Apri questo browser in una nuova pagina",
@@ -1050,7 +1164,6 @@
       "starting": "Avvio",
       "stopped": "Arrestato"
     },
-    "stop": "Arresta il browser",
     "title": "Browser in tempo reale",
     "unavailable": {
       "description": "Questo browser non appartiene a questa chat o è stato rimosso.",
@@ -1061,7 +1174,6 @@
     "actions": {
       "authorize": "Autorizza",
       "cancel": "Annulla",
-      "configure": "Configura",
       "confirm": "Conferma",
       "continue": "Continua",
       "copied": "Copiato!",
@@ -1110,24 +1222,14 @@
       "viewAgentProfile": "Visualizza il profilo dell'agente"
     },
     "attachments": {
-      "addLink": "Aggiungi collegamento",
       "attach": "Allega",
-      "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} supera il limite di 1 GB",
       "imageUnavailable": "[Immagine non disponibile: {{filename}}]",
-      "importing": "Importazione allegato",
-      "invalidLink": "Inserisci un collegamento valido",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "Caricamento in corso {{filename}}",
       "previewFile": "Anteprima {{filename}}",
-      "supportedTypes": "Immagini, documenti, audio, video e archivi",
       "title": "Allegati",
-      "unavailable": "Allegato non disponibile",
-      "upload": "Carica",
       "uploadFailed": "Impossibile caricare {{filename}}",
       "uploadFailedRetry": "Impossibile caricare {{filename}}. Riprova.",
-      "uploadFromComputer": "Carica dal computer",
-      "uploadFromLink": "Carica dal collegamento",
       "uploadsFailed": "Impossibile caricare alcuni allegati. Riprova."
     },
     "automations": {
@@ -1146,7 +1248,7 @@
       "events": {
         "githubDeploymentStatus": "Stato del deployment GitHub creato",
         "githubIssueComment": "Commento a un'issue GitHub creato",
-        "githubLabelApplied": "Etichetta GitHub applicata",
+        "githubPullRequest": "Pull request GitHub",
         "githubReviewSubmitted": "Revisione di una pull request GitHub inviata",
         "githubWorkflowCompleted": "Workflow GitHub completato",
         "githubWorkflowJobCompleted": "Job del workflow GitHub completato",
@@ -1155,6 +1257,7 @@
         "googleCalendarCancelled": "Evento Google Calendar annullato",
         "googleCalendarCreated": "Evento Google Calendar creato",
         "googleCalendarUpdated": "Evento Google Calendar aggiornato",
+        "googleFormsResponseSubmitted": "Risposta di Google Forms inviata",
         "googleMeetTranscript": "Trascrizione Google Meet pronta",
         "notionChildPage": "Nuova pagina secondaria Notion",
         "notionDatabaseItem": "Nuovo elemento del database Notion",
@@ -1258,6 +1361,10 @@
       "selectedModelUnavailable": "Il modello selezionato non è disponibile. Configuralo prima dell'invio.",
       "selectedModelUnavailableToast": "Il modello selezionato non è disponibile",
       "selectModel": "Seleziona modello",
+      "setAsDefault": "Imposta come predefinito",
+      "temporaryFastModeDisabledNotice": "La modalità Fast è temporaneamente disattivata per questa esecuzione",
+      "temporaryFastModeEnabledNotice": "La modalità Fast è temporaneamente attivata per questa esecuzione",
+      "temporaryModelNotice": "Passaggio temporaneo a {{model}}",
       "threadSuggestions": "Thread di chat",
       "visualAttachmentsUnsupported": "{{modelName}} non supporta immagini o video. Passa a un modello con capacità visive per allegarli.",
       "workflows": {
@@ -1274,8 +1381,8 @@
       "cloudBrowser": "Browser cloud",
       "connectHost": "Connetti {{hostName}}",
       "connectMyComputer": "Collega il mio computer",
-      "dialogDescription": "Quindi Zero può funzionare nel tuo browser e nelle tue app, anche quelle senza connettore come LinkedIn o Reddit.",
-      "dialogTitle": "Consenti a Zero di utilizzare il tuo computer",
+      "dialogDescription": "Quindi {{desktopProductName}} può funzionare nel tuo browser e nelle tue app, anche quelle senza connettore come LinkedIn o Reddit.",
+      "dialogTitle": "Consenti a {{desktopProductName}} di utilizzare il tuo computer",
       "disableCloudBrowser": "Disabilita il browser cloud",
       "disconnectHost": "Disconnetti {{hostName}}",
       "downloadMacos": "Scarica per macOS",
@@ -1297,7 +1404,6 @@
       "available_other": "Connettori disponibili per la connessione ({{count}})",
       "configurePermissions": "Configura le autorizzazioni {{connectorName}}",
       "customAuthorizeDescription": "Esamina, connetti e autorizza questo connettore personalizzato per l'agente.",
-      "customConnectDescription": "Esamina e collega questo connettore personalizzato.",
       "find": "Trova connettori...",
       "remove": "Rimuovi {{connectorName}}",
       "title": "Connettori"
@@ -1334,7 +1440,7 @@
       "partsHeading_many": "Feedback su {{count}} parti della tua risposta:",
       "partsHeading_other": "Feedback su {{count}} parti della tua risposta:",
       "placeholder": "Cosa dovrebbe cambiare in questo senso?",
-      "provide": "Fornisci feedback",
+      "quote": "Cita",
       "remove": "Rimuovi feedback",
       "sentEmailDescription": "un'e-mail inviata (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", inviato ID: {{sentId}}",
@@ -1342,6 +1448,18 @@
       "sourcePartsHeading_one": "Feedback su {{count}} parte di {{description}}:",
       "sourcePartsHeading_many": "Feedback su {{count}} parti di {{description}}:",
       "sourcePartsHeading_other": "Feedback su {{count}} parti di {{description}}:"
+    },
+    "forward": {
+      "action": "Inoltra",
+      "agents": "Agenti",
+      "back": "Indietro",
+      "content": "Contenuto",
+      "description": "Inoltra il contenuto selezionato a un agente o a una chat.",
+      "noResults": "Nessun agente o chat trovato",
+      "search": "Cerca agenti e chat...",
+      "sent": "Inoltrato correttamente",
+      "threads": "Chat",
+      "title": "Inoltra a"
     },
     "mail": {
       "bcc": "bcc",
@@ -1351,18 +1469,6 @@
       "deletedEmail": "E-mail eliminata: {{subject}}",
       "details": "Dettagli e-mail",
       "email": "E-mail",
-      "followUp": {
-        "action": "Segui",
-        "active": "Monitoraggio delle risposte",
-        "activeDescription": "Le risposte vengono tracciate e verranno riportate in questa chat.",
-        "idleDescription": "Tieni traccia delle risposte e ricevi notifiche in questa chat.",
-        "paused": "Monitoraggio sospeso",
-        "pausedDescription": "Il monitoraggio delle risposte è attualmente sospeso.",
-        "settingUp": "Impostazione…",
-        "submitting": "Impostazione…",
-        "submittingDescription": "Configurazione del monitoraggio delle risposte…",
-        "tracking": "Monitoraggio delle risposte"
-      },
       "loadingDetails": "Caricamento dei dettagli dell'e-mail",
       "needReconnect": "È necessario riconnettersi",
       "noMessage": "(Nessun messaggio)",
@@ -1501,6 +1607,11 @@
       "durationFor": "{{duration}} per {{label}}",
       "expandGroupedHistory": "Espandi la cronologia delle esecuzioni raggruppate",
       "expandWorkHistory": "Espandi la storia lavorativa",
+      "fastModelName": "{{model}} Fast",
+      "fastModeOff": "Modalità veloce disattivata",
+      "fastModeOn": "Modalità veloce attiva",
+      "fastModeWillBeOff": "La modalità veloce verrà disattivata",
+      "fastModeWillBeOn": "La modalità veloce verrà attivata",
       "goalFor": "Obiettivo per {{label}}",
       "groupedRunsFor_one": "{{count}} esecuzione per {{source}}",
       "groupedRunsFor_many": "{{count}} esecuzioni per {{source}}",
@@ -1508,7 +1619,9 @@
       "justNow": "proprio adesso",
       "keepGoing": "Continua così",
       "keepGoingAt": "Continua · {{timestamp}}",
+      "modelChangedTo": "Modello cambiato in {{model}}",
       "queueEllipsis": "in coda...",
+      "selectedModelAppliesAfterCurrentRun": "Il modello {{model}} selezionato entrerà in vigore dopo questa esecuzione",
       "thinking": {
         "assembling": "Assemblando i pezzi...",
         "brewing": "Sto preparando una risposta...",
@@ -1526,6 +1639,23 @@
       "waitingIn": "In attesa",
       "worked": "Ha funzionato",
       "workedFor": "Ha lavorato per {{duration}}"
+    },
+    "sharing": {
+      "cancel": "Annulla",
+      "close": "Chiudi",
+      "copyFailed": "Impossibile copiare il link",
+      "copyLink": "Copia link",
+      "create": "Condividi",
+      "createFailed": "Impossibile creare la conversazione condivisa. Riprova.",
+      "deselectGroup": "Deseleziona il gruppo di messaggi",
+      "linkCopied": "Link copiato",
+      "selectedCount_one": "{{count}} selezionato",
+      "selectedCount_many": "{{count}} selezionati",
+      "selectedCount_other": "{{count}} selezionati",
+      "selectGroup": "Seleziona il gruppo di messaggi",
+      "shareLink": "Link alla conversazione condivisa",
+      "start": "Condividi messaggi",
+      "tooLarge": "Seleziona meno messaggi da condividere"
     },
     "shortcuts": {
       "number": "numero"
@@ -1560,7 +1690,6 @@
         "website": "Sito web",
         "workflow": "Flusso di lavoro"
       },
-      "messageTemplate": "Modello messaggio {{title}}",
       "previewTemplate": "Modello di anteprima {{title}}",
       "previewVideo": "Anteprima modello video {{title}}",
       "previewWebsite": "Anteprima del modello di sito web {{title}}",
@@ -1568,7 +1697,17 @@
       "removeTemplate": "Rimuovi modello {{title}}",
       "removeVideo": "Rimuovi modello video {{title}}",
       "removeWebsite": "Rimuovi modello di sito web {{title}}",
-      "removeWorkflow": "Rimuovi modello di flusso di lavoro {{title}}"
+      "removeWorkflow": "Rimuovi modello di flusso di lavoro {{title}}",
+      "videoModelLabel": "Modello video {{model}}",
+      "videoOptions": "Opzioni video",
+      "videoOptionsAudio": "Genera audio",
+      "videoOptionsDuration": "Durata",
+      "videoOptionsLabel": "Opzioni video {{spec}}",
+      "videoOptionsModel": "Modello",
+      "videoOptionsRatio": "Proporzioni",
+      "videoOptionsResolution": "Risoluzione",
+      "videoSpecAudioOff": "Muto",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Discussione della chat",
@@ -1584,17 +1723,25 @@
         "waiting": "In attesa",
         "watching": "Guardando"
       },
+      "emojiCategories": "Categorie di emoji",
       "empty": "Invia un messaggio per avviare la conversazione",
       "frequentlyUsed": "Usato frequentemente",
       "icon": "Icona del thread di chat",
-      "loadingEarlier": "Caricamento dei messaggi precedenti",
+      "locator": {
+        "you": "Tu"
+      },
       "noEmojiFound": "Nessuna emoji trovata",
+      "notFound": "Conversazione non trovata",
       "openArtifacts": "Artefatti aperti",
       "openBrowser": "Apri il browser",
       "openNamedAgent": "Apri agente {{name}}",
       "openNamedChat": "Apri la chat {{title}}",
+      "pickEmoji": "Scegli un'emoji",
       "scrollToBottom": "Scorri fino in fondo",
-      "searchEmoji": "Cerca emoji"
+      "searchEmoji": "Cerca emoji",
+      "steerAcknowledgement_one": "Preso in carico durante l'esecuzione: il lavoro precedente è mantenuto",
+      "steerAcknowledgement_many": "Tutti i {{count}} messaggi presi in carico durante l'esecuzione: il lavoro precedente è mantenuto",
+      "steerAcknowledgement_other": "Tutti i {{count}} messaggi presi in carico durante l'esecuzione: il lavoro precedente è mantenuto"
     },
     "threadSidebar": {
       "resize": "Ridimensiona la barra laterale"
@@ -1607,6 +1754,10 @@
       "checkingLimit": "Controllo del limite di input vocale",
       "input": "Ingresso vocale",
       "inputLimitReached": "Limite di input vocale raggiunto. Passa a Pro o Team per limiti più alti.",
+      "inputLimitReachedMember": "Limite di input vocale raggiunto. Chiedi a un amministratore dell'area di lavoro di effettuare l'upgrade per ottenere limiti più alti.",
+      "inputLimitReachedPro": "Limite di input vocale raggiunto. Passa a Team per limiti più alti.",
+      "inputLimitReachedProMember": "Limite di input vocale raggiunto. Chiedi a un amministratore dell'area di lavoro di passare a Team per ottenere limiti più alti.",
+      "inputLimitReachedReset": "Limite di input vocale raggiunto. Attendi che il limite venga reimpostato.",
       "microphoneAccessDenied": "L'accesso al microfono è stato negato. Consenti l'accesso al microfono e riprova.",
       "openingMicrophone": "Apertura del microfono...",
       "starting": "Avvio dell'input vocale",
@@ -1653,7 +1804,6 @@
       "edit": "Modifica",
       "grant": "Concedere",
       "reconnect": "Riconnettiti",
-      "rename": "Rinominare",
       "revoke": "Revoca",
       "save": "Salva",
       "saving": "Salvataggio...",
@@ -1757,6 +1907,7 @@
       },
       "categoriesAria": "Categorie di connettori",
       "description": "Connetti servizi di terze parti affinché i tuoi agenti possano utilizzarli.",
+      "descriptionWithCount": "Connetti {{value}} servizi affinché i tuoi agenti possano utilizzarli.",
       "empty": {
         "agent": "Nessun connettore per questo agente",
         "connected": "Nessun connettore collegato",
@@ -1830,25 +1981,14 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "Non utilizzato da nessun agente",
-        "usedBy": "Utilizzato da {{agents}}",
-        "usedByOverflow_one": "Utilizzato da {{agents}} +{{value}}",
-        "usedByOverflow_many": "Utilizzato da {{agents}} +{{value}}",
-        "usedByOverflow_other": "Utilizzato da {{agents}} +{{value}}"
-      },
       "connect": {
-        "apiAuthentication": "API autenticazione",
-        "apiDescription": "Inserisci il segreto API rilasciato dal provider.",
-        "back": "Indietro",
+        "configured": "Configurato",
         "connecting": "Connessione…",
         "continue": "Continua",
         "continueToProvider": "Proseguire presso il provider per autorizzare l'accesso.",
         "description": "Il tuo segreto viene crittografato quando è inattivo e inserito nelle richieste in uscita dal firewall. Non viene mai esposto all'agente come variabile di ambiente.",
-        "oauthDescription": "Autorizza l'accesso con l'app OAuth del connettore.",
         "save": "Salva",
         "saving": "Salvataggio…",
-        "secret": "Segreto",
         "title": "Connetti {{connector}}"
       },
       "create": {
@@ -1862,13 +2002,18 @@
         "authorizationUrl": "Autorizzazione URL",
         "clientId": "ID client",
         "clientSecret": "Segreto del cliente",
+        "connectorType": "Tipo di connettore",
         "displayName": "Nome visualizzato",
         "headerName": "Nome dell'intestazione",
         "headerTemplate": "Modello di intestazione",
         "headerTemplateHint": "(deve contenere {{placeholder}})",
         "httpBasicAuthentication": "HTTP Autenticazione di base",
+        "httpType": "API HTTP",
         "keepClientSecret": "Lascia vuoto il segreto del client per mantenere il valore memorizzato.",
         "keepClientSecretPlaceholder": "Lascia vuoto per restare aggiornato",
+        "mcpEndpoint": "Endpoint MCP",
+        "mcpEndpointHint": "(Streamable HTTP, solo HTTPS)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "Nuovo segreto del cliente",
         "none": "Nessuno",
         "oauthChangesDisconnect": "La modifica delle impostazioni OAuth o delle credenziali del client disconnette le connessioni OAuth esistenti.",
@@ -1903,18 +2048,15 @@
       },
       "emptyAdmin": "Nessun connettore personalizzato ancora. Creane uno per registrare un API affinché ogni membro possa utilizzarlo.",
       "emptyMember": "La tua organizzazione non ha ancora registrato alcun connettore personalizzato.",
+      "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Più opzioni",
-      "rename": {
-        "displayName": "Nome visualizzato",
-        "title": "Rinominare il connettore personalizzato"
-      },
       "statusConnected": "Connesso",
       "toasts": {
         "connected": "Connesso",
         "created": "Creato \"{{connector}}\"",
         "deleted": "Connettore personalizzato eliminato",
         "disconnected": "Disconnesso",
-        "renamed": "Rinominato in \"{{connector}}\"",
         "updated": "Aggiornato \"{{connector}}\""
       },
       "updateConfirm": {
@@ -1922,19 +2064,6 @@
         "description": "Queste modifiche a OAuth disconnetteranno tutti i membri attualmente connessi a OAuth. Dovranno connettere nuovamente questo connettore personalizzato.",
         "title": "Disconnettere le connessioni OAuth esistenti?"
       }
-    },
-    "customProposal": {
-      "configure": "Configura {{connector}}",
-      "descriptionAgent": "Il salvataggio collegherà i tuoi valori e autorizzerà {{agent}}.",
-      "descriptionUser": "Il salvataggio collegherà questo connettore personalizzato al tuo account.",
-      "documentTitle": "Configura connettore personalizzato",
-      "invalid": "Questo collegamento alla proposta di connettore personalizzato non è valido o è scaduto.",
-      "requestScope": "Richiedi ambito",
-      "returnToChat": "Torna alla chat e rispondi ACK in modo che l'agente possa verificare il connettore.",
-      "saved": "Salvato",
-      "savedToast": "{{connector}} salvato",
-      "targetFallback": "questo agente",
-      "update": "Aggiorna {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Autorizza {{agent}}",
@@ -2254,19 +2383,14 @@
           "challengeQuestion": "Perché Feishu mostra \"Il codice di sfida non ha ricevuto risposta\"?",
           "title": "Domande frequenti sulla configurazione"
         },
-        "guide": {
-          "next": "Mostra l'immagine guida successiva Feishu",
-          "previous": "Mostra l'immagine guida precedente Feishu",
-          "show": "Mostra Feishu immagine guida {{number}}"
-        },
         "loadError": "Impossibile caricare le impostazioni Feishu.",
         "manage": "Gestisci",
         "manageDialogTitle": "Gestisci Feishu bot",
         "moreOptions": "Altre opzioni per {{bot}}",
         "pageDescription": "Gestisci il routing dei bot per questa area di lavoro",
         "permissions": {
-          "description": "Nella console per sviluppatori di Feishu, apri Autorizzazioni e ambiti, scegli Importazione/esportazione in blocco > Importa e incolla il JSON seguente. Verranno importati tutti gli ambiti del connettore gestito per l'identità utente.",
-          "hint": "Conferma le autorizzazioni importate per l'identità utente, quindi crea e pubblica una nuova versione dell'app affinché la schermata di consenso OAuth possa concederle.",
+          "description": "Nella console per sviluppatori di Feishu, apri Autorizzazioni e ambiti, scegli Importazione/esportazione in blocco > Importa e incolla il JSON seguente. Verranno importati tutti gli ambiti del connettore gestito per l'identità utente. Queste sono le autorizzazioni minime necessarie per il funzionamento dell'integrazione.",
+          "hint": "Mantieni tutte le autorizzazioni importate per l'identità utente, quindi crea e pubblica una nuova versione dell'app affinché la schermata di consenso OAuth possa concederle. La rimozione di qualsiasi autorizzazione impedirà il funzionamento dell'integrazione e potrebbe essere necessaria l'approvazione di un amministratore Feishu.",
           "label": "JSON degli ambiti del token utente",
           "menuAlt": "Pagina Autorizzazioni e ambiti di Feishu con il menu di importazione/esportazione in blocco degli ambiti evidenziato",
           "menuLabel": "Apri l'importazione/esportazione in blocco degli ambiti",
@@ -2492,113 +2616,21 @@
       "requestFailed": "Richiesta non riuscita"
     },
     "realtime": {
-      "degraded": "Gli aggiornamenti in tempo reale hanno riscontrato un problema. Aggiorna la pagina."
+      "degraded": "Gli aggiornamenti in tempo reale hanno riscontrato un problema. Aggiorna la pagina.",
+      "disconnected": "Connessione in tempo reale interrotta",
+      "reconnecting": "Riconnessione in tempo reale"
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "Il mese prossimo",
-      "previousMonth": "Mese precedente"
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Invito accettato per un altro account"
     },
-    "cards": {
-      "agents": "Agenti",
-      "agentsRan_one": "{{agents}} ha completato {{runs}}",
-      "agentsRan_many": "{{agents}} hanno completato {{runs}}",
-      "agentsRan_other": "{{agents}} hanno completato {{runs}}",
-      "allowed": "Consentito",
-      "allowedSummary_one": "{{calls}} effettuata con {{permissions}} autorizzazione concessa",
-      "allowedSummary_many": "{{calls}} effettuate con {{permissions}} autorizzazioni concesse",
-      "allowedSummary_other": "{{calls}} effettuate con {{permissions}} autorizzazioni concesse",
-      "automations": "Automazioni",
-      "automationsUsed_one": "{{automations}} ha utilizzato {{credits}}",
-      "automationsUsed_many": "{{automations}} hanno utilizzato {{credits}}",
-      "automationsUsed_other": "{{automations}} hanno utilizzato {{credits}}",
-      "balance": "Saldo",
-      "byAgent": "di {{agent}}",
-      "chats": "Chat",
-      "chatsUsed_one": "{{chats}} ha utilizzato {{credits}}",
-      "chatsUsed_many": "{{chats}} hanno utilizzato {{credits}}",
-      "chatsUsed_other": "{{chats}} hanno utilizzato {{credits}}",
-      "clickToOpen": "Fai clic per aprire",
-      "consumedToday": "consumato oggi",
-      "moreAutomations_one": "+{{value}} altra automazione",
-      "moreAutomations_many": "+{{value}} altre automazioni",
-      "moreAutomations_other": "+{{value}} altre automazioni",
-      "moreChats_one": "+{{value}} altra chat",
-      "moreChats_many": "+{{value}} altre chat",
-      "moreChats_other": "+{{value}} altre chat",
-      "protected": "Protetto",
-      "protectedSummary_one": "{{calls}} protetta da {{permissions}} autorizzazione",
-      "protectedSummary_many": "{{calls}} protette da {{permissions}} autorizzazioni",
-      "protectedSummary_other": "{{calls}} protette da {{permissions}} autorizzazioni",
-      "rejected_one": "{{value}} rifiutata",
-      "rejected_many": "{{value}} rifiutate",
-      "rejected_other": "{{value}} rifiutate",
-      "rejectedOf": "{{denied}} su {{total}} rifiutate",
-      "services": "Servizi",
-      "servicesReceived_one": "{{services}} ha ricevuto {{calls}}",
-      "servicesReceived_many": "{{services}} hanno ricevuto {{calls}}",
-      "servicesReceived_other": "{{services}} hanno ricevuto {{calls}}",
-      "team": "Team",
-      "teamCreditUsage": "Utilizzo dei crediti del team",
-      "untitled": "(senza titolo)",
-      "yourCreditUsage": "Utilizzo dei tuoi crediti"
+    "actions": {
+      "switchAccount": "Cambia account",
+      "switchWorkspace": "Cambia area di lavoro"
     },
-    "common": {
-      "loadMore": "Carica di più",
-      "showLess": "Mostra meno"
-    },
-    "page": {
-      "description": "Monitora a cosa accedono i tuoi agenti, come vengono spesi i crediti, quali autorizzazioni utilizzano e individua qualsiasi cosa insolita.",
-      "documentTitle": "Approfondimenti e utilizzo",
-      "empty": "Esegui un agente per visualizzare gli approfondimenti qui.",
-      "emptyRange": "Nessuna attività in questo intervallo di tempo.",
-      "lastUpdated": "Ultimo aggiornamento: {{date}}",
-      "loadError": "Impossibile caricare l'attività di rete.",
-      "title": "Approfondimenti"
-    },
-    "range": {
-      "custom": "Intervallo personalizzato",
-      "last28Days": "Ultimi 28 giorni",
-      "last30Days": "Ultimi 30 giorni",
-      "last7Days": "Ultimi 7 giorni",
-      "today": "Oggi",
-      "yesterday": "Ieri"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "La richiesta {{blocked}} è stata bloccata dalle regole di autorizzazione. Rivedila per assicurarti che nulla di importante venga trattenuto.",
-      "blocked_many": "Le richieste {{blocked}} sono state bloccate dalle tue regole di autorizzazione. Rivedile per assicurarti che nulla di importante venga trattenuto.",
-      "blocked_other": "Le richieste {{blocked}} sono state bloccate dalle tue regole di autorizzazione. Rivedile per assicurarti che nulla di importante venga trattenuto.",
-      "blockedCaption": "{{calls}} · {{blocked}} bloccate",
-      "busy_one": "Una giornata impegnativa: {{agentCount}} agente ha completato {{runs}}. La tua rete sta lavorando sodo.",
-      "busy_many": "Una giornata impegnativa: {{agentCount}} agenti hanno completato {{runs}}. La tua rete sta lavorando sodo.",
-      "busy_other": "Una giornata impegnativa: {{agentCount}} agenti hanno completato {{runs}}. La tua rete sta lavorando sodo.",
-      "distributed_one": "{{agents}} attivo, con {{credits}} utilizzati in totale. Un carico di lavoro ben distribuito.",
-      "distributed_many": "{{agents}} attivi, con {{credits}} utilizzati in totale. Un carico di lavoro ben distribuito.",
-      "distributed_other": "{{agents}} attivi, con {{credits}} utilizzati in totale. Un carico di lavoro ben distribuito.",
-      "highTraffic_one": "{{callCount}} chiamata di servizio su {{services}}. Giornata ad alto traffico.",
-      "highTraffic_many": "{{callCount}} chiamate di servizio su {{services}}. Giornata ad alto traffico.",
-      "highTraffic_other": "{{callCount}} chiamate di servizio su {{services}}. Giornata ad alto traffico.",
-      "light_one": "Attività leggera: solo {{runs}} e {{calls}}. Una giornata tranquilla.",
-      "light_many": "Attività leggera: solo {{runs}} e {{calls}}. Una giornata tranquilla.",
-      "light_other": "Attività leggera: solo {{runs}} e {{calls}}. Una giornata tranquilla.",
-      "quietCaption": "{{runs}} · una giornata tranquilla",
-      "smooth": "{{runs}} e {{callCount}} chiamate di servizio oggi. Tutto funziona senza intoppi."
-    },
-    "units": {
-      "agent_one": "{{value}} agente",
-      "agent_many": "{{value}} agenti",
-      "agent_other": "{{value}} agenti",
-      "call_one": "{{value}} chiamata",
-      "call_many": "{{value}} chiamate",
-      "call_other": "{{value}} chiamate",
-      "run_one": "{{value}} esecuzione",
-      "run_many": "{{value}} esecuzioni",
-      "run_other": "{{value}} esecuzioni",
-      "service_one": "{{value}} servizio",
-      "service_many": "{{value}} servizi",
-      "service_other": "{{value}} servizi"
+    "success": {
+      "title": "Invito per {{workspace}} accettato"
     }
   },
   "lifecycle": {
@@ -3963,6 +3995,7 @@
       "available_one": "{{count}} slot disponibile",
       "available_many": "{{count}} slot disponibili",
       "available_other": "{{count}} slot disponibili",
+      "availableNow": "Disponibili ora",
       "inUse_one": "{{active}} di {{limit}} slot in uso",
       "inUse_many": "{{active}} di {{limit}} slot in uso",
       "inUse_other": "{{active}} di {{limit}} slot in uso"
@@ -3990,40 +4023,6 @@
       "recommended": "Consigliato",
       "teamDescription": "Fai crescere il tuo team con 10 esecuzioni parallele e più crediti."
     }
-  },
-  "reportError": {
-    "description": "Invia informazioni diagnostiche per questa esecuzione non riuscita al team di sviluppatori. Indagheremo e seguiremo a breve.",
-    "disclosure": {
-      "agentConfiguration": "Configurazione dell'agente",
-      "agentTelemetry": "Telemetria dell'agente e registri di esecuzione",
-      "chatHistory": "Cronologia chat ed eventi dell'agente",
-      "connectedServices": "Servizi connessi (nessuna credenziale)",
-      "networkLogs": "Registri delle richieste di rete",
-      "runContext": "Esegui contesto e ambiente",
-      "title": "Cosa verrà inviato"
-    },
-    "documentTitle": "Segnala errore",
-    "error": {
-      "loadFailed": "Impossibile caricare i dettagli dell'esecuzione",
-      "notFailed": "Questa esecuzione non ha avuto esito negativo e non può essere segnalata",
-      "title": "Errore",
-      "tryAgain": "Riprova"
-    },
-    "fields": {
-      "description": "Descrizione",
-      "descriptionPlaceholder": "Cosa è successo? Cosa ti aspettavi?",
-      "title": "Titolo",
-      "titlePlaceholder": "Breve riassunto della questione"
-    },
-    "loading": "Caricamento dei dettagli dell'esecuzione",
-    "send": "Invia rapporto",
-    "sending": "Invio...",
-    "success": {
-      "description": "La tua segnalazione di errori è stata inviata al team di sviluppatori. Investigheranno e seguiranno.",
-      "reference": "Riferimento: {{reference}}",
-      "title": "Rapporto inviato"
-    },
-    "title": "Segnala l'errore allo sviluppatore"
   },
   "settings": {
     "accountMenu": {
@@ -4098,8 +4097,9 @@
           "title": "Preferenza"
         },
         "usage": {
-          "balanceDescription": "Il saldo e l'utilizzo del credito del tuo team.",
+          "balanceDescription": "Quanto resta da spendere al tuo team.",
           "balanceTitle": "Saldo del credito",
+          "balanceUsageDescription": "Il saldo dei crediti e l'utilizzo del tuo team.",
           "usageDescription": "Il tuo utilizzo del credito attraverso chat, automazioni e canali.",
           "usageTitle": "Utilizzo del credito"
         }
@@ -4257,12 +4257,18 @@
         "title": "Connessioni provider"
       },
       "personal": {
+        "accountFallback": "Account {{number}}",
         "actionForProvider": "{{action}} {{provider}}",
+        "activeAccount": "Attivo",
+        "addAccount": "Aggiungi account",
         "claudeDescription": "Accedi con Claude Code per utilizzare i modelli basati su Claude.",
         "claudeTitle": "OAuth Claude Code",
         "codexDescription": "Connettiti con l'accesso del dispositivo Codex per i percorsi del modello supportati da Codex.",
         "codexTitle": "ChatGPT (Codex)",
         "description": "Utilizzato solo nelle tue esecuzioni, con le tue credenziali.",
+        "noAccounts": "Nessun account collegato.",
+        "reconnectAccount": "Riconnetti",
+        "removeAccount": "Rimuovi",
         "sectionTitle": "Personale",
         "status": {
           "connected": "Connesso",
@@ -4271,18 +4277,19 @@
           "left": "{{percent}} rimanente",
           "stale": "Attenzione",
           "week": "Settimana"
-        }
+        },
+        "useAccount": "Usa"
       },
       "picker": {
-        "balancedUse": "Utilizzo equilibrato",
         "builtInModel": "Modello da incasso",
         "byokHelp": "Utilizza il provider configurato",
         "fast": "Veloce",
+        "fastImpact": "Velocità del modello 1,5× · consumo di crediti 2,5×",
         "inheritDefault": "Eredita dall'impostazione predefinita dell'organizzazione",
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
+        "manageMoreModels": "Gestisci altri modelli",
         "models": "Modelli",
-        "moreCodexCredits": "Utilizza più Codex crediti.",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {
           "balanced": "Costo e prestazioni equilibrati",
@@ -4290,15 +4297,14 @@
           "frontier": "Modello di punta della frontiera",
           "premium": "Modello premium di frontiera per i compiti più difficili"
         },
-        "prioritizeSpeed": "Dai priorità alla velocità",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure portale della fonderia",
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Ricerca profonda"
         },
-        "runSpeed": "Corri velocità",
-        "standard": "Norma"
+        "standard": "Norma",
+        "videoModels": "Modelli video"
       },
       "policies": {
         "actionsFor": "Azioni per {{model}}",
@@ -4355,6 +4361,8 @@
         "codexTitle": "La sessione ChatGPT necessita di riconnessione"
       },
       "toasts": {
+        "accountRemoved": "Account rimosso",
+        "accountSwitched": "Account attivo cambiato",
         "disconnected": "{{provider}} disconnesso",
         "policiesUpdated": "Impostazioni del provider del modello aggiornate",
         "reset": "Utilizzo Codex reimpostato",
@@ -4399,6 +4407,24 @@
           "enabled_many": "Abilitato per le prossime {{count}} esecuzioni",
           "enabled_other": "Abilitato per le prossime {{count}} esecuzioni",
           "title": "Acquisisci i contenuti di rete"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "Attese attive",
+          "blurred": "senza focus",
+          "channel": "canale",
+          "clear": "Cancella",
+          "connection": "connessione",
+          "copyJson": "Copia JSON",
+          "description": "Controlla il ciclo di vita del browser, il recupero dell'autenticazione e i segnali di connessione Ably.",
+          "empty": "Nessun evento diagnostico registrato.",
+          "events": "eventi",
+          "focused": "con focus",
+          "log": "Registro eventi",
+          "offline": "offline",
+          "online": "online",
+          "recovery": "recupero",
+          "title": "Diagnostica della connessione in tempo reale",
+          "unavailable": "non disponibile"
         },
         "tab": "Debug"
       },
@@ -4498,8 +4524,9 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Tutti gli abbonamenti attivi, inclusi i pacchetti di utilizzo e i componenti aggiuntivi, verranno annullati immediatamente. Il periodo di abbonamento prepagato non utilizzato verrà rimborsato in proporzione. Gli acquisti una tantum e gli altri acquisti senza abbonamento non verranno rimborsati.",
           "button": "Elimina l'area di lavoro",
-          "confirmDescription": "Questa operazione eliminerà definitivamente {{workspace}} e tutti i suoi dati. Non può essere annullata. Digita il nome dell'area di lavoro per confermare.",
+          "confirmDescription": "Questa operazione eliminerà definitivamente quest'area di lavoro e tutti i suoi dati. Non può essere annullata. Digita confirm per continuare.",
           "description": "Elimina definitivamente questa area di lavoro e tutti i suoi dati. L'operazione non può essere annullata.",
           "progress": "Eliminazione...",
           "title": "Elimina l'area di lavoro",
@@ -4525,9 +4552,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Inserisci un indirizzo email valido",
           "progress": "Invio...",
+          "purchase": {
+            "description": "Controlla l’addebito proporzionale qui sotto. La conferma addebita il metodo di pagamento salvato e invia l’invito.",
+            "error": "Impossibile acquistare questo pacchetto membro. Controlla i dati di fatturazione e riprova.",
+            "invitee": "Persona invitata",
+            "title": "Controlla invito"
+          },
           "roleLabel": "Ruolo",
           "send": "Invia invito",
-          "title": "Invita membro"
+          "title": "Invita membro",
+          "upgrade": {
+            "action": "Passa a Pro",
+            "description": "Gli inviti dei membri sono disponibili con il piano Pro. Esegui l'upgrade di quest'area di lavoro per invitare persone e gestire i loro ruoli.",
+            "title": "Passa a Pro per invitare membri"
+          }
         },
         "joined": "Iscritto",
         "joinRequests": "Richieste di adesione",
@@ -4542,7 +4580,10 @@
           "action": "Rimuovere dall'area di lavoro",
           "confirmDescription": "{{email}} verrà rimosso da quest'area di lavoro e perderà l'accesso a tutte le risorse.",
           "progress": "Rimozione...",
-          "title": "Rimuovere il membro?"
+          "title": "Rimuovere il membro?",
+          "usagePackImpactDescription": "I crediti rimanenti del suo pacchetto di utilizzo diventeranno immediatamente non disponibili. Il pacchetto verrà rimosso alla fine del periodo di fatturazione corrente. Se l'area di lavoro rimane senza pacchetti di utilizzo, anche il piano dell'area di lavoro verrà annullato alla fine del periodo di fatturazione.",
+          "usagePackImpactTitle": "Impatto sul pacchetto di utilizzo",
+          "usagePackRefundDescription": "Rimborso: la parte non utilizzata dei crediti acquistati viene restituita al metodo di pagamento originale. I crediti consumati e i crediti bonus non sono rimborsabili."
         },
         "revoke": {
           "action": "Revoca l'invito",
@@ -4564,6 +4605,7 @@
           "progress": "Commutazione...",
           "title": "Passare a membro?"
         },
+        "usagePack": "Pacchetto di utilizzo",
         "user": "Utente",
         "you": "Tu"
       },
@@ -4625,44 +4667,21 @@
       "title": "Pagina non trovata"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "Questa conversazione condivisa non esiste.",
+    "notFoundTitle": "Conversazione condivisa non trovata",
+    "tryOkou": "Prova Okou"
+  },
   "usage": {
-    "automations": {
-      "empty": "Nessuna automazione utilizzata in questo periodo",
-      "more_one": "+{{value}} altra automazione",
-      "more_many": "+{{value}} altre automazioni",
-      "more_other": "+{{value}} altre automazioni",
-      "summary_one": "{{automations}} ha utilizzato {{credits}}",
-      "summary_many": "{{automations}} hanno utilizzato {{credits}}",
-      "summary_other": "{{automations}} hanno utilizzato {{credits}}",
-      "title": "Automazioni"
-    },
-    "chart": {
-      "ariaLabel": "Totali crediti",
-      "credits": "crediti",
-      "groupBy": {
-        "agent": "Agente",
-        "source": "Fonte"
-      },
-      "noUsage": "Nessun utilizzo",
-      "showDetails": "Mostra i dettagli di utilizzo per {{date}}"
-    },
-    "chats": {
-      "clickToOpen": "Fai clic per aprire",
-      "empty": "Nessuna chat in questo periodo",
-      "more_one": "+{{value}} altra chat",
-      "more_many": "+{{value}} altre chat",
-      "more_other": "+{{value}} altre chat",
-      "summary_one": "{{chats}} ha utilizzato {{credits}}",
-      "summary_many": "{{chats}} hanno utilizzato {{credits}}",
-      "summary_other": "{{chats}} hanno utilizzato {{credits}}",
-      "title": "Chat",
-      "untitled": "(senza titolo)"
-    },
     "displayNames": {
-      "auto": "Automatico",
+      "avatar": "Avatar",
       "finance": "Finanza",
+      "imageRecognize": "Riconoscimento immagini",
       "maps": "Mappe",
       "peopleSearch": "Ricerca persone",
+      "seo": "SEO",
+      "translation": "Traduzione",
       "usage": "Utilizzo",
       "weather": "Meteo",
       "webFetch": "Recupero Web",
@@ -4675,29 +4694,25 @@
       "other": "Altro",
       "video": "Video"
     },
-    "page": {
-      "description": "Il tuo consumo di crediti tramite chat, automazioni e canali.",
-      "loadError": "Impossibile caricare gli approfondimenti sull'utilizzo. Riprova più tardi.",
-      "title": "Utilizzo"
-    },
     "range": {
-      "ariaLabel": "Intervallo di date",
       "billingPeriod": "Periodo di fatturazione",
       "last24Hours": "Ultime 24 ore",
-      "last28Days": "Ultimi 28 giorni",
-      "last30Days": "Ultimi 30 giorni",
       "last7Days": "Ultimi 7 giorni",
-      "selectedDay": "Giorno selezionato",
       "today": "Oggi",
       "yesterday": "Ieri"
     },
     "records": {
-      "emptyBillingPeriod": "Nessun utilizzo in questo periodo di fatturazione.",
-      "emptyRange": "Nessun utilizzo in questo intervallo di tempo.",
+      "empty": {
+        "billingPeriodTitle": "Nessun utilizzo in questo periodo di fatturazione",
+        "description": "I crediti che spendi in chat, automazioni e canali compaiono qui.",
+        "noBillingPeriodDescription": "L'utilizzo del team compare all'inizio di un periodo di fatturazione.",
+        "noBillingPeriodTitle": "Nessun periodo di fatturazione attivo",
+        "rangeTitle": "Nessun utilizzo in questo intervallo di tempo",
+        "teamDescription": "I crediti che il tuo team spende in chat, automazioni e canali compaiono qui."
+      },
       "loadError": "Impossibile caricare il tuo utilizzo.",
       "loadMore": "Carica di più",
       "myUsage": "Il mio utilizzo",
-      "noActiveBillingPeriod": "Nessun periodo di fatturazione attivo.",
       "teamLoadError": "Impossibile caricare l'utilizzo del team.",
       "teamUsage": "Utilizzo del team",
       "untitled": "(senza titolo)"
@@ -4709,17 +4724,12 @@
       "email": "E-mail",
       "github": "GitHub",
       "other": "Altro",
-      "others": "Altri",
       "phone": "Telefono",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "Sconosciuto"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}} automazione",
-      "automation_many": "{{value}} automazioni",
-      "automation_other": "{{value}} automazioni",
       "chat_one": "{{value}} chat",
       "chat_many": "{{value}} chat",
       "chat_other": "{{value}} chat",
@@ -4805,17 +4815,21 @@
         "second_many": "{{count}} secondi",
         "second_other": "{{count}} secondi"
       },
+      "forms": {
+        "addAction": "Aggiungi automazione Google Forms",
+        "addAria": "Aggiungi automazione per le risposte di Google Forms",
+        "addDescription": "Esegui questo flusso di lavoro quando il modulo Google selezionato riceve una nuova risposta.",
+        "addTitle": "Aggiungi automazione Google Forms",
+        "formUrl": "Link del modulo",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "Esegui quando un modulo Google riceve una nuova risposta.",
+        "responseSubmittedTitle": "Risposta di Google Forms inviata",
+        "rule": "Quando {{form}} riceve una risposta",
+        "summary": "Modulo {{form}}"
+      },
       "github": {
-        "accountConnect": "Connetti GitHub",
-        "accountRequired": "Collega il tuo account GitHub per utilizzare Me.",
-        "actorAnyone": "Chiunque",
-        "actorMe": "Io",
         "actors": "Attori",
         "actorsPlaceholder": "Octocat, dependabot[bot]",
-        "addLabelAction": "Aggiungi l'automazione delle etichette",
-        "addLabelAria": "Aggiungi l'automazione delle etichette GitHub",
-        "addLabelDescription": "Esegui questo flusso di lavoro quando viene applicata un'etichetta GitHub.",
-        "addLabelTitle": "Aggiungi l'automazione delle etichette GitHub",
         "addWebhookAction": "Aggiungi automazione",
         "addWebhookAria": "Aggiungi l'automazione {{title}}",
         "addWebhookDescription": "Esegui questo flusso di lavoro quando arriva un evento webhook GitHub corrispondente.",
@@ -4877,13 +4891,6 @@
         "jobs": "Lavori",
         "jobsPlaceholder": "testare, costruire",
         "jobsSummary": "Lavori {{values}}",
-        "labelAppliedDescription": "Esegui quando un problema o una pull request ottiene un'etichetta.",
-        "labelAppliedRule": "Quando viene applicata l'etichetta GitHub {{label}}",
-        "labelAppliedTitle": "Etichetta GitHub applicata",
-        "labelName": "Nome dell'etichetta",
-        "labelOnlySummary": "Etichetta {{label}}",
-        "labelPlaceholder": "triage",
-        "labelSummary": "Etichetta {{label}} · {{subject}} · Attore {{actor}}",
         "loadError": "Impossibile caricare le impostazioni GitHub.",
         "nonProductionOnly": "Solo non produzione",
         "option": {
@@ -4908,12 +4915,36 @@
         },
         "productionEnvironment": "Ambiente di produzione",
         "productionOnly": "Solo produzione",
+        "pullRequestAction": "Azione",
+        "pullRequestActionClosed": "Chiusa",
+        "pullRequestActionConvertedToDraft": "Convertita in bozza",
+        "pullRequestActionDequeued": "Rimossa dalla coda di merge",
+        "pullRequestActionEnqueued": "Aggiunta alla coda di merge",
+        "pullRequestActionLabeled": "Etichetta applicata",
+        "pullRequestActionOpened": "Aperta",
+        "pullRequestActionReadyForReview": "Pronta per la revisione",
+        "pullRequestActionReopened": "Riaperta",
+        "pullRequestActionSynchronize": "Nuovi commit",
+        "pullRequestActionUnlabeled": "Etichetta rimossa",
+        "pullRequestAuthors": "Autori",
+        "pullRequestClosedWithoutMergeOnly": "Chiusa senza merge",
+        "pullRequestDescription": "Viene eseguito quando una pull request di un repository viene aperta, unita, etichettata o cambia stato.",
+        "pullRequestLabels": "Etichette",
+        "pullRequestLabelsPlaceholder": "ready-to-merge",
+        "pullRequestMerged": "Unita",
+        "pullRequestMergedOnly": "Solo unite",
+        "pullRequestNumbers": "Numeri di pull request",
+        "pullRequestNumbersPlaceholder": "42, 128",
+        "pullRequestRule": "Pull request GitHub {{action}} in {{repository}}",
         "pullRequestsOnly": "Solo pull request",
+        "pullRequestTitle": "Pull request GitHub",
         "refs": "Rif",
         "refsPlaceholder": "principale, v1.0.0",
         "repositories": "Repository",
         "repositoriesPlaceholder": "vm0-ai/vm0, proprietario/un altro repository",
         "repositoriesSummary": "Repository {{values}}",
+        "repository": "Repository",
+        "repositoryPlaceholder": "owner/name",
         "reviewDescription": "Esegui quando viene inviata una recensione corrispondente.",
         "reviewRule": "Quando viene inviata una revisione della pull request GitHub corrispondente",
         "reviewStates": "Revisione degli stati",
@@ -4925,10 +4956,8 @@
         "saveFilters": "Salva filtri",
         "selectNoneAny": "Seleziona nessuno per far corrispondere qualsiasi valore.",
         "selectNoneConclusion": "Seleziona nessuno per abbinare qualsiasi conclusione completata.",
-        "startedBy": "Iniziato da",
         "subject": "Oggetto",
         "trustedAuthors": "Autori fidati",
-        "updateLabelAria": "Aggiorna l'automazione delle etichette GitHub",
         "updateWebhookAria": "Aggiorna l'automazione {{title}}",
         "updateWorkflowAria": "Aggiorna l'automazione del flusso di lavoro GitHub",
         "withConclusions": " con {{values}}",
@@ -5046,6 +5075,7 @@
       "picker": {
         "calendar": "Calendario",
         "email": "E-mail",
+        "forms": "Google Forms",
         "integrations": "Integrazioni",
         "notion": "Notion",
         "schedule": "Programma"
@@ -5122,14 +5152,53 @@
         "localeSummary": "Impostazioni internazionali {{locale}}",
         "rule": "Quando viene pubblicata una voce Strapi corrispondente"
       },
+      "stripe": {
+        "addAction": "Aggiungi automazione Stripe",
+        "addAria": "Aggiungi automazione per fattura Stripe pagata",
+        "addDescription": "Esegui questo workflow quando una fattura corrispondente viene pagata nell’account Stripe Live connesso.",
+        "addTitle": "Aggiungi automazione Stripe",
+        "anyBillingReason": "Qualsiasi motivo di fatturazione",
+        "billingReason": {
+          "automaticPendingInvoiceItemInvoice": "Voci fattura in sospeso automatiche",
+          "manual": "Manuale",
+          "quoteAccept": "Preventivo accettato",
+          "subscription": "Abbonamento",
+          "subscriptionCreate": "Abbonamento creato",
+          "subscriptionCycle": "Ciclo di abbonamento",
+          "subscriptionThreshold": "Soglia di abbonamento",
+          "subscriptionUpdate": "Abbonamento aggiornato",
+          "upcoming": "In arrivo"
+        },
+        "billingReasons": "Motivi di fatturazione",
+        "billingReasonsHint": "Non selezionare nulla per accettare qualsiasi motivo di fatturazione.",
+        "bindingSummary": "Account Stripe {{accountId}} · Modalità Live · {{billingReasons}}",
+        "delivery": "Consegna",
+        "deliveryStatus": {
+          "delivered": "Consegnata",
+          "failed": "Non riuscita",
+          "pending": "In sospeso",
+          "skipped": "Ignorata"
+        },
+        "deliveryWarning": "L’ultima consegna terminale non è riuscita. Controlla l’attività del workflow prima di riprovare.",
+        "immutableHint": "L’account Stripe e i motivi di fatturazione sono fissi. Per modificarli, elimina questa automazione e ricreala.",
+        "invoicePaidDescription": "Esegui quando viene pagata una fattura Stripe corrispondente.",
+        "invoicePaidTitle": "Fattura Stripe pagata",
+        "lastEvent": "Ultimo evento",
+        "manageConnection": "Gestisci connessione Stripe",
+        "noDeliveries": "Nessuna consegna per ora",
+        "noMatchingEvents": "Nessun evento corrispondente per ora",
+        "rule": "Quando viene pagata una fattura Stripe corrispondente"
+      },
       "types": {
         "chat": "Chatta",
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {
@@ -5371,6 +5440,12 @@
     "connectedWithDetail": "Connesso ({{detail}})",
     "documentTitle": "Integrazioni",
     "feishuConnected": "Feishu si è connesso correttamente",
+    "github": {
+      "adminInstall": "Chiedi a un amministratore dell'organizzazione di installare l'app GitHub",
+      "description": "Attiva le automazioni dei workflow dagli eventi GitHub",
+      "install": "Installa l'app GitHub",
+      "title": "GitHub"
+    },
     "header": {
       "description": "Connettiti con {{displayName}} attraverso questi canali",
       "title": "Dove lavora {{displayName}}"

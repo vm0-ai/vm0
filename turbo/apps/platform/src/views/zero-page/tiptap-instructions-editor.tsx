@@ -10,18 +10,18 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Markdown } from "@tiptap/markdown";
 import { common, createLowlight } from "lowlight";
 import {
-  IconBold,
-  IconItalic,
-  IconStrikethrough,
-  IconH1,
-  IconH2,
-  IconH3,
-  IconList,
-  IconListNumbers,
-  IconBlockquote,
-  IconCode,
-} from "@tabler/icons-react";
-import { cn } from "@vm0/ui";
+  Bold,
+  Italic,
+  Strikethrough,
+  Heading1,
+  Heading2,
+  Heading3,
+  List,
+  ListOrdered,
+  Quote,
+  Code,
+} from "lucide-react";
+import { cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import "highlight.js/styles/github.css";
 
@@ -121,7 +121,6 @@ interface TiptapInstructionsEditorProps {
 }
 
 const ICON_SIZE = 18;
-const ICON_STROKE = 1.5;
 interface ToolbarLabels {
   bold: string;
   italic: string;
@@ -157,7 +156,7 @@ function ToolbarButton({
       }}
       disabled={disabled}
       title={title}
-      className={`inline-flex items-center justify-center rounded p-1.5 text-popover-foreground/70 transition-colors hover:bg-accent hover:text-popover-foreground disabled:opacity-40 disabled:pointer-events-none ${active ? "bg-accent text-popover-foreground" : ""}`}
+      className={`inline-flex items-center justify-center rounded p-1.5 text-popover-foreground/70 transition-colors hover:bg-state-hover hover:text-popover-foreground disabled:opacity-40 disabled:pointer-events-none ${active ? "bg-accent text-popover-foreground" : ""}`}
     >
       {children}
     </button>
@@ -310,7 +309,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.bold}
           >
-            <IconBold size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Bold size={ICON_SIZE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -320,7 +319,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.italic}
           >
-            <IconItalic size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Italic size={ICON_SIZE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -330,7 +329,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.strikethrough}
           >
-            <IconStrikethrough size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Strikethrough size={ICON_SIZE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -340,7 +339,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.inlineCode}
           >
-            <IconCode size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Code size={ICON_SIZE} />
           </ToolbarButton>
 
           <ToolbarDivider />
@@ -353,7 +352,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.heading1}
           >
-            <IconH1 size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Heading1 size={ICON_SIZE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -363,7 +362,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.heading2}
           >
-            <IconH2 size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Heading2 size={ICON_SIZE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -373,7 +372,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.heading3}
           >
-            <IconH3 size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Heading3 size={ICON_SIZE} />
           </ToolbarButton>
 
           <ToolbarDivider />
@@ -386,7 +385,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.bulletList}
           >
-            <IconList size={ICON_SIZE} stroke={ICON_STROKE} />
+            <List size={ICON_SIZE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -396,7 +395,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.orderedList}
           >
-            <IconListNumbers size={ICON_SIZE} stroke={ICON_STROKE} />
+            <ListOrdered size={ICON_SIZE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -406,7 +405,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.blockquote}
           >
-            <IconBlockquote size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Quote size={ICON_SIZE} />
           </ToolbarButton>
         </BubbleMenu>
       )}

@@ -1,12 +1,11 @@
 import type { FormEvent } from "react";
 
-import { IconChevronRight, IconPlus, IconTrash } from "@tabler/icons-react";
+import { ChevronRight, Plus, Trash } from "lucide-react";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorResponse,
   UpdateCustomConnectorBody,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   Button,
   CopyButton,
@@ -24,14 +23,15 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui";
-import { Input } from "@vm0/ui/components/ui/input";
+  Textarea,
+} from "@okouai/ui";
+import { Input } from "@okouai/ui/components/ui/input";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
 import { resolveApiBaseForTarget } from "../../../../signals/api-base.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { customConnectorMcpEnabled$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   addCustomConnectorAuthMethod$,
@@ -44,6 +44,7 @@ import {
   removeCustomConnectorAuthMethod$,
   resetCustomConnectorCreateForm$,
   setCustomConnectorCreateField$,
+  setCustomConnectorCreateKind$,
   type CustomConnectorAuthMethodType,
   type CustomConnectorCreateForm,
   updateCustomConnector$,
@@ -51,7 +52,10 @@ import {
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorUpdateConfirm } from "./custom-connector-update-confirm.tsx";
 
-type CreateField = Exclude<keyof CustomConnectorCreateForm, "authMethodTypes">;
+type CreateField = Exclude<
+  keyof CustomConnectorCreateForm,
+  "authMethodTypes" | "kind"
+>;
 
 interface CreateFormFieldProps {
   readonly form: CustomConnectorCreateForm;
@@ -102,10 +106,57 @@ const OAUTH_AUTHORIZATION_PARAM_FIELDS = [
   readonly placeholder: string;
 }[];
 
-function BaseFields({ form, setField }: CreateFormFieldProps) {
+function BaseFields({
+  form,
+  setField,
+  editing,
+  mcpEnabled,
+  setKind,
+}: CreateFormFieldProps & {
+  readonly editing: boolean;
+  readonly mcpEnabled: boolean;
+  readonly setKind: (kind: CustomConnectorResponse["kind"]) => void;
+}) {
   const { t } = useTranslation();
   return (
     <>
+      {!editing && mcpEnabled && (
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.connectors.custom.create.connectorType;
+            })}
+          </label>
+          <Select
+            value={form.kind}
+            onValueChange={(value) => {
+              if (value === "http" || value === "mcp") {
+                setKind(value);
+              }
+            }}
+          >
+            <SelectTrigger
+              aria-label={t(($) => {
+                return $.connectors.custom.create.connectorType;
+              })}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="http">
+                {t(($) => {
+                  return $.connectors.custom.create.httpType;
+                })}
+              </SelectItem>
+              <SelectItem value="mcp">
+                {t(($) => {
+                  return $.connectors.custom.mcpStreamableHttp;
+                })}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="flex flex-col gap-2">
         <label
           htmlFor="cc-display-name"
@@ -124,31 +175,59 @@ function BaseFields({ form, setField }: CreateFormFieldProps) {
           placeholder="Acme API"
         />
       </div>
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="cc-prefixes"
-          className="text-sm font-medium text-foreground"
-        >
-          {t(($) => {
-            return $.connectors.custom.create.prefixes;
-          })}
-          <span className="text-muted-foreground font-normal ml-1">
+      {form.kind === "http" ? (
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="cc-prefixes"
+            className="text-sm font-medium text-foreground"
+          >
             {t(($) => {
-              return $.connectors.custom.create.prefixesHint;
+              return $.connectors.custom.create.prefixes;
             })}
-          </span>
-        </label>
-        <textarea
-          id="cc-prefixes"
-          value={form.prefixesRaw}
-          onChange={(event) => {
-            setField("prefixesRaw", event.target.value);
-          }}
-          placeholder="https://api.acme.com/v1/"
-          rows={3}
-          className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
-        />
-      </div>
+            <span className="text-muted-foreground font-normal ml-1">
+              {t(($) => {
+                return $.connectors.custom.create.prefixesHint;
+              })}
+            </span>
+          </label>
+          <Textarea
+            id="cc-prefixes"
+            value={form.prefixesRaw}
+            onChange={(event) => {
+              setField("prefixesRaw", event.target.value);
+            }}
+            placeholder="https://api.acme.com/v1/"
+            rows={3}
+            className="min-h-[72px] resize-y font-mono"
+          />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="cc-mcp-endpoint"
+            className="text-sm font-medium text-foreground"
+          >
+            {t(($) => {
+              return $.connectors.custom.create.mcpEndpoint;
+            })}
+            <span className="text-muted-foreground font-normal ml-1">
+              {t(($) => {
+                return $.connectors.custom.create.mcpEndpointHint;
+              })}
+            </span>
+          </label>
+          <Input
+            id="cc-mcp-endpoint"
+            value={form.mcpEndpoint}
+            onChange={(event) => {
+              setField("mcpEndpoint", event.target.value);
+            }}
+            placeholder={t(($) => {
+              return $.connectors.custom.create.mcpEndpointPlaceholder;
+            })}
+          />
+        </div>
+      )}
     </>
   );
 }
@@ -190,7 +269,7 @@ function ApiAuthenticationFields({
             })}
             onClick={onRemove}
           >
-            <IconTrash size={16} />
+            <Trash size={16} />
           </Button>
         )}
       </div>
@@ -355,7 +434,7 @@ function OAuth2RedirectUrlField() {
           aria-label={t(($) => {
             return $.connectors.custom.create.redirectCopy;
           })}
-          className="absolute top-1/2 right-1 -translate-y-1/2 p-1.5 hover:bg-accent"
+          className="absolute top-1/2 right-1 -translate-y-1/2 p-1.5 hover:bg-state-hover"
         />
       </div>
     </div>
@@ -367,9 +446,9 @@ function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
   return (
     <details className="group rounded-lg border border-border">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium text-foreground">
-        <IconChevronRight
+        <ChevronRight
           size={16}
-          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+          className="shrink-0 transition-transform group-open:rotate-90"
         />
         <span>
           {t(($) => {
@@ -537,7 +616,7 @@ function OAuth2AuthenticationFields({
           })}
           onClick={onRemove}
         >
-          <IconTrash size={16} />
+          <Trash size={16} />
         </Button>
       </div>
       <OAuth2EndpointFields form={form} setField={setField} />
@@ -556,7 +635,7 @@ function OAuth2AuthenticationFields({
             })}
           </span>
         </label>
-        <textarea
+        <Textarea
           id="cc-oauth-scopes"
           value={form.oauthScopesRaw}
           onChange={(event) => {
@@ -564,7 +643,7 @@ function OAuth2AuthenticationFields({
           }}
           placeholder={"read\nwrite"}
           rows={3}
-          className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+          className="min-h-[72px] resize-y font-mono"
         />
       </div>
       <div className="flex flex-col gap-2">
@@ -613,17 +692,13 @@ function OAuth2AuthenticationFields({
   );
 }
 
-function LegacyApiFields(props: CreateFormFieldProps) {
-  return <ApiAuthenticationFields {...props} removable={false} />;
-}
-
 function connectorHasSimpleApiDefinition(
   connector: CustomConnectorResponse,
 ): boolean {
   const field = connector.fields[0];
   const injection = connector.headerInjections[0];
   return (
-    (connector.authMode ?? "manual") === "manual" &&
+    connector.authMode === "manual" &&
     connector.fields.length === 1 &&
     field?.key === "secret" &&
     field.kind === "secret" &&
@@ -646,7 +721,7 @@ function manualDefinitionFromForm(
 ): CustomConnectorDefinitionParts {
   const preserveAdvancedDefinition =
     connector !== undefined &&
-    (connector.authMode ?? "manual") === "manual" &&
+    connector.authMode === "manual" &&
     !connectorHasSimpleApiDefinition(connector);
   if (preserveAdvancedDefinition) {
     return {
@@ -743,10 +818,16 @@ function oauthConfigFromForm(
   };
 }
 
-function canonicalDefinitionFromForm(
+interface CustomConnectorSharedDefinition extends CustomConnectorDefinitionParts {
+  readonly displayName: string;
+  readonly authMode: "manual" | "oauth";
+  readonly oauthConfig?: NonNullable<UpdateCustomConnectorBody["oauthConfig"]>;
+}
+
+function sharedDefinitionFromForm(
   form: CustomConnectorCreateForm,
   connector?: CustomConnectorResponse,
-): UpdateCustomConnectorBody {
+): CustomConnectorSharedDefinition {
   const authMode = form.authMethodTypes.includes("oauth2")
     ? ("oauth" as const)
     : ("manual" as const);
@@ -756,7 +837,6 @@ function canonicalDefinitionFromForm(
       : oauthDefinitionFromConnector(connector);
   return {
     displayName: form.displayName.trim(),
-    prefixTemplates: parsePrefixLines(form.prefixesRaw),
     ...definition,
     authMode,
     ...(authMode === "oauth"
@@ -767,26 +847,103 @@ function canonicalDefinitionFromForm(
 
 function buildCreateBody(
   form: CustomConnectorCreateForm,
-  oauth2Enabled: boolean,
 ): CreateCustomConnectorBody {
-  const prefixTemplates = parsePrefixLines(form.prefixesRaw);
-  if (!oauth2Enabled) {
+  const shared = sharedDefinitionFromForm(form);
+  if (form.kind === "mcp") {
     return {
-      displayName: form.displayName.trim(),
-      prefixes: prefixTemplates,
-      headerName: form.headerName.trim(),
-      headerTemplate: form.headerTemplate,
+      ...shared,
+      kind: "mcp",
+      endpoint: form.mcpEndpoint.trim(),
+      transport: "streamable-http",
+      storageVersion: 1,
     };
   }
-  const definition = canonicalDefinitionFromForm(form);
-  return definition;
+  return {
+    ...shared,
+    prefixTemplates: parsePrefixLines(form.prefixesRaw),
+    storageVersion: 1,
+  };
+}
+
+function credentialFieldContract(
+  fields: UpdateCustomConnectorBody["fields"],
+): readonly {
+  readonly key: string;
+  readonly kind: "secret" | "variable";
+  readonly required: boolean;
+}[] {
+  return fields
+    .map((field) => {
+      return {
+        key: field.key,
+        kind: field.kind,
+        required: field.required,
+      };
+    })
+    .sort((left, right) => {
+      return (
+        left.key.localeCompare(right.key) || left.kind.localeCompare(right.kind)
+      );
+    });
+}
+
+function updateChangesCredentialContract(
+  connector: CustomConnectorResponse,
+  body: UpdateCustomConnectorBody,
+): boolean {
+  const currentAuthMode = connector.authMode;
+  const nextAuthMode = body.authMode ?? "manual";
+  if (
+    currentAuthMode !== nextAuthMode ||
+    JSON.stringify(credentialFieldContract(connector.fields)) !==
+      JSON.stringify(credentialFieldContract(body.fields))
+  ) {
+    return true;
+  }
+  if (nextAuthMode !== "oauth") {
+    return false;
+  }
+  const current = connector.oauthConfig;
+  const next = body.oauthConfig;
+  return (
+    !current ||
+    !next ||
+    next.clientSecret !== undefined ||
+    current.providerAdapter !== next.providerAdapter ||
+    current.clientId !== next.clientId ||
+    current.authorizationUrl !== next.authorizationUrl ||
+    current.tokenUrl !== next.tokenUrl ||
+    current.tokenEndpointAuthMethod !== next.tokenEndpointAuthMethod ||
+    current.pkceMethod !== next.pkceMethod ||
+    JSON.stringify(current.scopes) !== JSON.stringify(next.scopes) ||
+    JSON.stringify(current.authorizationParams) !==
+      JSON.stringify(next.authorizationParams)
+  );
 }
 
 function buildUpdateBody(
   form: CustomConnectorCreateForm,
   connector: CustomConnectorResponse,
 ): UpdateCustomConnectorBody {
-  return canonicalDefinitionFromForm(form, connector);
+  const shared = sharedDefinitionFromForm(form, connector);
+  const body: UpdateCustomConnectorBody =
+    connector.kind === "mcp"
+      ? {
+          ...shared,
+          kind: "mcp",
+          endpoint: form.mcpEndpoint.trim(),
+          transport: "streamable-http",
+        }
+      : {
+          ...shared,
+          prefixTemplates: parsePrefixLines(form.prefixesRaw),
+        };
+  return {
+    ...body,
+    storageVersion: updateChangesCredentialContract(connector, body)
+      ? connector.storageVersion + 1
+      : connector.storageVersion,
+  };
 }
 
 function updateDisconnectsOAuthConnections(
@@ -827,27 +984,25 @@ function oauthCredentialsCanSubmit(
 
 function formCanSubmit(
   form: CustomConnectorCreateForm,
-  oauth2Enabled: boolean,
-  connector?: CustomConnectorResponse,
+  connector: CustomConnectorResponse | undefined,
+  mcpEnabled: boolean,
 ): boolean {
+  const connectorKind = connector?.kind ?? form.kind;
   if (
     form.displayName.trim().length === 0 ||
-    parsePrefixLines(form.prefixesRaw).length === 0
+    (connectorKind === "http"
+      ? parsePrefixLines(form.prefixesRaw).length === 0
+      : form.mcpEndpoint.trim().length === 0) ||
+    (connectorKind === "mcp" && !mcpEnabled)
   ) {
     return false;
-  }
-  if (!oauth2Enabled && !connector) {
-    return (
-      form.headerName.trim().length > 0 &&
-      form.headerTemplate.includes("{{secret}}")
-    );
   }
   if (form.authMethodTypes.length === 0) {
     return false;
   }
   const advancedApiDefinition =
     connector !== undefined &&
-    (connector.authMode ?? "manual") === "manual" &&
+    connector.authMode === "manual" &&
     !connectorHasSimpleApiDefinition(connector);
   if (
     form.authMethodTypes.includes("api") &&
@@ -870,7 +1025,6 @@ function formCanSubmit(
 }
 
 interface AuthenticationFieldsProps extends CreateFormFieldProps {
-  readonly oauth2Enabled: boolean;
   readonly editing: boolean;
   readonly advancedApiDefinition: boolean;
   readonly addAuthMethod: (type: CustomConnectorAuthMethodType) => void;
@@ -880,19 +1034,13 @@ interface AuthenticationFieldsProps extends CreateFormFieldProps {
 function AuthenticationFields({
   form,
   setField,
-  oauth2Enabled,
   editing,
   advancedApiDefinition,
   addAuthMethod,
   removeAuthMethod,
 }: AuthenticationFieldsProps) {
   const { t } = useTranslation();
-  if (!oauth2Enabled && !editing) {
-    return <LegacyApiFields form={form} setField={setField} />;
-  }
-  const availableAuthMethods = (
-    oauth2Enabled ? (["api", "oauth2"] as const) : (["api"] as const)
-  ).filter((type) => {
+  const availableAuthMethods = (["api", "oauth2"] as const).filter((type) => {
     return !form.authMethodTypes.includes(type);
   });
   return (
@@ -926,7 +1074,7 @@ function AuthenticationFields({
             className="self-start"
             disabled={availableAuthMethods.length === 0}
           >
-            <IconPlus size={16} />
+            <Plus size={16} />
             {t(($) => {
               return $.connectors.custom.create.addAuthentication;
             })}
@@ -962,8 +1110,9 @@ function AuthenticationFields({
 function CustomConnectorForm({
   form,
   setField,
-  oauth2Enabled,
+  setKind,
   editing,
+  mcpEnabled,
   advancedApiDefinition,
   addAuthMethod,
   removeAuthMethod,
@@ -972,6 +1121,8 @@ function CustomConnectorForm({
   onSubmit,
   onCancel,
 }: AuthenticationFieldsProps & {
+  readonly setKind: (kind: CustomConnectorResponse["kind"]) => void;
+  readonly mcpEnabled: boolean;
   readonly submitting: boolean;
   readonly canSubmit: boolean;
   readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -980,11 +1131,16 @@ function CustomConnectorForm({
   const { t } = useTranslation();
   return (
     <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-      <BaseFields form={form} setField={setField} />
+      <BaseFields
+        form={form}
+        setField={setField}
+        setKind={setKind}
+        editing={editing}
+        mcpEnabled={mcpEnabled}
+      />
       <AuthenticationFields
         form={form}
         setField={setField}
-        oauth2Enabled={oauth2Enabled}
         editing={editing}
         advancedApiDefinition={advancedApiDefinition}
         addAuthMethod={addAuthMethod}
@@ -1045,10 +1201,9 @@ export function CustomConnectorCreateDialog({
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
-  const featureSwitches = useGet(featureSwitch$);
-  const oauth2Enabled =
-    featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false;
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const setField = useSet(setCustomConnectorCreateField$);
+  const setKind = useSet(setCustomConnectorCreateKind$);
   const addAuthMethod = useSet(addCustomConnectorAuthMethod$);
   const removeAuthMethod = useSet(removeCustomConnectorAuthMethod$);
   const openEditConfirmation = useSet(
@@ -1072,11 +1227,10 @@ export function CustomConnectorCreateDialog({
   const submitting = editing
     ? updateLoadable.state === "loading"
     : createLoadable.state === "loading";
-  const canSubmit =
-    !submitting && formCanSubmit(form, oauth2Enabled, connector);
+  const canSubmit = !submitting && formCanSubmit(form, connector, mcpEnabled);
   const advancedApiDefinition =
     connector !== undefined &&
-    (connector.authMode ?? "manual") === "manual" &&
+    connector.authMode === "manual" &&
     !connectorHasSimpleApiDefinition(connector);
 
   const close = () => {
@@ -1119,7 +1273,7 @@ export function CustomConnectorCreateDialog({
     }
     detach(
       (async () => {
-        await createConnector(buildCreateBody(form, oauth2Enabled), signal);
+        await createConnector(buildCreateBody(form), signal);
         close();
       })(),
       Reason.DomCallback,
@@ -1147,8 +1301,9 @@ export function CustomConnectorCreateDialog({
           <CustomConnectorForm
             form={form}
             setField={setField}
-            oauth2Enabled={oauth2Enabled}
+            setKind={setKind}
             editing={editing}
+            mcpEnabled={mcpEnabled}
             advancedApiDefinition={advancedApiDefinition}
             addAuthMethod={addAuthMethod}
             removeAuthMethod={removeAuthMethod}

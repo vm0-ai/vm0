@@ -4,7 +4,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { StrapiIntegration } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+import type { StrapiIntegration } from "@okouai/api-contracts/contracts/strapi-integrations";
 import type {
   ChatRunFinishedEventConfig,
   ChatRunFinishedRunStatus,
@@ -13,58 +13,58 @@ import type {
   GithubDeploymentState,
   GithubDeploymentStatusCreatedEventConfig,
   GithubIssueCommentCreatedEventConfig,
-  GithubLabelAppliedEventConfig,
-  GithubLabelAppliedSubjectFilter,
+  GithubIssueCommentSubjectFilter,
+  GithubPullRequestAction,
+  GithubPullRequestEventConfig,
   GithubPullRequestReviewState,
   GithubPullRequestReviewSubmittedEventConfig,
   GithubWorkflowJobCompletedEventConfig,
   GithubWorkflowRunCompletedEventConfig,
   GithubWorkflowRunConclusion,
   NotionPageContentUpdatedEventCreateConfig,
+  StripeInvoiceBillingReason,
   WorkflowFileEntry,
   WorkflowFileMetadata,
   ZeroWorkflowDetailResponse,
   ZeroWorkflowSchedule,
-  ZeroWorkflowScheduleType,
+  WorkflowScheduleType,
   ZeroWorkflowAutomationSummary,
   ZeroWorkflowUpdateRequest,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import type { PlatformWorkflowConnectorReadinessEntry } from "../../signals/connector-domain.ts";
 import {
-  IconAlertTriangle,
-  IconBrandGithub,
-  IconBrandNotion,
-  IconCalendarTime,
-  IconCircleCheck,
-  IconChevronDown,
-  IconClock,
-  IconCopy,
-  IconDatabasePlus,
-  IconFilePencil,
-  IconFilePlus,
-  IconFileText,
-  IconHistory,
-  IconInfoCircle,
-  IconLink,
-  IconLoader2,
-  IconMail,
-  IconMessageCircle,
-  IconPlayerPlay,
-  IconPlus,
-  IconPencil,
-  IconRepeat,
-  IconRoute,
-  IconTrash,
-  IconUpload,
-  IconDotsVertical,
-  IconEye,
-  IconExternalLink,
-  IconPlugConnected,
-  IconVideo,
-  IconWebhook,
-  IconX,
-} from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+  AlertTriangle,
+  CalendarClock,
+  CircleCheck,
+  ChevronDown,
+  Clock,
+  Copy,
+  DatabasePlus,
+  FilePen,
+  FilePlus,
+  FileText,
+  History,
+  Info,
+  Link as LinkIcon,
+  Loader2,
+  Mail,
+  MessageCircle,
+  Play,
+  Plus,
+  Pencil,
+  Repeat,
+  Route,
+  Trash,
+  Upload,
+  EllipsisVertical,
+  Eye,
+  ExternalLink,
+  PlugZap,
+  Video,
+  Webhook,
+  X,
+} from "lucide-react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Button,
   Checkbox,
@@ -86,14 +86,19 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Switch,
   Tabs,
   TabsList,
   TabsTrigger,
+  Textarea,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
+  BrandGithub,
+  BrandNotion,
+  BrandStripe,
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 
@@ -106,10 +111,10 @@ import {
   checkWorkflowConnectorReadiness$,
   createNotionPageContentUpdatedScope$,
   createWorkflowChatRunFinishedAutomation$,
-  createWorkflowGithubLabelAppliedAutomation$,
   createWorkflowGithubWebhookAutomation$,
   createWorkflowGithubWorkflowRunCompletedAutomation$,
   createWorkflowGoogleCalendarEventAutomation$,
+  createWorkflowGoogleFormsResponseSubmittedAutomation$,
   createWorkflowGoogleMeetTranscriptGeneratedAutomation$,
   createWorkflowGmailLabelAppliedAutomation$,
   createWorkflowGmailNewMessageAutomation$,
@@ -119,9 +124,10 @@ import {
   createWorkflowNotionPageContentUpdatedAutomation$,
   createWorkflowStrapiEntryPublishedAutomation$,
   createWorkflowWebhookAutomation$,
-  createGithubLabelActor$,
+  createGithubPullRequestAction$,
   createScheduleCronFields$,
   createWorkflowScheduleAutomation$,
+  createWorkflowStripeInvoicePaidAutomation$,
   createdWorkflowWebhookAutomation$,
   currentWorkflowId$,
   copyWorkflow$,
@@ -129,7 +135,7 @@ import {
   deleteWorkflow$,
   deleteWorkflowAutomation$,
   editingScheduleCronFields$,
-  editingGithubLabelActors$,
+  editingGithubPullRequestAction$,
   editingGmailMatchConditions$,
   editingWorkflowAutomationId$,
   patchWorkflowMetadataForm$,
@@ -141,14 +147,14 @@ import {
   resetWorkflowMetadataForm$,
   runWorkflowAutomationNow$,
   selectedWorkflowFilePath$,
-  setCreateGithubLabelActor$,
+  setCreateGithubPullRequestAction$,
   setCreateGmailMatchConditions$,
   setCreateNotionPageContentUpdatedScope$,
   createStrapiIntegrationId$,
   setCreateStrapiIntegrationId$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookAutomation$,
-  setEditingGithubLabelActor$,
+  setEditingGithubPullRequestAction$,
   setEditingGmailMatchConditions$,
   setEditingScheduleCronFields$,
   setEditingWorkflowAutomationId$,
@@ -160,7 +166,6 @@ import {
   setWorkflowCopyForm$,
   setWorkflowAutomationCreateDialog$,
   setWorkflowAutomationEnabled$,
-  updateWorkflowGithubLabelAppliedAutomation$,
   updateWorkflowGithubWebhookAutomation$,
   updateWorkflowGithubWorkflowRunCompletedAutomation$,
   updateWorkflowGmailNewMessageAutomation$,
@@ -173,6 +178,7 @@ import {
   setWorkflowAutomationPickerCategory$,
   setWorkflowAutomationPickerOpen$,
   setWorkflowWebhookUpgradeDialogOpen$,
+  workflowWebhookUpgradeDialogSource$,
   workflowCopyForm$,
   workflowDetailActiveTab$,
   workflowAutomationCreateDialog$,
@@ -204,9 +210,8 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
-import { strapiIntegrations$ } from "../../signals/zero-page/zero-strapi.ts";
+import { strapiIntegrations$ } from "../../signals/zero-page/strapi.ts";
 import {
-  connectGithubInstallation$,
   githubIntegrationData$,
   type GithubIntegrationData,
 } from "../../signals/zero-page/zero-github.ts";
@@ -228,12 +233,12 @@ import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
 import { InlineSettingsRow } from "../zero-page/components/zero-inline-settings-row.tsx";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-} from "@vm0/ui/components/ui/alert";
+} from "@okouai/ui/components/ui/alert";
 import {
   agentLabel,
   chatRunFinishedAutomationSummary,
@@ -251,11 +256,29 @@ import { emptyAutomationsImg } from "../zero-page/platform-assets.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
-const AUTOMATION_FIELD_CLASS =
-  "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
-const WORKFLOW_EDIT_TEXTAREA_CLASS =
-  "min-h-24 w-full resize-y rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50";
+const AUTOMATION_FIELD_CLASS = "h-8 px-2 text-xs";
+const WORKFLOW_EDIT_TEXTAREA_CLASS = "min-h-24 resize-y";
 const AUTOMATION_TIMEZONE = "UTC";
+
+const STRIPE_INVOICE_BILLING_REASONS = [
+  "automatic_pending_invoice_item_invoice",
+  "manual",
+  "quote_accept",
+  "subscription",
+  "subscription_create",
+  "subscription_cycle",
+  "subscription_threshold",
+  "subscription_update",
+  "upcoming",
+] as const satisfies readonly StripeInvoiceBillingReason[];
+
+type WorkflowStripeInvoicePaidAutomation = Extract<
+  ZeroWorkflowAutomationSummary,
+  { readonly kind: "event"; readonly eventType: "stripe-invoice-paid" }
+>;
+type StripeDeliveryStatus = NonNullable<
+  WorkflowStripeInvoicePaidAutomation["health"]["lastDeliveryStatus"]
+>;
 
 function automationActionCopy() {
   return {
@@ -428,9 +451,9 @@ type GithubWorkflowAutomationSummary = Extract<
   {
     readonly kind: "event";
     readonly eventType:
-      | "github-label-applied"
       | "github-deployment-status-created"
       | "github-issue-comment-created"
+      | "github-pull-request"
       | "github-pull-request-review-submitted"
       | "github-workflow-job-completed"
       | "github-workflow-run-completed";
@@ -442,6 +465,7 @@ type GithubWebhookWorkflowAutomationSummary = Extract<
     readonly eventType:
       | "github-deployment-status-created"
       | "github-issue-comment-created"
+      | "github-pull-request"
       | "github-pull-request-review-submitted"
       | "github-workflow-job-completed";
   }
@@ -561,7 +585,7 @@ const GMAIL_TEXT_OPERATORS: readonly (GmailMatchOperatorOption & {
   },
 ];
 const GITHUB_SUBJECT_OPTIONS: readonly {
-  readonly value: GithubLabelAppliedSubjectFilter;
+  readonly value: GithubIssueCommentSubjectFilter;
   readonly label: string;
 }[] = [
   {
@@ -590,23 +614,87 @@ const GITHUB_SUBJECT_OPTIONS: readonly {
   },
 ];
 
-const GITHUB_ACTOR_OPTIONS: readonly {
-  readonly value: "me" | "anyone";
+const GITHUB_PULL_REQUEST_ACTION_OPTIONS: readonly {
+  readonly value: GithubPullRequestAction;
   readonly label: string;
 }[] = [
   {
-    value: "me",
+    value: "opened",
     get label() {
       return i18n.t(($) => {
-        return $.workflows.automations.github.actorMe;
+        return $.workflows.automations.github.pullRequestActionOpened;
       });
     },
   },
   {
-    value: "anyone",
+    value: "reopened",
     get label() {
       return i18n.t(($) => {
-        return $.workflows.automations.github.actorAnyone;
+        return $.workflows.automations.github.pullRequestActionReopened;
+      });
+    },
+  },
+  {
+    value: "closed",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionClosed;
+      });
+    },
+  },
+  {
+    value: "ready_for_review",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionReadyForReview;
+      });
+    },
+  },
+  {
+    value: "converted_to_draft",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionConvertedToDraft;
+      });
+    },
+  },
+  {
+    value: "synchronize",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionSynchronize;
+      });
+    },
+  },
+  {
+    value: "enqueued",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionEnqueued;
+      });
+    },
+  },
+  {
+    value: "dequeued",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionDequeued;
+      });
+    },
+  },
+  {
+    value: "labeled",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionLabeled;
+      });
+    },
+  },
+  {
+    value: "unlabeled",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionUnlabeled;
       });
     },
   },
@@ -886,9 +974,9 @@ function isGithubWorkflowAutomation(
 ): automation is GithubWorkflowAutomationSummary {
   return (
     automation.kind === "event" &&
-    (automation.eventType === "github-label-applied" ||
-      automation.eventType === "github-deployment-status-created" ||
+    (automation.eventType === "github-deployment-status-created" ||
       automation.eventType === "github-issue-comment-created" ||
+      automation.eventType === "github-pull-request" ||
       automation.eventType === "github-pull-request-review-submitted" ||
       automation.eventType === "github-workflow-job-completed" ||
       automation.eventType === "github-workflow-run-completed")
@@ -902,6 +990,7 @@ function isGithubWebhookWorkflowAutomation(
     automation.kind === "event" &&
     (automation.eventType === "github-deployment-status-created" ||
       automation.eventType === "github-issue-comment-created" ||
+      automation.eventType === "github-pull-request" ||
       automation.eventType === "github-pull-request-review-submitted" ||
       automation.eventType === "github-workflow-job-completed")
   );
@@ -994,7 +1083,7 @@ function WorkflowBreadcrumb({
     <DetailPageBreadcrumbBar>
       <BreadcrumbLink
         pathname={ROUTES.workflows}
-        icon={<IconRoute size={14} stroke={1.5} className="shrink-0" />}
+        icon={<Route size={14} className="shrink-0" />}
       >
         {i18n.t(($) => {
           return $.workflows.common.workflows;
@@ -1023,7 +1112,7 @@ function BreadcrumbLink({
     <Link
       pathname={pathname}
       options={options}
-      className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
+      className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-state-hover hover:text-foreground"
     >
       {icon}
       <span className="truncate">{children}</span>
@@ -1041,7 +1130,7 @@ function WorkflowHeaderIcon({
   }
   return (
     <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-muted-foreground sm:h-16 sm:w-16">
-      <IconRoute size={28} stroke={1.7} />
+      <Route size={28} />
     </span>
   );
 }
@@ -1111,9 +1200,6 @@ function DetailHeader({
   );
 }
 
-const WORKFLOW_TAB_TRIGGER_CLASS =
-  "gap-1.5 px-3 text-sm data-[state=active]:bg-background";
-
 function WorkflowTabNav({
   activeTab,
   onTabChange,
@@ -1158,24 +1244,21 @@ function WorkflowTabNav({
           </SelectContent>
         </Select>
       </div>
-      <TabsList className="zero-tabs hidden h-9 gap-1 px-1 py-1 sm:inline-flex">
-        <TabsTrigger value="automations" className={WORKFLOW_TAB_TRIGGER_CLASS}>
-          <IconClock size={14} stroke={1.5} />
+      <TabsList className="hidden sm:inline-flex">
+        <TabsTrigger value="automations">
+          <Clock size={14} />
           {i18n.t(($) => {
             return $.workflows.list.automations;
           })}
         </TabsTrigger>
-        <TabsTrigger
-          value="instructions"
-          className={WORKFLOW_TAB_TRIGGER_CLASS}
-        >
-          <IconFileText size={14} stroke={1.5} />
+        <TabsTrigger value="instructions">
+          <FileText size={14} />
           {i18n.t(($) => {
             return $.workflows.common.instructions;
           })}
         </TabsTrigger>
-        <TabsTrigger value="info" className={WORKFLOW_TAB_TRIGGER_CLASS}>
-          <IconInfoCircle size={14} stroke={1.5} />
+        <TabsTrigger value="info">
+          <Info size={14} />
           {i18n.t(($) => {
             return $.workflows.common.settings;
           })}
@@ -1196,12 +1279,12 @@ function AutomationCreateAction() {
     capabilities?.workflowWebhookAutomationAllowed ?? true;
   const notionWorkflowAutomationsEnabled =
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
-  const githubWebhookAutomationsEnabled =
-    features[FeatureSwitchKey.GithubWebhookAutomations] ?? false;
+  const googleFormsWorkflowAutomationsEnabled =
+    features[FeatureSwitchKey.GoogleFormsWorkflowAutomations] ?? false;
+  const stripeInvoicePaidAutomationsEnabled =
+    features[FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations] ?? false;
   const strapiIntegrationEnabled =
     features[FeatureSwitchKey.StrapiIntegration] ?? false;
-  const chatRunFinishedAutomationsEnabled =
-    features[FeatureSwitchKey.ZeroChatMessaging] ?? false;
 
   return (
     <AutomationCreateMenu
@@ -1212,12 +1295,13 @@ function AutomationCreateAction() {
         }
         setCreateDialog(kind);
       }}
-      chatRunFinishedAutomationsEnabled={chatRunFinishedAutomationsEnabled}
-      githubLabelAutomationsEnabled
-      githubWebhookAutomationsEnabled={githubWebhookAutomationsEnabled}
       googleCalendarAutomationsEnabled
+      googleFormsWorkflowAutomationsEnabled={
+        googleFormsWorkflowAutomationsEnabled
+      }
       googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
+      stripeInvoicePaidAutomationsEnabled={stripeInvoicePaidAutomationsEnabled}
       strapiIntegrationEnabled={strapiIntegrationEnabled}
       webhookTierEligible={webhookTierEligible}
     />
@@ -1256,9 +1340,9 @@ function WorkflowChatButton({
       }}
     >
       {opening ? (
-        <IconLoader2 size={14} className="shrink-0 animate-spin" />
+        <Loader2 size={14} className="shrink-0 animate-spin" />
       ) : (
-        <IconMessageCircle size={14} stroke={2} className="shrink-0" />
+        <MessageCircle size={14} className="shrink-0" />
       )}
       <span className="truncate">{chatLabel}</span>
     </Button>
@@ -1341,7 +1425,7 @@ function WorkflowInfoTab({
                 setActionDialog("copy");
               }}
             >
-              <IconCopy size={14} stroke={1.5} />
+              <Copy size={14} />
               {i18n.t(($) => {
                 return $.workflows.common.copyWorkflow;
               })}
@@ -1375,7 +1459,7 @@ function WorkflowInfoTab({
                     setActionDialog("delete");
                   }}
                 >
-                  <IconTrash size={14} stroke={1.5} />
+                  <Trash size={14} />
                   {i18n.t(($) => {
                     return $.workflows.common.deleteWorkflow;
                   })}
@@ -1654,9 +1738,9 @@ function WorkflowConnectorReadiness({
               }}
             >
               {checking ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <IconPlugConnected size={14} stroke={1.5} />
+                <PlugZap size={14} />
               )}
               {checkLabel}
             </Button>
@@ -1673,11 +1757,7 @@ function WorkflowConnectorReadiness({
           role="alert"
           className="flex items-start gap-2 border-t border-border/50 px-4 py-3 text-sm text-destructive sm:px-5"
         >
-          <IconAlertTriangle
-            size={16}
-            stroke={1.5}
-            className="mt-0.5 shrink-0"
-          />
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
           <p>{errorMessage}</p>
         </div>
       ) : null}
@@ -1702,11 +1782,7 @@ function WorkflowConnectorReadiness({
             className="flex items-center gap-2 border-t border-border/50 px-4 py-4 text-sm text-muted-foreground sm:px-5"
             aria-live="polite"
           >
-            <IconCircleCheck
-              size={16}
-              stroke={1.5}
-              className="shrink-0 text-emerald-500"
-            />
+            <CircleCheck size={16} className="shrink-0 text-emerald-500" />
             {copy.empty}
           </div>
         )
@@ -1770,7 +1846,7 @@ function WorkflowConnectorReadinessRow({
               aria-label={`${action.label} ${entry.label}`}
             >
               {action.label}
-              <IconExternalLink size={13} stroke={1.5} />
+              <ExternalLink size={13} />
             </a>
           </Button>
         ) : null}
@@ -1884,7 +1960,7 @@ function WorkflowMetadataFields({
         description={copy.descriptionHelp}
         wideControls
       >
-        <textarea
+        <Textarea
           id="workflow-edit-description"
           name="description"
           aria-label={copy.description}
@@ -2020,7 +2096,7 @@ function ShadowWarning({
 
   return (
     <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-      <IconAlertTriangle size={16} stroke={1.5} className="mt-0.5 shrink-0" />
+      <AlertTriangle size={16} className="mt-0.5 shrink-0" />
       <p className="min-w-0">
         <span className="font-medium">/{detail.name}</span>{" "}
         {i18n.t(($) => {
@@ -2073,18 +2149,12 @@ function WorkflowPublicToggle({
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-end gap-3">
         <span className="text-xs text-muted-foreground">{statusLabel}</span>
-        <button
-          type="button"
-          role="switch"
+        <Switch
+          size="compact"
           aria-label={copy.publishAria}
-          aria-checked={isPublic}
+          checked={isPublic}
           disabled={busy || !toggleAction}
-          className={cn(
-            "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-            isPublic ? "bg-primary/70" : "bg-muted",
-            busy || !toggleAction ? "cursor-not-allowed opacity-60" : "",
-          )}
-          onClick={() => {
+          onCheckedChange={() => {
             if (!toggleAction) {
               return;
             }
@@ -2094,14 +2164,7 @@ function WorkflowPublicToggle({
             }
             submitVisibilityAction(toggleAction);
           }}
-        >
-          <span
-            className={cn(
-              "absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform",
-              isPublic ? "translate-x-4" : "translate-x-0",
-            )}
-          />
-        </button>
+        />
       </div>
       {publishBlocked ? (
         <p className="text-xs leading-5 text-muted-foreground">
@@ -2115,7 +2178,7 @@ function WorkflowPublicToggle({
             <DialogDescription>{copy.confirmDescription}</DialogDescription>
           </DialogHeader>
           <Alert variant="destructive">
-            <IconAlertTriangle size={16} stroke={1.5} />
+            <AlertTriangle size={16} />
             <AlertTitle>{copy.automationWarning}</AlertTitle>
             <AlertDescription>
               {i18n.t(
@@ -2146,7 +2209,7 @@ function WorkflowPublicToggle({
                 submitVisibilityAction("demote");
               }}
             >
-              {busy ? <IconLoader2 size={14} className="animate-spin" /> : null}
+              {busy ? <Loader2 size={14} className="animate-spin" /> : null}
               {copy.makePrivate}
             </Button>
           </DialogFooter>
@@ -2271,7 +2334,7 @@ function WorkflowCopyForm({
           </p>
         ) : (
           <Select
-            value={form.selectedAgentId ?? undefined}
+            value={form.selectedAgentId}
             disabled={!agentsLoaded}
             onValueChange={(value) => {
               onChange({ ...form, selectedAgentId: value });
@@ -2320,7 +2383,7 @@ function WorkflowCopyForm({
       </label>
       {form.removeOriginal ? (
         <Alert variant="destructive">
-          <IconAlertTriangle size={16} stroke={1.5} />
+          <AlertTriangle size={16} />
           <AlertTitle>
             {i18n.t(($) => {
               return $.workflows.detail.copy.removalAlert;
@@ -2490,7 +2553,7 @@ function WorkflowCopyDialogFooter({
         })}
       </Button>
       <Button type="button" disabled={disabled} onClick={onSubmit}>
-        {submitting ? <IconLoader2 size={14} className="animate-spin" /> : null}
+        {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
         {removeOriginal
           ? i18n.t(($) => {
               return $.workflows.detail.copy.copyAndRemove;
@@ -2568,9 +2631,7 @@ function WorkflowDeleteDialog({
               );
             }}
           >
-            {deleting ? (
-              <IconLoader2 size={14} className="animate-spin" />
-            ) : null}
+            {deleting ? <Loader2 size={14} className="animate-spin" /> : null}
             {i18n.t(($) => {
               return $.workflows.common.delete;
             })}
@@ -2655,11 +2716,7 @@ function WorkflowFilePicker({
           className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-sm px-0.5 py-0.5 text-sm font-medium text-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="min-w-0 truncate">{selectedLabel}</span>
-          <IconChevronDown
-            size={14}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <ChevronDown size={14} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
@@ -2743,14 +2800,14 @@ function WorkflowFileManagementItems({
       <div className="my-1 h-px bg-border/60" />
       <label
         className={cn(
-          "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
+          "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground",
           saving ? "pointer-events-none opacity-60" : "",
         )}
       >
         {saving ? (
-          <IconLoader2 size={15} className="animate-spin" />
+          <Loader2 size={15} className="animate-spin" />
         ) : (
-          <IconUpload size={15} stroke={1.5} />
+          <Upload size={15} />
         )}
         <span>
           {i18n.t(($) => {
@@ -2785,10 +2842,10 @@ function WorkflowFileManagementItems({
             { path: selectedFilePath },
           )}
           disabled={saving}
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-accent disabled:opacity-60"
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-state-hover disabled:opacity-60"
           onClick={onDeleteSelectedFile}
         >
-          <IconTrash size={15} stroke={1.5} />
+          <Trash size={15} />
           <span>
             {i18n.t(($) => {
               return $.workflows.detail.files.deleteSelected;
@@ -3344,7 +3401,7 @@ function workflowScheduleTitle(
 }
 
 function buildAutomationSchedule(
-  type: ZeroWorkflowScheduleType,
+  type: WorkflowScheduleType,
   fields: {
     readonly cronFields: WorkflowCronFields;
     readonly intervalSeconds: string;
@@ -3486,7 +3543,6 @@ function gmailMatchConditions(
 
 function nextGmailMatchCondition(
   conditions: readonly GmailMatchCondition[],
-  threadIdEnabled: boolean,
 ): GmailMatchCondition | null {
   for (const { operator } of GMAIL_TEXT_OPERATORS) {
     for (const { field } of GMAIL_TEXT_FIELDS) {
@@ -3497,9 +3553,6 @@ function nextGmailMatchCondition(
         return { field, operator, value: "" };
       }
     }
-  }
-  if (!threadIdEnabled) {
-    return null;
   }
   const threadIdUsed = conditions.some((condition) => {
     return condition.field === "threadId";
@@ -3586,49 +3639,22 @@ function googleCalendarIdFromForm(form: FormData): string {
 
 function githubSubjectFilterValue(
   value: FormDataEntryValue | null,
-  fallback: GithubLabelAppliedSubjectFilter,
-): GithubLabelAppliedSubjectFilter {
+  fallback: GithubIssueCommentSubjectFilter,
+): GithubIssueCommentSubjectFilter {
   if (value === "both" || value === "issues" || value === "pull_requests") {
     return value;
   }
   return fallback;
 }
 
-function githubActorFilterValue(
+function githubPullRequestActionValue(
   value: FormDataEntryValue | null,
-  fallback: "me" | "anyone",
-): "me" | "anyone" {
-  if (value === "me" || value === "anyone") {
-    return value;
-  }
-  return fallback;
-}
-
-function buildGithubLabelAppliedEventConfig(
-  form: FormData,
-  baseConfig?: GithubLabelAppliedEventConfig,
-): GithubLabelAppliedEventConfig | null {
-  const labelName = formTextValue(form, "labelName") ?? baseConfig?.labelName;
-  if (!labelName) {
-    return null;
-  }
-  return {
-    provider: "github",
-    event: "label_applied",
-    labelName,
-    filters: {
-      subject: githubSubjectFilterValue(
-        form.get("subject"),
-        baseConfig?.filters.subject ?? "both",
-      ),
-      actor: {
-        type: githubActorFilterValue(
-          form.get("actor"),
-          baseConfig?.filters.actor.type ?? "me",
-        ),
-      },
-    },
-  };
+  fallback: GithubPullRequestAction,
+): GithubPullRequestAction {
+  const option = GITHUB_PULL_REQUEST_ACTION_OPTIONS.find((candidate) => {
+    return candidate.value === value;
+  });
+  return option?.value ?? fallback;
 }
 
 function githubWorkflowRunFilterValues(
@@ -3686,12 +3712,14 @@ function buildGithubWorkflowRunCompletedEventConfig(
 }
 
 type GithubWebhookAutomationEventType =
+  | "github-pull-request"
   | "github-workflow-job-completed"
   | "github-pull-request-review-submitted"
   | "github-deployment-status-created"
   | "github-issue-comment-created";
 
 type GithubWebhookAutomationEventConfig =
+  | GithubPullRequestEventConfig
   | GithubWorkflowJobCompletedEventConfig
   | GithubPullRequestReviewSubmittedEventConfig
   | GithubDeploymentStatusCreatedEventConfig
@@ -3717,6 +3745,28 @@ function buildGithubWebhookEventConfig(
   eventType: GithubWebhookAutomationEventType,
   form: FormData,
 ): GithubWebhookAutomationEventConfig {
+  if (eventType === "github-pull-request") {
+    const action = githubPullRequestActionValue(form.get("action"), "closed");
+    const merged = form.get("merged");
+    return {
+      provider: "github",
+      event: "pull_request",
+      repository: formTextValue(form, "repository") ?? "",
+      action,
+      ...(action === "closed" && (merged === "true" || merged === "false")
+        ? { merged: merged === "true" }
+        : {}),
+      filters: {
+        baseBranches: githubWorkflowRunFilterValues(form, "baseBranches"),
+        authors: githubWorkflowRunFilterValues(form, "authors"),
+        pullRequestNumbers: githubWorkflowRunFilterValues(
+          form,
+          "pullRequestNumbers",
+        ),
+        labels: githubWorkflowRunFilterValues(form, "labels"),
+      },
+    };
+  }
   if (eventType === "github-workflow-job-completed") {
     return {
       provider: "github",
@@ -3892,9 +3942,9 @@ function workflowAutomationTitle(
       return $.workflows.automations.gmail.labelAppliedTitle;
     });
   }
-  if (automation.eventType === "github-label-applied") {
+  if (automation.eventType === "github-pull-request") {
     return i18n.t(($) => {
-      return $.workflows.automations.github.labelAppliedTitle;
+      return $.workflows.automations.github.pullRequestTitle;
     });
   }
   if (automation.eventType === "github-workflow-job-completed") {
@@ -3960,6 +4010,11 @@ function workflowAutomationTitle(
   if (automation.eventType === "notion-page-content-updated") {
     return i18n.t(($) => {
       return $.workflows.automations.notion.contentUpdatedTitle;
+    });
+  }
+  if (automation.eventType === "stripe-invoice-paid") {
+    return i18n.t(($) => {
+      return $.workflows.automations.stripe.invoicePaidTitle;
     });
   }
   if (automation.eventType === "strapi-entry-published") {
@@ -4139,32 +4194,28 @@ function githubWorkflowAutomationSummary(
   >,
 ): string | null {
   switch (automation.eventType) {
-    case "github-label-applied": {
-      const subject =
-        GITHUB_SUBJECT_OPTIONS.find((option) => {
-          return option.value === automation.eventConfig.filters.subject;
-        })?.label ??
-        i18n.t(($) => {
-          return $.workflows.automations.github.issuesAndPullRequests;
-        });
-      const actor = GITHUB_ACTOR_OPTIONS.find((option) => {
-        return option.value === automation.eventConfig.filters.actor.type;
-      })?.label;
-      if (!actor) {
-        throw new Error(
-          `Unknown GitHub actor filter: ${automation.eventConfig.filters.actor.type}`,
-        );
-      }
-      return i18n.t(
-        ($) => {
-          return $.workflows.automations.github.labelSummary;
-        },
-        {
-          label: quote(automation.eventConfig.labelName),
-          subject,
-          actor,
-        },
-      );
+    case "github-pull-request": {
+      const config = automation.eventConfig;
+      const action =
+        GITHUB_PULL_REQUEST_ACTION_OPTIONS.find((option) => {
+          return option.value === config.action;
+        })?.label ?? config.action;
+      return [
+        config.repository,
+        action,
+        ...(config.merged === undefined
+          ? []
+          : [
+              config.merged
+                ? i18n.t(($) => {
+                    return $.workflows.automations.github.pullRequestMergedOnly;
+                  })
+                : i18n.t(($) => {
+                    return $.workflows.automations.github
+                      .pullRequestClosedWithoutMergeOnly;
+                  }),
+            ]),
+      ].join(" · ");
     }
     case "github-workflow-run-completed": {
       return githubWorkflowRunAutomationSummary(automation.eventConfig);
@@ -4187,7 +4238,7 @@ function githubWorkflowAutomationSummary(
   }
 }
 
-function meetOrChatWorkflowAutomationSummary(
+function eventWorkflowAutomationSummary(
   automation: Extract<ZeroWorkflowAutomationSummary, { kind: "event" }>,
 ): string | null {
   if (automation.eventType === "google-meet-transcript-generated") {
@@ -4198,7 +4249,82 @@ function meetOrChatWorkflowAutomationSummary(
   if (automation.eventType === "chat-run-finished") {
     return chatRunFinishedAutomationSummary(automation.eventConfig);
   }
+  if (automation.eventType === "stripe-invoice-paid") {
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.stripe.bindingSummary;
+      },
+      {
+        accountId: automation.eventConfig.stripeAccountId,
+        billingReasons: stripeBillingReasonsSummary(
+          automation.eventConfig.billingReasons,
+        ),
+      },
+    );
+  }
   return null;
+}
+
+function stripeBillingReasonLabel(reason: StripeInvoiceBillingReason): string {
+  switch (reason) {
+    case "automatic_pending_invoice_item_invoice": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.billingReason
+          .automaticPendingInvoiceItemInvoice;
+      });
+    }
+    case "manual": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.billingReason.manual;
+      });
+    }
+    case "quote_accept": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.billingReason.quoteAccept;
+      });
+    }
+    case "subscription": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.billingReason.subscription;
+      });
+    }
+    case "subscription_create": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.billingReason.subscriptionCreate;
+      });
+    }
+    case "subscription_cycle": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.billingReason.subscriptionCycle;
+      });
+    }
+    case "subscription_threshold": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.billingReason
+          .subscriptionThreshold;
+      });
+    }
+    case "subscription_update": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.billingReason.subscriptionUpdate;
+      });
+    }
+    case "upcoming": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.billingReason.upcoming;
+      });
+    }
+  }
+}
+
+function stripeBillingReasonsSummary(
+  reasons: readonly StripeInvoiceBillingReason[] | undefined,
+): string {
+  return reasons && reasons.length > 0
+    ? reasons.map(stripeBillingReasonLabel).join(", ")
+    : i18n.t(($) => {
+        return $.workflows.automations.stripe.anyBillingReason;
+      });
 }
 
 function workflowAutomationSummary(
@@ -4234,9 +4360,9 @@ function workflowAutomationSummary(
       { calendar: quote(automation.eventConfig.calendarId) },
     );
   }
-  const meetOrChatSummary = meetOrChatWorkflowAutomationSummary(automation);
-  if (meetOrChatSummary) {
-    return meetOrChatSummary;
+  const eventSummary = eventWorkflowAutomationSummary(automation);
+  if (eventSummary) {
+    return eventSummary;
   }
   if (automation.eventType === "notion-child-page-created") {
     const title = automation.eventConfig.parentPage.title;
@@ -4318,7 +4444,7 @@ type AutomationCreateDialogKind =
   | "once"
   | "gmail"
   | "gmail-label"
-  | "github-label"
+  | "github-pull-request"
   | "github-workflow-job"
   | "github-pull-request-review"
   | "github-deployment-status"
@@ -4327,10 +4453,12 @@ type AutomationCreateDialogKind =
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
+  | "google-forms"
   | "google-meet-transcript-generated"
   | "notion-child-page"
   | "notion-database-item"
   | "notion-page-content-updated"
+  | "stripe-invoice-paid"
   | "strapi-entry-published"
   | "webhook";
 
@@ -4338,6 +4466,7 @@ type AutomationCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
+  | "forms"
   | "notion"
   | "integrations";
 
@@ -4345,33 +4474,47 @@ type AutomationCreateOption = {
   readonly kind: AutomationCreateDialogKind;
   readonly title: string;
   readonly description: string;
-  readonly icon: typeof IconClock;
+  readonly icon: typeof Clock;
   readonly badge?: string;
 };
 
 type AutomationCreateCategory = {
   readonly key: AutomationCategoryKey;
   readonly label: string;
-  readonly icon: typeof IconClock;
+  readonly icon: typeof Clock;
   readonly options: readonly AutomationCreateOption[];
 };
 
+function buildStripeInvoicePaidAutomationOptions(
+  enabled: boolean,
+): AutomationCreateOption[] {
+  return enabled
+    ? [
+        {
+          kind: "stripe-invoice-paid",
+          title: i18n.t(($) => {
+            return $.workflows.automations.stripe.invoicePaidTitle;
+          }),
+          description: i18n.t(($) => {
+            return $.workflows.automations.stripe.invoicePaidDescription;
+          }),
+          icon: BrandStripe,
+        },
+      ]
+    : [];
+}
+
 function buildIntegrationAutomationOptions({
-  chatRunFinishedAutomationsEnabled,
-  githubLabelAutomationsEnabled,
-  githubWebhookAutomationsEnabled,
+  stripeInvoicePaidAutomationsEnabled,
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
-  readonly chatRunFinishedAutomationsEnabled: boolean;
-  readonly githubLabelAutomationsEnabled: boolean;
-  readonly githubWebhookAutomationsEnabled: boolean;
+  readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
-  const integrationOptions: AutomationCreateOption[] = [];
-  if (chatRunFinishedAutomationsEnabled) {
-    integrationOptions.push({
+  const integrationOptions: AutomationCreateOption[] = [
+    {
       kind: "chat-run-finished",
       title: i18n.t(($) => {
         return $.workflows.automations.chat.runFinishedTitle;
@@ -4379,21 +4522,9 @@ function buildIntegrationAutomationOptions({
       description: i18n.t(($) => {
         return $.workflows.automations.chat.runFinishedDescription;
       }),
-      icon: IconMessageCircle,
-    });
-  }
-  if (githubLabelAutomationsEnabled) {
-    integrationOptions.push({
-      kind: "github-label",
-      title: i18n.t(($) => {
-        return $.workflows.automations.github.labelAppliedTitle;
-      }),
-      description: i18n.t(($) => {
-        return $.workflows.automations.github.labelAppliedDescription;
-      }),
-      icon: IconBrandGithub,
-    });
-  }
+      icon: MessageCircle,
+    },
+  ];
   integrationOptions.push({
     kind: "github-workflow-run",
     title: i18n.t(($) => {
@@ -4402,52 +4533,65 @@ function buildIntegrationAutomationOptions({
     description: i18n.t(($) => {
       return $.workflows.automations.github.workflowRunDescription;
     }),
-    icon: IconBrandGithub,
+    icon: BrandGithub,
   });
-  if (githubWebhookAutomationsEnabled) {
-    integrationOptions.push(
-      {
-        kind: "github-workflow-job",
-        title: i18n.t(($) => {
-          return $.workflows.automations.github.workflowJobTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.github.workflowJobDescription;
-        }),
-        icon: IconBrandGithub,
-      },
-      {
-        kind: "github-pull-request-review",
-        title: i18n.t(($) => {
-          return $.workflows.automations.github.reviewTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.github.reviewDescription;
-        }),
-        icon: IconBrandGithub,
-      },
-      {
-        kind: "github-deployment-status",
-        title: i18n.t(($) => {
-          return $.workflows.automations.github.deploymentStatusTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.github.deploymentStatusDescription;
-        }),
-        icon: IconBrandGithub,
-      },
-      {
-        kind: "github-issue-comment",
-        title: i18n.t(($) => {
-          return $.workflows.automations.github.issueCommentTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.github.issueCommentDescription;
-        }),
-        icon: IconBrandGithub,
-      },
-    );
-  }
+  integrationOptions.push(
+    {
+      kind: "github-pull-request",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestDescription;
+      }),
+      icon: BrandGithub,
+    },
+    {
+      kind: "github-workflow-job",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.workflowJobTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.workflowJobDescription;
+      }),
+      icon: BrandGithub,
+    },
+    {
+      kind: "github-pull-request-review",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.reviewTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.reviewDescription;
+      }),
+      icon: BrandGithub,
+    },
+    {
+      kind: "github-deployment-status",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.deploymentStatusTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.deploymentStatusDescription;
+      }),
+      icon: BrandGithub,
+    },
+    {
+      kind: "github-issue-comment",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.issueCommentTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.issueCommentDescription;
+      }),
+      icon: BrandGithub,
+    },
+  );
+  integrationOptions.push(
+    ...buildStripeInvoicePaidAutomationOptions(
+      stripeInvoicePaidAutomationsEnabled,
+    ),
+  );
   if (strapiIntegrationEnabled) {
     integrationOptions.push({
       kind: "strapi-entry-published",
@@ -4457,7 +4601,7 @@ function buildIntegrationAutomationOptions({
       description: i18n.t(($) => {
         return $.workflows.automations.strapi.entryPublishedDescription;
       }),
-      icon: IconWebhook,
+      icon: Webhook,
     });
   }
   integrationOptions.push({
@@ -4468,7 +4612,7 @@ function buildIntegrationAutomationOptions({
     description: i18n.t(($) => {
       return $.workflows.automations.webhook.createDescription;
     }),
-    icon: IconLink,
+    icon: LinkIcon,
     ...(webhookTierEligible
       ? {}
       : {
@@ -4495,7 +4639,7 @@ function buildNotionAutomationOptions(
       description: i18n.t(($) => {
         return $.workflows.automations.notion.childPageDescription;
       }),
-      icon: IconFilePlus,
+      icon: FilePlus,
     },
     {
       kind: "notion-database-item",
@@ -4505,7 +4649,7 @@ function buildNotionAutomationOptions(
       description: i18n.t(($) => {
         return $.workflows.automations.notion.databaseItemDescription;
       }),
-      icon: IconDatabasePlus,
+      icon: DatabasePlus,
     },
     {
       kind: "notion-page-content-updated",
@@ -4515,7 +4659,27 @@ function buildNotionAutomationOptions(
       description: i18n.t(($) => {
         return $.workflows.automations.notion.contentUpdatedDescription;
       }),
-      icon: IconFilePencil,
+      icon: FilePen,
+    },
+  ];
+}
+
+function buildGoogleFormsAutomationOptions(
+  googleFormsWorkflowAutomationsEnabled: boolean,
+): AutomationCreateOption[] {
+  if (!googleFormsWorkflowAutomationsEnabled) {
+    return [];
+  }
+  return [
+    {
+      kind: "google-forms",
+      title: i18n.t(($) => {
+        return $.workflows.automations.forms.responseSubmittedTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.forms.responseSubmittedDescription;
+      }),
+      icon: FileText,
     },
   ];
 }
@@ -4528,6 +4692,7 @@ const AUTOMATION_CATEGORY_CHIP: Readonly<
   schedule: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   email: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
   calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  forms: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
   notion: "bg-gray-500/10 text-gray-700 dark:text-gray-300",
   integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
 });
@@ -4547,7 +4712,7 @@ function buildCalendarAutomationOptions(
         description: i18n.t(($) => {
           return $.workflows.automations.calendar.createdDescription;
         }),
-        icon: IconCalendarTime,
+        icon: CalendarClock,
       },
       {
         kind: "google-calendar-updated",
@@ -4557,7 +4722,7 @@ function buildCalendarAutomationOptions(
         description: i18n.t(($) => {
           return $.workflows.automations.calendar.updatedDescription;
         }),
-        icon: IconCalendarTime,
+        icon: CalendarClock,
       },
       {
         kind: "google-calendar-cancelled",
@@ -4567,7 +4732,7 @@ function buildCalendarAutomationOptions(
         description: i18n.t(($) => {
           return $.workflows.automations.calendar.cancelledDescription;
         }),
-        icon: IconCalendarTime,
+        icon: CalendarClock,
       },
     );
   }
@@ -4580,7 +4745,7 @@ function buildCalendarAutomationOptions(
       description: i18n.t(($) => {
         return $.workflows.automations.meet.transcriptReadyDescription;
       }),
-      icon: IconVideo,
+      icon: Video,
     });
   }
   return options;
@@ -4596,7 +4761,7 @@ function buildScheduleAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.schedule.frequencyIntervalDescription;
       }),
-      icon: IconRepeat,
+      icon: Repeat,
     },
     {
       kind: "scheduled",
@@ -4606,7 +4771,7 @@ function buildScheduleAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.schedule.frequencyScheduleDescription;
       }),
-      icon: IconClock,
+      icon: Clock,
     },
     {
       kind: "once",
@@ -4616,7 +4781,7 @@ function buildScheduleAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.schedule.frequencyOnceDescription;
       }),
-      icon: IconClock,
+      icon: Clock,
     },
   ];
 }
@@ -4631,7 +4796,7 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.gmail.newMessageDescription;
       }),
-      icon: IconMail,
+      icon: Mail,
     },
     {
       kind: "gmail-label",
@@ -4641,27 +4806,25 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.gmail.addLabelDescription;
       }),
-      icon: IconMail,
+      icon: Mail,
     },
   ];
 }
 
 function buildAutomationCreateCategories({
-  chatRunFinishedAutomationsEnabled,
-  githubLabelAutomationsEnabled,
-  githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
+  googleFormsWorkflowAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
+  stripeInvoicePaidAutomationsEnabled,
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
-  readonly chatRunFinishedAutomationsEnabled: boolean;
-  readonly githubLabelAutomationsEnabled: boolean;
-  readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
+  readonly googleFormsWorkflowAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
+  readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): readonly AutomationCreateCategory[] {
@@ -4669,10 +4832,11 @@ function buildAutomationCreateCategories({
     googleCalendarAutomationsEnabled,
     googleMeetAutomationsEnabled,
   );
+  const googleFormsOptions = buildGoogleFormsAutomationOptions(
+    googleFormsWorkflowAutomationsEnabled,
+  );
   const integrationOptions = buildIntegrationAutomationOptions({
-    chatRunFinishedAutomationsEnabled,
-    githubLabelAutomationsEnabled,
-    githubWebhookAutomationsEnabled,
+    stripeInvoicePaidAutomationsEnabled,
     strapiIntegrationEnabled,
     webhookTierEligible,
   });
@@ -4686,7 +4850,7 @@ function buildAutomationCreateCategories({
       label: i18n.t(($) => {
         return $.workflows.automations.picker.schedule;
       }),
-      icon: IconClock,
+      icon: Clock,
       options: buildScheduleAutomationOptions(),
     },
     {
@@ -4694,7 +4858,7 @@ function buildAutomationCreateCategories({
       label: i18n.t(($) => {
         return $.workflows.automations.picker.email;
       }),
-      icon: IconMail,
+      icon: Mail,
       options: buildEmailAutomationOptions(),
     },
     {
@@ -4702,15 +4866,23 @@ function buildAutomationCreateCategories({
       label: i18n.t(($) => {
         return $.workflows.automations.picker.calendar;
       }),
-      icon: IconCalendarTime,
+      icon: CalendarClock,
       options: calendarOptions,
+    },
+    {
+      key: "forms",
+      label: i18n.t(($) => {
+        return $.workflows.automations.picker.forms;
+      }),
+      icon: FileText,
+      options: googleFormsOptions,
     },
     {
       key: "notion",
       label: i18n.t(($) => {
         return $.workflows.automations.picker.notion;
       }),
-      icon: IconBrandNotion,
+      icon: BrandNotion,
       options: notionOptions,
     },
     {
@@ -4718,7 +4890,7 @@ function buildAutomationCreateCategories({
       label: i18n.t(($) => {
         return $.workflows.automations.picker.integrations;
       }),
-      icon: IconLink,
+      icon: LinkIcon,
       options: integrationOptions,
     },
   ];
@@ -4748,11 +4920,11 @@ function AutomationCreateCategoryButton({
       className={cn(
         "flex h-8 w-full shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200",
         active
-          ? "bg-gray-200 font-medium text-gray-900"
-          : "text-sidebar-foreground hover:bg-gray-50",
+          ? "bg-state-selected font-medium text-foreground"
+          : "text-sidebar-foreground hover:bg-state-hover",
       )}
     >
-      <Icon size={16} stroke={1.5} className="shrink-0" />
+      <Icon size={16} className="shrink-0" />
       <span className="truncate">{category.label}</span>
     </button>
   );
@@ -4772,7 +4944,7 @@ function AutomationCreateOptionCard({
     <button
       type="button"
       onClick={onSelect}
-      className="flex min-h-[8rem] flex-col items-start gap-3.5 rounded-2xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-5 text-left transition-colors hover:border-[hsl(var(--gray-500))] hover:bg-gray-50"
+      className="flex min-h-[8rem] flex-col items-start gap-3.5 rounded-2xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-5 text-left transition-colors hover:border-[hsl(var(--gray-500))] hover:bg-card-hover"
     >
       <span
         className={cn(
@@ -4780,7 +4952,7 @@ function AutomationCreateOptionCard({
           accentChip,
         )}
       >
-        <Icon size={20} stroke={1.5} />
+        <Icon size={20} />
       </span>
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-sm font-semibold">{option.title}</span>
@@ -4799,22 +4971,20 @@ function AutomationCreateOptionCard({
 
 function AutomationCreateMenu({
   onSelect,
-  chatRunFinishedAutomationsEnabled,
-  githubLabelAutomationsEnabled,
-  githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
+  googleFormsWorkflowAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
+  stripeInvoicePaidAutomationsEnabled,
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
-  readonly chatRunFinishedAutomationsEnabled: boolean;
-  readonly githubLabelAutomationsEnabled: boolean;
-  readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
+  readonly googleFormsWorkflowAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
+  readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }) {
@@ -4823,12 +4993,11 @@ function AutomationCreateMenu({
   const activeKey = useGet(workflowAutomationPickerCategory$);
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
-    chatRunFinishedAutomationsEnabled,
-    githubLabelAutomationsEnabled,
-    githubWebhookAutomationsEnabled,
     googleCalendarAutomationsEnabled,
+    googleFormsWorkflowAutomationsEnabled,
     googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,
+    stripeInvoicePaidAutomationsEnabled,
     strapiIntegrationEnabled,
     webhookTierEligible,
   });
@@ -4847,7 +5016,7 @@ function AutomationCreateMenu({
           type="button"
           className="zero-btn-morandi inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium"
         >
-          <IconPlus size={14} stroke={1.5} />
+          <Plus size={14} />
           <span>
             {i18n.t(($) => {
               return $.workflows.automations.common.addAutomation;
@@ -4943,6 +5112,138 @@ function GoogleCalendarAutomationDialogs({
   );
 }
 
+function CreateGoogleFormsResponseSubmittedAutomationDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createAutomation] = useLoadableSet(
+    createWorkflowGoogleFormsResponseSubmittedAutomation$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.workflows.automations.forms.addTitle;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {i18n.t(($) => {
+              return $.workflows.automations.forms.addDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.forms.addAria;
+          })}
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const formUrl = formTextValue(
+              new FormData(event.currentTarget),
+              "formUrl",
+            );
+            if (!formUrl) {
+              return;
+            }
+            detach(
+              (async () => {
+                const warning = await createAutomation(
+                  {
+                    workflowId,
+                    eventConfig: {
+                      provider: "google-forms",
+                      event: "response_submitted",
+                      formUrl,
+                    },
+                  },
+                  pageSignal,
+                );
+                onOpenChange(false);
+                if (warning) {
+                  toast.warning(warning);
+                }
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {i18n.t(($) => {
+              return $.workflows.automations.forms.formUrl;
+            })}
+            <Input
+              name="formUrl"
+              aria-label={i18n.t(($) => {
+                return $.workflows.automations.forms.formUrl;
+              })}
+              required
+              disabled={creating}
+              placeholder={i18n.t(($) => {
+                return $.workflows.automations.forms.formUrlPlaceholder;
+              })}
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              {i18n.t(($) => {
+                return $.workflows.automations.common.cancel;
+              })}
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <FileText size={14} />
+              )}
+              {i18n.t(($) => {
+                return $.workflows.automations.forms.addAction;
+              })}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GoogleFormsAutomationDialogs({
+  workflowId,
+  createDialog,
+  setCreateDialog,
+}: {
+  readonly workflowId: string;
+  readonly createDialog: WorkflowAutomationCreateDialog;
+  readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
+}) {
+  return (
+    <CreateGoogleFormsResponseSubmittedAutomationDialog
+      workflowId={workflowId}
+      open={createDialog === "google-forms"}
+      onOpenChange={(open) => {
+        setCreateDialog(open ? "google-forms" : null);
+      }}
+    />
+  );
+}
+
 function CreateGoogleMeetTranscriptGeneratedAutomationDialog({
   workflowId,
   open,
@@ -5019,9 +5320,9 @@ function CreateGoogleMeetTranscriptGeneratedAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <IconVideo size={14} stroke={1.5} />
+                <Video size={14} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.meet.addAction;
@@ -5200,7 +5501,7 @@ function CreateChatRunFinishedAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating && (
-                <IconLoader2 size={14} className="mr-1.5 animate-spin" />
+                <Loader2 size={14} className="mr-1.5 animate-spin" />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.chat.addAction;
@@ -5483,9 +5784,9 @@ function StrapiAutomationForm({
         </Button>
         <Button type="submit" disabled={creating}>
           {creating ? (
-            <IconLoader2 size={14} className="animate-spin" />
+            <Loader2 size={14} className="animate-spin" />
           ) : (
-            <IconWebhook size={14} />
+            <Webhook size={14} />
           )}
           {i18n.t(($) => {
             return $.workflows.automations.strapi.addAction;
@@ -5493,6 +5794,220 @@ function StrapiAutomationForm({
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+function selectedStripeBillingReasons(
+  form: FormData,
+): StripeInvoiceBillingReason[] {
+  return STRIPE_INVOICE_BILLING_REASONS.filter((reason) => {
+    return form.has(reason);
+  });
+}
+
+function StripeBillingReasonFields({
+  creating,
+}: {
+  readonly creating: boolean;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="text-sm font-medium text-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.stripe.billingReasons;
+        })}
+      </legend>
+      <p className="text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.stripe.billingReasonsHint;
+        })}
+      </p>
+      <div className="grid grid-cols-1 gap-2 rounded-lg border border-border/60 bg-muted/20 p-3 sm:grid-cols-2">
+        {STRIPE_INVOICE_BILLING_REASONS.map((reason) => {
+          return (
+            <label
+              key={reason}
+              className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 hover:bg-background"
+            >
+              <Checkbox
+                name={reason}
+                disabled={creating}
+                className="mt-0.5 shrink-0"
+              />
+              <span className="text-sm text-foreground">
+                {stripeBillingReasonLabel(reason)}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+function StripeAutomationCreateError({
+  message,
+}: {
+  readonly message: string;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
+    >
+      <div className="flex items-start gap-2">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+        <p>{message}</p>
+      </div>
+      <Link
+        pathname={ROUTES.connectors}
+        className="w-fit font-medium underline underline-offset-2"
+      >
+        {i18n.t(($) => {
+          return $.workflows.automations.stripe.manageConnection;
+        })}
+      </Link>
+    </div>
+  );
+}
+
+function CreateStripeInvoicePaidAutomationDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createAutomation] = useLoadableSet(
+    createWorkflowStripeInvoicePaidAutomation$,
+  );
+  const creating = createLoadable.state === "loading";
+  const createError =
+    createLoadable.state === "hasError"
+      ? createLoadable.error instanceof Error
+        ? createLoadable.error.message
+        : i18n.t(($) => {
+            return $.global.errors.requestFailed;
+          })
+      : null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.workflows.automations.stripe.addTitle;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {i18n.t(($) => {
+              return $.workflows.automations.stripe.addDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.stripe.addAria;
+          })}
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const billingReasons = selectedStripeBillingReasons(
+              new FormData(event.currentTarget),
+            );
+            detach(
+              (async () => {
+                await createAutomation(
+                  { workflowId, billingReasons },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+              "create Stripe invoice-paid automation",
+            );
+          }}
+        >
+          <StripeBillingReasonFields creating={creating} />
+          {createError ? (
+            <StripeAutomationCreateError message={createError} />
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              {i18n.t(($) => {
+                return $.workflows.automations.common.cancel;
+              })}
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <BrandStripe size={14} />
+              )}
+              {i18n.t(($) => {
+                return $.workflows.automations.stripe.addAction;
+              })}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function IntegrationAutomationCreateDialogs({
+  workflowId,
+  createDialog,
+  setCreateDialog,
+}: {
+  readonly workflowId: string;
+  readonly createDialog: WorkflowAutomationCreateDialog;
+  readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
+}) {
+  const features = useGet(featureSwitch$);
+  const strapiIntegrationEnabled =
+    features[FeatureSwitchKey.StrapiIntegration] ?? false;
+
+  return (
+    <>
+      {createDialog === "stripe-invoice-paid" ? (
+        <CreateStripeInvoicePaidAutomationDialog
+          workflowId={workflowId}
+          open
+          onOpenChange={(open) => {
+            setCreateDialog(open ? "stripe-invoice-paid" : null);
+          }}
+        />
+      ) : null}
+      {strapiIntegrationEnabled ? (
+        <CreateStrapiEntryPublishedAutomationDialog
+          workflowId={workflowId}
+          open={createDialog === "strapi-entry-published"}
+          onOpenChange={(open) => {
+            setCreateDialog(open ? "strapi-entry-published" : null);
+          }}
+        />
+      ) : null}
+      <CreateWebhookAutomationDialog
+        workflowId={workflowId}
+        open={createDialog === "webhook"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "webhook" : null);
+        }}
+      />
+      <WorkflowWebhookUpgradeDialog />
+    </>
   );
 }
 
@@ -5507,10 +6022,6 @@ function WorkflowAutomationCreateDialogs({
   readonly createDialog: WorkflowAutomationCreateDialog;
   readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
 }) {
-  const features = useGet(featureSwitch$);
-  const strapiIntegrationEnabled =
-    features[FeatureSwitchKey.StrapiIntegration] ?? false;
-
   return (
     <>
       <CreateIntervalAutomationDialog
@@ -5550,12 +6061,10 @@ function WorkflowAutomationCreateDialogs({
           setCreateDialog(open ? "gmail-label" : null);
         }}
       />
-      <CreateGithubLabelAppliedAutomationDialog
+      <GoogleFormsAutomationDialogs
         workflowId={workflowId}
-        open={createDialog === "github-label"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "github-label" : null);
-        }}
+        createDialog={createDialog}
+        setCreateDialog={setCreateDialog}
       />
       <CreateGithubWorkflowRunCompletedAutomationDialog
         workflowId={workflowId}
@@ -5600,23 +6109,11 @@ function WorkflowAutomationCreateDialogs({
           setCreateDialog(open ? "notion-page-content-updated" : null);
         }}
       />
-      {strapiIntegrationEnabled ? (
-        <CreateStrapiEntryPublishedAutomationDialog
-          workflowId={workflowId}
-          open={createDialog === "strapi-entry-published"}
-          onOpenChange={(open) => {
-            setCreateDialog(open ? "strapi-entry-published" : null);
-          }}
-        />
-      ) : null}
-      <CreateWebhookAutomationDialog
+      <IntegrationAutomationCreateDialogs
         workflowId={workflowId}
-        open={createDialog === "webhook"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "webhook" : null);
-        }}
+        createDialog={createDialog}
+        setCreateDialog={setCreateDialog}
       />
-      <WorkflowWebhookUpgradeDialog />
     </>
   );
 }
@@ -5661,6 +6158,14 @@ function GithubWebhookAutomationCreateDialogs({
 }) {
   return (
     <>
+      <CreateGithubWebhookAutomationDialog
+        workflowId={workflowId}
+        eventType="github-pull-request"
+        open={createDialog === "github-pull-request"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-pull-request" : null);
+        }}
+      />
       <CreateGithubWebhookAutomationDialog
         workflowId={workflowId}
         eventType="github-workflow-job-completed"
@@ -5790,9 +6295,9 @@ function CreateNotionDatabaseItemAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <IconBrandNotion size={14} stroke={1.5} />
+                <BrandNotion size={14} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.notion.addAction;
@@ -5994,9 +6499,9 @@ function CreateNotionPageContentUpdatedAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <IconBrandNotion size={14} stroke={1.5} />
+                <BrandNotion size={14} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.notion.addAction;
@@ -6101,9 +6606,9 @@ function CreateNotionChildPageAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <IconBrandNotion size={14} stroke={1.5} />
+                <BrandNotion size={14} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.notion.addAction;
@@ -6194,9 +6699,7 @@ function CreateIntervalAutomationDialog({
               })}
             </Button>
             <Button type="submit" disabled={creating}>
-              {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
+              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
               {i18n.t(($) => {
                 return $.workflows.automations.schedule.addIntervalAction;
               })}
@@ -6296,9 +6799,7 @@ function CreateScheduledAutomationDialog({
               })}
             </Button>
             <Button type="submit" disabled={creating}>
-              {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
+              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
               {i18n.t(($) => {
                 return $.workflows.automations.schedule.addScheduleAction;
               })}
@@ -6397,9 +6898,7 @@ function CreateOnceAutomationDialog({
               })}
             </Button>
             <Button type="submit" disabled={creating}>
-              {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
+              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
               {i18n.t(($) => {
                 return $.workflows.automations.schedule.addOnceAction;
               })}
@@ -6420,7 +6919,7 @@ function ScheduleAutomationFields({
   defaultIntervalSeconds,
   defaultAtTime,
 }: {
-  readonly scheduleType: ZeroWorkflowScheduleType;
+  readonly scheduleType: WorkflowScheduleType;
   readonly cronFields: WorkflowCronFields;
   readonly setCronFields: (fields: WorkflowCronFields) => void;
   readonly displayTimezone: string;
@@ -6799,16 +7298,18 @@ function WorkflowDayOfWeekPicker({
         {workflowDayOfWeekOptions().map(([value, label]) => {
           const selected = dayOfWeek.split(",").includes(value);
           return (
-            <button
+            <Button
               key={value}
               type="button"
+              size="sm"
+              variant={selected ? "default" : "outline"}
               disabled={disabled}
               aria-pressed={selected}
               className={cn(
-                "h-8 min-w-10 rounded-md border px-2 text-xs font-medium transition-colors disabled:opacity-60",
+                "min-w-10 px-2 text-xs disabled:opacity-60",
                 selected
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border/60 bg-background text-muted-foreground hover:bg-muted",
+                  ? "border border-primary"
+                  : "border-border/60 text-muted-foreground",
               )}
               onClick={() => {
                 const current = dayOfWeek.split(",").filter(Boolean);
@@ -6829,7 +7330,7 @@ function WorkflowDayOfWeekPicker({
               }}
             >
               {label}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -6903,14 +7404,12 @@ function GmailMatchConditionRow({
   conditions,
   index,
   disabled,
-  threadIdEnabled,
   onChange,
 }: {
   readonly condition: GmailMatchCondition;
   readonly conditions: readonly GmailMatchCondition[];
   readonly index: number;
   readonly disabled: boolean;
-  readonly threadIdEnabled: boolean;
   readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
 }) {
   const fieldLabel = gmailMatchFieldOption(condition.field).label;
@@ -6945,28 +7444,26 @@ function GmailMatchConditionRow({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {(threadIdEnabled ? GMAIL_MATCH_FIELDS : GMAIL_TEXT_FIELDS).map(
-            (option) => {
-              const operator = gmailMatchOperatorForField(
-                option.field,
-                condition.operator,
-              );
-              return (
-                <SelectItem
-                  key={option.field}
-                  value={option.field}
-                  disabled={gmailMatchConditionUsed(
-                    conditions,
-                    index,
-                    option.field,
-                    operator,
-                  )}
-                >
-                  {option.label}
-                </SelectItem>
-              );
-            },
-          )}
+          {GMAIL_MATCH_FIELDS.map((option) => {
+            const operator = gmailMatchOperatorForField(
+              option.field,
+              condition.operator,
+            );
+            return (
+              <SelectItem
+                key={option.field}
+                value={option.field}
+                disabled={gmailMatchConditionUsed(
+                  conditions,
+                  index,
+                  option.field,
+                  operator,
+                )}
+              >
+                {option.label}
+              </SelectItem>
+            );
+          })}
         </SelectContent>
       </Select>
       <Select
@@ -7017,12 +7514,12 @@ function GmailMatchConditionRow({
         size="icon"
         aria-label={copy.removeAria}
         disabled={disabled || conditions.length === 1}
-        className="col-start-3 row-start-1 h-9 w-9 shrink-0 text-muted-foreground hover:bg-gray-50 hover:text-foreground sm:col-auto sm:row-auto [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+        className="col-start-3 row-start-1 h-9 w-9 shrink-0 text-muted-foreground hover:bg-state-hover hover:text-foreground sm:col-auto sm:row-auto [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
         onClick={() => {
           onChange(removeGmailMatchCondition(conditions, index));
         }}
       >
-        <IconX size={16} stroke={1.5} />
+        <X size={16} />
       </Button>
     </div>
   );
@@ -7037,10 +7534,7 @@ function GmailMatchConditionsEditor({
   readonly disabled: boolean;
   readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
 }) {
-  const features = useGet(featureSwitch$);
-  const threadIdEnabled =
-    features[FeatureSwitchKey.ZeroMailReplyFollowUp] ?? false;
-  const nextCondition = nextGmailMatchCondition(conditions, threadIdEnabled);
+  const nextCondition = nextGmailMatchCondition(conditions);
   return (
     <div className="flex flex-col gap-2">
       {conditions.map((condition, index) => {
@@ -7051,7 +7545,6 @@ function GmailMatchConditionsEditor({
             conditions={conditions}
             index={index}
             disabled={disabled}
-            threadIdEnabled={threadIdEnabled}
             onChange={onChange}
           />
         );
@@ -7068,7 +7561,7 @@ function GmailMatchConditionsEditor({
           }
         }}
       >
-        <IconPlus size={14} stroke={1.5} />
+        <Plus size={14} />
         {i18n.t(($) => {
           return $.workflows.automations.gmail.addCondition;
         })}
@@ -7151,9 +7644,7 @@ function CreateGmailNewMessageAutomationDialog({
               })}
             </Button>
             <Button type="submit" disabled={creating}>
-              {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
+              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
               {i18n.t(($) => {
                 return $.workflows.automations.gmail.addMessageAction;
               })}
@@ -7269,9 +7760,7 @@ function CreateGmailLabelAppliedAutomationDialog({
               })}
             </Button>
             <Button type="submit" disabled={creating}>
-              {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
+              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
               {i18n.t(($) => {
                 return $.workflows.automations.gmail.addLabelAction;
               })}
@@ -7280,99 +7769,6 @@ function CreateGmailLabelAppliedAutomationDialog({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function GithubLabelAutomationFields({
-  disabled,
-  actor,
-  defaultConfig,
-  onActorChange,
-}: {
-  readonly disabled: boolean;
-  readonly actor: "me" | "anyone";
-  readonly defaultConfig?: GithubLabelAppliedEventConfig;
-  readonly onActorChange: (actor: "me" | "anyone") => void;
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.github.labelName;
-        })}
-        <Input
-          name="labelName"
-          aria-label={i18n.t(($) => {
-            return $.workflows.automations.github.labelName;
-          })}
-          required
-          disabled={disabled}
-          defaultValue={defaultConfig?.labelName ?? ""}
-          placeholder={i18n.t(($) => {
-            return $.workflows.automations.github.labelPlaceholder;
-          })}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.github.subject;
-        })}
-        <Select
-          name="subject"
-          defaultValue={defaultConfig?.filters.subject ?? "both"}
-          disabled={disabled}
-        >
-          <SelectTrigger
-            className="h-9 w-full"
-            aria-label={i18n.t(($) => {
-              return $.workflows.automations.github.subject;
-            })}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {GITHUB_SUBJECT_OPTIONS.map((option) => {
-              return (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </label>
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.github.startedBy;
-        })}
-        <Select
-          name="actor"
-          value={actor}
-          disabled={disabled}
-          onValueChange={(value) => {
-            onActorChange(value === "anyone" ? "anyone" : "me");
-          }}
-        >
-          <SelectTrigger
-            className="h-9 w-full"
-            aria-label={i18n.t(($) => {
-              return $.workflows.automations.github.startedBy;
-            })}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {GITHUB_ACTOR_OPTIONS.map((option) => {
-              return (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </label>
-    </div>
   );
 }
 
@@ -7478,6 +7874,9 @@ function GithubWorkflowRunAutomationFields({
                 key={option.value}
                 className="flex items-center gap-2 text-xs text-foreground"
               >
+                {/* Native input: the shared `Checkbox` renders a Base UI hidden
+                    input that carries `name` but not `value`, so it would submit
+                    "on" and this filter reads `FormData.getAll(name)`. */}
                 <input
                   type="checkbox"
                   name="conclusions"
@@ -7551,6 +7950,7 @@ function GithubCheckboxFilters<T extends string>({
               key={option.value}
               className="flex items-center gap-2 text-xs text-foreground"
             >
+              {/* Native input: see the note in GithubConclusionFilters. */}
               <input
                 type="checkbox"
                 name={name}
@@ -7875,12 +8275,199 @@ function GithubCommentAutomationFields({
   );
 }
 
+function GithubPullRequestMergedSelect({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubPullRequestEventConfig;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      {i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestMerged;
+      })}
+      <Select
+        name="merged"
+        defaultValue={
+          config?.merged === undefined ? "any" : String(config.merged)
+        }
+        disabled={disabled}
+      >
+        <SelectTrigger
+          className="h-9 w-full"
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.github.pullRequestMerged;
+          })}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="any">
+            {i18n.t(($) => {
+              return $.workflows.automations.github.any;
+            })}
+          </SelectItem>
+          <SelectItem value="true">
+            {i18n.t(($) => {
+              return $.workflows.automations.github.pullRequestMergedOnly;
+            })}
+          </SelectItem>
+          <SelectItem value="false">
+            {i18n.t(($) => {
+              return $.workflows.automations.github
+                .pullRequestClosedWithoutMergeOnly;
+            })}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+function GithubPullRequestFilterFields({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubPullRequestEventConfig;
+}) {
+  return (
+    <>
+      <GithubFilterInput
+        name="baseBranches"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.baseBranches;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.branchesPlaceholder;
+        })}
+        defaultValues={config?.filters.baseBranches}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="authors"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestAuthors;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.authorsPlaceholder;
+        })}
+        defaultValues={config?.filters.authors}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="pullRequestNumbers"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestNumbers;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestNumbersPlaceholder;
+        })}
+        defaultValues={config?.filters.pullRequestNumbers}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="labels"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestLabels;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestLabelsPlaceholder;
+        })}
+        defaultValues={config?.filters.labels}
+        disabled={disabled}
+      />
+    </>
+  );
+}
+
+function GithubPullRequestAutomationFields({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubPullRequestEventConfig;
+}) {
+  const createAction = useGet(createGithubPullRequestAction$);
+  const editingAction = useGet(editingGithubPullRequestAction$);
+  const setCreateAction = useSet(setCreateGithubPullRequestAction$);
+  const setEditingAction = useSet(setEditingGithubPullRequestAction$);
+  const action = config ? (editingAction ?? config.action) : createAction;
+  const setAction = config ? setEditingAction : setCreateAction;
+  return (
+    <>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.github.repository;
+        })}
+        <Input
+          name="repository"
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.github.repository;
+          })}
+          required
+          disabled={disabled}
+          defaultValue={config?.repository ?? ""}
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.github.repositoryPlaceholder;
+          })}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestAction;
+        })}
+        <Select
+          name="action"
+          value={action}
+          disabled={disabled}
+          onValueChange={(value) => {
+            setAction(githubPullRequestActionValue(value, "closed"));
+          }}
+        >
+          <SelectTrigger
+            className="h-9 w-full"
+            aria-label={i18n.t(($) => {
+              return $.workflows.automations.github.pullRequestAction;
+            })}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GITHUB_PULL_REQUEST_ACTION_OPTIONS.map((option) => {
+              return (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </label>
+      {action === "closed" ? (
+        <GithubPullRequestMergedSelect disabled={disabled} config={config} />
+      ) : null}
+      <GithubPullRequestFilterFields disabled={disabled} config={config} />
+    </>
+  );
+}
 function githubWebhookAutomationSpecificFields(
   eventType: GithubWebhookAutomationEventType,
   disabled: boolean,
   defaultConfig: GithubWebhookAutomationEventConfig | undefined,
 ): ReactNode {
   switch (eventType) {
+    case "github-pull-request": {
+      const config =
+        defaultConfig?.event === "pull_request" ? defaultConfig : undefined;
+      return (
+        <GithubPullRequestAutomationFields
+          disabled={disabled}
+          config={config}
+        />
+      );
+    }
     case "github-workflow-job-completed": {
       const config =
         defaultConfig?.event === "workflow_job_completed"
@@ -7939,54 +8526,26 @@ function GithubWebhookAutomationFields({
           return $.workflows.automations.github.filterHelp;
         })}
       </p>
-      <GithubFilterInput
-        name="repositories"
-        label={i18n.t(($) => {
-          return $.workflows.automations.github.repositories;
-        })}
-        placeholder={i18n.t(($) => {
-          return $.workflows.automations.github.repositoriesPlaceholder;
-        })}
-        defaultValues={defaultConfig?.filters.repositories}
-        disabled={disabled}
-      />
+      {eventType !== "github-pull-request" &&
+      defaultConfig?.event !== "pull_request" ? (
+        <GithubFilterInput
+          name="repositories"
+          label={i18n.t(($) => {
+            return $.workflows.automations.github.repositories;
+          })}
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.github.repositoriesPlaceholder;
+          })}
+          defaultValues={defaultConfig?.filters.repositories}
+          disabled={disabled}
+        />
+      ) : null}
       {githubWebhookAutomationSpecificFields(
         eventType,
         disabled,
         defaultConfig,
       )}
     </div>
-  );
-}
-
-function GithubLabelAutomationAvailabilityMessages({
-  githubLoaded,
-  githubData,
-  needsConnection,
-  githubLoadError,
-  connecting,
-  onConnect,
-}: {
-  readonly githubLoaded: boolean;
-  readonly githubData: GithubIntegrationData | null;
-  readonly needsConnection: boolean;
-  readonly githubLoadError: boolean;
-  readonly connecting: boolean;
-  readonly onConnect: () => void;
-}) {
-  return (
-    <>
-      {githubLoaded && !githubData?.isInstalled ? (
-        <GithubNotInstalledNotice githubData={githubData} />
-      ) : null}
-      {needsConnection ? (
-        <GithubAccountConnectionNotice
-          connecting={connecting}
-          onConnect={onConnect}
-        />
-      ) : null}
-      {githubLoadError ? <GithubLoadErrorNotice /> : null}
-    </>
   );
 }
 
@@ -8029,33 +8588,6 @@ function GithubNotInstalledNotice({
   );
 }
 
-function GithubAccountConnectionNotice({
-  connecting,
-  onConnect,
-}: {
-  readonly connecting: boolean;
-  readonly onConnect: () => void;
-}) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-      {i18n.t(($) => {
-        return $.workflows.automations.github.accountRequired;
-      })}
-      <Button
-        type="button"
-        variant="link"
-        disabled={connecting}
-        className="ml-1 h-auto p-0 text-xs"
-        onClick={onConnect}
-      >
-        {i18n.t(($) => {
-          return $.workflows.automations.github.accountConnect;
-        })}
-      </Button>
-    </div>
-  );
-}
-
 function GithubLoadErrorNotice() {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -8063,141 +8595,6 @@ function GithubLoadErrorNotice() {
         return $.workflows.automations.github.loadError;
       })}
     </div>
-  );
-}
-
-function githubLabelAddActionLabel(): string {
-  return i18n.t(($) => {
-    return $.workflows.automations.github.addLabelAction;
-  });
-}
-
-function CreateGithubLabelAppliedAutomationDialog({
-  workflowId,
-  open,
-  onOpenChange,
-}: {
-  readonly workflowId: string;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}) {
-  const actionCopy = automationActionCopy();
-  const pageSignal = useGet(pageSignal$);
-  const githubLoadable = useLoadable(githubIntegrationData$);
-  const githubData =
-    githubLoadable.state === "hasData" ? githubLoadable.data : null;
-  const actor = useGet(createGithubLabelActor$);
-  const setActor = useSet(setCreateGithubLabelActor$);
-  const [createLoadable, createGithubLabelAutomation] = useLoadableSet(
-    createWorkflowGithubLabelAppliedAutomation$,
-  );
-  const [connectLoadable, connectGithub] = useLoadableSet(
-    connectGithubInstallation$,
-  );
-  const creating = createLoadable.state === "loading";
-  const connecting = connectLoadable.state === "loading";
-  const loadingGithub = githubLoadable.state === "loading";
-  const githubLoadError = githubLoadable.state === "hasError";
-  const isInstalled = githubData?.isInstalled ?? false;
-  const needsConnection =
-    isInstalled && actor === "me" && !githubData?.isConnected;
-  const submitDisabled =
-    creating ||
-    loadingGithub ||
-    githubLoadError ||
-    !isInstalled ||
-    needsConnection;
-  const connectCurrentGithubAccount = () => {
-    if (!githubData) {
-      return;
-    }
-    detach(
-      connectGithub(githubData.connectUrl, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen) {
-          setActor("me");
-        }
-        onOpenChange(nextOpen);
-      }}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {i18n.t(($) => {
-              return $.workflows.automations.github.addLabelTitle;
-            })}
-          </DialogTitle>
-          <DialogDescription>
-            {i18n.t(($) => {
-              return $.workflows.automations.github.addLabelDescription;
-            })}
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          aria-label={i18n.t(($) => {
-            return $.workflows.automations.github.addLabelAria;
-          })}
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            const eventConfig = buildGithubLabelAppliedEventConfig(form);
-            if (!eventConfig) {
-              return;
-            }
-            detach(
-              (async () => {
-                await createGithubLabelAutomation(
-                  { workflowId, eventConfig },
-                  pageSignal,
-                );
-                onOpenChange(false);
-              })(),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          <GithubLabelAutomationFields
-            disabled={creating || loadingGithub || githubLoadError}
-            actor={actor}
-            onActorChange={setActor}
-          />
-          <GithubLabelAutomationAvailabilityMessages
-            githubLoaded={githubLoadable.state === "hasData"}
-            githubData={githubData}
-            needsConnection={needsConnection}
-            githubLoadError={githubLoadError}
-            connecting={connecting}
-            onConnect={connectCurrentGithubAccount}
-          />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {actionCopy.cancel}
-            </Button>
-            <Button type="submit" disabled={submitDisabled}>
-              {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
-              {githubLabelAddActionLabel()}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -8282,9 +8679,7 @@ function CreateGithubWorkflowRunCompletedAutomationDialog({
               })}
             </Button>
             <Button type="submit" disabled={submitDisabled}>
-              {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
+              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
               {i18n.t(($) => {
                 return $.workflows.automations.github.addWorkflowAction;
               })}
@@ -8300,6 +8695,11 @@ function githubWebhookAutomationTitle(
   eventType: GithubWebhookAutomationEventType,
 ): string {
   switch (eventType) {
+    case "github-pull-request": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestTitle;
+      });
+    }
     case "github-workflow-job-completed": {
       return i18n.t(($) => {
         return $.workflows.automations.github.workflowJobTitle;
@@ -8389,6 +8789,14 @@ function CreateGithubWebhookAutomationDialog({
             detach(
               (async () => {
                 if (
+                  eventType === "github-pull-request" &&
+                  eventConfig.event === "pull_request"
+                ) {
+                  await createGithubWebhookAutomation(
+                    { workflowId, eventType, eventConfig },
+                    pageSignal,
+                  );
+                } else if (
                   eventType === "github-workflow-job-completed" &&
                   eventConfig.event === "workflow_job_completed"
                 ) {
@@ -8448,9 +8856,9 @@ function CreateGithubWebhookAutomationDialog({
             </Button>
             <Button type="submit" disabled={submitDisabled}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <IconBrandGithub size={14} stroke={1.5} />
+                <BrandGithub size={14} />
               )}
               {copy.action}
             </Button>
@@ -8598,9 +9006,7 @@ function CreateGoogleCalendarEventAutomationDialog({
               {copy.cancel}
             </Button>
             <Button type="submit" disabled={creating}>
-              {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
+              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
               {copy.action}
             </Button>
           </DialogFooter>
@@ -8626,7 +9032,11 @@ function CreateWebhookAutomationDialog({
   const [createLoadable, createWebhookAutomation] = useLoadableSet(
     createWorkflowWebhookAutomation$,
   );
-  const creating = createLoadable.state === "loading";
+  const upgradeDialogSource = useGet(workflowWebhookUpgradeDialogSource$);
+  const creating =
+    createLoadable.state === "loading" ||
+    (upgradeDialogSource?.action === "create" &&
+      upgradeDialogSource.workflowId === workflowId);
 
   return (
     <Dialog
@@ -8742,7 +9152,7 @@ function CreatedWebhookAutomationView({
               copyText(curlExample);
             }}
           >
-            <IconCopy size={13} />
+            <Copy size={13} />
             {i18n.t(($) => {
               return $.workflows.automations.webhook.copy;
             })}
@@ -8771,7 +9181,7 @@ function WebhookReadonlyField({
     <div className="flex min-w-0 gap-2">
       <Input readOnly value={value} className="min-w-0" />
       <Button type="button" variant="outline" onClick={onCopy}>
-        <IconCopy size={14} />
+        <Copy size={14} />
         {i18n.t(($) => {
           return $.workflows.automations.webhook.copy;
         })}
@@ -8850,7 +9260,7 @@ function RevealWebhookSecretDialog({
                       copyText(curlExample);
                     }}
                   >
-                    <IconCopy size={13} />
+                    <Copy size={13} />
                     {copy.copy}
                   </Button>
                 </div>
@@ -8892,9 +9302,9 @@ function RevealWebhookSecretDialog({
               }}
             >
               {revealing ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <IconEye size={14} stroke={1.5} />
+                <Eye size={14} />
               )}
               {copy.reveal}
             </Button>
@@ -8933,7 +9343,7 @@ function CreateWebhookAutomationView({
           })}
         </Button>
         <Button type="button" disabled={creating} onClick={onCreate}>
-          {creating ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          {creating ? <Loader2 size={14} className="animate-spin" /> : null}
           {i18n.t(($) => {
             return $.workflows.automations.webhook.create;
           })}
@@ -8941,6 +9351,78 @@ function CreateWebhookAutomationView({
       </DialogFooter>
     </div>
   );
+}
+
+function stripeDeliveryStatusLabel(status: StripeDeliveryStatus): string {
+  switch (status) {
+    case "pending": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.deliveryStatus.pending;
+      });
+    }
+    case "delivered": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.deliveryStatus.delivered;
+      });
+    }
+    case "skipped": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.deliveryStatus.skipped;
+      });
+    }
+    case "failed": {
+      return i18n.t(($) => {
+        return $.workflows.automations.stripe.deliveryStatus.failed;
+      });
+    }
+  }
+}
+
+function formatStripeHealthTimestamp(
+  value: string | null,
+  displayTimezone: string,
+): string | null {
+  if (!value || !hasValidRunTimestamp(value)) {
+    return null;
+  }
+  return new Date(value).toLocaleString(currentLocale(), {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: displayTimezone,
+  });
+}
+
+function stripeLastMatchingEventLabel(
+  automation: WorkflowStripeInvoicePaidAutomation,
+  displayTimezone: string,
+): string {
+  return (
+    formatStripeHealthTimestamp(
+      automation.health.lastMatchingEventReceivedAt,
+      displayTimezone,
+    ) ??
+    i18n.t(($) => {
+      return $.workflows.automations.stripe.noMatchingEvents;
+    })
+  );
+}
+
+function stripeLastDeliveryLabel(
+  automation: WorkflowStripeInvoicePaidAutomation,
+  displayTimezone: string,
+): string {
+  const status = automation.health.lastDeliveryStatus;
+  if (!status) {
+    return i18n.t(($) => {
+      return $.workflows.automations.stripe.noDeliveries;
+    });
+  }
+  const statusLabel = stripeDeliveryStatusLabel(status);
+  const timestamp = formatStripeHealthTimestamp(
+    automation.health.lastDeliveryStatusAt,
+    displayTimezone,
+  );
+  return timestamp ? `${statusLabel} · ${timestamp}` : statusLabel;
 }
 
 function AutomationRunStat({
@@ -8974,6 +9456,73 @@ function AutomationRunStat({
   );
 }
 
+function AutomationRowStats({
+  automation,
+  displayTimezone,
+}: {
+  readonly automation: ZeroWorkflowAutomationSummary;
+  readonly displayTimezone: string;
+}) {
+  if (
+    automation.kind === "event" &&
+    automation.eventType === "stripe-invoice-paid"
+  ) {
+    return (
+      <>
+        <AutomationRunStat
+          icon={<History size={14} />}
+          label={i18n.t(($) => {
+            return $.workflows.automations.stripe.lastEvent;
+          })}
+          value={stripeLastMatchingEventLabel(automation, displayTimezone)}
+          emphasized={hasValidRunTimestamp(
+            automation.health.lastMatchingEventReceivedAt,
+          )}
+        />
+        <AutomationRunStat
+          icon={<CircleCheck size={14} />}
+          label={i18n.t(($) => {
+            return $.workflows.automations.stripe.delivery;
+          })}
+          value={stripeLastDeliveryLabel(automation, displayTimezone)}
+          emphasized={automation.health.lastDeliveryStatus !== null}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <AutomationRunStat
+        icon={<History size={14} />}
+        label={i18n.t(($) => {
+          return $.workflows.automations.schedule.last;
+        })}
+        value={formatWorkflowAutomationRun(
+          automation.lastRunAt,
+          displayTimezone,
+        )}
+        emphasized={hasValidRunTimestamp(automation.lastRunAt)}
+      />
+      {automation.kind === "schedule" ? (
+        <AutomationRunStat
+          icon={<Clock size={14} />}
+          label={i18n.t(($) => {
+            return $.workflows.automations.schedule.next;
+          })}
+          value={formatWorkflowAutomationNextRun(
+            automation.nextRunAt,
+            displayTimezone,
+          )}
+          emphasized={hasValidRunTimestamp(automation.nextRunAt)}
+        />
+      ) : (
+        <div aria-hidden="true" />
+      )}
+    </>
+  );
+}
+
 function AutomationRow({
   automation,
   canManage,
@@ -8990,22 +9539,17 @@ function AutomationRow({
   const editing = editingAutomationId === automation.id;
   const title = workflowScheduleTitle(automation, displayTimezone);
   const subtitle = workflowAutomationSubtitle(automation);
-  const hasLastRun = hasValidRunTimestamp(automation.lastRunAt);
-  const hasNextRun = hasValidRunTimestamp(automation.nextRunAt);
-  const lastRunLabel = formatWorkflowAutomationRun(
-    automation.lastRunAt,
-    displayTimezone,
-  );
-  const nextRunLabel = formatWorkflowAutomationNextRun(
-    automation.nextRunAt,
-    displayTimezone,
-  );
+  const stripeAutomation =
+    automation.kind === "event" &&
+    automation.eventType === "stripe-invoice-paid"
+      ? automation
+      : null;
 
   return (
     <>
       <div
         className={cn(
-          "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-gray-50 sm:grid-cols-[minmax(0,1.2fr)_minmax(9rem,0.9fr)_minmax(13.5rem,1.1fr)_auto_7.75rem] sm:items-center sm:gap-4",
+          "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-state-hover sm:grid-cols-[minmax(0,1.2fr)_minmax(9rem,0.9fr)_minmax(13.5rem,1.1fr)_auto_7.75rem] sm:items-center sm:gap-4",
           !automation.enabled && "opacity-75",
         )}
       >
@@ -9028,26 +9572,10 @@ function AutomationRow({
             ) : null}
           </div>
         </div>
-        <AutomationRunStat
-          icon={<IconHistory size={14} stroke={1.5} />}
-          label={i18n.t(($) => {
-            return $.workflows.automations.schedule.last;
-          })}
-          value={lastRunLabel}
-          emphasized={hasLastRun}
+        <AutomationRowStats
+          automation={automation}
+          displayTimezone={displayTimezone}
         />
-        {automation.kind === "schedule" ? (
-          <AutomationRunStat
-            icon={<IconClock size={14} stroke={1.5} />}
-            label={i18n.t(($) => {
-              return $.workflows.automations.schedule.next;
-            })}
-            value={nextRunLabel}
-            emphasized={hasNextRun}
-          />
-        ) : (
-          <div aria-hidden="true" />
-        )}
         <AutomationStatusSwitch
           automation={automation}
           title={title}
@@ -9061,6 +9589,28 @@ function AutomationRow({
         ) : (
           <div aria-hidden="true" />
         )}
+        {stripeAutomation ? (
+          <div className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground sm:col-span-5">
+            <p>
+              {i18n.t(($) => {
+                return $.workflows.automations.stripe.immutableHint;
+              })}
+            </p>
+            {stripeAutomation.health.warning === "delivery_failed" ? (
+              <div
+                role="alert"
+                className="flex items-start gap-1.5 text-amber-700 dark:text-amber-400"
+              >
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <p>
+                  {i18n.t(($) => {
+                    return $.workflows.automations.stripe.deliveryWarning;
+                  })}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {showDivider ? (
         <div className="mx-5 h-px bg-border/50" aria-hidden="true" />
@@ -9162,7 +9712,11 @@ function AutomationStatusSwitch({
   const [enabledLoadable, setEnabled] = useLoadableSet(
     setWorkflowAutomationEnabled$,
   );
-  const toggling = enabledLoadable.state === "loading";
+  const upgradeDialogSource = useGet(workflowWebhookUpgradeDialogSource$);
+  const toggling =
+    enabledLoadable.state === "loading" ||
+    (upgradeDialogSource?.action === "enable" &&
+      upgradeDialogSource.automationId === automation.id);
 
   return (
     <div className="flex items-center justify-start sm:justify-center">
@@ -9226,7 +9780,7 @@ function AutomationControls({
                 size="icon"
                 disabled={busy}
                 aria-label={copy.runNow}
-                className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground"
+                className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground"
                 onClick={() => {
                   detach(
                     (async () => {
@@ -9241,9 +9795,9 @@ function AutomationControls({
                 }}
               >
                 {busy ? (
-                  <IconLoader2 size={14} className="animate-spin" />
+                  <Loader2 size={14} className="animate-spin" />
                 ) : (
-                  <IconPlayerPlay size={14} stroke={1.5} />
+                  <Play size={14} />
                 )}
               </Button>
             </TooltipTrigger>
@@ -9260,7 +9814,7 @@ function AutomationControls({
                   size="icon"
                   disabled={busy}
                   aria-label={copy.editAutomation}
-                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground"
+                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground"
                   onClick={() => {
                     if (
                       automation.kind === "schedule" &&
@@ -9276,7 +9830,7 @@ function AutomationControls({
                     setEditingAutomationId(automation.id);
                   }}
                 >
-                  <IconPencil size={14} stroke={1.5} />
+                  <Pencil size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -9339,9 +9893,9 @@ function AutomationMoreActionsMenu({
               aria-label={i18n.t(($) => {
                 return $.workflows.automations.common.moreActions;
               })}
-              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground data-[state=open]:bg-gray-200 data-[state=open]:text-foreground"
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground data-popup-open:bg-state-selected-hover data-popup-open:text-foreground"
             >
-              <IconDotsVertical size={14} stroke={1.5} />
+              <EllipsisVertical size={14} />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
@@ -9360,7 +9914,7 @@ function AutomationMoreActionsMenu({
             className="gap-2"
             onModalSelect={onRevealWebhookSecret}
           >
-            <IconEye size={14} stroke={1.5} />
+            <Eye size={14} />
             {i18n.t(($) => {
               return $.workflows.automations.webhook.revealTitle;
             })}
@@ -9377,9 +9931,9 @@ function AutomationMoreActionsMenu({
           }}
         >
           {deleting ? (
-            <IconLoader2 size={14} className="animate-spin" />
+            <Loader2 size={14} className="animate-spin" />
           ) : (
-            <IconTrash size={14} stroke={1.5} />
+            <Trash size={14} />
           )}
           {i18n.t(($) => {
             return $.workflows.automations.common.deleteAutomation;
@@ -9507,13 +10061,6 @@ function EditWorkflowAutomationDialog({
         {automation.kind === "event" &&
         automation.eventType === "gmail-label-applied" ? (
           <UpdateGmailLabelAppliedAutomationForm
-            automation={automation}
-            onCancel={close}
-          />
-        ) : null}
-        {automation.kind === "event" &&
-        automation.eventType === "github-label-applied" ? (
-          <UpdateGithubLabelAppliedAutomationForm
             automation={automation}
             onCancel={close}
           />
@@ -9682,9 +10229,9 @@ function UpdateScheduleAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <Loader2 size={13} className="animate-spin" />
           ) : (
-            <IconClock size={13} stroke={1.5} />
+            <Clock size={13} />
           )}
           <span>
             {i18n.t(($) => {
@@ -9765,9 +10312,9 @@ function UpdateGmailNewMessageAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <Loader2 size={13} className="animate-spin" />
           ) : (
-            <IconMail size={13} stroke={1.5} />
+            <Mail size={13} />
           )}
           <span>
             {i18n.t(($) => {
@@ -9828,7 +10375,7 @@ function UpdateGmailLabelAppliedAutomationForm({
         {i18n.t(($) => {
           return $.workflows.automations.gmail.labelName;
         })}
-        <input
+        <Input
           name="labelName"
           aria-label={i18n.t(($) => {
             return $.workflows.automations.gmail.labelName;
@@ -9855,135 +10402,9 @@ function UpdateGmailLabelAppliedAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <Loader2 size={13} className="animate-spin" />
           ) : (
-            <IconMail size={13} stroke={1.5} />
-          )}
-          <span>
-            {i18n.t(($) => {
-              return $.workflows.automations.gmail.saveLabel;
-            })}
-          </span>
-        </Button>
-      </DialogFooter>
-    </form>
-  );
-}
-
-function UpdateGithubLabelAppliedAutomationForm({
-  automation,
-  onCancel,
-}: {
-  readonly automation: Extract<
-    ZeroWorkflowAutomationSummary,
-    { eventType: "github-label-applied" }
-  >;
-  readonly onCancel: () => void;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const githubLoadable = useLoadable(githubIntegrationData$);
-  const githubData =
-    githubLoadable.state === "hasData" ? githubLoadable.data : null;
-  const editingGithubLabelActors = useGet(editingGithubLabelActors$);
-  const setEditingGithubLabelActor = useSet(setEditingGithubLabelActor$);
-  const actor =
-    editingGithubLabelActors[automation.id] ??
-    automation.eventConfig.filters.actor.type;
-  const [updateLoadable, updateGithubLabelAutomation] = useLoadableSet(
-    updateWorkflowGithubLabelAppliedAutomation$,
-  );
-  const [connectLoadable, connectGithub] = useLoadableSet(
-    connectGithubInstallation$,
-  );
-  const saving = updateLoadable.state === "loading";
-  const connecting = connectLoadable.state === "loading";
-  const loadingGithub = githubLoadable.state === "loading";
-  const githubLoadError = githubLoadable.state === "hasError";
-  const isInstalled = githubData?.isInstalled ?? false;
-  const needsConnection =
-    isInstalled && actor === "me" && !githubData?.isConnected;
-  const submitDisabled =
-    saving ||
-    loadingGithub ||
-    githubLoadError ||
-    !isInstalled ||
-    needsConnection;
-  const connectCurrentGithubAccount = () => {
-    if (!githubData) {
-      return;
-    }
-    detach(
-      connectGithub(githubData.connectUrl, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <form
-      aria-label={i18n.t(($) => {
-        return $.workflows.automations.github.updateLabelAria;
-      })}
-      className="flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        const eventConfig = buildGithubLabelAppliedEventConfig(
-          form,
-          automation.eventConfig,
-        );
-        if (!eventConfig) {
-          return;
-        }
-        detach(
-          (async () => {
-            await updateGithubLabelAutomation(
-              {
-                automationId: automation.id,
-                eventConfig,
-              },
-              pageSignal,
-            );
-            onCancel();
-          })(),
-          Reason.DomCallback,
-        );
-      }}
-    >
-      <GithubLabelAutomationFields
-        disabled={saving || loadingGithub || githubLoadError}
-        actor={actor}
-        defaultConfig={automation.eventConfig}
-        onActorChange={(nextActor) => {
-          setEditingGithubLabelActor({
-            automationId: automation.id,
-            actor: nextActor,
-          });
-        }}
-      />
-      <GithubLabelAutomationAvailabilityMessages
-        githubLoaded={githubLoadable.state === "hasData"}
-        githubData={githubData}
-        needsConnection={needsConnection}
-        githubLoadError={githubLoadError}
-        connecting={connecting}
-        onConnect={connectCurrentGithubAccount}
-      />
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onCancel}
-        >
-          {i18n.t(($) => {
-            return $.workflows.automations.common.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={submitDisabled}>
-          {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
-          ) : (
-            <IconBrandGithub size={13} stroke={1.5} />
+            <Mail size={13} />
           )}
           <span>
             {i18n.t(($) => {
@@ -10054,9 +10475,9 @@ function UpdateGithubWorkflowRunCompletedAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <Loader2 size={13} className="animate-spin" />
           ) : (
-            <IconBrandGithub size={13} stroke={1.5} />
+            <BrandGithub size={13} />
           )}
           <span>
             {i18n.t(($) => {
@@ -10126,9 +10547,9 @@ function UpdateGithubWebhookAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <Loader2 size={13} className="animate-spin" />
           ) : (
-            <IconBrandGithub size={13} stroke={1.5} />
+            <BrandGithub size={13} />
           )}
           <span>
             {i18n.t(($) => {

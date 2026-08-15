@@ -19,4 +19,33 @@ describe("Dialog", () => {
       "zero-dialog-content",
     );
   });
+
+  it("renders an overlay for nested dialogs", () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Parent dialog</DialogTitle>
+          <Dialog open>
+            <DialogContent>
+              <DialogTitle>Nested dialog</DialogTitle>
+            </DialogContent>
+          </Dialog>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    expect(document.querySelectorAll(".zero-dialog-overlay")).toHaveLength(2);
+  });
+
+  it("can leave close controls to a custom dialog header", () => {
+    render(
+      <Dialog open>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>Custom header dialog</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+  });
 });

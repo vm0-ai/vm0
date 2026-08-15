@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroSlackOauthRoutes } from "../zero-slack-oauth";
 import {
@@ -16,7 +16,7 @@ import {
   type SlackConnectFixture,
 } from "./helpers/zero-slack-connect";
 import { createFixtureTracker } from "./helpers/zero-route-test";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 
 const context = testContext();
 const store = createStore();
@@ -28,7 +28,7 @@ async function appRequest(
   path: string,
   options: {
     readonly origin?: string;
-    readonly headers?: HeadersInit;
+    readonly headers?: RequestInit["headers"];
   } = {},
 ): Promise<Response> {
   const app = createAppWithRoutes({

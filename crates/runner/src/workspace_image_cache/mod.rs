@@ -36,7 +36,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(test)]
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 
 use crate::paths::{HomePaths, RunnerPaths};
 
@@ -49,10 +49,13 @@ mod metadata;
 mod path_safety;
 mod sidecar;
 mod types;
+mod watcher;
 
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub(crate) use entry::CacheEntryPaths;
 pub(crate) use lifecycle::{
     WorkspaceImageLease, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityFailure,
     WorkspaceImagePromotionOutcome, WorkspaceSessionHistorySidecarEntryGuard,
@@ -68,6 +71,7 @@ pub(crate) use types::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarPromotionSource,
     WorkspaceSessionHistorySidecarRepresentation,
 };
+pub(crate) use watcher::{WorkspaceCacheChange, WorkspaceCacheWatcher};
 
 const CACHE_FORMAT_VERSION: u32 = 2;
 const WORKSPACE_DRIVE_LAYOUT: &str = "workspace-drive-v1";
@@ -94,6 +98,8 @@ struct WorkspaceImageCacheInner {
     fs_stats_override: FsStats,
     #[cfg(test)]
     gc_root_scan_count: AtomicUsize,
+    #[cfg(test)]
+    fail_next_session_history_sidecar_metadata_commit: AtomicBool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -175,6 +181,7 @@ impl WorkspaceImageCache {
                 cache_scope: cache_scope.to_owned(),
                 fs_stats_override: fs_stats,
                 gc_root_scan_count: AtomicUsize::new(0),
+                fail_next_session_history_sidecar_metadata_commit: AtomicBool::new(false),
             }),
         }
     }

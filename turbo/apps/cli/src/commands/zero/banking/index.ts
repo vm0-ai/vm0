@@ -1,8 +1,11 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
-import { callZeroBanking, type ZeroBankingResponse } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  callZeroBanking,
+  type ZeroBankingResponse,
+} from "../../../lib/api/domains/zero-banking";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface JsonOption {
   readonly json?: boolean;
@@ -131,7 +134,7 @@ const transactionsCommand = new Command()
 
 export const zeroBankingCommand = new Command()
   .name("banking")
-  .description("Use managed zero banking services")
+  .description("Use managed Okou banking services")
   .addCommand(accountsCommand)
   .addCommand(balancesCommand)
   .addCommand(transactionsCommand)
@@ -139,12 +142,12 @@ export const zeroBankingCommand = new Command()
     "after",
     `
 Examples:
-  List accounts:      zero banking accounts --json
-  Get balance:        zero banking balances --account-id <id> --json
-  Get transactions:   zero banking transactions --account-id <id> --from 2026-01-01 --to 2026-01-31 --json
+  List accounts:      okou banking accounts --json
+  Get balance:        okou banking balances --account-id <id> --json
+  Get transactions:   okou banking transactions --account-id <id> --from 2026-01-01 --to 2026-01-31 --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires banking:read capability)
+  - Authenticates via OKOU_TOKEN (requires banking:read capability)
   - Finicity credentials and app tokens stay on the vm0 API server
   - Access is limited to accounts enabled for the current agent`,
   );

@@ -39,14 +39,16 @@ export const calComProvider: AuthCodeConnectorAuthProvider<"cal-com", "oauth"> =
     },
     access: {
       kind: "refresh-token",
-      refresh: async (args) => {
+      refresh: async (args, signal: AbortSignal) => {
         return oauthRefreshResultToProviderResult(
-          await refreshCalComToken({
-            clientId: args.authClient.clientId,
-            clientSecret: args.authClient.clientSecret,
-            refreshToken: args.inputs.refreshToken,
-            signal: args.signal,
-          }),
+          await refreshCalComToken(
+            {
+              clientId: args.authClient.clientId,
+              clientSecret: args.authClient.clientSecret,
+              refreshToken: args.inputs.refreshToken,
+            },
+            signal,
+          ),
         );
       },
     },

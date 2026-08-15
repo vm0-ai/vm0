@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate video command
+ * Tests for okou generate video command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -14,7 +14,7 @@ import { server } from "../../../../mocks/server";
 import { generateCommand } from "../index";
 import { videoCommand } from "../video";
 
-const VIDEO_URL = "http://localhost:3000/api/zero/video-io/generate";
+const VIDEO_URL = "http://localhost:3000/api/okou/video-io/generate";
 const FIRST_FRAME_URL = "https://example.com/first.png";
 const LAST_FRAME_URL = "https://example.com/last.png";
 const VIDEO_RESULT = {
@@ -51,18 +51,14 @@ function imageResponse(width: number, height: number) {
 }
 
 function stubBillingStatus(
-  videoGenerationAllowed: boolean | undefined,
+  videoGenerationAllowed: boolean,
   tier = videoGenerationAllowed ? "pro" : "limited-free-1",
 ) {
-  return http.get("http://localhost:3000/api/zero/billing/status", () => {
+  return http.get("http://localhost:3000/api/okou/billing/status", () => {
     return HttpResponse.json({
       tier,
-      ...(videoGenerationAllowed === undefined
-        ? {}
-        : {
-            canBuyCredits: videoGenerationAllowed,
-            videoGenerationAllowed,
-          }),
+      canBuyCredits: videoGenerationAllowed,
+      videoGenerationAllowed,
       credits: 0,
       onboardingPaymentPending: false,
       subscriptionStatus: null,
@@ -88,7 +84,7 @@ function stubBillingStatus(
   });
 }
 
-describe("zero generate video command", () => {
+describe("okou generate video command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -100,7 +96,7 @@ describe("zero generate video command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     server.use(stubBillingStatus(true));
   });
 
@@ -111,7 +107,7 @@ describe("zero generate video command", () => {
 
   it("should generate a video and print the /f file URL", async () => {
     server.use(
-      stubBillingStatus(undefined, "free"),
+      stubBillingStatus(true),
       http.get(FIRST_FRAME_URL, () => {
         return imageResponse(900, 1600);
       }),
@@ -294,7 +290,7 @@ describe("zero generate video command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(postVideo).not.toHaveBeenCalled();
     expect(stdout).toContain(
-      "# Zero generate video --template video-template:epic-grandeur",
+      "# Okou generate video --template video-template:epic-grandeur",
     );
     expect(stdout).toContain(
       "This is a federated generation source-selection packet",
@@ -324,19 +320,26 @@ describe("zero generate video command", () => {
     videoCommand.outputHelp();
 
     expect(helpOutput).toContain("Models:");
+    expect(helpOutput).toContain("dreamina-seedance-2.5");
     expect(helpOutput).toContain("dreamina-seedance-2.0-fast");
     expect(helpOutput).toContain("dreamina-seedance-2.0");
+    expect(helpOutput).toContain("dreamina-seedance-2.0-mini");
     expect(helpOutput).toContain("seedance-1.5-pro");
+    expect(helpOutput).toContain("minimax-h3");
     expect(helpOutput).toContain("veo3.1-fast");
     expect(helpOutput).toContain("kling-v3-4k");
     expect(helpOutput).not.toContain("seedance-1.0-pro");
+    expect(helpOutput).toContain("4s-30s");
     expect(helpOutput).toContain("4s-15s");
     expect(helpOutput).toContain("21:9");
+    expect(helpOutput).toContain("768p");
+    expect(helpOutput).toContain("2k");
     expect(helpOutput).toContain("--template");
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--first-frame-image-url");
     expect(helpOutput).toContain("--last-frame-image-url");
     expect(helpOutput).toContain("--json");
+    expect(helpOutput).toContain("Provider: 'built-in' to run Okou's pipeline");
   });
 
   it("should surface API errors", async () => {
@@ -372,7 +375,7 @@ describe("zero generate video command", () => {
   it("should stop before generation when the workspace plan blocks video", async () => {
     let generationRequests = 0;
     server.use(
-      stubBillingStatus(undefined, "limited-free-1"),
+      stubBillingStatus(false),
       http.post(VIDEO_URL, () => {
         generationRequests += 1;
         return HttpResponse.json(VIDEO_RESULT);
@@ -391,7 +394,7 @@ describe("zero generate video command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("Paid plan required");
-    expect(stderr).toContain("zero upgrade pro");
+    expect(stderr).toContain("okou upgrade pro");
     expect(generationRequests).toBe(0);
   });
 });

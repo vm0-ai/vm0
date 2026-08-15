@@ -10,6 +10,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
+from typing import Self
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +20,7 @@ import jsonl_writer
 import logging_utils
 import mitm_addon
 import runner_flush_lifecycle
+import runner_flush_request
 import usage
 from tests.pending_helpers import assert_pending
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
@@ -198,8 +201,177 @@ class _InstrumentedFlushOwnerLock:
         self._lock.release()
 
 
+class _PhaseHandoffLock:
+    """Pause a non-blocking acquire and record which thread releases it."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.gated_acquire_started = threading.Event()
+        self.allow_gated_acquire = threading.Event()
+        self.gated_acquire_thread: tuple[int | None, str] | None = None
+        self.gated_release_thread: tuple[int | None, str] | None = None
+
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+        if not blocking:
+            self.gated_acquire_started.set()
+            if not self.allow_gated_acquire.wait(timeout=1):
+                raise AssertionError("gated runner flush acquisition was not released")
+
+            acquired = self._lock.acquire(blocking=False)
+            if acquired:
+                current_thread = threading.current_thread()
+                self.gated_acquire_thread = (current_thread.ident, current_thread.name)
+            return acquired
+
+        if timeout < 0:
+            return self._lock.acquire()
+        return self._lock.acquire(timeout=timeout)
+
+    def release(self) -> None:
+        if self.gated_acquire_thread is not None and self.gated_release_thread is None:
+            current_thread = threading.current_thread()
+            self.gated_release_thread = (current_thread.ident, current_thread.name)
+
+        self._lock.release()
+
+    def __enter__(self) -> Self:
+        self.acquire()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        del exc_type, exc, traceback
+        self.release()
+
+
 class TestRunnerUsageFlushSignal:
     """Tests for runner-triggered usage buffer flush requests."""
+
+    @pytest.mark.parametrize("consumer", ["usage", "jsonl"])
+    @pytest.mark.parametrize(
+        "marker_bytes",
+        [
+            pytest.param(None, id="missing"),
+            pytest.param(b"\xff", id="invalid-utf8"),
+            pytest.param(b"not-json", id="invalid-json"),
+            pytest.param(b"[]", id="non-object"),
+            pytest.param(
+                json.dumps(
+                    {
+                        "usageStateId": "previous-runner-state",
+                        "flushRequestId": "request-1",
+                    }
+                ).encode(),
+                id="stale-generation",
+            ),
+            pytest.param(
+                json.dumps({"usageStateId": _RUNNER_USAGE_STATE_ID}).encode(),
+                id="missing-request-id",
+            ),
+            pytest.param(
+                json.dumps(
+                    {
+                        "usageStateId": _RUNNER_USAGE_STATE_ID,
+                        "flushRequestId": "",
+                    }
+                ).encode(),
+                id="empty-request-id",
+            ),
+            pytest.param(
+                json.dumps(
+                    {
+                        "usageStateId": _RUNNER_USAGE_STATE_ID,
+                        "flushRequestId": 123,
+                    }
+                ).encode(),
+                id="non-string-request-id",
+            ),
+        ],
+    )
+    def test_flush_request_consumers_ignore_malformed_envelope(
+        self,
+        runner_usage_flush_files: RunnerUsageFlushFiles,
+        consumer: str,
+        marker_bytes: bytes | None,
+    ) -> None:
+        marker_path = (
+            runner_usage_flush_files.usage_flush_request_path
+            if consumer == "usage"
+            else runner_usage_flush_files.jsonl_flush_request_path
+        )
+        if marker_bytes is not None:
+            marker_path.write_bytes(marker_bytes)
+
+        if consumer == "usage":
+            assert usage.read_usage_flush_request_id() is None
+            return
+
+        with (
+            patch.object(logging_utils, "flush_log_path") as flush_log_path,
+            running_jsonl_flush_worker(runner_usage_flush_files),
+        ):
+            pass
+
+        flush_log_path.assert_not_called()
+        assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
+
+    @pytest.mark.parametrize("consumer", ["usage", "jsonl"])
+    @pytest.mark.parametrize("file_state", ["symlink", "fifo", "directory", "oversized"])
+    def test_flush_request_consumers_reject_unsafe_state_file(
+        self,
+        runner_usage_flush_files: RunnerUsageFlushFiles,
+        consumer: str,
+        file_state: str,
+    ) -> None:
+        marker_path = (
+            runner_usage_flush_files.usage_flush_request_path
+            if consumer == "usage"
+            else runner_usage_flush_files.jsonl_flush_request_path
+        )
+
+        def write_valid_marker() -> None:
+            if consumer == "usage":
+                runner_usage_flush_files.write_usage_flush_request()
+            else:
+                runner_usage_flush_files.write_jsonl_flush_request()
+
+        if file_state == "symlink":
+            write_valid_marker()
+            target_path = marker_path.with_name(f"{marker_path.name}-target")
+            marker_path.replace(target_path)
+            marker_path.symlink_to(target_path)
+        elif file_state == "fifo":
+            os.mkfifo(marker_path)
+        elif file_state == "directory":
+            marker_path.mkdir()
+        else:
+            write_valid_marker()
+            marker = json.loads(marker_path.read_text())
+            marker["padding"] = "x" * runner_flush_request.MAX_RUNNER_FLUSH_REQUEST_BYTES
+            marker_path.write_text(json.dumps(marker))
+            assert marker_path.stat().st_size > runner_flush_request.MAX_RUNNER_FLUSH_REQUEST_BYTES
+
+        def consume_marker() -> None:
+            if consumer == "usage":
+                assert usage.read_usage_flush_request_id() is None
+                return
+
+            with patch.object(
+                runner_flush_lifecycle,
+                "__file__",
+                str(runner_usage_flush_files.lifecycle_file),
+            ):
+                runner_flush_lifecycle._flush_jsonl_for_runner_request()
+
+            assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
+
+        consumer_thread = ThreadUnderTest(target=consume_marker, daemon=True)
+        consumer_thread.start()
+        consumer_thread.join_and_raise(timeout=1)
 
     def test_real_signal_during_request_consumption_drains_acknowledgement(
         self, tmp_path: Path
@@ -243,8 +415,8 @@ class TestRunnerUsageFlushSignal:
 
         def flush_usage_events(*, trigger: str) -> int:
             assert trigger == "runner"
-            usage.counters.increment_pending_reports()
-            usage.counters.decrement_pending_reports()
+            pending_report = usage.counters.admit_pending_report()
+            pending_report.release()
             flushed.set()
             return 0
 
@@ -267,6 +439,52 @@ class TestRunnerUsageFlushSignal:
             assert snapshotted.wait(timeout=1)
             wait_for_usage_flush_worker_to_stop()
 
+        assert_pending(
+            runner_usage_flush_files.pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
+
+    def test_signal_worker_start_handoff_to_closed_shutdown_does_not_spawn_worker(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ) -> None:
+        handoff_lock = _PhaseHandoffLock()
+        runner_usage_flush_files.write_usage_flush_request()
+        signal_thread = ThreadUnderTest(
+            target=lambda: runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None),
+            name="runner-flush-signal-handoff",
+        )
+
+        with patch.object(
+            runner_flush_lifecycle,
+            "_usage_flush_signal_lock",
+            handoff_lock,
+        ):
+            signal_thread.start()
+            try:
+                wait_for_event(
+                    handoff_lock.gated_acquire_started,
+                    timeout=1,
+                    threads=(signal_thread,),
+                    message="signal path did not reach the worker owner lock",
+                )
+                runner_flush_lifecycle.drain_and_close()
+            finally:
+                handoff_lock.allow_gated_acquire.set()
+                signal_thread.join(timeout=1)
+                if not signal_thread.is_alive():
+                    wait_for_usage_flush_worker_to_stop()
+
+            signal_thread.join_and_raise(timeout=1)
+
+        assert handoff_lock.gated_acquire_thread is not None
+        assert handoff_lock.gated_release_thread is not None
+        assert handoff_lock.gated_acquire_thread == handoff_lock.gated_release_thread
+        assert handoff_lock.gated_release_thread[1] == "runner-flush-signal-handoff"
+        assert runner_flush_lifecycle._runner_flush_phase == "closed"
+        assert not runner_flush_lifecycle._usage_flush_requested
         assert_pending(
             runner_usage_flush_files.pending_path,
             flows=0,
@@ -413,7 +631,7 @@ class TestRunnerUsageFlushSignal:
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
         snapshotted = threading.Event()
-        usage.counters.increment_pending_reports()
+        pending_report = usage.counters.admit_pending_report()
         runner_usage_flush_files.write_usage_flush_request()
 
         original_write_pending_snapshot = usage.write_pending_snapshot
@@ -446,6 +664,7 @@ class TestRunnerUsageFlushSignal:
             reports=1,
             flush_request_id="request-1",
         )
+        pending_report.release()
 
     def test_jsonl_watcher_acknowledges_flush_request(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
@@ -470,32 +689,30 @@ class TestRunnerUsageFlushSignal:
             "pending": 0,
         }
 
-    def test_jsonl_flush_request_rejects_unsafe_request_id(
-        self, runner_usage_flush_files: RunnerUsageFlushFiles
-    ):
-        runner_usage_flush_files.write_jsonl_flush_request(flush_request_id="../jsonl-request-1")
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            pytest.param("flushRequestId", "../jsonl-request-1", id="unsafe-request-id"),
+            pytest.param("path", "", id="empty-path"),
+            pytest.param("path", 123, id="non-string-path"),
+        ],
+    )
+    def test_jsonl_flush_request_rejects_protocol_specific_fields(
+        self,
+        runner_usage_flush_files: RunnerUsageFlushFiles,
+        field: str,
+        value: object,
+    ) -> None:
+        runner_usage_flush_files.write_jsonl_flush_request()
+        marker = json.loads(runner_usage_flush_files.jsonl_flush_request_path.read_text())
+        marker[field] = value
+        runner_usage_flush_files.jsonl_flush_request_path.write_text(json.dumps(marker))
 
         with (
             patch.object(logging_utils, "flush_log_path") as flush_log_path,
             running_jsonl_flush_worker(runner_usage_flush_files),
         ):
             pass
-
-        flush_log_path.assert_not_called()
-        assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
-
-    def test_jsonl_flush_request_ignores_invalid_utf8_marker(
-        self, runner_usage_flush_files: RunnerUsageFlushFiles
-    ):
-        runner_usage_flush_files.jsonl_flush_request_path.write_bytes(b"\xff")
-
-        with (
-            patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
-            ),
-            patch.object(logging_utils, "flush_log_path") as flush_log_path,
-        ):
-            runner_flush_lifecycle._flush_jsonl_for_runner_request()
 
         flush_log_path.assert_not_called()
         assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
@@ -698,23 +915,6 @@ class TestRunnerUsageFlushSignal:
             (str(first_path),),
             (str(second_path),),
         ]
-
-    def test_jsonl_watcher_rejects_previous_usage_generation(
-        self, runner_usage_flush_files: RunnerUsageFlushFiles
-    ):
-        runner_usage_flush_files.write_jsonl_flush_request()
-        marker = json.loads(runner_usage_flush_files.jsonl_flush_request_path.read_text())
-        marker["usageStateId"] = "previous-runner-state"
-        runner_usage_flush_files.jsonl_flush_request_path.write_text(json.dumps(marker))
-
-        with (
-            patch.object(logging_utils, "flush_log_path") as flush_log_path,
-            running_jsonl_flush_worker(runner_usage_flush_files),
-        ):
-            pass
-
-        flush_log_path.assert_not_called()
-        assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
 
     def test_jsonl_watcher_final_observation_processes_published_marker(
         self, runner_usage_flush_files: RunnerUsageFlushFiles

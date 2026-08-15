@@ -1,11 +1,10 @@
 import { command, computed, state } from "ccstate";
-import type { UserProfileModalProps } from "@clerk/react/types";
-import { clerk$ } from "../../auth.ts";
+import type { UsagePackManagementResponse } from "@okouai/api-contracts/contracts/zero-billing";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
-import { reloadBillingStatus$ } from "../billing.ts";
+import { reloadBillingStatus$, usagePackManagementAsync$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
-import { onRef, resetSignal } from "../../utils.ts";
+import { resetSignal } from "../../utils.ts";
 import {
   clearBillingScrollTarget$,
   clearPendingLogo$,
@@ -13,7 +12,16 @@ import {
   requestBuyCreditsScroll$,
   setBillingSubPage$,
 } from "./workspace-settings-state.ts";
+import {
+  managedUsagePackSelection,
+  resetUsagePackPricing$,
+  setMemberUsageSelections$,
+  setSelectedUsagePackPlan$,
+} from "./usage-pack-pricing-state.ts";
 
+// `usage` is the credit balance surface and keeps its id so existing
+// `?settings=usage` links stay valid; `usage-records` is the usage history that
+// used to live at the bottom of it.
 export const SETTINGS_SECTIONS = [
   "preference",
   "model",
@@ -22,6 +30,7 @@ export const SETTINGS_SECTIONS = [
   "people",
   "billing",
   "usage",
+  "usage-records",
   "invoices",
 ] as const;
 
@@ -48,8 +57,6 @@ const resetSettingsDialogSignal$ = resetSignal();
 const internalSettingsDialogSessionActive$ = state(false);
 const internalSettingsDialogInitialized$ = state(false);
 const internalSettingsDialogHandoffPending$ = state(false);
-const internalSettingsClerkProfilePortalContainer$ =
-  state<HTMLDivElement | null>(null);
 const pendingAccountMenuSettingsSection$ = state<{
   readonly ownerId: string;
   readonly section: SettingsSection;
@@ -60,55 +67,6 @@ export const settingsDialogOpen$ = computed((get) => {
 });
 
 export { internalSettingsDialogSignal$ as settingsDialogSignal$ };
-
-export const settingsClerkProfilePortalContainer$ = computed((get) => {
-  return get(internalSettingsClerkProfilePortalContainer$);
-});
-
-export const setSettingsClerkProfilePortalContainer$ = onRef(
-  command(
-    async ({ get, set }, container: HTMLDivElement, signal: AbortSignal) => {
-      const clerk = await get(clerk$);
-      signal.throwIfAborted();
-      signal.addEventListener(
-        "abort",
-        () => {
-          clerk.closeUserProfile();
-          set(internalSettingsClerkProfilePortalContainer$, null);
-        },
-        { once: true },
-      );
-      set(internalSettingsClerkProfilePortalContainer$, container);
-    },
-  ),
-);
-
-export const openSettingsUserProfile$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-    const container = get(internalSettingsClerkProfilePortalContainer$);
-    if (!container) {
-      return;
-    }
-    const props = {
-      apiKeysProps: { hide: true },
-      appearance: {
-        elements: {
-          modalBackdrop: {
-            position: "absolute",
-            width: "100%",
-            height: "100%",
-          },
-        },
-      },
-      getContainer: () => {
-        return container;
-      },
-    } satisfies UserProfileModalProps;
-    clerk.openUserProfile(props);
-  },
-);
 
 export const setPendingAccountMenuSettingsSection$ = command(
   ({ get, set }, ownerId: string, section: SettingsSection | null) => {
@@ -145,6 +103,7 @@ export const setSettingsActiveSection$ = command(
     set(internalActiveSection$, section);
     if (section !== "billing") {
       set(clearBillingScrollTarget$);
+      set(resetUsagePackPricing$);
     }
     if (section === "model") {
       set(reloadPersonalModelProviders$);
@@ -168,10 +127,51 @@ export const openSettingsBillingPlans$ = command(({ get, set }) => {
   set(updateSearchParams$, params);
 });
 
+const openSettingsUsagePackPlan$ = command(
+  (
+    { set },
+    management: UsagePackManagementResponse,
+    targetTier: UsagePackManagementResponse["tier"],
+  ) => {
+    set(openSettingsBillingPlans$);
+    set(
+      setMemberUsageSelections$,
+      Object.fromEntries(
+        management.allocations.map((allocation) => {
+          return [
+            allocation.memberId,
+            managedUsagePackSelection(allocation),
+          ] as const;
+        }),
+      ),
+    );
+    set(setSelectedUsagePackPlan$, targetTier);
+  },
+);
+
+export const openSettingsMemberUsagePacks$ = command(
+  ({ set }, management: UsagePackManagementResponse) => {
+    set(openSettingsUsagePackPlan$, management, management.tier);
+  },
+);
+
+export const openSettingsUsagePackUpgrade$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const management = await get(usagePackManagementAsync$);
+    signal.throwIfAborted();
+    if (!management) {
+      set(openSettingsBillingPlans$);
+      return;
+    }
+    set(openSettingsUsagePackPlan$, management, "team");
+  },
+);
+
 const releaseSettingsDialogSession$ = command(({ get, set }) => {
   set(internalSettingsDialogSignal$, null);
   set(internalSettingsDialogSessionActive$, false);
   set(clearPendingLogo$);
+  set(resetUsagePackPricing$);
 
   const handoffPending = get(internalSettingsDialogHandoffPending$);
   set(internalSettingsDialogHandoffPending$, false);

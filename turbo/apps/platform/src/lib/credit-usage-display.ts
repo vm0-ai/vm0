@@ -1,15 +1,20 @@
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import { i18n } from "../i18n/index.ts";
 
 const USAGE_DISPLAY_NAMES = {
-  auto(): string {
+  avatar(): string {
     return i18n.t(($) => {
-      return $.usage.displayNames.auto;
+      return $.usage.displayNames.avatar;
     });
   },
   finance(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.finance;
+    });
+  },
+  imageRecognize(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.imageRecognize;
     });
   },
   maps(): string {
@@ -20,6 +25,16 @@ const USAGE_DISPLAY_NAMES = {
   peopleSearch(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.peopleSearch;
+    });
+  },
+  seo(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.seo;
+    });
+  },
+  translation(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.translation;
     });
   },
   weather(): string {
@@ -45,27 +60,18 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
     maps: USAGE_DISPLAY_NAMES.maps,
     "web-search": USAGE_DISPLAY_NAMES.webSearch,
     "people-search": USAGE_DISPLAY_NAMES.peopleSearch,
+    seo: USAGE_DISPLAY_NAMES.seo,
     finance: USAGE_DISPLAY_NAMES.finance,
     weather: USAGE_DISPLAY_NAMES.weather,
+    "image-recognition": USAGE_DISPLAY_NAMES.imageRecognize,
+    translation: USAGE_DISPLAY_NAMES.translation,
   };
 
-// Current Settings responses retain raw usage kinds inside each provider.
-// Keep provider aliases for older APIs that only return the provider so app
-// and API promotions can serve different versions safely.
-const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<
-  Record<string, () => string>
-> = {
-  firecrawl: USAGE_DISPLAY_NAMES.webFetch,
-  "google-maps": USAGE_DISPLAY_NAMES.maps,
-  openstreetmap: USAGE_DISPLAY_NAMES.maps,
-  perplexity: USAGE_DISPLAY_NAMES.webSearch,
-  apidojo: USAGE_DISPLAY_NAMES.finance,
-  "google-weather": USAGE_DISPLAY_NAMES.weather,
-  "google-air-quality": USAGE_DISPLAY_NAMES.weather,
-};
-
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
-  "vm0-model": USAGE_DISPLAY_NAMES.auto,
+  "joggai-talking-avatar": USAGE_DISPLAY_NAMES.avatar,
+  // Rows recorded before image tasks moved to task-scoped kinds carry
+  // kind "model" with this provider; nothing else runs it as a chat model.
+  "google/gemini-3.5-flash": USAGE_DISPLAY_NAMES.imageRecognize,
 };
 
 function titleCaseUsageToken(token: string): string {
@@ -108,7 +114,10 @@ function stripUsageProviderPrefix(value: string): string {
   return normalized;
 }
 
-function usageModelDisplayName(model: string): string {
+function usageModelDisplayName(
+  model: string,
+  preserveUnknownModelId: boolean,
+): string {
   const usageDisplayName = MODEL_DISPLAY_NAMES[model];
   if (usageDisplayName) {
     return usageDisplayName();
@@ -125,7 +134,9 @@ function usageModelDisplayName(model: string): string {
     return strippedDisplayName;
   }
 
-  return formatUsageDisplayName(strippedModel);
+  return preserveUnknownModelId
+    ? strippedModel
+    : formatUsageDisplayName(strippedModel);
 }
 
 function usageKindBase(kind: string): string {
@@ -148,13 +159,7 @@ export function getCreditUsageDisplayName(
 
   const normalizedProvider = provider.trim();
   if (baseKind === "model" || baseKind === "image" || baseKind === "video") {
-    return usageModelDisplayName(normalizedProvider);
-  }
-
-  const managedProviderDisplayName =
-    MANAGED_USAGE_PROVIDER_DISPLAY_NAMES[normalizedProvider];
-  if (managedProviderDisplayName) {
-    return managedProviderDisplayName();
+    return usageModelDisplayName(normalizedProvider, baseKind === "model");
   }
 
   return formatUsageDisplayName(normalizedProvider);

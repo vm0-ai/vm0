@@ -1,9 +1,9 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
-import { withErrorHandler } from "../../lib/command";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "./doctor/platform-url";
-import { planUpgradeUrl } from "./shared/billing-links";
+import { planUpgradeUrl } from "../shared/billing-links";
 
 type UpgradePlan = "pro";
 
@@ -22,7 +22,7 @@ export const zeroUpgradeCommand = new Command()
     "after",
     `
 Examples:
-  Upgrade to Pro:  zero upgrade pro
+  Upgrade to Pro:  okou upgrade pro
 
 Output:
   Prints a platform link that chat can render as an upgrade card`,

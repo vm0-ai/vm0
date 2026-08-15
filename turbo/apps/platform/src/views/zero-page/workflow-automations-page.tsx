@@ -5,26 +5,25 @@ import {
   useSet,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import type {
   ZeroWorkflowSummary,
   ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
-  IconBrandGithub,
-  IconCalendarTime,
-  IconClock,
-  IconDatabasePlus,
-  IconFilePencil,
-  IconFilePlus,
-  IconLink,
-  IconMail,
-  IconMessageCircle,
-  IconRepeat,
-  IconTag,
-  IconVideo,
-} from "@tabler/icons-react";
-import { Button, Switch, cn } from "@vm0/ui";
+  CalendarClock,
+  Clock,
+  DatabasePlus,
+  FilePen,
+  FilePlus,
+  Link,
+  Mail,
+  MessageCircle,
+  Repeat,
+  Tag,
+  Video,
+} from "lucide-react";
+import { Button, Switch, cn, BrandGithub, BrandStripe } from "@okouai/ui";
 import {
   Dialog,
   DialogContent,
@@ -32,10 +31,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+} from "@okouai/ui/components/ui/dialog";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import { useTranslation } from "react-i18next";
-
 import { i18n } from "../../i18n/index.ts";
 import { agents$ } from "../../signals/agent.ts";
 import {
@@ -54,6 +52,7 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
   setWorkflowAutomationEnabled$,
+  workflowWebhookUpgradeDialogSource$,
   type WorkflowAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import {
@@ -75,9 +74,10 @@ import {
   githubAutomationFilterValueLabel,
   gmailAutomationSummary,
   gmailAutomationTitle,
+  labelInitials,
   workflowTitle,
 } from "../workflows-page/workflow-shared.tsx";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../signals/chat-page/workflow-prompt-action";
 
 export { CREATE_WORKFLOW_WITH_CHAT_PROMPT };
 
@@ -284,12 +284,15 @@ function githubAutomationRuleLabel(
     { readonly kind: "event" }
   >,
 ): string | null {
-  if (automation.eventType === "github-label-applied") {
+  if (automation.eventType === "github-pull-request") {
     return i18n.t(
       ($) => {
-        return $.workflows.automations.github.labelAppliedRule;
+        return $.workflows.automations.github.pullRequestRule;
       },
-      { label: quote(automation.eventConfig.labelName) },
+      {
+        action: automation.eventConfig.action,
+        repository: automation.eventConfig.repository,
+      },
     );
   }
   if (automation.eventType === "github-workflow-run-completed") {
@@ -352,6 +355,56 @@ function githubAutomationRuleLabel(
     });
   }
   return null;
+}
+
+function googleAutomationRuleLabel(
+  automation: ZeroWorkflowAutomationSummary,
+): string | null {
+  if (automation.kind !== "event") {
+    return null;
+  }
+  switch (automation.eventType) {
+    case "google-calendar-event-created": {
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.calendar.createdRule;
+        },
+        { calendar: quote(automation.eventConfig.calendarId) },
+      );
+    }
+    case "google-calendar-event-updated": {
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.calendar.updatedRule;
+        },
+        { calendar: quote(automation.eventConfig.calendarId) },
+      );
+    }
+    case "google-calendar-event-cancelled": {
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.calendar.cancelledRule;
+        },
+        { calendar: quote(automation.eventConfig.calendarId) },
+      );
+    }
+    case "google-forms-response-submitted": {
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.forms.rule;
+        },
+        { form: quote(automation.eventConfig.form.title) },
+      );
+    }
+    case "google-meet-transcript-generated": {
+      return i18n.t(($) => {
+        return $.workflows.automations.meet.rule;
+      });
+    }
+    default: {
+      return null;
+    }
+  }
 }
 
 export function humanReadableAutomationRuleLabel(
@@ -429,34 +482,9 @@ export function humanReadableAutomationRuleLabel(
   if (githubLabel) {
     return githubLabel;
   }
-  if (automation.eventType === "google-calendar-event-created") {
-    return i18n.t(
-      ($) => {
-        return $.workflows.automations.calendar.createdRule;
-      },
-      { calendar: quote(automation.eventConfig.calendarId) },
-    );
-  }
-  if (automation.eventType === "google-calendar-event-updated") {
-    return i18n.t(
-      ($) => {
-        return $.workflows.automations.calendar.updatedRule;
-      },
-      { calendar: quote(automation.eventConfig.calendarId) },
-    );
-  }
-  if (automation.eventType === "google-calendar-event-cancelled") {
-    return i18n.t(
-      ($) => {
-        return $.workflows.automations.calendar.cancelledRule;
-      },
-      { calendar: quote(automation.eventConfig.calendarId) },
-    );
-  }
-  if (automation.eventType === "google-meet-transcript-generated") {
-    return i18n.t(($) => {
-      return $.workflows.automations.meet.rule;
-    });
+  const googleLabel = googleAutomationRuleLabel(automation);
+  if (googleLabel !== null) {
+    return googleLabel;
   }
   if (automation.eventType === "chat-run-finished") {
     return i18n.t(($) => {
@@ -477,7 +505,42 @@ export function humanReadableAutomationRuleLabel(
       return $.workflows.automations.strapi.rule;
     });
   }
+  if (automation.eventType === "stripe-invoice-paid") {
+    return i18n.t(($) => {
+      return $.workflows.automations.stripe.rule;
+    });
+  }
   return gmailAutomationTitle(automation);
+}
+
+function googleAutomationTypeLabel(
+  automation: ZeroWorkflowAutomationSummary,
+): string | null {
+  if (automation.kind !== "event") {
+    return null;
+  }
+  switch (automation.eventType) {
+    case "google-calendar-event-created":
+    case "google-calendar-event-updated":
+    case "google-calendar-event-cancelled": {
+      return i18n.t(($) => {
+        return $.workflows.automations.types.googleCalendar;
+      });
+    }
+    case "google-forms-response-submitted": {
+      return i18n.t(($) => {
+        return $.workflows.automations.types.googleForms;
+      });
+    }
+    case "google-meet-transcript-generated": {
+      return i18n.t(($) => {
+        return $.workflows.automations.types.googleMeet;
+      });
+    }
+    default: {
+      return null;
+    }
+  }
 }
 
 export function automationTypeLabel(
@@ -497,7 +560,7 @@ export function automationTypeLabel(
     });
   }
   if (
-    automation.eventType === "github-label-applied" ||
+    automation.eventType === "github-pull-request" ||
     automation.eventType === "github-deployment-status-created" ||
     automation.eventType === "github-issue-comment-created" ||
     automation.eventType === "github-pull-request-review-submitted" ||
@@ -508,19 +571,9 @@ export function automationTypeLabel(
       return $.workflows.automations.types.github;
     });
   }
-  if (
-    automation.eventType === "google-calendar-event-created" ||
-    automation.eventType === "google-calendar-event-updated" ||
-    automation.eventType === "google-calendar-event-cancelled"
-  ) {
-    return i18n.t(($) => {
-      return $.workflows.automations.types.googleCalendar;
-    });
-  }
-  if (automation.eventType === "google-meet-transcript-generated") {
-    return i18n.t(($) => {
-      return $.workflows.automations.types.googleMeet;
-    });
+  const googleLabel = googleAutomationTypeLabel(automation);
+  if (googleLabel !== null) {
+    return googleLabel;
   }
   if (
     automation.eventType === "notion-child-page-created" ||
@@ -541,6 +594,11 @@ export function automationTypeLabel(
       return $.workflows.automations.types.strapi;
     });
   }
+  if (automation.eventType === "stripe-invoice-paid") {
+    return i18n.t(($) => {
+      return $.workflows.automations.types.stripe;
+    });
+  }
   if (automation.eventType === "chat-run-finished") {
     return i18n.t(($) => {
       return $.workflows.automations.types.chat;
@@ -549,14 +607,6 @@ export function automationTypeLabel(
   return i18n.t(($) => {
     return $.workflows.automations.common.automation;
   });
-}
-
-function agentInitials(label: string): string {
-  const words = label.trim().split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
-  }
-  return (words[0]?.slice(0, 2) || "??").toUpperCase();
 }
 
 function WorkflowAgentAvatar({
@@ -580,7 +630,7 @@ function WorkflowAgentAvatar({
   }
   return (
     <span className={cn("inline-flex items-center justify-center", className)}>
-      {agentInitials(label)}
+      {labelInitials(label)}
     </span>
   );
 }
@@ -595,52 +645,57 @@ export function AutomationListIcon({
   const Icon = (() => {
     if (automation.kind === "schedule") {
       if (automation.schedule.type === "loop") {
-        return IconRepeat;
+        return Repeat;
       }
       if (automation.schedule.type === "once") {
-        return IconClock;
+        return Clock;
       }
-      return IconCalendarTime;
+      return CalendarClock;
     }
     if (automation.eventType === "webhook-received") {
-      return IconLink;
+      return Link;
+    }
+    if (automation.eventType === "stripe-invoice-paid") {
+      return BrandStripe;
     }
     if (
-      automation.eventType === "github-label-applied" ||
+      automation.eventType === "github-pull-request" ||
       automation.eventType === "github-deployment-status-created" ||
       automation.eventType === "github-issue-comment-created" ||
       automation.eventType === "github-pull-request-review-submitted" ||
       automation.eventType === "github-workflow-job-completed" ||
       automation.eventType === "github-workflow-run-completed"
     ) {
-      return IconBrandGithub;
+      return BrandGithub;
     }
     if (automation.eventType === "google-meet-transcript-generated") {
-      return IconVideo;
+      return Video;
     }
     if (automation.eventType === "notion-child-page-created") {
-      return IconFilePlus;
+      return FilePlus;
     }
     if (automation.eventType === "notion-database-item-created") {
-      return IconDatabasePlus;
+      return DatabasePlus;
     }
     if (automation.eventType === "notion-page-content-updated") {
-      return IconFilePencil;
+      return FilePen;
     }
     if (automation.eventType === "gmail-label-applied") {
-      return IconTag;
+      return Tag;
     }
     if (automation.eventType === "chat-run-finished") {
-      return IconMessageCircle;
+      return MessageCircle;
     }
-    return IconMail;
+    return Mail;
   })();
   const tone =
     automation.kind === "schedule"
       ? "bg-blue-50 text-blue-600"
       : automation.eventType === "webhook-received"
         ? "bg-amber-50 text-amber-700"
-        : "bg-emerald-50 text-emerald-700";
+        : automation.eventType === "stripe-invoice-paid"
+          ? "bg-violet-50 text-violet-700"
+          : "bg-emerald-50 text-emerald-700";
 
   const compact = size === "sm";
   return (
@@ -654,7 +709,7 @@ export function AutomationListIcon({
       )}
       aria-hidden="true"
     >
-      <Icon size={compact ? 16 : 28} stroke={1.6} />
+      <Icon size={compact ? 16 : 28} />
     </span>
   );
 }
@@ -670,8 +725,12 @@ export function WorkflowAutomationEnabledSwitch({
   const [enabledLoadable, setEnabled] = useLoadableSet(
     setWorkflowAutomationEnabled$,
   );
+  const upgradeDialogSource = useGet(workflowWebhookUpgradeDialogSource$);
   const { t } = useTranslation();
-  const busy = enabledLoadable.state === "loading";
+  const busy =
+    enabledLoadable.state === "loading" ||
+    (upgradeDialogSource?.action === "enable" &&
+      upgradeDialogSource.automationId === entry.automation.id);
   const title = workflowTitle(entry.workflow);
 
   return (
@@ -694,7 +753,7 @@ export function WorkflowAutomationEnabledSwitch({
               { title },
             )
       }
-      className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted"
+      className="data-checked:bg-primary data-unchecked:bg-muted"
       onCheckedChange={(enabled) => {
         detach(
           setEnabled(
@@ -745,11 +804,11 @@ function WorkflowSelectionStep({
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
       <button
         type="button"
-        className="mb-3 flex w-full min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
+        className="mb-3 flex w-full min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-state-hover"
         onClick={onCreateWorkflow}
       >
         <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground">
-          <IconMessageCircle size={16} stroke={1.6} />
+          <MessageCircle size={16} />
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-medium text-foreground">
@@ -776,7 +835,7 @@ function WorkflowSelectionStep({
               <button
                 key={workflow.id}
                 type="button"
-                className="flex min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
+                className="flex min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-state-hover"
                 onClick={() => {
                   onSelectWorkflow(workflow);
                 }}
@@ -876,7 +935,7 @@ function AgentSelectionStep({
               return (
                 <div
                   key={agent.id}
-                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-accent"
+                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-state-hover"
                 >
                   <AgentDialogAgentButton
                     agent={agent}
@@ -907,7 +966,7 @@ function AgentSelectionStep({
               return (
                 <div
                   key={agent.id}
-                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-accent"
+                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-state-hover"
                 >
                   <AgentDialogAgentButton
                     agent={agent}

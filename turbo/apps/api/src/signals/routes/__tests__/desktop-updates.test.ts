@@ -1,15 +1,25 @@
-import { desktopUpdatesContract } from "@vm0/api-contracts/contracts/desktop-updates";
+import { desktopUpdatesContract } from "@okouai/api-contracts/contracts/desktop-updates";
+import { testDesktopUpdateManifestStateContract } from "@okouai/api-contracts/contracts/test-desktop-update-manifest-state";
 import { HttpResponse, http } from "msw";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { clearMockNow, mockNow } from "../../../lib/time";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { mockNow, withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { desktopUpdateRoutes } from "../desktop-updates";
+import { testDesktopUpdateManifestStateRoutes } from "../test-desktop-update-manifest-state";
+
+const TEST_APP_ROUTES = Object.freeze([...desktopUpdateRoutes]);
 
 const context = testContext();
 const DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
+const OKOU_DESKTOP_UPDATE_MANIFEST_URL =
+  "https://github.com/vm0-ai/vm0/releases/download/ai-okou-desktop-updates/ai-okou-desktop-update-manifest.json";
+const DESKTOP_ZERO_MIGRATION_POLICY_URL =
+  "https://github.com/vm0-ai/vm0/releases/download/desktop-migration-policy/desktop-migration-policy.json";
 
 interface DesktopUpdateRelease {
   readonly version: string;
@@ -21,6 +31,7 @@ interface DesktopUpdateRelease {
 
 interface DesktopUpdateManifest {
   readonly schemaVersion: 1;
+  readonly product?: "zero" | "okou";
   readonly channels: Record<
     string,
     { readonly latest: string; readonly blocked?: readonly string[] }
@@ -29,18 +40,32 @@ interface DesktopUpdateManifest {
 }
 
 function client() {
-  return setupApp({ context })(desktopUpdatesContract);
+  return setupApp({ context, routes: desktopUpdateRoutes })(
+    desktopUpdatesContract,
+  );
+}
+
+function manifestStateClient() {
+  return setupApp({ context, routes: testDesktopUpdateManifestStateRoutes })(
+    testDesktopUpdateManifestStateContract,
+  );
 }
 
 function appRequest(path: string): Promise<Response> {
   return Promise.resolve(
-    createApp({ signal: context.signal }).request(path, { method: "GET" }),
+    createApp({ signal: context.signal, routes: TEST_APP_ROUTES }).request(
+      path,
+      { method: "GET" },
+    ),
   );
 }
 
-function mockDesktopUpdateManifest(manifest: DesktopUpdateManifest): void {
+function mockDesktopUpdateManifest(
+  manifest: DesktopUpdateManifest,
+  manifestUrl = DESKTOP_UPDATE_MANIFEST_URL,
+): void {
   server.use(
-    http.get(DESKTOP_UPDATE_MANIFEST_URL, () => {
+    http.get(manifestUrl, () => {
       return HttpResponse.json(manifest);
     }),
   );
@@ -60,10 +85,17 @@ function stableManifest(
   };
 }
 
-function darwinArm64Release(version: string, url: string) {
+function darwinArm64Release(
+  version: string,
+  url: string,
+  productName = "Zero",
+) {
   return {
     version,
-    name: `Zero Computer Use ${version}`,
+    name:
+      productName === "Okou"
+        ? `Okou ${version}`
+        : `Zero Computer Use ${version}`,
     notes: `Release ${version}`,
     pubDate: "2026-06-08T00:00:00.000Z",
     platforms: {
@@ -89,16 +121,55 @@ function legacyDarwinX64Release(version: string, url: string) {
 }
 
 describe("desktop update routes", () => {
-  let testIndex = 0;
-
-  beforeEach(() => {
-    mockNow(Date.parse("2026-06-08T00:00:00.000Z") + testIndex * 120_000);
-    testIndex += 1;
+  beforeEach(async () => {
+    await accept(manifestStateClient().reset({ body: {} }), [200]);
   });
 
-  afterEach(() => {
-    clearMockNow();
-  });
+  it.each(["off", "soft", "hard"] as const)(
+    "serves the no-store %s Zero migration policy",
+    async (mode) => {
+      server.use(
+        http.get(DESKTOP_ZERO_MIGRATION_POLICY_URL, () => {
+          return HttpResponse.json({ schemaVersion: 1, mode });
+        }),
+      );
+
+      const response = await appRequest(
+        "http://api.test/api/desktop/migration-policy",
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      await expect(response.json()).resolves.toStrictEqual({
+        schemaVersion: 1,
+        mode,
+      });
+    },
+  );
+
+  it.each([
+    HttpResponse.json({ schemaVersion: 2, mode: "hard" }),
+    new HttpResponse(null, { status: 503 }),
+  ])(
+    "defaults to soft coexistence for an unavailable policy",
+    async (mockResponse) => {
+      server.use(
+        http.get(DESKTOP_ZERO_MIGRATION_POLICY_URL, () => {
+          return mockResponse;
+        }),
+      );
+
+      const response = await appRequest(
+        "http://api.test/api/desktop/migration-policy",
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toStrictEqual({
+        schemaVersion: 1,
+        mode: "soft",
+      });
+    },
+  );
 
   it("redirects the release page route to the current stable desktop release", async () => {
     mockDesktopUpdateManifest(
@@ -173,6 +244,219 @@ describe("desktop update routes", () => {
         },
       ],
     });
+  });
+
+  it("caches the desktop manifest until the 60-second ttl expires", async () => {
+    const initialNow = Date.parse("2026-06-08T00:00:00.000Z");
+    const firstZipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
+    const refreshedZipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.2/Zero-darwin-arm64-0.2.2.zip";
+
+    await withMockNowForTest(initialNow, async () => {
+      mockDesktopUpdateManifest(
+        stableManifest("0.2.1", {
+          "0.2.1": darwinArm64Release("0.2.1", firstZipUrl),
+        }),
+      );
+
+      const firstResponse = await accept(
+        client().feed({
+          params: { channel: "stable", platform: "darwin", arch: "arm64" },
+        }),
+        [200],
+      );
+      expect(firstResponse.body.currentRelease).toBe("0.2.1");
+
+      mockDesktopUpdateManifest(
+        stableManifest("0.2.2", {
+          "0.2.2": darwinArm64Release("0.2.2", refreshedZipUrl),
+        }),
+      );
+      mockNow(initialNow + 59_999);
+
+      const cachedResponse = await accept(
+        client().feed({
+          params: { channel: "stable", platform: "darwin", arch: "arm64" },
+        }),
+        [200],
+      );
+      expect(cachedResponse.body.currentRelease).toBe("0.2.1");
+
+      mockNow(initialNow + 60_000);
+
+      const refreshedResponse = await accept(
+        client().feed({
+          params: { channel: "stable", platform: "darwin", arch: "arm64" },
+        }),
+        [200],
+      );
+      expect(refreshedResponse.body.currentRelease).toBe("0.2.2");
+    });
+  });
+
+  it("serves an Okou release only from the isolated Okou manifest", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip";
+    mockDesktopUpdateManifest(
+      {
+        ...stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", zipUrl, "Okou"),
+        }),
+        product: "okou",
+      },
+      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+    );
+
+    const response = await accept(
+      client().productFeed({
+        params: {
+          product: "ai-okou-desktop",
+          channel: "stable",
+          platform: "darwin",
+          arch: "arm64",
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      currentRelease: "1.2.3",
+      releases: [
+        {
+          version: "1.2.3",
+          updateTo: {
+            name: "Okou 1.2.3",
+            version: "1.2.3",
+            pub_date: "2026-06-08T00:00:00.000Z",
+            url: zipUrl,
+            notes: "Release 1.2.3",
+          },
+        },
+      ],
+    });
+  });
+
+  it("redirects the final Okou line to final-identity release assets", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip";
+    mockDesktopUpdateManifest(
+      {
+        ...stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", zipUrl, "Okou"),
+        }),
+        product: "okou",
+      },
+      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+    );
+
+    const releaseResponse = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/release",
+    );
+    expect(releaseResponse.status).toBe(302);
+    expect(releaseResponse.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/tag/okou-desktop-v1.2.3",
+    );
+
+    const dmgResponse = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/dmg",
+    );
+    expect(dmgResponse.status).toBe(302);
+    expect(dmgResponse.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.dmg",
+    );
+  });
+
+  it("serves branded Okou routes from the final identity line after cutover", async () => {
+    const zipUrl =
+      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip";
+    mockDesktopUpdateManifest(
+      {
+        ...stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", zipUrl, "Okou"),
+        }),
+        product: "okou",
+      },
+      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+    );
+
+    const brandedReleaseResponse = await appRequest(
+      "http://api.test/api/okou/desktop/updates/stable/darwin/arm64/release",
+    );
+    expect(brandedReleaseResponse.status).toBe(302);
+    expect(brandedReleaseResponse.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/tag/okou-desktop-v1.2.3",
+    );
+
+    const brandedDmgResponse = await appRequest(
+      "http://api.test/api/okou/desktop/updates/stable/darwin/arm64/dmg",
+    );
+    expect(brandedDmgResponse.status).toBe(302);
+    expect(brandedDmgResponse.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.dmg",
+    );
+  });
+
+  it("returns not found for the retired pre-adoption Okou update line", async () => {
+    for (const path of [
+      "/api/desktop/updates/okou/stable/darwin/arm64/release",
+      "/api/desktop/updates/okou/stable/darwin/arm64/dmg",
+      "/api/desktop/updates/okou/stable/darwin/arm64/RELEASES.json",
+    ]) {
+      const response = await appRequest(`http://api.test${path}`);
+
+      expect(response.status).toBe(404);
+    }
+  });
+
+  it("does not serve a Zero artifact from the final Okou feed", async () => {
+    mockDesktopUpdateManifest(
+      {
+        ...stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release(
+            "1.2.3",
+            "https://github.com/vm0-ai/vm0/releases/download/desktop-v1.2.3/Zero-darwin-arm64-1.2.3.zip",
+          ),
+        }),
+        product: "okou",
+      },
+      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+    );
+
+    const response = await accept(
+      client().productFeed({
+        params: {
+          product: "ai-okou-desktop",
+          channel: "stable",
+          platform: "darwin",
+          arch: "arm64",
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("does not serve an Okou artifact from the legacy Zero feed", async () => {
+    mockDesktopUpdateManifest(
+      stableManifest("1.2.3", {
+        "1.2.3": darwinArm64Release(
+          "1.2.3",
+          "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip",
+          "Okou",
+        ),
+      }),
+    );
+
+    const response = await accept(
+      client().feed({
+        params: { channel: "stable", platform: "darwin", arch: "arm64" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("rejects the retired macOS x64 update feed", async () => {

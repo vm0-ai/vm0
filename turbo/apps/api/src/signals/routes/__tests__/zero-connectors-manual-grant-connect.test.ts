@@ -4,19 +4,28 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { afterEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import {
   readConnectorCredentialStorageState,
+  requestSetConnectorVariableOwner,
   seedConnectorStorageRow,
   seedOwnedConnectorSecret,
 } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroConnectorsRoutes } from "../zero-connectors";
+import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroConnectorsRoutes,
+  ...zeroFeatureSwitchesRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -42,7 +51,9 @@ function authHeaders() {
 }
 
 function featureSwitchesClient() {
-  return setupApp({ context })(zeroFeatureSwitchesContract);
+  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    zeroFeatureSwitchesContract,
+  );
 }
 
 function seedAuthenticatedFixture(): AuthenticatedFixture {
@@ -84,7 +95,9 @@ async function deleteConnector(
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorsBySlugContract).delete({
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    ).delete({
       params: { connectorSlug },
       headers: authHeaders(),
     }),
@@ -105,7 +118,9 @@ async function readConnector(
 ) {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
-    setupApp({ context })(zeroConnectorsBySlugContract).get({
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    ).get({
       params: { connectorSlug },
       headers: authHeaders(),
     }),
@@ -132,7 +147,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
   }
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     const response = await accept(
       client.connect({
         params: { connectorSlug: "openai" },
@@ -148,7 +165,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     const response = await accept(
       client.connect({
         params: { connectorSlug: "openai" },
@@ -163,7 +182,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("rejects requests without a selected auth method", async () => {
     await seedFixture();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
       "/api/zero/connectors/openai/manual-grant",
@@ -184,7 +203,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     await seedFixture();
     const connectorSlug = "server-authored-connector";
     const authMethod = "server-authored-method";
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -200,7 +221,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
       code: "BAD_REQUEST",
     });
     const list = await accept(
-      setupApp({ context })(zeroConnectorsMainContract).list({
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsMainContract,
+      ).list({
         headers: authHeaders(),
       }),
       [200],
@@ -212,7 +235,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("rejects invalid server-authored identity syntax at the contract", async () => {
     await seedFixture();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
       "/api/zero/connectors/invalid_ref/manual-grant",
@@ -231,7 +254,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("connects a first-time manual grant connector with connector-owned state", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -262,7 +287,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("connects Zendesk manual grant fields through the API", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -313,10 +340,70 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
   });
 
+  it("rejects connector variable owners from another organization or user", async () => {
+    const fixture = await seedFixture();
+    const response = await accept(
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorManualGrantContract,
+      ).connect({
+        params: { connectorSlug: "zendesk" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            apiToken: "zendesk-token",
+            email: "support@example.com",
+            subdomain: "example",
+          },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    const foreignOwners = [
+      {
+        orgId: `org_${randomUUID()}`,
+        userId: fixture.userId,
+      },
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomUUID()}`,
+      },
+    ];
+
+    for (const owner of foreignOwners) {
+      const foreignConnectorId = await seedConnectorStorageRow(context, {
+        ...owner,
+        connectorSlug: "github",
+        authMethod: "oauth",
+        storageVersion: 1,
+      });
+      const ownerUpdate = await requestSetConnectorVariableOwner(context, {
+        connectorId: foreignConnectorId,
+        name: "ZENDESK_EMAIL",
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+      });
+      expect(ownerUpdate.status).toBe(500);
+    }
+
+    await expect(
+      readConnectorCredentialStorageState(context, {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        connectorSlug: "zendesk",
+        variableNames: ["ZENDESK_EMAIL"],
+      }),
+    ).resolves.toMatchObject({
+      variables: [{ name: "ZENDESK_EMAIL", connector_id: response.body.id }],
+    });
+  });
+
   it("deletes connector-owned secret and variable state on disconnect", async () => {
     const fixture = await seedFixture();
     await accept(
-      setupApp({ context })(zeroConnectorManualGrantContract).connect({
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorManualGrantContract,
+      ).connect({
         params: { connectorSlug: "zendesk" },
         body: {
           authMethod: "api-token",
@@ -366,7 +453,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     });
 
     const response = await accept(
-      setupApp({ context })(zeroConnectorManualGrantContract).connect({
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorManualGrantContract,
+      ).connect({
         params: { connectorSlug: "openai" },
         headers: authHeaders(),
         body: {
@@ -423,7 +512,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("normalizes a full URL host field for manual grant connectors", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -451,7 +542,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("connects Lark app credentials through the API", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -481,7 +574,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("reconnects Lark manual grant state through the API", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     await accept(
       client.connect({
         params: { connectorSlug: "lark" },
@@ -526,7 +621,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     await updateFeatureSwitches(fixture, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     await accept(
       client.connect({
         params: { connectorSlug: "test-oauth" },
@@ -565,7 +662,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("replaces GitLab manual grant when optional fields are omitted", async () => {
     const fixture = await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
     await accept(
       client.connect({
         params: { connectorSlug: "gitlab" },
@@ -603,7 +702,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("rejects private field names and identifies the public field id", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -624,7 +725,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("rejects unknown public fields without echoing submitted values", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -650,7 +753,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("rejects missing required fields", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -667,7 +772,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("rejects required fields that sanitize to empty without private field names", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -684,7 +791,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("rejects connectors that do not support manual grant auth", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -702,7 +811,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("rejects selected auth methods without manual grants", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -720,7 +831,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("allows feature-gated manual grant auth outside discovery", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -746,7 +859,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
   it("rejects authored-hidden manual grant auth", async () => {
     await seedFixture();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({
@@ -764,9 +879,12 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
   });
 
   it("publishes one connector change event on successful replacement", async () => {
-    await seedFixture();
+    const fixture = seedFixture();
+    context.mocks.ably.channelGet.mockClear();
     context.mocks.ably.publish.mockClear();
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     await accept(
       client.connect({
@@ -777,6 +895,10 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
       [200],
     );
 
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `user:${fixture.userId}`,
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "connector:changed",
@@ -789,7 +911,9 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     await updateFeatureSwitches(fixture, {
       [FeatureSwitchKey.BentomlConnector]: true,
     });
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
 
     const response = await accept(
       client.connect({

@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { withCleanup } from "../../utils.ts";
 import { accept } from "../../../lib/accept.ts";
@@ -11,7 +11,7 @@ import { agentDetail$ } from "./detail.ts";
 
 // ---------------------------------------------------------------------------
 // Authorized connectors: User↔Agent↔Connector (per-agent grant)
-//  - GET/PUT /api/zero/agents/:id/user-connectors
+//  - GET/PUT /api/okou/agents/:id/user-connectors
 //  - Wire data: { enabledConnectorSlugs: string[] } — connector slugs this user
 //    authorized for this agent
 // ---------------------------------------------------------------------------

@@ -1,36 +1,36 @@
 import { Buffer } from "node:buffer";
 
 import type { z } from "zod";
-import { authContract } from "@vm0/api-contracts/contracts/auth";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
 import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth";
+} from "@okouai/api-contracts/contracts/cli-auth";
 import {
   cliAuthTestCodexOauthContract,
   cliAuthTestConnectorContract,
   cliAuthTestEnableConnectorContract,
   cliAuthTestTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth-test";
-import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/cli-auth-test";
+import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   type DesktopAuthCallbackScheme,
   desktopAuthConsumeContract,
   desktopAuthHandoffContract,
-} from "@vm0/api-contracts/contracts/desktop-auth";
-import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+} from "@okouai/api-contracts/contracts/desktop-auth";
+import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import {
   type ClaudeCodeDeviceAuthScope,
-  zeroClaudeCodeDeviceAuthContract,
-} from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
+  claudeCodeDeviceAuthContract,
+} from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import {
   type CodexDeviceAuthScope,
-  zeroCodexDeviceAuthContract,
-} from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+  codexDeviceAuthContract,
+} from "@okouai/api-contracts/contracts/codex-device-auth";
+import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { http, HttpResponse } from "msw";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -46,10 +46,10 @@ import { cliAuthTestRoutes } from "../../cli-auth-test";
 import { desktopAuthRoutes } from "../../desktop-auth";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
-import { zeroClaudeCodeDeviceAuthRoutes } from "../../zero-claude-code-device-auth";
-import { zeroCodexDeviceAuthRoutes } from "../../zero-codex-device-auth";
+import { claudeCodeDeviceAuthRoutes } from "../../claude-code-device-auth";
+import { codexDeviceAuthRoutes } from "../../codex-device-auth";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroRealtimeTokenRoutes } from "../../zero-realtime-token";
+import { realtimeTokenRoutes } from "../../realtime-token";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -84,10 +84,10 @@ const authDeviceRoutes: readonly RouteEntry[] = [
   ...desktopAuthRoutes,
   ...zeroAgentsRoutes,
   ...zeroBillingStatusRoutes,
-  ...zeroClaudeCodeDeviceAuthRoutes,
-  ...zeroCodexDeviceAuthRoutes,
+  ...claudeCodeDeviceAuthRoutes,
+  ...codexDeviceAuthRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroRealtimeTokenRoutes,
+  ...realtimeTokenRoutes,
 ];
 
 function authDeviceApp(context: TestContext) {
@@ -222,14 +222,25 @@ function makeCodexIdToken(opts: {
   return makeCodexJwt(payload);
 }
 
-function makeCodexTokenResponse(scope: "org" | "personal") {
+function makeCodexTokenResponse(
+  scope: "org" | "personal",
+  args: {
+    readonly accountId?: string;
+    readonly workspaceName?: string;
+  } = {},
+) {
+  const accountId = args.accountId ?? `ws_acct_from_id_token_${scope}`;
   return {
-    access_token: makeCodexJwt({ exp: Math.floor(now() / 1000) + 7200 }),
+    access_token: makeCodexJwt({
+      exp: Math.floor(now() / 1000) + 7200,
+      account_id: accountId,
+    }),
     refresh_token: `rt_${scope}_synthetic_high_entropy`,
     id_token: makeCodexIdToken({
-      accountId: `ws_acct_from_id_token_${scope}`,
+      accountId,
       planType: "plus",
-      workspaceName: scope === "org" ? "Org Acme" : "Personal Acme",
+      workspaceName:
+        args.workspaceName ?? (scope === "org" ? "Org Acme" : "Personal Acme"),
     }),
   };
 }
@@ -286,7 +297,11 @@ interface CodexDeviceAuthProviderRecorder {
 }
 
 export function mockCodexDeviceAuthProvider(
-  options: { readonly tokenScope?: "org" | "personal" } = {},
+  options: {
+    readonly tokenScope?: "org" | "personal";
+    readonly accountId?: string;
+    readonly workspaceName?: string;
+  } = {},
 ): CodexDeviceAuthProviderRecorder {
   const recorded: CodexDeviceAuthProviderRecorder = {
     userCode: [],
@@ -320,7 +335,7 @@ export function mockCodexDeviceAuthProvider(
     http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
       recorded.oauthToken.push(new URLSearchParams(await request.text()));
       return HttpResponse.json(
-        makeCodexTokenResponse(options.tokenScope ?? "org"),
+        makeCodexTokenResponse(options.tokenScope ?? "org", options),
       );
     }),
   );
@@ -334,7 +349,15 @@ interface ClaudeCodeTokenEndpointRecorder {
   readonly usage: Headers[];
 }
 
-export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
+export function mockClaudeCodeTokenEndpoint(
+  options: {
+    readonly accountEmail?: string;
+    readonly organizationName?: string;
+  } = {},
+): ClaudeCodeTokenEndpointRecorder {
+  const accountEmail = options.accountEmail ?? "claude.user@example.com";
+  const organizationName =
+    options.organizationName ?? "Claude User's Organization";
   const recorded: ClaudeCodeTokenEndpointRecorder = {
     token: [],
     profile: [],
@@ -357,12 +380,12 @@ export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
       recorded.profile.push(request.headers);
       return HttpResponse.json({
         account: {
-          email: "claude.user@example.com",
+          email: accountEmail,
           has_claude_max: false,
           has_claude_pro: true,
         },
         organization: {
-          name: "Claude User's Organization",
+          name: organizationName,
           organization_type: "claude_pro",
           rate_limit_tier: "default_claude_ai",
         },
@@ -665,10 +688,17 @@ export function createAuthDeviceApiActions(context: TestContext) {
       actor: ApiTestUser | null,
       scope: CodexDeviceAuthScope,
       statuses: readonly (200 | 400 | 401 | 403 | 503)[],
+      mutation?: {
+        readonly mode: "add" | "reconnect";
+        readonly modelProviderId?: string;
+      },
     ) {
-      const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
+      const client = authDeviceApp(context)(codexDeviceAuthContract);
       return await accept(
-        client.start({ headers: authenticate(actor), body: { scope } }),
+        client.start({
+          headers: authenticate(actor),
+          body: { scope, ...mutation },
+        }),
         statuses,
       );
     },
@@ -678,7 +708,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
     ) {
-      const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
+      const client = authDeviceApp(context)(codexDeviceAuthContract);
       return await accept(
         client.complete({
           headers: authenticate(actor),
@@ -693,7 +723,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
+      const client = authDeviceApp(context)(codexDeviceAuthContract);
       return await accept(
         client.cancel({
           headers: authenticate(actor),
@@ -707,10 +737,17 @@ export function createAuthDeviceApiActions(context: TestContext) {
       actor: ApiTestUser | null,
       scope: ClaudeCodeDeviceAuthScope,
       statuses: readonly (200 | 400 | 401 | 403 | 503)[],
+      mutation?: {
+        readonly mode: "add" | "reconnect";
+        readonly modelProviderId?: string;
+      },
     ) {
-      const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
+      const client = authDeviceApp(context)(claudeCodeDeviceAuthContract);
       return await accept(
-        client.start({ headers: authenticate(actor), body: { scope } }),
+        client.start({
+          headers: authenticate(actor),
+          body: { scope, ...mutation },
+        }),
         statuses,
       );
     },
@@ -721,7 +758,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       authorizationCode: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
     ) {
-      const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
+      const client = authDeviceApp(context)(claudeCodeDeviceAuthContract);
       return await accept(
         client.complete({
           headers: authenticate(actor),
@@ -736,7 +773,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
+      const client = authDeviceApp(context)(claudeCodeDeviceAuthContract);
       return await accept(
         client.cancel({
           headers: authenticate(actor),

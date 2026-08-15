@@ -1,9 +1,10 @@
-# Zero CLI Testing
+# Okou CLI Testing
 
 ## Principle
 
-The CLI package publishes one binary: `zero`. Command tests are integration
-tests that enter through Commander with `command.parseAsync()`.
+The private CLI package exposes only the canonical `okou` entry point. Command
+tests are integration tests that enter through Commander with
+`command.parseAsync()`.
 
 - Mock the Web API with MSW.
 - Keep command parsing, validation, formatting, and filesystem behavior real.
@@ -29,12 +30,13 @@ src/commands/zero/
 
 ## Authentication and routing
 
-Product CLI requests use `ZERO_TOKEN` as their only authentication source.
-Tests should set it explicitly together with the API URL:
+Product CLI requests prefer `OKOU_TOKEN` and retain `ZERO_TOKEN` as a
+protocol fallback. Tests should set the canonical token explicitly together
+with the API URL unless they are covering that fallback:
 
 ```typescript
 beforeEach(() => {
-  vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+  vi.stubEnv("OKOU_TOKEN", "test-okou-token");
   vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 });
 
@@ -44,52 +46,39 @@ afterEach(() => {
 ```
 
 Do not create `~/.vm0/config.json`, set `VM0_TOKEN`, or mock the config module.
-Tests for missing authentication should leave `ZERO_TOKEN` unset and assert the
-resulting guidance.
+Tests for missing authentication should leave both token names unset and assert
+the resulting guidance. Keep focused protocol coverage that sets only
+`ZERO_TOKEN` and proves the fallback still reaches the canonical Okou path.
 
 ## Command integration pattern
 
 ```typescript
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server";
-import { zeroLogsCommand } from "../index";
+import { zeroSearchCommand } from "../index";
 
-describe("zero logs", () => {
+describe("okou search --source agent-session", () => {
+  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
   beforeEach(() => {
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    zeroSearchCommand.setOptionValue("source", []);
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
+    mockConsoleLog.mockClear();
   });
 
-  it("renders returned agent events", async () => {
-    server.use(
-      http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
-        () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            nextCursor: null,
-            framework: "claude-code",
-          });
-        },
-      ),
-    );
-
-    await zeroLogsCommand.parseAsync([
+  it("prints both local agent session locations", async () => {
+    await zeroSearchCommand.parseAsync([
       "node",
-      "zero",
-      "00000000-0000-4000-8000-000000000000",
-      "--all",
+      "okou",
+      "find the failed tool call",
+      "--source",
+      "agent-session",
     ]);
 
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining("No agent events"),
-    );
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("/home/user/.claude/projects/");
+    expect(output).toContain("/home/user/.codex/sessions/");
   });
 });
 ```
@@ -111,12 +100,12 @@ HTTP request, and filesystem changes.
 Use the real filesystem under a temporary directory:
 
 ```typescript
-const tempDir = mkdtempSync(path.join(os.tmpdir(), "zero-cli-test-"));
+const tempDir = mkdtempSync(path.join(os.tmpdir(), "okou-cli-test-"));
 const previousCwd = process.cwd();
 process.chdir(tempDir);
 
 try {
-  await command.parseAsync(["node", "zero", "..."]);
+  await command.parseAsync(["node", "okou", "..."]);
 } finally {
   process.chdir(previousCwd);
   rmSync(tempDir, { recursive: true, force: true });
@@ -133,15 +122,15 @@ properties and injected state during teardown.
 
 API failures should be represented with MSW responses and asserted through the
 command's user-visible error and exit code. Missing-token tests should verify
-the `ZERO_TOKEN` setup guidance; present-but-rejected token tests should verify
+the `OKOU_TOKEN` setup guidance; present-but-rejected token tests should verify
 the invalid-or-expired guidance.
 
 ## What belongs elsewhere
 
 - API route behavior belongs in API integration tests.
-- Multi-service lifecycle behavior belongs in runner E2E tests.
+- Multi-service lifecycle behavior belongs in product-surface E2E tests.
 - Pure internal unit tests are reserved for security-critical logic,
   algorithmically complex parsers, or state-transition matrices.
 
-See [CLI E2E Testing](./cli-e2e-testing.md) for the E2E-only credential and
-fixture boundary.
+See [CLI and Runner E2E Testing](./cli-e2e-testing.md) for the deployed-test
+boundary.

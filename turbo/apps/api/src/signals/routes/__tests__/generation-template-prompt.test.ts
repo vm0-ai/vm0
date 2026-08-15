@@ -5,12 +5,15 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
-} from "@vm0/core";
-import { findImageStyle } from "@vm0/core/resource-registry";
+} from "@okouai/core";
+import {
+  findImageStyle,
+  findWebsiteTemplatePackage,
+} from "@okouai/core/resource-registry";
 import {
   buildGenerationTemplatePrompt,
   buildGenerationTemplatesPrompt,
-} from "../generation-template-prompt";
+} from "../../../lib/generation-template-prompt";
 
 describe("buildGenerationTemplatePrompt", () => {
   it("builds one shared context for multiple ordered templates", () => {
@@ -86,7 +89,7 @@ describe("buildGenerationTemplatePrompt", () => {
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
     expect(result.prompt).toContain(
-      "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
     expect(result.prompt).toContain(
       "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
@@ -99,11 +102,11 @@ describe("buildGenerationTemplatePrompt", () => {
       "Do not store slide content in JavaScript data",
     );
     expect(result.prompt).toContain(
-      "zero host <output-dir> --site <slug> --artifact-kind presentation-html",
+      "okou host <output-dir> --site <slug> --artifact-kind presentation-html",
     );
     expect(result.prompt).not.toContain("Design system:");
     expect(result.prompt).not.toContain("Selected design system");
-    expect(result.prompt).not.toContain("zero generate presentation");
+    expect(result.prompt).not.toContain("okou generate presentation");
   });
 
   it("falls back to the default color token when none is selected", () => {
@@ -144,7 +147,7 @@ describe("buildGenerationTemplatePrompt", () => {
       `- Style description: ${imageStyle.description}`,
     );
     expect(result.prompt).toContain(
-      `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile --style-source r2`,
+      `okou generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile --style-source r2`,
     );
     expect(result.prompt).toContain(
       `Style source: private R2 registry resource ${imageStyle.id}`,
@@ -181,7 +184,7 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).not.toContain("nexu-io/open-design");
     expect(result.prompt).toContain(
-      `zero generate video --provider built-in --template ${item.id}`,
+      `okou generate video --provider built-in --template ${item.id}`,
     );
     expect(result.prompt).toContain(
       "Run once to fetch the locked video authoring packet",
@@ -190,6 +193,178 @@ describe("buildGenerationTemplatePrompt", () => {
       "read its SKILL.md before final generation",
     );
     expect(result.prompt).toContain("without `--template`");
+    expect(result.prompt).not.toContain("Parameters the user set explicitly");
+  });
+
+  it("keeps the template video model when video model selection is disabled", () => {
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "video",
+        selection: {
+          stylePresetId: item.id,
+          videoOptions: {
+            model: "seedance-1-5-pro-251215",
+            aspectRatio: "9:16",
+            duration: "6s",
+            resolution: "1080p",
+            generateAudio: false,
+          },
+        },
+      },
+      { videoModelSelectionEnabled: false },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("Parameters the user set explicitly");
+    expect(result.prompt).toContain("- Model: seedance-1.5-pro");
+    expect(result.prompt).toContain("- Aspect ratio: 9:16");
+    expect(result.prompt).toContain("- Duration: 6s");
+    expect(result.prompt).toContain("- Resolution: 1080p");
+    expect(result.prompt).toContain("- Audio: off");
+    expect(result.prompt).toContain(
+      "--model seedance-1.5-pro --aspect-ratio 9:16 --duration 6s --resolution 1080p --no-audio",
+    );
+  });
+
+  it("drops only the template model when video model selection is enabled", () => {
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "video",
+        selection: {
+          stylePresetId: item.id,
+          videoOptions: {
+            // The run-owned path must not use this stored model to filter the
+            // remaining options. MiniMax accepts neither 720p nor silence.
+            model: "MiniMax-H3",
+            aspectRatio: "21:9",
+            duration: "5s",
+            resolution: "720p",
+            generateAudio: false,
+          },
+        },
+      },
+      { videoModelSelectionEnabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("Parameters the user set explicitly");
+    expect(result.prompt).not.toContain("- Model:");
+    expect(result.prompt).toContain("- Aspect ratio: 21:9");
+    expect(result.prompt).toContain("- Duration: 5s");
+    expect(result.prompt).toContain("- Resolution: 720p");
+    expect(result.prompt).toContain("- Audio: off");
+    expect(result.prompt).toContain(
+      "--aspect-ratio 21:9 --duration 5s --resolution 720p --no-audio",
+    );
+    expect(result.prompt).not.toContain("--model");
+  });
+
+  it("omits a silent MiniMax request the generation service would reject", () => {
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: item.id,
+        videoOptions: {
+          // MiniMax H3 always returns native audio, so the service answers a
+          // silent request with 400 rather than honouring it.
+          model: "MiniMax-H3",
+          generateAudio: false,
+        },
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("- Model: minimax-h3");
+    expect(result.prompt).not.toContain("Audio:");
+    expect(result.prompt).not.toContain("--no-audio");
+    expect(result.prompt).toContain("--model minimax-h3");
+  });
+
+  it("omits video parameters the chosen model cannot honour", () => {
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: item.id,
+        videoOptions: {
+          // Veo accepts only 16:9 and 9:16, and only 4s, 6s, or 8s.
+          model: "fal-ai/veo3.1/fast",
+          aspectRatio: "21:9",
+          duration: "5s",
+          resolution: "1080p",
+        },
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("- Model: veo3.1-fast");
+    expect(result.prompt).toContain("- Resolution: 1080p");
+    expect(result.prompt).not.toContain("21:9");
+    expect(result.prompt).not.toContain("Duration:");
+    expect(result.prompt).toContain("--model veo3.1-fast --resolution 1080p");
+  });
+
+  it("reads avatar options from the flat fields older bundles wrote", () => {
+    const flat = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: "avatar-template:42",
+        voiceId: "voice-legacy",
+        aspectRatio: "landscape",
+      },
+    });
+    const nested = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: "avatar-template:42",
+        avatarOptions: { voiceId: "voice-legacy", aspectRatio: "landscape" },
+      },
+    });
+
+    expect(flat.status).toBe("resolved");
+    expect(nested).toStrictEqual(flat);
+    if (flat.status !== "resolved") {
+      return;
+    }
+    expect(flat.prompt).toContain("Public JoggAI voice ID: voice-legacy");
+    expect(flat.prompt).toContain("Aspect ratio: landscape");
+  });
+
+  it("prefers nested avatar options over the flat fallback", () => {
+    const result = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: "avatar-template:42",
+        avatarOptions: { voiceId: "voice-nested" },
+        voiceId: "voice-flat",
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("Public JoggAI voice ID: voice-nested");
+    expect(result.prompt).not.toContain("voice-flat");
   });
 
   it("builds workflow template guidance", () => {
@@ -216,16 +391,23 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("# Artifact Template Context");
   });
 
-  it("builds website template v2 package guidance", () => {
+  it("builds website template package guidance", () => {
     const item = WEBSITE_TEMPLATE_ITEMS[0]!;
-    const resourceId = `${item.resourceId}-v2`;
+    const resourceId = item.resourceId;
+    const latestPackage = findWebsiteTemplatePackage(resourceId);
+    if (!latestPackage) {
+      throw new Error("Expected current Website template package");
+    }
 
-    const result = buildGenerationTemplatePrompt({
-      type: "website",
-      selection: {
-        websiteTemplateId: item.id,
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "website",
+        selection: {
+          websiteTemplateId: item.id,
+        },
       },
-    });
+      { latestWebsiteTemplatesEnabled: true },
+    );
 
     expect(result).toStrictEqual({
       status: "resolved",
@@ -238,34 +420,45 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(`Template package id: ${resourceId}`);
     expect(result.prompt).toContain(`Package resource: ${resourceId}`);
     expect(result.prompt).toContain(
-      `zero resource pull ${resourceId} --dir ./generated/resources`,
+      `Template archive SHA-256: ${latestPackage.source.archive.sha256}`,
     );
     expect(result.prompt).toContain(
-      `./generated/resources/${item.sourcePath}/resolve-images.mjs`,
+      `okou resource pull ${resourceId} --dir ./generated/resources`,
     );
-    expect(result.prompt).toContain("/api/presentation/images/resolve");
+    expect(result.prompt).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
+    );
+    expect(result.prompt).toContain(
+      "Keep at most 3 image generations in flight at once",
+    );
+    expect(result.prompt).toContain(
+      "Embed the `Embed this URL in HTML` value returned by the generator",
+    );
     expect(result.prompt).toContain(
       `./generated/resources/${item.sourcePath}/render.mjs`,
     );
-    expect(result.prompt).toContain("zero host <output-dir> --site <slug>");
+    expect(result.prompt).toContain("okou host <output-dir> --site <slug>");
     expect(result.prompt).toContain("built-in R2-backed package");
-    expect(result.prompt).not.toContain("zero generate website --template");
+    expect(result.prompt).not.toContain("okou generate website --template");
   });
 
-  it("selects every website template v2 package", () => {
+  it("selects every current website template package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
-      const resourceId = `${item.resourceId}-v2`;
-      const result = buildGenerationTemplatePrompt({
-        type: "website",
-        selection: {
-          websiteTemplateId: item.id,
+      const resourceId = item.resourceId;
+      const result = buildGenerationTemplatePrompt(
+        {
+          type: "website",
+          selection: {
+            websiteTemplateId: item.id,
+          },
         },
-      });
+        { latestWebsiteTemplatesEnabled: true },
+      );
 
       expect(result).toStrictEqual({
         status: "resolved",
         prompt: expect.stringContaining(
-          `zero resource pull ${resourceId} --dir ./generated/resources`,
+          `okou resource pull ${resourceId} --dir ./generated/resources`,
         ),
       });
       if (result.status !== "resolved") {
@@ -277,6 +470,38 @@ describe("buildGenerationTemplatePrompt", () => {
         `./generated/resources/${item.sourcePath}/render.mjs`,
       );
     }
+  });
+
+  it("keeps the pre-cutover website picker package outside the rollout", () => {
+    const item = WEBSITE_TEMPLATE_ITEMS[0]!;
+    const previousResourceId = `${item.resourceId}-v2`;
+    const previousPackage = findWebsiteTemplatePackage(previousResourceId);
+    if (!previousPackage) {
+      throw new Error("Expected pre-cutover Website template package");
+    }
+    const result = buildGenerationTemplatePrompt({
+      type: "website",
+      selection: {
+        websiteTemplateId: item.id,
+      },
+    });
+
+    expect(result).toStrictEqual({
+      status: "resolved",
+      prompt: expect.stringContaining(
+        `okou resource pull ${previousResourceId} --dir ./generated/resources`,
+      ),
+    });
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(
+      `Template archive SHA-256: ${previousPackage.source.archive.sha256}`,
+    );
+    expect(result.prompt).toContain("resolve-images.mjs");
+    expect(result.prompt).not.toContain("use `seedream4` by default");
+    expect(result.prompt).not.toContain("Keep at most 3 image generations");
+    expect(result.prompt).not.toContain("Embed this URL in HTML");
   });
 
   it("rejects unknown workflow templates", () => {

@@ -28,6 +28,83 @@ url_is_on_app() {
 }
 
 # ---------------------------------------------------------------------------
+# capture_browser_page / focus_browser_page / agent_browser_on_page
+# Keep every page operation bound to the tab that browser_setup launched.
+# agent-browser 0.22 automatically activates event-discovered targets, so an
+# auxiliary about:blank target must not take ownership from the E2E page.
+# ---------------------------------------------------------------------------
+capture_browser_page() {
+  local tabs_json
+  tabs_json="$(agent-browser --json tab)" || return
+
+  BROWSER_PAGE_INDEX="$(
+    jq -e -r '.data.tabs[] | select(.active == true) | .index' \
+      <<<"$tabs_json"
+  )" || return
+  if [[ ! "$BROWSER_PAGE_INDEX" =~ ^[0-9]+$ ]]; then
+    echo "Failed to capture the active browser page" >&2
+    return 1
+  fi
+  export BROWSER_PAGE_INDEX
+}
+
+focus_browser_page() {
+  if [[ ! "${BROWSER_PAGE_INDEX:-}" =~ ^[0-9]+$ ]]; then
+    echo "Browser page ownership is not initialized" >&2
+    return 1
+  fi
+
+  local target_index="$BROWSER_PAGE_INDEX"
+  if [[ -n "${BROWSER_PAGE_URL:-}" ]]; then
+    local tabs_json
+    tabs_json="$(agent-browser --json tab)" || return
+
+    local -a matching_indexes=()
+    local index candidate_url
+    local tab_records
+    tab_records="$(jq -r '.data.tabs[] | [.index, .url] | @tsv' <<<"$tabs_json")" || return
+    while IFS=$'\t' read -r index candidate_url; do
+      if browser_page_url_matches "$candidate_url" "$BROWSER_PAGE_URL"; then
+        matching_indexes+=("$index")
+      fi
+    done <<<"$tab_records"
+
+    if (( ${#matching_indexes[@]} != 1 )); then
+      echo "Expected one owned browser page, found ${#matching_indexes[@]}" >&2
+      return 1
+    fi
+    target_index="${matching_indexes[0]}"
+    BROWSER_PAGE_INDEX="$target_index"
+    export BROWSER_PAGE_INDEX
+  fi
+
+  agent-browser tab "$target_index" >/dev/null
+}
+
+browser_page_url_matches() {
+  local candidate_url="$1"
+  local expected_url="$2"
+  if [[ "$expected_url" == http://* || "$expected_url" == https://* ]]; then
+    url_is_on_app "$candidate_url" "$expected_url"
+  else
+    [[ "$candidate_url" == "$expected_url" ]]
+  fi
+}
+
+agent_browser_on_page() {
+  focus_browser_page || return
+  agent-browser "$@"
+}
+
+open_browser_page() {
+  local url="$1"
+  focus_browser_page || return
+  agent-browser open "$url" || return
+  BROWSER_PAGE_URL="$url"
+  export BROWSER_PAGE_URL
+}
+
+# ---------------------------------------------------------------------------
 # browser_setup — Validate environment, initialize shared state
 # Call this in setup_file() before any browser interactions.
 # ---------------------------------------------------------------------------
@@ -44,6 +121,7 @@ browser_setup() {
 
   export NODE_TLS_REJECT_UNAUTHORIZED=0
   export AGENT_BROWSER_SESSION="${AGENT_BROWSER_SESSION:-${JOB_REF:-local}-sign-up}"
+  unset BROWSER_PAGE_URL
 
   export OTP="424242"
 
@@ -55,6 +133,7 @@ browser_setup() {
   AGENT_BROWSER_IGNORE_HTTPS_ERRORS=true \
     agent-browser set viewport 1920 1080 || return
 
+  capture_browser_page || return
   seed_preview_bypass_cookies || return
 }
 
@@ -97,6 +176,8 @@ seed_preview_bypass_cookies() {
 # Keeps normal runs quiet and avoids screenshots/snapshots.
 # ---------------------------------------------------------------------------
 report_auth_page_failure() {
+  focus_browser_page >/dev/null 2>&1 || true
+
   echo "# Auth page state:" >&3
   agent-browser eval \
     '({
@@ -159,14 +240,25 @@ report_auth_page_failure() {
 }
 
 # ---------------------------------------------------------------------------
-# generate_test_email — Generate a random test email with +clerk_test suffix
-# Format: ${JOB_REF}+clerk_test@${8_RANDOM_HEX}.ai
+# generate_test_email — Generate the generation-scoped browser test email
+# Format: ${JOB_REF}+clerk_test+${RUN_ID}-${ATTEMPT}+browser@vm0-e2e.ai
 # ---------------------------------------------------------------------------
 generate_test_email() {
   local job_ref="${JOB_REF:-local}"
-  local rand_hex
-  rand_hex=$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 8)
-  echo "${job_ref}+clerk_test@${rand_hex}.ai"
+  if [[ ! "$job_ref" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]; then
+    echo "JOB_REF must use lowercase letters, numbers, and hyphens" >&2
+    return 1
+  fi
+  local generation="local-1"
+  if [[ -n "${GITHUB_RUN_ID:-}" || -n "${GITHUB_RUN_ATTEMPT:-}" ]]; then
+    if [[ ! "${GITHUB_RUN_ID:-}" =~ ^[1-9][0-9]*$ ]] ||
+      [[ ! "${GITHUB_RUN_ATTEMPT:-}" =~ ^[1-9][0-9]*$ ]]; then
+      echo "GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT must both be positive integers" >&2
+      return 1
+    fi
+    generation="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+  fi
+  echo "${job_ref}+clerk_test+${generation}+browser@vm0-e2e.ai"
 }
 
 # ---------------------------------------------------------------------------
@@ -209,7 +301,7 @@ wait_for_browser_target() {
   local wait_started="$SECONDS"
   local wait_output
   while (( SECONDS - wait_started < wait_timeout_seconds )); do
-    if wait_output=$(agent-browser eval "$condition" 2>&1); then
+    if wait_output=$(agent_browser_on_page eval "$condition" 2>&1); then
       if [[ "$wait_output" == "true" ]]; then
         return 0
       fi
@@ -245,7 +337,7 @@ wait_for_javascript_target() {
   local wait_started="$SECONDS"
   while (( SECONDS - wait_started < wait_timeout_seconds )); do
     local target_ready
-    target_ready="$(agent-browser eval \
+    target_ready="$(agent_browser_on_page eval \
       "(async () => {
         try {
           const response = await fetch(${url_json}, { cache: 'reload' });
@@ -284,9 +376,9 @@ wait_for_auth_next_step() {
         || text.includes('forgot password');
     })()"
 
-  if [[ "$(agent-browser eval "window.location.pathname.includes('/${auth_path}')")" != "true" ]]; then
+  if [[ "$(agent_browser_on_page eval "window.location.pathname.includes('/${auth_path}')")" != "true" ]]; then
     echo "complete"
-  elif [[ "$(agent-browser get count "$otp_selector")" -gt 0 ]]; then
+  elif [[ "$(agent_browser_on_page get count "$otp_selector")" -gt 0 ]]; then
     echo "otp"
   else
     echo "password"
@@ -294,12 +386,28 @@ wait_for_auth_next_step() {
 }
 
 # ---------------------------------------------------------------------------
+# wait_for_sign_in_email_code_ready — Wait for Clerk to finish preparing the
+# email-code first factor before entering the code. The OTP input mounts while
+# prepareFirstFactor is still in flight, so its presence is not a readiness
+# signal for attemptFirstFactor.
+# ---------------------------------------------------------------------------
+wait_for_sign_in_email_code_ready() {
+  wait_for_browser_target --fn \
+    "(() => {
+      const verification =
+        window.Clerk?.client?.signIn?.firstFactorVerification;
+      return verification?.strategy === 'email_code'
+        && verification.status === 'unverified';
+    })()"
+}
+
+# ---------------------------------------------------------------------------
 # accept_legal_consent — Check legal consent checkbox if present
 # Clerk renders this when legal_consent_enabled is on. Safe to call always.
 # ---------------------------------------------------------------------------
 accept_legal_consent() {
-  if [[ "$(agent-browser get count 'input[name="legalAccepted"]')" -gt 0 ]]; then
-    agent-browser check 'input[name="legalAccepted"]'
+  if [[ "$(agent_browser_on_page get count 'input[name="legalAccepted"]')" -gt 0 ]]; then
+    agent_browser_on_page check 'input[name="legalAccepted"]'
   fi
 }
 
@@ -307,18 +415,18 @@ accept_legal_consent() {
 # click_continue — Click form "Continue" button (not "Continue with Google")
 # ---------------------------------------------------------------------------
 click_continue() {
-  agent-browser find role button click --name "Continue" --exact
+  agent_browser_on_page find role button click --name "Continue" --exact
 }
 
 # ---------------------------------------------------------------------------
 # dismiss_cookie_banner — Dismiss cookie consent banner if present
 # ---------------------------------------------------------------------------
 dismiss_cookie_banner() {
-  if [[ "$(agent-browser eval \
+  if [[ "$(agent_browser_on_page eval \
     "Array.from(document.querySelectorAll('button')).some(
       (button) => button.textContent?.trim() === 'Accept'
     )")" == "true" ]]; then
-    agent-browser find role button click --name "Accept" --exact
+    agent_browser_on_page find role button click --name "Accept" --exact
   fi
 }
 
@@ -327,33 +435,17 @@ dismiss_cookie_banner() {
 # ---------------------------------------------------------------------------
 enter_otp() {
   local code="$1"
-  local auth_path="$2"
   local otp_selector='input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]'
 
   wait_for_browser_target "$otp_selector"
-  if [[ "$(agent-browser get count "$otp_selector")" -eq 1 ]]; then
-    agent-browser fill "$otp_selector" "$code"
+  if [[ "$(agent_browser_on_page get count "$otp_selector")" -eq 1 ]]; then
+    agent_browser_on_page fill "$otp_selector" "$code"
   else
-    agent-browser find first "$otp_selector" click
+    agent_browser_on_page find first "$otp_selector" click
     local digit
     for digit in $(echo "$code" | grep -o .); do
-      agent-browser press "$digit"
+      agent_browser_on_page press "$digit"
     done
-  fi
-
-  wait_for_browser_target --fn \
-    "(() => {
-      if (!window.location.pathname.includes('/${auth_path}')) return true;
-      return Array.from(document.querySelectorAll('button')).some((button) => {
-        const label = button.textContent?.trim() ?? '';
-        return !button.disabled && /^(Continue|Verify)$/i.test(label);
-      });
-    })()"
-
-  if [[ "$(agent-browser eval "window.location.pathname.includes('/${auth_path}')")" == "true" ]]; then
-    if ! agent-browser find role button click --name "Continue" --exact 2>/dev/null; then
-      agent-browser find role button click --name "Verify" --exact
-    fi
   fi
 }
 
@@ -424,27 +516,66 @@ delete_e2e_account_if_exists() {
     echo "CLERK_SECRET_KEY is required but not set" >&2
     return 1
   fi
+  if [[ ! "${E2E_ACCOUNT:-}" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?\+clerk_test\+([1-9][0-9]*-[1-9][0-9]*|local-1)\+browser@vm0-e2e\.ai$ ]]; then
+    echo "E2E_ACCOUNT is not a canonical browser test email" >&2
+    return 1
+  fi
 
   local clerk_api_url="https://api.clerk.com"
 
-  local users_response
-  users_response=$(curl -sS -X GET \
-    "${clerk_api_url}/v1/users?email_address[]=${E2E_ACCOUNT}" \
+  local users_payload
+  users_payload=$(curl -sS \
+    --retry 3 \
+    --retry-max-time 30 \
+    --retry-all-errors \
+    -w '\n%{http_code}' \
+    --get "${clerk_api_url}/v1/users" \
+    --data-urlencode "email_address[]=${E2E_ACCOUNT}" \
     -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-    -H "Content-Type: application/json")
+    -H "Content-Type: application/json") || return
 
-  local user_id
-  user_id=$(echo "$users_response" | jq -r '.[0].id // empty' 2>/dev/null)
-  if [[ -z "$user_id" ]]; then
-    echo "# E2E account does not exist, nothing to delete" >&3
+  local lookup_status="${users_payload##*$'\n'}"
+  local users_response="${users_payload%$'\n'*}"
+  if [[ ! "$lookup_status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "Clerk user lookup failed with HTTP ${lookup_status}" >&2
+    return 1
+  fi
+
+  if ! jq -e 'type == "array"' <<<"$users_response" >/dev/null; then
+    echo "Clerk returned an unexpected user lookup response" >&2
+    return 1
+  fi
+
+  local user_ids
+  user_ids=$(jq -r --arg email "$E2E_ACCOUNT" \
+    '.[] | select(any(.email_addresses[]?; .email_address == $email)) | .id' \
+    <<<"$users_response")
+  if [[ -z "$user_ids" ]]; then
+    echo "E2E account does not exist, nothing to delete" >&2
     return 0
   fi
 
-  echo "# Deleting existing E2E account: ${E2E_ACCOUNT} (${user_id})" >&3
-  curl -sS -X DELETE \
-    "${clerk_api_url}/v1/users/${user_id}" \
-    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-    -H "Content-Type: application/json" > /dev/null
+  local user_id
+  while read -r user_id; do
+    echo "Deleting E2E account: ${E2E_ACCOUNT} (${user_id})" >&2
+    local delete_status
+    if ! delete_status=$(curl -sS \
+      --retry 3 \
+      --retry-max-time 30 \
+      --retry-all-errors \
+      -o /dev/null \
+      -w '%{http_code}' \
+      -X DELETE \
+      "${clerk_api_url}/v1/users/${user_id}" \
+      -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+      -H "Content-Type: application/json"); then
+      return 1
+    fi
+    if [[ ! "$delete_status" =~ ^2[0-9][0-9]$ && "$delete_status" != "404" ]]; then
+      echo "Clerk user deletion failed with HTTP ${delete_status}" >&2
+      return 1
+    fi
+  done <<<"$user_ids"
 }
 
 # ---------------------------------------------------------------------------
@@ -474,13 +605,13 @@ derive_app_url() {
 # ---------------------------------------------------------------------------
 sign_in_via_token() {
   local base_url="${1:-$(derive_app_url)}"
-  agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}"
+  open_browser_page "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}"
 
   wait_for_browser_target --fn \
     "!window.location.pathname.includes('/sign-in-token')"
 
   local current_url
-  current_url=$(agent-browser get url 2>/dev/null || true)
+  current_url=$(agent_browser_on_page get url 2>/dev/null || true)
   if ! url_is_on_app "$current_url" "$base_url"; then
     echo "Failed to redirect after sign-in-token" >&2
     return 1
@@ -509,7 +640,7 @@ navigate_to_app_page() {
   local path="$1"
   local app_url
   app_url="$(derive_app_url)"
-  agent-browser open "${app_url}${path}"
+  open_browser_page "${app_url}${path}"
 }
 
 # ---------------------------------------------------------------------------

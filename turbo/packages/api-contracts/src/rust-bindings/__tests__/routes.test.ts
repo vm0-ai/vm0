@@ -16,9 +16,41 @@ const expectedBindings = [
   },
   {
     method: "POST",
-    path: "/api/runners/runs/:runId/network-policy-refresh",
-    rustModulePath: ["runners", "runs", "by_run_id", "network_policy_refresh"],
-    rustConstName: "REFRESH",
+    path: "/api/runners/runs/:runId/active-inputs/reserve",
+    rustModulePath: [
+      "runners",
+      "runs",
+      "by_run_id",
+      "active_inputs",
+      "reserve",
+    ],
+    rustConstName: "RESERVE",
+  },
+  {
+    method: "POST",
+    path: "/api/runners/runs/:runId/active-inputs/deliveries/:deliveryId/receipt",
+    rustModulePath: [
+      "runners",
+      "runs",
+      "by_run_id",
+      "active_inputs",
+      "deliveries",
+      "by_delivery_id",
+      "receipt",
+    ],
+    rustConstName: "RECEIPT",
+  },
+  {
+    method: "POST",
+    path: "/api/runners/runs/:runId/connector-runtime/sync",
+    rustModulePath: [
+      "runners",
+      "runs",
+      "by_run_id",
+      "connector_runtime",
+      "sync",
+    ],
+    rustConstName: "SYNC",
   },
   {
     method: "POST",
@@ -155,7 +187,7 @@ describe("Rust route bindings", () => {
     const rendered = renderRustRoutes(rustRouteBindings);
 
     expect(rendered).toContain(
-      "//! Generated Rust route bindings for selected `@vm0/api-contracts` routes.",
+      "//! Generated Rust route bindings for selected `@okouai/api-contracts` routes.",
     );
     expect(rendered).toContain(
       "/// Generated route bindings under `runners::jobs::by_id::claim`.",
@@ -222,6 +254,16 @@ describe("Rust route bindings", () => {
     expect(rendered).toContain("pub item_id: &'a str,");
     expect(rendered).toContain("encode_path_segment(params.org_id)");
     expect(rendered).toContain("encode_path_segment(params.item_id)");
+  });
+
+  it("renders both active-input receipt path parameters", () => {
+    const rendered = renderRustRoutes(rustRouteBindings);
+
+    expect(rendered).toContain("pub run_id: &'a str,");
+    expect(rendered).toContain("pub delivery_id: &'a str,");
+    expect(rendered).toContain(
+      "crate::route::encode_path_segment(params.delivery_id)",
+    );
   });
 
   it("escapes Rust format braces in static route segments with path params", () => {

@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { artifactCatalogContract } from "@vm0/api-contracts/contracts/artifact-catalog";
+import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { click, fill } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
@@ -88,7 +89,7 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-followup",
           runLifecycleEvent: "completed",
-          recommendedFollowups: [
+          followups: [
             {
               prompt: followupPrompt,
               kind: "generate",
@@ -145,7 +146,6 @@ describe("chat lifecycle", () => {
       expect(buttonByText("Generate launch artifact")).toBeInTheDocument();
       expect(buttonByText("Draft launch copy")).toBeInTheDocument();
     });
-
     click(buttonByText(followupPrompt));
 
     await waitFor(() => {
@@ -163,6 +163,149 @@ describe("chat lifecycle", () => {
     });
     expect(composer.textContent).toBe(`${existingDraft}\n${followupPrompt}`);
     expect(sentMessages).toHaveLength(0);
+  });
+
+  it("preserves follow-up content and selection when the card rail is enabled", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000734";
+    const prompts = [
+      "Draft launch copy",
+      "Create a detailed presentation outline with speaker notes",
+      "Generate a hero image",
+    ];
+    const completedAt = "2026-06-09T10:01:01Z";
+    const completedAtLabel = new Date(completedAt).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const selectedPrompt = prompts[1]!;
+    const sentMessages: unknown[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Responsive follow-ups",
+      chatEvents: [
+        {
+          id: "msg-responsive-followups-assistant",
+          eventType: "output.message",
+          role: "assistant",
+          content: "The launch plan is ready.",
+          runId: "run-responsive-followups",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-responsive-followups-completed",
+          eventType: "run.completed",
+          role: "assistant",
+          content: null,
+          runId: "run-responsive-followups",
+          runLifecycleEvent: "completed",
+          followups: prompts.map((prompt) => {
+            return { prompt, kind: "talk" as const };
+          }),
+          createdAt: completedAt,
+        },
+      ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
+    });
+
+    // The card rail is a mobile-only surface: the same coarse-pointer
+    // heuristic that gates the composer's auto-focus device decides it.
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)";
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ResponsiveFollowupCards]: true,
+      },
+    });
+
+    const composer = await findWorkflowComposerEditor();
+    await screen.findByText("The launch plan is ready.");
+    expect(
+      screen.getByText(`Keep going · ${completedAtLabel}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "Keep going" }),
+    ).toBeInTheDocument();
+    for (const prompt of prompts) {
+      const card = buttonByText(prompt);
+      expect(card).toBeVisible();
+      expect(card).toHaveAccessibleName(prompt);
+    }
+
+    click(buttonByText(selectedPrompt));
+
+    await waitFor(() => {
+      expect(composer.textContent).toBe(selectedPrompt);
+      expect(composer).toHaveFocus();
+    });
+    expect(sentMessages).toHaveLength(0);
+  });
+
+  it("keeps the flat list on desktop even with a narrow window", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000735";
+    const prompts = ["Draft launch copy", "Generate a hero image"];
+    const completedAt = "2026-06-09T10:01:01Z";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Narrow desktop window",
+      chatEvents: [
+        {
+          id: "msg-narrow-desktop-assistant",
+          eventType: "output.message",
+          role: "assistant",
+          content: "The launch plan is ready.",
+          runId: "run-narrow-desktop",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-narrow-desktop-completed",
+          eventType: "run.completed",
+          role: "assistant",
+          content: null,
+          runId: "run-narrow-desktop",
+          runLifecycleEvent: "completed",
+          followups: prompts.map((prompt) => {
+            return { prompt, kind: "talk" as const };
+          }),
+          createdAt: completedAt,
+        },
+      ],
+    });
+
+    // Fine-pointer desktop: even a dragged-narrow window must not produce
+    // cards, matching the composer auto-focus heuristic.
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(any-pointer: fine)";
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ResponsiveFollowupCards]: true,
+      },
+    });
+
+    await screen.findByText("The launch plan is ready.");
+    const group = screen.getByRole("group", { name: "Keep going" });
+    for (const prompt of prompts) {
+      expect(buttonByText(prompt)).toBeInTheDocument();
+    }
+    // No horizontal card rail on desktop: the buttons stay full-width rows
+    // (w-full, items-center) rather than fixed-width self-stretch cards.
+    const rows = Array.from(group.querySelectorAll<HTMLElement>("button"));
+    expect(rows).toHaveLength(prompts.length);
+    expect(rows[0]?.className).toContain("w-full");
+    expect(rows[0]?.className).not.toContain("flex-[0_0_min");
   });
 
   it("shows recommended follow-ups after an appended follow-up event", async () => {
@@ -185,7 +328,7 @@ describe("chat lifecycle", () => {
       role: "assistant",
       content: null,
       runId: "run-followup",
-      recommendedFollowups: [
+      followups: [
         {
           prompt: followupPrompt,
           kind: "generate",
@@ -243,6 +386,76 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("renders strict version-1 follow-up content", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000732";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-followup-wire-assistant",
+          eventType: "output.message",
+          role: "assistant",
+          content: "The launch plan is ready.",
+          runId: "run-followup-wire",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-wire-shape",
+          eventType: "output.followups",
+          role: "assistant",
+          runId: "run-followup-wire",
+          seqId: 2,
+          createdAt: "2026-06-09T10:00:01Z",
+          content: JSON.stringify({
+            version: 1,
+            followups: [
+              {
+                prompt: "Prepare the launch checklist",
+                kind: "talk",
+              },
+            ],
+          }),
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(buttonByText("Prepare the launch checklist")).toBeInTheDocument();
+    });
+  });
+
+  it("ignores invalid follow-up content without rendering its JSON", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000733";
+    const invalidContent = JSON.stringify({
+      version: 2,
+      followups: [{ prompt: "Unsafe raw follow-up", kind: "talk" }],
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-invalid-followup-content",
+          eventType: "output.followups",
+          role: "assistant",
+          content: invalidContent,
+          runId: "run-invalid-followup-content",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+    expect(queryButtonByText("Unsafe raw follow-up")).not.toBeInTheDocument();
+    expect(screen.queryByText(invalidContent)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Unsafe raw follow-up/u)).not.toBeInTheDocument();
+  });
+
   it("catches recommended follow-ups written before realtime subscription is ready", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
@@ -262,7 +475,7 @@ describe("chat lifecycle", () => {
       role: "assistant",
       content: null,
       runId: "run-followup-subscribe-gap",
-      recommendedFollowups: [
+      followups: [
         {
           prompt: followupPrompt,
           kind: "generate",
@@ -394,7 +607,7 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-followup-old",
           runLifecycleEvent: "completed",
-          recommendedFollowups: [
+          followups: [
             {
               prompt: followupPrompt,
               kind: "generate",

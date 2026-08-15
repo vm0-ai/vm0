@@ -1,22 +1,30 @@
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 
 import { mockOptionalEnv } from "../../../lib/env";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import {
   admitGoalQueueEventFixture,
   readGoalQueueStateFixture,
   readGoalThreadFixture,
 } from "../../../test-fixtures/goal-queue";
+import {
+  readRunAutonomyBudgetFixture,
+  readThreadGoalAutonomyBudgetFixture,
+  setRunAutonomyBudgetFixture,
+} from "./helpers/runtime-state";
 import { readChatEventContextFixture } from "../../../test-fixtures/chat-events";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroGoalsRoutes } from "../zero-goals";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -44,7 +52,7 @@ function currentSecond(): number {
 }
 
 function goalsClient() {
-  return setupApp({ context })(zeroGoalsContract);
+  return setupApp({ context, routes: zeroGoalsRoutes })(zeroGoalsContract);
 }
 
 function zeroToken(
@@ -93,7 +101,7 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
     {
       agentId: agent.agentId,
       prompt: "goal precondition",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     },
     [201],
   );
@@ -140,6 +148,20 @@ async function readThreadGoalWithSession(fixture: GoalApiFixture) {
   );
 }
 
+async function readGoalMarkerSummaries(fixture: GoalApiFixture) {
+  const chat = createChatFilesBddApi(context);
+  const page = await chat.listThreadEvents(fixture.actor, fixture.threadId);
+  return page.events
+    .filter((event) => {
+      return (
+        event.eventType === "goal.open" || event.eventType === "goal.close"
+      );
+    })
+    .map((event) => {
+      return { eventType: event.eventType, content: event.content };
+    });
+}
+
 describe("zero goals", () => {
   beforeEach(() => {
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
@@ -149,6 +171,12 @@ describe("zero goals", () => {
     const fixture = await seedGoalApiFixture();
 
     const created = await createGoal(fixture, "ship thread goals");
+    await expect(
+      readRunAutonomyBudgetFixture(context, fixture.runId),
+    ).resolves.toBe(10);
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(9);
     expect(created.body).toStrictEqual({
       objective: "ship thread goals",
       objectiveBrief: "ship thread goals",
@@ -157,6 +185,9 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: created.body,
     });
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+    ]);
 
     const duplicate = await accept(
       goalsClient().create({
@@ -175,6 +206,33 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: { status: "blocked" },
     });
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+    ]);
+
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
+    const exhaustedResume = await accept(
+      goalsClient().resume({ headers: headers(fixture) }),
+      [409],
+    );
+    expect(exhaustedResume.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+    const exhaustedEdit = await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal:user-control:write"]),
+        body: { objective: "bypass bounded goal depth" },
+      }),
+      [409],
+    );
+    expect(exhaustedEdit.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: {
+        status: "blocked",
+        objective: "ship thread goals",
+      },
+    });
+
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 1);
 
     const resumed = await accept(
       goalsClient().resume({ headers: headers(fixture) }),
@@ -184,6 +242,14 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: { status: "active", objectiveBrief: "ship thread goals" },
     });
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(0);
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+      { eventType: "goal.open", content: "ship thread goals" },
+    ]);
 
     const completed = await accept(
       goalsClient().complete({ headers: headers(fixture) }),
@@ -193,6 +259,53 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: { status: "complete" },
     });
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+    ]);
+
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
+    const exhausted = await accept(
+      goalsClient().create({
+        headers: headers(fixture),
+        body: { objective: "exceed goal depth" },
+      }),
+      [409],
+    );
+    expect(exhausted.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
+      body: { status: "complete", objective: "ship thread goals" },
+    });
+  });
+
+  it("refreshes reactivated goal budgets from the current run", async () => {
+    const fixture = await seedGoalApiFixture();
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 1);
+    await createGoal(fixture, "refresh inherited goal budget");
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(0);
+
+    await accept(goalsClient().block({ headers: headers(fixture) }), [200]);
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 5);
+    await accept(goalsClient().resume({ headers: headers(fixture) }), [200]);
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(4);
+
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 7);
+    await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal:user-control:write"]),
+        body: { objective: "refresh inherited goal budget again" },
+      }),
+      [200],
+    );
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(6);
   });
 
   it("bootstraps a provisioned goal thread through a claimed input.goal event", async () => {
@@ -218,6 +331,7 @@ describe("zero goals", () => {
       prompt: "create a goal outside chat",
       modelProvider: "anthropic-api-key",
     });
+    const kms = useSecretKmsProbe();
 
     const created = await accept(
       goalsClient().create({
@@ -242,6 +356,12 @@ describe("zero goals", () => {
     if (!goal) {
       throw new Error("Expected the provisioned thread goal");
     }
+    await expect(
+      readRunAutonomyBudgetFixture(context, origin.runId),
+    ).resolves.toBe(10);
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, goal.threadId),
+    ).resolves.toBe(9);
 
     let goalRunId: string | undefined;
     await expect
@@ -254,6 +374,9 @@ describe("zero goals", () => {
     if (!goalRunId) {
       throw new Error("Expected the bootstrapped goal run");
     }
+    await expect(
+      readRunAutonomyBudgetFixture(context, goalRunId),
+    ).resolves.toBe(9);
 
     const state = await readGoalQueueStateFixture(goal.threadId);
     const goalEventId = state.eventIds[0];
@@ -262,7 +385,6 @@ describe("zero goals", () => {
     }
 
     const page = await chat.listThreadEvents(actor, goal.threadId);
-    expect(page.events[0]?.seqId).toBe(1);
     const goalQueueEvent = page.events.find((event) => {
       return event.id === goalEventId;
     });
@@ -290,10 +412,12 @@ describe("zero goals", () => {
       runId: goalRunId,
       runGroupId: goal.goalId,
       revokesEventId: goalEventId,
-      isGoalRun: true,
       userMessage: {
         version: 1,
-        parts: [{ type: "goal", goalBrief: "bootstrap autonomously" }],
+        parts: [
+          { type: "goal", goalBrief: "bootstrap autonomously" },
+          { type: "model", selectedModel: "claude-sonnet-5" },
+        ],
       },
     });
     if (!claimedGoalEvent) {
@@ -305,15 +429,18 @@ describe("zero goals", () => {
     );
     expect(admittedContext).toMatchObject({
       contextType: "goal",
-      contextId: expect.any(String),
-      goalObjectiveBrief: "bootstrap autonomously",
+      contextId: goal.goalId,
     });
     expect(claimedContext).toMatchObject({
       contextType: "goal",
-      contextId: admittedContext?.contextId,
-      goalObjectiveBrief: "bootstrap autonomously",
+      contextId: goal.goalId,
     });
     expect(state.runIds).toHaveLength(1);
+    expect(state.runs).toContainEqual({
+      id: goalRunId,
+      goalId: goal.goalId,
+    });
+    expect(kms.generateDataKeyCalls).toBe(1);
 
     await api.requestCancelRun(actor, goalRunId, [200]);
     await api.requestCancelRun(actor, origin.runId, [200]);
@@ -390,8 +517,11 @@ describe("zero goals", () => {
       createdAt: expect.any(String),
     });
     await expect(
-      chat.getThreadEvent(fixture.actor, fixture.threadId, admission.eventId),
-    ).resolves.toStrictEqual(event);
+      readChatEventContextFixture(admission.eventId),
+    ).resolves.toMatchObject({
+      contextType: "goal",
+      contextId: goal.goalId,
+    });
   });
 
   it("edits a blocked goal back to active and replaces a completed goal", async () => {
@@ -416,6 +546,7 @@ describe("zero goals", () => {
       body: edited.body,
     });
     await accept(goalsClient().complete({ headers: headers(fixture) }), [200]);
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 1);
 
     const replacement = await accept(
       goalsClient().edit({
@@ -432,6 +563,16 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: replacement.body,
     });
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(0);
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship goals" },
+      { eventType: "goal.close", content: null },
+      { eventType: "goal.open", content: "ship goals v2" },
+      { eventType: "goal.close", content: null },
+      { eventType: "goal.open", content: "start the next goal" },
+    ]);
   });
 
   it("pauses a chat thread goal with session auth", async () => {
@@ -451,6 +592,10 @@ describe("zero goals", () => {
     await expect(readThreadGoalWithSession(fixture)).resolves.toMatchObject({
       body: { status: "paused" },
     });
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+    ]);
   });
 
   it("reads a chat thread goal with session auth", async () => {
@@ -504,12 +649,8 @@ describe("zero goals", () => {
     );
     expect(messages.events).toContainEqual(
       expect.objectContaining({
-        eventType: "goal.changed",
-        goalEvent: {
-          type: "state",
-          status: "active",
-          objectiveBrief: expectedBrief,
-        },
+        eventType: "goal.open",
+        content: expectedBrief,
       }),
     );
   });
@@ -549,12 +690,8 @@ describe("zero goals", () => {
     );
     expect(messages.events).toContainEqual(
       expect.objectContaining({
-        eventType: "goal.changed",
-        goalEvent: {
-          type: "state",
-          status: "active",
-          objectiveBrief: "---",
-        },
+        eventType: "goal.open",
+        content: "---",
       }),
     );
   });
@@ -576,6 +713,32 @@ describe("zero goals", () => {
       [404],
     );
     expect(missing.body.error.code).toBe("NOT_FOUND");
+
+    const chat = createChatFilesBddApi(context);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const messages = await chat.listThreadEvents(
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:member",
+        email: "goal-user@example.com",
+      },
+      fixture.threadId,
+    );
+    expect(
+      messages.events
+        .filter((event) => {
+          return (
+            event.eventType === "goal.open" || event.eventType === "goal.close"
+          );
+        })
+        .map((event) => {
+          return { eventType: event.eventType, content: event.content };
+        }),
+    ).toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+    ]);
   });
 
   it("enforces user-control and agent-result capability boundaries", async () => {
@@ -627,7 +790,9 @@ describe("zero goals", () => {
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const unreads = await accept(
-      setupApp({ context })(chatThreadsContract).unreads({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).unreads({
         headers: { authorization: "Bearer clerk-session" },
         query: { agentId: fixture.agentId },
       }),

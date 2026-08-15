@@ -4,8 +4,8 @@ import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth";
-import { deviceCodes } from "@vm0/db/schema/device-codes";
+} from "@okouai/api-contracts/contracts/cli-auth";
+import { deviceCodes } from "@okouai/db/schema/device-codes";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -13,13 +13,13 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { issueCliToken$ } from "../services/cli-auth.service";
 import {
   updateUserPreferences$,
   userPreferences,
-} from "../services/zero-user-data.service";
+} from "../services/user-data.service";
 import { isValidTimeZone } from "../utils";
 
 const DEVICE_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";

@@ -9,5 +9,5 @@ export const zeroTelegramMessageCommand = new Command()
     "after",
     `
 Examples:
-  zero telegram message send --bot-id <bot-id> -c <chat-id> -t "Hello!"`,
+  okou telegram message send --bot-id <bot-id> -c <chat-id> -t "Hello!"`,
   );

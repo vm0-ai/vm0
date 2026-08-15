@@ -30,8 +30,8 @@ Request context
   request/response bodies.
 - ``SUPPRESS_REQUEST_BODY_CAPTURE``: ``bool`` written by auth.base request-size
   handling. Read by body capture to mark oversized request bodies truncated.
-- ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
-  ``"claude-code"``. Read by model-provider usage protocol selection.
+- ``CLI_AGENT_TYPE``: ``str`` copied from validated registry VM info. Read by
+  model-provider usage protocol selection.
 - ``BROWSER_USER_AGENT``: ``bool`` written during request classification when
   the request matches the short-term browser passthrough User-Agent heuristic.
   Read by request dispatch to skip connector firewall handling and managed
@@ -116,6 +116,11 @@ Firewall and auth context
 - ``AWS_SIGV4_BODY_ADMISSION``: opaque aggregate reservation for a buffered
   body-dependent SigV4 request. Written before body buffering and released by
   terminal flow cleanup.
+- ``AWS_SIGV4_REQUEST_INSPECTION``: opaque bounded request-representation
+  inspection written by managed SigV4 auth. Reused by request-header and request
+  auth phases while the raw URL/header identity is unchanged, restored with an
+  abandoned header probe, consumed after signing, and removed by request or
+  terminal cleanup when signing does not consume it.
 - ``TRUSTED_AUTHORITY_HOST``: ``str`` host from authority validation. Read by
   auth-base URL rewrite logic when reconstructing trusted request authority.
 
@@ -229,6 +234,7 @@ AUTH_CACHE_HIT: Final = "auth_cache_hit"
 AUTH_URL_REWRITE: Final = "auth_url_rewrite"
 AUTH_BASE_FORWARD_ADMISSION: Final = "auth_base_forward_admission"
 AWS_SIGV4_BODY_ADMISSION: Final = "aws_sigv4_body_admission"
+AWS_SIGV4_REQUEST_INSPECTION: Final = "aws_sigv4_request_inspection"
 TRUSTED_AUTHORITY_HOST: Final = "trusted_authority_host"
 
 # Usage and streaming metadata

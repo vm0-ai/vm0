@@ -1,9 +1,9 @@
 /**
  * Tests for computer-use command registration and visibility.
  *
- * Entry point: registerZeroCommands()
+ * Entry points: registerZeroCommands(), formatComputerUseResultForConsole()
  * Mock (external): none
- * Real (internal): Command registration, capability checking
+ * Real (internal): Command registration, capability checking, filesystem output
  */
 
 import {
@@ -24,7 +24,8 @@ import {
   formatComputerUseResultForConsole,
   zeroComputerUseCommand,
 } from "../index";
-import { registerZeroCommands } from "../../../../zero";
+import { computerUseOutputDir } from "../output-artifacts";
+import { registerZeroCommands } from "../../../../okou";
 
 let testOutputDir = "";
 
@@ -85,11 +86,11 @@ describe("computer-use command visibility", () => {
 
   beforeEach(async () => {
     testOutputDir = await mkdtemp(path.join(tmpdir(), "computer-use-output-"));
-    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", testOutputDir);
+    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", testOutputDir);
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("OKOU_TOKEN", "");
   });
 
   afterEach(async () => {
@@ -97,7 +98,7 @@ describe("computer-use command visibility", () => {
     await rm(testOutputDir, { recursive: true, force: true });
   });
 
-  it("should be visible when no ZERO_TOKEN is set", () => {
+  it("should be visible when no OKOU_TOKEN is set", () => {
     const prog = new Command();
     registerZeroCommands(prog);
 
@@ -107,17 +108,17 @@ describe("computer-use command visibility", () => {
     expect(cmd).toBeDefined();
   });
 
-  it("should be visible when ZERO_TOKEN includes computer-use:write", () => {
+  it("should be visible when OKOU_TOKEN includes computer-use:write", () => {
     const token = buildZeroToken({
       userId: "u1",
       runId: "r1",
       orgId: "o1",
-      scope: "zero",
+      scope: "okou",
       capabilities: ["computer-use:write"],
       iat: 1000,
       exp: 2000,
     });
-    vi.stubEnv("ZERO_TOKEN", token);
+    vi.stubEnv("OKOU_TOKEN", token);
 
     const prog = new Command();
     registerZeroCommands(prog);
@@ -125,17 +126,17 @@ describe("computer-use command visibility", () => {
     expect(visibleCommandNames(prog)).toContain("computer-use");
   });
 
-  it("should be hidden when ZERO_TOKEN lacks computer-use:write", () => {
+  it("should be hidden when OKOU_TOKEN lacks computer-use:write", () => {
     const token = buildZeroToken({
       userId: "u1",
       runId: "r1",
       orgId: "o1",
-      scope: "zero",
+      scope: "okou",
       capabilities: ["agent:read"],
       iat: 1000,
       exp: 2000,
     });
-    vi.stubEnv("ZERO_TOKEN", token);
+    vi.stubEnv("OKOU_TOKEN", token);
 
     const prog = new Command();
     registerZeroCommands(prog);
@@ -199,23 +200,99 @@ describe("computer-use command visibility", () => {
     zeroComputerUseCommand.outputHelp();
 
     expect(helpOutput).toContain("Workflow:");
-    expect(helpOutput).toContain("zero computer-use list-apps");
     expect(helpOutput).toContain(
-      "zero computer-use get-app-state --app <bundleId>",
+      "Start the Okou Desktop app and make sure Computer Use is online",
+    );
+    expect(helpOutput).toContain("okou computer-use list-apps");
+    expect(helpOutput).toContain(
+      "okou computer-use get-app-state --app <bundleId>",
     );
     expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
-    expect(helpOutput).toContain("/tmp/vm0/computer-use");
+    expect(helpOutput).toContain("/tmp/okou/computer-use");
     expect(helpOutput).toContain("overwrites the same files");
     expect(helpOutput).toContain("shift+semicolon");
     expect(helpOutput).toContain("Control_L+J");
+    expect(helpOutput).not.toContain("Zero Desktop");
+  });
+
+  it("should use Okou Desktop branding in plugin help", () => {
+    const pluginCommand = zeroComputerUseCommand.commands.find((command) => {
+      return command.name() === "plugin";
+    });
+    const filesystemCommand = pluginCommand?.commands.find((command) => {
+      return command.name() === "filesystem";
+    });
+    const mcpCommand = pluginCommand?.commands.find((command) => {
+      return command.name() === "mcp";
+    });
+    expect(filesystemCommand).toBeDefined();
+    expect(mcpCommand).toBeDefined();
+
+    let filesystemHelpOutput = "";
+    filesystemCommand!.configureOutput({
+      writeOut: (text: string) => {
+        filesystemHelpOutput += text;
+      },
+    });
+    filesystemCommand!.outputHelp();
+
+    let mcpHelpOutput = "";
+    mcpCommand!.configureOutput({
+      writeOut: (text: string) => {
+        mcpHelpOutput += text;
+      },
+    });
+    mcpCommand!.outputHelp();
+
+    expect(filesystemHelpOutput).toContain(
+      "Use the Okou Desktop filesystem plugin",
+    );
+    expect(filesystemHelpOutput).toContain(
+      "List directories enabled in Okou Desktop",
+    );
+    expect(mcpHelpOutput).toContain(
+      "Use custom MCP servers configured in the Okou Desktop app",
+    );
+    expect(`${filesystemHelpOutput}\n${mcpHelpOutput}`).not.toContain(
+      "Zero Desktop",
+    );
+  });
+
+  it("should prefer the trimmed canonical output directory", () => {
+    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
+    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", path.join(testOutputDir, "legacy"));
+
+    expect(computerUseOutputDir()).toBe(testOutputDir);
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["blank", " \t "],
+  ])(
+    "should use the trimmed legacy output directory when the canonical variable is %s",
+    (_case, canonical) => {
+      vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", canonical);
+      vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
+
+      expect(computerUseOutputDir()).toBe(testOutputDir);
+    },
+  );
+
+  it("should default computer-use artifacts to the Okou temp directory", () => {
+    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", undefined);
+    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", undefined);
+
+    expect(computerUseOutputDir()).toBe(
+      path.join(tmpdir(), "okou", "computer-use"),
+    );
   });
 
   it("should guide missing computer-use capability errors to delegated authorization", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "zero-run-token-without-computer-use");
+    vi.stubEnv("OKOU_TOKEN", "zero-run-token-without-computer-use");
 
     server.use(
-      http.post("http://localhost:3000/api/zero/computer-use/commands", () => {
+      http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
         return HttpResponse.json(
           {
             error: {
@@ -235,7 +312,10 @@ describe("computer-use command visibility", () => {
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Computer Use authorization required");
     expect(errorOutput).toContain(
-      "zero connector permission-request computer-use --permission computer-use:write",
+      "ask the user to select an Okou Desktop host for this chat or Slack thread",
+    );
+    expect(errorOutput).toContain(
+      "okou connector permission-request computer-use --permission computer-use:write",
     );
     expect(errorOutput).toContain(
       "Existing run tokens cannot be upgraded in place",
@@ -243,23 +323,24 @@ describe("computer-use command visibility", () => {
     expect(errorOutput).not.toContain(
       "403: Missing required capability: computer-use:write",
     );
+    expect(errorOutput).not.toContain("Zero Desktop");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("should poll pending command results every 500ms", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     let pollCount = 0;
     server.use(
-      http.post("http://localhost:3000/api/zero/computer-use/commands", () => {
+      http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
         return HttpResponse.json({
           commandId: "cmd_poll",
           status: "queued",
         });
       }),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_poll",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_poll",
         () => {
           pollCount += 1;
 
@@ -309,6 +390,77 @@ describe("computer-use command visibility", () => {
     } finally {
       setTimeoutSpy.mockRestore();
     }
+  });
+
+  it("should route production commands through api.okou.ai", async () => {
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+
+    server.use(
+      http.post("https://api.okou.ai/api/okou/computer-use/commands", () => {
+        return HttpResponse.json({
+          commandId: "cmd_okou_origin",
+          status: "queued",
+        });
+      }),
+      http.get(
+        "https://api.okou.ai/api/okou/computer-use/commands/cmd_okou_origin",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_okou_origin",
+            kind: "apps.list",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: {},
+            result: { apps: [] },
+            timeoutMs: 15_000,
+            createdAt: "2026-08-12T14:00:00.000Z",
+            claimedAt: "2026-08-12T14:00:00.100Z",
+            completedAt: "2026-08-12T14:00:00.200Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync(["node", "cli", "list-apps"]);
+  });
+
+  it("should prefer the canonical backend URL without adding a trailing slash", async () => {
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "canonical.example.test/");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://legacy.example.test");
+
+    server.use(
+      http.post(
+        "https://canonical.example.test/api/okou/computer-use/commands",
+        () => {
+          return HttpResponse.json({
+            commandId: "cmd_canonical_origin",
+            status: "queued",
+          });
+        },
+      ),
+      http.get(
+        "https://canonical.example.test/api/okou/computer-use/commands/cmd_canonical_origin",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_canonical_origin",
+            kind: "apps.list",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: {},
+            result: { apps: [] },
+            timeoutMs: 15_000,
+            createdAt: "2026-08-13T10:00:00.000Z",
+            claimedAt: "2026-08-13T10:00:00.100Z",
+            completedAt: "2026-08-13T10:00:00.200Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync(["node", "cli", "list-apps"]);
   });
 
   it("should write screenshot and app state data to local files in command result console output", async () => {
@@ -381,14 +533,14 @@ describe("computer-use command visibility", () => {
 
   it("should print screenshot and app state file paths for get-app-state", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");
     const appState = "snapshot_id=desktop_test_snapshot\nw0 AXWindow";
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/computer-use/commands",
+        "http://localhost:3000/api/okou/computer-use/commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body.kind).toBe("app.state");
@@ -400,7 +552,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_1",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_1",
         () => {
           return HttpResponse.json({
             id: "cmd_1",
@@ -455,11 +607,11 @@ describe("computer-use command visibility", () => {
 
   it("should send click snapshot coordinates and mouse options", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/computer-use/write-commands",
+        "http://localhost:3000/api/okou/computer-use/write-commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body).toMatchObject({
@@ -479,7 +631,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_click",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_click",
         () => {
           return HttpResponse.json({
             id: "cmd_click",
@@ -532,14 +684,14 @@ describe("computer-use command visibility", () => {
 
   it("should send click element indexes", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");
     const appState = "snapshot_id=desktop_test_snapshot\n7 button Send";
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/computer-use/write-commands",
+        "http://localhost:3000/api/okou/computer-use/write-commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body).toMatchObject({
@@ -558,7 +710,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_click_index",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_click_index",
         () => {
           return HttpResponse.json({
             id: "cmd_click_index",
@@ -616,11 +768,11 @@ describe("computer-use command visibility", () => {
 
   it("should send press-key snapshot id and key", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/computer-use/write-commands",
+        "http://localhost:3000/api/okou/computer-use/write-commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body).toMatchObject({
@@ -637,7 +789,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_press",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_press",
         () => {
           return HttpResponse.json({
             id: "cmd_press",
@@ -678,11 +830,11 @@ describe("computer-use command visibility", () => {
 
   it("should send type-text snapshot id and text", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/computer-use/write-commands",
+        "http://localhost:3000/api/okou/computer-use/write-commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body).toMatchObject({
@@ -699,7 +851,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_type",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_type",
         () => {
           return HttpResponse.json({
             id: "cmd_type",
@@ -737,19 +889,19 @@ describe("computer-use command visibility", () => {
 
   it("should call an mcp plugin tool with json arguments", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     let createBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/computer-use/plugin-commands",
+        "http://localhost:3000/api/okou/computer-use/plugin-commands",
         async ({ request }) => {
           createBody = await request.json();
           return HttpResponse.json({ commandId: "cmd_mcp", status: "queued" });
         },
       ),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_mcp",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_mcp",
         () => {
           return HttpResponse.json({
             id: "cmd_mcp",
@@ -802,19 +954,19 @@ describe("computer-use command visibility", () => {
 
   it("should list a server's mcp tools via the reserved tools/list call", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     let createBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/computer-use/plugin-commands",
+        "http://localhost:3000/api/okou/computer-use/plugin-commands",
         async ({ request }) => {
           createBody = await request.json();
           return HttpResponse.json({ commandId: "cmd_list", status: "queued" });
         },
       ),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_list",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_list",
         () => {
           return HttpResponse.json({
             id: "cmd_list",
@@ -863,10 +1015,10 @@ describe("computer-use command visibility", () => {
 
   it("should list mcp servers reported by linked hosts", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
-      http.get("http://localhost:3000/api/zero/computer-use/hosts", () => {
+      http.get("http://localhost:3000/api/okou/computer-use/hosts", () => {
         return HttpResponse.json({
           hosts: [
             {
@@ -902,17 +1054,42 @@ describe("computer-use command visibility", () => {
     expect(output).toContain("Lancy's Mac (online): notes, figma");
   });
 
+  it("should guide empty mcp setup to Okou Desktop", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+
+    server.use(
+      http.get("http://localhost:3000/api/okou/computer-use/hosts", () => {
+        return HttpResponse.json({ hosts: [] });
+      }),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "plugin",
+      "mcp",
+      "list",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(
+      "Configure and enable them in the Okou Desktop app's Developer Tools section",
+    );
+    expect(output).not.toContain("Zero Desktop");
+  });
+
   it("should download pointer-backed screenshots through the API proxy", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("proxy-png-bytes");
     server.use(
-      http.post("http://localhost:3000/api/zero/computer-use/commands", () => {
+      http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
         return HttpResponse.json({ commandId: "cmd_ptr", status: "queued" });
       }),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_ptr",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_ptr",
         () => {
           return HttpResponse.json({
             id: "cmd_ptr",
@@ -940,7 +1117,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_ptr/screenshot",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_ptr/screenshot",
         () => {
           return new HttpResponse(screenshotBytes, {
             status: 200,
@@ -970,14 +1147,14 @@ describe("computer-use command visibility", () => {
 
   it("should mark expired pointer screenshots in command output", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
-      http.post("http://localhost:3000/api/zero/computer-use/commands", () => {
+      http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
         return HttpResponse.json({ commandId: "cmd_exp", status: "queued" });
       }),
       http.get(
-        "http://localhost:3000/api/zero/computer-use/commands/cmd_exp",
+        "http://localhost:3000/api/okou/computer-use/commands/cmd_exp",
         () => {
           return HttpResponse.json({
             id: "cmd_exp",

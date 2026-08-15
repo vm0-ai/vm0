@@ -1,11 +1,11 @@
-//! Late active-input coverage for the experimental Codex app-server backend.
+//! Late active-input coverage for Codex app-server execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
 
 mod common;
 
-use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
+use guest_agent::active_input::ActiveInputControlOutcome;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
@@ -30,11 +30,7 @@ async fn codex_app_server_backend_rejects_active_input_after_turn_completion()
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
-    let active_input = ActiveInputRuntime::new_with_initial_prompt(
-        &runtime.config.run_id,
-        true,
-        &runtime.config.prompt,
-    );
+    let active_input = common::active_input_runtime(&runtime)?;
     let controller = active_input.controller();
 
     let masker = SecretMasker::from_raw("");
@@ -54,7 +50,7 @@ async fn codex_app_server_backend_rejects_active_input_after_turn_completion()
 
     let payload = common::active_input_payload("late follow-up prompt")?;
     assert!(matches!(
-        controller.handle_control_payload("active-msg-late", &payload),
+        controller.handle_control_payload(&payload),
         ActiveInputControlOutcome::Rejected { diagnostic }
             if diagnostic == "active input is closed"
     ));

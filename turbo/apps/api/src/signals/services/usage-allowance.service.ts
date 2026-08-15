@@ -2,8 +2,8 @@ import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
   usageAllowanceAllocations,
-} from "@vm0/db/schema/org-usage-allowance";
-import { agentRuns } from "@vm0/db/schema/agent-run";
+} from "@okouai/db/schema/org-usage-allowance";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   and,
   asc,
@@ -18,9 +18,8 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 

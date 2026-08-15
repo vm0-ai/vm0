@@ -4,10 +4,13 @@ import oxlint from "eslint-plugin-oxlint";
 import turboPlugin from "eslint-plugin-turbo";
 import tseslint from "typescript-eslint";
 
+import { noAbortSignalInObjectParams } from "./no-abort-signal-in-object-params.js";
+
 export { oxlint };
 
 const vm0Plugin = {
   rules: {
+    "no-abort-signal-in-object-params": noAbortSignalInObjectParams,
     "no-msw-bypass": {
       meta: {
         type: "problem",
@@ -102,6 +105,31 @@ const vm0Plugin = {
         };
       },
     },
+    "no-re-export": {
+      meta: {
+        type: "problem",
+        docs: {
+          description: "Disallow forwarding exports from another module",
+        },
+        messages: {
+          noReExport:
+            "Do not re-export from another module. Import from the defining module instead.",
+        },
+        schema: [],
+      },
+      create(context) {
+        return {
+          ExportAllDeclaration(node) {
+            context.report({ node, messageId: "noReExport" });
+          },
+          ExportNamedDeclaration(node) {
+            if (node.source) {
+              context.report({ node, messageId: "noReExport" });
+            }
+          },
+        };
+      },
+    },
   },
 };
 
@@ -127,6 +155,7 @@ export const config = [
       "arrow-body-style": ["error", "always"],
       complexity: ["error", { max: 20 }],
       "vm0/no-msw-bypass": "error",
+      "vm0/no-re-export": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },

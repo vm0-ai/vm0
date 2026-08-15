@@ -1,5 +1,169 @@
 # Changelog
 
+## [0.11.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.6...guest-contracts-v0.11.7) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** use official resources and jsonl sessions ([#27288](https://github.com/vm0-ai/vm0/issues/27288)) ([b287f72](https://github.com/vm0-ai/vm0/commit/b287f7270f0fd0613adff61ab91289b73e39e7f6))
+
+## [0.11.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.5...guest-contracts-v0.11.6) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** preserve runs after tool process oom ([#27272](https://github.com/vm0-ai/vm0/issues/27272)) ([bdba0d6](https://github.com/vm0-ai/vm0/commit/bdba0d6cfb57fec9f7193a02ab93dbf7b7074ea9))
+
+## [0.11.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.4...guest-contracts-v0.11.5) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** let guest reclaim memory before workload oom ([#27206](https://github.com/vm0-ai/vm0/issues/27206)) ([d8bd1c7](https://github.com/vm0-ai/vm0/commit/d8bd1c7471c220f8595edcb64dde3e70840d4467))
+
+## [0.11.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.3...guest-contracts-v0.11.4) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** disable workload memory.high reclaim ([#27126](https://github.com/vm0-ai/vm0/issues/27126)) ([24743ab](https://github.com/vm0-ai/vm0/commit/24743ab1a9901f769ee07a40cffea63c2a516e37))
+
+## [0.11.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.2...guest-contracts-v0.11.3) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** build the pi prompt inside the sandbox ([#27036](https://github.com/vm0-ai/vm0/issues/27036)) ([1e248af](https://github.com/vm0-ai/vm0/commit/1e248afd1118468a8950f81c668d65b27fe6f429))
+
+## [0.11.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.1...guest-contracts-v0.11.2) (2026-08-13)
+
+
+### Refactoring
+
+* **rust:** share active-input control payload contract ([#26950](https://github.com/vm0-ai/vm0/issues/26950)) ([403bfd8](https://github.com/vm0-ai/vm0/commit/403bfd8f08fcd272d7c39df9149b1aa9124dca42))
+
+## [0.11.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.0...guest-contracts-v0.11.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.10.0...guest-contracts-v0.11.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate pi child environment to okou ([#26810](https://github.com/vm0-ai/vm0/issues/26810)) ([9c54e70](https://github.com/vm0-ai/vm0/commit/9c54e70777750b608dad06fde2a44a5a08f9796b))
+
+
+### Refactoring
+
+* **guest:** centralize private file replacement ([#26786](https://github.com/vm0-ai/vm0/issues/26786)) ([b12cef8](https://github.com/vm0-ai/vm0/commit/b12cef89edbcdf0f9748dba40f3ebe99bfb3fbe5))
+
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.9.2...guest-contracts-v0.10.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate run identity env to okou ([#26796](https://github.com/vm0-ai/vm0/issues/26796)) ([88850c3](https://github.com/vm0-ai/vm0/commit/88850c33b9bb20018d9e0fd12097cc5eb7fb2bde))
+
+## [0.9.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.9.1...guest-contracts-v0.9.2) (2026-08-12)
+
+
+### Refactoring
+
+* **pi:** persist sandbox sessions in native sqlite ([#26555](https://github.com/vm0-ai/vm0/issues/26555)) ([9ed505e](https://github.com/vm0-ai/vm0/commit/9ed505e1c567ff019d521fac167700c2b390cffe))
+
+## [0.9.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.9.0...guest-contracts-v0.9.1) (2026-08-12)
+
+
+### Refactoring
+
+* **rust:** centralize guest stdout framing limits ([#26648](https://github.com/vm0-ai/vm0/issues/26648)) ([962e753](https://github.com/vm0-ai/vm0/commit/962e7532f4e8d319fb05b096bdbfca85431731ed))
+
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.8.0...guest-contracts-v0.9.0) (2026-08-11)
+
+
+### Features
+
+* **runner:** enable durable active-input delivery ([#26392](https://github.com/vm0-ai/vm0/issues/26392)) ([6225b5e](https://github.com/vm0-ai/vm0/commit/6225b5e85da2833f011830d21498744893b2f625))
+
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.7.1...guest-contracts-v0.8.0) (2026-08-11)
+
+
+### Features
+
+* **guest:** persist active-input acceptance receipts ([#26191](https://github.com/vm0-ai/vm0/issues/26191)) ([f6ede96](https://github.com/vm0-ai/vm0/commit/f6ede96f136515283ec1f76d380cc3c835f85420))
+
+## [0.7.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.7.0...guest-contracts-v0.7.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** preserve sidecar export failure causes ([#25999](https://github.com/vm0-ai/vm0/issues/25999)) ([76c5c0a](https://github.com/vm0-ai/vm0/commit/76c5c0a8470eecbce17615134b3a6f6c306a98a9))
+
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.6.1...guest-contracts-v0.7.0) (2026-08-09)
+
+
+### Features
+
+* persist and display runner reuse outcomes ([#25942](https://github.com/vm0-ai/vm0/issues/25942)) ([90f8d8f](https://github.com/vm0-ai/vm0/commit/90f8d8ffb713f7f99acd8377b8cba26a91504d0b))
+
+## [0.6.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.6.0...guest-contracts-v0.6.1) (2026-08-09)
+
+
+### Refactoring
+
+* **pi:** replace handoff fallbacks with session polling ([#25906](https://github.com/vm0-ai/vm0/issues/25906)) ([66cbcad](https://github.com/vm0-ai/vm0/commit/66cbcada1c224b1c7541b6d7c90696d3733e53f8))
+
+## [0.6.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.9...guest-contracts-v0.6.0) (2026-08-07)
+
+
+### Features
+
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+
+
+### Bug Fixes
+
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+## [0.5.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.8...guest-contracts-v0.5.9) (2026-08-07)
+
+
+### Refactoring
+
+* **runner:** remove obsolete codex event fallbacks ([#25511](https://github.com/vm0-ai/vm0/issues/25511)) ([94e8703](https://github.com/vm0-ai/vm0/commit/94e87037eef09c503c7280070237483fafad69fa))
+
+## [0.5.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.7...guest-contracts-v0.5.8) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
+## [0.5.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.6...guest-contracts-v0.5.7) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** centralize epoch-millisecond validation ([#25159](https://github.com/vm0-ai/vm0/issues/25159)) ([4780d82](https://github.com/vm0-ai/vm0/commit/4780d82181ac10f4f7bfaafc6b16e448f89f2860))
+
+## [0.5.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.5...guest-contracts-v0.5.6) (2026-08-04)
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+
+## [0.5.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.4...guest-contracts-v0.5.5) (2026-08-04)
+
+
+### Bug Fixes
+
+* **rust:** distinguish direct sigkill from escalation ([#24976](https://github.com/vm0-ai/vm0/issues/24976)) ([6aa72d7](https://github.com/vm0-ai/vm0/commit/6aa72d7955c92e9c5dc475e6060a00b703e1da63))
+
 ## [0.5.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.3...guest-contracts-v0.5.4) (2026-08-03)
 
 
@@ -200,7 +364,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 
 ## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.3...guest-contracts-v0.3.4) (2026-07-05)
 

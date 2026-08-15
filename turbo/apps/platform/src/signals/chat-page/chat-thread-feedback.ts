@@ -7,25 +7,33 @@ import {
   type State,
 } from "ccstate";
 import { delay } from "signal-timers";
-import { isEditableTarget, matchShortcut } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isEditableTarget, matchShortcut } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
-import {
-  createComposerFeedbackModel,
-  type ComposerFeedbackModel,
-  type FeedbackItem,
-  type FeedbackSource,
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import type {
+  ComposerFeedbackSignals,
+  FeedbackRange,
+  FeedbackSource,
 } from "../zero-page/chat-feedback.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
+import { setChatListQuery$ } from "../zero-page/zero-sidebar-state.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
+import type {
+  ChatForwardComposerState,
+  ChatForwardSelection,
+} from "./chat-forward.ts";
 
 // Assistant messages and other agent-produced content, such as linked email
-// drafts, opt into the shared Copy / Provide feedback interaction.
+// drafts, opt into the shared Copy / Quote interaction.
 const FEEDBACK_SOURCE_SELECTOR =
   ".zero-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
+const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
+const RUN_GROUP_SELECTOR = "[data-chat-run-id]";
 
 export interface ChatThreadFeedbackSelection {
   readonly rect: {
@@ -34,13 +42,21 @@ export interface ChatThreadFeedbackSelection {
     readonly width: number;
     readonly height: number;
   };
+  readonly text: string;
+  readonly threadId: string | null;
+  readonly runId: string | null;
+  readonly eventId?: string;
+  readonly range?: FeedbackRange;
+  readonly source?: FeedbackSource;
 }
 
 interface CapturedFeedbackSelection {
   readonly text: string;
   readonly rect: ChatThreadFeedbackSelection["rect"];
   readonly threadId: string | null;
-  readonly range: Range;
+  readonly runId: string | null;
+  readonly eventId?: string;
+  readonly range?: FeedbackRange;
   readonly source?: FeedbackSource;
 }
 
@@ -49,6 +65,14 @@ export interface ChatThreadFeedbackSignals {
   readonly start$: Command<void, []>;
   readonly close$: Command<void, []>;
   readonly copy$: Command<Promise<void>, [AbortSignal]>;
+  readonly forwardSelection$: Computed<ChatForwardSelection | null>;
+  readonly forwardComposerState$: Computed<ChatForwardComposerState | null>;
+  readonly startForward$: Command<boolean, []>;
+  readonly setForwardComposerState$: Command<
+    void,
+    [ChatForwardComposerState | null]
+  >;
+  readonly closeForward$: Command<void, []>;
   readonly setListenersRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
@@ -97,6 +121,14 @@ function resolveSelectionThreadId(source: Element): string | null {
   return container.dataset.chatThreadContainerId ?? null;
 }
 
+function resolveSelectionRunId(source: Element): string | null {
+  const runGroup = source.closest(RUN_GROUP_SELECTOR);
+  if (!(runGroup instanceof HTMLElement)) {
+    return null;
+  }
+  return runGroup.dataset.chatRunId ?? null;
+}
+
 function resolveFeedbackSource(source: Element): FeedbackSource | undefined {
   if (!(source instanceof HTMLElement)) {
     return undefined;
@@ -111,53 +143,41 @@ function resolveFeedbackSource(source: Element): FeedbackSource | undefined {
   return { type, id, status, ...(sentId ? { sentId } : {}) };
 }
 
-const FEEDBACK_HIGHLIGHT_NAME = "zero-feedback";
-const feedbackRangesByThread$ = state<
-  ReadonlyMap<string, ReadonlyMap<number, Range>>
->(new Map());
-
-function highlightRegistry(): HighlightRegistry | null {
-  if (
-    typeof CSS === "undefined" ||
-    typeof Highlight === "undefined" ||
-    !CSS.highlights
-  ) {
-    return null;
-  }
-  return CSS.highlights;
+function closestChatEvent(node: Node): HTMLElement | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  const event = element?.closest(CHAT_EVENT_SELECTOR);
+  return event instanceof HTMLElement ? event : null;
 }
 
-function applyFeedbackHighlight(
-  feedbackRangesByThread: ReadonlyMap<string, ReadonlyMap<number, Range>>,
-): void {
-  const registry = highlightRegistry();
-  if (!registry) {
-    return;
+function resolveFeedbackLocation(
+  range: Range,
+): { readonly eventId: string; readonly range: FeedbackRange } | undefined {
+  const startEvent = closestChatEvent(range.startContainer);
+  const endEvent = closestChatEvent(range.endContainer);
+  if (!startEvent || startEvent !== endEvent) {
+    return undefined;
   }
-  const activeRanges = Array.from(feedbackRangesByThread.values()).flatMap(
-    (threadRanges) => {
-      return Array.from(threadRanges.values());
-    },
-  );
-  if (activeRanges.length === 0) {
-    registry.delete(FEEDBACK_HIGHLIGHT_NAME);
-    return;
+  const eventId = startEvent.dataset.chatScrollAnchorEventId;
+  if (!eventId) {
+    return undefined;
   }
-  registry.set(FEEDBACK_HIGHLIGHT_NAME, new Highlight(...activeRanges));
-}
 
-const setFeedbackHighlight$ = command(
-  ({ get, set }, threadId: string, ranges: ReadonlyMap<number, Range>) => {
-    const rangesByThread = new Map(get(feedbackRangesByThread$));
-    if (ranges.size === 0) {
-      rangesByThread.delete(threadId);
-    } else {
-      rangesByThread.set(threadId, ranges);
-    }
-    set(feedbackRangesByThread$, rangesByThread);
-    applyFeedbackHighlight(rangesByThread);
-  },
-);
+  const prefixRange = startEvent.ownerDocument.createRange();
+  prefixRange.selectNodeContents(startEvent);
+  prefixRange.setEnd(range.startContainer, range.startOffset);
+  const prefixLength = prefixRange.toString().length;
+  const selectedText = range.toString();
+  const leadingWhitespace =
+    selectedText.length - selectedText.trimStart().length;
+  const trailingWhitespace =
+    selectedText.length - selectedText.trimEnd().length;
+  const start = prefixLength + leadingWhitespace;
+  const end = prefixLength + selectedText.length - trailingWhitespace;
+  if (end <= start) {
+    return undefined;
+  }
+  return { eventId, range: { start, end } };
+}
 
 function hasVisibleArea(rect: DOMRectReadOnly): boolean {
   return rect.width > 0 && rect.height > 0;
@@ -213,11 +233,13 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
     return null;
   }
   const source = resolveFeedbackSource(sourceElement);
+  const location = resolveFeedbackLocation(range);
   return {
     text,
     rect: rectFromRange(range),
     threadId: resolveSelectionThreadId(sourceElement),
-    range: range.cloneRange(),
+    runId: resolveSelectionRunId(sourceElement),
+    ...location,
     ...(source ? { source } : {}),
   };
 }
@@ -237,7 +259,19 @@ function createSelectionState(threadId: string) {
   const internalSelection$ = state<CapturedFeedbackSelection | null>(null);
   const resetToolbarSignal$ = resetSignal();
   const selection$ = computed((get): ChatThreadFeedbackSelection | null => {
-    return get(internalSelection$);
+    const selection = get(internalSelection$);
+    return selection
+      ? {
+          rect: selection.rect,
+          text: selection.text,
+          threadId: selection.threadId,
+          runId: selection.runId,
+          ...(selection.eventId !== undefined && selection.range !== undefined
+            ? { eventId: selection.eventId, range: selection.range }
+            : {}),
+          ...(selection.source ? { source: selection.source } : {}),
+        }
+      : null;
   });
   const close$ = command(({ set }) => {
     set(resetToolbarSignal$);
@@ -284,85 +318,87 @@ function createSelectionState(threadId: string) {
   };
 }
 
-function createUpdateRanges(
-  ranges: State<ReadonlyMap<number, Range>>,
-  threadId: string,
-) {
-  return command(
-    (
-      { get, set },
-      update: (current: ReadonlyMap<number, Range>) => Map<number, Range>,
-    ) => {
-      const next = update(get(ranges));
-      set(ranges, next);
-      set(setFeedbackHighlight$, threadId, next);
-    },
-  );
-}
-
-function createThreadComposerFeedback(
-  threadId: string,
-  ranges$: State<ReadonlyMap<number, Range>>,
-): ComposerFeedbackModel {
-  const base = createComposerFeedbackModel();
-  const updateRanges$ = createUpdateRanges(ranges$, threadId);
-  // Composer mutations remain editor-only. This thread-owned decoration keeps
-  // the corresponding source ranges in sync without exposing Range to it.
-  const remove$ = command(({ set }, id: number) => {
-    set(updateRanges$, (ranges) => {
-      const next = new Map(ranges);
-      next.delete(id);
-      return next;
-    });
-    set(base.signals.remove$, id);
-  });
-  const replaceFromEditor$ = command(
-    ({ set }, items: readonly FeedbackItem[]) => {
-      const retainedIds = new Set(
-        items.map((item) => {
-          return item.id;
-        }),
-      );
-      set(updateRanges$, (ranges) => {
-        return new Map(
-          Array.from(ranges).filter(([id]) => {
-            return retainedIds.has(id);
-          }),
-        );
-      });
-      set(base.replaceFromEditor$, items);
-    },
-  );
-  return {
-    ...base,
-    signals: { add$: base.signals.add$, remove$ },
-    replaceFromEditor$,
-  };
-}
-
 function createStartFeedback(
   selection$: State<CapturedFeedbackSelection | null>,
   close$: Command<void, []>,
-  ranges$: State<ReadonlyMap<number, Range>>,
-  threadId: string,
-  composer: ComposerFeedbackModel,
+  feedback: ComposerFeedbackSignals,
 ) {
-  const updateRanges$ = createUpdateRanges(ranges$, threadId);
   return command(({ get, set }) => {
     const selection = get(selection$);
     if (!selection) {
       return;
     }
-    const id = set(composer.signals.add$, {
+    set(feedback.add$, {
       quote: selection.text,
+      ...(selection.eventId !== undefined && selection.range !== undefined
+        ? { eventId: selection.eventId, range: selection.range }
+        : {}),
       ...(selection.source ? { source: selection.source } : {}),
     });
-    set(updateRanges$, (ranges) => {
-      const next = new Map(ranges);
-      next.set(id, selection.range);
-      return next;
-    });
     set(close$);
+  });
+}
+
+function createForwardState(closeSelection$: Command<void, []>) {
+  const internalForwardSelection$ = state<ChatForwardSelection | null>(null);
+  const internalForwardComposerState$ = state<ChatForwardComposerState | null>(
+    null,
+  );
+  const forwardSelection$ = computed((get) => {
+    return get(internalForwardSelection$);
+  });
+  const forwardComposerState$ = computed((get) => {
+    return get(internalForwardComposerState$);
+  });
+  const openForward$ = command(
+    ({ set }, selection: ChatForwardSelection): void => {
+      set(setChatListQuery$, "");
+      set(internalForwardSelection$, selection);
+      set(internalForwardComposerState$, null);
+      set(closeSelection$);
+    },
+  );
+  const setForwardComposerState$ = command(
+    ({ set }, composerState: ChatForwardComposerState | null): void => {
+      set(internalForwardComposerState$, composerState);
+    },
+  );
+  const closeForward$ = command(({ set }): void => {
+    set(setChatListQuery$, "");
+    set(internalForwardSelection$, null);
+    set(internalForwardComposerState$, null);
+  });
+  return {
+    forwardSelection$,
+    forwardComposerState$,
+    openForward$,
+    setForwardComposerState$,
+    closeForward$,
+  };
+}
+
+function createStartForward(
+  selection$: State<CapturedFeedbackSelection | null>,
+  openForward$: Command<void, [ChatForwardSelection]>,
+) {
+  return command(({ get, set }): boolean => {
+    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatForward] ?? false)) {
+      return false;
+    }
+    const selection = get(selection$);
+    if (!selection?.threadId || !selection.runId) {
+      return false;
+    }
+    set(openForward$, {
+      quote: selection.text,
+      threadId: selection.threadId,
+      runId: selection.runId,
+      ...(selection.eventId !== undefined && selection.range !== undefined
+        ? { eventId: selection.eventId, range: selection.range }
+        : {}),
+      ...(selection.source ? { source: selection.source } : {}),
+    });
+    return true;
   });
 }
 
@@ -371,11 +407,13 @@ function createToolbarRef({
   close$,
   copy$,
   start$,
+  startForward$,
 }: {
   resetToolbarSignal$: ReturnType<typeof resetSignal>;
   close$: Command<void, []>;
   copy$: Command<Promise<void>, [AbortSignal]>;
   start$: Command<void, []>;
+  startForward$: Command<boolean, []>;
 }) {
   return onRef(
     command(({ set }, el: HTMLElement, signal: AbortSignal) => {
@@ -407,9 +445,13 @@ function createToolbarRef({
             await set(copy$, signal);
             return;
           }
-          if (matchShortcut("f", event)) {
+          if (matchShortcut("q", event)) {
             event.preventDefault();
             set(start$);
+            return;
+          }
+          if (matchShortcut("f", event) && set(startForward$)) {
+            event.preventDefault();
           }
         }),
         { signal: toolbarSignal },
@@ -419,13 +461,11 @@ function createToolbarRef({
 }
 
 function createListenersRef({
-  threadId,
   selection$,
   close$,
   capture$,
   dismissOnScroll$,
 }: {
-  threadId: string;
   selection$: State<CapturedFeedbackSelection | null>;
   close$: Command<void, []>;
   capture$: Command<void, []>;
@@ -459,6 +499,14 @@ function createListenersRef({
             event.button === 0 &&
             event.target instanceof Node &&
             closestFeedbackSource(event.target) !== null;
+          const activeElement = doc.activeElement;
+          if (
+            mouseSelectionInProgress &&
+            activeElement instanceof HTMLElement &&
+            activeElement.closest(CHAT_COMPOSER_SELECTOR) !== null
+          ) {
+            activeElement.blur();
+          }
         },
         { capture: true, signal },
       );
@@ -489,53 +537,49 @@ function createListenersRef({
         },
         { capture: true, passive: true, signal },
       );
-      signal.addEventListener(
-        "abort",
-        () => {
-          set(setFeedbackHighlight$, threadId, new Map());
-        },
-        { once: true },
-      );
     }),
   );
 }
 
-export function createChatThreadFeedbackSignals(threadId: string): {
-  readonly signals: ChatThreadFeedbackSignals;
-  readonly composer: ComposerFeedbackModel;
-} {
+export function createChatThreadFeedbackSignals(
+  threadId: string,
+  feedback: ComposerFeedbackSignals,
+): ChatThreadFeedbackSignals {
   const selection = createSelectionState(threadId);
-  const ranges$ = state<ReadonlyMap<number, Range>>(new Map());
-  const composer = createThreadComposerFeedback(threadId, ranges$);
+  const forward = createForwardState(selection.close$);
   const start$ = createStartFeedback(
     selection.internalSelection$,
     selection.close$,
-    ranges$,
-    threadId,
-    composer,
+    feedback,
+  );
+  const startForward$ = createStartForward(
+    selection.internalSelection$,
+    forward.openForward$,
   );
   const setToolbarRef$ = createToolbarRef({
     resetToolbarSignal$: selection.resetToolbarSignal$,
     close$: selection.close$,
     copy$: selection.copy$,
     start$,
+    startForward$,
   });
   const setListenersRef$ = createListenersRef({
-    threadId,
     selection$: selection.internalSelection$,
     close$: selection.close$,
     capture$: selection.capture$,
     dismissOnScroll$: selection.dismissOnScroll$,
   });
   return {
-    composer,
-    signals: {
-      selection$: selection.selection$,
-      start$,
-      close$: selection.close$,
-      copy$: selection.copy$,
-      setListenersRef$,
-      setToolbarRef$,
-    },
+    selection$: selection.selection$,
+    start$,
+    close$: selection.close$,
+    copy$: selection.copy$,
+    forwardSelection$: forward.forwardSelection$,
+    forwardComposerState$: forward.forwardComposerState$,
+    startForward$,
+    setForwardComposerState$: forward.setForwardComposerState$,
+    closeForward$: forward.closeForward$,
+    setListenersRef$,
+    setToolbarRef$,
   };
 }

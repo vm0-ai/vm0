@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { authHeadersSchema, initContract } from "./base";
+import { initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   fileEntryWithHashSchema,
@@ -101,49 +101,6 @@ export const testStorageStateActionResponseSchema = z.object({
 });
 
 export const testStorageFixtureContract = c.router({
-  prepare: {
-    method: "POST",
-    path: "/api/test/storage-fixture/prepare",
-    headers: authHeadersSchema,
-    body: z.object({
-      storageName: z.string().min(1, "Storage name is required"),
-      storageOwner: storageOwnerSchema,
-      files: z.array(fileEntryWithHashSchema),
-      force: z.boolean().optional(),
-    }),
-    responses: {
-      200: prepareResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      413: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Prepare a preview-only Storage fixture",
-  },
-  commit: {
-    method: "POST",
-    path: "/api/test/storage-fixture/commit",
-    headers: authHeadersSchema,
-    body: z.object({
-      storageName: z.string().min(1, "Storage name is required"),
-      storageOwner: storageOwnerSchema,
-      versionId: z.string().min(1, "Version ID is required"),
-      files: z.array(fileEntryWithHashSchema),
-    }),
-    responses: {
-      200: commitResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      413: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Commit a preview-only Storage fixture",
-  },
   action: {
     method: "POST",
     path: "/api/test/storage-fixture/action",

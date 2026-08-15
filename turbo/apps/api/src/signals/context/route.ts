@@ -1,12 +1,16 @@
 import {
   type AppRoute,
   validateResponse,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 import { createStore, type Command, type Computed } from "ccstate";
 import type { Handler } from "hono";
 import type { ContentfulStatusCode, StatusCode } from "hono/utils/http-status";
 
 import { now } from "../../lib/time";
+import {
+  setUsagePricingResolution$,
+  type UsagePricingResolution,
+} from "./usage-pricing-resolution";
 import { initHono$ } from "./hono";
 import { requestValidation$ } from "./request";
 import { setRootSignal$ } from "./root";
@@ -26,7 +30,7 @@ interface ResponseLike {
   readonly status: number;
   readonly statusText?: string;
   readonly headers: HeadersLike;
-  readonly body: BodyInit | null;
+  readonly body: ConstructorParameters<typeof Response>[0];
 }
 
 function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
@@ -60,12 +64,15 @@ function cloneHeaders(headers: HeadersLike): Headers {
 }
 
 function toResponse(response: ResponseLike): Response {
-  const init: ResponseInit = {
+  const init = {
     headers: cloneHeaders(response.headers),
     status: response.status,
   };
   if (typeof response.statusText === "string") {
-    init.statusText = response.statusText;
+    return new Response(response.body, {
+      ...init,
+      statusText: response.statusText,
+    });
   }
   return new Response(response.body, init);
 }
@@ -93,12 +100,16 @@ export function honoSignalHandler(
   handler$: SignalRouteHandler<unknown>,
   contract: AppRoute,
   signal: AbortSignal,
+  usagePricingResolution?: UsagePricingResolution,
 ): Handler {
   return async (context) => {
     const apiStartTime = now();
     const store = createStore();
     store.set(setRootSignal$, signal);
     store.set(initHono$, context, contract, apiStartTime);
+    if (usagePricingResolution) {
+      store.set(setUsagePricingResolution$, usagePricingResolution);
+    }
 
     // Mirror the contract client order: path/query validation
     // precedes auth and downstream services, so a malformed request returns

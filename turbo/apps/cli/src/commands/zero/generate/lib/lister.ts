@@ -1,16 +1,15 @@
 import chalk from "chalk";
 import type { ZeroConnectorCatalogStatus } from "../../../../lib/api/domains/zero-connectors";
-import {
-  getZeroBillingStatus,
-  getZeroAgentUserConnectors,
-  listZeroConnectorCatalogStatus,
-} from "../../../../lib/api";
+import { getZeroBillingStatus } from "../../../../lib/api/domains/zero-billing";
+import { getZeroAgentUserConnectors } from "../../../../lib/api/domains/zero-agents";
+import { listZeroConnectorCatalogStatus } from "../../../../lib/api/domains/zero-connectors";
 import { getPlatformOrigin } from "../../doctor/platform-url";
 import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,
-} from "../../shared/billing-capabilities";
-import { planUpgradeUrl } from "../../shared/billing-links";
+} from "../../../shared/billing-capabilities";
+import { planUpgradeUrl } from "../../../shared/billing-links";
+import { getOkouAgentId } from "../../../../lib/okou-env";
 
 type ConnectorGenerationType =
   | "audio"
@@ -21,6 +20,7 @@ type ConnectorGenerationType =
   | "video";
 
 type BuiltInGenerationType =
+  | "avatar-video"
   | "dashboard-design"
   | "docs-design"
   | "image"
@@ -59,95 +59,115 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in fal.ai",
       model: "gpt-image-1",
-      command: "zero generate image --provider built-in --model gpt-image-1 -h",
+      command: "okou generate image --provider built-in --model gpt-image-1 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "gpt-image-2",
-      command: "zero generate image --provider built-in --model gpt-image-2 -h",
+      command: "okou generate image --provider built-in --model gpt-image-2 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "gpt-image-1.5",
       command:
-        "zero generate image --provider built-in --model gpt-image-1.5 -h",
+        "okou generate image --provider built-in --model gpt-image-1.5 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "gpt-image-1-mini",
       command:
-        "zero generate image --provider built-in --model gpt-image-1-mini -h",
+        "okou generate image --provider built-in --model gpt-image-1-mini -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/flux-pro/v1.1",
       command:
-        "zero generate image --provider built-in --model flux-pro-1.1 -h",
+        "okou generate image --provider built-in --model flux-pro-1.1 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/flux-pro/v1.1-ultra",
       command:
-        "zero generate image --provider built-in --model flux-pro-1.1-ultra -h",
+        "okou generate image --provider built-in --model flux-pro-1.1-ultra -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/qwen-image",
-      command: "zero generate image --provider built-in --model qwen-image -h",
+      command: "okou generate image --provider built-in --model qwen-image -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/bytedance/seedream/v4/text-to-image",
-      command: "zero generate image --provider built-in --model seedream4 -h",
+      command: "okou generate image --provider built-in --model seedream4 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/nano-banana-2",
       command:
-        "zero generate image --provider built-in --model nano-banana-2 -h",
+        "okou generate image --provider built-in --model nano-banana-2 -h",
       reason: "available without connector setup",
     },
   ],
   video: [
     {
       label: "Built-in",
+      model: "dreamina-seedance-2-5-260628",
+      command:
+        "okou generate video --provider built-in --model dreamina-seedance-2.5 -h",
+      reason: "availability depends on the current workspace plan",
+    },
+    {
+      label: "Built-in",
       model: "dreamina-seedance-2-0-260128",
       command:
-        "zero generate video --provider built-in --model dreamina-seedance-2.0 -h",
+        "okou generate video --provider built-in --model dreamina-seedance-2.0 -h",
       reason: "availability depends on the current workspace plan",
     },
     {
       label: "Built-in",
       model: "dreamina-seedance-2-0-fast-260128",
       command:
-        "zero generate video --provider built-in --model dreamina-seedance-2.0-fast -h",
+        "okou generate video --provider built-in --model dreamina-seedance-2.0-fast -h",
+      reason: "availability depends on the current workspace plan",
+    },
+    {
+      label: "Built-in",
+      model: "dreamina-seedance-2-0-mini-260615",
+      command:
+        "okou generate video --provider built-in --model dreamina-seedance-2.0-mini -h",
       reason: "availability depends on the current workspace plan",
     },
     {
       label: "Built-in",
       model: "seedance-1-5-pro-251215",
       command:
-        "zero generate video --provider built-in --model seedance-1.5-pro -h",
+        "okou generate video --provider built-in --model seedance-1.5-pro -h",
+      reason: "availability depends on the current workspace plan",
+    },
+    {
+      label: "Built-in MiniMax",
+      model: "MiniMax-H3",
+      command: "okou generate video --provider built-in --model minimax-h3 -h",
       reason: "availability depends on the current workspace plan",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/veo3.1/fast",
-      command: "zero generate video --provider built-in --model veo3.1-fast -h",
+      command: "okou generate video --provider built-in --model veo3.1-fast -h",
       reason: "availability depends on the current workspace plan",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/kling-video/v3/4k/text-to-video",
-      command: "zero generate video --provider built-in --model kling-v3-4k -h",
+      command: "okou generate video --provider built-in --model kling-v3-4k -h",
       reason: "availability depends on the current workspace plan",
     },
   ],
@@ -155,7 +175,7 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "gpt-4o-mini-tts",
-      command: "zero generate voice --provider built-in -h",
+      command: "okou generate voice --provider built-in -h",
       reason: "available without connector setup",
     },
   ],
@@ -164,61 +184,66 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
 const BUILT_IN_GENERATION_COMMANDS: Partial<
   Record<GenerationType, BuiltInGenerationCommand>
 > = {
+  "avatar-video": {
+    label: "Built-in JoggAI talking-avatar video generation",
+    command: "okou generate avatar-video --provider built-in -h",
+    models: "joggai-talking-avatar",
+  },
   image: {
     label: "Built-in image generation",
-    command: "zero generate image --provider built-in -h",
+    command: "okou generate image --provider built-in -h",
     models:
       "fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2",
   },
   video: {
     label: "Built-in video generation",
-    command: "zero generate video --provider built-in -h",
+    command: "okou generate video --provider built-in -h",
     models:
-      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
+      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
   },
   presentation: {
     label: "Built-in presentation generation",
-    command: "zero generate presentation -h",
+    command: "okou generate presentation -h",
     models: "gpt-5.5",
   },
   report: {
     label: "Built-in report generation",
-    command: "zero generate report -h",
+    command: "okou generate report -h",
     models: "gpt-5.5",
   },
   "docs-design": {
     label: "Built-in docs design generation",
-    command: "zero generate docs-design -h",
+    command: "okou generate docs-design -h",
     models: "gpt-5.5",
   },
   poster: {
     label: "Built-in poster generation",
-    command: "zero generate poster -h",
+    command: "okou generate poster -h",
     models: "gpt-5.5",
   },
   "dashboard-design": {
     label: "Built-in dashboard design generation",
-    command: "zero generate dashboard-design -h",
+    command: "okou generate dashboard-design -h",
     models: "gpt-5.5",
   },
   "mobile-app-design": {
     label: "Built-in mobile app design generation",
-    command: "zero generate mobile-app-design -h",
+    command: "okou generate mobile-app-design -h",
     models: "gpt-5.5",
   },
   website: {
     label: "Built-in website generation",
-    command: "zero generate website -h",
+    command: "okou generate website -h",
     models: "gpt-5.5",
   },
   sprite: {
     label: "Built-in sprite asset generation",
-    command: "zero generate sprite -h",
+    command: "okou generate sprite -h",
     models: "gpt-image-2 (recommended) via built-in image generation",
   },
   voice: {
     label: "Built-in voice generation",
-    command: "zero generate voice --provider built-in -h",
+    command: "okou generate voice --provider built-in -h",
     models: "gpt-4o-mini-tts",
   },
 };
@@ -226,8 +251,8 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
 const GENERATION_CONTEXT: Partial<Record<GenerationType, GenerationContext>> = {
   website: {
     lines: [
-      "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
-      "zero host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
+      "Standalone static website artifacts can be authored locally and published with okou host for a public URL.",
+      "okou host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
       "Existing web app changes should usually follow the project's own build, test, and deploy workflow.",
     ],
   },
@@ -235,6 +260,7 @@ const GENERATION_CONTEXT: Partial<Record<GenerationType, GenerationContext>> = {
 
 const GENERATION_TYPE_LABELS: Record<GenerationType, string> = {
   audio: "Audio",
+  "avatar-video": "Talking-avatar video",
   code: "Code",
   "dashboard-design": "Dashboard design",
   document: "Document",
@@ -277,6 +303,8 @@ function getConnectorGenerationType(
   generationType: GenerationType,
 ): ConnectorGenerationType | null {
   switch (generationType) {
+    case "avatar-video":
+      return "video";
     case "voice":
     case "music":
       return "audio";
@@ -483,9 +511,9 @@ function renderBuiltInProvider(params: {
   if (command) {
     console.log("");
     console.log("Built-in command:");
-    console.log(`  vm0  ${command.label}`);
+    console.log(`  Okou  ${command.label}`);
     console.log(`  Models: ${command.models}`);
-    if (generationType === "video") {
+    if (generationType === "video" || generationType === "avatar-video") {
       if (videoGenerationAllowed === false) {
         console.log(
           "  Availability: Requires a Pro, Team, or Custom workspace plan.",
@@ -515,7 +543,7 @@ function renderBuiltInProvider(params: {
     providers.length === 1 ? "Built-in provider:" : "Built-in providers:",
   );
   for (const provider of providers) {
-    console.log(`  vm0  ${provider.label}  Model: ${provider.model}`);
+    console.log(`  Okou  ${provider.label}  Model: ${provider.model}`);
     console.log(`  Use: ${provider.command}`);
   }
 }
@@ -560,7 +588,7 @@ function renderText(params: {
     console.log("");
   } else {
     console.log(
-      "ZERO_AGENT_ID is not set, so agent authorization could not be checked.",
+      "OKOU_AGENT_ID is not set, so agent authorization could not be checked.",
     );
     console.log("");
   }
@@ -601,13 +629,14 @@ export async function runLister(
   options: ListerOptions = {},
 ): Promise<void> {
   const connectorGenerationType = getConnectorGenerationType(generationType);
-  const agentId = process.env.ZERO_AGENT_ID;
+  const agentId = getOkouAgentId();
   const [catalog, enabledConnectorSlugs, platformOrigin, billing] =
     await Promise.all([
       listZeroConnectorCatalogStatus(),
       agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
       getPlatformOrigin(),
-      generationType === "video" && currentTokenCanReadBilling()
+      (generationType === "video" || generationType === "avatar-video") &&
+      currentTokenCanReadBilling()
         ? getZeroBillingStatus()
         : Promise.resolve(null),
     ]);

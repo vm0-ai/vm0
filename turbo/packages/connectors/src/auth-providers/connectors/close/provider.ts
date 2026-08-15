@@ -40,14 +40,14 @@ export const closeProvider: AuthCodeConnectorAuthProvider<"close"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId, clientSecret } = args.authClient;
       return oauthRefreshResultToProviderResult(
         await refreshCloseToken(
           clientId,
           clientSecret,
           args.inputs.refreshToken,
-          args.signal,
+          signal,
         ),
       );
     },

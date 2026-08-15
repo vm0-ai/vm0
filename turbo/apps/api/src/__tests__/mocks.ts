@@ -29,7 +29,7 @@ type BrowserUseCdpCommandMock = Mock<
 >;
 interface RequestOptionsLike {
   readonly family?: number;
-  readonly headers?: HeadersInit;
+  readonly headers?: RequestInit["headers"];
   readonly method?: string;
   readonly lookup?: LookupFunction;
 }
@@ -60,6 +60,7 @@ export interface ApiTestMocks {
     readonly flush: AsyncMock;
   };
   readonly ably: {
+    readonly channelGet: Mock<(channelName: string) => void>;
     readonly publish: AsyncMock;
     readonly createTokenRequest: AsyncMock;
     readonly requestToken: AsyncMock;
@@ -168,12 +169,27 @@ export interface ApiTestMocks {
     };
     readonly invoices: {
       readonly list: AsyncMock;
+      readonly listLineItems: AsyncMock;
+      readonly retrieve: AsyncMock;
       readonly create: AsyncMock;
+      readonly createPreview: AsyncMock;
+      readonly del: AsyncMock;
       readonly finalizeInvoice: AsyncMock;
       readonly pay: AsyncMock;
+      readonly voidInvoice: AsyncMock;
     };
     readonly invoiceItems: {
       readonly create: AsyncMock;
+    };
+    readonly refunds: {
+      readonly create: AsyncMock;
+      readonly retrieve: AsyncMock;
+    };
+    readonly creditNotes: {
+      readonly list: AsyncMock;
+      readonly preview: AsyncMock;
+      readonly create: AsyncMock;
+      readonly retrieve: AsyncMock;
     };
     readonly customers: {
       readonly retrieve: AsyncMock;
@@ -203,6 +219,11 @@ export interface ApiTestMocks {
       };
     };
     readonly billingPortal: {
+      readonly configurations: {
+        readonly list: AsyncMock;
+        readonly create: AsyncMock;
+        readonly update: AsyncMock;
+      };
       readonly sessions: {
         readonly create: AsyncMock;
       };
@@ -326,12 +347,27 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     invoices: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      listLineItems: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      createPreview: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      del: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       finalizeInvoice: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       pay: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      voidInvoice: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     invoiceItems: {
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    refunds: {
+      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    creditNotes: {
+      list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      preview: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     customers: {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -361,6 +397,11 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       },
     },
     billingPortal: {
+      configurations: {
+        list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+        create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+        update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      },
       sessions: {
         create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       },
@@ -396,6 +437,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       timeout: vi.fn<(milliseconds: number) => AbortSignal | undefined>(),
     },
     ably: {
+      channelGet: vi.fn<(channelName: string) => void>(),
       publish: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       createTokenRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       requestToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -830,7 +872,8 @@ vi.mock("signal-timers", async (importOriginal) => {
 vi.mock("ably", () => {
   class MockRest {
     readonly channels = {
-      get: () => {
+      get: (channelName: string) => {
+        apiTestMocks.ably.channelGet(channelName);
         return { publish: apiTestMocks.ably.publish };
       },
     };
@@ -868,12 +911,27 @@ vi.mock("stripe", async (importOriginal) => {
         },
         invoices: {
           list: apiTestMocks.stripe.invoices.list,
+          listLineItems: apiTestMocks.stripe.invoices.listLineItems,
+          retrieve: apiTestMocks.stripe.invoices.retrieve,
           create: apiTestMocks.stripe.invoices.create,
+          createPreview: apiTestMocks.stripe.invoices.createPreview,
+          del: apiTestMocks.stripe.invoices.del,
           finalizeInvoice: apiTestMocks.stripe.invoices.finalizeInvoice,
           pay: apiTestMocks.stripe.invoices.pay,
+          voidInvoice: apiTestMocks.stripe.invoices.voidInvoice,
         },
         invoiceItems: {
           create: apiTestMocks.stripe.invoiceItems.create,
+        },
+        refunds: {
+          create: apiTestMocks.stripe.refunds.create,
+          retrieve: apiTestMocks.stripe.refunds.retrieve,
+        },
+        creditNotes: {
+          list: apiTestMocks.stripe.creditNotes.list,
+          preview: apiTestMocks.stripe.creditNotes.preview,
+          create: apiTestMocks.stripe.creditNotes.create,
+          retrieve: apiTestMocks.stripe.creditNotes.retrieve,
         },
         customers: {
           retrieve: apiTestMocks.stripe.customers.retrieve,
@@ -903,6 +961,11 @@ vi.mock("stripe", async (importOriginal) => {
           },
         },
         billingPortal: {
+          configurations: {
+            list: apiTestMocks.stripe.billingPortal.configurations.list,
+            create: apiTestMocks.stripe.billingPortal.configurations.create,
+            update: apiTestMocks.stripe.billingPortal.configurations.update,
+          },
           sessions: {
             create: apiTestMocks.stripe.billingPortal.sessions.create,
           },
@@ -998,15 +1061,12 @@ vi.mock("../signals/external/axiom", async () => {
     // Wrap the underlying vi.fn() in a ccstate `computed` so `get(queryAxiom(apl))`
     // resolves correctly. Tests configure responses via
     // `context.mocks.axiom.query.mockResolvedValue(...)`. The optional
-    // `options` second arg is forwarded so tests can assert on `noCache`
-    // (and any future option) via `expect(...).toHaveBeenCalledWith(apl, opts)`.
+    // The optional `options` second arg is forwarded so tests can assert on
+    // pagination options via `expect(...).toHaveBeenCalledWith(apl, opts)`.
     queryAxiom: (apl: string, options?: unknown) => {
       return computed(() => {
         return apiTestMocks.axiom.query(apl, options);
       });
-    },
-    queryAxiomDirect: (apl: string, options?: unknown) => {
-      return apiTestMocks.axiom.query(apl, options);
     },
     getDatasetName: (name: string) => {
       return name;
@@ -1059,6 +1119,7 @@ export function getApiTestMocks(): ApiTestMocks {
 
 export function resetApiTestMocks(): void {
   apiTestMocks.abortSignal.timeout.mockReset();
+  apiTestMocks.ably.channelGet.mockReset();
   apiTestMocks.ably.publish.mockReset();
   apiTestMocks.ably.publish.mockResolvedValue(undefined);
   apiTestMocks.ably.createTokenRequest.mockReset();
@@ -1092,6 +1153,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.updateOrganizationMembership.mockReset();
   apiTestMocks.clerk.organizations.updateOrganizationLogo.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
+  apiTestMocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.users.updateUserMetadata.mockReset();
   apiTestMocks.clerk.signInTokens.createSignInToken.mockReset();
@@ -1125,10 +1187,32 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.paymentMethods.list.mockReset();
   apiTestMocks.stripe.paymentMethods.list.mockResolvedValue({ data: [] });
   apiTestMocks.stripe.invoices.list.mockReset();
+  apiTestMocks.stripe.invoices.list.mockResolvedValue({
+    data: [],
+    has_more: false,
+  });
+  apiTestMocks.stripe.invoices.listLineItems.mockReset();
+  apiTestMocks.stripe.invoices.listLineItems.mockResolvedValue({
+    data: [],
+    has_more: false,
+  });
+  apiTestMocks.stripe.invoices.retrieve.mockReset();
   apiTestMocks.stripe.invoices.create.mockReset();
+  apiTestMocks.stripe.invoices.createPreview.mockReset();
   apiTestMocks.stripe.invoices.finalizeInvoice.mockReset();
   apiTestMocks.stripe.invoices.pay.mockReset();
+  apiTestMocks.stripe.invoices.voidInvoice.mockReset();
   apiTestMocks.stripe.invoiceItems.create.mockReset();
+  apiTestMocks.stripe.refunds.create.mockReset();
+  apiTestMocks.stripe.refunds.retrieve.mockReset();
+  apiTestMocks.stripe.creditNotes.list.mockReset();
+  apiTestMocks.stripe.creditNotes.list.mockResolvedValue({
+    data: [],
+    has_more: false,
+  });
+  apiTestMocks.stripe.creditNotes.preview.mockReset();
+  apiTestMocks.stripe.creditNotes.create.mockReset();
+  apiTestMocks.stripe.creditNotes.retrieve.mockReset();
   apiTestMocks.stripe.customers.retrieve.mockReset();
   apiTestMocks.stripe.customers.create.mockReset();
   apiTestMocks.stripe.customers.update.mockReset();
@@ -1146,6 +1230,9 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.checkout.sessions.create.mockReset();
   apiTestMocks.stripe.checkout.sessions.retrieve.mockReset();
   apiTestMocks.stripe.checkout.sessions.expire.mockReset();
+  apiTestMocks.stripe.billingPortal.configurations.list.mockReset();
+  apiTestMocks.stripe.billingPortal.configurations.create.mockReset();
+  apiTestMocks.stripe.billingPortal.configurations.update.mockReset();
   apiTestMocks.stripe.billingPortal.sessions.create.mockReset();
   apiTestMocks.stripe.coupons.retrieve.mockReset();
   apiTestMocks.stripe.prices.retrieve.mockReset();

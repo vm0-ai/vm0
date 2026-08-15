@@ -9,10 +9,10 @@ const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const AGENT_ID = "00000000-0000-4000-8000-000000000010";
 const RUN_ID = "00000000-0000-4000-8000-000000000020";
 const EVENT_ID = "00000000-0000-4000-8000-000000000030";
-const METADATA_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
-const SEND_URL = "http://localhost:3000/api/zero/chat/events";
+const METADATA_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/metadata`;
+const SEND_URL = "http://localhost:3000/api/okou/chat/events";
 
-describe("zero chat cancel command", () => {
+describe("okou chat cancel command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -24,8 +24,8 @@ describe("zero chat cancel command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", THREAD_ID);
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
     server.use(
       http.get(METADATA_URL, () => {
         return HttpResponse.json({

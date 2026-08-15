@@ -1,15 +1,15 @@
 import { command } from "ccstate";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
-import { chatThreadMarkAgentReadContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { chatThreadMarkAgentReadContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { latestRunFinishEventSubquery } from "../services/zero-chat-thread-read-state-query";
+import { latestRunFinishEventSubquery } from "../services/chat-thread-read-state-query";
 import type { RouteEntry } from "../route-entry";
 
 const markAgentReadBody$ = bodyResultOf(

@@ -5,9 +5,9 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
-} from "@vm0/core";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
-import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/core";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
+import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { searchParams$ } from "../../../signals/route.ts";
@@ -16,6 +16,13 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
+
+function templateFromUserMessage(document: UserMessageDocument | undefined) {
+  const part = document?.parts.find((candidate) => {
+    return candidate.type === "template";
+  });
+  return part?.type === "template" ? part.template : undefined;
+}
 
 function modelPolicy(
   model: OrgModelPolicy["model"],
@@ -68,7 +75,7 @@ describe("prompt query parameter injection", () => {
     let userMessage: unknown;
     let createdThreadModel: string | null | undefined;
     context.mocks.data.orgModelPolicies([
-      modelPolicy("deepseek-v4-pro", "DeepSeek V4 Pro"),
+      modelPolicy("deepseek-v4-flash", "DeepSeek V4 Flash"),
     ]);
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
@@ -82,7 +89,7 @@ describe("prompt query parameter injection", () => {
 
     detachedSetupPage({
       context,
-      path: "/prompt?prompt=Build%20a%20launch%20recap&connector=slack&model=deepseek-v4-pro",
+      path: "/prompt?prompt=Build%20a%20launch%20recap&connector=slack&model=deepseek-v4-flash",
     });
 
     await waitFor(() => {
@@ -90,9 +97,12 @@ describe("prompt query parameter injection", () => {
       expect(runPrompt).toBe("Build a launch recap");
       expect(userMessage).toStrictEqual({
         version: 1,
-        parts: [{ type: "text", text: "Build a launch recap" }],
+        parts: [
+          { type: "text", text: "Build a launch recap" },
+          { type: "model", selectedModel: "deepseek-v4-flash" },
+        ],
       });
-      expect(createdThreadModel).toBe("deepseek-v4-pro");
+      expect(createdThreadModel).toBe("deepseek-v4-flash");
     });
   });
 
@@ -142,9 +152,10 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
+        const template = templateFromUserMessage(body.userMessage);
         stylePresetId =
-          body.generationTemplate?.type === "video"
-            ? body.generationTemplate.selection.stylePresetId
+          template?.type === "video"
+            ? template.selection.stylePresetId
             : undefined;
       },
     });
@@ -182,10 +193,9 @@ describe("prompt query parameter injection", () => {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
         userMessage = body.userMessage;
+        const template = templateFromUserMessage(body.userMessage);
         selection =
-          body.generationTemplate?.type === "presentation"
-            ? body.generationTemplate.selection
-            : undefined;
+          template?.type === "presentation" ? template.selection : undefined;
       },
     });
 
@@ -214,6 +224,7 @@ describe("prompt query parameter injection", () => {
             },
           },
           { type: "text", text: "Make a launch deck" },
+          { type: "model", selectedModel: "deepseek-v4-flash" },
         ],
       });
     });
@@ -230,9 +241,10 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
+        const template = templateFromUserMessage(body.userMessage);
         illustrationStyleId =
-          body.generationTemplate?.type === "illustration"
-            ? body.generationTemplate.selection.illustrationStyleId
+          template?.type === "illustration"
+            ? template.selection.illustrationStyleId
             : undefined;
       },
     });
@@ -262,9 +274,10 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
+        const template = templateFromUserMessage(body.userMessage);
         websiteTemplateId =
-          body.generationTemplate?.type === "website"
-            ? body.generationTemplate.selection.websiteTemplateId
+          template?.type === "website"
+            ? template.selection.websiteTemplateId
             : undefined;
       },
     });

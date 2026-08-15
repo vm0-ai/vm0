@@ -1,20 +1,19 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { cronCompactUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
-import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
+import { cronCompactUsageEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { holdUsageEventCompactionLockFixture } from "../../../test-fixtures/usage-event-compaction";
 import { nowDate } from "../../../lib/time";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   attachUsageAllowance$,
   deleteUsageData$,
-  deleteUsageInsightFixture$,
+  deleteUsageStateFixture$,
   deleteRun$,
   insertUsageEvent$,
   materializeHourlyUsage$,
@@ -24,36 +23,36 @@ import {
   seedCompose$,
   seedRun$,
   seedUsageOverflowGrain$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+  seedUsageStateFixture$,
+  type UsageStateFixture,
+} from "./helpers/usage-state";
+import { cronCompactUsageEventsRoutes } from "../cron-compact-usage-events";
+
+const TEST_APP_ROUTES = Object.freeze([...cronCompactUsageEventsRoutes]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
 const store = createStore();
 const CRON_SECRET = "test-compact-usage-events-secret";
 const RAW_SEED_LIMIT = 500;
 
 function cronClient() {
-  return setupApp({ context })(cronCompactUsageEventsContract);
-}
-
-function usageInsightClient() {
-  return setupApp({ context })(zeroUsageInsightContract);
+  return setupApp({ context, routes: cronCompactUsageEventsRoutes })(
+    cronCompactUsageEventsContract,
+  );
 }
 
 function cronHeaders(secret = CRON_SECRET) {
   return { authorization: `Bearer ${secret}` };
 }
 
-async function seedFixture(): Promise<UsageInsightFixture> {
+async function seedFixture(): Promise<UsageStateFixture> {
   const fixture = await store.set(
-    seedUsageInsightFixture$,
+    seedUsageStateFixture$,
     undefined,
     context.signal,
   );
   onTestFinished(async () => {
-    await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+    await store.set(deleteUsageStateFixture$, fixture, context.signal);
   });
   return fixture;
 }
@@ -62,7 +61,7 @@ async function compactUsage() {
   return await accept(cronClient().compact({ headers: cronHeaders() }), [200]);
 }
 
-async function readStorage(fixture: UsageInsightFixture) {
+async function readStorage(fixture: UsageStateFixture) {
   return await store.set(
     readUsageCompactionStorageCounts$,
     { scope: "organization", id: fixture.orgId },
@@ -93,7 +92,7 @@ async function seedCompactionBatch(
 
 // Fill the global cron seed so parallel test files cannot contribute rows.
 async function seedZeroUsageEvents(
-  fixture: UsageInsightFixture,
+  fixture: UsageStateFixture,
   args: {
     readonly processedAt: Date;
     readonly count: number;
@@ -146,7 +145,7 @@ async function releaseUsageCompactionLockGate(
   await gate.done;
 }
 
-async function seedRunContext(fixture: UsageInsightFixture): Promise<{
+async function seedRunContext(fixture: UsageStateFixture): Promise<{
   readonly runId: string;
   readonly chatThreadId: string;
 }> {
@@ -256,28 +255,19 @@ describe("usage event compaction cron", () => {
         context.signal,
       ),
     ).resolves.not.toBe(usageEventId);
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const insight = await accept(
-      usageInsightClient().get({
-        headers: { authorization: "Bearer clerk-session" },
-        query: {
-          range: "day",
-          date: "1800-01-01",
-          groupBy: "source",
-          tz: "UTC",
-        },
-      }),
-      [200],
-    );
-    expect(insight.body.grandTotalCredits).toBe(7);
   });
 
-  it("retains unstable hours and explicit diagnostic holds", async () => {
+  it("retains four days of processed events and explicit diagnostic holds", async () => {
     const heldFixture = await seedFixture();
-    const currentHour = nowDate();
-    currentHour.setUTCMinutes(0, 0, 0);
-    const previousHour = new Date(currentHour.getTime() - 60 * 60 * 1000);
+    const startedHour = nowDate();
+    startedHour.setUTCMinutes(0, 0, 0);
+    const expectedCutoffAtStart = new Date(
+      startedHour.getTime() - 4 * 24 * 60 * 60 * 1000,
+    );
+    const retainedProcessedAt = new Date(
+      startedHour.getTime() - 3 * 24 * 60 * 60 * 1000,
+    );
+    const eligibleProcessedAt = new Date("0400-01-01T00:30:00.000Z");
 
     await store.set(
       insertUsageEvent$,
@@ -303,16 +293,7 @@ describe("usage event compaction cron", () => {
       {
         ...heldFixture,
         status: "processed",
-        processedAt: previousHour,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        ...heldFixture,
-        status: "processed",
-        processedAt: new Date(currentHour.getTime() + 1000),
+        processedAt: retainedProcessedAt,
       },
       context.signal,
     );
@@ -322,25 +303,34 @@ describe("usage event compaction cron", () => {
       {
         ...eligibleFixture,
         status: "processed",
-        processedAt: new Date("0400-01-01T00:30:00.000Z"),
+        processedAt: eligibleProcessedAt,
       },
       context.signal,
     );
     await seedZeroUsageEvents(eligibleFixture, {
-      processedAt: new Date("0400-01-01T00:30:00.000Z"),
+      processedAt: eligibleProcessedAt,
       count: RAW_SEED_LIMIT - 1,
     });
 
     const response = await compactUsage();
+    const completedHour = nowDate();
+    completedHour.setUTCMinutes(0, 0, 0);
+    const expectedCutoffAtCompletion = new Date(
+      completedHour.getTime() - 4 * 24 * 60 * 60 * 1000,
+    );
 
     expect(response.body).toMatchObject({
       rawRowsDeleted: RAW_SEED_LIMIT,
       hourlyRowsInserted: 1,
       billingErrorHeldRows: 1,
     });
+    expect([
+      expectedCutoffAtStart.toISOString(),
+      expectedCutoffAtCompletion.toISOString(),
+    ]).toContain(response.body.cutoff);
     await expect(readStorage(heldFixture)).resolves.toStrictEqual({
-      raw: 4,
-      processedRaw: 3,
+      raw: 3,
+      processedRaw: 2,
       hourly: 0,
     });
     await expect(readStorage(eligibleFixture)).resolves.toStrictEqual({
@@ -764,7 +754,7 @@ describe("usage event compaction cron", () => {
       hourly: 1,
     });
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(
       cronCompactUsageEventsContract.compact.path,
       {

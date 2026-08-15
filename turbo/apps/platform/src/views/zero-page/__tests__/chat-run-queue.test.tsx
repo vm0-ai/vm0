@@ -1,17 +1,18 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
+  chatThreadsContract,
   type ChatRunOptionsRequest,
-  type PersistedAttachment,
-} from "@vm0/api-contracts/contracts/chat-threads";
+  type ChatThreadServiceTier,
+  type UserMessageDocument,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import type {
   ModelProviderResponse,
   OrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { i18n } from "../../../i18n/index.ts";
+} from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { triggerAblyEvent, triggerAblyReconnect } from "../../../mocks/ably.ts";
 import {
@@ -21,7 +22,6 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import {
   activeRunComposer,
-  expectQueuedMessages,
   mockChatLifecycle,
   PLACEHOLDER,
   sendQueuedMessage,
@@ -36,11 +36,12 @@ const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 const CANCELLATION_RECOVERY_COPY =
   "Finalizing the cancelled run before queued work continues.";
-
-afterEach(async () => {
-  await i18n.changeLanguage("en-US");
-  document.documentElement.lang = "en-US";
-});
+const NEXT_RUN_MODEL_COPY = "Next run will use Claude Opus 4.8";
+const NEXT_RUN_SONNET_MODEL_COPY = "Next run will use Claude Sonnet 4.6";
+const MODEL_CHANGED_COPY = "Model changed to Claude Sonnet 4.6";
+const FAST_MODEL_CHANGED_COPY = "Model changed to GPT 5.6 Sol Fast";
+const NEXT_RUN_FAST_MODEL_COPY = "Next run will use GPT 5.6 Sol Fast";
+const RECONCILED_THREAD_TITLE = "Reconciled thread";
 
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
@@ -50,8 +51,8 @@ interface ModelSelectionRequest {
 interface QueuedMessageCapture {
   content?: string;
   hasTextContent?: boolean;
-  attachments?: PersistedAttachment[];
   clientEventId: string;
+  userMessage?: UserMessageDocument;
   modelSelection?: ModelSelectionRequest | null;
   runOptions?: ChatRunOptionsRequest;
 }
@@ -91,6 +92,36 @@ function buildProvider(
     updatedAt: "2026-07-14T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function modelAnnotatedMessage(
+  text: string,
+  selectedModel: string | undefined,
+  serviceTier?: ChatThreadServiceTier,
+): UserMessageDocument {
+  return {
+    version: 1,
+    parts: [
+      { type: "text", text },
+      ...(selectedModel === undefined
+        ? []
+        : [
+            {
+              type: "model" as const,
+              selectedModel,
+              ...(serviceTier === undefined ? {} : { serviceTier }),
+            },
+          ]),
+    ],
+  };
+}
+
+function expectTextBefore(firstText: string, secondText: string): void {
+  const first = screen.getByText(firstText);
+  const second = screen.getByText(secondText);
+  expect(
+    first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 }
 
 async function startActiveRun(
@@ -145,6 +176,179 @@ function mockActiveRunThread(
   });
 }
 
+function mockActiveRunModelChange(): void {
+  context.mocks.data.orgModelPolicies([
+    buildModelPolicy({
+      model: "claude-sonnet-4-6",
+      modelLabel: "Claude Sonnet 4.6",
+      isDefault: false,
+    }),
+    buildModelPolicy({
+      model: "claude-opus-4-8",
+      modelLabel: "Claude Opus 4.8",
+    }),
+  ]);
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    selectedModel: "claude-opus-4-8",
+    activeRunIds: ["run-active"],
+    chatEvents: [
+      {
+        id: `${THREAD_ID}-active-user`,
+        role: "user",
+        content: "Start the active run",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Start the active run" },
+            { type: "model", selectedModel: "claude-sonnet-4-6" },
+          ],
+        },
+        runId: "run-active",
+        createdAt: "2026-08-06T10:00:00Z",
+      },
+      {
+        id: `${THREAD_ID}-active-assistant`,
+        role: "assistant",
+        content: null,
+        runId: "run-active",
+        createdAt: "2026-08-06T10:00:01Z",
+      },
+      {
+        id: `${THREAD_ID}-queued-user`,
+        role: "user",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Follow up after the active run" },
+            { type: "morning_brief", briefDate: "2026-08-06" },
+          ],
+        },
+        runId: undefined,
+        createdAt: "2026-08-06T10:00:02Z",
+      },
+    ],
+  });
+}
+
+function mockActiveRunFastSelectionChange({
+  runningModel,
+  runningServiceTier,
+  selectedModel,
+  selectedServiceTier,
+}: {
+  readonly runningModel: "gpt-5.5" | "gpt-5.6-sol";
+  readonly runningServiceTier?: ChatThreadServiceTier;
+  readonly selectedModel: "gpt-5.5" | "gpt-5.6-sol";
+  readonly selectedServiceTier?: ChatThreadServiceTier;
+}): void {
+  context.mocks.data.orgModelPolicies([
+    buildModelPolicy({
+      model: "gpt-5.6-sol",
+      modelLabel: "GPT 5.6 Sol",
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+    }),
+    buildModelPolicy({
+      model: "gpt-5.5",
+      modelLabel: "GPT 5.5",
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+      isDefault: false,
+    }),
+  ]);
+  context.mocks.data.personalModelProviders([
+    buildProvider({
+      id: "00000000-0000-4000-a000-000000000932",
+      type: "codex-oauth-token",
+    }),
+  ]);
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    selectedModel,
+    codexServiceTier: selectedServiceTier === "priority" ? "fast" : null,
+    activeRunIds: ["run-active"],
+    chatEvents: [
+      {
+        id: `${THREAD_ID}-active-user`,
+        role: "user",
+        content: "Start the active run",
+        userMessage: modelAnnotatedMessage(
+          "Start the active run",
+          runningModel,
+          runningServiceTier,
+        ),
+        runId: "run-active",
+        createdAt: "2026-08-06T10:00:00Z",
+      },
+      {
+        id: `${THREAD_ID}-active-assistant`,
+        role: "assistant",
+        content: null,
+        runId: "run-active",
+        createdAt: "2026-08-06T10:00:01Z",
+      },
+    ],
+  });
+}
+
+function mockCompletedRunModelHistory({
+  previousModel,
+  nextModel,
+  previousServiceTier,
+  nextServiceTier,
+}: {
+  previousModel: string | undefined;
+  nextModel: string | undefined;
+  previousServiceTier?: ChatThreadServiceTier;
+  nextServiceTier?: ChatThreadServiceTier;
+}): void {
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    chatEvents: [
+      {
+        id: `${THREAD_ID}-previous-user`,
+        role: "user",
+        content: "First prompt",
+        userMessage: modelAnnotatedMessage(
+          "First prompt",
+          previousModel,
+          previousServiceTier,
+        ),
+        runId: "run-previous",
+        createdAt: "2026-08-06T09:00:00Z",
+      },
+      {
+        id: `${THREAD_ID}-previous-assistant`,
+        role: "assistant",
+        content: "First answer",
+        runId: "run-previous",
+        createdAt: "2026-08-06T09:00:01Z",
+      },
+      {
+        id: `${THREAD_ID}-next-user`,
+        role: "user",
+        content: "Second prompt",
+        userMessage: modelAnnotatedMessage(
+          "Second prompt",
+          nextModel,
+          nextServiceTier,
+        ),
+        runId: "run-next",
+        createdAt: "2026-08-06T09:01:00Z",
+      },
+      {
+        id: `${THREAD_ID}-next-assistant`,
+        role: "assistant",
+        content: "Second answer",
+        runId: "run-next",
+        createdAt: "2026-08-06T09:01:01Z",
+      },
+    ],
+  });
+}
+
 function mockCancellationRecoveryQueue(options?: {
   readonly includeAutomation?: boolean;
   readonly onRecallEventAppend?: (body: {
@@ -174,7 +378,14 @@ function mockCancellationRecoveryQueue(options?: {
       {
         id: `${THREAD_ID}-queued-user`,
         role: "user",
-        content: "Continue after recovery",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Continue after recovery" },
+            { type: "morning_brief", briefDate: "2026-07-30" },
+          ],
+        },
         runId: undefined,
         createdAt: "2026-07-30T10:00:02Z",
       },
@@ -184,7 +395,6 @@ function mockCancellationRecoveryQueue(options?: {
               id: `${THREAD_ID}-queued-automation`,
               eventType: "input.automation" as const,
               content: null,
-              triggerSource: "workflow-event" as const,
               userMessage: {
                 version: 1 as const,
                 parts: [
@@ -206,10 +416,634 @@ function mockCancellationRecoveryQueue(options?: {
 }
 
 describe("chat run queue", () => {
+  it("renders pending prompts inline", async () => {
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: ["run-active"],
+      chatEvents: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-active-assistant`,
+          role: "assistant",
+          content: "Working on the first request.",
+          runId: "run-active",
+          createdAt: "2026-08-04T10:00:01Z",
+        },
+        {
+          id: `${THREAD_ID}-pending-prompt`,
+          role: "user",
+          content: "Steer this follow-up",
+          runId: undefined,
+          createdAt: "2026-08-04T10:00:02Z",
+        },
+        {
+          id: `${THREAD_ID}-pending-morning-brief`,
+          role: "user",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Keep the morning brief queued" },
+              { type: "morning_brief", briefDate: "2026-08-05" },
+            ],
+          },
+          runId: undefined,
+          createdAt: "2026-08-04T10:00:03Z",
+        },
+        {
+          id: `${THREAD_ID}-pending-automation`,
+          eventType: "input.automation",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "queued-workflow",
+                automationBrief: "Keep this automation queued",
+              },
+            ],
+          },
+          runId: undefined,
+          createdAt: "2026-08-04T10:00:04Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+    });
+
+    await expect(
+      screen.findByText("Steer this follow-up"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+      "Keep the morning brief queued",
+    );
+    expect(screen.getByLabelText("Queued message")).not.toHaveTextContent(
+      "Steer this follow-up",
+    );
+    expect(screen.getByLabelText("Pending automation event")).toHaveTextContent(
+      "Keep this automation queued",
+    );
+    expectTextBefore("Working on the first request.", "Steer this follow-up");
+  });
+
+  it("shows a selected model change at the bottom of the message area", async () => {
+    mockActiveRunModelChange();
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+    });
+
+    const label = await screen.findByText(NEXT_RUN_MODEL_COPY);
+    const notice = label.closest('[role="status"]');
+    expect(notice).toHaveAttribute("aria-live", "polite");
+    expect(label.closest("[data-message-container]")).toBeInTheDocument();
+    expectTextBefore("Start the active run", NEXT_RUN_MODEL_COPY);
+    expectTextBefore(NEXT_RUN_MODEL_COPY, "1 message waiting");
+    expectTextBefore(NEXT_RUN_MODEL_COPY, "Follow up after the active run");
+  });
+
+  it.each([
+    {
+      name: "the target model also changes",
+      runningModel: "gpt-5.5",
+      runningServiceTier: undefined,
+      selectedModel: "gpt-5.6-sol",
+      selectedServiceTier: "priority",
+      expectedCopy: NEXT_RUN_FAST_MODEL_COPY,
+      absentCopy: "Fast mode will be on",
+    },
+    {
+      name: "Fast mode turns on for the same model",
+      runningModel: "gpt-5.6-sol",
+      runningServiceTier: undefined,
+      selectedModel: "gpt-5.6-sol",
+      selectedServiceTier: "priority",
+      expectedCopy: "Fast mode will be on",
+      absentCopy: NEXT_RUN_FAST_MODEL_COPY,
+    },
+    {
+      name: "Fast mode turns off for the same model",
+      runningModel: "gpt-5.6-sol",
+      runningServiceTier: "priority",
+      selectedModel: "gpt-5.6-sol",
+      selectedServiceTier: undefined,
+      expectedCopy: "Fast mode will be off",
+      absentCopy: NEXT_RUN_FAST_MODEL_COPY,
+    },
+  ] as const)(
+    "shows the next-run Fast change when $name",
+    async (selection) => {
+      mockActiveRunFastSelectionChange(selection);
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+        path: CHAT_PATH,
+      });
+
+      const label = await screen.findByText(selection.expectedCopy);
+      expect(label.closest('[role="status"]')).toHaveAttribute(
+        "aria-live",
+        "polite",
+      );
+      expect(screen.queryByText(selection.absentCopy)).not.toBeInTheDocument();
+    },
+  );
+
+  it("inserts a model change divider between adjacent runs", async () => {
+    mockCompletedRunModelHistory({
+      previousModel: "gpt-5.5",
+      nextModel: "claude-sonnet-4-6",
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+    });
+
+    await expect(
+      screen.findByText(MODEL_CHANGED_COPY),
+    ).resolves.toBeInTheDocument();
+    expectTextBefore("First answer", MODEL_CHANGED_COPY);
+    expectTextBefore(MODEL_CHANGED_COPY, "Second prompt");
+  });
+
+  it.each([
+    {
+      name: "includes Fast in a changed model name",
+      previousModel: "gpt-5.5",
+      previousServiceTier: undefined,
+      nextModel: "gpt-5.6-sol",
+      nextServiceTier: "priority",
+      expectedCopy: FAST_MODEL_CHANGED_COPY,
+      absentCopy: "Fast mode on",
+    },
+    {
+      name: "marks Fast mode on for the same model",
+      previousModel: "gpt-5.6-sol",
+      previousServiceTier: undefined,
+      nextModel: "gpt-5.6-sol",
+      nextServiceTier: "priority",
+      expectedCopy: "Fast mode on",
+      absentCopy: FAST_MODEL_CHANGED_COPY,
+    },
+    {
+      name: "marks Fast mode off for the same model",
+      previousModel: "gpt-5.6-sol",
+      previousServiceTier: "priority",
+      nextModel: "gpt-5.6-sol",
+      nextServiceTier: undefined,
+      expectedCopy: "Fast mode off",
+      absentCopy: FAST_MODEL_CHANGED_COPY,
+    },
+  ] as const)(
+    "renders the historical Fast transition when it $name",
+    async (change) => {
+      mockCompletedRunModelHistory(change);
+
+      detachedSetupPage({
+        context,
+        path: CHAT_PATH,
+      });
+
+      await expect(
+        screen.findByText(change.expectedCopy),
+      ).resolves.toBeInTheDocument();
+      expectTextBefore("First answer", change.expectedCopy);
+      expectTextBefore(change.expectedCopy, "Second prompt");
+      expect(screen.queryByText(change.absentCopy)).not.toBeInTheDocument();
+    },
+  );
+
+  it("inserts a model change divider before an optimistic run reconciles", async () => {
+    const user = userEvent.setup({ delay: null });
+    const secondSendGate = context.mocks.deferred<void>();
+    let sendCount = 0;
+    let clientThreadId: string | undefined;
+    let threadCreateEventId: string | undefined;
+    let secondUserMessage: UserMessageDocument | undefined;
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.5",
+      serviceTier: null,
+      updatedAt: "2026-08-06T09:00:00Z",
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+      }),
+      buildModelPolicy({
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: false,
+      }),
+    ]);
+    const lifecycle = mockChatLifecycle(context, {
+      sendGate: () => {
+        sendCount++;
+        return sendCount === 2
+          ? secondSendGate.promise
+          : Promise.resolve(undefined);
+      },
+      onSendRequest: ({ prompt, userMessage }) => {
+        if (prompt === "Second prompt") {
+          secondUserMessage = userMessage;
+        }
+      },
+      onThreadCreate: (body) => {
+        clientThreadId = body.clientThreadId;
+        threadCreateEventId = body.eventId;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+    });
+
+    await sendMessageInUI(
+      user,
+      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
+      "First prompt",
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    const settledThreadId = clientThreadId;
+    const settledThreadCreateEventId = threadCreateEventId;
+    if (
+      settledThreadId === undefined ||
+      settledThreadCreateEventId === undefined
+    ) {
+      throw new Error("Expected the optimistic thread create identifiers");
+    }
+
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, {
+        events: [
+          {
+            id: settledThreadCreateEventId,
+            seqId: 1,
+            kind: "created",
+            chatThreadId: settledThreadId,
+            agentId: AGENT_ID,
+            title: RECONCILED_THREAD_TITLE,
+            selectedModel: "gpt-5.5",
+            serviceTier: null,
+            computerUseHostId: null,
+            cloudBrowserEnabled: true,
+            createdAt: "2026-08-06T09:00:00Z",
+          },
+        ],
+        hasMore: false,
+      });
+    });
+    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(document.title).toBe(`${RECONCILED_THREAD_TITLE} | VM0`);
+    });
+
+    lifecycle.completeRun("First answer");
+    await waitFor(() => {
+      expect(screen.getByText("First answer")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+
+    await user.click(await screen.findByRole("combobox", { name: "GPT 5.5" }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+      ).toBeInTheDocument();
+    });
+
+    await fill(
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Second prompt",
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await expect(
+      screen.findByText("Second prompt"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(secondUserMessage?.parts).toContainEqual({
+        type: "model",
+        selectedModel: "claude-sonnet-4-6",
+      });
+    });
+    expect(secondSendGate.settled()).toBeFalsy();
+    expect(screen.getByText(MODEL_CHANGED_COPY)).toBeInTheDocument();
+    expectTextBefore("First answer", MODEL_CHANGED_COPY);
+    expectTextBefore(MODEL_CHANGED_COPY, "Second prompt");
+  });
+
+  it("annotates an optimistic Fast run and sends the service tier", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sendGate = context.mocks.deferred<void>();
+    let requestUserMessage: UserMessageDocument | undefined;
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000933",
+        type: "codex-oauth-token",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "gpt-5.6-sol",
+      codexServiceTier: "fast",
+      sendGate: sendGate.promise,
+      onSendRequest: ({ userMessage }) => {
+        requestUserMessage = userMessage;
+      },
+      chatEvents: [
+        {
+          id: `${THREAD_ID}-previous-user`,
+          role: "user",
+          content: "First prompt",
+          userMessage: modelAnnotatedMessage("First prompt", "gpt-5.6-sol"),
+          runId: "run-previous",
+          createdAt: "2026-08-06T09:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-previous-assistant`,
+          role: "assistant",
+          content: "First answer",
+          runId: "run-previous",
+          createdAt: "2026-08-06T09:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: CHAT_PATH,
+    });
+
+    await fill(
+      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
+      "Second prompt",
+    );
+    await user.click(screen.getByLabelText("Send"));
+
+    await expect(
+      screen.findByText("Fast mode on"),
+    ).resolves.toBeInTheDocument();
+    expectTextBefore("First answer", "Fast mode on");
+    expectTextBefore("Fast mode on", "Second prompt");
+    await waitFor(() => {
+      expect(
+        requestUserMessage?.parts.find((part) => {
+          return part.type === "model";
+        }),
+      ).toStrictEqual({
+        type: "model",
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      });
+    });
+    expect(sendGate.settled()).toBeFalsy();
+  });
+
+  it("keeps a model change pending through a steer before showing the next run divider optimistically", async () => {
+    const user = userEvent.setup({ delay: null });
+    const nextRunSendGate = context.mocks.deferred<void>();
+    const steerMessages: QueuedMessageCapture[] = [];
+    let runCreateCount = 0;
+    let nextRunUserMessage: UserMessageDocument | undefined;
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.5",
+      serviceTier: null,
+      updatedAt: "2026-08-06T09:00:00Z",
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+      }),
+      buildModelPolicy({
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: false,
+      }),
+    ]);
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "gpt-5.5",
+      sendGate: () => {
+        runCreateCount++;
+        return runCreateCount === 2
+          ? nextRunSendGate.promise
+          : Promise.resolve(undefined);
+      },
+      onQueuedEventAppend: (body) => {
+        steerMessages.push(body);
+      },
+      onSendRequest: ({ prompt, userMessage }) => {
+        if (prompt === "Start the model B run") {
+          nextRunUserMessage = userMessage;
+        }
+      },
+    });
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+    });
+
+    await sendMessageInUI(
+      user,
+      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
+      "Start the model A run",
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    lifecycle.setRunOutput("Working with model A.");
+    await waitFor(() => {
+      expect(screen.getByText("Working with model A.")).toBeInTheDocument();
+    });
+
+    await user.click(await screen.findByRole("combobox", { name: "GPT 5.5" }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await expect(
+      screen.findByText(NEXT_RUN_SONNET_MODEL_COPY),
+    ).resolves.toBeInTheDocument();
+
+    await sendQueuedMessage(user, "Steer the model A run");
+    await expect(
+      screen.findByText("Steer the model A run"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(steerMessages).toHaveLength(1);
+    });
+    expect(
+      steerMessages[0]?.userMessage?.parts.find((part) => {
+        return part.type === "model";
+      }),
+    ).toBeUndefined();
+    expect(screen.getByText(NEXT_RUN_SONNET_MODEL_COPY)).toBeInTheDocument();
+    expect(screen.queryByText(MODEL_CHANGED_COPY)).not.toBeInTheDocument();
+    // Dropping the rule from this notice belongs to the steer feature, which is
+    // off here, so the divider must be untouched for everyone else.
+    expect(
+      screen
+        .getByText(NEXT_RUN_SONNET_MODEL_COPY)
+        .closest("div")
+        ?.querySelector('[role="separator"]'),
+    ).not.toBeNull();
+
+    lifecycle.completeRun("Model A finished.");
+    await waitFor(() => {
+      expect(screen.getByText("Model A finished.")).toBeInTheDocument();
+      expect(
+        screen.queryByText(NEXT_RUN_SONNET_MODEL_COPY),
+      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+
+    await fill(
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Start the model B run",
+    );
+    await user.click(screen.getByLabelText("Send"));
+
+    await expect(
+      screen.findByText("Start the model B run"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(nextRunUserMessage?.parts).toContainEqual({
+        type: "model",
+        selectedModel: "claude-sonnet-4-6",
+      });
+    });
+    expect(nextRunSendGate.settled()).toBeFalsy();
+    expect(screen.getByText(MODEL_CHANGED_COPY)).toBeInTheDocument();
+    // The model change is a permanent mark on the transcript, so it keeps one.
+    expect(
+      screen
+        .getByText(MODEL_CHANGED_COPY)
+        .closest("div")
+        ?.querySelector('[role="separator"]'),
+    ).not.toBeNull();
+    expectTextBefore("Model A finished.", MODEL_CHANGED_COPY);
+    expectTextBefore(MODEL_CHANGED_COPY, "Start the model B run");
+  });
+
+  it.each([
+    {
+      name: "the models match",
+      previousModel: "claude-sonnet-4-6",
+      nextModel: "claude-sonnet-4-6",
+    },
+    {
+      name: "the models and Fast tiers match",
+      previousModel: "gpt-5.6-sol",
+      previousServiceTier: "priority" as const,
+      nextModel: "gpt-5.6-sol",
+      nextServiceTier: "priority" as const,
+    },
+    {
+      name: "the previous run has no model",
+      previousModel: undefined,
+      nextModel: "claude-sonnet-4-6",
+    },
+    {
+      name: "the next run has no model",
+      previousModel: "gpt-5.5",
+      nextModel: undefined,
+    },
+  ])("does not insert a model change divider when $name", async (models) => {
+    mockCompletedRunModelHistory(models);
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+    });
+
+    await expect(
+      screen.findByText("Second prompt"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText(MODEL_CHANGED_COPY)).not.toBeInTheDocument();
+    expect(screen.queryByText("Fast mode on")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fast mode off")).not.toBeInTheDocument();
+  });
+
+  it("keeps an optimistic steer prompt at the bottom until persistence", async () => {
+    const user = userEvent.setup({ delay: null });
+    const appendGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: ["run-active"],
+      appendGate: appendGate.promise,
+      chatEvents: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-active-assistant`,
+          role: "assistant",
+          content: "Still working.",
+          runId: "run-active",
+          createdAt: "2026-08-04T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+    });
+
+    await screen.findByText("Still working.");
+    const submit = sendQueuedMessage(user, "Optimistic steer prompt");
+    await expect(
+      screen.findByText("Optimistic steer prompt"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    expectTextBefore("Still working.", "Optimistic steer prompt");
+
+    appendGate.resolve();
+    await submit;
+  });
+
   it("falls back to generic queue guidance for a previous API response", async () => {
     mockCancellationRecoveryQueue();
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, { lastReadAt: null });
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: false,
+      });
     });
 
     detachedSetupPage({ context, path: CHAT_PATH });
@@ -439,6 +1273,7 @@ describe("chat run queue", () => {
                 titleSnapshot: "Project Alpha",
               },
               { type: "text", text: " then\ncontinue" },
+              { type: "morning_brief", briefDate: "2026-06-09" },
             ],
           },
           createdAt: "2026-06-09T10:00:02Z",
@@ -518,43 +1353,6 @@ describe("chat run queue", () => {
     await waitFor(() => {
       expect(screen.getByText("First new-thread message")).toBeInTheDocument();
     });
-  });
-
-  it("replays recalled queued content during an active run", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockActiveRunThread(THREAD_ID);
-
-    detachedSetupPage({ context, path: CHAT_PATH });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    await sendQueuedMessage(user, "First queued follow-up");
-    await sendQueuedMessage(user, "Second queued follow-up");
-    await expectQueuedMessages([
-      "First queued follow-up",
-      "Second queued follow-up",
-    ]);
-
-    click(screen.getAllByLabelText("Remove queued message")[0]!);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("textbox", { name: "Message" }),
-      ).toHaveTextContent("First queued follow-up");
-    });
-
-    await fill(
-      screen.getByRole("textbox", { name: "Message" }),
-      "Replayed follow-up",
-    );
-    await user.keyboard("{Enter}");
-
-    await expectQueuedMessages([
-      "Second queued follow-up",
-      "Replayed follow-up",
-    ]);
   });
 
   it("omits model selection when queueing a follow-up on an existing thread", async () => {
@@ -644,7 +1442,7 @@ describe("chat run queue", () => {
     expect(queuedBodies[0]?.content).toBe("排队完整内容");
   });
 
-  it("queues when the hydrated model needs server reconciliation", async () => {
+  it("renders a server-reconciled follow-up inline", async () => {
     const user = userEvent.setup({ delay: null });
     const queuedBodies: QueuedMessageCapture[] = [];
     context.mocks.data.orgModelPolicies([]);
@@ -661,14 +1459,13 @@ describe("chat run queue", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
     const composer = await activeRunComposer();
-    await fill(composer, "Keep this queued draft");
+    await fill(composer, "Keep this follow-up");
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(queuedBodies).toHaveLength(1);
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Keep this queued draft",
-      );
+      expect(screen.getByText("Keep this follow-up")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     });
     expect(queuedBodies[0]?.modelSelection).toBeUndefined();
     expect(
@@ -682,8 +1479,8 @@ describe("chat run queue", () => {
     const queuedBodies: QueuedMessageCapture[] = [];
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
       }),
@@ -695,7 +1492,7 @@ describe("chat run queue", () => {
       }),
     ]);
     mockActiveRunThread(THREAD_ID, {
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-luna",
       codexServiceTier: "fast",
       onQueuedEventAppend: (body) => {
         queuedBodies.push(body);
@@ -721,20 +1518,20 @@ describe("chat run queue", () => {
     });
   });
 
-  it("queues a video-only follow-up for a fallback-enabled text-only model", async () => {
+  it("renders a video-only follow-up inline for a fallback-enabled text-only model", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000902";
     let queuedBody: QueuedMessageCapture | null = null;
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
-        model: "glm-5.1",
-        modelLabel: "GLM-5.1",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
       }),
     ]);
     mockChatLifecycle(context, {
       threadId,
-      selectedModel: "glm-5.1",
+      selectedModel: "deepseek-v4-flash",
       chatEvents: [
         {
           id: "msg-active-attachment-user",
@@ -767,9 +1564,6 @@ describe("chat run queue", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     await waitFor(() => {
@@ -793,27 +1587,28 @@ describe("chat run queue", () => {
     await user.click(await screen.findByLabelText("Send"));
 
     await waitFor(() => {
-      expect(screen.getByText("1 message waiting")).toBeInTheDocument();
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "[File: queued.mp4]",
-      );
+      expect(screen.getByLabelText("Preview queued.mp4")).toBeInTheDocument();
+      expect(screen.queryByText("1 message waiting")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(queuedBody).toMatchObject({
         content: "(see attached files)",
         hasTextContent: false,
-        attachments: [
-          {
-            id: "upload-queued-video",
-            filename: "queued.mp4",
-            contentType: "video/mp4",
-            size: 12,
-            url: "https://cdn.vm7.io/artifacts/test/upload-queued-video/queued.mp4",
-          },
-        ],
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "upload-queued-video",
+              filenameSnapshot: "queued.mp4",
+              contentType: "video/mp4",
+            },
+          ],
+        },
       });
     });
   });
 
-  it("recalls queued content and clears the thinking indicator when the active run is stopped", async () => {
+  it("stops an active run after inline steering and clears the thinking indicator", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -822,7 +1617,11 @@ describe("chat run queue", () => {
     await startActiveRun(user);
     await sendQueuedMessage(user, "First queued");
     await sendQueuedMessage(user, "Second queued");
-    await expectQueuedMessages(["First queued", "Second queued"]);
+    await waitFor(() => {
+      expect(screen.getByText("First queued")).toBeInTheDocument();
+      expect(screen.getByText("Second queued")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    });
 
     click(screen.getByLabelText("Stop"));
 
@@ -835,6 +1634,8 @@ describe("chat run queue", () => {
       expect(
         screen.getByText("Paused mid-thought — pick it back up whenever."),
       ).toBeInTheDocument();
+      expect(screen.getByText("First queued")).toBeInTheDocument();
+      expect(screen.getByText("Second queued")).toBeInTheDocument();
     });
   });
 });

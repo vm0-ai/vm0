@@ -1,45 +1,42 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 import { HttpResponse, delay, http, passthrough } from "msw";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
-} from "@vm0/db/schema/connector-catalog";
-import { connectors } from "@vm0/db/schema/connector";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/connector-catalog";
+import { connectors } from "@okouai/db/schema/connector";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { bench } from "vitest";
 import {
   chatThreadByIdContract,
-  chatThreadEventsContract,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
-import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import { z } from "zod";
-
 import { executeRawRows } from "../../../lib/db-raw-rows";
 import { mockEnv } from "../../../lib/env";
-import { setupApp, testContext } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
-import { nowDate } from "../../external/time";
+import { nowDate } from "../../../lib/time";
 import { appendChatThreadEvent } from "../../services/zero-chat-thread-event.service";
 import {
   connectorCatalogExecutableCapabilityState,
@@ -53,9 +50,22 @@ import {
 import { encodeConnectorCatalogSnapshot } from "../../services/connector-catalog-artifacts/loader";
 import { connectorCatalogSource } from "../../services/connector-catalog-source";
 import { currentConnectorCatalogValidatorIdentity } from "../../services/connector-catalog-validator-authority";
-import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
-import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
+import { normalizeRunMetadata } from "../../services/agent-run-metadata-write.service";
+import { seedUserModelProvider$ } from "./helpers/model-providers";
+import { seedOrgMembership$ } from "../__tests__/helpers/org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroConnectorsRoutes } from "../zero-connectors";
+import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
+import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
+import { zeroOrgReadRoutes } from "../zero-org-read";
+import { userPreferencesRoutes } from "../user-preferences";
+
+const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+  ...zeroMeModelProvidersListRoutes,
+  ...zeroMeModelProvidersUpsertRoutes,
+]);
 
 // HTTP-level benchmarks for side-effect-free GET routes that showed elevated
 // P90 in production traces. All cases share one seeded DB fixture and only issue
@@ -67,7 +77,7 @@ import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 // iterations would otherwise see an unseeded DB, error silently in
 // tinybench, and produce empty samples without failing the suite.
 //
-// The fixture bulks up zero_runs / agent_runs / chat_events and the
+// The fixture bulks up agent_runs / chat_events and the
 // user-visible GET data sets well past planner cross-over so Postgres uses the
 // same index-driven paths production hits. With tiny fixtures the planner picks
 // seq scans and the per-query overhead this bench needs to measure disappears.
@@ -90,17 +100,27 @@ const BENCH_CONNECTOR_CATALOG_KEY =
   `connectors/v${String(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION)}/` +
   `releases/${BENCH_CONNECTOR_CATALOG_VERSION}/catalog.json`;
 
-const chatThreadClient = setupApp({ context })(chatThreadByIdContract);
-const chatThreadEventsClient = setupApp({ context })(chatThreadEventsContract);
-const connectorsClient = setupApp({ context })(zeroConnectorsMainContract);
-const userPreferencesClient = setupApp({ context })(
-  zeroUserPreferencesContract,
+const chatThreadClient = setupApp({ context, routes: zeroChatThreadRoutes })(
+  chatThreadByIdContract,
 );
-const billingStatusClient = setupApp({ context })(zeroBillingStatusContract);
-const orgClient = setupApp({ context })(zeroOrgContract);
-const personalModelProvidersClient = setupApp({ context })(
-  zeroPersonalModelProvidersMainContract,
+const connectorsClient = setupApp({ context, routes: zeroConnectorsRoutes })(
+  zeroConnectorsMainContract,
 );
+const userPreferencesClient = setupApp({
+  context,
+  routes: userPreferencesRoutes,
+})(userPreferencesContract);
+const billingStatusClient = setupApp({
+  context,
+  routes: zeroBillingStatusRoutes,
+})(zeroBillingStatusContract);
+const orgClient = setupApp({ context, routes: zeroOrgReadRoutes })(
+  zeroOrgContract,
+);
+const personalModelProvidersClient = setupApp({
+  context,
+  routes: zeroPersonalModelProvidersMainTestRoutes,
+})(zeroPersonalModelProvidersMainContract);
 
 interface BenchChatThreadFixture {
   readonly userId: string;
@@ -128,7 +148,6 @@ function benchCatalogConnector(args: {
         label: "API token",
         description: null,
         visible: true,
-        featureSwitch: null,
         storage: {
           version: 1,
           secrets: [args.secretName],
@@ -485,23 +504,14 @@ async function seedBackgroundLoad(): Promise<void> {
     },
   );
 
-  const runRows: {
-    id: string;
-    userId: string;
-    orgId: string;
-    agentComposeVersionId: string;
-    sessionId: string;
-    status: string;
-    prompt: string;
-  }[] = [];
-  const zRunRows: {
-    id: string;
-    triggerSource: string;
-    chatThreadId: string;
-  }[] = [];
+  const runRows: (typeof agentRuns.$inferInsert)[] = [];
   for (let t = 0; t < BACKGROUND_THREAD_COUNT; t++) {
     for (let r = 0; r < BACKGROUND_RUNS_PER_THREAD; r++) {
       const runId = randomUUID();
+      const metadata = normalizeRunMetadata({
+        triggerSource: "test",
+        chatThreadId: threadIds[t]!,
+      });
       runRows.push({
         id: runId,
         userId: bgUserId,
@@ -510,19 +520,12 @@ async function seedBackgroundLoad(): Promise<void> {
         sessionId: sessionIds[t]!,
         status: STATUSES[r % STATUSES.length]!,
         prompt: "bg",
-      });
-      zRunRows.push({
-        id: runId,
-        triggerSource: "test",
-        chatThreadId: threadIds[t]!,
+        ...metadata,
       });
     }
   }
   await chunkedInsert(runRows, (chunk) => {
     return db.insert(agentRuns).values(chunk);
-  });
-  await chunkedInsert(zRunRows, (chunk) => {
-    return db.insert(zeroRuns).values(chunk);
   });
 }
 
@@ -590,34 +593,24 @@ async function seedTargetThreadRuns(
     throw new Error("target session insert returned no row");
   }
 
-  const runRows: {
-    id: string;
-    userId: string;
-    orgId: string;
-    agentComposeVersionId: string;
-    sessionId: string;
-    status: string;
-    prompt: string;
-  }[] = [];
-  const zRunRows: {
-    id: string;
-    triggerSource: string;
-    chatThreadId: string;
-  }[] = [];
+  const runRows: (typeof agentRuns.$inferInsert)[] = [];
   const eventRows: {
     chatThreadId: string;
     runId: string;
     eventType: "input.prompt" | "output.message";
-    content?: string;
+    contextType?: "web";
+    payload: { content: string } | { userMessage: UserMessageDocument };
     sequenceNumber: number;
     seqId: number;
-    attachFiles?: string[];
-    userMessage?: UserMessageDocument;
     createdAt: Date;
   }[] = [];
   const now = nowDate().getTime();
   for (let i = 0; i < TARGET_RUN_COUNT; i++) {
     const runId = randomUUID();
+    const metadata = normalizeRunMetadata({
+      triggerSource: "test",
+      chatThreadId: fixture.threadId,
+    });
     runRows.push({
       id: runId,
       userId: fixture.userId,
@@ -626,11 +619,7 @@ async function seedTargetThreadRuns(
       sessionId: session.id,
       status: STATUSES[i % STATUSES.length]!,
       prompt: `bench prompt ${String(i)}`,
-    });
-    zRunRows.push({
-      id: runId,
-      triggerSource: "test",
-      chatThreadId: fixture.threadId,
+      ...metadata,
     });
     for (let m = 0; m < TARGET_MESSAGES_PER_RUN; m++) {
       const latestAttachmentStart = TARGET_RUN_COUNT - TARGET_ATTACHMENT_COUNT;
@@ -639,27 +628,26 @@ async function seedTargetThreadRuns(
           ? targetAttachmentId(i - latestAttachmentStart)
           : undefined;
       const content = markdownLorem(i, m);
+      const userMessage =
+        m === 0 ? benchUserMessage(content, attachmentId) : undefined;
       eventRows.push({
         chatThreadId: fixture.threadId,
         runId,
         eventType: m === 0 ? "input.prompt" : "output.message",
         sequenceNumber: m,
         seqId: i * TARGET_MESSAGES_PER_RUN + m + 1,
-        // Input events carry their text in user_message only; chat_events
-        // rejects a non-null content projection for them.
-        ...(m === 0
-          ? { userMessage: benchUserMessage(content, attachmentId) }
-          : { content }),
-        ...(attachmentId ? { attachFiles: [attachmentId] } : {}),
+        ...(userMessage !== undefined
+          ? {
+              contextType: "web",
+              payload: { userMessage },
+            }
+          : { payload: { content } }),
         createdAt: new Date(now + i * 1000 + m),
       });
     }
   }
   await chunkedInsert(runRows, (chunk) => {
     return db.insert(agentRuns).values(chunk);
-  });
-  await chunkedInsert(zRunRows, (chunk) => {
-    return db.insert(zeroRuns).values(chunk);
   });
   await chunkedInsert(eventRows, (chunk) => {
     return db.insert(chatEvents).values(chunk);
@@ -771,7 +759,6 @@ async function logPlannerDiagnostic(
   const db = store.set(writeDb$);
   await db.execute(sql`
     ANALYZE
-      zero_runs,
       agent_runs,
       chat_threads,
       chat_events,
@@ -785,10 +772,10 @@ async function logPlannerDiagnostic(
     db,
     sql`
       EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
-      SELECT zero_runs.id, agent_runs.status
-      FROM zero_runs
-      INNER JOIN agent_runs ON zero_runs.id = agent_runs.id
-      WHERE zero_runs.chat_thread_id = ${fixture.threadId}
+      SELECT agent_runs.id, agent_runs.status
+      FROM agent_runs
+      WHERE agent_runs.chat_thread_id = ${fixture.threadId}
+        AND agent_runs.trigger_source IS NOT NULL
     `,
     queryPlanRowSchema,
   );
@@ -796,7 +783,7 @@ async function logPlannerDiagnostic(
     return row["QUERY PLAN"];
   });
   process.stdout.write(
-    `\n[bench-explain] zero_runs JOIN agent_runs WHERE chat_thread_id\n${lines.join("\n")}\n\n`,
+    `\n[bench-explain] agent_runs WHERE chat_thread_id AND metadata present\n${lines.join("\n")}\n\n`,
   );
 }
 
@@ -858,7 +845,7 @@ const authHeaders = { authorization: "Bearer clerk-session" } as const;
 
 describe("bench side-effect-free GET API routes", () => {
   bench(
-    "GET /api/zero/chat-threads/:id",
+    "GET /api/okou/chat-threads/:id",
     async () => {
       const fixture = await ensureSeeded();
       const response = await chatThreadClient.get({
@@ -873,23 +860,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/chat-threads/:threadId/events",
-    async () => {
-      const fixture = await ensureSeeded();
-      const response = await chatThreadEventsClient.list({
-        params: { threadId: fixture.threadId },
-        query: { limit: 50 },
-        headers: authHeaders,
-      });
-      if (response.status !== 200) {
-        throw new Error(`unexpected status ${String(response.status)}`);
-      }
-    },
-    benchOptions,
-  );
-
-  bench(
-    "GET /api/zero/connectors",
+    "GET /api/okou/connectors",
     async () => {
       await ensureSeeded();
       const response = await connectorsClient.list({ headers: authHeaders });
@@ -901,7 +872,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/user-preferences",
+    "GET /api/okou/user-preferences",
     async () => {
       await ensureSeeded();
       const response = await userPreferencesClient.get({
@@ -915,7 +886,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/billing/status",
+    "GET /api/okou/billing/status",
     async () => {
       await ensureSeeded();
       const response = await billingStatusClient.get({ headers: authHeaders });
@@ -927,7 +898,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/org",
+    "GET /api/okou/org",
     async () => {
       await ensureSeeded();
       const response = await orgClient.get({ headers: authHeaders });
@@ -939,7 +910,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/me/model-providers",
+    "GET /api/okou/me/model-providers",
     async () => {
       await ensureSeeded();
       const response = await personalModelProvidersClient.list({

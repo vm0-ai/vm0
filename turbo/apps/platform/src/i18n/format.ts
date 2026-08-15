@@ -1,8 +1,7 @@
-import { i18n } from "./index.ts";
-import { DEFAULT_LOCALE } from "./resources.ts";
+import { currentLocale } from "./index.ts";
 
 export function resolvedAppLocale(): string {
-  return i18n.resolvedLanguage ?? i18n.language ?? DEFAULT_LOCALE;
+  return currentLocale();
 }
 
 export function formatAppNumber(
@@ -35,5 +34,15 @@ export function formatUsd(dollars: number, fractionDigits = 2): string {
     currency: "USD",
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
+  });
+}
+
+/** Short date + time used for chat event timestamps. */
+export function formatChatTimestamp(value: string): string {
+  return new Date(value).toLocaleString(resolvedAppLocale(), {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }

@@ -1,20 +1,21 @@
 import type { UIEvent as ReactUIEvent } from "react";
-import type {
-  ArtifactCatalogKind,
-  ArtifactSummary,
-} from "@vm0/api-contracts/contracts/artifact-catalog";
+import type { ArtifactCatalogKind } from "@okouai/api-contracts/contracts/artifact-catalog";
 import {
-  IconAlertTriangle,
-  IconFile,
-  IconPhoto,
-  IconPresentationAnalytics,
-  IconVideo,
-  IconWorld,
-} from "@tabler/icons-react";
-import { r2ImageTransformUrl } from "@vm0/core";
+  AlertTriangle,
+  ChevronRight,
+  File,
+  Image,
+  Presentation,
+  MessagesSquare,
+  User,
+  Video,
+  Globe,
+} from "lucide-react";
+import { r2ImageTransformUrl } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
-import { Alert, AlertDescription } from "@vm0/ui/components/ui/alert";
+import { cn } from "@okouai/ui";
+import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -24,6 +25,8 @@ import {
   selectedArtifactCatalogKind$,
   setArtifactCatalogKind$,
 } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
+import type { CatalogArtifact } from "../../signals/artifacts-page/create-artifact-catalog-signals.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -46,6 +49,8 @@ const ARTIFACT_KIND_OPTIONS: readonly ArtifactCatalogKind[] = [
   "hosted-site",
   "image",
   "video",
+  "avatar",
+  "shared-thread",
   "file",
 ];
 
@@ -53,15 +58,19 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
   const { t } = useTranslation();
   const icon =
     kind === "presentation" ? (
-      <IconPresentationAnalytics size={16} stroke={1.7} />
+      <Presentation size={16} />
     ) : kind === "hosted-site" ? (
-      <IconWorld size={16} stroke={1.7} />
+      <Globe size={16} />
     ) : kind === "image" ? (
-      <IconPhoto size={16} stroke={1.7} />
+      <Image size={16} />
     ) : kind === "video" ? (
-      <IconVideo size={16} stroke={1.7} />
+      <Video size={16} />
+    ) : kind === "avatar" ? (
+      <User size={16} />
+    ) : kind === "shared-thread" ? (
+      <MessagesSquare size={16} />
     ) : (
-      <IconFile size={16} stroke={1.7} />
+      <File size={16} />
     );
   const kindLabel =
     kind === "presentation"
@@ -80,9 +89,17 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
             ? t(($) => {
                 return $.artifacts.kinds.video;
               })
-            : t(($) => {
-                return $.artifacts.kinds.file;
-              });
+            : kind === "avatar"
+              ? t(($) => {
+                  return $.artifacts.kinds.avatar;
+                })
+              : kind === "shared-thread"
+                ? t(($) => {
+                    return $.artifacts.kinds.sharedConversation;
+                  })
+                : t(($) => {
+                    return $.artifacts.kinds.file;
+                  });
 
   return (
     <span
@@ -103,7 +120,7 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
 function ArtifactCatalogFallbackPreview({
   artifact,
 }: {
-  readonly artifact: ArtifactSummary;
+  readonly artifact: CatalogArtifact;
 }) {
   return (
     <div
@@ -128,7 +145,7 @@ function ArtifactCatalogCard({
   artifact,
   onOpen,
 }: {
-  readonly artifact: ArtifactSummary;
+  readonly artifact: CatalogArtifact;
   readonly onOpen: (artifactId: string) => void;
 }) {
   const { t } = useTranslation();
@@ -154,7 +171,7 @@ function ArtifactCatalogCard({
         event.preventDefault();
         onOpen(artifact.id);
       }}
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm outline-none transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card outline-none transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       <div
         data-testid="artifact-catalog-card-preview"
@@ -166,6 +183,7 @@ function ArtifactCatalogCard({
               width: ARTIFACT_CARD_THUMBNAIL_WIDTH_PX,
               fit: "scale-down",
             })}
+            load={artifact.thumbnailLoad}
             className="h-full w-full object-cover"
             fallback={<ArtifactCatalogFallbackPreview artifact={artifact} />}
             testId="artifact-catalog-thumbnail"
@@ -177,7 +195,7 @@ function ArtifactCatalogCard({
         )}
         <ArtifactKindIcon kind={artifact.kind} />
       </div>
-      <div className="flex h-16 min-w-0 shrink-0 items-center border-t border-border p-3">
+      <div className="flex min-w-0 shrink-0 items-center border-t border-border p-3">
         <h2
           title={artifact.title}
           className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground"
@@ -189,11 +207,59 @@ function ArtifactCatalogCard({
   );
 }
 
+function ArtifactSharedConversationList({
+  artifacts,
+  onOpen,
+}: {
+  readonly artifacts: readonly CatalogArtifact[];
+  readonly onOpen: (artifactId: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ul className="zero-card divide-y divide-border overflow-hidden">
+      {artifacts.map((artifact) => {
+        return (
+          <li key={artifact.id}>
+            <button
+              type="button"
+              aria-label={t(
+                ($) => {
+                  return $.artifacts.catalog.cardPreview;
+                },
+                { title: artifact.title },
+              )}
+              onClick={() => {
+                onOpen(artifact.id);
+              }}
+              className="group flex w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground transition-colors group-hover:text-foreground">
+                <MessagesSquare size={16} aria-hidden />
+              </span>
+              <span
+                title={artifact.title}
+                className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+              >
+                {artifact.title}
+              </span>
+              <ChevronRight
+                size={16}
+                aria-hidden
+                className="shrink-0 transition-colors group-hover:text-foreground"
+              />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function ArtifactCatalogGrid({
   artifacts,
   onOpen,
 }: {
-  readonly artifacts: readonly ArtifactSummary[];
+  readonly artifacts: readonly CatalogArtifact[];
   readonly onOpen: (artifactId: string) => void;
 }) {
   return (
@@ -217,14 +283,36 @@ export function ArtifactCatalogGrid({
   );
 }
 
-export function ArtifactCatalogSkeleton() {
+export function ArtifactCatalogSkeleton({
+  layout = "grid",
+}: {
+  readonly layout?: "grid" | "list";
+} = {}) {
   const { t } = useTranslation();
+  const loadingLabel = t(($) => {
+    return $.artifacts.catalog.loading;
+  });
+  if (layout === "list") {
+    return (
+      <div
+        className="zero-card divide-y divide-border overflow-hidden"
+        aria-label={loadingLabel}
+      >
+        {Array.from({ length: 8 }, (_, index) => {
+          return (
+            <div key={index} className="flex items-center gap-3 px-4 py-3">
+              <div className="size-8 shrink-0 rounded-lg bg-gray-50" />
+              <div className="h-4 w-2/3 rounded bg-muted/60" />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
   return (
     <div
       className="grid gap-3"
-      aria-label={t(($) => {
-        return $.artifacts.catalog.loading;
-      })}
+      aria-label={loadingLabel}
       style={{
         gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${String(ARTIFACT_GRID_MIN_CARD_WIDTH_PX)}px), 1fr))`,
       }}
@@ -236,8 +324,8 @@ export function ArtifactCatalogSkeleton() {
             className="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
           >
             <div className="aspect-[16/10] w-full shrink-0 bg-muted/30" />
-            <div className="flex h-16 shrink-0 items-center p-3">
-              <div className="h-4 w-3/4 rounded bg-muted/60" />
+            <div className="flex shrink-0 items-center border-t border-border p-3">
+              <div className="h-5 w-3/4 rounded bg-muted/60" />
             </div>
           </div>
         );
@@ -250,7 +338,7 @@ export function ArtifactCatalogError() {
   const { t } = useTranslation();
   return (
     <Alert variant="destructive">
-      <IconAlertTriangle size={16} stroke={1.5} aria-hidden />
+      <AlertTriangle size={16} aria-hidden />
       <AlertDescription>
         {t(($) => {
           return $.artifacts.catalog.error;
@@ -287,12 +375,22 @@ export function ArtifactCatalogEmpty() {
 
 function ArtifactCatalogKindFilter({
   selectedKind,
+  avatarEnabled,
+  sharedConversationEnabled,
   onKindChange,
 }: {
   readonly selectedKind: ArtifactCatalogKind | null;
+  readonly avatarEnabled: boolean;
+  readonly sharedConversationEnabled: boolean;
   readonly onKindChange: (value: ArtifactCatalogKind | null) => void;
 }) {
   const { t } = useTranslation();
+  const options = ARTIFACT_KIND_OPTIONS.filter((kind) => {
+    return (
+      (kind !== "avatar" || avatarEnabled) &&
+      (kind !== "shared-thread" || sharedConversationEnabled)
+    );
+  });
   return (
     <div
       className="flex flex-wrap items-center gap-1.5"
@@ -300,7 +398,7 @@ function ArtifactCatalogKindFilter({
         return $.artifacts.catalog.filters.label;
       })}
     >
-      {ARTIFACT_KIND_OPTIONS.map((kind) => {
+      {options.map((kind) => {
         const selected = kind === selectedKind;
         const label =
           kind === "presentation"
@@ -319,9 +417,17 @@ function ArtifactCatalogKindFilter({
                   ? t(($) => {
                       return $.artifacts.catalog.filters.video;
                     })
-                  : t(($) => {
-                      return $.artifacts.catalog.filters.file;
-                    });
+                  : kind === "avatar"
+                    ? t(($) => {
+                        return $.artifacts.catalog.filters.avatar;
+                      })
+                    : kind === "shared-thread"
+                      ? t(($) => {
+                          return $.artifacts.catalog.filters.sharedConversation;
+                        })
+                      : t(($) => {
+                          return $.artifacts.catalog.filters.file;
+                        });
         const ariaLabel =
           kind === "presentation"
             ? t(($) => {
@@ -339,9 +445,18 @@ function ArtifactCatalogKindFilter({
                   ? t(($) => {
                       return $.artifacts.catalog.filters.videoAria;
                     })
-                  : t(($) => {
-                      return $.artifacts.catalog.filters.fileAria;
-                    });
+                  : kind === "avatar"
+                    ? t(($) => {
+                        return $.artifacts.catalog.filters.avatarAria;
+                      })
+                    : kind === "shared-thread"
+                      ? t(($) => {
+                          return $.artifacts.catalog.filters
+                            .sharedConversationAria;
+                        })
+                      : t(($) => {
+                          return $.artifacts.catalog.filters.fileAria;
+                        });
         return (
           <button
             key={kind}
@@ -355,7 +470,7 @@ function ArtifactCatalogKindFilter({
               "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
               selected
                 ? "bg-muted text-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                : "bg-background text-muted-foreground hover:bg-state-hover hover:text-foreground",
             )}
           >
             {label}
@@ -374,8 +489,10 @@ export function ArtifactCatalogPage() {
   const loadMore = useSet(loadMoreArtifactCatalog$);
   const pageSignal = useGet(pageSignal$);
   const lightboxUrl = useGet(lightboxUrl$);
+  const featureSwitches = useGet(featureSwitch$);
   const catalog = useLoadable(artifactCatalog$);
   const artifacts = catalog.state === "hasData" ? catalog.data.artifacts : [];
+  const sharedConversationLayout = selectedKind === "shared-thread";
   const hasMore =
     catalog.state === "hasData" && catalog.data.nextCursor !== null;
 
@@ -397,8 +514,10 @@ export function ArtifactCatalogPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {lightboxUrl && <AttachmentLightbox />}
-      <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
-        <div className="mx-auto w-full max-w-[900px]">
+      {/* The header sits outside the scroll container so the kind filter stays
+          pinned to the top while the catalog scrolls under it. */}
+      <header className="shrink-0 bg-transparent px-4 pb-3 pt-3 sm:px-6 md:pt-10">
+        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-3">
           <div className="hidden min-w-0 md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
               {t(($) => {
@@ -411,24 +530,43 @@ export function ArtifactCatalogPage() {
               })}
             </p>
           </div>
+          <ArtifactCatalogKindFilter
+            selectedKind={selectedKind}
+            avatarEnabled={
+              featureSwitches[FeatureSwitchKey.JoggAiBuiltIn] ?? false
+            }
+            sharedConversationEnabled={
+              featureSwitches[FeatureSwitchKey.SharedThreadSharing] ?? false
+            }
+            onKindChange={setKind}
+          />
         </div>
       </header>
 
       <main
         onScroll={handleScroll}
-        className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6 [scrollbar-gutter:stable]"
+        className="flex-1 overflow-auto px-4 pb-8 pt-1 sm:px-6 [scrollbar-gutter:stable]"
       >
         <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
-          <ArtifactCatalogKindFilter
-            selectedKind={selectedKind}
-            onKindChange={setKind}
-          />
           {catalog.state === "loading" ? (
-            <ArtifactCatalogSkeleton />
+            <ArtifactCatalogSkeleton
+              layout={sharedConversationLayout ? "list" : "grid"}
+            />
           ) : catalog.state === "hasError" ? (
             <ArtifactCatalogError />
           ) : artifacts.length === 0 ? (
             <ArtifactCatalogEmpty />
+          ) : sharedConversationLayout ? (
+            <ArtifactSharedConversationList
+              artifacts={artifacts}
+              onOpen={(artifactId) => {
+                detach(
+                  openArtifact(artifactId, pageSignal),
+                  Reason.DomCallback,
+                  "artifact catalog open",
+                );
+              }}
+            />
           ) : (
             <ArtifactCatalogGrid
               artifacts={artifacts}

@@ -1,8 +1,8 @@
-import type { CustomConnectorPermissionBundleRef } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorPermissionBundleRef } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type {
   ExpandedFirewallConfig,
   FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
 const FEISHU_MANAGED_CONNECTOR_SLUG_PATTERN =

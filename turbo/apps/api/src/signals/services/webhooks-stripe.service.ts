@@ -1,13 +1,12 @@
-import type { Stripe } from "stripe";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgConcurrencyEntitlements } from "@okouai/db/schema/org-concurrency-entitlement";
+import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
-} from "@vm0/db/schema/org-usage-allowance";
+} from "@okouai/db/schema/org-usage-allowance";
 import { command } from "ccstate";
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 
@@ -16,12 +15,19 @@ import { logger } from "../../lib/log";
 import { now, nowDate, timestampWithoutTimeZone } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  isStripeResourceMissingError,
+  type StripePaymentIntent,
+  type StripeSubscription,
+  type StripeWebhookEvent,
+} from "../external/stripe-client";
 import { settle } from "../utils";
 import { getCampaign } from "./one-time-products";
 import {
   checkoutTierConflictMessage,
   checkoutWouldReplaceWithSameOrLowerTier,
+  knownPlanPriceItem,
   type SubscriptionCheckoutTier,
   tierForKnownPriceId,
   tierFromPriceId,
@@ -35,9 +41,9 @@ import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
   BILLING_RESTORE_PURPOSE,
-} from "./zero-billing-payment-method.service";
+} from "./billing-payment-method.service";
 import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
-import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
+import { publishBillingChangedForOrg } from "./billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
 import {
   CONCURRENCY_SUBSCRIPTION_PURPOSE,
@@ -49,6 +55,24 @@ import {
   upsertOrgPlanEntitlement,
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
+import type { Tx } from "../../lib/db-types";
+import {
+  handleUsagePackCheckoutCompleted,
+  handleUsagePackInvoicePaid,
+  handleUsagePackSubscriptionCreated,
+  handleUsagePackSubscriptionDeleted,
+  handleUsagePackSubscriptionUpdated,
+} from "./usage-pack-subscription.service";
+import {
+  handleUsagePackInvitationCheckoutFailed,
+  handleUsagePackInvitationCheckoutPaid,
+  handleUsagePackInvitationInvoicePaid,
+  handleUsagePackInvitationPaymentIntentSucceeded,
+} from "./usage-pack-invitation-purchase.service";
+import {
+  handleUsagePackMigrationInvoicePaid,
+  handleUsagePackMigrationSubscriptionUpdated,
+} from "./usage-pack-subscription-migration.service";
 
 const L = logger("WebhookStripe");
 
@@ -58,7 +82,7 @@ type BillingDowngradeCheckoutTargetTier =
   | "pro";
 const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
 
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WriteTx = Tx;
 type UsageAllowanceSubscriptionUpdateStore = Pick<Db, "select" | "update">;
 type ClerkClient = ReturnType<typeof clerk$.read>;
 type ClerkClientProvider = () => ClerkClient;
@@ -68,6 +92,7 @@ interface CheckoutSessionInput {
   readonly invoice?: string | { readonly id: string } | null;
   readonly subscription: string | { readonly id: string } | null;
   readonly customer: string | { readonly id: string } | null;
+  readonly payment_intent?: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
   readonly mode?: string | null;
   readonly setup_intent?:
@@ -80,6 +105,7 @@ interface CheckoutSessionInput {
   readonly amount_subtotal?: number | null;
   readonly amount_total?: number | null;
   readonly payment_status?: string | null;
+  readonly currency?: string | null;
 }
 
 interface InvoiceInput {
@@ -90,6 +116,8 @@ interface InvoiceInput {
   readonly lines: {
     readonly data: readonly {
       readonly id?: string;
+      readonly amount?: number | null;
+      readonly subtotal?: number | null;
       readonly quantity?: number | null;
       readonly price?: { readonly id: string } | null;
       readonly pricing?: {
@@ -97,9 +125,22 @@ interface InvoiceInput {
           readonly price?: string | { readonly id: string } | null;
         } | null;
       } | null;
+      readonly proration?: boolean;
       readonly period: { readonly start?: number; readonly end: number };
       readonly parent: {
         readonly type: "subscription_item_details" | "invoice_item_details";
+        readonly subscription_item_details?: {
+          readonly proration: boolean;
+          readonly proration_details?: {
+            readonly credited_items?: unknown;
+          } | null;
+        } | null;
+        readonly invoice_item_details?: {
+          readonly proration: boolean;
+          readonly proration_details?: {
+            readonly credited_items?: unknown;
+          } | null;
+        } | null;
       } | null;
     }[];
   };
@@ -126,6 +167,7 @@ interface SubscriptionInput {
     readonly data: readonly {
       readonly price: { readonly id: string };
       readonly quantity?: number | null;
+      readonly current_period_start?: number | null;
       readonly current_period_end?: number | null;
     }[];
   };
@@ -258,6 +300,50 @@ function concurrencySubscriptionSlots(
 ): number | null {
   const quantity = concurrencySubscriptionItem(subscription)?.quantity;
   return typeof quantity === "number" && quantity > 0 ? quantity : null;
+}
+
+interface ConcurrencySubscriptionState {
+  readonly stripePriceId: string;
+  readonly slots: number;
+  readonly subscriptionStatus: string;
+  readonly currentPeriodEnd: Date | null;
+  readonly cancelAtPeriodEnd: boolean;
+}
+
+function concurrencySubscriptionState(
+  subscription: SubscriptionInput,
+): ConcurrencySubscriptionState | null {
+  const item = concurrencySubscriptionItem(subscription);
+  const slots = concurrencySubscriptionSlots(subscription);
+  if (!item || !slots) {
+    return null;
+  }
+
+  return {
+    stripePriceId: item.price.id,
+    slots,
+    subscriptionStatus: subscription.status,
+    currentPeriodEnd: concurrencySubscriptionPeriodEnd(subscription),
+    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+  };
+}
+
+async function retrieveConcurrencySubscriptionState(
+  subscriptionId: string,
+): Promise<ConcurrencySubscriptionState | null> {
+  const subscription =
+    await getStripeClient().subscriptions.retrieve(subscriptionId);
+  return concurrencySubscriptionState(subscription);
+}
+
+async function lockConcurrencySubscriptionState(
+  tx: WriteTx,
+  subscriptionId: string,
+): Promise<void> {
+  const lockKey = `stripe_concurrency_subscription:${subscriptionId}`;
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+  );
 }
 
 function subscriptionCancelAt(subscription: SubscriptionInput): Date | null {
@@ -934,23 +1020,23 @@ async function handleUsageAllowanceInvoicePaid(
 }
 
 function stripePreviewMetadataForEvent(
-  event: Stripe.Event,
+  event: StripeWebhookEvent,
 ): readonly (Readonly<Record<string, string>> | null | undefined)[] | null {
-  switch (event.type) {
-    case "checkout.session.completed":
-    case "checkout.session.async_payment_succeeded": {
-      return [event.data.object.metadata];
+  switch (event.kind) {
+    case "checkout.session.paid":
+    case "checkout.session.failed": {
+      return [event.object.metadata];
     }
     case "invoice.paid": {
       return [
-        event.data.object.metadata,
-        event.data.object.parent?.subscription_details?.metadata,
+        event.object.metadata,
+        event.object.parent?.subscription_details?.metadata,
       ];
     }
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
-      return [event.data.object.metadata];
+      return [event.object.metadata];
     }
     default: {
       return null;
@@ -958,7 +1044,7 @@ function stripePreviewMetadataForEvent(
   }
 }
 
-function shouldHandleStripePreviewEvent(event: Stripe.Event): boolean {
+function shouldHandleStripePreviewEvent(event: StripeWebhookEvent): boolean {
   const metadataCandidates = stripePreviewMetadataForEvent(event);
   if (metadataCandidates === null) {
     return true;
@@ -980,7 +1066,7 @@ function stripeObjectId(value: unknown): string | null {
 
 async function paymentIntentMatchesCurrentStripePreview(
   stripe: ReturnType<typeof getStripeClient>,
-  paymentIntent: Stripe.PaymentIntent,
+  paymentIntent: StripePaymentIntent,
   customerId: string,
 ): Promise<boolean> {
   if (isCurrentStripePreviewMetadata(paymentIntent.metadata)) {
@@ -995,7 +1081,7 @@ async function paymentIntentMatchesCurrentStripePreview(
 }
 
 async function handlePaymentIntentSucceeded(
-  paymentIntent: Stripe.PaymentIntent,
+  paymentIntent: StripePaymentIntent,
 ): Promise<void> {
   const customerId = stripeObjectId(paymentIntent.customer);
   const paymentMethodId = stripeObjectId(paymentIntent.payment_method);
@@ -2201,67 +2287,64 @@ function concurrencyInvoiceEntitlementValue(args: {
   };
 }
 
-function concurrencyInvoiceSubscriptionState(
-  values: readonly ConcurrencyInvoiceEntitlementValue[],
-): {
-  readonly stripePriceId: string;
-  readonly slots: number;
-  readonly currentPeriodEnd: Date;
-} | null {
-  const firstValue = values[0];
-  if (!firstValue) {
-    return null;
-  }
-
-  return {
-    stripePriceId: firstValue.stripePriceId,
-    slots: values.reduce((sum, value) => {
-      return sum + value.slots;
-    }, 0),
-    currentPeriodEnd: values.reduce((latest, value) => {
-      return value.expiresAt > latest ? value.expiresAt : latest;
-    }, firstValue.expiresAt),
-  };
-}
-
-async function upsertConcurrencySubscriptionFromInvoice(
+async function upsertConcurrencySubscriptionState(
   tx: WriteTx,
   args: {
     readonly orgId: string;
     readonly subscriptionId: string;
-    readonly values: readonly ConcurrencyInvoiceEntitlementValue[];
+    readonly state: ConcurrencySubscriptionState;
   },
 ): Promise<void> {
-  const state = concurrencyInvoiceSubscriptionState(args.values);
-  if (!state) {
-    return;
-  }
-
   const updatedAt = nowDate();
   await tx
     .insert(orgConcurrencySubscriptions)
     .values({
       orgId: args.orgId,
       stripeSubscriptionId: args.subscriptionId,
-      stripePriceId: state.stripePriceId,
-      slots: state.slots,
-      subscriptionStatus: "active",
-      currentPeriodEnd: state.currentPeriodEnd,
-      cancelAtPeriodEnd: false,
+      stripePriceId: args.state.stripePriceId,
+      slots: args.state.slots,
+      subscriptionStatus: args.state.subscriptionStatus,
+      currentPeriodEnd: args.state.currentPeriodEnd,
+      cancelAtPeriodEnd: args.state.cancelAtPeriodEnd,
       updatedAt,
     })
     .onConflictDoUpdate({
       target: orgConcurrencySubscriptions.stripeSubscriptionId,
       set: {
         orgId: args.orgId,
-        stripePriceId: state.stripePriceId,
-        slots: state.slots,
-        subscriptionStatus: "active",
-        currentPeriodEnd: state.currentPeriodEnd,
-        cancelAtPeriodEnd: false,
+        stripePriceId: args.state.stripePriceId,
+        slots: args.state.slots,
+        subscriptionStatus: args.state.subscriptionStatus,
+        currentPeriodEnd: args.state.currentPeriodEnd,
+        cancelAtPeriodEnd: args.state.cancelAtPeriodEnd,
         updatedAt,
       },
     });
+}
+
+function concurrencyInvoiceSubscriptionState(
+  values: readonly ConcurrencyInvoiceEntitlementValue[],
+): ConcurrencySubscriptionState | null {
+  const activeValues = values.filter((value) => {
+    return value.expiresAt > nowDate();
+  });
+  const currentValues = activeValues.length > 0 ? activeValues : values;
+  const firstValue = currentValues[0];
+  if (!firstValue) {
+    return null;
+  }
+
+  return {
+    stripePriceId: firstValue.stripePriceId,
+    slots: currentValues.reduce((sum, value) => {
+      return sum + value.slots;
+    }, 0),
+    subscriptionStatus: "active",
+    currentPeriodEnd: currentValues.reduce((latest, value) => {
+      return value.expiresAt > latest ? value.expiresAt : latest;
+    }, firstValue.expiresAt),
+    cancelAtPeriodEnd: false,
+  };
 }
 
 async function handleConcurrencyInvoicePaid(
@@ -2321,32 +2404,56 @@ async function handleConcurrencyInvoicePaid(
       orgId: org.orgId,
       subscriptionId,
     });
+  }
+
+  const persisted = await db.transaction(async (tx) => {
+    await lockConcurrencySubscriptionState(tx, subscriptionId);
+    const [existing] = await tx
+      .select({
+        subscriptionId: orgConcurrencySubscriptions.stripeSubscriptionId,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      )
+      .limit(1);
+    const state = existing
+      ? await retrieveConcurrencySubscriptionState(subscriptionId)
+      : concurrencyInvoiceSubscriptionState(values);
+    if (!state) {
+      return null;
+    }
+    const insertedRows =
+      values.length === 0
+        ? []
+        : await tx
+            .insert(orgConcurrencyEntitlements)
+            .values(values)
+            .onConflictDoNothing()
+            .returning({ id: orgConcurrencyEntitlements.id });
+    await upsertConcurrencySubscriptionState(tx, {
+      orgId: org.orgId,
+      subscriptionId,
+      state,
+    });
+    return { insertedLines: insertedRows.length, state };
+  });
+
+  if (!persisted) {
+    L.warn("concurrency invoice.paid subscription has no concurrency item", {
+      invoiceId: invoice.id,
+      orgId: org.orgId,
+      subscriptionId,
+    });
     return { handled: true, drainOrgId: org.orgId };
   }
 
-  const inserted = await db.transaction(async (tx) => {
-    const insertedRows = await tx
-      .insert(orgConcurrencyEntitlements)
-      .values(values)
-      .onConflictDoNothing()
-      .returning({ slots: orgConcurrencyEntitlements.slots });
-    await upsertConcurrencySubscriptionFromInvoice(tx, {
-      orgId: org.orgId,
-      subscriptionId,
-      values,
-    });
-    return insertedRows;
-  });
-
-  const slots = inserted.reduce((sum, row) => {
-    return sum + row.slots;
-  }, 0);
   L.debug("concurrency invoice.paid processed", {
     invoiceId: invoice.id,
     orgId: org.orgId,
     subscriptionId,
-    insertedLines: inserted.length,
-    slots,
+    insertedLines: persisted.insertedLines,
+    slots: persisted.state.slots,
   });
 
   return { handled: true, drainOrgId: org.orgId };
@@ -2377,7 +2484,9 @@ async function bindSubscriptionToCustomerOrg(
     return [];
   }
 
-  const priceId = args.subscription.items.data[0]?.price?.id;
+  const priceId =
+    knownPlanPriceItem(args.subscription.items.data)?.price.id ??
+    args.subscription.items.data[0]?.price.id;
   if (!priceId) {
     L.warn("subscription has no price ID", {
       subscriptionId: args.subscription.id,
@@ -2459,8 +2568,8 @@ function replacedProSubscriptionId(args: {
   return null;
 }
 
-function tierFromSubscription(subscription: Stripe.Subscription) {
-  const priceId = subscription.items.data[0]?.price?.id;
+function tierFromSubscription(subscription: StripeSubscription) {
+  const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
   if (!priceId) {
     return null;
   }
@@ -2471,7 +2580,7 @@ function tierFromSubscription(subscription: Stripe.Subscription) {
 function isReplaceableProSubscription(args: {
   readonly orgId: string;
   readonly newSubscriptionId: string;
-  readonly subscription: Stripe.Subscription;
+  readonly subscription: StripeSubscription;
 }): boolean {
   const subscription = args.subscription;
   return (
@@ -2479,21 +2588,6 @@ function isReplaceableProSubscription(args: {
     subscription.metadata?.orgId === args.orgId &&
     (subscription.status === "active" || subscription.status === "trialing") &&
     tierFromSubscription(subscription) === "pro"
-  );
-}
-
-function isStripeResourceMissingError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) {
-    return false;
-  }
-
-  const candidate = error as {
-    readonly code?: unknown;
-    readonly raw?: { readonly code?: unknown };
-  };
-  return (
-    candidate.code === "resource_missing" ||
-    candidate.raw?.code === "resource_missing"
   );
 }
 
@@ -2593,7 +2687,7 @@ async function cancelReplacedProSubscriptionsAfterTeamInvoice(args: {
 
 function isReplaceablePaidSubscriptionForAtomGrant(args: {
   readonly orgId: string;
-  readonly subscription: Stripe.Subscription;
+  readonly subscription: StripeSubscription;
 }): boolean {
   const subscription = args.subscription;
   return (
@@ -2716,21 +2810,43 @@ function invoiceHasConcurrencyPurpose(invoice: InvoiceInput): boolean {
   );
 }
 
+function invoiceLineCreditsPreviousItems(line: InvoiceLineInput): boolean {
+  const subscriptionCreditedItems =
+    line.parent?.subscription_item_details?.proration_details?.credited_items;
+  const invoiceCreditedItems =
+    line.parent?.invoice_item_details?.proration_details?.credited_items;
+  return (
+    (subscriptionCreditedItems !== undefined &&
+      subscriptionCreditedItems !== null) ||
+    (invoiceCreditedItems !== undefined && invoiceCreditedItems !== null)
+  );
+}
+
 function concurrencyInvoiceLines(
   invoice: InvoiceInput,
 ): readonly { readonly line: InvoiceLineInput; readonly index: number }[] {
   return invoice.lines.data.flatMap((line, index) => {
     const priceId = invoiceLinePriceId(line);
-    return priceId && isConcurrencyPriceId(priceId) ? [{ line, index }] : [];
+    return priceId &&
+      isConcurrencyPriceId(priceId) &&
+      invoiceLineQuantity(line) !== null &&
+      !invoiceLineCreditsPreviousItems(line) &&
+      (line.amount === undefined || line.amount === null || line.amount >= 0)
+      ? [{ line, index }]
+      : [];
   });
 }
 
 function subscriptionPeriodEndFromInvoice(
   invoice: InvoiceInput,
   orgId: string,
+  planPriceId: string,
 ): Date {
   const subscriptionLine = invoice.lines.data.find((line) => {
-    return line.parent?.type === "subscription_item_details";
+    return (
+      line.parent?.type === "subscription_item_details" &&
+      invoiceLinePriceId(line) === planPriceId
+    );
   });
   const periodEndUnix = subscriptionLine?.period.end;
   if (!periodEndUnix) {
@@ -2743,9 +2859,13 @@ function subscriptionPeriodEndFromInvoice(
 
 function subscriptionPeriodStartFromInvoice(
   invoice: InvoiceInput,
+  planPriceId: string,
 ): Date | null {
   const periodStartUnix = invoice.lines.data.find((line) => {
-    return line.parent?.type === "subscription_item_details";
+    return (
+      line.parent?.type === "subscription_item_details" &&
+      invoiceLinePriceId(line) === planPriceId
+    );
   })?.period.start;
   return typeof periodStartUnix === "number"
     ? new Date(periodStartUnix * 1000)
@@ -2761,7 +2881,7 @@ async function subscriptionInvoiceDetails(
 ): Promise<SubscriptionInvoiceDetails | null> {
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(args.subscriptionId);
-  const priceId = subscription.items.data[0]?.price?.id;
+  const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
   if (!priceId) {
     L.warn("subscription has no price ID for credit grant", {
       subscriptionId: args.subscriptionId,
@@ -2769,6 +2889,16 @@ async function subscriptionInvoiceDetails(
     return null;
   }
   if (isConcurrencyPriceId(priceId)) {
+    return null;
+  }
+
+  const hasPlanInvoiceLine = invoice.lines.data.some((line) => {
+    return (
+      line.parent?.type === "subscription_item_details" &&
+      invoiceLinePriceId(line) === priceId
+    );
+  });
+  if (!hasPlanInvoiceLine) {
     return null;
   }
 
@@ -2783,7 +2913,11 @@ async function subscriptionInvoiceDetails(
     return null;
   }
 
-  const periodEndDate = subscriptionPeriodEndFromInvoice(invoice, args.orgId);
+  const periodEndDate = subscriptionPeriodEndFromInvoice(
+    invoice,
+    args.orgId,
+    priceId,
+  );
   const scheduledEndDate =
     (await subscriptionScheduledEnd(stripe, subscription)) ??
     (subscriptionWillCancel(subscription) ? periodEndDate : null);
@@ -2792,7 +2926,7 @@ async function subscriptionInvoiceDetails(
     tier,
     priceId,
     credits,
-    periodStartDate: subscriptionPeriodStartFromInvoice(invoice),
+    periodStartDate: subscriptionPeriodStartFromInvoice(invoice, priceId),
     periodEndDate,
     scheduledEndDate,
     expiresAt: subscriptionCreditExpiresAt(subscription, periodEndDate),
@@ -3017,11 +3151,26 @@ async function processSubscriptionInvoicePaid(
 
 async function handleCheckoutCompleted(
   db: Db,
+  getClerk: ClerkClientProvider,
   session: CheckoutSessionInput,
+  paidAt: Date,
 ): Promise<{
   readonly drainOrgId: string | null;
   readonly orgIds: readonly string[];
 }> {
+  const usagePackInvitation = await handleUsagePackInvitationCheckoutPaid(
+    db,
+    getClerk(),
+    session,
+    paidAt,
+  );
+  if (usagePackInvitation.handled) {
+    return {
+      drainOrgId: null,
+      orgIds: usagePackInvitation.orgId ? [usagePackInvitation.orgId] : [],
+    };
+  }
+
   const billingRestoreResult = await handleBillingRestoreCheckoutCompleted(
     db,
     session,
@@ -3093,15 +3242,28 @@ async function handleCheckoutCompleted(
 
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const usagePackOutcome = await handleUsagePackCheckoutCompleted(
+    db,
+    session,
+    subscription,
+  );
   const orgIds = await bindSubscriptionToCustomerOrg(db, {
     customerId,
-    subscription,
+    subscription: usagePackOutcome.subscription ?? subscription,
     source: "checkout.session.completed",
   });
-  return { drainOrgId: null, orgIds };
+  return {
+    drainOrgId: null,
+    orgIds: [
+      ...new Set([
+        ...orgIds,
+        ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+      ]),
+    ],
+  };
 }
 
-async function handleSubscriptionCreated(
+async function handleSubscriptionCreatedLegacy(
   db: Db,
   getClerk: ClerkClientProvider,
   subscription: SubscriptionInput,
@@ -3122,11 +3284,60 @@ async function handleSubscriptionCreated(
   });
 }
 
+async function handleSubscriptionCreated(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  subscription: SubscriptionInput,
+): Promise<readonly string[]> {
+  const usagePackOutcome = await handleUsagePackSubscriptionCreated(
+    db,
+    subscription,
+  );
+  const orgIds = await handleSubscriptionCreatedLegacy(
+    db,
+    getClerk,
+    usagePackOutcome.subscription ?? subscription,
+  );
+  return [
+    ...new Set([
+      ...orgIds,
+      ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+    ]),
+  ];
+}
+
 async function handleInvoicePaid(
   db: Db,
   getClerk: ClerkClientProvider,
   invoice: InvoiceInput,
 ): Promise<string | null> {
+  const migrationResult = await handleUsagePackMigrationInvoicePaid(
+    db,
+    invoice,
+  );
+  if (migrationResult.handled) {
+    return migrationResult.orgId;
+  }
+
+  const invitationResult = await handleUsagePackInvitationInvoicePaid(
+    db,
+    getClerk(),
+    invoice,
+  );
+  if (invitationResult.handled) {
+    return invitationResult.orgId;
+  }
+
+  const usagePackResult = await handleUsagePackInvoicePaid(db, invoice);
+  if (usagePackResult.handled) {
+    const concurrencyResult = await handleConcurrencyInvoicePaid(
+      db,
+      getClerk,
+      invoice,
+    );
+    return concurrencyResult.drainOrgId ?? usagePackResult.orgId;
+  }
+
   const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
   if (autoRechargeResult.handled) {
     return autoRechargeResult.drainOrgId;
@@ -3145,7 +3356,12 @@ async function handleInvoicePaid(
     invoice,
   );
   if (usageAllowanceResult.handled) {
-    return usageAllowanceResult.drainOrgId;
+    const concurrencyResult = await handleConcurrencyInvoicePaid(
+      db,
+      getClerk,
+      invoice,
+    );
+    return concurrencyResult.drainOrgId ?? usageAllowanceResult.drainOrgId;
   }
 
   const atomGrantResult = await handleAtomGrantInvoicePaid(db, invoice);
@@ -3158,22 +3374,19 @@ async function handleInvoicePaid(
     getClerk,
     invoice,
   );
-  if (concurrencyResult.handled) {
-    return concurrencyResult.drainOrgId;
-  }
 
   const subscriptionId = subscriptionIdFromInvoice(invoice);
   if (!subscriptionId) {
     L.warn("invoice.paid without subscription; skipping", {
       invoiceId: invoice.id,
     });
-    return null;
+    return concurrencyResult.drainOrgId;
   }
 
   const customerId = customerIdFromInvoice(invoice);
   if (!customerId) {
     L.warn("invoice.paid without customer ID", { invoiceId: invoice.id });
-    return null;
+    return concurrencyResult.drainOrgId;
   }
 
   const org = await invoicePaidOrgForCustomerOrMetadata(db, getClerk, {
@@ -3185,7 +3398,13 @@ async function handleInvoicePaid(
       customerId,
       invoiceId: invoice.id,
     });
-    return null;
+    return concurrencyResult.drainOrgId;
+  }
+  if (
+    concurrencyResult.handled &&
+    org.stripeSubscriptionId !== subscriptionId
+  ) {
+    return concurrencyResult.drainOrgId;
   }
 
   const details = await subscriptionInvoiceDetails(invoice, {
@@ -3193,7 +3412,7 @@ async function handleInvoicePaid(
     orgId: org.orgId,
   });
   if (!details) {
-    return null;
+    return concurrencyResult.drainOrgId;
   }
 
   const processed = await db.transaction(async (tx) => {
@@ -3205,35 +3424,81 @@ async function handleInvoicePaid(
       details,
     });
   });
-  return processed ? org.orgId : null;
+  return processed ? org.orgId : concurrencyResult.drainOrgId;
 }
 
 async function handleConcurrencySubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
 ): Promise<readonly string[]> {
-  const item = concurrencySubscriptionItem(subscription);
-  const currentPeriodEnd = concurrencySubscriptionPeriodEnd(subscription);
-  const slots = concurrencySubscriptionSlots(subscription);
-  const updates = {
-    subscriptionStatus: subscription.status,
-    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
-    updatedAt: nowDate(),
-    ...(item ? { stripePriceId: item.price.id } : {}),
-    ...(currentPeriodEnd ? { currentPeriodEnd } : {}),
-    ...(slots ? { slots } : {}),
-  };
+  return await db.transaction(async (tx) => {
+    await lockConcurrencySubscriptionState(tx, subscription.id);
+    const [existing] = await tx
+      .select({
+        orgId: orgConcurrencySubscriptions.orgId,
+        slots: orgConcurrencySubscriptions.slots,
+        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+        scheduledSlots: orgConcurrencySubscriptions.scheduledSlots,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+      )
+      .limit(1);
+    if (!existing) {
+      return [];
+    }
 
-  const rows = await db
-    .update(orgConcurrencySubscriptions)
-    .set(updates)
-    .where(
-      eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
-    )
-    .returning({ orgId: orgConcurrencySubscriptions.orgId });
+    const eventState = concurrencySubscriptionState(subscription);
+    const state =
+      eventState?.slots === existing.slots
+        ? eventState
+        : await retrieveConcurrencySubscriptionState(subscription.id);
+    if (!state) {
+      const rows = await tx
+        .update(orgConcurrencySubscriptions)
+        .set({
+          subscriptionStatus: "canceled",
+          cancelAtPeriodEnd: false,
+          scheduledSlots: null,
+          scheduledChangeAt: null,
+          currentPeriodEnd: nowDate(),
+          updatedAt: nowDate(),
+        })
+        .where(
+          eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+        )
+        .returning({ orgId: orgConcurrencySubscriptions.orgId });
+      return rows.map((row) => {
+        return row.orgId;
+      });
+    }
 
-  return rows.map((row) => {
-    return row.orgId;
+    const rows = await tx
+      .update(orgConcurrencySubscriptions)
+      .set({
+        stripePriceId: state.stripePriceId,
+        slots: state.slots,
+        subscriptionStatus: state.subscriptionStatus,
+        currentPeriodEnd: state.currentPeriodEnd,
+        cancelAtPeriodEnd:
+          state.cancelAtPeriodEnd ||
+          (existing.cancelAtPeriodEnd &&
+            subscription.schedule !== null &&
+            subscription.schedule !== undefined),
+        ...(existing.scheduledSlots === state.slots
+          ? { scheduledSlots: null, scheduledChangeAt: null }
+          : {}),
+        updatedAt: nowDate(),
+      })
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+      )
+      .returning({ orgId: orgConcurrencySubscriptions.orgId });
+
+    return rows.map((row) => {
+      return row.orgId;
+    });
   });
 }
 
@@ -3451,7 +3716,7 @@ async function handleUsageAllowanceSubscriptionUpdated(
   });
 }
 
-async function handleSubscriptionUpdated(
+async function handleSubscriptionUpdatedLegacy(
   db: Db,
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
@@ -3460,19 +3725,12 @@ async function handleSubscriptionUpdated(
     db,
     subscription,
   );
-  if (allowanceOrgIds.length > 0) {
-    return allowanceOrgIds;
-  }
-
   const concurrencyOrgIds = await handleConcurrencySubscriptionUpdated(
     db,
     subscription,
   );
-  if (concurrencyOrgIds.length > 0) {
-    return concurrencyOrgIds;
-  }
-  if (concurrencySubscriptionItem(subscription)) {
-    return [];
+  if (allowanceOrgIds.length > 0) {
+    return [...new Set([...allowanceOrgIds, ...concurrencyOrgIds])];
   }
 
   const stripe = getStripeClient();
@@ -3495,7 +3753,7 @@ async function handleSubscriptionUpdated(
     previousTrialEnd !== null &&
     trialEnd < previousTrialEnd;
 
-  return await db.transaction(async (tx) => {
+  const planOrgIds = await db.transaction(async (tx) => {
     const rows = await tx
       .update(orgMetadata)
       .set({
@@ -3545,6 +3803,36 @@ async function handleSubscriptionUpdated(
       return row.orgId;
     });
   });
+  return [...new Set([...concurrencyOrgIds, ...planOrgIds])];
+}
+
+async function handleSubscriptionUpdated(
+  db: Db,
+  subscription: SubscriptionInput,
+  previousAttributes: SubscriptionPreviousAttributes | undefined,
+): Promise<readonly string[]> {
+  const migrationOutcome = await handleUsagePackMigrationSubscriptionUpdated(
+    db,
+    subscription,
+  );
+  if (migrationOutcome.handled) {
+    return migrationOutcome.orgId ? [migrationOutcome.orgId] : [];
+  }
+  const usagePackOutcome = await handleUsagePackSubscriptionUpdated(
+    db,
+    subscription,
+  );
+  const orgIds = await handleSubscriptionUpdatedLegacy(
+    db,
+    usagePackOutcome.subscription ?? subscription,
+    previousAttributes,
+  );
+  return [
+    ...new Set([
+      ...orgIds,
+      ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+    ]),
+  ];
 }
 
 async function handleSubscriptionScheduleReleased(
@@ -3604,7 +3892,7 @@ async function handleSubscriptionScheduleEnded(
   });
 }
 
-async function handleSubscriptionDeleted(
+async function handleSubscriptionDeletedLegacy(
   db: Db,
   subscription: SubscriptionDeletedInput,
 ): Promise<readonly string[]> {
@@ -3630,12 +3918,6 @@ async function handleSubscriptionDeleted(
     });
     return rows;
   });
-  if (allowanceRows.length > 0) {
-    return allowanceRows.map((row) => {
-      return row.orgId;
-    });
-  }
-
   const concurrencyRows = await db
     .update(orgConcurrencySubscriptions)
     .set({
@@ -3648,13 +3930,21 @@ async function handleSubscriptionDeleted(
       eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
     )
     .returning({ orgId: orgConcurrencySubscriptions.orgId });
-  if (concurrencyRows.length > 0) {
-    return concurrencyRows.map((row) => {
-      return row.orgId;
-    });
+
+  if (allowanceRows.length > 0) {
+    return [
+      ...new Set([
+        ...allowanceRows.map((row) => {
+          return row.orgId;
+        }),
+        ...concurrencyRows.map((row) => {
+          return row.orgId;
+        }),
+      ]),
+    ];
   }
 
-  const rows = await db.transaction(async (tx) => {
+  const planRows = await db.transaction(async (tx) => {
     const downgraded = await writeOrgMetadataWithPlanEntitlements(tx, {
       writeOrgMetadata: async (writeTx) => {
         return await writeTx
@@ -3722,15 +4012,56 @@ async function handleSubscriptionDeleted(
       return { orgId };
     });
   });
-  return rows.map((row) => {
-    return row.orgId;
-  });
+  return [
+    ...new Set([
+      ...concurrencyRows.map((row) => {
+        return row.orgId;
+      }),
+      ...planRows.map((row) => {
+        return row.orgId;
+      }),
+    ]),
+  ];
+}
+
+async function handleSubscriptionDeleted(
+  db: Db,
+  subscription: SubscriptionDeletedInput,
+): Promise<readonly string[]> {
+  const usagePackOutcome = await handleUsagePackSubscriptionDeleted(
+    db,
+    subscription,
+  );
+  const orgIds = await handleSubscriptionDeletedLegacy(db, subscription);
+  return [
+    ...new Set([
+      ...orgIds,
+      ...(usagePackOutcome.orgId ? [usagePackOutcome.orgId] : []),
+    ]),
+  ];
+}
+
+async function publishBillingChanges(
+  db: Db,
+  orgIds: ReadonlySet<string>,
+  signal: AbortSignal,
+): Promise<void> {
+  for (const orgId of orgIds) {
+    await disableIneligibleWorkflowWebhookAutomationsForOrg(
+      db,
+      { orgId },
+      signal,
+    );
+    signal.throwIfAborted();
+    await publishBillingChangedForOrg(db, orgId);
+    signal.throwIfAborted();
+  }
 }
 
 export const handleStripeWebhookEvent$ = command(
   async (
     { get, set },
-    event: Stripe.Event,
+    event: StripeWebhookEvent,
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
@@ -3749,25 +4080,48 @@ export const handleStripeWebhookEvent$ = command(
       return;
     }
 
-    switch (event.type) {
+    switch (event.kind) {
       case "payment_intent.succeeded": {
-        await handlePaymentIntentSucceeded(event.data.object);
+        const usagePackInvitation =
+          await handleUsagePackInvitationPaymentIntentSucceeded(
+            db,
+            getClerk(),
+            event.object,
+            new Date(event.created * 1000),
+          );
+        signal.throwIfAborted();
+        if (usagePackInvitation.handled) {
+          if (usagePackInvitation.orgId) {
+            billingChangedOrgIds.add(usagePackInvitation.orgId);
+          }
+          break;
+        }
+        await handlePaymentIntentSucceeded(event.object);
         signal.throwIfAborted();
         break;
       }
-      case "checkout.session.completed":
-      case "checkout.session.async_payment_succeeded": {
-        const result = await handleCheckoutCompleted(db, event.data.object);
+      case "checkout.session.paid": {
+        const result = await handleCheckoutCompleted(
+          db,
+          getClerk,
+          event.object,
+          new Date(event.created * 1000),
+        );
         signal.throwIfAborted();
         drainOrgId = result.drainOrgId;
         addBillingChangedOrgIds(billingChangedOrgIds, result.orgIds);
+        break;
+      }
+      case "checkout.session.failed": {
+        await handleUsagePackInvitationCheckoutFailed(db, event.object);
+        signal.throwIfAborted();
         break;
       }
       case "invoice.paid": {
         const paidDrainOrgId = await handleInvoicePaid(
           db,
           getClerk,
-          event.data.object,
+          event.object,
         );
         signal.throwIfAborted();
         drainOrgId = paidDrainOrgId;
@@ -3780,7 +4134,7 @@ export const handleStripeWebhookEvent$ = command(
         const orgIds = await handleSubscriptionCreated(
           db,
           getClerk,
-          event.data.object,
+          event.object,
         );
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
@@ -3789,15 +4143,15 @@ export const handleStripeWebhookEvent$ = command(
       case "customer.subscription.updated": {
         const orgIds = await handleSubscriptionUpdated(
           db,
-          event.data.object,
-          event.data.previous_attributes,
+          event.object,
+          event.previousAttributes,
         );
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
       }
       case "customer.subscription.deleted": {
-        const orgIds = await handleSubscriptionDeleted(db, event.data.object);
+        const orgIds = await handleSubscriptionDeleted(db, event.object);
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
@@ -3805,18 +4159,14 @@ export const handleStripeWebhookEvent$ = command(
       case "subscription_schedule.released": {
         const orgIds = await handleSubscriptionScheduleReleased(
           db,
-          event.data.object,
+          event.object,
         );
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
       }
-      case "subscription_schedule.canceled":
-      case "subscription_schedule.aborted": {
-        const orgIds = await handleSubscriptionScheduleEnded(
-          db,
-          event.data.object,
-        );
+      case "subscription_schedule.ended": {
+        const orgIds = await handleSubscriptionScheduleEnded(db, event.object);
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
@@ -3827,15 +4177,7 @@ export const handleStripeWebhookEvent$ = command(
     }
 
     signal.throwIfAborted();
-    for (const orgId of billingChangedOrgIds) {
-      await disableIneligibleWorkflowWebhookAutomationsForOrg(db, {
-        orgId,
-        signal,
-      });
-      signal.throwIfAborted();
-      await publishBillingChangedForOrg(db, orgId);
-      signal.throwIfAborted();
-    }
+    await publishBillingChanges(db, billingChangedOrgIds, signal);
 
     if (drainOrgId) {
       await set(drainOrgQueueToCapacity$, { orgId: drainOrgId }, signal);

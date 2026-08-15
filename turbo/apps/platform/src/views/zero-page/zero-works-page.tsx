@@ -1,22 +1,22 @@
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { TeamsConnectStatus } from "@vm0/api-contracts/contracts/zero-teams-connect";
+import type { TeamsConnectStatus } from "@okouai/api-contracts/contracts/zero-teams-connect";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconAlertTriangle,
-  IconCircleCheck,
-  IconDotsVertical,
-  IconDownload,
-  IconSettings,
-  IconWebhook,
-} from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+  AlertTriangle,
+  CircleCheck,
+  EllipsisVertical,
+  Download,
+  Settings,
+  Webhook,
+} from "lucide-react";
+import { Button } from "@okouai/ui";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
+} from "@okouai/ui/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
 import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import {
@@ -41,6 +41,10 @@ import {
   setShowTeamsUninstallDialog$,
   uninstallTeamsOrg$,
 } from "../../signals/zero-page/zero-teams.ts";
+import {
+  connectGithubInstallation$,
+  githubIntegrationData$,
+} from "../../signals/zero-page/zero-github.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -54,6 +58,7 @@ import { i18n } from "../../i18n/index.ts";
 
 const slackIconImg = settingsIconAssetUrl("slack");
 const teamsIconImg = settingsIconAssetUrl("teams");
+const githubIconImg = settingsIconAssetUrl("github");
 const telegramIconImg = settingsIconAssetUrl("telegram");
 
 /** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
@@ -82,7 +87,7 @@ function ConnectedIndicator({
       data-testid={testId}
       className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
     >
-      <IconCircleCheck className="h-3 w-3 text-green-600" />
+      <CircleCheck className="h-3 w-3 text-green-600" />
       <span className="min-w-0 truncate" title={connectedDetail ?? ""}>
         {connectedDetail
           ? t(
@@ -139,7 +144,7 @@ function SlackCardActions({
             return openFreshOAuth(installUrl);
           }}
         >
-          <IconDownload size={14} stroke={1.5} />
+          <Download size={14} />
           {t(($) => {
             return $.works.slack.install;
           })}
@@ -162,15 +167,17 @@ function SlackCardActions({
       {isInstalled && (isConnected || isAdmin) && (
         <Popover>
           <PopoverTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              variant="quiet"
+              size="icon-xs"
+              className="shrink-0"
               aria-label={t(($) => {
                 return $.works.actions.moreOptions;
               })}
             >
-              <IconDotsVertical size={16} stroke={1.5} />
-            </button>
+              <EllipsisVertical size={16} />
+            </Button>
           </PopoverTrigger>
           <PopoverContent
             align="end"
@@ -183,7 +190,7 @@ function SlackCardActions({
                   return $.works.actions.disconnect;
                 })}
                 disabled={disconnecting}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-state-hover hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 onClick={onDisconnect}
               >
                 {disconnecting
@@ -201,7 +208,7 @@ function SlackCardActions({
                 aria-label={t(($) => {
                   return $.works.actions.uninstall;
                 })}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-state-hover hover:text-accent-foreground transition-colors"
                 onClick={onUninstall}
               >
                 {t(($) => {
@@ -228,7 +235,7 @@ function SlackPermissionWarning({
 
   return (
     <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
-      <IconAlertTriangle size={16} className="shrink-0 text-amber-500" />
+      <AlertTriangle size={16} className="shrink-0 text-amber-500" />
       <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
         {t(($) => {
           return $.works.slack.permissionsUpdated;
@@ -432,7 +439,7 @@ function TeamsCardActions({
             return openFreshOAuth(installActionUrl);
           }}
         >
-          <IconDownload size={14} stroke={1.5} />
+          <Download size={14} />
           {t(($) => {
             return $.works.teams.install;
           })}
@@ -456,15 +463,17 @@ function TeamsCardActions({
       {isInstalled && (isConnected || isAdmin) && (
         <Popover>
           <PopoverTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              variant="quiet"
+              size="icon-xs"
+              className="shrink-0"
               aria-label={t(($) => {
                 return $.works.teams.moreOptions;
               })}
             >
-              <IconDotsVertical size={16} stroke={1.5} />
-            </button>
+              <EllipsisVertical size={16} />
+            </Button>
           </PopoverTrigger>
           <PopoverContent
             align="end"
@@ -477,7 +486,7 @@ function TeamsCardActions({
                   return $.works.teams.disconnect;
                 })}
                 disabled={disconnecting}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-state-hover hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 onClick={onDisconnect}
               >
                 {disconnecting
@@ -495,7 +504,7 @@ function TeamsCardActions({
                 aria-label={t(($) => {
                   return $.works.teams.uninstall;
                 })}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-state-hover hover:text-accent-foreground transition-colors"
                 onClick={onUninstall}
               >
                 {t(($) => {
@@ -533,7 +542,7 @@ function TeamsPermissionWarning({
 
   return (
     <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
-      <IconAlertTriangle size={16} className="shrink-0 text-amber-500" />
+      <AlertTriangle size={16} className="shrink-0 text-amber-500" />
       <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
         {t(($) => {
           return $.works.teams.permissionsUpdated;
@@ -716,12 +725,106 @@ function TeamsCard({ displayName }: { displayName: string }) {
   );
 }
 
+function GithubCard() {
+  const { t } = useTranslation();
+  const githubDataLoadable = useLastLoadable(githubIntegrationData$);
+  const githubData =
+    githubDataLoadable.state === "hasData" ? githubDataLoadable.data : null;
+  const [connectLoadable, connect] = useLoadableSet(connectGithubInstallation$);
+  const pageSignal = useGet(pageSignal$);
+  const connecting = connectLoadable.state === "loading";
+  const connectedUsername = githubData?.connectedGithubUsername?.trim();
+  const connectedDetail = connectedUsername
+    ? connectedUsername.startsWith("@")
+      ? connectedUsername
+      : `@${connectedUsername}`
+    : null;
+  const adminInstallRequired =
+    githubData !== null && !githubData.isInstalled && !githubData.installUrl;
+
+  return (
+    <div
+      data-testid="github-integration-card"
+      className="zero-card flex flex-col"
+    >
+      <div className="flex items-center gap-4 p-4">
+        <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+          <img src={githubIconImg} alt="" className="h-7 w-7" />
+        </div>
+        <div className="flex flex-1 flex-col gap-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.works.github.title;
+            })}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {adminInstallRequired
+              ? t(($) => {
+                  return $.works.github.adminInstall;
+                })
+              : t(($) => {
+                  return $.works.github.description;
+                })}
+          </div>
+        </div>
+        {githubData?.isConnected ? (
+          <ConnectedIndicator
+            testId="github-connected-indicator"
+            connectedDetail={connectedDetail}
+          />
+        ) : null}
+        {githubData && !githubData.isInstalled && githubData.installUrl ? (
+          <Button
+            asChild
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 rounded-lg"
+          >
+            <a
+              data-testid="github-install-button"
+              href={githubData.installUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Download size={14} />
+              {t(($) => {
+                return $.works.github.install;
+              })}
+            </a>
+          </Button>
+        ) : null}
+        {githubData?.isInstalled && !githubData.isConnected ? (
+          <Button
+            data-testid="github-connect-button"
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 rounded-lg"
+            disabled={connecting}
+            onClick={() => {
+              return detach(
+                connect(githubData.connectUrl, pageSignal),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {t(($) => {
+              return $.works.actions.connect;
+            })}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function TelegramCard() {
   const { t } = useTranslation();
   return (
     <Link
       pathname={ROUTES.settingsTelegram}
-      className="zero-card flex flex-col text-inherit no-underline transition-colors hover:bg-muted/30"
+      className="zero-card flex flex-col text-inherit no-underline transition-colors hover:bg-state-hover"
       aria-label={t(($) => {
         return $.works.telegram.openSettings;
       })}
@@ -745,7 +848,7 @@ function TelegramCard() {
           </div>
         </div>
         <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <IconSettings size={14} stroke={1.5} />
+          <Settings size={14} />
           {t(($) => {
             return $.works.actions.manage;
           })}
@@ -760,11 +863,11 @@ function StrapiCard() {
   return (
     <Link
       pathname={ROUTES.settingsStrapi}
-      className="zero-card flex flex-col transition-colors hover:bg-accent/40"
+      className="zero-card flex flex-col transition-colors hover:bg-state-hover"
     >
       <div className="flex items-center gap-4 p-4">
         <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#4945ff]/10 text-[#4945ff]">
-          <IconWebhook size={18} />
+          <Webhook size={18} />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="truncate text-sm font-medium text-foreground">
@@ -779,7 +882,7 @@ function StrapiCard() {
           </div>
         </div>
         <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <IconSettings size={14} stroke={1.5} />
+          <Settings size={14} />
           {t(($) => {
             return $.works.actions.manage;
           })}
@@ -828,6 +931,7 @@ export function ZeroWorksPage() {
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
           {teamsEnabled ? <TeamsCard displayName={displayName} /> : null}
+          <GithubCard />
           {feishuEnabled ? <FeishuCard /> : null}
           {strapiEnabled ? <StrapiCard /> : null}
           <TelegramCard />

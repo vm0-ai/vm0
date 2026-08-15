@@ -26,12 +26,14 @@ use super::api_direct_candidates::{
     DirectCandidateInbox, DirectCandidateInsertOutcome, DirectCandidatePruneSnapshot,
     DirectJobCandidate,
 };
-use super::network_policy_refresh::NetworkPolicyRefreshHandle;
-use super::{RunnerPreference, parse_runner_preference};
+use super::connector_runtime_sync::ConnectorRuntimeSyncHandle;
+use super::{RunnerPreferenceContext, parse_runner_preference};
+use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
+use crate::types::ConnectorRuntimeTarget;
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -433,7 +435,8 @@ pub(super) struct AblySupervisorConfig {
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
     pub(super) cancel_tokens: RunCancellationRegistry,
-    pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
+    pub(super) connector_runtime_sync: ConnectorRuntimeSyncHandle,
+    pub(super) active_input_notifications: ActiveInputNotifications,
     pub(super) provider_cancel: CancellationToken,
 }
 
@@ -444,7 +447,8 @@ struct SupervisorTaskConfig {
     poll_wakeups: Arc<PollWakeups>,
     direct_candidates: Arc<DirectCandidateInbox>,
     cancel_tokens: RunCancellationRegistry,
-    network_policy_refresh: NetworkPolicyRefreshHandle,
+    connector_runtime_sync: ConnectorRuntimeSyncHandle,
+    active_input_notifications: ActiveInputNotifications,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 }
@@ -460,7 +464,8 @@ impl AblySupervisor {
             poll_wakeups: config.poll_wakeups,
             direct_candidates: config.direct_candidates,
             cancel_tokens: config.cancel_tokens,
-            network_policy_refresh: config.network_policy_refresh,
+            connector_runtime_sync: config.connector_runtime_sync,
+            active_input_notifications: config.active_input_notifications,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
         };
@@ -539,13 +544,17 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
-                        handle_ably_message_with_network_policy_refresh(
+                        if let Some(run_id) = parse_active_input_notification(&msg) {
+                            config.active_input_notifications.notify(run_id);
+                            continue;
+                        }
+                        handle_ably_message_with_connector_runtime_sync(
                             &msg,
                             &config.profiles,
                             &config.poll_wakeups,
                             &config.direct_candidates,
                             &config.cancel_tokens,
-                            Some(&config.network_policy_refresh),
+                            Some(&config.connector_runtime_sync),
                             Some(&config.shutdown),
                         )
                         .await;
@@ -620,7 +629,7 @@ async fn handle_ably_message(
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &RunCancellationRegistry,
 ) {
-    handle_ably_message_with_network_policy_refresh(
+    handle_ably_message_with_connector_runtime_sync(
         msg,
         profiles,
         poll_wakeups,
@@ -632,14 +641,14 @@ async fn handle_ably_message(
     .await;
 }
 
-async fn handle_ably_message_with_network_policy_refresh(
+async fn handle_ably_message_with_connector_runtime_sync(
     msg: &ably_subscriber::Message,
     profiles: &[String],
     poll_wakeups: &PollWakeups,
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &RunCancellationRegistry,
-    network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
-    network_policy_refresh_cancel: Option<&CancellationToken>,
+    connector_runtime_sync: Option<&ConnectorRuntimeSyncHandle>,
+    connector_runtime_sync_cancel: Option<&CancellationToken>,
 ) {
     let notification_received_at = StdInstant::now();
 
@@ -661,21 +670,21 @@ async fn handle_ably_message_with_network_policy_refresh(
         return;
     }
 
-    if let Some(notification) = parse_network_policy_refresh_notification(msg) {
-        let Some(network_policy_refresh) = network_policy_refresh else {
+    if let Some(notification) = parse_connector_runtime_sync_notification(msg) {
+        let Some(connector_runtime_sync) = connector_runtime_sync else {
             return;
         };
-        if let Some(cancel) = network_policy_refresh_cancel {
-            network_policy_refresh
-                .notify_network_policy_refresh_until_cancelled(
+        if let Some(cancel) = connector_runtime_sync_cancel {
+            connector_runtime_sync
+                .notify_connector_runtime_sync_until_cancelled(
                     notification.run_id,
-                    notification.connector_slug,
+                    notification.target,
                     cancel,
                 )
                 .await;
         } else {
-            network_policy_refresh
-                .notify_network_policy_refresh(notification.run_id, notification.connector_slug)
+            connector_runtime_sync
+                .notify_connector_runtime_sync(notification.run_id, notification.target)
                 .await;
         }
         return;
@@ -693,16 +702,16 @@ async fn handle_ably_message_with_network_policy_refresh(
                     profile = %profile,
                     "ably: job notification, queueing direct candidate"
                 );
-                JobNotificationAction::Direct(
+                JobNotificationAction::Direct(Box::new(
                     DirectJobCandidate::new_with_routing_metadata(
                         notif.run_id,
                         profile.to_owned(),
                         notification_received_at,
                         notif.reuse_key.map(str::to_owned),
-                        notif.runner_preference,
+                        notif.runner_preference_context,
                     )
                     .with_history_generation_run_id(notif.history_generation_run_id),
-                )
+                ))
             } else {
                 info!(
                     run_id = %notif.run_id,
@@ -725,14 +734,14 @@ async fn handle_ably_message_with_network_policy_refresh(
             poll_wakeups.request_immediate_poll().await;
         }
         JobNotificationAction::Direct(candidate) => {
-            enqueue_direct_candidate(candidate, direct_candidates, poll_wakeups).await;
+            enqueue_direct_candidate(*candidate, direct_candidates, poll_wakeups).await;
         }
         JobNotificationAction::Ignore => {}
     }
 }
 
 enum JobNotificationAction {
-    Direct(DirectJobCandidate),
+    Direct(Box<DirectJobCandidate>),
     Ignore,
     WakeNow,
 }
@@ -742,12 +751,26 @@ struct JobNotification<'a> {
     profile: Option<&'a str>,
     reuse_key: Option<&'a str>,
     history_generation_run_id: Option<RunId>,
-    runner_preference: Option<RunnerPreference>,
+    runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
-struct NetworkPolicyRefreshNotification {
+struct ConnectorRuntimeSyncNotification {
     run_id: RunId,
-    connector_slug: String,
+    target: ConnectorRuntimeTarget,
+}
+
+fn parse_active_input_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
+    if msg.name.as_deref() != Some("active-input") {
+        return None;
+    }
+    let raw = msg.data.get("runId").and_then(|value| value.as_str())?;
+    match raw.parse() {
+        Ok(run_id) => Some(run_id),
+        Err(error) => {
+            warn!(value = %raw, error = %error, "ably: invalid active-input runId");
+            None
+        }
+    }
 }
 
 fn supports_profile(profiles: &[String], profile: &str) -> bool {
@@ -852,42 +875,37 @@ fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<CancelNot
     Some(CancelNotification { run_id, mode })
 }
 
-fn parse_network_policy_refresh_notification(
+fn parse_connector_runtime_sync_notification(
     msg: &ably_subscriber::Message,
-) -> Option<NetworkPolicyRefreshNotification> {
-    if msg.name.as_deref() != Some("network-policy-refresh") {
+) -> Option<ConnectorRuntimeSyncNotification> {
+    if msg.name.as_deref() != Some("connector-runtime-sync") {
         return None;
     }
-    let run_id_raw = msg.data.get("runId").and_then(|v| v.as_str());
-    let run_id = match run_id_raw {
+    let run_id = match msg.data.get("runId").and_then(serde_json::Value::as_str) {
         Some(value) => match value.parse() {
             Ok(run_id) => run_id,
             Err(error) => {
-                warn!(value, error = %error, "ably: invalid network-policy-refresh runId");
+                warn!(value, error = %error, "ably: invalid connector-runtime-sync runId");
                 return None;
             }
         },
         None => {
-            warn!("ably: network-policy-refresh message missing runId");
+            warn!("ably: connector-runtime-sync message missing runId");
             return None;
         }
     };
-    let connector_slug = match msg.data.get("connectorSlug") {
-        Some(serde_json::Value::String(value)) if !value.is_empty() => value,
-        Some(_) => {
-            warn!("ably: network-policy-refresh message has invalid connectorSlug");
+    let target = match msg.data.get("target").cloned().map(serde_json::from_value) {
+        Some(Ok(target)) => target,
+        Some(Err(error)) => {
+            warn!(error = %error, "ably: connector-runtime-sync message has invalid target");
             return None;
         }
         None => {
-            warn!("ably: network-policy-refresh message missing connectorSlug");
+            warn!("ably: connector-runtime-sync message missing target");
             return None;
         }
     };
-
-    Some(NetworkPolicyRefreshNotification {
-        run_id,
-        connector_slug: connector_slug.to_string(),
-    })
+    Some(ConnectorRuntimeSyncNotification { run_id, target })
 }
 
 fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification<'_>> {
@@ -923,24 +941,24 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("historyGenerationRunId")
         .and_then(|v| v.as_str())
         .and_then(|value| value.parse().ok());
-    let runner_preference = match parse_runner_preference(msg.data.get("runnerPreference").cloned())
-    {
-        Ok(runner_preference) => runner_preference,
-        Err(error) => {
-            warn!(
-                run_id = %run_id,
-                error = %error,
-                "ably: invalid runner preference, using ordinary admission"
-            );
-            None
-        }
-    };
+    let runner_preference_context =
+        match parse_runner_preference(msg.data.get("runnerPreference").cloned()) {
+            Ok(context) => context,
+            Err(error) => {
+                warn!(
+                    run_id = %run_id,
+                    error = %error,
+                    "ably: invalid runner preference, using ordinary admission"
+                );
+                None
+            }
+        };
     Some(JobNotification {
         run_id,
         profile,
         reuse_key,
         history_generation_run_id,
-        runner_preference,
+        runner_preference_context,
     })
 }
 
@@ -1088,7 +1106,7 @@ impl AblyDisconnectState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::RunnerPreferenceReason;
+    use crate::provider::{RunnerPreference, RunnerPreferenceTier};
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -1132,55 +1150,6 @@ mod tests {
 
     fn default_profiles() -> Vec<String> {
         vec![crate::profile::DEFAULT_PROFILE.to_string()]
-    }
-
-    fn malformed_network_policy_refresh_messages(
-        unrelated_name: &'static str,
-    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 6] {
-        [
-            (
-                "invalid runId",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "not-a-uuid",
-                    "connectorSlug": "github"
-                }),
-            ),
-            (
-                "missing runId",
-                Some("network-policy-refresh"),
-                serde_json::json!({ "connectorSlug": "github" }),
-            ),
-            (
-                "missing connectorSlug",
-                Some("network-policy-refresh"),
-                serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000003" }),
-            ),
-            (
-                "empty connectorSlug",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": ""
-                }),
-            ),
-            (
-                "invalid connectorSlug",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": 1
-                }),
-            ),
-            (
-                "unrelated message name",
-                Some(unrelated_name),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": "github"
-                }),
-            ),
-        ]
     }
 
     #[tokio::test(start_paused = true)]
@@ -1882,11 +1851,12 @@ mod tests {
                 "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
                 "runnerPreference": {
+                    "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "00000000-0000-0000-0000-000000000005",
                         "heartbeatGeneration": 7
                     },
-                    "reason": "matchingReuseKey",
+                    "tier": "reusableSandbox",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
                 }
             }),
@@ -1909,17 +1879,28 @@ mod tests {
         let preference = candidate
             .runner_preference()
             .expect("canonical preference should be parsed");
-        assert_eq!(
-            preference.reason(),
-            RunnerPreferenceReason::MatchingReuseKey
-        );
+        assert_eq!(preference.tier(), RunnerPreferenceTier::ReusableSandbox);
         assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
+        let telemetry = candidate
+            .runner_preference_claim_telemetry()
+            .expect("canonical preference telemetry");
+        assert!(matches!(
+            telemetry.runner_preference,
+            RunnerPreference::Preference {
+                tier: RunnerPreferenceTier::ReusableSandbox,
+                ..
+            }
+        ));
+        assert_eq!(
+            telemetry.state,
+            Some(super::super::RunnerPreferenceClaimState::Active)
+        );
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
     }
 
     #[tokio::test]
-    async fn malformed_optional_preference_preserves_direct_candidate() {
+    async fn malformed_preference_preserves_direct_candidate() {
         let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
@@ -1938,11 +1919,12 @@ mod tests {
                 "profile": "vm0/default",
                 "reuseKey": "thread:malformed-preference",
                 "runnerPreference": {
+                    "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "00000000-0000-0000-0000-000000000005",
-                        "heartbeatGeneration": 7
+                        "heartbeatGeneration": 0
                     },
-                    "reason": "futureReason",
+                    "tier": "workspaceCache",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
                 }
             }),
@@ -1955,6 +1937,40 @@ mod tests {
             .into_job_candidate();
         assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
         assert!(candidate.runner_preference().is_none());
+        assert!(candidate.runner_preference_claim_telemetry().is_none());
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn missing_preference_preserves_direct_candidate() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000012",
+                "profile": "vm0/default",
+                "reuseKey": "thread:missing-preference"
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates)
+            .await
+            .into_job_candidate();
+        assert_eq!(candidate.reuse_key(), Some("thread:missing-preference"));
+        assert!(candidate.runner_preference().is_none());
+        assert!(candidate.runner_preference_claim_telemetry().is_none());
         assert_no_direct_candidate(&direct_candidates).await;
     }
 
@@ -2180,39 +2196,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_network_policy_refresh_notification_does_not_mutate_handler_state() {
-        for (case, name, data) in
-            malformed_network_policy_refresh_messages("network-policy-refresh-v2")
-        {
-            let sentinel_run_id: RunId = "00000000-0000-0000-0000-000000000099".parse().unwrap();
-            let tokens = RunCancellationRegistry::new();
-            let sentinel_registration = tokens.register(sentinel_run_id).await.unwrap();
-            let sentinel_token = sentinel_registration.token();
-            let wakeups = PollWakeups::new(true);
-            let direct_candidates = direct_candidate_inbox();
-            let profiles = default_profiles();
-            let _ = wakeups
-                .wait_for_poll_due(
-                    &CancellationToken::new(),
-                    Duration::from_secs(30),
-                    Duration::from_secs(5),
-                )
-                .await;
-            let msg = make_message(name, data);
-
-            handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
-
-            let snapshot = wakeups.snapshot().await;
-            assert_no_direct_candidate(&direct_candidates).await;
-            assert!(!snapshot.poll_now, "{case}");
-            assert!(snapshot.deferred_poll_at.is_none(), "{case}");
-            assert!(!sentinel_token.is_cancelled(), "{case}");
-
-            assert!(tokens.contains(sentinel_run_id).await, "{case}");
-        }
-    }
-
-    #[tokio::test]
     async fn supervisor_shutdown_awaits_task_termination() {
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
         let supervisor = AblySupervisor::spawn_test_task(|shutdown| async move {
@@ -2248,35 +2231,68 @@ mod tests {
     }
 
     #[test]
-    fn parse_network_policy_refresh_notification_ignores_additional_fields() {
+    fn parse_connector_runtime_sync_notification_reads_target() {
         let msg = make_message(
-            Some("network-policy-refresh"),
+            Some("connector-runtime-sync"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000003",
-                "connectorSlug": "github",
-                "additionalField": true
+                "target": {
+                    "kind": "custom",
+                    "customConnectorId": "550e8400-e29b-41d4-a716-446655440000"
+                }
             }),
         );
 
-        let notification = parse_network_policy_refresh_notification(&msg).unwrap();
+        let notification = parse_connector_runtime_sync_notification(&msg)
+            .expect("connector runtime notification should parse");
 
         assert_eq!(
             notification.run_id.to_string(),
             "00000000-0000-0000-0000-000000000003"
         );
-        assert_eq!(notification.connector_slug, "github");
+        assert_eq!(
+            notification.target,
+            ConnectorRuntimeTarget::Custom {
+                custom_connector_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            }
+        );
     }
 
     #[test]
-    fn parse_network_policy_refresh_notification_rejects_malformed_messages() {
-        for (case, name, data) in malformed_network_policy_refresh_messages("other") {
-            let msg = make_message(name, data);
-
-            assert!(
-                parse_network_policy_refresh_notification(&msg).is_none(),
-                "{case}"
-            );
+    fn parse_connector_runtime_sync_notification_rejects_malformed_target() {
+        for data in [
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003"
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": { "kind": "custom" }
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "target": { "kind": "unknown", "connectorSlug": "slack" }
+            }),
+        ] {
+            let msg = make_message(Some("connector-runtime-sync"), data);
+            assert!(parse_connector_runtime_sync_notification(&msg).is_none());
         }
+    }
+
+    #[test]
+    fn parse_active_input_notification_reads_run_id() {
+        let msg = make_message(
+            Some("active-input"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000004"
+            }),
+        );
+
+        assert_eq!(
+            parse_active_input_notification(&msg)
+                .expect("active-input notification should parse")
+                .to_string(),
+            "00000000-0000-0000-0000-000000000004"
+        );
     }
 
     #[test]

@@ -1,4 +1,74 @@
-"""Lock-protected mutable state for the usage buffer."""
+"""Lock-protected mutable state for the usage buffer.
+
+State ownership
+---------------
+Callers hold ``UsageEventBuffer._lock`` for every state transition. Accepted
+source records are represented by exactly one of these work domains:
+
+* *Live* work is still mutable in the aggregate and source-preserving event and
+  observation stores. ``snapshot_live_flush()`` atomically replaces those
+  stores with empty ones and transfers their contents to one pending flush.
+* *Pending* work is a batch snapshot eligible for selection, or a retained
+  snapshot waiting for a later retry. Selecting a pending flush and calling
+  ``begin_delivery()`` transfers its ownership to the delivering domain.
+* *Delivering* work has entered webhook admission and remains here until every
+  admitted callback is resolved. Successful or permanent outcomes leave the
+  state; retryable or unadmitted batches return to pending ownership unless the
+  retry budget drops them.
+
+``_seen_source_keys`` is admission history, not a work domain. Accepted source
+and atomic admission keys survive flush boundaries in this process. The history
+is bounded by insertion order: duplicate checks do not refresh an entry,
+overflow evicts the earliest inserted keys, and ``clear()`` resets the history
+along with all work domains.
+
+Admission and callback ordering
+-------------------------------
+``begin_delivery()`` counts the entire pending flush before admission starts
+because a delivery callback may complete synchronously inside the enqueue call.
+Each callback decrements ``remaining_batch_count`` and records a retryable
+outcome when applicable. Admission completion then reconciles that callback
+state with the admitted prefix:
+
+* When admitted callbacks remain unresolved, the admitted prefix stays in the
+  delivering domain, ``remaining_batch_count`` becomes the number of unresolved
+  admitted callbacks, and the unadmitted suffix is retained as pending work.
+* When no admitted callback remains, including when no batch was admitted, the
+  retryable admitted batches and unadmitted suffix are retained together and
+  delivering ownership ends.
+
+Callbacks that finish the delivering flush first remove its ownership, so later
+admission reconciliation cannot retain a second copy. Retryable callbacks are
+rebuilt in original batch order rather than callback-completion order.
+
+Retry eligibility and ordering
+------------------------------
+A retained flush records the current flush generation and is ineligible for the
+rest of that flush invocation; a later invocation has a new generation and may
+select it. Billable ``usage_event`` batches have priority over observation
+batches. When live work is eligible for a snapshot, it preempts available
+pending work only at a strictly higher priority; list order is FIFO among
+equal-priority pending flushes. Original flush batch indices preserve same-flush
+order when callbacks finish out of order or retain additional fragments later.
+
+Each retention increments the batch's retained retry count. A batch already at
+the configured maximum is dropped instead of returning to pending ownership.
+Delivering work is not schedulable, and ``_active_enqueue_count`` blocks another
+selection only while admission is active; after admission returns, newer live
+work may be flushed while older delivery callbacks are still outstanding.
+
+Observable count and verification
+---------------------------------
+``buffered_source_event_count()`` sums original source records represented by
+live stores, retained pending flushes, and delivering flushes. Aggregated
+batches therefore contribute their source-record count, not their payload-event
+count. Admission history and active-enqueue bookkeeping are excluded.
+
+The integration contracts for these invariants live in
+``tests/test_usage_buffer_flush_failures.py``,
+``tests/test_usage_buffer_timer_shutdown.py``, and
+``tests/test_usage_buffer_idempotency.py``.
+"""
 
 from __future__ import annotations
 
@@ -93,6 +163,7 @@ class _UsageBufferState:
         log_type: str,
         preserve_source_idempotency: bool,
         atomic_source_key: str | None,
+        accepted_source_keys: set[str] | None,
     ) -> int:
         if atomic_source_key is not None:
             events = tuple(events)
@@ -138,8 +209,10 @@ class _UsageBufferState:
                 bucket.source_event_count += 1
             self._source_event_count += 1
             accepted_count += 1
-        # Keep the admission key newer than its member keys so its bounded LRU
-        # lifetime covers the entire group.
+            if accepted_source_keys is not None:
+                accepted_source_keys.add(source_key)
+        # Insert the admission key after its member keys so its bounded
+        # insertion-order lifetime covers the entire group.
         if atomic_source_key is not None and accepted_count > 0:
             self._seen_source_keys[atomic_source_key] = None
         self._evict_source_keys()
@@ -154,6 +227,7 @@ class _UsageBufferState:
         proxy_log_path: str,
         *,
         preserve_source_idempotency: bool,
+        accepted_source_keys: set[str] | None,
     ) -> int:
         destination = _DestinationKey(
             url,
@@ -195,6 +269,8 @@ class _UsageBufferState:
                 bucket.source_event_count += 1
             self._source_event_count += 1
             accepted_count += 1
+            if accepted_source_keys is not None:
+                accepted_source_keys.add(source_key)
         self._evict_source_keys()
         return accepted_count
 
@@ -461,13 +537,23 @@ class _UsageBufferState:
                 retained_batches.append(
                     _PendingBatch(
                         batch=pending_batch.batch,
+                        flush_batch_index=pending_batch.flush_batch_index,
                         retained_retry_count=pending_batch.retained_retry_count + 1,
                     )
                 )
         if retained_batches:
             retained_flush = _pending_flush_from_pending_batches(flush_sequence, retained_batches)
             retained_flush.retry_after_flush_generation = flush_generation
-            self._pending_flushes.append(retained_flush)
+            retained_batch_index = retained_flush.batches[0].flush_batch_index
+            for index, pending_flush in enumerate(self._pending_flushes):
+                if (
+                    pending_flush.flush_sequence == retained_flush.flush_sequence
+                    and pending_flush.batches[0].flush_batch_index > retained_batch_index
+                ):
+                    self._pending_flushes.insert(index, retained_flush)
+                    break
+            else:
+                self._pending_flushes.append(retained_flush)
         return _RetainBatchesResult(
             retained_batches=retained_batches,
             dropped_batches=dropped_batches,

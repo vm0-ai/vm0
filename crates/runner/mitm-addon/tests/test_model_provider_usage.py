@@ -91,8 +91,6 @@ class TestReportModelProviderUsage:
             ("gpt-5.6-sol", 272_001, ".long_context"),
             ("gpt-5.6-terra", 272_001, ".long_context"),
             ("gpt-5.6-luna", 272_001, ".long_context"),
-            ("MiniMax-M3", 512_000, ""),
-            ("MiniMax-M3", 512_001, ".long_context"),
             ("claude-opus-4-6", 300_000, ""),
         ],
     )
@@ -135,6 +133,7 @@ class TestReportModelProviderUsage:
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-sol"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "service_tier": "priority",
             "tokens.input": 200_000,
             "tokens.output": 9,
             "tokens.cache_read": 70_000,
@@ -147,10 +146,10 @@ class TestReportModelProviderUsage:
             usage.flush_usage_events(trigger="test")
 
         assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
-            "tokens.input.long_context": 200_000,
-            "tokens.output.long_context": 9,
-            "tokens.cache_read.long_context": 70_000,
-            "tokens.cache_creation.long_context": 2_001,
+            "tokens.input.long_context.fast": 200_000,
+            "tokens.output.long_context.fast": 9,
+            "tokens.cache_read.long_context.fast": 70_000,
+            "tokens.cache_creation.long_context.fast": 2_001,
         }
         assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
             "tokens.input": 200_000,
@@ -158,6 +157,42 @@ class TestReportModelProviderUsage:
             "tokens.cache_read": 70_000,
             "tokens.cache_creation": 2_001,
         }
+
+    def test_output_without_input_skips_unclassifiable_terminal_billing(
+        self,
+        tmp_path,
+        real_flow,
+        usage_webhook_api,
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.output": 12}
+        proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
+
+        with usage_webhook_api() as webhook:
+            accepted = usage.report_model_provider_usage(flow, "run-abc-123")
+            observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+
+        assert accepted is False
+        assert observed is True
+        assert webhook.usage_events() == []
+        observations = webhook.model_usage_observation_events()
+        assert compact_observation_quantities(observations) == {"tokens.output": 12}
+        assert [observation["model"] for observation in observations] == ["gpt-5.5"]
+        [entry] = [
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log)
+            if entry.get("type") == "usage_underbilling"
+        ]
+        assert entry["reason"] == "model_long_context_tier_unresolved"
+        assert entry["underbilling_class"] == "risk"
+        assert entry["run_id"] == "run-abc-123"
+        assert entry["provider"] == "gpt-5.5"
 
     def test_aggregate_buffer_keeps_base_and_long_context_items_separate(
         self,
@@ -592,7 +627,7 @@ class TestReportModelProviderUsage:
                 "tokens.input": 10,
             },
             "resp_ws_2": {
-                "model": "gpt-5.4",
+                "model": "gpt-5.6-luna",
                 "message_id": "resp_ws_2",
                 "tokens.input": 3,
             },
@@ -610,7 +645,7 @@ class TestReportModelProviderUsage:
             for event in usage_body["events"]
         } == {
             ("gpt-5.5", "tokens.input"): 10,
-            ("gpt-5.4", "tokens.input"): 3,
+            ("gpt-5.6-luna", "tokens.input"): 3,
         }
 
     def test_source_dedupe_skips_malformed_model_provider_usage_sources(
@@ -624,7 +659,7 @@ class TestReportModelProviderUsage:
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {
             "resp_invalid": "invalid",
             "": {"model": "gpt-5.5", "tokens.input": 10},
-            42: {"model": "gpt-5.4", "tokens.input": 3},
+            42: {"model": "gpt-5.6-luna", "tokens.input": 3},
         }
 
         with usage_webhook_api() as webhook:

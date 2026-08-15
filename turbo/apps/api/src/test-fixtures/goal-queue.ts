@@ -1,13 +1,16 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { createStore } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "../lib/db";
+import { dispatchFailedRunCallbacks } from "../signals/services/agent-run-callback.service";
 import {
   admitGoalQueueEvent,
   type GoalQueueAdmission,
 } from "../signals/services/chat-goal-queue.service";
+import { drainChatThreadQueueForThread$ } from "../signals/services/chat-thread-queue-drain.service";
 
 interface GoalQueueAdmissionFixtureArgs {
   readonly threadId: string;
@@ -34,6 +37,10 @@ export async function admitGoalQueueEventFixture(
 export async function readGoalQueueStateFixture(threadId: string): Promise<{
   readonly eventIds: readonly string[];
   readonly runIds: readonly string[];
+  readonly runs: readonly {
+    readonly id: string;
+    readonly goalId: string | null;
+  }[];
 }> {
   const [events, runs] = await Promise.all([
     db()
@@ -46,10 +53,17 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
         ),
       ),
     db()
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
+      .select({
+        id: agentRuns.id,
+        goalId: agentRuns.goalId,
+      })
+      .from(agentRuns)
       .where(
-        and(eq(zeroRuns.chatThreadId, threadId), isNotNull(zeroRuns.goalId)),
+        and(
+          eq(agentRuns.chatThreadId, threadId),
+          isNotNull(agentRuns.goalId),
+          isNotNull(agentRuns.triggerSource),
+        ),
       ),
   ]);
   return {
@@ -59,7 +73,37 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
     runIds: runs.map((run) => {
       return run.id;
     }),
+    runs,
   };
+}
+
+/** Run the same shared scheduler that follows production goal admission. */
+export async function drainChatThreadQueueFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await createStore().set(
+    drainChatThreadQueueForThread$,
+    {
+      chatThreadId: args.threadId,
+      dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+    },
+    args.signal,
+  );
+}
+
+/** Invalidate a goal without triggering a separate queue drain. */
+export async function pauseGoalQueueTargetFixture(
+  goalId: string,
+): Promise<void> {
+  const [goal] = await db()
+    .update(threadGoals)
+    .set({ status: "paused" })
+    .where(eq(threadGoals.id, goalId))
+    .returning({ id: threadGoals.id });
+  if (!goal) {
+    throw new Error("Expected the goal queue target fixture");
+  }
 }
 
 /**

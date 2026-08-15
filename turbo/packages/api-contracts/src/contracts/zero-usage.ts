@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { usageRecordRangeSchema } from "./zero-usage-record";
+import { usageRecordRangeSchema } from "./usage-record";
 
 const c = initContract();
 
@@ -26,12 +26,12 @@ const usageMembersResponseSchema = z.object({
 });
 
 /**
- * Zero contract for GET /api/zero/usage/members
+ * Zero contract for GET /api/okou/usage/members
  */
 export const zeroUsageMembersContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/usage/members",
+    path: "/api/okou/usage/members",
     headers: authHeadersSchema,
     query: z.object({
       range: usageRecordRangeSchema.default("billingPeriod"),

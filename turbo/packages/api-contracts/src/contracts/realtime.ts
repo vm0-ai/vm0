@@ -25,6 +25,46 @@ export type BrowserSessionChangedPayload = z.infer<
 >;
 
 /**
+ * Preference keys that can flip as part of a `userPreferenceChanged` push.
+ * Consumers subscribe and reload the corresponding resource when its key is
+ * present in the payload's `kinds`.
+ */
+export const userPreferenceKinds = [
+  "defaultModel",
+  "defaultVideoModel",
+] as const;
+
+export type UserPreferenceKind = (typeof userPreferenceKinds)[number];
+
+const USER_PREFERENCE_KIND_SET: ReadonlySet<string> = new Set(
+  userPreferenceKinds,
+);
+
+function isUserPreferenceKind(kind: string): kind is UserPreferenceKind {
+  return USER_PREFERENCE_KIND_SET.has(kind);
+}
+
+/**
+ * Unknown kinds are dropped instead of failing the payload. A strict enum makes
+ * `kinds` unextendable: a browser tab running a bundle from before a kind was
+ * added would reject the whole push and silently stop honoring the kinds it
+ * does understand. Old web clients stay open for ~2 days
+ * (`docs/fallback.md` §7), so every future kind addition needs this.
+ *
+ * This does not retroactively fix bundles already in browsers — see the
+ * `defaultVideoModel` note in `user-model-preference.ts`.
+ */
+export const userPreferenceChangedPayloadSchema = z.object({
+  kinds: z.array(z.string()).transform((kinds) => {
+    return kinds.filter(isUserPreferenceKind);
+  }),
+});
+
+export type UserPreferenceChangedPayload = z.infer<
+  typeof userPreferenceChangedPayloadSchema
+>;
+
+/**
  * Ably token request schema (matches Ably SDK's TokenRequest type)
  */
 export const ablyTokenRequestSchema = z.object({
@@ -66,17 +106,17 @@ export const runnerRealtimeTokenContract = c.router({
 export type RunnerRealtimeTokenContract = typeof runnerRealtimeTokenContract;
 
 /**
- * Platform realtime token contract for /api/zero/realtime/token
+ * Platform realtime token contract for /api/okou/realtime/token
  * Used by the frontend to get an Ably token for subscribing to user-scoped push signals.
  */
 export const platformRealtimeTokenContract = c.router({
   /**
-   * POST /api/zero/realtime/token
+   * POST /api/okou/realtime/token
    * Get an Ably token to subscribe to the authenticated user's push channel
    */
   create: {
     method: "POST",
-    path: "/api/zero/realtime/token",
+    path: "/api/okou/realtime/token",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {

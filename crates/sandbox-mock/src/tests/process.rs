@@ -160,7 +160,8 @@ async fn process_control_calls_are_recorded_when_overrides_are_enabled() {
 #[tokio::test]
 async fn queued_process_control_errors_are_consumed_fifo() {
     let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_process_control_error("control failed");
+    overrides.push_process_control_error("first control failed");
+    overrides.push_process_control_error("second control failed");
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let handle = sandbox
         .start_process(&StartProcessRequest {
@@ -177,18 +178,115 @@ async fn queued_process_control_errors_are_consumed_fifo() {
         .control_handle()
         .expect("enabled control should expose a handle");
 
-    let err = control
-        .control("msg-1", b"payload-1", Duration::from_secs(1))
+    let outcome = control
+        .control_outcome("msg-1", b"payload-1", Duration::from_secs(1))
+        .await;
+    let first_error = match outcome {
+        ProcessControlOutcome::Failed {
+            kind,
+            write_state,
+            error,
+        } => {
+            assert_eq!(kind, ProcessControlFailureKind::Operation);
+            assert_eq!(write_state, ProcessControlWriteState::PossiblyWritten);
+            error
+        }
+        other => panic!("expected failed process-control outcome, got {other:?}"),
+    };
+    let second_error = control
+        .control("msg-2", b"payload-2", Duration::from_secs(1))
         .await
         .unwrap_err();
     let ack = control
-        .control("msg-2", b"payload-2", Duration::from_secs(1))
+        .control("msg-3", b"payload-3", Duration::from_secs(1))
         .await
         .unwrap();
 
-    assert!(err.to_string().contains("control failed"));
-    assert_eq!(ack.message_id, "msg-2");
-    assert_eq!(overrides.process_control_calls().len(), 2);
+    assert!(first_error.to_string().contains("first control failed"));
+    assert!(second_error.to_string().contains("second control failed"));
+    assert_eq!(ack.message_id, "msg-3");
+    assert_eq!(overrides.process_control_calls().len(), 3);
+}
+
+#[tokio::test]
+async fn queued_structured_process_control_outcomes_are_preserved() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_process_control_outcome(ProcessControlOutcome::GuestStatus {
+        status: ProcessControlGuestStatus::QueueFull,
+        diagnostic: "guest queue is full".to_string(),
+    });
+    let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+    let handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::Enabled,
+        })
+        .await
+        .unwrap();
+    let control = handle
+        .control_handle()
+        .expect("enabled control should expose a handle");
+
+    let outcome = control
+        .control_outcome("msg-1", b"payload", Duration::from_secs(1))
+        .await;
+
+    assert!(matches!(
+        outcome,
+        ProcessControlOutcome::GuestStatus {
+            status: ProcessControlGuestStatus::QueueFull,
+            diagnostic,
+        } if diagnostic == "guest queue is full"
+    ));
+}
+
+#[tokio::test]
+async fn structured_process_control_distinguishes_timeout_write_state() {
+    for write_state in [
+        ProcessControlWriteState::NotWritten,
+        ProcessControlWriteState::PossiblyWritten,
+    ] {
+        let control =
+            GuestProcessControlHandle::new_with_outcome(move |_message_id, _payload, _timeout| {
+                Box::pin(async move {
+                    ProcessControlOutcome::Failed {
+                        kind: ProcessControlFailureKind::Operation,
+                        write_state,
+                        error: std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "process control timed out",
+                        ),
+                    }
+                })
+            });
+
+        let outcome = control
+            .control_outcome("msg", b"payload", Duration::from_secs(1))
+            .await;
+        match outcome {
+            ProcessControlOutcome::Failed {
+                kind,
+                write_state: actual_write_state,
+                error,
+            } => {
+                assert_eq!(kind, ProcessControlFailureKind::Operation);
+                assert_eq!(actual_write_state, write_state);
+                assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+            }
+            other => panic!("expected failed process-control outcome, got {other:?}"),
+        }
+
+        let error = control
+            .control("msg-1", b"payload-1", Duration::from_secs(1))
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert_eq!(error.to_string(), "process control timed out");
+    }
 }
 
 #[tokio::test]
@@ -260,6 +358,151 @@ async fn start_process_rejects_invalid_env_key() {
         "invalid environment variable name",
     );
     assert!(overrides.start_process_calls().is_empty());
+}
+
+#[tokio::test]
+async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() {
+    let gate = MockLifecycleGate::new();
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.set_start_process_lifecycle_gate(gate.clone());
+    let result_cancel = tokio_util::sync::CancellationToken::new();
+    overrides.cancel_after_next_start_process_result(result_cancel.clone());
+    let sandbox = Arc::new(MockSandbox::with_overrides("test", Arc::clone(&overrides)));
+
+    let blocked_start = {
+        let sandbox = Arc::clone(&sandbox);
+        tokio::spawn(async move {
+            sandbox
+                .start_process(&StartProcessRequest {
+                    cmd: "blocked-agent",
+                    timeout: Duration::from_secs(5),
+                    env: &[],
+                    sudo: false,
+                    output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                    control: ProcessControlMode::None,
+                })
+                .await
+        })
+    };
+
+    assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+    assert!(overrides.start_process_calls().is_empty());
+    assert!(!result_cancel.is_cancelled());
+
+    blocked_start.abort();
+    let blocked_start_error = match blocked_start.await {
+        Ok(_) => panic!("blocked start task should be cancelled"),
+        Err(error) => error,
+    };
+    assert!(blocked_start_error.is_cancelled());
+    overrides.clear_start_process_lifecycle_gate();
+
+    sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "next-agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await
+        .unwrap();
+    assert!(result_cancel.is_cancelled());
+    assert_eq!(overrides.start_process_calls().len(), 1);
+}
+
+#[tokio::test]
+async fn process_result_cancellations_are_success_only_and_fifo() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let first_start_cancel = tokio_util::sync::CancellationToken::new();
+    let second_start_cancel = tokio_util::sync::CancellationToken::new();
+    overrides.cancel_after_next_start_process_result(first_start_cancel.clone());
+    overrides.cancel_after_next_start_process_result(second_start_cancel.clone());
+    let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+
+    let invalid_start = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "invalid-agent",
+            timeout: Duration::from_secs(5),
+            env: &[("1BAD", "value")],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await;
+    assert!(invalid_start.is_err());
+    assert!(!first_start_cancel.is_cancelled());
+    assert!(!second_start_cancel.is_cancelled());
+
+    let first_handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "first-agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await
+        .unwrap();
+    assert!(first_start_cancel.is_cancelled());
+    assert!(!second_start_cancel.is_cancelled());
+
+    let second_handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "second-agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await
+        .unwrap();
+    assert!(second_start_cancel.is_cancelled());
+
+    let mut invalid_wait_handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "invalid-wait-agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        })
+        .await
+        .unwrap();
+    assert!(invalid_wait_handle.take_waiter().is_some());
+
+    let first_wait_cancel = tokio_util::sync::CancellationToken::new();
+    let second_wait_cancel = tokio_util::sync::CancellationToken::new();
+    overrides.cancel_after_next_wait_process_result(first_wait_cancel.clone());
+    overrides.cancel_after_next_wait_process_result(second_wait_cancel.clone());
+
+    assert!(
+        sandbox
+            .wait_process(invalid_wait_handle, Duration::from_secs(5))
+            .await
+            .is_err()
+    );
+    assert!(!first_wait_cancel.is_cancelled());
+    assert!(!second_wait_cancel.is_cancelled());
+
+    sandbox
+        .wait_process(first_handle, Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert!(first_wait_cancel.is_cancelled());
+    assert!(!second_wait_cancel.is_cancelled());
+
+    sandbox
+        .wait_process(second_handle, Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert!(second_wait_cancel.is_cancelled());
+    assert_eq!(overrides.start_process_calls().len(), 3);
+    assert_eq!(overrides.wait_process_calls().len(), 2);
 }
 
 #[tokio::test]

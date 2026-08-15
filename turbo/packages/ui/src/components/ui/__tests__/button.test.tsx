@@ -25,4 +25,16 @@ describe("Button", () => {
     const button = screen.getByRole("button");
     expect(button).toBeDisabled();
   });
+
+  it("composes an anchor without adding a nested button", () => {
+    render(
+      <Button asChild>
+        <a href="/settings">Settings</a>
+      </Button>,
+    );
+
+    const link = screen.getByRole("link", { name: "Settings" });
+    expect(link).toHaveAttribute("href", "/settings");
+    expect(link.querySelector("button")).toBeNull();
+  });
 });

@@ -2,7 +2,11 @@ import { Clerk } from "@clerk/clerk-js";
 import { ui } from "@clerk/ui";
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
-import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
+import {
+  clearPostHogUser,
+  setPostHogOrganization,
+  setPostHogUser,
+} from "../lib/posthog.ts";
 import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
 import {
   derivePlatformServiceOrigin,
@@ -12,7 +16,12 @@ import {
   resolvePlatformEnvironment,
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
+import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
+import { createAuthRecovery, setupForegroundCatchUp$ } from "./auth-retry.ts";
+import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
+import { sessionStorageSignals } from "./external/session-storage.ts";
+import { rootSignal$ } from "./root-signal.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -32,6 +41,11 @@ interface ClerkSatelliteConfig {
   readonly satelliteAutoSync: true;
 }
 
+export interface AuthBrandContext {
+  readonly brandName: BrandName;
+  readonly homeUrl: string;
+}
+
 const AD_ATTRIBUTION_PARAMS = [
   "gclid",
   "gbraid",
@@ -39,6 +53,8 @@ const AD_ATTRIBUTION_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
+  "vm0_campaign_id",
+  "vm0_ad_group_id",
   "utm_content",
   "utm_term",
   "vm0_experiment",
@@ -52,6 +68,8 @@ const AD_TRAFFIC_MARKERS = [
   "wbraid",
   "utm_source",
   "utm_campaign",
+  "vm0_campaign_id",
+  "vm0_ad_group_id",
 ] as const;
 
 const HTTP_URL_PREFIX_REGEX = /^https?:\/\//i;
@@ -248,7 +266,7 @@ function isAllowedRedirectOrigin(
 function readAllowedRedirectUrl(
   params: URLSearchParams,
   allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[],
-): string | null {
+): URL | null {
   const rawRedirectUrl = params.get("redirect_url");
   if (!rawRedirectUrl) {
     return null;
@@ -259,19 +277,66 @@ function readAllowedRedirectUrl(
     return null;
   }
   return isAllowedRedirectOrigin(redirectUrl, allowedRedirectOrigins)
-    ? redirectUrl.toString()
+    ? redirectUrl
     : null;
+}
+
+function readAuthRedirectParams(
+  authSearch: string,
+  authHash: string,
+): URLSearchParams {
+  const searchParams = new URLSearchParams(authSearch);
+  if (searchParams.has("redirect_url")) {
+    return searchParams;
+  }
+
+  const hashQueryIndex = authHash.indexOf("?");
+  if (hashQueryIndex === -1) {
+    return searchParams;
+  }
+
+  const hashParams = new URLSearchParams(authHash.slice(hashQueryIndex + 1));
+  const hashRedirectUrl = hashParams.get("redirect_url");
+  if (hashRedirectUrl) {
+    searchParams.set("redirect_url", hashRedirectUrl);
+  }
+  return searchParams;
+}
+
+export function resolveAuthBrandContext(
+  authSearch: string = location.search,
+  authHash: string = location.hash,
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+): AuthBrandContext {
+  const currentBrandName = resolveBrandNameForHostname(location.hostname);
+  if (currentBrandName === "Okou") {
+    return { brandName: currentBrandName, homeUrl: "/" };
+  }
+
+  const redirectUrl = readAllowedRedirectUrl(
+    readAuthRedirectParams(authSearch, authHash),
+    allowedRedirectOrigins,
+  );
+  if (
+    redirectUrl &&
+    resolveBrandNameForHostname(redirectUrl.hostname) === "Okou"
+  ) {
+    return { brandName: "Okou", homeUrl: redirectUrl.origin };
+  }
+
+  return { brandName: currentBrandName, homeUrl: "/" };
 }
 
 export function buildSignupRedirectUrl(
   signUpSearch: string,
   allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+  signUpHash = "",
 ): string {
   const appUrl = resolveAppUrl();
-  const params = new URLSearchParams(signUpSearch);
+  const params = readAuthRedirectParams(signUpSearch, signUpHash);
   const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
   if (redirectUrl) {
-    return redirectUrl;
+    return redirectUrl.toString();
   }
 
   if (!hasAdTraffic(params)) {
@@ -279,18 +344,19 @@ export function buildSignupRedirectUrl(
   }
 
   const redirectParams = new URLSearchParams();
-  appendHomepageAttributionParams(redirectParams, signUpSearch);
+  appendHomepageAttributionParams(redirectParams, params.toString());
   return buildVm0OnboardingEntryUrl(redirectParams);
 }
 
 export function buildSignInRedirectUrl(
   signInSearch: string,
   allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+  signInHash = "",
 ): string {
-  const params = new URLSearchParams(signInSearch);
+  const params = readAuthRedirectParams(signInSearch, signInHash);
   const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
 
-  return redirectUrl ?? resolveAppUrl();
+  return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
 export const clerkUi$ = computed(() => {
@@ -357,6 +423,13 @@ export const clerk$ = computed(async (get) => {
   return clerkInstance;
 });
 
+export const authRecovery$ = computed(async (get) => {
+  const clerk = await get(clerk$);
+  return createAuthRecovery(clerk, () => {
+    return get(rootSignal$);
+  });
+});
+
 /**
  * Command to setup Clerk authentication listeners.
  * This command initializes the Clerk instance and sets up a listener
@@ -366,6 +439,7 @@ export const setupClerk$ = command(
   async ({ set, get }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
+    set(setupForegroundCatchUp$, signal);
 
     // Set initial Sentry user context
     if (clerk.user) {
@@ -376,6 +450,7 @@ export const setupClerk$ = command(
         name: clerk.user.fullName ?? undefined,
       });
     }
+    setPostHogOrganization(clerk.organization?.id);
 
     // Track the user ID so we only trigger a reload on actual auth state
     // changes (sign-in / sign-out), not on token refreshes which fire the
@@ -390,6 +465,7 @@ export const setupClerk$ = command(
           email: clerk.user.primaryEmailAddress?.emailAddress,
           name: clerk.user.fullName ?? undefined,
         });
+        setPostHogOrganization(clerk.organization?.id);
       } else {
         clearSentryUser();
         clearPostHogUser();
@@ -403,6 +479,7 @@ export const setupClerk$ = command(
       const currentUserId = clerk.user?.id ?? null;
       if (currentUserId !== prevUserId) {
         prevUserId = currentUserId;
+        set(writeConnectionDiagnostic$, { action: "clear" });
         set(reload$, (x) => {
           return x + 1;
         });
@@ -417,61 +494,61 @@ export const setupClerk$ = command(
  * Returns undefined if no user is authenticated.
  */
 const ORG_ID_KEY = "clerk-active-org-id";
+const activeOrgIdStorage = sessionStorageSignals(ORG_ID_KEY);
 
-function persistOrgId(orgId: string | undefined) {
+const persistOrgId$ = command(({ set }, orgId: string | undefined) => {
   if (orgId) {
-    sessionStorage.setItem(ORG_ID_KEY, orgId);
+    set(activeOrgIdStorage.set$, orgId);
   } else {
-    sessionStorage.removeItem(ORG_ID_KEY);
+    set(activeOrgIdStorage.clear$);
   }
-}
+});
 
 /**
  * Command that monitors the active Clerk organization and reloads
  * the page when it changes. Persists the active org ID to session storage.
  */
-export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
-  const clerk = await get(clerk$);
-  signal.throwIfAborted();
+export const watchOrgSwitch$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
 
-  let prevOrgId = sessionStorage.getItem(ORG_ID_KEY) ?? undefined;
-  const currentOrgId = clerk.organization?.id ?? undefined;
-  prevOrgId = currentOrgId;
-  persistOrgId(currentOrgId);
+    let prevOrgId = get(activeOrgIdStorage.get$) ?? undefined;
+    const currentOrgId = clerk.organization?.id ?? undefined;
+    prevOrgId = currentOrgId;
+    set(persistOrgId$, currentOrgId);
+    setPostHogOrganization(currentOrgId);
 
-  // Listener stays `() => void`: Clerk's `ListenerCallback` signature
-  // is not awaited, and returning a promise from it would trip
-  // `typescript/no-misused-promises`. `onDomEventFn` detaches the async
-  // work, and `bestEffort` keeps reload behavior even when token rotation
-  // rejects.
-  const unsubscribe = clerk.addListener(
-    onDomEventFn(async () => {
-      const newOrgId = clerk.organization?.id ?? undefined;
-      if (newOrgId === prevOrgId) {
-        return;
-      }
-      prevOrgId = newOrgId;
-      persistOrgId(newOrgId);
-      // On mobile, Clerk can transiently clear clerk.organization to
-      // undefined during a background token refresh before restoring it on
-      // the next event. Guard against that by only reloading when the
-      // session is landing on a concrete org (org_A→org_B or
-      // undefined→org_A). An org disappearing to undefined is treated as a
-      // transient state; the listener will fire again with the real org_id.
-      if (!newOrgId) {
-        return;
-      }
+    // Listener stays `() => void`: Clerk's `ListenerCallback` signature
+    // is not awaited, and returning a promise from it would trip
+    // `typescript/no-misused-promises`. `onDomEventFn` detaches the async
+    // work, and `bestEffort` keeps reload behavior even when token rotation
+    // rejects.
+    const unsubscribe = clerk.addListener(
+      onDomEventFn(async () => {
+        const newOrgId = clerk.organization?.id ?? undefined;
+        // On mobile, Clerk can transiently clear clerk.organization to
+        // undefined during a background token refresh before restoring it on
+        // the next event. Keep the previous concrete org so that restoration
+        // is recognized as unchanged rather than as an org switch.
+        if (!newOrgId || newOrgId === prevOrgId) {
+          return;
+        }
+        prevOrgId = newOrgId;
+        set(persistOrgId$, newOrgId);
+        setPostHogOrganization(newOrgId);
 
-      await bestEffort(
-        (async () => {
-          return await clerk.session?.getToken({ skipCache: true });
-        })(),
-      );
-      location.href = "/";
-    }),
-  );
-  signal.addEventListener("abort", unsubscribe);
-});
+        await bestEffort(
+          (async () => {
+            return await clerk.session?.getToken({ skipCache: true });
+          })(),
+        );
+        location.href = "/";
+      }),
+    );
+    signal.addEventListener("abort", unsubscribe);
+  },
+);
 
 export const user$ = computed(async (get) => {
   get(reload$);
@@ -534,7 +611,6 @@ export const currentOrgInfo$ = computed(async (get) => {
   return {
     id: org.id,
     name: org.name,
-    slug: org.slug,
     imageUrl: org.imageUrl,
     hasImage: org.hasImage,
   };

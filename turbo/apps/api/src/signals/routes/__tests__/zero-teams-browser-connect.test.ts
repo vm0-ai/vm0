@@ -1,8 +1,9 @@
-import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
+import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { zeroTeamsBrowserConnectRoutes } from "../zero-teams-browser-connect";
 import {
   createFixtureTracker,
@@ -13,8 +14,10 @@ import {
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
   teamsConnectFixture,
+  teamsFixtureExternalId,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
+import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -84,7 +87,7 @@ function connectUrl(params: {
 
 async function requestConnect(
   url: string,
-  headers?: HeadersInit,
+  headers?: RequestInit["headers"],
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
@@ -103,7 +106,7 @@ function connectBody(
     teamsUserId,
     teamsAadObjectId: fixture.teamsAadObjectId,
     teamsUserDisplayName: "Ada Lovelace",
-    teamsUserPrincipalName: "ada@example.com",
+    teamsUserPrincipalName: fixture.teamsUserPrincipalName,
     teamId: fixture.teamsTeamId,
     teamName: fixture.teamsTeamName,
     serviceUrl: fixture.serviceUrl,
@@ -126,11 +129,16 @@ async function bindTeamsInstallation(
   userId: string,
 ): Promise<void> {
   mocks.clerk.session(userId, fixture.orgId, "org:admin");
-  const client = setupApp({ context })(zeroTeamsConnectContract);
+  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    zeroTeamsConnectContract,
+  );
   await accept(
     client.connect({
       headers: { authorization: "Bearer clerk-session" },
-      body: connectBody(fixture, "29:admin-user"),
+      body: connectBody(
+        fixture,
+        teamsFixtureExternalId(fixture, "29:admin-user"),
+      ),
     }),
     [200],
   );
@@ -144,7 +152,9 @@ async function expectTeamsConnected(
     readonly teamName?: string | null;
   } = {},
 ): Promise<void> {
-  const client = setupApp({ context })(zeroTeamsConnectContract);
+  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    zeroTeamsConnectContract,
+  );
   const status = await accept(
     client.getStatus({
       headers: { authorization: "Bearer clerk-session" },
@@ -170,13 +180,16 @@ describe("GET /api/zero/teams/connect", () => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
   });
 
-  it("redirects unauthenticated users to sign-in with redirect_url", async () => {
+  it("redirects unauthenticated users to app sign-in with redirect_url", async () => {
     const response = await requestConnect(CONNECT_PATH, {});
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
-    expect(location).not.toBeNull();
-    const url = new URL(location!);
+    if (!location) {
+      throw new Error("Expected app sign-in redirect");
+    }
+    const url = new URL(location);
+    expect(url.origin).toBe(APP_ORIGIN);
     expect(url.pathname).toBe("/sign-in");
     expect(url.searchParams.get("redirect_url")).toBe(CONNECT_PATH);
   });
@@ -199,6 +212,8 @@ describe("GET /api/zero/teams/connect", () => {
       teamsTenantName: "",
       teamsTeamName: "",
     });
+    const linkedTeamId = teamsFixtureExternalId(fixture, "team-from-link");
+    const linkedActivityId = teamsFixtureExternalId(fixture, "activity-link");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const response = await requestConnect(
@@ -208,11 +223,11 @@ describe("GET /api/zero/teams/connect", () => {
         teamsUserId: fixture.teamsUserId,
         teamsAadObjectId: fixture.teamsAadObjectId,
         teamsUserDisplayName: "Ada Lovelace",
-        teamsUserPrincipalName: "ada@example.com",
-        teamId: "team-from-link",
+        teamsUserPrincipalName: fixture.teamsUserPrincipalName,
+        teamId: linkedTeamId,
         teamName: "Team From Link",
         serviceUrl: fixture.serviceUrl,
-        activityId: "activity-1",
+        activityId: linkedActivityId,
       }),
     );
 
@@ -234,15 +249,15 @@ describe("GET /api/zero/teams/connect", () => {
       "Ada Lovelace",
     );
     expect(redirectUrl.searchParams.get("teamsUserPrincipalName")).toBe(
-      "ada@example.com",
+      fixture.teamsUserPrincipalName,
     );
-    expect(redirectUrl.searchParams.get("teamId")).toBe("team-from-link");
+    expect(redirectUrl.searchParams.get("teamId")).toBe(linkedTeamId);
     expect(redirectUrl.searchParams.get("serviceUrl")).toBe(fixture.serviceUrl);
-    expect(redirectUrl.searchParams.get("activityId")).toBe("activity-1");
+    expect(redirectUrl.searchParams.get("activityId")).toBe(linkedActivityId);
     expect(redirectUrl.searchParams.get("teamName")).toBe("Team From Link");
     await expectTeamsConnected(fixture, {
       tenantName: "Tenant From Link",
-      teamId: "team-from-link",
+      teamId: linkedTeamId,
       teamName: "Team From Link",
     });
   });
@@ -273,7 +288,7 @@ describe("GET /api/zero/teams/connect", () => {
         tenantId: fixture.teamsTenantId,
         teamsAadObjectId: fixture.teamsAadObjectId,
         teamsUserDisplayName: "Ada Lovelace",
-        teamsUserPrincipalName: "ada@example.com",
+        teamsUserPrincipalName: fixture.teamsUserPrincipalName,
       }),
     );
 
@@ -315,7 +330,7 @@ describe("GET /api/zero/teams/connect", () => {
     const response = await requestConnect(
       connectUrl({
         tenantId: fixture.teamsTenantId,
-        teamsUserId: "29:member-user",
+        teamsUserId: teamsFixtureExternalId(fixture, "29:member-user"),
         orgId: fixture.orgId,
       }),
     );

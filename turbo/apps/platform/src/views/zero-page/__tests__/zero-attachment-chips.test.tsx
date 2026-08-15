@@ -2,8 +2,9 @@ import {
   chatThreadArtifactsContract,
   chatThreadEventsContract,
   type ChatThreadArtifactFile,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
+  act,
   createEvent,
   fireEvent,
   screen,
@@ -11,17 +12,28 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { logsListContract } from "@okouai/api-contracts/contracts/logs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { HttpResponse } from "msw";
+import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
+import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { mockChatEventRows } from "./chat-event-test-helpers.ts";
+import { mockResizeObserver } from "./chat-lifecycle-test-helpers.ts";
 
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
+
+/** Mirrors the presigned object URL the API signs for a private attachment. */
+function presignedFileUrl(fileId: string): string {
+  return `https://r2.example.com/artifacts/${fileId}?sig=test`;
+}
+
+/** Matches presignedFileUrl so a preview body can be served from that URL. */
+const PRESIGNED_FILE_PATTERN = "https://r2.example.com/artifacts/:fileId";
 
 function artifactFile(
   url: string,
@@ -42,7 +54,6 @@ function artifactFile(
 
 function setupHostedSiteArtifactPreview({
   artifactUrl,
-  featureSwitches,
   filename,
   html,
   htmlUrl,
@@ -52,7 +63,6 @@ function setupHostedSiteArtifactPreview({
   runId,
 }: {
   artifactUrl?: string;
-  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   filename: string;
   html?: string;
   htmlUrl: string;
@@ -112,20 +122,25 @@ function setupHostedSiteArtifactPreview({
   detachedSetupPage({
     context,
     path,
-    ...(featureSwitches ? { featureSwitches } : {}),
   });
 }
 
 beforeEach(() => {
   context.mocks.data.userModelPreference({
     selectedModel: "claude-sonnet-4-6",
+    serviceTier: null,
     updatedAt: "2026-03-10T00:00:00Z",
   });
-});
-
-afterEach(async () => {
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
+  context.mocks.browser.blobDownload();
+  context.mocks.http.get("/api/okou/web/download-file", () => {
+    return new Response(new Uint8Array([137, 80, 78, 71]), {
+      headers: { "Content-Type": "image/png" },
+    });
+  });
+  context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+    const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
+    return HttpResponse.json({ url: presignedFileUrl(fileId) });
+  });
 });
 
 async function uploadFile(file: File): Promise<void> {
@@ -232,6 +247,40 @@ function touchPoint({
   } as Touch;
 }
 
+function zoomWheelEvent(
+  target: Element,
+  {
+    clientX,
+    clientY,
+    ctrlKey = false,
+    deltaY,
+    metaKey = false,
+  }: {
+    clientX: number;
+    clientY: number;
+    ctrlKey?: boolean;
+    deltaY: number;
+    metaKey?: boolean;
+  },
+): Event {
+  const event = createEvent.wheel(target);
+  Object.defineProperties(event, {
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+    ctrlKey: { value: ctrlKey },
+    deltaY: { value: deltaY },
+    metaKey: { value: metaKey },
+    x: { value: clientX },
+    y: { value: clientY },
+  });
+  return event;
+}
+
+function transformedScale(element: HTMLElement): number {
+  const match = element.style.transform.match(/scale\(([^)]+)\)/);
+  return Number(match?.[1]);
+}
+
 function clipboardFileItem(file: File): DataTransferItem {
   return {
     kind: "file",
@@ -261,9 +310,13 @@ async function setupBodyLinkPreviews(): Promise<void> {
   const { audio, video, image, markdown, csv, pdf, html, archive } =
     BODY_LINK_PREVIEWS;
   context.mocks.http.get(markdown, () => {
-    return new Response("# Release notes\n\nBody link rollout is ready.", {
-      headers: { "Content-Type": "text/markdown" },
-    });
+    return new Response(
+      "# Release notes\n\nBody link rollout is ready.\n\n" +
+        "```mermaid\nflowchart TD\n  A --> B\n```",
+      {
+        headers: { "Content-Type": "text/markdown" },
+      },
+    );
   });
   context.mocks.http.get(csv, () => {
     return new Response("metric,value\nactivation,87", {
@@ -454,7 +507,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens, zooms, and closes an uploaded image preview", async () => {
+  it("zooms an uploaded image preview with controls and double-click", async () => {
     await setupUploadedImagePreview();
 
     click(screen.getByLabelText("Open image preview for photo.png"));
@@ -473,9 +526,12 @@ describe("zero attachment chips", () => {
       "artifact-dialog-image-stage-content",
     );
     const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
 
     const lightboxImage = screen.getByTestId("attachment-lightbox-image");
     mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformWrapper, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
     Object.defineProperty(lightboxImage, "naturalWidth", {
       configurable: true,
       value: 1200,
@@ -484,6 +540,22 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("200%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(-200px, -150px) scale(2)",
+      );
+    });
+
+    click(screen.getByLabelText("Reset zoom"));
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
     });
 
     click(screen.getByLabelText("Zoom in"));
@@ -508,6 +580,50 @@ describe("zero attachment chips", () => {
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("resets a transformed uploaded image preview with double-click", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(screen.getByText("115%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(1.15)");
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
     });
   });
 
@@ -582,6 +698,153 @@ describe("zero attachment chips", () => {
     expect(trackpadPanEvent.defaultPrevented).toBeTruthy();
     expect(transformContent.style.transform).not.toBe(transformBeforePan);
     expect(transformContent.style.transform).toContain("scale(1.15)");
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("uses proportional trackpad zoom with capped deltas and supports Command", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformWrapper, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    const commandWheelEvent = zoomWheelEvent(transformWrapper, {
+      clientX: 400,
+      clientY: 300,
+      deltaY: -10,
+      metaKey: true,
+    });
+    fireEvent(transformWrapper, commandWheelEvent);
+
+    expect(commandWheelEvent.defaultPrevented).toBeTruthy();
+    await waitFor(() => {
+      expect(transformedScale(transformContent)).toBeCloseTo(Math.exp(0.3), 5);
+    });
+
+    const pinchWheelEvent = zoomWheelEvent(transformWrapper, {
+      clientX: 400,
+      clientY: 300,
+      ctrlKey: true,
+      deltaY: -20,
+    });
+    fireEvent(transformWrapper, pinchWheelEvent);
+
+    expect(pinchWheelEvent.defaultPrevented).toBeTruthy();
+    await waitFor(() => {
+      expect(transformedScale(transformContent)).toBeCloseTo(Math.exp(0.6), 5);
+    });
+
+    const zoomOutWheelEvent = zoomWheelEvent(transformWrapper, {
+      clientX: 400,
+      clientY: 300,
+      ctrlKey: true,
+      deltaY: 10,
+    });
+    fireEvent(transformWrapper, zoomOutWheelEvent);
+
+    expect(zoomOutWheelEvent.defaultPrevented).toBeTruthy();
+    await waitFor(() => {
+      expect(transformedScale(transformContent)).toBeCloseTo(Math.exp(0.3), 5);
+    });
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("zooms a tall image up to three times the viewport width", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformWrapper, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
+    Object.defineProperties(lightboxImage, {
+      naturalHeight: {
+        configurable: true,
+        value: 25_263,
+      },
+      naturalWidth: {
+        configurable: true,
+        value: 1179,
+      },
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "28px" });
+    });
+
+    for (let index = 0; index < 15; index += 1) {
+      const maxZoomEvent = zoomWheelEvent(transformWrapper, {
+        clientX: 400,
+        clientY: 300,
+        ctrlKey: true,
+        deltaY: -10_000,
+      });
+      fireEvent(transformWrapper, maxZoomEvent);
+      expect(maxZoomEvent.defaultPrevented).toBeTruthy();
+    }
+
+    await waitFor(() => {
+      expect(transformContent.style.transform).toContain("scale(85.7099)");
+      expect(screen.getByLabelText("Zoom in")).toBeDisabled();
+    });
+
+    const transformAtMaxZoom = transformContent.style.transform;
+    const beyondMaxZoomEvent = zoomWheelEvent(transformWrapper, {
+      clientX: 400,
+      clientY: 300,
+      ctrlKey: true,
+      deltaY: -120,
+    });
+    fireEvent(transformWrapper, beyondMaxZoomEvent);
+
+    expect(beyondMaxZoomEvent.defaultPrevented).toBeTruthy();
+    expect(transformContent.style.transform).toBe(transformAtMaxZoom);
 
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
@@ -824,7 +1087,14 @@ describe("zero attachment chips", () => {
   });
 
   it("shows user image attachments before the text bubble in chat history", async () => {
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
+    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+      expect(request.credentials).toBe("include");
+      expect(request.headers.get("authorization")).toMatch(/^Bearer /);
+      expect(new URL(request.url).searchParams.get("file_id")).toBe(
+        "attachment-photo",
+      );
+      return HttpResponse.json({ url: presignedFileUrl("attachment-photo") });
+    });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -832,13 +1102,12 @@ describe("zero attachment chips", () => {
           id: "msg-image-then-text",
           role: "user",
           content: "Review this image",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-photo",
-              filename: "photo.png",
+              type: "file",
+              fileId: "attachment-photo",
+              filenameSnapshot: "photo.png",
               contentType: "image/png",
-              size: 2048,
-              url: imageUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -849,11 +1118,20 @@ describe("zero attachment chips", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const image = await screen.findByAltText("photo.png");
+    await waitFor(() => {
+      expect(image.getAttribute("src")).toBe(
+        presignedFileUrl("attachment-photo"),
+      );
+    });
     const preview = image.closest("a");
     const text = await screen.findByText("Review this image");
     const textBubble = text.closest(".zero-chat-bubble-user");
 
     expect(preview).not.toBeNull();
+    expect(preview).toHaveAttribute(
+      "href",
+      presignedFileUrl("attachment-photo"),
+    );
     expect(textBubble).not.toBeNull();
     expect(preview?.closest(".zero-chat-bubble-user")).toBeNull();
     expect(
@@ -862,8 +1140,203 @@ describe("zero attachment chips", () => {
     ).toBeTruthy();
   });
 
-  it("keeps the user image preview frame stable while the image loads", async () => {
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/stable-photo/photo.png";
+  it("isolates one canonical attachment url between split-view threads", async () => {
+    const leftThreadId = "b0000000-0000-4000-a000-000000000053";
+    const rightThreadId = "b0000000-0000-4000-a000-000000000054";
+    const fileId = "attachment-owner-scoped-photo";
+    const ownerUrls = [
+      `https://r2.example.com/artifacts/${fileId}?sig=thread-owner-1`,
+      `https://r2.example.com/artifacts/${fileId}?sig=thread-owner-2`,
+    ] as const;
+    let nextOwnerUrl = 0;
+    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("file_id")).toBe(fileId);
+      const url = ownerUrls[Math.min(nextOwnerUrl, ownerUrls.length - 1)]!;
+      nextOwnerUrl += 1;
+      return HttpResponse.json({ url });
+    });
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: leftThreadId,
+      threadTitle: "Left attachment thread",
+    });
+    lifecycle.setThreadList([
+      {
+        id: leftThreadId,
+        title: "Left attachment thread",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+      {
+        id: rightThreadId,
+        title: "Right attachment thread",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ params, query, respond }) => {
+        if (
+          params.threadId !== leftThreadId &&
+          params.threadId !== rightThreadId
+        ) {
+          return respond(200, { rows: [] });
+        }
+        return respond(200, {
+          rows: mockChatEventRows([
+            {
+              id: `msg-${params.threadId}`,
+              threadId: params.threadId,
+              eventType: "input.prompt",
+              content: null,
+              userMessage: {
+                version: 1,
+                parts: [
+                  {
+                    type: "file",
+                    fileId,
+                    filenameSnapshot: "owner-scoped.png",
+                    contentType: "image/png",
+                  },
+                ],
+              },
+              runId: `run-${params.threadId}`,
+              seqId: 1,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ]).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${leftThreadId}?sidebar=${rightThreadId}`,
+    });
+
+    const threadRegions = await waitFor(() => {
+      const regions = screen.getAllByLabelText("Chat thread");
+      expect(regions).toHaveLength(2);
+      return regions;
+    });
+    const previews = await Promise.all(
+      threadRegions.map((region) => {
+        return within(region).findByLabelText("Preview owner-scoped.png");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        previews
+          .map((preview) => {
+            return preview.getAttribute("href");
+          })
+          .sort(),
+      ).toStrictEqual([...ownerUrls].sort());
+    });
+  });
+
+  it("replaces direct attachment preview urls with the page owner", async () => {
+    const user = userEvent.setup({ delay: null });
+    const fileId = "attachment-page-owned-photo";
+    const pageUrls = {
+      first: `https://r2.example.com/artifacts/${fileId}?sig=page-owner-1`,
+      second: `https://r2.example.com/artifacts/${fileId}?sig=page-owner-2`,
+    } as const;
+    let pageOwner: keyof typeof pageUrls = "first";
+    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("file_id")).toBe(fileId);
+      return HttpResponse.json({ url: pageUrls[pageOwner] });
+    });
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsListContract.list, ({ respond }) => {
+      return respond(200, {
+        data: [],
+        pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        filters: { statuses: [], sources: [], agents: [] },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-page-owned-photo",
+          role: "user",
+          content: "Review this image",
+          fileParts: [
+            {
+              type: "file",
+              fileId,
+              filenameSnapshot: "page-owned.png",
+              contentType: "image/png",
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const firstPreview = await screen.findByLabelText("Preview page-owned.png");
+    await waitFor(() => {
+      expect(firstPreview).toHaveAttribute("href", pageUrls.first);
+    });
+    click(firstPreview);
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "src",
+        pageUrls.first,
+      );
+    });
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    const agentsLink = await waitFor(() => {
+      const link = screen.getByText("Agents").closest("a");
+      if (!link) {
+        throw new Error("Expected the Agents navigation link");
+      }
+      return link;
+    });
+    await user.click(agentsLink);
+    await screen.findByRole("heading", { name: "Agents" });
+    pageOwner = "second";
+
+    act(() => {
+      window.history.back();
+    });
+
+    const secondPreview = await screen.findByLabelText(
+      "Preview page-owned.png",
+    );
+    await waitFor(() => {
+      expect(secondPreview).toHaveAttribute("href", pageUrls.second);
+    });
+    click(secondPreview);
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "src",
+        pageUrls.second,
+      );
+    });
+  });
+
+  it("resolves the user image preview loading state", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -871,13 +1344,12 @@ describe("zero attachment chips", () => {
           id: "msg-stable-photo",
           role: "user",
           content: "Review this image",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-stable-photo",
-              filename: "photo.png",
+              type: "file",
+              fileId: "attachment-stable-photo",
+              filenameSnapshot: "photo.png",
               contentType: "image/png",
-              size: 2048,
-              url: imageUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -892,18 +1364,9 @@ describe("zero attachment chips", () => {
     if (!preview) {
       throw new Error("Chat image preview link not found");
     }
-    const spacer = preview.querySelector('span[aria-hidden="true"]');
-    expect(preview).toHaveClass(
-      "relative",
-      "inline-flex",
-      "aspect-[10/9]",
-      "w-[50px]",
-    );
-    expect(spacer).toHaveClass("block", "h-full", "w-full");
     expect(
       within(preview).getByTestId("chat-image-preview-loading"),
-    ).toHaveClass("absolute", "inset-0");
-    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
+    ).toBeInTheDocument();
 
     fireEvent.load(image);
 
@@ -912,8 +1375,6 @@ describe("zero attachment chips", () => {
         within(preview).queryByTestId("chat-image-preview-loading"),
       ).not.toBeInTheDocument();
     });
-    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
-    expect(image).not.toHaveClass("opacity-0");
   });
 
   it("renders a canonical Slack input with the standard attachment UI", async () => {
@@ -942,22 +1403,6 @@ describe("zero attachment chips", () => {
               },
             ],
           },
-          attachFiles: [
-            {
-              id: assetId,
-              filename: "source-notes.md",
-              contentType: "text/markdown",
-              size: 256,
-              url: `/api/zero/web/download-file?file_id=${assetId}`,
-              assetRef: {
-                id: assetId,
-                classification: "input",
-                access: "private",
-                materialization: { status: "ready" },
-                provenance: { provider: "slack" },
-              },
-            },
-          ],
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -974,7 +1419,7 @@ describe("zero attachment chips", () => {
     expect(screen.getByText("Review the source notes")).toBeInTheDocument();
   });
 
-  it("shows an explicit unavailable state for a failed Slack import", async () => {
+  it("resolves a file part from its canonical identity", async () => {
     const assetId = "a0000000-0000-4000-a000-000000000052";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -1000,29 +1445,6 @@ describe("zero attachment chips", () => {
               },
             ],
           },
-          attachFiles: [
-            {
-              id: assetId,
-              filename: "expired.pdf",
-              contentType: "application/pdf",
-              size: 512,
-              url: `/api/zero/web/download-file?file_id=${assetId}`,
-              assetRef: {
-                id: assetId,
-                classification: "input",
-                access: "private",
-                materialization: {
-                  status: "failed",
-                  error: {
-                    code: "download-failed",
-                    message: "Slack no longer has this file",
-                    retryable: false,
-                  },
-                },
-                provenance: { provider: "slack" },
-              },
-            },
-          ],
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -1030,60 +1452,13 @@ describe("zero attachment chips", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const unavailable = await screen.findByRole("alert");
-    expect(unavailable).toHaveTextContent("expired.pdf");
-    expect(unavailable).toHaveTextContent("Attachment unavailable");
-    expect(unavailable).toHaveAttribute(
-      "title",
-      "Slack no longer has this file",
-    );
-    expect(
-      screen.queryByLabelText("Open pdf preview for expired.pdf"),
-    ).toBeNull();
-  });
-
-  it("renders an Agent-published attachment on an otherwise empty reply", async () => {
-    const assetId = "a0000000-0000-4000-a000-000000000053";
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-canonical-agent-output-completed",
-          role: "assistant",
-          content: null,
-          runId: "run-canonical-output",
-          runLifecycleEvent: "completed",
-          attachFiles: [
-            {
-              id: assetId,
-              filename: "final-report.pdf",
-              contentType: "application/pdf",
-              size: 4096,
-              url: "https://cdn.vm7.io/artifacts/test/final-report.pdf",
-              assetRef: {
-                id: assetId,
-                classification: "published-output",
-                access: "published",
-                materialization: { status: "ready" },
-                provenance: { provider: "agent" },
-              },
-            },
-          ],
-          createdAt: "2026-03-10T00:00:02Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
     await expect(
-      screen.findByLabelText("Open pdf preview for final-report.pdf"),
+      screen.findByLabelText("Open pdf preview for expired.pdf"),
     ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Attachment unavailable")).toBeNull();
   });
 
   it("renders canonical user video attachments at the same size as image attachments", async () => {
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/media/photo.png";
-    const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -1091,20 +1466,18 @@ describe("zero attachment chips", () => {
           id: "msg-image-video-attachments",
           role: "user",
           content: "this is the screencast",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-photo",
-              filename: "photo.png",
+              type: "file",
+              fileId: "attachment-photo",
+              filenameSnapshot: "photo.png",
               contentType: "image/png",
-              size: 2048,
-              url: imageUrl,
             },
             {
-              id: "attachment-screencast",
-              filename: "screencast.mp4",
+              type: "file",
+              fileId: "attachment-screencast",
+              filenameSnapshot: "screencast.mp4",
               contentType: "video/mp4",
-              size: 4096,
-              url: videoUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -1136,14 +1509,68 @@ describe("zero attachment chips", () => {
     expect(screen.getByText("this is the screencast")).toBeInTheDocument();
   });
 
+  it("shows user attachments above the text bubble with media and file chips on separate rows", async () => {
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-video-then-text",
+          role: "user",
+          content: "Watch this clip",
+          fileParts: [
+            {
+              type: "file",
+              fileId: "attachment-clip",
+              filenameSnapshot: "clip.mp4",
+              contentType: "video/mp4",
+            },
+            {
+              type: "file",
+              fileId: "attachment-readme",
+              filenameSnapshot: "README.md",
+              contentType: "text/markdown",
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const videoPreview = await screen.findByLabelText("Preview clip.mp4");
+    const text = await screen.findByText("Watch this clip");
+    const textBubble = text.closest(".zero-chat-bubble-user");
+    const docChip = screen.getByLabelText(
+      "Open markdown preview for README.md",
+    );
+
+    expect(textBubble).not.toBeNull();
+    expect(videoPreview.closest(".zero-chat-bubble-user")).toBeNull();
+    expect(docChip.closest(".zero-chat-bubble-user")).toBeNull();
+    expect(
+      videoPreview.compareDocumentPosition(textBubble!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      docChip.compareDocumentPosition(textBubble!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("message-media-attachments")).getByLabelText(
+        "Preview clip.mp4",
+      ),
+    ).toBe(videoPreview);
+    expect(
+      within(screen.getByTestId("message-file-attachments")).getByLabelText(
+        "Open markdown preview for README.md",
+      ),
+    ).toBe(docChip);
+  });
+
   it("opens persisted canonical audio, video, and document attachments", async () => {
-    const audioUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-audio/briefing.mp3";
-    const videoUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-video/demo.mp4";
-    const jsonUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-json/status.json";
-    context.mocks.http.get(jsonUrl, () => {
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
+      expect(params.fileId).toBe("attachment-json");
       return new Response(JSON.stringify({ status: "ready" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -1155,27 +1582,24 @@ describe("zero attachment chips", () => {
           id: "msg-attachments",
           role: "user",
           content: "Review these attachments",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-audio",
-              filename: "briefing.mp3",
+              type: "file",
+              fileId: "attachment-audio",
+              filenameSnapshot: "briefing.mp3",
               contentType: "audio/mpeg",
-              size: 1024,
-              url: audioUrl,
             },
             {
-              id: "attachment-video",
-              filename: "demo.mp4",
+              type: "file",
+              fileId: "attachment-video",
+              filenameSnapshot: "demo.mp4",
               contentType: "video/mp4",
-              size: 2048,
-              url: videoUrl,
             },
             {
-              id: "attachment-json",
-              filename: "status.json",
+              type: "file",
+              fileId: "attachment-json",
+              filenameSnapshot: "status.json",
               contentType: "application/json",
-              size: 32,
-              url: jsonUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -1242,13 +1666,8 @@ describe("zero attachment chips", () => {
   });
 
   it("opens persisted canonical csv, pdf, and html document previews", async () => {
-    const csvUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-csv/launch-metrics.csv";
-    const pdfUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-pdf/launch-plan.pdf";
-    const htmlUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-html/launch-site.html";
-    context.mocks.http.get(csvUrl, () => {
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
+      expect(params.fileId).toBe("attachment-csv");
       return new Response("metric,value\nsignups,42\nactivation,87", {
         headers: { "Content-Type": "text/csv" },
       });
@@ -1260,27 +1679,24 @@ describe("zero attachment chips", () => {
           id: "msg-document-previews",
           role: "user",
           content: "Review these document previews",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-csv",
-              filename: "launch-metrics.csv",
+              type: "file",
+              fileId: "attachment-csv",
+              filenameSnapshot: "launch-metrics.csv",
               contentType: "text/csv",
-              size: 38,
-              url: csvUrl,
             },
             {
-              id: "attachment-pdf",
-              filename: "launch-plan.pdf",
+              type: "file",
+              fileId: "attachment-pdf",
+              filenameSnapshot: "launch-plan.pdf",
               contentType: "application/pdf",
-              size: 2048,
-              url: pdfUrl,
             },
             {
-              id: "attachment-html",
-              filename: "launch-site.html",
+              type: "file",
+              fileId: "attachment-html",
+              filenameSnapshot: "launch-site.html",
               contentType: "text/html",
-              size: 4096,
-              url: htmlUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -1334,34 +1750,62 @@ describe("zero attachment chips", () => {
       "overflow-hidden",
     );
     expect(documentFrame).toHaveClass("h-full", "min-h-0");
-    expect(iframe).toHaveAttribute("src", `${pdfUrl}#navpanes=0`);
+    expect(iframe).toHaveAttribute(
+      "src",
+      `${presignedFileUrl("attachment-pdf")}#navpanes=0`,
+    );
     expect(iframe).toHaveClass("h-full", "min-h-0", "border-0");
 
-    click(screen.getByLabelText("Close"));
+    // The split view reads the same document, so it must resolve the same
+    // loadable URL rather than falling back to the canonical route.
+    click(screen.getByLabelText("Open in split view"));
 
     await waitFor(() => {
       expect(
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar-body-pdf")).toHaveAttribute(
+        "src",
+        `${presignedFileUrl("attachment-pdf")}#navpanes=0`,
+      );
+    });
+
+    click(screen.getByLabelText("Close artifact"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open html preview for launch-site.html"));
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("artifact-dialog-body-html"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
+        "src",
+        presignedFileUrl("attachment-html"),
+      );
     });
+    expect(
+      screen.queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "src",
+        presignedFileUrl("attachment-html"),
+      );
+    });
+    expect(
+      screen.queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
   });
 
   it("navigates modal image artifacts within the current run", async () => {
     const user = userEvent.setup({ delay: null });
-    const firstImageUrl =
-      "https://cdn.vm7.io/artifacts/test/image-navigation/first.png";
-    const notesUrl =
-      "https://cdn.vm7.io/artifacts/test/image-navigation/notes.md";
-    const secondImageUrl =
-      "https://cdn.vm7.io/artifacts/test/image-navigation/second.png";
+    const firstImageUrl = canonicalUserMessageFileUrl("artifact-first-image");
+    const notesUrl = canonicalUserMessageFileUrl("artifact-notes");
+    const secondImageUrl = canonicalUserMessageFileUrl("artifact-second-image");
     // A generated image artifact that lives in the same run but was NOT attached
     // to the message. It must be excluded from message-scoped navigation.
     const generatedArtifactUrl =
@@ -1408,27 +1852,24 @@ describe("zero attachment chips", () => {
           id: "msg-image-navigation",
           role: "user",
           content: "Review these images",
-          attachFiles: [
+          fileParts: [
             {
-              id: "artifact-first-image",
-              filename: "first.png",
+              type: "file",
+              fileId: "artifact-first-image",
+              filenameSnapshot: "first.png",
               contentType: "image/png",
-              size: 128,
-              url: firstImageUrl,
             },
             {
-              id: "artifact-notes",
-              filename: "notes.md",
+              type: "file",
+              fileId: "artifact-notes",
+              filenameSnapshot: "notes.md",
               contentType: "text/markdown",
-              size: 64,
-              url: notesUrl,
             },
             {
-              id: "artifact-second-image",
-              filename: "second.png",
+              type: "file",
+              fileId: "artifact-second-image",
+              filenameSnapshot: "second.png",
               contentType: "image/png",
-              size: 256,
-              url: secondImageUrl,
             },
           ],
           runId: "run-image-navigation",
@@ -1608,19 +2049,35 @@ describe("zero attachment chips", () => {
         return respond(200, { runs: [] });
       },
     );
-    mockChatLifecycle(context, {
+    const lifecycle = mockChatLifecycle(context, {
       threadId: leftThreadId,
       threadTitle: "Left image thread",
     });
+    lifecycle.setThreadList([
+      {
+        id: leftThreadId,
+        title: "Left image thread",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+      {
+        id: rightThreadId,
+        title: "Right image thread",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (query.beforeSeqId !== undefined) {
-          return respond(200, { events: [] });
-        }
-        if (query.sinceSeqId !== undefined) {
-          return respond(200, { events: [] });
-        }
         const secondImageUrl =
           params.threadId === leftThreadId
             ? leftSecondImageUrl
@@ -1628,10 +2085,10 @@ describe("zero attachment chips", () => {
               ? rightSecondImageUrl
               : undefined;
         if (!secondImageUrl) {
-          return respond(200, { events: [] });
+          return respond(200, { rows: [] });
         }
         return respond(200, {
-          events: [
+          rows: mockChatEventRows([
             {
               id: `msg-${params.threadId}`,
               threadId: params.threadId,
@@ -1641,7 +2098,9 @@ describe("zero attachment chips", () => {
               seqId: 1,
               createdAt: "2026-03-10T00:00:00Z",
             },
-          ],
+          ]).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );
@@ -1651,8 +2110,11 @@ describe("zero attachment chips", () => {
       path: `/chats/${leftThreadId}?sidebar=${rightThreadId}`,
     });
 
-    const threadRegions = await screen.findAllByLabelText("Chat thread");
-    expect(threadRegions).toHaveLength(2);
+    const threadRegions = await waitFor(() => {
+      const regions = screen.getAllByLabelText("Chat thread");
+      expect(regions).toHaveLength(2);
+      return regions;
+    });
     const leftThread = threadRegions[0];
     const rightThread = threadRegions[1];
     if (!leftThread || !rightThread) {
@@ -1846,10 +2308,6 @@ describe("zero attachment chips", () => {
 
   it("waits for artifacts before showing user message image navigation", async () => {
     const user = userEvent.setup({ delay: null });
-    const firstImageUrl =
-      "https://cdn.vm7.io/artifacts/test/user-image-navigation/first.png";
-    const secondImageUrl =
-      "https://cdn.vm7.io/artifacts/test/user-image-navigation/second.png";
     // The images the user attached are NOT part of the thread's run artifacts;
     // they resolve from the user artifacts bucket. Navigation must still work.
     const artifactsRequested = context.mocks.deferred<void>();
@@ -1866,20 +2324,18 @@ describe("zero attachment chips", () => {
           id: "msg-user-image-navigation",
           role: "user",
           content: "Here are my photos",
-          attachFiles: [
+          fileParts: [
             {
-              id: "user-first-image",
-              filename: "first.png",
+              type: "file",
+              fileId: "user-first-image",
+              filenameSnapshot: "first.png",
               contentType: "image/png",
-              size: 128,
-              url: firstImageUrl,
             },
             {
-              id: "user-second-image",
-              filename: "second.png",
+              type: "file",
+              fileId: "user-second-image",
+              filenameSnapshot: "second.png",
               contentType: "image/png",
-              size: 256,
-              url: secondImageUrl,
             },
           ],
           runId: "run-user-image-navigation",
@@ -1935,10 +2391,12 @@ describe("zero attachment chips", () => {
 
   it("keeps the modal fullscreen state while navigating images", async () => {
     const user = userEvent.setup({ delay: null });
-    const firstImageUrl =
-      "https://cdn.vm7.io/artifacts/test/fullscreen-navigation/first.png";
-    const secondImageUrl =
-      "https://cdn.vm7.io/artifacts/test/fullscreen-navigation/second.png";
+    const firstImageUrl = canonicalUserMessageFileUrl(
+      "artifact-fullscreen-first-image",
+    );
+    const secondImageUrl = canonicalUserMessageFileUrl(
+      "artifact-fullscreen-second-image",
+    );
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, {
         runs: [
@@ -1969,20 +2427,18 @@ describe("zero attachment chips", () => {
           id: "msg-fullscreen-navigation",
           role: "user",
           content: "Review these images",
-          attachFiles: [
+          fileParts: [
             {
-              id: "artifact-fullscreen-first-image",
-              filename: "first.png",
+              type: "file",
+              fileId: "artifact-fullscreen-first-image",
+              filenameSnapshot: "first.png",
               contentType: "image/png",
-              size: 128,
-              url: firstImageUrl,
             },
             {
-              id: "artifact-fullscreen-second-image",
-              filename: "second.png",
+              type: "file",
+              fileId: "artifact-fullscreen-second-image",
+              filenameSnapshot: "second.png",
               contentType: "image/png",
-              size: 256,
-              url: secondImageUrl,
             },
           ],
           runId: "run-fullscreen-navigation",
@@ -2022,15 +2478,81 @@ describe("zero attachment chips", () => {
     expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
   });
 
-  it("opens presentation HTML preview controls from chat message links", async () => {
-    const presentationUrl =
-      "https://cdn.vm7.io/artifacts/test/body-presentation/quarterly-roadmap.html";
+  it("keeps hosted presentation aliases on the legacy preview when disabled", async () => {
+    const presentationUrl = "https://legacy-roadmap.sites.vm7.io";
+    const presentationDeploymentUrl = "https://dpl-legacy-roadmap.sites.vm7.io";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-legacy-presentation",
+            files: [
+              artifactFile(presentationDeploymentUrl, {
+                aliasUrl: presentationUrl,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-legacy-presentation-artifact",
+          role: "assistant",
+          content: `[Legacy roadmap](${presentationUrl})`,
+          runId: "run-legacy-presentation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationArtifactViewport]: false,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(await screen.findByLabelText("Open html preview for Legacy roadmap"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-body-html"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    expect(
+      within(sidebar).queryByTestId("presentation-artifact-viewport"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).getByTestId("artifact-sidebar-body-html"),
+    ).not.toHaveAttribute("tabindex", "-1");
+  });
+
+  it("opens presentation HTML preview controls from hosted alias links", async () => {
+    const resizeObserver = mockResizeObserver();
+    const presentationUrl = "https://quarterly-roadmap.sites.vm7.io";
+    const presentationDeploymentUrl =
+      "https://dpl-quarterly-roadmap.sites.vm7.io";
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, {
         runs: [
           {
             runId: "run-presentation",
-            files: [artifactFile(presentationUrl)],
+            files: [
+              artifactFile(presentationDeploymentUrl, {
+                aliasUrl: presentationUrl,
+              }),
+            ],
           },
         ],
       });
@@ -2050,6 +2572,9 @@ describe("zero attachment chips", () => {
 
     detachedSetupPage({
       context,
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationArtifactViewport]: true,
+      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -2072,6 +2597,22 @@ describe("zero attachment chips", () => {
       "tabindex",
       "-1",
     );
+    const dialog = screen.getByTestId("attachment-lightbox");
+    const dialogViewport = within(dialog).getByTestId(
+      "presentation-artifact-viewport",
+    );
+    mockElementBox(dialogViewport, { height: 600, width: 960 });
+    act(() => {
+      resizeObserver.automationAll();
+    });
+    expect(
+      within(dialog).getByTestId("presentation-artifact-canvas"),
+    ).toHaveStyle({
+      height: "1080px",
+      transform: "translate(0px, 30px) scale(0.5)",
+      visibility: "visible",
+      width: "1920px",
+    });
 
     click(screen.getByLabelText("Enter fullscreen"));
 
@@ -2103,6 +2644,22 @@ describe("zero attachment chips", () => {
       "tabindex",
       "-1",
     );
+    const sidebar = screen.getByTestId("artifact-sidebar");
+    const sidebarViewport = within(sidebar).getByTestId(
+      "presentation-artifact-viewport",
+    );
+    mockElementBox(sidebarViewport, { height: 600, width: 480 });
+    act(() => {
+      resizeObserver.automationAll();
+    });
+    expect(
+      within(sidebar).getByTestId("presentation-artifact-canvas"),
+    ).toHaveStyle({
+      height: "1080px",
+      transform: "translate(0px, 165px) scale(0.25)",
+      visibility: "visible",
+      width: "1920px",
+    });
 
     click(screen.getByLabelText("Close artifact"));
 
@@ -2235,50 +2792,9 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens only the dialog download menu when the same artifact is in split view", async () => {
-    const user = userEvent.setup({ delay: null });
-    setupHostedSiteArtifactPreview({
-      filename: "split-dialog-download.html",
-      htmlUrl: "https://split-dialog-download.sites.vm7.io",
-      label: "Split dialog download",
-      runId: "run-split-dialog-download",
-    });
-
-    await user.click(
-      await screen.findByLabelText(
-        "Open html preview for Split dialog download",
-      ),
-    );
-    await user.click(await screen.findByLabelText("Open in split view"));
-
-    const sidebar = await screen.findByTestId("artifact-sidebar");
-    await user.click(
-      await screen.findByLabelText(
-        "Open html preview for Split dialog download",
-      ),
-    );
-    const lightbox = await screen.findByTestId("attachment-lightbox");
-    const sidebarDownload = within(sidebar).getByLabelText("Download artifact");
-    const dialogDownload = within(lightbox).getByLabelText("Download options");
-
-    await user.click(dialogDownload);
-
-    await waitFor(() => {
-      expect(dialogDownload).toHaveAttribute("aria-expanded", "true");
-      expect(sidebarDownload).toHaveAttribute("aria-expanded", "false");
-      expect(screen.getAllByRole("menu")).toHaveLength(1);
-      expect(
-        screen.getAllByTestId("artifact-download-menu-dismiss-layer"),
-      ).toHaveLength(1);
-    });
-  });
-
   it("reopens the artifact already in split view without stacking a dialog", async () => {
     const user = userEvent.setup({ delay: null });
     setupHostedSiteArtifactPreview({
-      featureSwitches: {
-        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
-      },
       filename: "split-dialog-download.html",
       htmlUrl: "https://split-dialog-download.sites.vm7.io",
       label: "Split dialog download",
@@ -2326,9 +2842,6 @@ describe("zero attachment chips", () => {
       url: "https://example.com/photo.png",
     });
     setupHostedSiteArtifactPreview({
-      featureSwitches: {
-        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
-      },
       filename: "composer-guard.html",
       htmlUrl: "https://composer-guard.sites.vm7.io",
       label: "Composer guard",
@@ -2387,9 +2900,6 @@ describe("zero attachment chips", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
-      },
     });
 
     await user.click(await screen.findByLabelText("Preview demo.mp4"));
@@ -2502,7 +3012,137 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("renders short artifact video urls and links as preview cards", async () => {
+    const bareVideoUrl = "https://cdn.vm7.io/artifacts/0123456789.mp4";
+    const linkedVideoUrl = "https://cdn.vm7.io/artifacts/abcdefghij.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-short-artifact-video-links",
+          role: "assistant",
+          content: `${bareVideoUrl}\n[Generated clip](${linkedVideoUrl})`,
+          runId: "run-short-artifact-video-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 0123456789.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
+  });
+
+  it("requires complete urls for flat artifact preview cards", async () => {
+    const incompletePath = "artifacts/97ngzkxdyn.mp4";
+    const rootRelativePath = "/artifacts/97ngzkxdyn.mp4";
+    const completeUrl = "https://cdn.vm7.io/artifacts/97ngzkxdyn.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-incomplete-short-artifact-video-links",
+          role: "assistant",
+          content: `${incompletePath}\n${rootRelativePath}\n${completeUrl}`,
+          runId: "run-incomplete-short-artifact-video-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 97ngzkxdyn.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Preview 97ngzkxdyn.mp4")).toHaveLength(1);
+    expect(
+      screen.getByText(incompletePath, { exact: false }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(rootRelativePath, { exact: false }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders other short artifact urls with their preview ui", async () => {
+    const urls = {
+      audio: "https://cdn.vm7.io/artifacts/0000000001.mp3",
+      markdown: "https://cdn.vm7.io/artifacts/0000000002.md",
+      text: "https://cdn.vm7.io/artifacts/0000000003.txt",
+      json: "https://cdn.vm7.io/artifacts/0000000004.json",
+      csv: "https://cdn.vm7.io/artifacts/0000000005.csv",
+      pdf: "https://cdn.vm7.io/artifacts/0000000006.pdf",
+      html: "https://cdn.vm7.io/artifacts/0000000007.html",
+      file: "https://cdn.vm7.io/artifacts/0000000008.bin",
+      image: "https://cdn.vm7.io/artifacts/0000000009.png",
+    } as const;
+    context.mocks.http.get(urls.markdown, () => {
+      return new Response("# Notes", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    context.mocks.http.get(urls.text, () => {
+      return new Response("Transcript", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    context.mocks.http.get(urls.json, () => {
+      return new Response('{"status":"ready"}', {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.http.get(urls.csv, () => {
+      return new Response("metric,value\nactivation,87", {
+        headers: { "Content-Type": "text/csv" },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-other-short-artifact-links",
+          role: "assistant",
+          content: `${urls.audio}\n[Notes](${urls.markdown})\n${urls.text}\n[Status](${urls.json})\n${urls.csv}\n[Plan](${urls.pdf})\n[Short site](${urls.html})\n${urls.file}\n${urls.image}`,
+          runId: "run-other-short-artifact-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Open audio preview for 0000000001.mp3"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open markdown preview for 0000000002.md"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open text preview for 0000000003.txt"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open json preview for 0000000004.json"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open csv preview for 0000000005.csv"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open pdf preview for 0000000006.pdf"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open html preview for Short site"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Download 0000000008.bin"),
+    ).toBeInTheDocument();
+    expect(screen.getByAltText("0000000009.png")).toBeInTheDocument();
+  });
+
   it("opens document previews parsed from chat message links", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
     await setupBodyLinkPreviews();
 
     click(screen.getByLabelText("Open markdown preview for release-notes.md"));
@@ -2513,6 +3153,11 @@ describe("zero attachment chips", () => {
         screen.getByText("Body link rollout is ready."),
       ).toBeInTheDocument();
     });
+    const diagramUrl = (await screen.findByAltText("Diagram")).getAttribute(
+      "src",
+    );
+    expect(diagramUrl).toContain("blob:mock-download-");
+    expect(objectUrls.revokedUrls).not.toContain(diagramUrl);
 
     click(screen.getByLabelText("Close"));
 
@@ -2520,7 +3165,9 @@ describe("zero attachment chips", () => {
       expect(
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
+      expect(objectUrls.revokedUrls).toContain(diagramUrl);
     });
+    expect(context.signal.aborted).toBeFalsy();
 
     click(screen.getByLabelText("Open csv preview for launch-metrics.csv"));
 
@@ -2598,19 +3245,10 @@ describe("zero attachment chips", () => {
     if (!preview) {
       throw new Error("Markdown image preview button not found");
     }
-    const spacer = preview.querySelector('span[aria-hidden="true"]');
-    expect(preview).toHaveClass(
-      "relative",
-      "inline-flex",
-      "aspect-[10/9]",
-      "w-[200px]",
-    );
-    expect(spacer).toHaveClass("block", "h-full", "w-full");
+    expect(image).toHaveAttribute("src", imageUrl);
     expect(
       within(preview).getByTestId("markdown-image-preview-loading"),
-    ).toHaveClass("absolute", "inset-0");
-    expect(image).toHaveAttribute("src", imageUrl);
-    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
+    ).toBeInTheDocument();
 
     fireEvent.load(image);
 
@@ -2619,8 +3257,6 @@ describe("zero attachment chips", () => {
         within(preview).queryByTestId("markdown-image-preview-loading"),
       ).not.toBeInTheDocument();
     });
-    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
-    expect(image).not.toHaveClass("opacity-0");
     click(preview);
 
     const lightbox = await screen.findByTestId("attachment-lightbox");
@@ -2652,25 +3288,35 @@ describe("zero attachment chips", () => {
     expect(screen.queryByAltText("1280x720")).toBeNull();
   });
 
-  it("opens canonical markdown and text previews, shares a document link, and reports download failures", async () => {
-    const releaseNotesUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-markdown/release-notes.md";
-    const transcriptUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-text/transcript.txt";
-    const archiveUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-file/archive.bin";
+  it("opens canonical text previews and downloads a private presentation from its presigned url", async () => {
+    const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
+    const browser = context.mocks.browser.blobDownload();
     context.mocks.browser.clipboardWriteText();
-    context.mocks.http.get(releaseNotesUrl, () => {
-      return new Response("# Release notes\n\nThe rollout is ready.", {
-        headers: { "Content-Type": "text/markdown" },
-      });
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
+      const fileId = params.fileId;
+      if (fileId === "attachment-markdown") {
+        return new Response("# Release notes\n\nThe rollout is ready.", {
+          headers: { "Content-Type": "text/markdown" },
+        });
+      }
+      if (fileId === "attachment-text") {
+        return new Response("Meeting transcript\nDecision: ship", {
+          headers: { "Content-Type": "text/plain" },
+        });
+      }
+      if (fileId === "attachment-presentation") {
+        return new Response("presentation bytes", {
+          headers: {
+            "Content-Type":
+              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          },
+        });
+      }
+      return new Response(null, { status: 500 });
     });
-    context.mocks.http.get(transcriptUrl, () => {
-      return new Response("Meeting transcript\nDecision: ship", {
-        headers: { "Content-Type": "text/plain" },
-      });
-    });
-    context.mocks.http.get(archiveUrl, () => {
+    // Guard against regressing to the canonical route, which needs an
+    // Authorization header that the download fetch does not carry.
+    context.mocks.http.get("/api/okou/web/download-file", () => {
       return new Response(null, { status: 500 });
     });
     mockChatLifecycle(context, {
@@ -2680,27 +3326,25 @@ describe("zero attachment chips", () => {
           id: "msg-text-previews",
           role: "user",
           content: "Review these text attachments",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-markdown",
-              filename: "release-notes.md",
+              type: "file",
+              fileId: "attachment-markdown",
+              filenameSnapshot: "release-notes.md",
               contentType: "text/markdown",
-              size: 42,
-              url: releaseNotesUrl,
             },
             {
-              id: "attachment-text",
-              filename: "transcript.txt",
+              type: "file",
+              fileId: "attachment-text",
+              filenameSnapshot: "transcript.txt",
               contentType: "text/plain",
-              size: 33,
-              url: transcriptUrl,
             },
             {
-              id: "attachment-file",
-              filename: "archive.bin",
-              contentType: "application/octet-stream",
-              size: 4096,
-              url: archiveUrl,
+              type: "file",
+              fileId: "attachment-presentation",
+              filenameSnapshot: "quarterly-plan.pptx",
+              contentType:
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -2720,7 +3364,9 @@ describe("zero attachment chips", () => {
       expect(
         screen.getByLabelText("Open text preview for transcript.txt"),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Download quarterly-plan.pptx"),
+      ).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open markdown preview for release-notes.md"));
@@ -2763,10 +3409,15 @@ describe("zero attachment chips", () => {
       ).not.toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Download archive.bin"));
+    click(screen.getByLabelText("Download quarterly-plan.pptx"));
 
     await waitFor(() => {
-      expect(screen.getByText("Download failed")).toBeInTheDocument();
+      expect(browser.downloads).toHaveLength(1);
     });
+    expect(browser.downloads[0]).toMatchObject({
+      filename: "quarterly-plan.pptx",
+      blob: expect.any(Blob),
+    });
+    expect(screen.queryByText("Download failed")).not.toBeInTheDocument();
   });
 });

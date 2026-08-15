@@ -14,7 +14,7 @@ use super::errors::{
     channel_detached_message, error_or_unknown, protocol_disconnect_reason, protocol_error_message,
 };
 use super::state::ConnState;
-use super::transport::{WsRead, WsTransport, connect_pending};
+use super::transport::{TransportCloseTracker, WsRead, WsTransport, connect_pending};
 
 pub(super) async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Error> {
     while let Some(frame) = ws_read.next().await {
@@ -171,9 +171,10 @@ pub(crate) async fn connect_and_attach(
     channel: &str,
     channel_params: Option<&HashMap<String, String>>,
     timing: &TimingConfig,
+    close_tracker: TransportCloseTracker,
 ) -> Result<(WsTransport, ConnState), Error> {
     let ws_url = build_ws_url(realtime_host, &token.token, None)?;
-    let mut transport = connect_pending(&ws_url, timing.close_timeout).await?;
+    let mut transport = connect_pending(&ws_url, timing.close_timeout, close_tracker).await?;
     let connected_msg = wait_for_connected(transport.read_mut()?).await?;
     let mut conn_state = ConnState::from_connected(&connected_msg, token, timing);
     let encoded = encode_attach_for_channel(channel, channel_params, None, AttachMode::Clean)?;

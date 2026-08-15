@@ -1,35 +1,34 @@
-import { useLastResolved, useGet, useSet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { Input } from "@vm0/ui/components/ui/input";
-import { Button } from "@vm0/ui/components/ui/button";
-import { CopyButton } from "@vm0/ui/components/ui/copy-button";
+import { Input } from "@okouai/ui/components/ui/input";
+import { Button } from "@okouai/ui/components/ui/button";
+import { CopyButton } from "@okouai/ui/components/ui/copy-button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui/components/ui/select";
+} from "@okouai/ui/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connector-config";
+} from "@okouai/ui/components/ui/dialog";
+import type { ConnectorDeviceAuthStartOptions } from "@okouai/connectors/connector-config";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import type { FormEvent, ReactElement } from "react";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogStartOption,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
-  allConnectorCatalogItems$,
   connectFlowConnectorSlug$,
   pollingOAuthAuthCodeConnectorSlug$,
   connectorExternalCodeState$,
@@ -51,7 +50,6 @@ import {
   setManualGrantFormValue$,
   clearManualGrantForm$,
   manualGrantFormValuesFor$,
-  selectedConnectorSlug$,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
   hasConnectorStatusBrowserAuthGrant,
@@ -191,7 +189,6 @@ type ConnectMethodContentProps = ConnectModalContentProps & {
   externalCodeCompleting: boolean;
   manualGrantSubmitting: boolean;
   noAuthSubmitting: boolean;
-  signal: AbortSignal;
 };
 
 type ConnectMethodSharedContentProps = Omit<
@@ -411,13 +408,12 @@ function OAuthAuthCodeConnectButton({
   authorizeVisibleAgentsOnConnect,
   agentId,
   connectOAuthAuthCodeAndSettle,
-  signal,
 }: ConnectModalContentProps & {
   method: PublicConnectorCatalogAuthMethodDetail;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
-  signal: AbortSignal;
 }) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
   return (
     <Button
       variant="outline"
@@ -459,7 +455,6 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
       onSuccess={props.onSuccess}
       authorizeVisibleAgentsOnConnect={props.authorizeVisibleAgentsOnConnect}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
-      signal={props.signal}
     />
   );
 }
@@ -521,7 +516,7 @@ function OAuthDeviceAuthCodePanel({
           <CopyButton
             type="button"
             text={state.userCode}
-            className="-m-1 p-1.5 hover:bg-accent"
+            className="-m-1 p-1.5 hover:bg-state-hover"
           />
         </div>
       </div>
@@ -740,6 +735,7 @@ function OAuthDeviceAuthStartContent({
 
 function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
   const state = useGet(connectorOAuthDeviceAuthState$);
   const openVerificationPage = useSet(
     openConnectorOAuthDeviceAuthVerificationPage$,
@@ -795,7 +791,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
           effectiveStartOptionValues,
         ),
       },
-      props.signal,
+      signal,
     );
   });
 
@@ -959,7 +955,7 @@ function ExternalCodePendingContent({
         <CopyButton
           type="button"
           text={current.authorizationUrl}
-          className="p-2 hover:bg-accent"
+          className="p-2 hover:bg-state-hover"
         />
       </div>
       <label className="sr-only" htmlFor="connector-external-code-input">
@@ -1004,6 +1000,7 @@ function ExternalCodePendingContent({
 
 function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
   const state = useGet(connectorExternalCodeState$);
   const setCode = useSet(setConnectorExternalCodeAuthorizationCode$);
   const openAuthorizationPage = useSet(
@@ -1023,7 +1020,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         authMethod: props.authMethod,
         ...(props.agentId ? { agentId: props.agentId } : {}),
       },
-      props.signal,
+      signal,
     );
   });
 
@@ -1040,7 +1037,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
       },
-      props.signal,
+      signal,
     );
   });
 
@@ -1108,6 +1105,7 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
 
 function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
   const enable = onDomEventFn(async () => {
     await props.connectNoAuthAndSettle(
       {
@@ -1120,7 +1118,7 @@ function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
       },
-      props.signal,
+      signal,
     );
   });
 
@@ -1280,7 +1278,6 @@ function StandardConnectMethodsContent({
   externalCodeCompleting,
   manualGrantSubmitting,
   noAuthSubmitting,
-  signal,
   entries,
 }: ConnectModalContentProps & {
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
@@ -1292,7 +1289,6 @@ function StandardConnectMethodsContent({
   externalCodeCompleting: boolean;
   manualGrantSubmitting: boolean;
   noAuthSubmitting: boolean;
-  signal: AbortSignal;
   entries: readonly ConnectMethodContentEntry[];
 }) {
   return (
@@ -1314,7 +1310,6 @@ function StandardConnectMethodsContent({
           externalCodeCompleting,
           manualGrantSubmitting,
           noAuthSubmitting,
-          signal,
         }}
       />
     </div>
@@ -1439,7 +1434,6 @@ function ConnectModalContent({
       externalCodeCompleting={externalCodeCompleting}
       manualGrantSubmitting={manualGrantSubmitting}
       noAuthSubmitting={noAuthSubmitting}
-      signal={pageSignal}
       entries={entries}
     />
   );
@@ -1450,25 +1444,19 @@ function ConnectModalContent({
 // ---------------------------------------------------------------------------
 
 export function ConnectModal({
+  item,
   onClose,
   onSuccess,
   authorizeVisibleAgentsOnConnect = false,
-  selectedConnectorSlug: selectedConnectorSlugOverride,
   agentId,
 }: {
+  item: PlatformConnectorCatalogStatusItem;
   onClose: () => void;
   onSuccess?: () => void | Promise<void>;
   authorizeVisibleAgentsOnConnect?: boolean;
-  selectedConnectorSlug?: ConnectorSlug | null;
   agentId?: string;
 }) {
   useTranslation();
-  const globalSelectedConnectorSlug = useGet(selectedConnectorSlug$);
-  const selectedConnectorSlug =
-    selectedConnectorSlugOverride === undefined
-      ? globalSelectedConnectorSlug
-      : selectedConnectorSlugOverride;
-  const connectorCatalogItems = useLastResolved(allConnectorCatalogItems$);
   const clearConnectorOAuthDeviceAuth = useSet(clearConnectorOAuthDeviceAuth$);
   const clearConnectorExternalCode = useSet(clearConnectorExternalCode$);
   const connectFlowConnectorSlug = useGet(connectFlowConnectorSlug$);
@@ -1476,13 +1464,7 @@ export function ConnectModal({
   const connectorOAuthDeviceAuthState = useGet(connectorOAuthDeviceAuthState$);
   const connectorExternalCodeState = useGet(connectorExternalCodeState$);
 
-  const item = connectorCatalogItems?.find((catalogItem) => {
-    return catalogItem.slug === selectedConnectorSlug;
-  });
-
-  if (!selectedConnectorSlug || !item) {
-    return null;
-  }
+  const selectedConnectorSlug = item.slug;
 
   const connectFlowActive =
     connectFlowConnectorSlug === selectedConnectorSlug ||
@@ -1499,7 +1481,15 @@ export function ConnectModal({
   return (
     <Dialog
       open
-      onOpenChange={(open) => {
+      onOpenChange={(open, eventDetails) => {
+        if (
+          !open &&
+          connectFlowActive &&
+          eventDetails.reason === "outside-press"
+        ) {
+          eventDetails.cancel();
+          return;
+        }
         if (!open) {
           clearConnectorOAuthDeviceAuth();
           clearConnectorExternalCode();
@@ -1507,15 +1497,7 @@ export function ConnectModal({
         }
       }}
     >
-      <DialogContent
-        className="max-w-md"
-        aria-describedby={undefined}
-        onInteractOutside={(event) => {
-          if (connectFlowActive) {
-            event.preventDefault();
-          }
-        }}
-      >
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">

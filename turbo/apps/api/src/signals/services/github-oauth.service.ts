@@ -1,31 +1,30 @@
 import { Buffer } from "node:buffer";
-import {
-  createHmac,
-  createSign,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHmac, createSign, timingSafeEqual } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
-import { buildConnectorAuthCodeAuthorizationUrlWithMethod } from "@vm0/connectors/auth-providers";
-import type { AuthUrlResult } from "@vm0/connectors/auth-providers/provider-flow-types";
+import { buildConnectorAuthCodeAuthorizationUrlWithMethod } from "@okouai/connectors/auth-providers";
+import type { AuthUrlResult } from "@okouai/connectors/auth-providers/provider-flow-types";
 import {
   resolveConnectorAuthClient,
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
-} from "@vm0/connectors/connector-auth-method";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
-import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { connectors } from "@vm0/db/schema/connector";
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+} from "@okouai/connectors/connector-auth-method";
+import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
+import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { connectors } from "@okouai/db/schema/connector";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
+import { githubUserLinks } from "@okouai/db/schema/github-user-link";
 
 import type { Db } from "../external/db";
 import { safeJsonParse, tapError } from "../utils";
-import { now, nowDate } from "../../lib/time";
+import {
+  connectorOAuthStateExpiresAt,
+  generateConnectorOAuthState,
+} from "../../lib/connector-oauth-state";
+import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { encryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -33,7 +32,6 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 const L = logger("GithubOAuth");
 const INSTALLATION_ID_RE = /^\d+$/;
 const MAX_GITHUB_CONNECT_AGE_SECONDS = 10 * 60;
-const GITHUB_CONNECT_OAUTH_STATE_TTL_SECONDS = 15 * 60;
 const GITHUB_OAUTH_AUTH_METHOD = "oauth";
 
 interface AppInstallation {
@@ -122,7 +120,10 @@ function createAppJwt(appId: string, privateKeyPemOrBase64: string): string {
   return `${signingInput}.${signature}`;
 }
 
-function githubHeaders(appId: string, privateKey: string): HeadersInit {
+function githubHeaders(
+  appId: string,
+  privateKey: string,
+): Record<string, string> {
   return {
     Authorization: `Bearer ${createAppJwt(appId, privateKey)}`,
     Accept: "application/vnd.github+json",
@@ -130,14 +131,16 @@ function githubHeaders(appId: string, privateKey: string): HeadersInit {
   };
 }
 
-async function listGithubAppInstallations(args: {
-  readonly appId: string;
-  readonly privateKey: string;
-  readonly signal: AbortSignal;
-}): Promise<readonly AppInstallation[]> {
+async function listGithubAppInstallations(
+  args: {
+    readonly appId: string;
+    readonly privateKey: string;
+  },
+  signal: AbortSignal,
+): Promise<readonly AppInstallation[]> {
   const response = await fetch("https://api.github.com/app/installations", {
     headers: githubHeaders(args.appId, args.privateKey),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -150,18 +153,20 @@ async function listGithubAppInstallations(args: {
   return (await response.json()) as AppInstallation[];
 }
 
-export async function getGithubInstallationInfo(args: {
-  readonly appId: string;
-  readonly privateKey: string;
-  readonly installationId: string;
-  readonly signal: AbortSignal;
-}): Promise<GitHubInstallationInfo> {
+export async function getGithubInstallationInfo(
+  args: {
+    readonly appId: string;
+    readonly privateKey: string;
+    readonly installationId: string;
+  },
+  signal: AbortSignal,
+): Promise<GitHubInstallationInfo> {
   const installationId = validateInstallationId(args.installationId);
   const response = await fetch(
     `https://api.github.com/app/installations/${installationId}`,
     {
       headers: githubHeaders(args.appId, args.privateKey),
-      signal: args.signal,
+      signal,
     },
   );
 
@@ -187,19 +192,21 @@ export async function getGithubInstallationInfo(args: {
   };
 }
 
-export async function getGithubInstallationAccessToken(args: {
-  readonly appId: string;
-  readonly privateKey: string;
-  readonly installationId: string;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly token: string; readonly expiresAt: string }> {
+export async function getGithubInstallationAccessToken(
+  args: {
+    readonly appId: string;
+    readonly privateKey: string;
+    readonly installationId: string;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly token: string; readonly expiresAt: string }> {
   const installationId = validateInstallationId(args.installationId);
   const response = await fetch(
     `https://api.github.com/app/installations/${installationId}/access_tokens`,
     {
       method: "POST",
       headers: githubHeaders(args.appId, args.privateKey),
-      signal: args.signal,
+      signal,
     },
   );
 
@@ -293,7 +300,7 @@ function githubConnectSignaturePayload(args: {
   ].join(":");
 }
 
-export function signGithubConnectParams(args: {
+function signGithubConnectParams(args: {
   readonly installationId: string;
   readonly githubUserId: string;
   readonly timestamp: number;
@@ -395,20 +402,18 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
 }
 
-function generateConnectorOAuthState(): string {
-  return randomBytes(32).toString("hex");
-}
-
-export async function buildGithubUserConnectAuthorizationUrl(args: {
-  readonly db: Db;
-  readonly vm0UserId: string;
-  readonly orgId: string;
-  readonly origin: string;
-  readonly authMethodId: ConnectorAuthMethodId;
-  readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly readEnv: ConnectorEnvReader;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+export async function buildGithubUserConnectAuthorizationUrl(
+  args: {
+    readonly db: Db;
+    readonly vm0UserId: string;
+    readonly orgId: string;
+    readonly origin: string;
+    readonly authMethodId: ConnectorAuthMethodId;
+    readonly method: ConnectorAuthMethodRuntimeConfig;
+    readonly readEnv: ConnectorEnvReader;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   if (args.method.grant.kind !== "auth-code" || !args.method.client) {
     return null;
   }
@@ -442,11 +447,9 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
     redirectUri,
     codeVerifier: authResult.codeVerifier,
     oauthContext: authResult.oauthContext,
-    expiresAt: new Date(
-      nowDate().getTime() + GITHUB_CONNECT_OAUTH_STATE_TTL_SECONDS * 1000,
-    ),
+    expiresAt: connectorOAuthStateExpiresAt(),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return authResult.url;
 }
@@ -517,13 +520,15 @@ export async function isGithubOauthStateSignatureValid(args: {
   return signaturesMatch(args.state.sig, legacyExpectedSig);
 }
 
-export async function linkGithubVm0User(args: {
-  readonly db: Db;
-  readonly installRecordId: string;
-  readonly vm0UserId: string;
-  readonly knownGithubUserId?: string | null;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+export async function linkGithubVm0User(
+  args: {
+    readonly db: Db;
+    readonly installRecordId: string;
+    readonly vm0UserId: string;
+    readonly knownGithubUserId?: string | null;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   let githubUserId = args.knownGithubUserId ?? null;
 
   if (!githubUserId) {
@@ -537,7 +542,7 @@ export async function linkGithubVm0User(args: {
         ),
       )
       .limit(1);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     githubUserId = connector?.externalId ?? null;
   }
@@ -554,7 +559,7 @@ export async function linkGithubVm0User(args: {
         eq(githubUserLinks.vm0UserId, args.vm0UserId),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const [link] = await args.db
     .insert(githubUserLinks)
@@ -565,16 +570,18 @@ export async function linkGithubVm0User(args: {
     })
     .onConflictDoNothing()
     .returning({ githubUserId: githubUserLinks.githubUserId });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return link?.githubUserId ?? null;
 }
 
-export async function loadActiveGithubInstallationForOrg(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly id: string } | null> {
+export async function loadActiveGithubInstallationForOrg(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly id: string } | null> {
   const [installation] = await args.db
     .select({ id: githubInstallations.id })
     .from(githubInstallations)
@@ -585,17 +592,19 @@ export async function loadActiveGithubInstallationForOrg(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return installation ?? null;
 }
 
-export async function tryLinkGithubFromLocalRecord(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly vm0UserId: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+export async function tryLinkGithubFromLocalRecord(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly vm0UserId: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const [existing] = await args.db
     .select({
       id: githubInstallations.id,
@@ -609,18 +618,20 @@ export async function tryLinkGithubFromLocalRecord(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!existing) {
     return false;
   }
 
-  const githubUserId = await linkGithubVm0User({
-    db: args.db,
-    installRecordId: existing.id,
-    vm0UserId: args.vm0UserId,
-    signal: args.signal,
-  });
+  const githubUserId = await linkGithubVm0User(
+    {
+      db: args.db,
+      installRecordId: existing.id,
+      vm0UserId: args.vm0UserId,
+    },
+    signal,
+  );
 
   if (!githubUserId) {
     return false;
@@ -631,24 +642,26 @@ export async function tryLinkGithubFromLocalRecord(args: {
       .update(githubInstallations)
       .set({ adminGithubUserId: githubUserId })
       .where(eq(githubInstallations.id, existing.id));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
 
   return true;
 }
 
-export async function loadComposeFeatureSwitchContext(args: {
-  readonly db: Db;
-  readonly composeId: string;
-  readonly userId?: string | null;
-  readonly signal: AbortSignal;
-}): Promise<FeatureSwitchContext> {
+export async function loadComposeFeatureSwitchContext(
+  args: {
+    readonly db: Db;
+    readonly composeId: string;
+    readonly userId?: string | null;
+  },
+  signal: AbortSignal,
+): Promise<FeatureSwitchContext> {
   const [compose] = await args.db
     .select({ orgId: agentComposes.orgId, userId: agentComposes.userId })
     .from(agentComposes)
     .where(eq(agentComposes.id, args.composeId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!compose) {
     throw new Error(`Agent compose not found: composeId=${args.composeId}`);
@@ -661,12 +674,14 @@ export async function loadComposeFeatureSwitchContext(args: {
   );
 }
 
-export async function resolveGithubOauthOrgId(args: {
-  readonly db: Db;
-  readonly orgId: string | null;
-  readonly composeId: string;
-  readonly signal: AbortSignal;
-}): Promise<string> {
+export async function resolveGithubOauthOrgId(
+  args: {
+    readonly db: Db;
+    readonly orgId: string | null;
+    readonly composeId: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   if (args.orgId) {
     return args.orgId;
   }
@@ -676,7 +691,7 @@ export async function resolveGithubOauthOrgId(args: {
     .from(agentComposes)
     .where(eq(agentComposes.id, args.composeId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!compose) {
     throw new Error(`Agent compose not found: composeId=${args.composeId}`);
@@ -685,21 +700,25 @@ export async function resolveGithubOauthOrgId(args: {
   return compose.orgId;
 }
 
-export async function tryLinkGithubFromRemoteInstallations(args: {
-  readonly db: Db;
-  readonly appId: string;
-  readonly privateKey: string;
-  readonly orgId: string | null;
-  readonly vm0UserId: string;
-  readonly composeId: string | null;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+export async function tryLinkGithubFromRemoteInstallations(
+  args: {
+    readonly db: Db;
+    readonly appId: string;
+    readonly privateKey: string;
+    readonly orgId: string | null;
+    readonly vm0UserId: string;
+    readonly composeId: string | null;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const installations = await tapError(
-    listGithubAppInstallations({
-      appId: args.appId,
-      privateKey: args.privateKey,
-      signal: args.signal,
-    }),
+    listGithubAppInstallations(
+      {
+        appId: args.appId,
+        privateKey: args.privateKey,
+      },
+      signal,
+    ),
     (error) => {
       L.warn("Failed to list app installations", { error });
     },
@@ -707,7 +726,7 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
   if (!installations) {
     return false;
   }
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (installations.length === 0) {
     return false;
@@ -724,18 +743,20 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
       .from(githubInstallations)
       .where(eq(githubInstallations.installationId, ghInstallationId))
       .limit(1);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     if (existing) {
       if (args.orgId && existing.orgId !== args.orgId) {
         continue;
       }
-      const linked = await linkGithubVm0User({
-        db: args.db,
-        installRecordId: existing.id,
-        vm0UserId: args.vm0UserId,
-        signal: args.signal,
-      });
+      const linked = await linkGithubVm0User(
+        {
+          db: args.db,
+          installRecordId: existing.id,
+          vm0UserId: args.vm0UserId,
+        },
+        signal,
+      );
       return linked !== null;
     }
 
@@ -750,27 +771,33 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
   if (!args.composeId) {
     return false;
   }
-  const orgId = await resolveGithubOauthOrgId({
-    db: args.db,
-    orgId: args.orgId,
-    composeId: args.composeId,
-    signal: args.signal,
-  });
-  const featureSwitchContext = await loadComposeFeatureSwitchContext({
-    db: args.db,
-    composeId: args.composeId,
-    userId: args.vm0UserId,
-    signal: args.signal,
-  });
+  const orgId = await resolveGithubOauthOrgId(
+    {
+      db: args.db,
+      orgId: args.orgId,
+      composeId: args.composeId,
+    },
+    signal,
+  );
+  const featureSwitchContext = await loadComposeFeatureSwitchContext(
+    {
+      db: args.db,
+      composeId: args.composeId,
+      userId: args.vm0UserId,
+    },
+    signal,
+  );
 
   const ghInstallationId = String(ghInstall.id);
-  const { token } = await getGithubInstallationAccessToken({
-    appId: args.appId,
-    privateKey: args.privateKey,
-    installationId: ghInstallationId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const { token } = await getGithubInstallationAccessToken(
+    {
+      appId: args.appId,
+      privateKey: args.privateKey,
+      installationId: ghInstallationId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
 
   const adminGithubUserId =
     ghInstall.account.type === "User" ? String(ghInstall.account.id) : null;
@@ -792,7 +819,7 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
       defaultComposeId: args.composeId,
     })
     .returning({ id: githubInstallations.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!newInstall) {
     L.error("Failed to create GitHub installation record", {
@@ -801,23 +828,27 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
     return false;
   }
 
-  await linkGithubVm0User({
-    db: args.db,
-    installRecordId: newInstall.id,
-    vm0UserId: args.vm0UserId,
-    knownGithubUserId: adminGithubUserId,
-    signal: args.signal,
-  });
+  await linkGithubVm0User(
+    {
+      db: args.db,
+      installRecordId: newInstall.id,
+      vm0UserId: args.vm0UserId,
+      knownGithubUserId: adminGithubUserId,
+    },
+    signal,
+  );
 
   return true;
 }
 
-export async function findGithubInstallationByInstallationId(args: {
-  readonly db: Db;
-  readonly installationId: string;
-  readonly orgId: string | null;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly id: string } | null> {
+export async function findGithubInstallationByInstallationId(
+  args: {
+    readonly db: Db;
+    readonly installationId: string;
+    readonly orgId: string | null;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly id: string } | null> {
   const filters = [eq(githubInstallations.installationId, args.installationId)];
   if (args.orgId) {
     filters.push(eq(githubInstallations.orgId, args.orgId));
@@ -828,21 +859,23 @@ export async function findGithubInstallationByInstallationId(args: {
     .from(githubInstallations)
     .where(and(...filters))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return existing ?? null;
 }
 
-export async function createOrActivateGithubInstallation(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly installationId: string;
-  readonly installInfo: GitHubInstallationInfo;
-  readonly encryptedAccessToken: string;
-  readonly adminGithubUserId: string | null;
-  readonly composeId: string;
-  readonly signal: AbortSignal;
-}): Promise<string> {
+export async function createOrActivateGithubInstallation(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly installationId: string;
+    readonly installInfo: GitHubInstallationInfo;
+    readonly encryptedAccessToken: string;
+    readonly adminGithubUserId: string | null;
+    readonly composeId: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   const [pendingRecord] = await args.db
     .select({ id: githubInstallations.id })
     .from(githubInstallations)
@@ -854,7 +887,7 @@ export async function createOrActivateGithubInstallation(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (pendingRecord) {
     await args.db
@@ -869,7 +902,7 @@ export async function createOrActivateGithubInstallation(args: {
         updatedAt: new Date(now()),
       })
       .where(eq(githubInstallations.id, pendingRecord.id));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     return pendingRecord.id;
   }
@@ -888,7 +921,7 @@ export async function createOrActivateGithubInstallation(args: {
       defaultComposeId: args.composeId,
     })
     .returning({ id: githubInstallations.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!newInstall) {
     throw new Error("Expected GitHub installation insert to return a row");

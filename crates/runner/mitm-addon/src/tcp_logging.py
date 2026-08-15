@@ -20,7 +20,16 @@ _TCP_RESPONSE_SIZE = "_tcp_response_size"
 
 
 def start(flow: tcp.TCPFlow, *, registry_path: str) -> None:
-    """Track TCP connection start time and look up VM info."""
+    """Apply registry admission and install TCP logging metadata for a valid VM.
+
+    Outcomes:
+    - A missing client peer address is a no-op.
+    - An unregistered client is a no-op.
+    - An unavailable registry calls ``flow.kill()`` without installing TCP logging metadata.
+    - An invalid VM entry calls ``flow.kill()`` without installing TCP logging metadata.
+    - A valid registered VM installs the run ID, network and proxy log paths, and
+      ``TCP_START_MONOTONIC``.
+    """
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
     if not client_ip:
         return

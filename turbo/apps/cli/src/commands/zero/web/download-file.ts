@@ -1,8 +1,8 @@
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
-import { downloadWebFile } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { downloadWebFile } from "../../../lib/api/domains/web";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 /**
  * Derive a local output path for a web-uploaded file id.
@@ -27,8 +27,8 @@ export const downloadFileCommand = new Command()
     "after",
     `
 Examples:
-  Download to default temp path: zero web download-file abc-123-def
-  Download to explicit path:     zero web download-file abc-123-def -o /tmp/report.pdf
+  Download to default temp path: okou web download-file abc-123-def
+  Download to explicit path:     okou web download-file abc-123-def -o /tmp/report.pdf
 
 Output:
   Prints a JSON object to stdout on success:
@@ -37,13 +37,13 @@ Output:
 How to read the downloaded file:
   - Images (png/jpg/gif/webp/svg): open the file path with your image viewing tool
   - Videos (mp4/mov/webm): transcribe audio first with
-      zero video transcribe --url <download-url>
+      okou video transcribe --url <download-url>
     or extract frames with
       ffmpeg -i <path> -vf "fps=1" -q:v 2 /tmp/<file-id>_frame_%03d.jpg
   - PDF/text/csv/json/markdown: read the file directly
 
 Notes:
-  - Authenticates via ZERO_TOKEN
+  - Authenticates via OKOU_TOKEN
   - Streams the file bytes directly to disk`,
   )
   .action(

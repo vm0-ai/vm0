@@ -1,9 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { describe, expect, it, onTestFinished } from "vitest";
-import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
+import { describe, expect, it } from "vitest";
+import {
+  chatThreadEventsContract,
+  type UserMessageDocument,
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
@@ -22,8 +24,14 @@ import {
   linkByText,
   chatScrollContainer,
   chatComposerTextarea,
+  parseChatClipboardPayload,
+  readClipboardItemText,
+  readSingleRichClipboardWrite,
 } from "./chat-lifecycle-test-helpers.ts";
-import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
+import {
+  mockChatEventRows,
+  normalizeMockChatEvents,
+} from "./chat-event-test-helpers.ts";
 
 interface TouchPoint {
   readonly x: number;
@@ -49,9 +57,13 @@ function dispatchTouch(
 
 function openSoftwareKeyboard(): void {
   document.documentElement.dataset.keyboardOpen = "true";
-  onTestFinished(() => {
-    delete document.documentElement.dataset.keyboardOpen;
-  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      delete document.documentElement.dataset.keyboardOpen;
+    },
+    { once: true },
+  );
 }
 
 function makeVerticallyScrollable(
@@ -75,11 +87,9 @@ function makeVerticallyScrollable(
 }
 
 async function setupKeyboardGestureChat({
-  featureEnabled,
   standalone,
   threadId,
 }: {
-  readonly featureEnabled: boolean;
   readonly standalone: boolean;
   readonly threadId: string;
 }): Promise<{
@@ -103,9 +113,6 @@ async function setupKeyboardGestureChat({
   detachedSetupPage({
     context,
     path: `/chats/${threadId}`,
-    featureSwitches: {
-      [FeatureSwitchKey.PwaChatKeyboardGestures]: featureEnabled,
-    },
   });
 
   return await waitFor(() => {
@@ -122,7 +129,7 @@ async function setupKeyboardGestureChat({
 
 describe("chat lifecycle", () => {
   it("links Slack-origin user messages back to the original message", async () => {
-    const threadId = "thread-slack-message-origin";
+    const threadId = "e6000000-0000-4000-a000-000000000001";
     const permalink =
       "https://vm0.slack.com/archives/C12345678/p1753257600000100";
     mockChatLifecycle(context, {
@@ -133,7 +140,6 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "Check the production rollout",
           runId: "run-slack-origin",
-          triggerSource: "slack",
           userMessage: {
             version: 1,
             parts: [
@@ -155,7 +161,6 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "This source link was unavailable",
           runId: "run-slack-origin-without-link",
-          triggerSource: "slack",
           userMessage: {
             version: 1,
             parts: [
@@ -189,7 +194,7 @@ describe("chat lifecycle", () => {
   });
 
   it("links Feishu-origin user messages back to the original chat", async () => {
-    const threadId = "thread-feishu-message-origin";
+    const threadId = "e6000000-0000-4000-a000-000000000002";
     const chatOpenUrl =
       "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_chat";
     mockChatLifecycle(context, {
@@ -200,7 +205,6 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "Check the Feishu conversation",
           runId: "run-feishu-origin",
-          triggerSource: "feishu",
           userMessage: {
             version: 1,
             parts: [
@@ -222,7 +226,6 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "This source link was unavailable",
           runId: "run-feishu-origin-without-link",
-          triggerSource: "feishu",
           userMessage: {
             version: 1,
             parts: [
@@ -254,7 +257,7 @@ describe("chat lifecycle", () => {
   });
 
   it("renders generic source annotations with precise link behavior", async () => {
-    const threadId = "thread-generic-message-annotations";
+    const threadId = "e6000000-0000-4000-a000-000000000003";
     const teamsHref =
       "https://teams.microsoft.com/l/message/19%3Achannel%40thread.tacv2/activity-1?tenantId=tenant-1";
     const githubHref =
@@ -379,7 +382,11 @@ describe("chat lifecycle", () => {
     });
     const composerCard = composer.closest(".zero-composer");
     expect(composerCard).not.toBeNull();
-    expect(composerCard?.closest("[data-chat-composer]")).not.toBeNull();
+    const composerFooter = composerCard?.closest("[data-chat-composer]");
+    expect(composerFooter).not.toBeNull();
+    expect(composerFooter).toHaveStyle({
+      paddingBottom: "max(0.5rem - var(--sab), 0px)",
+    });
 
     await sendMessageInUI(user, composer, "Continue working");
 
@@ -397,7 +404,6 @@ describe("chat lifecycle", () => {
   it("contains keyboard gestures on the rendered standalone-PWA chat page", async () => {
     const { composerEditor, composerScrollSurface, history } =
       await setupKeyboardGestureChat({
-        featureEnabled: true,
         standalone: true,
         threadId: "b0000000-0000-4000-a000-000000000991",
       });
@@ -450,30 +456,8 @@ describe("chat lifecycle", () => {
   it("leaves mobile-browser chat gestures unchanged outside standalone mode", async () => {
     const { composerEditor, composerScrollSurface, history } =
       await setupKeyboardGestureChat({
-        featureEnabled: true,
         standalone: false,
         threadId: "b0000000-0000-4000-a000-000000000992",
-      });
-
-    expect(history).not.toHaveClass("overscroll-contain");
-    expect(composerScrollSurface).not.toHaveClass("overscroll-contain");
-    openSoftwareKeyboard();
-    composerEditor.focus();
-    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
-    const move = dispatchTouch(composerEditor, "touchmove", {
-      x: 100,
-      y: 460,
-    });
-    expect(move.defaultPrevented).toBeFalsy();
-    expect(composerEditor).toHaveFocus();
-  });
-
-  it("leaves standalone-PWA chat gestures unchanged while the switch is disabled", async () => {
-    const { composerEditor, composerScrollSurface, history } =
-      await setupKeyboardGestureChat({
-        featureEnabled: false,
-        standalone: true,
-        threadId: "b0000000-0000-4000-a000-000000000993",
       });
 
     expect(history).not.toHaveClass("overscroll-contain");
@@ -494,7 +478,7 @@ describe("chat lifecycle", () => {
     const pushBrowser = mockPushBrowserSupport();
     let capturedSubscription: unknown;
     context.mocks.http.post(
-      "*/api/zero/push-subscriptions",
+      "*/api/okou/push-subscriptions",
       async ({ request }) => {
         capturedSubscription = await request.json();
         return new Response(null, { status: 204 });
@@ -531,23 +515,17 @@ describe("chat lifecycle", () => {
 
   it("starts a new fallback-enabled text-only chat with an image above the direct recognition limit", async () => {
     const user = userEvent.setup({ delay: null });
-    let sentAttachFiles:
-      | {
-          id: string;
-          filename: string;
-          contentType: string;
-          size: number;
-        }[]
-      | undefined;
+    let sentUserMessage: UserMessageDocument | undefined;
     context.mocks.data.userModelPreference({
-      selectedModel: "glm-5.1",
+      selectedModel: "deepseek-v4-flash",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
       {
         id: "00000000-0000-4000-a000-000000000719",
-        model: "glm-5.1",
-        modelLabel: "GLM-5.1",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -560,23 +538,20 @@ describe("chat lifecycle", () => {
     ]);
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
-        sentAttachFiles = body.attachFiles;
+        sentUserMessage = body.userMessage;
       },
     });
     context.mocks.upload.success({
       id: "upload-visual-brief",
       filename: "brief.png",
       contentType: "image/png",
-      size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+      size: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
       url: "https://cdn.vm7.io/artifacts/test/upload-visual-brief/brief.png",
     });
 
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     await waitFor(() => {
@@ -591,13 +566,13 @@ describe("chat lifecycle", () => {
     const brief = new File(["image"], "brief.png", { type: "image/png" });
     Object.defineProperty(brief, "size", {
       configurable: true,
-      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+      value: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
     });
     await user.upload(fileInput, brief);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "GLM-5.1" }),
+        screen.getByRole("combobox", { name: "DeepSeek V4 Flash" }),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Remove brief.png")).toBeInTheDocument();
     });
@@ -611,37 +586,29 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize this visual brief"),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(sentAttachFiles).toStrictEqual([
-        {
-          id: "upload-visual-brief",
-          filename: "brief.png",
-          contentType: "image/png",
-          size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
-        },
-      ]);
+      expect(sentUserMessage?.parts).toContainEqual({
+        type: "file",
+        fileId: "upload-visual-brief",
+        filenameSnapshot: "brief.png",
+        contentType: "image/png",
+      });
     });
   });
 
   it("sends a video attachment in an existing fallback-enabled text-only chat", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000994";
-    let sentAttachFiles:
-      | {
-          id: string;
-          filename: string;
-          contentType: string;
-          size: number;
-        }[]
-      | undefined;
+    let sentUserMessage: UserMessageDocument | undefined;
     context.mocks.data.userModelPreference({
-      selectedModel: "glm-5.1",
+      selectedModel: "deepseek-v4-flash",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
       {
         id: "00000000-0000-4000-a000-000000000720",
-        model: "glm-5.1",
-        modelLabel: "GLM-5.1",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -654,9 +621,9 @@ describe("chat lifecycle", () => {
     ]);
     mockChatLifecycle(context, {
       threadId,
-      selectedModel: "glm-5.1",
+      selectedModel: "deepseek-v4-flash",
       onRunCreate: (body) => {
-        sentAttachFiles = body.attachFiles;
+        sentUserMessage = body.userMessage;
       },
     });
     context.mocks.upload.success({
@@ -670,9 +637,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     const textarea = await waitFor(() => {
@@ -697,24 +661,25 @@ describe("chat lifecycle", () => {
     await sendMessageInUI(user, textarea, "Inspect this existing video");
 
     await waitFor(() => {
-      expect(sentAttachFiles).toStrictEqual([
-        {
-          id: "upload-existing-visual",
-          filename: "existing.mov",
-          contentType: "video/quicktime",
-          size: 64,
-        },
-      ]);
+      expect(sentUserMessage?.parts).toContainEqual({
+        type: "file",
+        fileId: "upload-existing-visual",
+        filenameSnapshot: "existing.mov",
+        contentType: "video/quicktime",
+      });
     });
   });
 
   it("projects the first-run model from the optimistic created event", async () => {
     const user = userEvent.setup({ delay: null });
+    const clipboard = context.mocks.browser.clipboardWrite();
     const prompt = "Start with my preferred model";
     const sendGate = context.mocks.deferred<void>();
     let clientThreadId: string | undefined;
+    let sentUserMessage: UserMessageDocument | undefined;
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
@@ -738,6 +703,9 @@ describe("chat lifecycle", () => {
         clientThreadId = body.clientThreadId;
         expect(body.modelSelection.selectedModel).toBe("claude-sonnet-4-6");
       },
+      onSendRequest: ({ userMessage }) => {
+        sentUserMessage = userMessage;
+      },
     });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
@@ -759,16 +727,86 @@ describe("chat lifecycle", () => {
     ).toMatchObject({
       selectedModel: "claude-sonnet-4-6",
     });
+
+    await waitFor(() => {
+      expect(screen.getByText(prompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Copy message"));
+    const item = await readSingleRichClipboardWrite(clipboard);
+    const html = await readClipboardItemText(item, "text/html");
+    expect(parseChatClipboardPayload(html).userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: prompt },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
+    expect(sentUserMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: prompt },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
   });
 
-  it("renders the optimistic new chat message without skeleton when the initial message list is blocked", async () => {
+  it("includes the selected model in optimistic and sent user messages", async () => {
+    const user = userEvent.setup({ delay: null });
+    const clipboard = context.mocks.browser.clipboardWrite();
+    const sendGate = context.mocks.deferred<void>();
+    const threadId = "b0000000-0000-4000-a000-000000000993";
+    const prompt = "Keep the model visible while sending";
+    const selectedModel = "claude-sonnet-4-6";
+    let sentUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel,
+      sendGate: sendGate.promise,
+      onSendRequest: ({ userMessage }) => {
+        sentUserMessage = userMessage;
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, prompt);
+
+    await waitFor(() => {
+      expect(screen.getByText(prompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Copy message"));
+
+    const item = await readSingleRichClipboardWrite(clipboard);
+    const html = await readClipboardItemText(item, "text/html");
+    expect(parseChatClipboardPayload(html).userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: prompt },
+        { type: "model", selectedModel },
+      ],
+    });
+    expect(sentUserMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: prompt },
+        { type: "model", selectedModel },
+      ],
+    });
+  });
+
+  it("renders the optimistic new chat message without skeleton when the initial event rows are blocked", async () => {
     const user = userEvent.setup({ delay: null });
     const prompt = "Show this while the initial list is blocked";
-    const initialMessageList = context.mocks.deferred<void>();
+    const initialEventRows = context.mocks.deferred<void>();
     mockChatLifecycle(context);
-    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
-      await initialMessageList.promise;
-      return respond(200, { events: [] });
+    context.mocks.api(chatThreadEventsContract.rows, async ({ respond }) => {
+      await initialEventRows.promise;
+      return respond(200, { rows: [] });
     });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
@@ -828,38 +866,35 @@ describe("chat lifecycle", () => {
       },
     ]);
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       async ({ params, query, respond }) => {
-        if (query.sinceSeqId || query.beforeSeqId) {
-          return respond(200, { events: [] });
-        }
+        let events;
         if (params.threadId === otherThreadId) {
-          await otherThreadMessagesGate.promise;
-          return respond(200, {
-            events: normalizeMockChatEvents([
-              {
-                id: "msg-other-user",
-                threadId: params.threadId,
-                seqId: 1,
-                role: "user",
-                runId: "run-other",
-                content: "Other thread context",
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              {
-                id: "msg-other-assistant",
-                threadId: params.threadId,
-                seqId: 2,
-                role: "assistant",
-                runId: "run-other",
-                content: "Other thread answer",
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ]),
-          });
-        }
-        return respond(200, {
-          events: normalizeMockChatEvents([
+          if (query.sinceSeqId === 0) {
+            await otherThreadMessagesGate.promise;
+          }
+          events = normalizeMockChatEvents([
+            {
+              id: "msg-other-user",
+              threadId: params.threadId,
+              seqId: 1,
+              role: "user",
+              runId: "run-other",
+              content: "Other thread context",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-other-assistant",
+              threadId: params.threadId,
+              seqId: 2,
+              role: "assistant",
+              runId: "run-other",
+              content: "Other thread answer",
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ]);
+        } else {
+          events = normalizeMockChatEvents([
             {
               id: "msg-existing-user",
               threadId: params.threadId,
@@ -878,7 +913,12 @@ describe("chat lifecycle", () => {
               content: "Existing assistant answer",
               createdAt: "2026-03-10T00:00:01Z",
             },
-          ]),
+          ]);
+        }
+        return respond(200, {
+          rows: mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );
@@ -922,6 +962,10 @@ describe("chat lifecycle", () => {
         screen.queryByText("Existing context before follow-up"),
       ).not.toBeInTheDocument();
       expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Send a message to start the conversation"),
+      ).not.toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
     });
 
     otherThreadMessagesGate.resolve(undefined);
@@ -981,7 +1025,7 @@ describe("chat lifecycle", () => {
   });
 
   it("renders user html-like text literally", async () => {
-    const threadId = "thread-user-html-like-text";
+    const threadId = "e6000000-0000-4000-a000-000000000004";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
@@ -1009,7 +1053,7 @@ describe("chat lifecycle", () => {
 
   it("ignores usage-only pages for rendering and thinking state", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-only",
+      threadId: "e6000000-0000-4000-a000-000000000005",
       chatEvents: [
         {
           id: "msg-usage-only",
@@ -1035,7 +1079,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-only",
+      path: "/chats/e6000000-0000-4000-a000-000000000005",
     });
 
     await waitFor(() => {
@@ -1046,7 +1090,7 @@ describe("chat lifecycle", () => {
 
   it("shows thinking for an assistant run even without active run ids", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-thinking",
+      threadId: "e6000000-0000-4000-a000-000000000006",
       activeRunIds: [],
       chatEvents: [
         {
@@ -1062,7 +1106,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-thinking",
+      path: "/chats/e6000000-0000-4000-a000-000000000006",
     });
 
     await waitFor(() => {
@@ -1076,7 +1120,7 @@ describe("chat lifecycle", () => {
   it("shows thinking from loaded messages before thread metadata resolves", async () => {
     const threadGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-thinking-pending-metadata",
+      threadId: "e6000000-0000-4000-a000-000000000007",
       activeRunIds: ["run-message-list-thinking-pending-metadata"],
       threadGate: threadGate.promise,
       chatEvents: [
@@ -1093,7 +1137,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-thinking-pending-metadata",
+      path: "/chats/e6000000-0000-4000-a000-000000000007",
     });
 
     await screen.findByText("I am still working on this.");
@@ -1108,7 +1152,7 @@ describe("chat lifecycle", () => {
 
   it("clears thinking when the same run completes even with stale active run ids", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-completed",
+      threadId: "e6000000-0000-4000-a000-000000000008",
       activeRunIds: ["run-message-list-completed"],
       chatEvents: [
         {
@@ -1131,7 +1175,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-completed",
+      path: "/chats/e6000000-0000-4000-a000-000000000008",
     });
 
     await waitFor(() => {
@@ -1143,7 +1187,7 @@ describe("chat lifecycle", () => {
 
   it("clears thinking for a completed latest run with an older terminated run", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-stale-run-before-completed-latest-run",
+      threadId: "e6000000-0000-4000-a000-000000000009",
       activeRunIds: [],
       chatEvents: [
         {
@@ -1197,7 +1241,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-stale-run-before-completed-latest-run",
+      path: "/chats/e6000000-0000-4000-a000-000000000009",
     });
 
     await waitFor(() => {
@@ -1211,7 +1255,7 @@ describe("chat lifecycle", () => {
 
   it("ignores active run ids when loaded messages end at a completed run", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-stale-lifecycle-thinking",
+      threadId: "e6000000-0000-4000-a000-000000000010",
       activeRunIds: ["run-r2"],
       chatEvents: [
         {
@@ -1268,7 +1312,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-stale-lifecycle-thinking",
+      path: "/chats/e6000000-0000-4000-a000-000000000010",
     });
 
     await waitFor(() => {
@@ -1281,7 +1325,7 @@ describe("chat lifecycle", () => {
 
   it("keeps thinking when the message stream shows later run activity", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-stale-lifecycle-thinking-active-later",
+      threadId: "e6000000-0000-4000-a000-000000000011",
       activeRunIds: ["run-r2"],
       chatEvents: [
         {
@@ -1346,7 +1390,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-stale-lifecycle-thinking-active-later",
+      path: "/chats/e6000000-0000-4000-a000-000000000011",
     });
 
     await waitFor(() => {
@@ -1413,7 +1457,7 @@ describe("chat lifecycle", () => {
   });
 
   it("keeps completion when the loaded window does not include either run start", async () => {
-    const threadId = "thread-run-starts-outside-loaded-window";
+    const threadId = "e6000000-0000-4000-a000-000000000012";
     mockChatLifecycle(context, {
       threadId,
       activeRunIds: ["run-window-older-active"],
@@ -1461,7 +1505,7 @@ describe("chat lifecycle", () => {
 
   it("does not use active run ids to revive an older run after a newer run completes", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-concurrent-run-completed-later",
+      threadId: "e6000000-0000-4000-a000-000000000013",
       activeRunIds: ["run-concurrent-active"],
       chatEvents: [
         {
@@ -1507,7 +1551,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-concurrent-run-completed-later",
+      path: "/chats/e6000000-0000-4000-a000-000000000013",
     });
 
     await waitFor(() => {
@@ -1521,7 +1565,7 @@ describe("chat lifecycle", () => {
 
   it("keeps thinking for an active run when the message stream shows later activity", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-concurrent-run-active-later",
+      threadId: "e6000000-0000-4000-a000-000000000014",
       activeRunIds: ["run-concurrent-active"],
       chatEvents: [
         {
@@ -1575,7 +1619,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-concurrent-run-active-later",
+      path: "/chats/e6000000-0000-4000-a000-000000000014",
     });
 
     await waitFor(() => {
@@ -1591,7 +1635,7 @@ describe("chat lifecycle", () => {
 
   it("does not use active run ids when active messages are outside the loaded window", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-active-run-outside-loaded-window",
+      threadId: "e6000000-0000-4000-a000-000000000015",
       activeRunIds: ["run-active-outside-window"],
       chatEvents: [
         {
@@ -1607,7 +1651,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-active-run-outside-loaded-window",
+      path: "/chats/e6000000-0000-4000-a000-000000000015",
     });
 
     await waitFor(() => {
@@ -1618,7 +1662,7 @@ describe("chat lifecycle", () => {
 
   it("keeps interleaved run messages grouped by run turn", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-interleaved-run-turns",
+      threadId: "e6000000-0000-4000-a000-000000000016",
       chatEvents: [
         {
           id: "msg-run-a-user",
@@ -1676,7 +1720,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-interleaved-run-turns",
+      path: "/chats/e6000000-0000-4000-a000-000000000016",
     });
 
     await waitFor(() => {
@@ -1694,7 +1738,7 @@ describe("chat lifecycle", () => {
 
   it("shows thinking when the latest message is a user message", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-latest-user",
+      threadId: "e6000000-0000-4000-a000-000000000017",
       activeRunIds: [],
       chatEvents: [
         {
@@ -1709,7 +1753,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-latest-user",
+      path: "/chats/e6000000-0000-4000-a000-000000000017",
     });
 
     await waitFor(() => {
@@ -1722,7 +1766,7 @@ describe("chat lifecycle", () => {
 
   it("clears thinking when a run is cancelled", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-cancelled",
+      threadId: "e6000000-0000-4000-a000-000000000018",
       activeRunIds: ["run-message-list-cancelled"],
       chatEvents: [
         {
@@ -1746,7 +1790,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-cancelled",
+      path: "/chats/e6000000-0000-4000-a000-000000000018",
     });
 
     await waitFor(() => {

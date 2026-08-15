@@ -1,21 +1,22 @@
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
-import { createHtmlArtifactAuthoringPacket } from "../shared/html-artifact-authoring";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { createHtmlArtifactAuthoringPacket } from "../../shared/html-artifact-authoring";
 import {
   findDesignSystem,
   findWebsiteTemplateResource,
   findTemplate,
   listDesignSystems,
   listTemplates,
-} from "../shared/resource-registry";
+} from "@okouai/core/resource-registry";
 import {
   canonicalizeRegistryId,
   formatRegistryListing,
-} from "../shared/resource-listing";
+} from "../../shared/resource-listing";
+import { websiteTemplateArchiveVersionFromEnvironment } from "../../shared/website-template-archive-version";
 import { dispatchGenerate } from "./lib/dispatch";
 
 const WEBSITE_TARGET = "website";
-const WEBSITE_USAGE_COMMAND = "zero generate website";
+const WEBSITE_USAGE_COMMAND = "okou generate website";
 
 interface WebsiteOptions {
   readonly prompt?: string;
@@ -34,7 +35,8 @@ function selectedTemplateDetails(
   const details = [`Selected template: ${template.id} (${template.name})`];
   if (template.source.archive) {
     details.push(
-      `Selected template package: zero resource pull ${template.id} --dir ./generated/resources`,
+      `Selected template package: okou resource pull ${template.id} --dir ./generated/resources`,
+      `Selected template archive SHA-256: ${template.source.archive.sha256}`,
     );
   }
   return details;
@@ -91,20 +93,20 @@ export const websiteCommand = new Command()
     const templates = listTemplates(WEBSITE_TARGET);
     return `
 Examples:
-  Generate site:         zero generate website --prompt "A launch site for a developer observability tool"
-  Pick template:         zero generate website --template black-slabs --prompt "Launch site for a billing API"
-  Pick design system:    zero generate website --design-system stripe --prompt "Pricing page for a SaaS"
-  Custom site slug:      zero generate website --site-slug api-migration-demo --prompt "An internal migration microsite"
-  Pipe prompt:           cat brief.txt | zero generate website
-  Show choices:          zero generate website
+  Generate site:         okou generate website --prompt "A launch site for a developer observability tool"
+  Pick template:         okou generate website --template black-slabs --prompt "Launch site for a billing API"
+  Pick design system:    okou generate website --design-system stripe --prompt "Pricing page for a SaaS"
+  Custom site slug:      okou generate website --site-slug api-migration-demo --prompt "An internal migration microsite"
+  Pipe prompt:           cat brief.txt | okou generate website
+  Show choices:          okou generate website
 
 Output:
   Prints a source-selection packet for the current agent.
   With no --prompt and no piped input, prints the generation choices instead.
 
 Notes:
-  - Authenticates via ZERO_TOKEN
-  - The agent authors the HTML artifact and hosts it with zero host
+  - Authenticates via OKOU_TOKEN
+  - The agent authors the HTML artifact and hosts it with okou host
 
 Design Systems:
 ${formatRegistryListing(designSystems, "design systems")}
@@ -120,6 +122,10 @@ ${formatRegistryListing(templates, "website templates")}`;
       });
       if (dispatch.outcome === "handled") return;
       const prompt = dispatch.prompt;
+      const websiteTemplateArchiveVersion =
+        websiteTemplateArchiveVersionFromEnvironment();
+      const latestWebsiteTemplatesEnabled =
+        websiteTemplateArchiveVersion === "latest";
 
       let resolvedDesignSystem;
       if (options.designSystem !== undefined) {
@@ -138,8 +144,10 @@ ${formatRegistryListing(templates, "website templates")}`;
       if (options.template !== undefined) {
         const canonical = canonicalizeRegistryId("template", options.template);
         const entry =
-          findWebsiteTemplateResource(options.template) ??
-          findTemplate(canonical);
+          findWebsiteTemplateResource(
+            options.template,
+            websiteTemplateArchiveVersion,
+          ) ?? findTemplate(canonical);
         if (!entry || !entry.targets?.includes(WEBSITE_TARGET)) {
           throw unknownTemplateError(options.template);
         }
@@ -149,7 +157,7 @@ ${formatRegistryListing(templates, "website templates")}`;
       const templateSelectionRules = resolvedTemplate
         ? ["Use the explicitly selected template."]
         : [
-            "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+            "For landing, marketing, official brand or product, and launch pages, select an Okou built-in website template.",
             "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
             "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
           ];
@@ -161,6 +169,7 @@ ${formatRegistryListing(templates, "website templates")}`;
         siteSlug: options.siteSlug,
         details: [
           `Requested title/site name: ${options.title ?? "not specified"}`,
+          `Built-in Website template release: ${websiteTemplateArchiveVersion}`,
           `Selected design system: ${
             resolvedDesignSystem
               ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`
@@ -173,8 +182,16 @@ ${formatRegistryListing(templates, "website templates")}`;
           ...templateSelectionRules,
           "If it is a marketing site, make the product or offer visible in the first viewport.",
           "For app or tool surfaces, prioritize dense, scannable, task-focused UI over decorative sections.",
+          ...(latestWebsiteTemplatesEnabled
+            ? [
+                "When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
+                "Keep at most 3 image generations in flight at once; more are rejected with HTTP 429 and the retries cost more time than the extra parallelism saves.",
+                "Embed the `Embed this URL in HTML` value returned by the generator, not the raw file URL. It serves the same image through the CDN image transform, which negotiates AVIF/WebP instead of the original PNG.",
+              ]
+            : []),
           "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",
         ],
+        latestWebsiteTemplatesEnabled,
       });
 
       console.log(packet.instructions);

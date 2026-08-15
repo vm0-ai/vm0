@@ -1,5 +1,104 @@
 # Changelog
 
+## [0.19.86](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.85...vsock-guest-v0.19.86) (2026-08-14)
+
+## [0.19.85](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.84...vsock-guest-v0.19.85) (2026-08-14)
+
+
+### Performance Improvements
+
+* **runner:** reduce guest dns readiness latency ([#27184](https://github.com/vm0-ai/vm0/issues/27184)) ([0752a72](https://github.com/vm0-ai/vm0/commit/0752a72e452aedcf40cca5bb8d177a3850592d1e))
+
+## [0.19.84](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.83...vsock-guest-v0.19.84) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** preserve runs after tool process oom ([#27272](https://github.com/vm0-ai/vm0/issues/27272)) ([bdba0d6](https://github.com/vm0-ai/vm0/commit/bdba0d6cfb57fec9f7193a02ab93dbf7b7074ea9))
+
+## [0.19.83](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.82...vsock-guest-v0.19.83) (2026-08-14)
+
+## [0.19.82](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.81...vsock-guest-v0.19.82) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** disable workload memory.high reclaim ([#27126](https://github.com/vm0-ai/vm0/issues/27126)) ([24743ab](https://github.com/vm0-ai/vm0/commit/24743ab1a9901f769ee07a40cffea63c2a516e37))
+
+## [0.19.81](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.80...vsock-guest-v0.19.81) (2026-08-14)
+
+## [0.19.80](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.79...vsock-guest-v0.19.80) (2026-08-13)
+
+## [0.19.79](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.78...vsock-guest-v0.19.79) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
+## [0.19.78](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.77...vsock-guest-v0.19.78) (2026-08-13)
+
+## [0.19.77](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.76...vsock-guest-v0.19.77) (2026-08-13)
+
+## [0.19.76](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.75...vsock-guest-v0.19.76) (2026-08-12)
+
+## [0.19.75](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.74...vsock-guest-v0.19.75) (2026-08-12)
+
+## [0.19.74](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.73...vsock-guest-v0.19.74) (2026-08-11)
+
+## [0.19.73](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.72...vsock-guest-v0.19.73) (2026-08-11)
+
+## [0.19.72](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.71...vsock-guest-v0.19.72) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** attribute severe balloon retention ([#26038](https://github.com/vm0-ai/vm0/issues/26038)) ([d996ab7](https://github.com/vm0-ai/vm0/commit/d996ab715ff06c03dee96b82f683e577c7e52b89))
+
+## [0.19.71](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.70...vsock-guest-v0.19.71) (2026-08-10)
+
+
+### Performance Improvements
+
+* **rust:** restore 64 kib guest output drains ([#26006](https://github.com/vm0-ai/vm0/issues/26006)) ([a54ade4](https://github.com/vm0-ai/vm0/commit/a54ade4ad15ed3031cd0b6b9c33cd00999687fb0))
+
+## [0.19.70](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.69...vsock-guest-v0.19.70) (2026-08-09)
+
+## [0.19.69](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.68...vsock-guest-v0.19.69) (2026-08-09)
+
+
+### Refactoring
+
+* **vsock-guest:** centralize file-write admission ([#25925](https://github.com/vm0-ai/vm0/issues/25925)) ([5018c9e](https://github.com/vm0-ai/vm0/commit/5018c9e94d4fd585e59788a840a31a71c891fedc))
+
+## [0.19.68](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.67...vsock-guest-v0.19.68) (2026-08-09)
+
+## [0.19.67](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.66...vsock-guest-v0.19.67) (2026-08-07)
+
+## [0.19.66](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.65...vsock-guest-v0.19.66) (2026-08-07)
+
+## [0.19.65](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.64...vsock-guest-v0.19.65) (2026-08-07)
+
+## [0.19.64](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.63...vsock-guest-v0.19.64) (2026-08-06)
+
+## [0.19.63](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.62...vsock-guest-v0.19.63) (2026-08-06)
+
+
+### Documentation
+
+* **vsock-guest:** correct env script cleanup contract ([#25462](https://github.com/vm0-ai/vm0/issues/25462)) ([f5cb8d2](https://github.com/vm0-ai/vm0/commit/f5cb8d2337738345e4cb0f0f188d634a14a7ed40))
+
+## [0.19.62](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.61...vsock-guest-v0.19.62) (2026-08-05)
+
+
+### Refactoring
+
+* remove unused e2b infrastructure ([#25162](https://github.com/vm0-ai/vm0/issues/25162)) ([54ec015](https://github.com/vm0-ai/vm0/commit/54ec015ee993c21c2b4635bbd969edee8d967f74))
+
+## [0.19.61](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.60...vsock-guest-v0.19.61) (2026-08-04)
+
+## [0.19.60](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.59...vsock-guest-v0.19.60) (2026-08-04)
+
 ## [0.19.59](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.58...vsock-guest-v0.19.59) (2026-08-03)
 
 

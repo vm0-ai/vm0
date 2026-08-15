@@ -1,6 +1,6 @@
 [package]
 name = "nbd-cow"
-version = "0.4.71"
+version = "0.4.75"
 edition.workspace = true
 
 [[bin]]
@@ -9,18 +9,19 @@ path = "src/bin/bench/main.rs"
 required-features = ["bench"]
 
 [features]
-bench = ["dep:serde_json", "dep:tempfile"]
+bench = ["dep:serde_json", "dep:tempfile", "dep:which"]
 
 [dependencies]
 bitvec = { workspace = true }
 libc = { workspace = true }
-nix = { workspace = true, features = ["fs", "socket"] }
+nix = { workspace = true, features = ["fs", "socket", "uio"] }
 serde_json = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+which = { workspace = true, optional = true }
 
 [dev-dependencies]
 nix = { workspace = true, features = ["user"] }

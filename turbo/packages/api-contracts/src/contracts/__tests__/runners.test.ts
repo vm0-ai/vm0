@@ -5,15 +5,16 @@ import { z } from "zod";
 
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  activeInputDeliveryReserveResponseSchema,
   compatibleStoredExecutionContextSchema,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
+  connectorRuntimeSyncResultSchema,
   elapsedSinceApiStartMs,
   executionContextSchema,
   heartbeatBodySchema,
   heldSandboxStateSchema,
   heldWorkspaceStateSchema,
   jobSchema,
-  NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
-  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -21,8 +22,8 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
   runnersBuiltinFirewallsResolveContract,
+  runnersConnectorRuntimeSyncContract,
   runnersJobClaimContract,
-  runnersNetworkPolicyRefreshContract,
   runnersPollContract,
   storageMountEntrySchema,
   storageManifestSchema,
@@ -30,6 +31,39 @@ import {
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
+
+describe("active-input reservation contract", () => {
+  const deliveryId = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
+  const eventId = "223f8797-a456-4eea-98f7-f7ab88c43c00";
+  const secondEventId = "b5490696-d307-42f7-927c-9b5ca037cb46";
+
+  it("keeps the deployed eventIds array with exactly one source event", () => {
+    expect(
+      activeInputDeliveryReserveResponseSchema.parse({
+        outcome: "reserved",
+        deliveryId,
+        eventIds: [eventId],
+        prompt: "follow-up",
+      }),
+    ).toStrictEqual({
+      outcome: "reserved",
+      deliveryId,
+      eventIds: [eventId],
+      prompt: "follow-up",
+    });
+
+    for (const eventIds of [[], [eventId, secondEventId]]) {
+      expect(
+        activeInputDeliveryReserveResponseSchema.safeParse({
+          outcome: "reserved",
+          deliveryId,
+          eventIds,
+          prompt: "follow-up",
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
 
 describe("cancellation recovery timing contract", () => {
   it("keeps the API stale fallback beyond the runner recovery deadline", () => {
@@ -109,9 +143,357 @@ describe("runner claim response contract", () => {
   });
 });
 
+describe("Pi sandbox execution contract", () => {
+  const storedContext = {
+    storageMounts: [],
+    connectorRuntimeTargets: [],
+    environment: null,
+    secretValueEnvironmentKeys: null,
+    resumeSession: null,
+    encryptedSecrets: null,
+    cliAgentType: "pi",
+  };
+  const piStoredContext = {
+    piSessionId: "22222222-2222-4222-8222-222222222222",
+    piLaunchConfig: {
+      schemaVersion: 2 as const,
+    },
+    piModelConfig: {
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com/",
+      model: "deepseek-v4-flash",
+      apiKeyEnv: "OPENAI_API_KEY",
+    },
+  };
+  const piRunnerContext = {
+    piSessionId: piStoredContext.piSessionId,
+    piLaunchConfig: piStoredContext.piLaunchConfig,
+    piModelConfig: piStoredContext.piModelConfig,
+  };
+  const pollJob = {
+    runId: "22222222-2222-4222-8222-222222222222",
+    prompt: "continue",
+    appendSystemPrompt: null,
+    agentComposeVersionId: null,
+    vars: null,
+    experimentalProfile: "vm0/large",
+    runnerPreference: {
+      kind: "noPreference" as const,
+      reason: "noReuseKey" as const,
+    },
+  };
+
+  it("preserves the Chat Thread session across stored and Runner-facing contexts", () => {
+    const stored = storedExecutionContextSchema.parse({
+      ...storedContext,
+      ...piStoredContext,
+    });
+    const compatible = compatibleStoredExecutionContextSchema.parse({
+      ...storedContext,
+      ...piStoredContext,
+    });
+    const claimed = executionContextSchema.parse({
+      ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
+      cliAgentType: "pi",
+      ...piRunnerContext,
+    });
+
+    expect(stored.piSessionId).toBe(piStoredContext.piSessionId);
+    expect(compatible.piSessionId).toBe(piStoredContext.piSessionId);
+    expect(claimed.piSessionId).toBe(piStoredContext.piSessionId);
+    expect(jobSchema.parse(pollJob)).not.toHaveProperty("piExecutionMode");
+  });
+
+  it.each(["piSessionId", "piLaunchConfig", "piModelConfig"])(
+    "rejects a stored Pi context without %s",
+    (missingField) => {
+      const incompleteContext: Record<string, unknown> = { ...piStoredContext };
+      Reflect.deleteProperty(incompleteContext, missingField);
+
+      expect(
+        storedExecutionContextSchema.safeParse({
+          ...storedContext,
+          ...incompleteContext,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it.each(["piLaunchConfig", "piModelConfig"] as const)(
+    "rejects stored %s without piSessionId",
+    (field) => {
+      const invalidStoredContext = {
+        ...storedContext,
+        cliAgentType: "claude-code",
+        [field]: piStoredContext[field],
+      };
+
+      expect(
+        storedExecutionContextSchema.safeParse(invalidStoredContext).success,
+      ).toBe(false);
+      expect(
+        compatibleStoredExecutionContextSchema.safeParse(invalidStoredContext)
+          .success,
+      ).toBe(false);
+    },
+  );
+
+  it("requires all Pi fields on a claimed Pi context", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    for (const field of [
+      "piSessionId",
+      "piLaunchConfig",
+      "piModelConfig",
+    ] as const) {
+      const incomplete: Record<string, unknown> = {
+        ...fixture,
+        cliAgentType: "pi",
+        ...piRunnerContext,
+      };
+      Reflect.deleteProperty(incomplete, field);
+      expect(executionContextSchema.safeParse(incomplete).success).toBe(false);
+    }
+  });
+
+  it("rejects Pi fields for non-Pi claimed frameworks", () => {
+    expect(
+      executionContextSchema.safeParse({
+        ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
+        ...piRunnerContext,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("connector runtime synchronization contract", () => {
+  const customConnectorId = "00000000-0000-4000-8000-000000000001";
+
+  it("limits sync batches without limiting run targets", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const targets = Array.from(
+      { length: CONNECTOR_RUNTIME_SYNC_TARGETS_MAX + 1 },
+      (_, index) => {
+        return {
+          kind: "builtin" as const,
+          connectorSlug: `connector-${index}`,
+        };
+      },
+    );
+
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        connectorRuntimeTargets: targets,
+      }).success,
+    ).toBe(true);
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires unique tagged targets", () => {
+    const firstTarget = {
+      kind: "custom" as const,
+      customConnectorId,
+      baseUrlVars: { subdomain: "first" },
+    };
+    const secondTarget = {
+      ...firstTarget,
+      baseUrlVars: { subdomain: "second" },
+    };
+
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets: [firstTarget, secondTarget],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires custom routing values in target registrations", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const target = {
+      kind: "custom" as const,
+      customConnectorId,
+      baseUrlVars: { subdomain: "acme" },
+    };
+
+    const execution = executionContextSchema.parse({
+      ...fixture,
+      connectorRuntimeTargets: [target],
+    });
+    const request = runnersConnectorRuntimeSyncContract.sync.body.parse({
+      targets: [target],
+    });
+
+    expect(execution.connectorRuntimeTargets).toEqual([target]);
+    expect(request.targets).toEqual([target]);
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets: [{ kind: "custom", customConnectorId }],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets: [{ kind: "custom", customConnectorId, baseUrlVars: {} }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("preserves canonical built-in targets and pinned routing values", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const target = {
+      kind: "builtin" as const,
+      connectorSlug: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+    };
+
+    const execution = executionContextSchema.parse({
+      ...fixture,
+      connectorRuntimeTargets: [target],
+    });
+
+    expect(execution.connectorRuntimeTargets).toEqual([target]);
+  });
+
+  it("requires stable API identities on available custom firewalls", () => {
+    const result = {
+      target: { kind: "custom" as const, customConnectorId },
+      state: "available" as const,
+      firewall: {
+        kind: "inline" as const,
+        firewall: {
+          name: "custom_connector_fixture",
+          apis: [
+            {
+              id: "custom_connector_fixture:0",
+              base: "https://api.example.com",
+              auth: { headers: { Authorization: "Bearer token" } },
+            },
+          ],
+        },
+        customConnectorId,
+      },
+      networkPolicy: {
+        allow: [],
+        deny: [],
+        ask: [],
+        unknownPolicy: "allow" as const,
+      },
+      baseUrlVars: { subdomain: "acme" },
+    };
+
+    expect(connectorRuntimeSyncResultSchema.safeParse(result).success).toBe(
+      true,
+    );
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        ...result,
+        baseUrlVars: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        ...result,
+        firewall: {
+          ...result.firewall,
+          firewall: {
+            ...result.firewall.firewall,
+            apis: result.firewall.firewall.apis.map((api) => {
+              return { base: api.base, auth: api.auth };
+            }),
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps target-specific retry and authoritative absence states distinct", () => {
+    const builtinTarget = {
+      kind: "builtin" as const,
+      connectorSlug: "slack",
+    };
+    const customTarget = { kind: "custom" as const, customConnectorId };
+
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "absent",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
+        reason: "permission-bundle-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
+        reason: "runtime-configuration-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "permission-bundle-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "runtime-configuration-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "unresolved",
+        reason: "runtime-configuration-unavailable",
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe("stored connector permission baseline contract", () => {
   const storedContext = {
     storageMounts: [],
+    connectorRuntimeTargets: [],
     environment: null,
     secretValueEnvironmentKeys: null,
     resumeSession: null,
@@ -190,8 +572,9 @@ describe("stored connector permission baseline contract", () => {
   });
 
   it("allows a previous reader to ignore the new optional field", () => {
-    const previousStoredExecutionContextSchema =
-      storedExecutionContextSchema.omit({
+    const previousStoredExecutionContextSchema = z
+      .object(storedExecutionContextSchema.shape)
+      .omit({
         connectorPermissionBaseline: true,
       });
     const parsed = previousStoredExecutionContextSchema.parse({
@@ -210,6 +593,10 @@ describe("runner poll response contract", () => {
     appendSystemPrompt: null,
     agentComposeVersionId: null,
     vars: null,
+    runnerPreference: {
+      kind: "noPreference" as const,
+      reason: "noReuseKey" as const,
+    },
   };
 
   it.each(["vm0/default", "vm0/large"])(
@@ -252,6 +639,7 @@ describe("runner poll response contract", () => {
 describe("runner storage manifest contract", () => {
   const storedContext = {
     storageMounts: [],
+    connectorRuntimeTargets: [],
     environment: null,
     secretValueEnvironmentKeys: null,
     resumeSession: null,
@@ -466,6 +854,10 @@ describe("runner resume session contract", () => {
       vars: null,
       experimentalProfile: "vm0/default",
       historyGenerationRunId,
+      runnerPreference: {
+        kind: "noPreference",
+        reason: "noReuseKey",
+      },
     });
     expect(job.historyGenerationRunId).toBe(historyGenerationRunId);
 
@@ -496,20 +888,34 @@ describe("runner resume session contract", () => {
     ]);
   });
 
-  it("keeps the canonical runner preference optional", () => {
-    const job = jobSchema.parse({
+  it("requires a canonical runner preference", () => {
+    const jobInput = {
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
+    };
+
+    expect(jobSchema.safeParse(jobInput).success).toBe(false);
+    const runnerPreference = {
+      kind: "noPreference" as const,
+      reason: "noReuseKey" as const,
+    };
+    expect(
+      jobSchema.parse({
+        ...jobInput,
+        runnerPreference,
+      }),
+    ).toMatchObject({
+      runnerPreference,
     });
-    expect(job.runnerPreference).toBeUndefined();
   });
 
-  it("accepts one strict optional runner preference", () => {
+  it("accepts every strict positive runner preference tier", () => {
     const runnerPreference = {
+      kind: "preference" as const,
       runnerIdentity: {
         runnerId: "22222222-2222-4222-8222-222222222222",
         heartbeatGeneration: 7,
@@ -525,26 +931,35 @@ describe("runner resume session contract", () => {
       experimentalProfile: "vm0/default",
     };
 
-    for (const reason of [
-      "exactHistoryGeneration",
-      "matchingReuseKey",
+    for (const tier of [
+      "exactSandbox",
       "finalizingPredecessor",
+      "reusableSandbox",
+      "workspaceCache",
     ] as const) {
-      const job = jobSchema.parse({
-        ...jobInput,
-        runnerPreference: { ...runnerPreference, reason },
-      });
-      expect(job.runnerPreference).toStrictEqual({
-        ...runnerPreference,
-        reason,
-      });
+      expect(
+        jobSchema.parse({
+          ...jobInput,
+          runnerPreference: { ...runnerPreference, tier },
+        }).runnerPreference,
+      ).toStrictEqual({ ...runnerPreference, tier });
     }
     expect(
       jobSchema.safeParse({
         ...jobInput,
         runnerPreference: {
           ...runnerPreference,
-          reason: "matchingReuseKey",
+          tier: "reusableSandbox",
+          reason: "noReuseKey",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          tier: "reusableSandbox",
           expiresAt: undefined,
         },
       }).success,
@@ -554,8 +969,11 @@ describe("runner resume session contract", () => {
         ...jobInput,
         runnerPreference: {
           ...runnerPreference,
-          reason: "matchingReuseKey",
-          resource: "reusableSandbox",
+          runnerIdentity: {
+            ...runnerPreference.runnerIdentity,
+            runnerId: "not-a-uuid",
+          },
+          tier: "reusableSandbox",
         },
       }).success,
     ).toBe(false);
@@ -564,11 +982,43 @@ describe("runner resume session contract", () => {
         ...jobInput,
         runnerPreference: {
           ...runnerPreference,
-          reason: "matchingReuseKey",
-          runnerIdentity: {
-            ...runnerPreference.runnerIdentity,
-            resource: "reusableSandbox",
-          },
+          tier: "reusableSandbox",
+          expiresAt: "not-a-date",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts every strict no-preference reason", () => {
+    const jobInput = {
+      runId: "33333333-3333-4333-8333-333333333333",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      experimentalProfile: "vm0/default",
+    };
+
+    for (const reason of [
+      "noReuseKey",
+      "expired",
+      "noViableHolder",
+      "lookupError",
+    ] as const) {
+      expect(
+        jobSchema.parse({
+          ...jobInput,
+          runnerPreference: { kind: "noPreference", reason },
+        }).runnerPreference,
+      ).toStrictEqual({ kind: "noPreference", reason });
+    }
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreference: {
+          kind: "noPreference",
+          reason: "noReuseKey",
+          tier: "workspaceCache",
         },
       }).success,
     ).toBe(false);
@@ -977,6 +1427,69 @@ describe("runner claim request contract", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts every positive runner preference claim state", () => {
+    const runnerPreference = {
+      kind: "preference" as const,
+      runnerIdentity: {
+        runnerId: "22222222-2222-4222-8222-222222222222",
+        heartbeatGeneration: 7,
+      },
+      tier: "workspaceCache" as const,
+      expiresAt: "2026-08-03T00:00:01.000Z",
+    };
+
+    for (const runnerPreferenceClaimState of [
+      "active",
+      "expired",
+      "cleared",
+    ] as const) {
+      expect(
+        runnersJobClaimContract.claim.body.parse({
+          telemetry: {
+            runnerPreference,
+            runnerPreferenceClaimState,
+          },
+        }).telemetry,
+      ).toStrictEqual({
+        runnerPreference,
+        runnerPreferenceClaimState,
+      });
+    }
+  });
+
+  it("accepts canonical no-preference claim telemetry", () => {
+    const runnerPreference = {
+      kind: "noPreference" as const,
+      reason: "noViableHolder" as const,
+    };
+
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        telemetry: {
+          runnerPreference,
+        },
+      }).telemetry,
+    ).toStrictEqual({
+      runnerPreference,
+    });
+  });
+
+  it("keeps other claim telemetry when canonical preference is malformed", () => {
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        telemetry: {
+          discoverySource: "poll",
+          runnerPreference: { kind: "futurePreference" },
+          runnerPreferenceClaimState: "active",
+        },
+      }).telemetry,
+    ).toStrictEqual({
+      discoverySource: "poll",
+      runnerPreference: undefined,
+      runnerPreferenceClaimState: "active",
+    });
+  });
+
   it("discards malformed diagnostic telemetry", () => {
     const body = runnersJobClaimContract.claim.body.parse({
       telemetry: {
@@ -1045,64 +1558,6 @@ describe("runner poll request contract", () => {
     });
 
     expect(body.telemetry).toEqual({});
-  });
-});
-
-describe("runner network policy refresh contract", () => {
-  const bodySchema = runnersNetworkPolicyRefreshContract.refresh.body;
-  const terminalResponseSchema =
-    runnersNetworkPolicyRefreshContract.refresh.responses[409];
-
-  it("normalizes canonical connector slugs and ignores additional fields", () => {
-    expect(
-      bodySchema.parse({
-        connectorSlugs: ["slack", "github", "slack"],
-        additionalField: true,
-      }),
-    ).toEqual({ connectorSlugs: ["slack", "github"] });
-  });
-
-  it.each([
-    ["missing canonical field", {}],
-    ["empty canonical field", { connectorSlugs: [] }],
-    ["invalid canonical slug", { connectorSlugs: ["invalid/slack"] }],
-    [
-      "oversized canonical field",
-      {
-        connectorSlugs: Array.from(
-          { length: NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX + 1 },
-          () => {
-            return "slack";
-          },
-        ),
-      },
-    ],
-  ])("rejects %s", (_, body) => {
-    expect(bodySchema.safeParse(body).success).toBe(false);
-  });
-
-  it("requires the terminal error code for conflict responses", () => {
-    expect(
-      terminalResponseSchema.parse({
-        error: {
-          code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
-          message: "Run is terminal",
-        },
-      }),
-    ).toEqual({
-      error: {
-        code: "RUN_TERMINAL",
-        message: "Run is terminal",
-      },
-    });
-    expect(
-      terminalResponseSchema.safeParse({
-        error: {
-          code: "CONFLICT",
-          message: "Run is not refreshable",
-        },
-      }).success,
-    ).toBe(false);
   });
 });
 

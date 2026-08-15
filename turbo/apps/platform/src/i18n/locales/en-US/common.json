@@ -108,23 +108,40 @@
         "title": "No network logs"
       },
       "notFound": {
-        "back": "Back to activity",
+        "back": "Back to chats",
         "description": "This log doesn't exist or you don't have permission to view it in the current workspace.",
         "title": "Log not found"
       },
       "runner": {
+        "cacheMiss": "No cached workspace matched the reuse key.",
         "deviceLimitMismatch": "Idle pool entry exists but its device rate limiter state does not match.",
+        "diskPressure": "Workspace reuse was skipped because the runner was under disk pressure.",
         "featureDisabled": "Sandbox reuse is disabled for this run.",
+        "invalidMetadata": "Cached workspace metadata was invalid.",
+        "invalidWorkingDir": "The requested working directory could not be reused.",
+        "lockBusy": "Another run was preparing the same workspace.",
         "noReuseKey": "No reuse key was available to match an idle sandbox.",
         "noSessionId": "Legacy result: the exact reason the sandbox was not reused is unavailable.",
+        "notConfigured": "Workspace reuse was not configured for this run.",
         "notReused": "Not reused",
         "poolMiss": "No matching sandbox found in the idle pool.",
         "profileMismatch": "Idle pool entry exists but its profile does not match.",
+        "provisioning": "Provisioning",
         "reused": "Reused",
         "reusedDescription": "Sandbox was unparked from the idle pool.",
         "sandbox": "Sandbox",
-        "unknown": "Unknown (older run, recorded before sandbox reuse tracking was added).",
-        "unparkFailed": "Unpark attempt failed; a fresh sandbox was provisioned."
+        "sandboxPrepareFallback": "A cached workspace was found but could not be used after sandbox preparation.",
+        "sandboxReusedDescription": "Workspace remained available inside the reused sandbox.",
+        "startup": "Startup",
+        "startupCold": "Cold start",
+        "startupSandbox": "Sandbox reuse",
+        "startupUnknown": "Unknown",
+        "startupWorkspace": "Workspace reuse",
+        "unavailable": "Unavailable",
+        "unparkFailed": "Unpark attempt failed; a fresh sandbox was provisioned.",
+        "workspace": "Workspace",
+        "workspaceNoReuseKey": "No workspace reuse key was available.",
+        "workspaceReusedDescription": "Workspace was restored from the runner cache."
       },
       "steps": {
         "matched": "({{matched}}/{{total}} matched)",
@@ -204,22 +221,6 @@
         "title": "No log loaded",
         "upload": "Upload JSON"
       }
-    },
-    "list": {
-      "description": "Logs and runs from your agents.",
-      "errors": {
-        "description": "Something went wrong. Please try again later.",
-        "title": "Failed to load activity data"
-      },
-      "filters": {
-        "agent": "Agent filter",
-        "allAgents": "All agents",
-        "allSources": "All sources",
-        "allStatuses": "All statuses",
-        "source": "Source filter",
-        "status": "Status filter"
-      },
-      "title": "Activity"
     },
     "network": {
       "actions": {
@@ -320,30 +321,21 @@
       "unknown": "unknown",
       "yes": "Yes"
     },
-    "pagination": {
-      "backTwo": "Back 2 pages",
-      "forwardTwo": "Forward 2 pages",
-      "next": "Next page",
-      "page": "Page {{current}}",
-      "pageOf": "Page {{current}} of {{total}}",
-      "previous": "Previous page",
-      "rowsPerPage": "Rows per page"
-    },
     "sources": {
       "agent": "Agent",
       "agentphone": "AgentPhone",
-      "agentWithName": "Agent ({{name}})",
+      "automationEvent": "Automation event",
+      "automationSchedule": "Automation schedule",
       "email": "Email",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "Goal",
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
       "test": "Test",
       "web": "Web",
-      "webhook": "Webhook",
-      "workflowEvent": "Workflow event",
-      "workflowSchedule": "Workflow schedule"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "Cancelled",
@@ -353,34 +345,6 @@
       "queued": "Queued",
       "running": "Running",
       "timeout": "Timeout"
-    },
-    "statusFilters": {
-      "cancelled": "Cancelled",
-      "completed": "Completed",
-      "failed": "Failed",
-      "pending": "Pending",
-      "queued": "Queued",
-      "running": "Running",
-      "timeout": "Timeout"
-    },
-    "table": {
-      "empty": {
-        "description": "When your agents start working, their activity will show up here.",
-        "title": "All quiet for now"
-      },
-      "filteredEmpty": {
-        "description": "Try different filters to find what you're looking for.",
-        "title": "Nothing matches those filters"
-      },
-      "headers": {
-        "agent": "Agent",
-        "description": "Description",
-        "duration": "Duration",
-        "session": "Session",
-        "source": "Source",
-        "startTime": "Start Time",
-        "status": "Status"
-      }
     }
   },
   "appShell": {
@@ -472,19 +436,15 @@
         "overlay": "Sidebar overlay"
       },
       "navigation": {
-        "activity": "Activity logs",
         "agents": "Agents",
         "artifacts": "Artifacts",
         "connectors": "Connectors",
-        "insights": "Insights",
-        "insightsAndUsage": "Insights & Usage",
         "newChat": "New chat",
         "settings": "Settings",
         "workflows": "Workflows",
         "works": "Where {{agentName}} works"
       },
       "rail": {
-        "activity": "Activity",
         "new": "New",
         "workflows": "Workflows",
         "works": "Works"
@@ -506,7 +466,6 @@
       "backToArtifacts": "Back to artifacts",
       "close": "Close",
       "closeArtifact": "Close artifact",
-      "closeDownloadMenu": "Close download menu",
       "closeNamed": "Close {{title}}",
       "closePreviewMenu": "Close preview menu",
       "download": "Download",
@@ -538,6 +497,8 @@
       "emptyTitle": "No artifacts found",
       "error": "Could not load artifacts. Try again later.",
       "filters": {
+        "avatar": "Avatars",
+        "avatarAria": "Show avatar artifacts",
         "file": "Files",
         "fileAria": "Show file artifacts",
         "image": "Images",
@@ -545,6 +506,8 @@
         "label": "Artifact kind filters",
         "presentation": "Presentations",
         "presentationAria": "Show presentation artifacts",
+        "sharedConversation": "Shared conversations",
+        "sharedConversationAria": "Show shared conversation artifacts",
         "video": "Videos",
         "videoAria": "Show video artifacts",
         "website": "Websites",
@@ -579,6 +542,7 @@
     },
     "kinds": {
       "audio": "Audio",
+      "avatar": "Avatar",
       "code": "Code",
       "csv": "CSV",
       "data": "Data",
@@ -589,6 +553,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Presentation",
+      "sharedConversation": "Shared conversation",
       "text": "Text",
       "video": "Video"
     },
@@ -619,6 +584,7 @@
       "videoLabel": "Video preview for {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Open shared conversation",
       "panelTitle": "Artifacts",
       "singularTitle": "Artifact",
       "unavailable": "This artifact is no longer available."
@@ -626,8 +592,25 @@
     "templates": {
       "activeHtmlPreview": "{{title}} active HTML preview",
       "all": "All",
+      "avatar": "Avatar",
+      "avatarWithId": "Avatar {{id}}",
+      "backToAvatars": "Back to avatars",
       "categories": "Template categories",
       "category": "Template category",
+      "chooseVoice": "Choose a voice for {{title}}",
+      "filters": {
+        "age": "Age",
+        "all": "All",
+        "aspectRatio": "Aspect ratio",
+        "clear": "Clear",
+        "ethnicity": "Ethnicity",
+        "gender": "Gender",
+        "language": "Language",
+        "scene": "Scene",
+        "style": "Style",
+        "title": "Filters",
+        "useCase": "Use case"
+      },
       "fullPreview": "{{title}} website full preview",
       "htmlPreview": "{{title}} HTML preview",
       "illustration": "Illustration",
@@ -637,17 +620,21 @@
       "noMatches": "No matches",
       "placeholder": "{{title}} website preview placeholder",
       "playVideo": "Play video template preview {{title}}",
+      "previewAvatarVideo": "Preview avatar video {{title}}",
       "previewCurrentSlide": "Preview {{title}} at current slide",
       "previewSlide": "Preview slide {{slideNumber}}",
+      "previewVoice": "Preview voice {{title}}",
       "previewWebsite": "Preview website template {{title}}",
       "previousHtmlPreview": "{{title}} previous HTML preview",
       "previousSlide": "Preview previous slide",
-      "searchConnector": "Search connector...",
-      "searchConnectors": "Search connectors",
+      "recommended": "Recommended",
+      "searchConnector": "Search templates",
+      "searchConnectors": "Search templates",
       "selected": "Template: {{title}}",
       "selectStyle": "Select style {{style}}",
       "selectTemplate": "Select template {{title}}",
       "selectVideo": "Select video template {{title}}",
+      "selectVoice": "Select voice {{title}}",
       "selectWebsite": "Select website template {{title}}",
       "selectWorkflow": "Select workflow template {{title}}",
       "showVariant": "Show variant {{variantNumber}}",
@@ -722,7 +709,7 @@
       "lastSeen": "Last seen {{date}}",
       "linkExpires": "Link expires {{date}}.",
       "macRequirement": "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
-      "noHostsDescription": "Open Zero Computer Use on your Mac and refresh this page when it comes online.",
+      "noHostsDescription": "Open {{desktopApplicationName}} on your Mac and refresh this page when it comes online.",
       "noHostsTitle": "No online computers",
       "sources": {
         "chat": "this chat thread",
@@ -799,8 +786,10 @@
     "common": {
       "back": "Back",
       "cancel": "Cancel",
+      "confirm": "Confirm",
       "credits": "credits",
       "manage": "Manage",
+      "preparing": "Preparing...",
       "redirecting": "Redirecting...",
       "restore": "Restore",
       "retry": "Retry",
@@ -811,21 +800,38 @@
       "activeUntil": "Active until {{date}}",
       "billedMonthly": "Billed monthly",
       "buyAmount": "Buy {{amount}}",
-      "buyButton": "Buy concurrent",
-      "buyDescription": "Add a monthly subscription for more concurrent runs.",
+      "buyButton": "Buy concurrency",
+      "buyDescription": "Choose how many additional slots you want.",
       "buyTitle": "Buy concurrency",
       "cancelDescription": "This stops renewal at the end of the current billing period. Existing slots stay active until then.",
+      "cancelEntireOption": "Cancel entire subscription",
       "cancellationScheduled": "Cancellation scheduled",
-      "cancelTitle": "Cancel concurrency subscription?",
+      "changeButton": "Change",
+      "changeDescription": "Choose a new total slot quantity or stop renewal.",
+      "changeOptionsAria": "Concurrency subscription change options",
+      "changeQuantityOption": "Change slots",
+      "changeQuantityOptionDescription": "Increases apply immediately. Decreases start on the next billing date.",
+      "changeTitle": "Change concurrency",
       "concurrentRun_one": "{{value}} concurrent run",
       "concurrentRun_other": "{{value}} concurrent runs",
+      "continueToStripe": "Continue to Stripe",
       "decreaseAria": "Decrease additional concurrency quantity",
+      "dueNow": "Due now",
       "emptyDescription": "Buy additional concurrent runs for this workspace.",
       "emptyTitle": "No concurrency subscriptions",
       "increaseAria": "Increase additional concurrency quantity",
+      "monthlyTotal": "Monthly total",
+      "newQuantity": "New total slot quantity",
+      "orderSummary": "Order summary",
+      "quantityRange": "Enter {{minimum}}–{{maximum}}. You currently have {{current}} slots.",
       "restoreDescription": "This resumes renewal for this concurrency subscription.",
       "restoreSubscription": "Restore subscription",
       "restoreTitle": "Restore concurrency subscription?",
+      "reviewChange": "Review change",
+      "reviewDescription": "Review the amount due now and your updated monthly subscription.",
+      "reviewTitle": "Review concurrency change",
+      "scheduledChange": "Changes to {{quantity}} on {{date}}",
+      "scheduledReviewDescription": "Your current slots stay active through this billing period. The lower quantity starts at renewal with no refund or account credit.",
       "slot_one": "{{value}} slot",
       "slot_other": "{{value}} slots",
       "slots": "Slots",
@@ -840,6 +846,9 @@
       "exchangeRate": "Credits never expire. 1 USD = {{credits}} credits.",
       "quickBuy": "Quick buy",
       "quickBuyAmount": "Quick buy {{amount}}",
+      "reviewDescription": "Confirm this one-time charge with your saved payment method.",
+      "reviewError": "Could not complete this credit purchase. Review your billing details and try again.",
+      "reviewTitle": "Review credit purchase",
       "title": "Buy credits"
     },
     "downgrade": {
@@ -869,15 +878,30 @@
       "selectMonth": "Select month",
       "to": "To"
     },
-    "manage": {
-      "description": "Subscription, payment method, and invoices in Stripe.",
-      "title": "Manage billing"
+    "paymentMethods": {
+      "description": "Manage the payment methods used for billing in Stripe.",
+      "title": "Payment methods"
     },
     "plans": {
       "cancellationNotice": "Your {{plan}} plan has been cancelled and will end on {{date}}.",
       "changeAnytime": "Upgrade or downgrade anytime.",
       "compare": "Compare plans",
       "compareAll": "Compare all plans",
+      "comparison": {
+        "addOnConcurrency": "Add-on concurrency",
+        "available": "Available",
+        "concurrentRuns": "Concurrent runs",
+        "included": "Yes",
+        "ownLlmKeys": "Your own LLM keys",
+        "privateAgents": "Private agents",
+        "sharedAgents": "Shared agents",
+        "support": "Support",
+        "supportEmail": "Email",
+        "supportPriority": "Priority",
+        "unlimited": "Unlimited",
+        "voiceInput": "Voice input",
+        "voiceInputValue": "{{requests}}/day · {{minutes}} min"
+      },
       "currentPlan": "Current plan",
       "custom": {
         "name": "Custom"
@@ -895,20 +919,21 @@
         "communitySupport": "Community support",
         "emailSupport": "Email support",
         "existingCredits": "Existing free credits only",
-        "monthlyCredits": "{{value}} credits / month",
         "oneConcurrentRun": "1 concurrent run",
-        "payAsYouGo": "Pay as you go after that",
         "prioritySupport": "Priority support",
+        "sharedAndPrivateAgents": "7 shared agents, unlimited private",
         "tenConcurrentRuns": "10 concurrent runs",
         "twoConcurrentRuns": "2 concurrent runs",
         "unlimitedAgents": "Unlimited total agents",
-        "voiceInput": "Voice input",
-        "voiceInputLifetime": "Voice input (10 lifetime uses per member)"
+        "voiceInputFree": "Voice input (10 lifetime requests · 10 min/day per member)",
+        "voiceInputPro": "Voice input (300 requests/day · 200 min/day per member)",
+        "voiceInputTeam": "Voice input (500 requests/day · 500 min/day per member)"
       },
       "free": {
         "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
+      "legacy": "Legacy",
       "limitedFree": {
         "name": "Limited free"
       },
@@ -924,7 +949,7 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/month",
       "pro": {
-        "description": "More power and seamless collaboration for your team.",
+        "description": "More credits and concurrency for teams running AI agents every day.",
         "name": "Pro"
       },
       "renews": "Renews {{date}}",
@@ -932,11 +957,72 @@
       "sectionTitle": "Plan",
       "selectedPlan": "the selected plan",
       "team": {
-        "description": "Scale fast with zero friction and full flexibility.",
+        "description": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
         "name": "Team"
       },
       "upgrade": "Upgrade",
-      "upgradeTo": "Upgrade to {{plan}}"
+      "upgradeTo": "Upgrade to {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "Bonus credits",
+        "bonusIncluded": "{{credits}} bonus included",
+        "choosePlan": "Choose a plan",
+        "concurrentSlots": "Concurrent slots",
+        "configurePackages": "Configure member packages",
+        "credits": "Credits",
+        "currentMember": "Current member",
+        "existingPackagesUnchanged": "Existing member packages stay unchanged.",
+        "management": {
+          "comparison": "Current and new subscription comparison",
+          "current": "Current",
+          "downgradeDescription": "The lower package starts at the next billing date. Existing credits remain available until they expire.",
+          "downgradesToDate": "Downgrades to {{package}} on {{date}}.",
+          "downgradesToPeriod": "Downgrades to {{package}} at the next billing date.",
+          "everyMonth": "Every month",
+          "immediateAmount": "Due now",
+          "immediateAmountNote": "For the rest of this billing period",
+          "immediateCredits": "Credits added after payment",
+          "new": "New",
+          "processing": "Change is processing",
+          "reviewDescription": "Confirming charges your saved payment method.",
+          "reviewTitle": "Review package change",
+          "scheduledFor": "Scheduled for {{date}}",
+          "today": "Today"
+        },
+        "memberExclusive": "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
+        "memberPackages": "Member packages",
+        "memberUsage": "Member usage",
+        "migration": {
+          "action": "Convert plan",
+          "confirmDescription": "Your current plan and entitlements stay active until this billing period ends. Stripe charges the new recurring total when the new plan starts.",
+          "convertPlan": "Convert plan",
+          "description": "Convert your legacy {{plan}} workspace to a new plan with an individual monthly usage package for every member.",
+          "error": "Could not migrate this subscription. Refresh and try again.",
+          "invoice": "View invoice",
+          "processing": "Scheduling the conversion with Stripe.",
+          "ready": "Choose one required monthly package for every member and pending invitation.",
+          "review": "Review conversion",
+          "reviewDescription": "Compare the current legacy plan with the new recurring plan before scheduling the conversion.",
+          "reviewTitle": "Review plan conversion",
+          "scheduled": "Conversion scheduled for {{date}}. Your current plan and entitlements remain active until then.",
+          "switchesOn": "Switches to {{plan}} on {{date}}",
+          "title": "Convert legacy plan"
+        },
+        "monthlyTotal": "Monthly total",
+        "orderSummary": "Order summary",
+        "packagePerMemberNote": "Every member needs a package. You pick each member's package in the next step.",
+        "packCredits": "{{credits}} credits",
+        "packCreditsDiscount": "{{credits}} credits · {{discount}}% off",
+        "packOption": "{{price}} · {{credits}} credits · {{discount}}% off",
+        "planChangeError": "Could not prepare the subscription change. Try again.",
+        "planPlusPackages": "Plan {{plan}} · member packages {{lowest}}–{{highest}} each",
+        "planStep": "Plan",
+        "priceFrom": "from",
+        "purchasedCredits": "Purchased credits",
+        "selectPlan": "Start with {{plan}}",
+        "selectUsage": "Usage for {{name}}",
+        "stepOfTotal": "Step {{current}} of {{total}}",
+        "totalCreditsWithBonus": "{{credits}} credits · {{bonus}} bonus"
+      }
     },
     "restore": {
       "cancellationDescription": "This will undo the scheduled cancellation for your {{plan}} plan.",
@@ -957,20 +1043,25 @@
       "concurrencyAdded": "Concurrency added. Your new slots will become available after Stripe confirms the subscription.",
       "concurrencyCanceled": "Concurrency subscription canceled.",
       "concurrencyCanceledDate": "Concurrency subscription canceled. Slots stay active until {{date}}.",
+      "concurrencyChanged": "Concurrency change confirmed. Your slot count will update after Stripe processes the change.",
+      "concurrencyReduced": "Concurrency reduction scheduled for the next billing date.",
       "concurrencyRestored": "Concurrency subscription restored.",
+      "creditPurchaseConfirmed": "Payment confirmed. Credits will appear after Stripe processes the invoice.",
       "creditsAdded": "Credits added. You can continue chatting with Zero.",
       "downgradeScheduledDate": "Downgrade scheduled. Your current plan stays active until {{date}}.",
       "downgradeScheduledPeriod": "Downgrade scheduled. Your current plan stays active until the billing period ends.",
       "planRestored": "Plan restored. Your subscription will renew normally.",
       "preparingReceiptDownload": "Preparing receipt download...",
       "receiptDownloadFailed": "Failed to download receipts",
-      "receiptsDownloaded": "Receipts downloaded"
+      "receiptsDownloaded": "Receipts downloaded",
+      "subscriptionChangeConfirmed": "Subscription change confirmed."
     },
     "usage": {
       "added": "Added {{date}}",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} left",
         "minute": "{{value}}m",
         "remaining": "{{remaining}} / {{total}} credits",
         "remainingAria": "Usage allowance {{label}} remaining",
@@ -979,6 +1070,7 @@
         "title": "Usage allowance",
         "week": "{{value}}w"
       },
+      "autoRechargeOn": "Auto-recharge on",
       "breakdown": {
         "currentPlanDescription": "Monthly plan credits, resets each billing cycle",
         "freeDescription": "Starter credits, use until depleted",
@@ -995,12 +1087,33 @@
       "creditsRemaining_one": "{{value}} credit remaining",
       "creditsRemaining_other": "{{value}} credits remaining",
       "expires": "Expires {{date}}",
+      "grantsTable": {
+        "added": "Added",
+        "amount": "Amount",
+        "expires": "Expires",
+        "left": "Left",
+        "source": "Source"
+      },
       "left": "{{value}} left",
       "member": "Member",
       "neverExpires": "Never expires",
+      "orgCredits": "Org credits",
+      "seeUsageRecords": "See where these credits went",
       "unavailable": "Credit balance unavailable.",
       "upgradeDescription": "Pro includes monthly credits and unlocks additional credit options.",
       "upgradeTitle": "Upgrade to Pro to get more credits",
+      "usagePack": {
+        "bonus": "Bonus",
+        "members": "Members",
+        "membersDescription": "Review each member's remaining usage pack credits and credit additions.",
+        "membersTitle": "Member usage pack credits",
+        "nextExpiry": "Next expiry",
+        "purchased": "Purchased",
+        "remaining": "Remaining",
+        "title": "Usage pack credits",
+        "totalRemaining": "Total remaining",
+        "viewMembers": "View member balances"
+      },
       "used": "Used"
     }
   },
@@ -1008,9 +1121,10 @@
     "cardTitle": "Cloud browser",
     "close": "Close live browser",
     "documentTitle": "Live browser",
+    "fitAction": "Fit",
     "fitWindow": "Fit browser to window",
     "iframeTitle": "Live browser: {{name}}",
-    "invalidLink": "Invalid browser link",
+    "notFound": "Browser not found",
     "open": "Open {{name}} browser",
     "openAction": "Open",
     "openNewPage": "Open this browser in a new page",
@@ -1027,7 +1141,6 @@
       "starting": "Starting",
       "stopped": "Stopped"
     },
-    "stop": "Stop browser",
     "title": "Live browser",
     "unavailable": {
       "description": "This browser does not belong to this chat or has been removed.",
@@ -1038,7 +1151,6 @@
     "actions": {
       "authorize": "Authorize",
       "cancel": "Cancel",
-      "configure": "Configure",
       "confirm": "Confirm",
       "continue": "Continue",
       "copied": "Copied!",
@@ -1087,24 +1199,14 @@
       "viewAgentProfile": "View agent profile"
     },
     "attachments": {
-      "addLink": "Add link",
       "attach": "Attach",
-      "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} exceeds the 1 GB limit",
       "imageUnavailable": "[Image unavailable: {{filename}}]",
-      "importing": "Importing attachment",
-      "invalidLink": "Enter a valid link",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "Loading {{filename}}",
       "previewFile": "Preview {{filename}}",
-      "supportedTypes": "Images, docs, audio, video, and archives",
       "title": "Attachments",
-      "unavailable": "Attachment unavailable",
-      "upload": "Upload",
       "uploadFailed": "Failed to upload {{filename}}",
       "uploadFailedRetry": "Failed to upload {{filename}}. Try again.",
-      "uploadFromComputer": "Upload from computer",
-      "uploadFromLink": "Upload from link",
       "uploadsFailed": "Some attachments failed to upload. Try again."
     },
     "automations": {
@@ -1123,7 +1225,7 @@
       "events": {
         "githubDeploymentStatus": "GitHub deployment status created",
         "githubIssueComment": "GitHub issue comment created",
-        "githubLabelApplied": "GitHub label applied",
+        "githubPullRequest": "GitHub pull request",
         "githubReviewSubmitted": "GitHub pull request review submitted",
         "githubWorkflowCompleted": "GitHub workflow completed",
         "githubWorkflowJobCompleted": "GitHub workflow job completed",
@@ -1132,6 +1234,7 @@
         "googleCalendarCancelled": "Google Calendar event cancelled",
         "googleCalendarCreated": "Google Calendar event created",
         "googleCalendarUpdated": "Google Calendar event updated",
+        "googleFormsResponseSubmitted": "Google Forms response submitted",
         "googleMeetTranscript": "Google Meet transcript ready",
         "notionChildPage": "New Notion child page",
         "notionDatabaseItem": "New Notion database item",
@@ -1232,6 +1335,10 @@
       "selectedModelUnavailable": "The selected model is not available. Configure it before sending.",
       "selectedModelUnavailableToast": "The selected model is not available",
       "selectModel": "Select model",
+      "setAsDefault": "Set as default",
+      "temporaryFastModeDisabledNotice": "Fast mode is temporarily disabled for this run",
+      "temporaryFastModeEnabledNotice": "Fast mode is temporarily enabled for this run",
+      "temporaryModelNotice": "Temporarily switched to {{model}}",
       "threadSuggestions": "Chat threads",
       "visualAttachmentsUnsupported": "{{modelName}} cannot recognize images or videos. Switch to a vision-capable model to attach them.",
       "workflows": {
@@ -1248,8 +1355,8 @@
       "cloudBrowser": "Cloud browser",
       "connectHost": "Connect {{hostName}}",
       "connectMyComputer": "Connect my computer",
-      "dialogDescription": "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
-      "dialogTitle": "Let Zero use your computer",
+      "dialogDescription": "So {{desktopProductName}} can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
+      "dialogTitle": "Let {{desktopProductName}} use your computer",
       "disableCloudBrowser": "Disable Cloud browser",
       "disconnectHost": "Disconnect {{hostName}}",
       "downloadMacos": "Download for macOS",
@@ -1270,7 +1377,6 @@
       "available_other": "Available connectors to connect ({{count}})",
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
-      "customConnectDescription": "Review and connect this custom connector.",
       "find": "Find connectors...",
       "remove": "Remove {{connectorName}}",
       "title": "Connectors"
@@ -1306,13 +1412,25 @@
       "partsHeading_one": "Feedback on {{count}} part of your reply:",
       "partsHeading_other": "Feedback on {{count}} parts of your reply:",
       "placeholder": "What should change about this?",
-      "provide": "Provide feedback",
+      "quote": "Quote",
       "remove": "Remove feedback",
       "sentEmailDescription": "a sent email (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", sent ID: {{sentId}}",
       "sourcePartHeading": "Feedback on this part of {{description}}:",
       "sourcePartsHeading_one": "Feedback on {{count}} part of {{description}}:",
       "sourcePartsHeading_other": "Feedback on {{count}} parts of {{description}}:"
+    },
+    "forward": {
+      "action": "Forward",
+      "agents": "Agents",
+      "back": "Back",
+      "content": "Content",
+      "description": "Forward selected content to an agent or chat.",
+      "noResults": "No agents or chats found",
+      "search": "Search agents and chats...",
+      "sent": "Forwarded successfully",
+      "threads": "Chats",
+      "title": "Forward to"
     },
     "mail": {
       "bcc": "bcc",
@@ -1322,18 +1440,6 @@
       "deletedEmail": "Deleted email: {{subject}}",
       "details": "Email details",
       "email": "Email",
-      "followUp": {
-        "action": "Follow up",
-        "active": "Tracking replies",
-        "activeDescription": "Replies are tracked and will be reported in this chat.",
-        "idleDescription": "Track replies and get notified in this chat.",
-        "paused": "Tracking paused",
-        "pausedDescription": "Reply tracking is currently paused.",
-        "settingUp": "Setting up…",
-        "submitting": "Setting up…",
-        "submittingDescription": "Setting up reply tracking…",
-        "tracking": "Tracking replies"
-      },
       "loadingDetails": "Loading email details",
       "needReconnect": "Need reconnect",
       "noMessage": "(No message)",
@@ -1463,13 +1569,20 @@
       "durationFor": "{{duration}} for {{label}}",
       "expandGroupedHistory": "Expand grouped run history",
       "expandWorkHistory": "Expand work history",
+      "fastModelName": "{{model}} Fast",
+      "fastModeOff": "Fast mode off",
+      "fastModeOn": "Fast mode on",
+      "fastModeWillBeOff": "Fast mode will be off",
+      "fastModeWillBeOn": "Fast mode will be on",
       "goalFor": "Goal for {{label}}",
       "groupedRunsFor_one": "{{count}} run for {{source}}",
       "groupedRunsFor_other": "{{count}} runs for {{source}}",
       "justNow": "just now",
       "keepGoing": "Keep going",
       "keepGoingAt": "Keep going · {{timestamp}}",
+      "modelChangedTo": "Model changed to {{model}}",
       "queueEllipsis": "queue...",
+      "selectedModelAppliesAfterCurrentRun": "Next run will use {{model}}",
       "thinking": {
         "assembling": "Assembling the pieces...",
         "brewing": "Brewing up a response...",
@@ -1487,6 +1600,22 @@
       "waitingIn": "Waiting in",
       "worked": "Worked",
       "workedFor": "Worked for {{duration}}"
+    },
+    "sharing": {
+      "cancel": "Cancel",
+      "close": "Close",
+      "copyFailed": "Could not copy the link",
+      "copyLink": "Copy link",
+      "create": "Share",
+      "createFailed": "Could not create the shared conversation. Try again.",
+      "deselectGroup": "Deselect message group",
+      "linkCopied": "Link copied",
+      "selectedCount_one": "{{count}} selected",
+      "selectedCount_other": "{{count}} selected",
+      "selectGroup": "Select message group",
+      "shareLink": "Shared conversation link",
+      "start": "Share messages",
+      "tooLarge": "Select fewer messages to share"
     },
     "shortcuts": {
       "number": "number"
@@ -1521,7 +1650,6 @@
         "website": "Website",
         "workflow": "Workflow"
       },
-      "messageTemplate": "Message template {{title}}",
       "previewTemplate": "Preview template {{title}}",
       "previewVideo": "Preview video template {{title}}",
       "previewWebsite": "Preview website template {{title}}",
@@ -1529,7 +1657,17 @@
       "removeTemplate": "Remove template {{title}}",
       "removeVideo": "Remove video template {{title}}",
       "removeWebsite": "Remove website template {{title}}",
-      "removeWorkflow": "Remove workflow template {{title}}"
+      "removeWorkflow": "Remove workflow template {{title}}",
+      "videoModelLabel": "Video model {{model}}",
+      "videoOptions": "Video options",
+      "videoOptionsAudio": "Generate audio",
+      "videoOptionsDuration": "Duration",
+      "videoOptionsLabel": "Video options {{spec}}",
+      "videoOptionsModel": "Model",
+      "videoOptionsRatio": "Ratio",
+      "videoOptionsResolution": "Resolution",
+      "videoSpecAudioOff": "Muted",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Chat thread",
@@ -1545,17 +1683,24 @@
         "waiting": "Waiting",
         "watching": "Watching"
       },
+      "emojiCategories": "Emoji categories",
       "empty": "Send a message to start the conversation",
       "frequentlyUsed": "Frequently used",
       "icon": "Chat thread icon",
-      "loadingEarlier": "Loading earlier messages",
+      "locator": {
+        "you": "You"
+      },
       "noEmojiFound": "No emoji found",
+      "notFound": "Chat thread not found",
       "openArtifacts": "Open artifacts",
       "openBrowser": "Open browser",
       "openNamedAgent": "Open agent {{name}}",
       "openNamedChat": "Open chat {{title}}",
+      "pickEmoji": "Pick an emoji",
       "scrollToBottom": "Scroll to bottom",
-      "searchEmoji": "Search emoji"
+      "searchEmoji": "Search emoji",
+      "steerAcknowledgement_one": "Picked this up mid-run — earlier work kept",
+      "steerAcknowledgement_other": "All {{count}} messages picked up mid-run — earlier work kept"
     },
     "threadSidebar": {
       "resize": "Resize sidebar"
@@ -1568,6 +1713,10 @@
       "checkingLimit": "Checking voice input limit",
       "input": "Voice input",
       "inputLimitReached": "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+      "inputLimitReachedMember": "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
+      "inputLimitReachedPro": "Voice input limit reached. Upgrade to Team for higher limits.",
+      "inputLimitReachedProMember": "Voice input limit reached. Ask a workspace admin to upgrade to Team for higher limits.",
+      "inputLimitReachedReset": "Voice input limit reached. Please wait for your limit to reset.",
       "microphoneAccessDenied": "Microphone access was denied. Allow microphone access and try again.",
       "openingMicrophone": "Opening microphone...",
       "starting": "Starting voice input",
@@ -1614,7 +1763,6 @@
       "edit": "Edit",
       "grant": "Grant",
       "reconnect": "Reconnect",
-      "rename": "Rename",
       "revoke": "Revoke",
       "save": "Save",
       "saving": "Saving...",
@@ -1718,6 +1866,7 @@
       },
       "categoriesAria": "Connector categories",
       "description": "Connect third-party services for your agents to use.",
+      "descriptionWithCount": "Connect {{value}} services for your agents to use.",
       "empty": {
         "agent": "No connectors for this agent",
         "connected": "No connected connectors",
@@ -1791,24 +1940,14 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "Not used by any agents",
-        "usedBy": "Used by {{agents}}",
-        "usedByOverflow_one": "Used by {{agents}} +{{value}}",
-        "usedByOverflow_other": "Used by {{agents}} +{{value}}"
-      },
       "connect": {
-        "apiAuthentication": "API authentication",
-        "apiDescription": "Enter the API secret issued by the provider.",
-        "back": "Back",
+        "configured": "Configured",
         "connecting": "Connecting…",
         "continue": "Continue",
         "continueToProvider": "Continue to the provider to authorize access.",
         "description": "Your secret is encrypted at rest and injected into outbound requests by the firewall. It's never exposed to the agent as an environment variable.",
-        "oauthDescription": "Authorize access with the connector's OAuth app.",
         "save": "Save",
         "saving": "Saving…",
-        "secret": "Secret",
         "title": "Connect {{connector}}"
       },
       "create": {
@@ -1822,13 +1961,18 @@
         "authorizationUrl": "Authorization URL",
         "clientId": "Client ID",
         "clientSecret": "Client secret",
+        "connectorType": "Connector type",
         "displayName": "Display name",
         "headerName": "Header name",
         "headerTemplate": "Header template",
         "headerTemplateHint": "(must contain {{placeholder}})",
         "httpBasicAuthentication": "HTTP Basic authentication",
+        "httpType": "HTTP API",
         "keepClientSecret": "Leave the client secret blank to keep the stored value.",
         "keepClientSecretPlaceholder": "Leave blank to keep current",
+        "mcpEndpoint": "MCP endpoint",
+        "mcpEndpointHint": "(Streamable HTTP, HTTPS only)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "New client secret",
         "none": "None",
         "oauthChangesDisconnect": "Changing OAuth settings or client credentials disconnects existing OAuth connections.",
@@ -1863,18 +2007,15 @@
       },
       "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
       "emptyMember": "Your org hasn't registered any custom connectors yet.",
+      "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "More options",
-      "rename": {
-        "displayName": "Display name",
-        "title": "Rename custom connector"
-      },
       "statusConnected": "Connected",
       "toasts": {
         "connected": "Connected",
         "created": "Created \"{{connector}}\"",
         "deleted": "Custom connector deleted",
         "disconnected": "Disconnected",
-        "renamed": "Renamed to \"{{connector}}\"",
         "updated": "Updated \"{{connector}}\""
       },
       "updateConfirm": {
@@ -1882,19 +2023,6 @@
         "description": "These OAuth changes will disconnect every member currently connected with OAuth. They'll need to connect this custom connector again.",
         "title": "Disconnect existing OAuth connections?"
       }
-    },
-    "customProposal": {
-      "configure": "Configure {{connector}}",
-      "descriptionAgent": "Saving will connect your values and authorize {{agent}}.",
-      "descriptionUser": "Saving will connect this custom connector for your account.",
-      "documentTitle": "Configure custom connector",
-      "invalid": "This custom connector proposal link is invalid or expired.",
-      "requestScope": "Request scope",
-      "returnToChat": "Return to the chat and reply ACK so the agent can verify the connector.",
-      "saved": "Saved",
-      "savedToast": "{{connector}} saved",
-      "targetFallback": "this agent",
-      "update": "Update {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Authorize {{agent}}",
@@ -2211,19 +2339,14 @@
           "challengeQuestion": "Why does Feishu show \"Challenge code didn't get a response\"?",
           "title": "Setup FAQ"
         },
-        "guide": {
-          "next": "Show next Feishu guide image",
-          "previous": "Show previous Feishu guide image",
-          "show": "Show Feishu guide image {{number}}"
-        },
         "loadError": "Couldn't load Feishu settings.",
         "manage": "Manage",
         "manageDialogTitle": "Manage Feishu bot",
         "moreOptions": "More options for {{bot}}",
         "pageDescription": "Manage bot routing for this workspace",
         "permissions": {
-          "description": "In the Feishu developer console, open Permissions & Scopes, choose Batch Import/Export > Import, and paste the JSON below. It imports every managed connector scope under User identity.",
-          "hint": "Confirm the imported User identity permissions, then create and publish a new app version so the OAuth consent screen can grant them.",
+          "description": "In the Feishu developer console, open Permissions & Scopes, choose Batch Import/Export > Import, and paste the JSON below. It imports every managed connector scope under User identity. These are the minimum permissions required for the integration to work.",
+          "hint": "Keep every imported User identity permission, then create and publish a new app version so the OAuth consent screen can grant them. Removing any permission prevents the integration from working, and Feishu administrator approval may be required.",
           "label": "User token scope JSON",
           "menuAlt": "Feishu Permissions & Scopes page with the Batch import/export scopes menu highlighted",
           "menuLabel": "Open Batch import/export scopes",
@@ -2449,95 +2572,21 @@
       "requestFailed": "Request failed"
     },
     "realtime": {
-      "degraded": "Live updates ran into a problem. Please refresh the page."
+      "degraded": "Live updates ran into a problem. Please refresh the page.",
+      "disconnected": "Realtime disconnected",
+      "reconnecting": "Realtime reconnecting"
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "Next month",
-      "previousMonth": "Previous month"
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Invitation accepted for another account"
     },
-    "cards": {
-      "agents": "Agents",
-      "agentsRan_one": "{{agents}} ran {{runs}}",
-      "agentsRan_other": "{{agents}} ran {{runs}}",
-      "allowed": "Allowed",
-      "allowedSummary_one": "{{calls}} made within {{permissions}} granted permission",
-      "allowedSummary_other": "{{calls}} made within {{permissions}} granted permissions",
-      "automations": "Automations",
-      "automationsUsed_one": "{{automations}} used {{credits}}",
-      "automationsUsed_other": "{{automations}} used {{credits}}",
-      "balance": "Balance",
-      "byAgent": "by {{agent}}",
-      "chats": "Chats",
-      "chatsUsed_one": "{{chats}} used {{credits}}",
-      "chatsUsed_other": "{{chats}} used {{credits}}",
-      "clickToOpen": "Click to open",
-      "consumedToday": "consumed today",
-      "moreAutomations_one": "+{{value}} more automation",
-      "moreAutomations_other": "+{{value}} more automations",
-      "moreChats_one": "+{{value}} more chat",
-      "moreChats_other": "+{{value}} more chats",
-      "protected": "Protected",
-      "protectedSummary_one": "{{calls}} protected across {{permissions}} permission",
-      "protectedSummary_other": "{{calls}} protected across {{permissions}} permissions",
-      "rejected_one": "{{value}} rejected",
-      "rejected_other": "{{value}} rejected",
-      "rejectedOf": "{{denied}} of {{total}} rejected",
-      "services": "Services",
-      "servicesReceived_one": "{{services}} received {{calls}}",
-      "servicesReceived_other": "{{services}} received {{calls}}",
-      "team": "Team",
-      "teamCreditUsage": "Team Credit Usage",
-      "untitled": "(untitled)",
-      "yourCreditUsage": "Your Credit Usage"
+    "actions": {
+      "switchAccount": "Switch account",
+      "switchWorkspace": "Switch workspace"
     },
-    "common": {
-      "loadMore": "Load more",
-      "showLess": "Show less"
-    },
-    "page": {
-      "description": "Monitor what your agents access, how credits are spent, which permissions they use, and spot anything unusual.",
-      "documentTitle": "Insights & Usage",
-      "empty": "Run an agent to see insights here.",
-      "emptyRange": "No activity in this time range.",
-      "lastUpdated": "Last updated — {{date}}",
-      "loadError": "Could not load network activity.",
-      "title": "Insights"
-    },
-    "range": {
-      "custom": "Custom Range",
-      "last28Days": "Last 28 Days",
-      "last30Days": "Last 30 Days",
-      "last7Days": "Last 7 Days",
-      "today": "Today",
-      "yesterday": "Yesterday"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}} request was blocked by your permission rules. Review it to make sure nothing important is being held back.",
-      "blocked_other": "{{blocked}} requests were blocked by your permission rules. Review them to make sure nothing important is being held back.",
-      "blockedCaption": "{{calls}} · {{blocked}} blocked",
-      "busy_one": "A busy day — {{agentCount}} agents completed {{runs}}. Your network is working hard.",
-      "busy_other": "A busy day — {{agentCount}} agents completed {{runs}}. Your network is working hard.",
-      "distributed_one": "{{agents}} active, using {{credits}} total. A well-distributed workload.",
-      "distributed_other": "{{agents}} active, using {{credits}} total. A well-distributed workload.",
-      "highTraffic_one": "{{callCount}} service calls across {{services}}. High traffic day.",
-      "highTraffic_other": "{{callCount}} service calls across {{services}}. High traffic day.",
-      "light_one": "Light activity — only {{runs}} and {{calls}}. A quiet day.",
-      "light_other": "Light activity — only {{runs}} and {{calls}}. A quiet day.",
-      "quietCaption": "{{runs}} · a quiet day",
-      "smooth": "{{runs}} and {{callCount}} service calls today. Everything running smoothly."
-    },
-    "units": {
-      "agent_one": "{{value}} agent",
-      "agent_other": "{{value}} agents",
-      "call_one": "{{value}} call",
-      "call_other": "{{value}} calls",
-      "run_one": "{{value}} run",
-      "run_other": "{{value}} runs",
-      "service_one": "{{value}} service",
-      "service_other": "{{value}} services"
+    "success": {
+      "title": "Invitation accepted for {{workspace}}"
     }
   },
   "lifecycle": {
@@ -3898,6 +3947,7 @@
       "atLimit_other": "You can only run {{limit}} tasks at a time. New runs will wait in a queue until one finishes.",
       "available_one": "{{count}} slot available",
       "available_other": "{{count}} slots available",
+      "availableNow": "Available now",
       "inUse_one": "{{active}} of {{limit}} slot in use",
       "inUse_other": "{{active}} of {{limit}} slots in use"
     },
@@ -3924,40 +3974,6 @@
       "recommended": "Recommended",
       "teamDescription": "Scale your team with 10 parallel runs and more credits."
     }
-  },
-  "reportError": {
-    "description": "Send diagnostic information for this failed run to the developer team. We will investigate and follow up shortly.",
-    "disclosure": {
-      "agentConfiguration": "Agent configuration",
-      "agentTelemetry": "Agent telemetry and run logs",
-      "chatHistory": "Chat history and agent events",
-      "connectedServices": "Connected services (no credentials)",
-      "networkLogs": "Network request logs",
-      "runContext": "Run context and environment",
-      "title": "What will be sent"
-    },
-    "documentTitle": "Report Error",
-    "error": {
-      "loadFailed": "Failed to load run details",
-      "notFailed": "This run did not fail and cannot be reported",
-      "title": "Error",
-      "tryAgain": "Try Again"
-    },
-    "fields": {
-      "description": "Description",
-      "descriptionPlaceholder": "What happened? What did you expect?",
-      "title": "Title",
-      "titlePlaceholder": "Brief summary of the issue"
-    },
-    "loading": "Loading run details",
-    "send": "Send Report",
-    "sending": "Sending...",
-    "success": {
-      "description": "Your error report has been sent to the developer team. They will investigate and follow up.",
-      "reference": "Reference: {{reference}}",
-      "title": "Report sent"
-    },
-    "title": "Report error to developer"
   },
   "settings": {
     "accountMenu": {
@@ -4031,8 +4047,9 @@
           "title": "Preference"
         },
         "usage": {
-          "balanceDescription": "Your team's credit balance and usage.",
+          "balanceDescription": "What your team has left to spend.",
           "balanceTitle": "Credit balance",
+          "balanceUsageDescription": "Your team's credit balance and usage.",
           "usageDescription": "Your credit usage across chats, automations, and channels.",
           "usageTitle": "Credit usage"
         }
@@ -4190,12 +4207,18 @@
         "title": "Provider connections"
       },
       "personal": {
+        "accountFallback": "Account {{number}}",
         "actionForProvider": "{{action}} {{provider}}",
+        "activeAccount": "Active",
+        "addAccount": "Add account",
         "claudeDescription": "Connect with Claude Code login for Claude-backed model routes.",
         "claudeTitle": "Claude Code OAuth",
         "codexDescription": "Connect with Codex device login for Codex-backed model routes.",
         "codexTitle": "ChatGPT (Codex)",
         "description": "Used only in your runs, with your own credentials.",
+        "noAccounts": "No accounts connected.",
+        "reconnectAccount": "Reconnect",
+        "removeAccount": "Remove",
         "sectionTitle": "Personal",
         "status": {
           "connected": "Connected",
@@ -4204,18 +4227,19 @@
           "left": "{{percent}} left",
           "stale": "Attention",
           "week": "Week"
-        }
+        },
+        "useAccount": "Use"
       },
       "picker": {
-        "balancedUse": "Balanced use",
         "builtInModel": "Built-in model",
         "byokHelp": "Uses your configured provider",
         "fast": "Fast",
+        "fastImpact": "1.5× model speed · 2.5× credit usage",
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
+        "manageMoreModels": "Manage more models",
         "models": "Models",
-        "moreCodexCredits": "Uses more Codex credits.",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
           "balanced": "Balanced cost and performance",
@@ -4223,15 +4247,14 @@
           "frontier": "Frontier flagship model",
           "premium": "Premium frontier model for the hardest tasks"
         },
-        "prioritizeSpeed": "Prioritize speed",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure foundry portal",
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Run speed",
-        "standard": "Standard"
+        "standard": "Standard",
+        "videoModels": "Video models"
       },
       "policies": {
         "actionsFor": "Actions for {{model}}",
@@ -4287,6 +4310,8 @@
         "codexTitle": "ChatGPT session needs reconnection"
       },
       "toasts": {
+        "accountRemoved": "Account removed",
+        "accountSwitched": "Active account switched",
         "disconnected": "{{provider}} disconnected",
         "policiesUpdated": "Model provider settings updated",
         "reset": "Codex usage reset",
@@ -4330,6 +4355,24 @@
           "enabled_one": "Enabled for the next {{count}} run",
           "enabled_other": "Enabled for the next {{count}} runs",
           "title": "Capture network bodies"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "Active waits",
+          "blurred": "blurred",
+          "channel": "channel",
+          "clear": "Clear",
+          "connection": "connection",
+          "copyJson": "Copy JSON",
+          "description": "Inspect browser lifecycle, auth recovery, and Ably connection signals.",
+          "empty": "No diagnostic events recorded.",
+          "events": "events",
+          "focused": "focused",
+          "log": "Event log",
+          "offline": "offline",
+          "online": "online",
+          "recovery": "recovery",
+          "title": "Realtime connection diagnostics",
+          "unavailable": "unavailable"
         },
         "tab": "Debug"
       },
@@ -4429,8 +4472,9 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "All active subscriptions, including usage packs and add-ons, will be canceled immediately. Unused prepaid subscription time will be refunded proportionally. One-time and other non-subscription purchases will not be refunded.",
           "button": "Delete workspace",
-          "confirmDescription": "This will permanently delete {{workspace}} and all its data. This action cannot be undone. Type the workspace name to confirm.",
+          "confirmDescription": "This will permanently delete this workspace and all its data. This action cannot be undone. Type confirm to continue.",
           "description": "Permanently delete this workspace and all its data. This action cannot be undone.",
           "progress": "Deleting...",
           "title": "Delete workspace",
@@ -4456,9 +4500,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Please enter a valid email address",
           "progress": "Sending...",
+          "purchase": {
+            "description": "Review the prorated charge below. Confirming charges your saved payment method and sends the invitation.",
+            "error": "Could not purchase this member package. Review your billing details and try again.",
+            "invitee": "Invitee",
+            "title": "Review invitation"
+          },
           "roleLabel": "Role",
           "send": "Send invitation",
-          "title": "Invite member"
+          "title": "Invite member",
+          "upgrade": {
+            "action": "Upgrade to Pro",
+            "description": "Member invitations are available on the Pro plan. Upgrade this workspace to invite people and manage their roles.",
+            "title": "Upgrade to invite members"
+          }
         },
         "joined": "Joined",
         "joinRequests": "Join requests",
@@ -4473,7 +4528,10 @@
           "action": "Remove from workspace",
           "confirmDescription": "{{email}} will be removed from this workspace and lose access to all resources.",
           "progress": "Removing...",
-          "title": "Remove member?"
+          "title": "Remove member?",
+          "usagePackImpactDescription": "Their remaining usage pack credits become unavailable immediately. The package is removed at the end of the current billing period. If this leaves the workspace without a usage pack, the workspace plan will also be canceled at the end of the billing period.",
+          "usagePackImpactTitle": "Usage pack impact",
+          "usagePackRefundDescription": "Refund: The unused purchased-credit portion is returned to its original payment method. Used credits and bonus credits are not refundable."
         },
         "revoke": {
           "action": "Revoke invitation",
@@ -4495,6 +4553,7 @@
           "progress": "Switching...",
           "title": "Switch to member?"
         },
+        "usagePack": "Usage pack",
         "user": "User",
         "you": "You"
       },
@@ -4556,40 +4615,21 @@
       "title": "Page not found"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "This shared conversation does not exist.",
+    "notFoundTitle": "Shared conversation not found",
+    "tryOkou": "Try Okou"
+  },
   "usage": {
-    "automations": {
-      "empty": "No automations used in this period",
-      "more_one": "+{{value}} more automation",
-      "more_other": "+{{value}} more automations",
-      "summary_one": "{{automations}} used {{credits}}",
-      "summary_other": "{{automations}} used {{credits}}",
-      "title": "Automations"
-    },
-    "chart": {
-      "ariaLabel": "Credits totals",
-      "credits": "credits",
-      "groupBy": {
-        "agent": "Agent",
-        "source": "Source"
-      },
-      "noUsage": "No usage",
-      "showDetails": "Show usage details for {{date}}"
-    },
-    "chats": {
-      "clickToOpen": "Click to open",
-      "empty": "No chats in this period",
-      "more_one": "+{{value}} more chat",
-      "more_other": "+{{value}} more chats",
-      "summary_one": "{{chats}} used {{credits}}",
-      "summary_other": "{{chats}} used {{credits}}",
-      "title": "Chats",
-      "untitled": "(untitled)"
-    },
     "displayNames": {
-      "auto": "Auto",
+      "avatar": "Avatar",
       "finance": "Finance",
+      "imageRecognize": "Image Recognize",
       "maps": "Maps",
       "peopleSearch": "People Search",
+      "seo": "SEO",
+      "translation": "Translation",
       "usage": "Usage",
       "weather": "Weather",
       "webFetch": "Web Fetch",
@@ -4602,29 +4642,25 @@
       "other": "Other",
       "video": "Videos"
     },
-    "page": {
-      "description": "Your credit consumption across chats, automations, and channels.",
-      "loadError": "Failed to load usage insights. Please try again later.",
-      "title": "Usage"
-    },
     "range": {
-      "ariaLabel": "Date range",
       "billingPeriod": "Billing period",
       "last24Hours": "Last 24 hours",
-      "last28Days": "Last 28 days",
-      "last30Days": "Last 30 days",
       "last7Days": "Last 7 days",
-      "selectedDay": "Selected day",
       "today": "Today",
       "yesterday": "Yesterday"
     },
     "records": {
-      "emptyBillingPeriod": "No usage in this billing period.",
-      "emptyRange": "No usage in this time range.",
+      "empty": {
+        "billingPeriodTitle": "No usage in this billing period",
+        "description": "Credits you spend on chats, automations, and channels show up here.",
+        "noBillingPeriodDescription": "Team usage appears once a billing period starts.",
+        "noBillingPeriodTitle": "No active billing period",
+        "rangeTitle": "No usage in this time range",
+        "teamDescription": "Credits your team spends on chats, automations, and channels show up here."
+      },
       "loadError": "Could not load your usage.",
       "loadMore": "Load more",
       "myUsage": "My usage",
-      "noActiveBillingPeriod": "No active billing period.",
       "teamLoadError": "Could not load team usage.",
       "teamUsage": "Team usage",
       "untitled": "(untitled)"
@@ -4636,16 +4672,12 @@
       "email": "Email",
       "github": "GitHub",
       "other": "Other",
-      "others": "Others",
       "phone": "Phone",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "Unknown"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}} automation",
-      "automation_other": "{{value}} automations",
       "chat_one": "{{value}} chat",
       "chat_other": "{{value}} chats",
       "credit_one": "{{value}} credit",
@@ -4726,17 +4758,21 @@
         "second_one": "{{count}} second",
         "second_other": "{{count}} seconds"
       },
+      "forms": {
+        "addAction": "Add Google Forms automation",
+        "addAria": "Add Google Forms response automation",
+        "addDescription": "Run this workflow when the selected Google Form receives a new response.",
+        "addTitle": "Add Google Forms automation",
+        "formUrl": "Form link",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "Run when a Google Form receives a new response.",
+        "responseSubmittedTitle": "Google Forms response submitted",
+        "rule": "When {{form}} receives a response",
+        "summary": "Form {{form}}"
+      },
       "github": {
-        "accountConnect": "Connect GitHub",
-        "accountRequired": "Connect your GitHub account to use Me.",
-        "actorAnyone": "Anyone",
-        "actorMe": "Me",
         "actors": "Actors",
         "actorsPlaceholder": "octocat, dependabot[bot]",
-        "addLabelAction": "Add label automation",
-        "addLabelAria": "Add GitHub label automation",
-        "addLabelDescription": "Run this workflow when a GitHub label is applied.",
-        "addLabelTitle": "Add GitHub label automation",
         "addWebhookAction": "Add automation",
         "addWebhookAria": "Add {{title}} automation",
         "addWebhookDescription": "Run this workflow when a matching GitHub webhook event arrives.",
@@ -4798,13 +4834,6 @@
         "jobs": "Jobs",
         "jobsPlaceholder": "test, build",
         "jobsSummary": "Jobs {{values}}",
-        "labelAppliedDescription": "Run when an issue or pull request gets a label.",
-        "labelAppliedRule": "When GitHub label {{label}} is applied",
-        "labelAppliedTitle": "GitHub label applied",
-        "labelName": "Label name",
-        "labelOnlySummary": "Label {{label}}",
-        "labelPlaceholder": "triage",
-        "labelSummary": "Label {{label}} · {{subject}} · Actor {{actor}}",
         "loadError": "GitHub settings could not be loaded.",
         "nonProductionOnly": "Non-production only",
         "option": {
@@ -4829,12 +4858,36 @@
         },
         "productionEnvironment": "Production environment",
         "productionOnly": "Production only",
+        "pullRequestAction": "Action",
+        "pullRequestActionClosed": "Closed",
+        "pullRequestActionConvertedToDraft": "Converted to draft",
+        "pullRequestActionDequeued": "Removed from merge queue",
+        "pullRequestActionEnqueued": "Added to merge queue",
+        "pullRequestActionLabeled": "Label applied",
+        "pullRequestActionOpened": "Opened",
+        "pullRequestActionReadyForReview": "Ready for review",
+        "pullRequestActionReopened": "Reopened",
+        "pullRequestActionSynchronize": "New commits pushed",
+        "pullRequestActionUnlabeled": "Label removed",
+        "pullRequestAuthors": "Authors",
+        "pullRequestClosedWithoutMergeOnly": "Closed without merging",
+        "pullRequestDescription": "Run when a pull request in one repository is opened, merged, labeled, or changes state.",
+        "pullRequestLabels": "Labels",
+        "pullRequestLabelsPlaceholder": "ready-to-merge",
+        "pullRequestMerged": "Merged",
+        "pullRequestMergedOnly": "Merged only",
+        "pullRequestNumbers": "Pull request numbers",
+        "pullRequestNumbersPlaceholder": "42, 128",
+        "pullRequestRule": "GitHub pull request {{action}} in {{repository}}",
         "pullRequestsOnly": "Pull requests only",
+        "pullRequestTitle": "GitHub pull request",
         "refs": "Refs",
         "refsPlaceholder": "main, v1.0.0",
         "repositories": "Repositories",
         "repositoriesPlaceholder": "vm0-ai/vm0, owner/another-repo",
         "repositoriesSummary": "Repositories {{values}}",
+        "repository": "Repository",
+        "repositoryPlaceholder": "owner/name",
         "reviewDescription": "Run when a matching review is submitted.",
         "reviewRule": "When a matching GitHub pull request review is submitted",
         "reviewStates": "Review states",
@@ -4846,10 +4899,8 @@
         "saveFilters": "Save filters",
         "selectNoneAny": "Select none to match any value.",
         "selectNoneConclusion": "Select none to match any completed conclusion.",
-        "startedBy": "Started by",
         "subject": "Subject",
         "trustedAuthors": "Trusted authors",
-        "updateLabelAria": "Update GitHub label automation",
         "updateWebhookAria": "Update {{title}} automation",
         "updateWorkflowAria": "Update GitHub workflow automation",
         "withConclusions": " with {{values}}",
@@ -4967,6 +5018,7 @@
       "picker": {
         "calendar": "Calendar",
         "email": "Email",
+        "forms": "Google Forms",
         "integrations": "Integrations",
         "notion": "Notion",
         "schedule": "Schedule"
@@ -5043,14 +5095,53 @@
         "localeSummary": "Locale {{locale}}",
         "rule": "When a matching Strapi entry is published"
       },
+      "stripe": {
+        "addAction": "Add Stripe automation",
+        "addAria": "Add Stripe invoice paid automation",
+        "addDescription": "Run this workflow when a matching invoice is paid in the connected Stripe Live account.",
+        "addTitle": "Add Stripe automation",
+        "anyBillingReason": "Any billing reason",
+        "billingReason": {
+          "automaticPendingInvoiceItemInvoice": "Automatic pending invoice items",
+          "manual": "Manual",
+          "quoteAccept": "Quote accepted",
+          "subscription": "Subscription",
+          "subscriptionCreate": "Subscription created",
+          "subscriptionCycle": "Subscription cycle",
+          "subscriptionThreshold": "Subscription threshold",
+          "subscriptionUpdate": "Subscription updated",
+          "upcoming": "Upcoming"
+        },
+        "billingReasons": "Billing reasons",
+        "billingReasonsHint": "Select none to match any billing reason.",
+        "bindingSummary": "Stripe account {{accountId}} · Live mode · {{billingReasons}}",
+        "delivery": "Delivery",
+        "deliveryStatus": {
+          "delivered": "Delivered",
+          "failed": "Failed",
+          "pending": "Pending",
+          "skipped": "Skipped"
+        },
+        "deliveryWarning": "The latest terminal delivery failed. Check workflow activity before trying again.",
+        "immutableHint": "The Stripe account and billing reasons are fixed. To change them, delete this automation and recreate it.",
+        "invoicePaidDescription": "Run when a matching Stripe invoice is paid.",
+        "invoicePaidTitle": "Stripe invoice paid",
+        "lastEvent": "Last event",
+        "manageConnection": "Manage Stripe connection",
+        "noDeliveries": "No deliveries yet",
+        "noMatchingEvents": "No matching events yet",
+        "rule": "When a matching Stripe invoice is paid"
+      },
       "types": {
         "chat": "Chat",
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {
@@ -5291,6 +5382,12 @@
     "connectedWithDetail": "Connected ({{detail}})",
     "documentTitle": "Works",
     "feishuConnected": "Feishu connected successfully",
+    "github": {
+      "adminInstall": "Ask an organization admin to install the GitHub App",
+      "description": "Trigger workflow automations from GitHub events",
+      "install": "Install GitHub App",
+      "title": "GitHub"
+    },
     "header": {
       "description": "Connect with {{displayName}} through these channels",
       "title": "Where {{displayName}} works"

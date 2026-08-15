@@ -29,12 +29,12 @@ export type OnboardingStatusResponse = z.infer<
 >;
 
 /**
- * Onboarding status contract for GET /api/zero/onboarding/status
+ * Onboarding status contract for GET /api/okou/onboarding/status
  */
 export const onboardingStatusContract = c.router({
   getStatus: {
     method: "GET",
-    path: "/api/zero/onboarding/status",
+    path: "/api/okou/onboarding/status",
     headers: authHeadersSchema,
     responses: {
       200: onboardingStatusResponseSchema,
@@ -47,7 +47,7 @@ export const onboardingStatusContract = c.router({
 export const onboardingCompleteContract = c.router({
   complete: {
     method: "POST",
-    path: "/api/zero/onboarding/complete",
+    path: "/api/okou/onboarding/complete",
     headers: authHeadersSchema,
     body: z.object({}).strict(),
     responses: {

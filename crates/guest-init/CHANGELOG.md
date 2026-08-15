@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.16.167](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.166...guest-init-v0.16.167) (2026-08-14)
+
+## [0.16.166](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.165...guest-init-v0.16.166) (2026-08-14)
+
+## [0.16.165](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.164...guest-init-v0.16.165) (2026-08-14)
+
+## [0.16.164](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.163...guest-init-v0.16.164) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** let guest reclaim memory before workload oom ([#27206](https://github.com/vm0-ai/vm0/issues/27206)) ([d8bd1c7](https://github.com/vm0-ai/vm0/commit/d8bd1c7471c220f8595edcb64dde3e70840d4467))
+
+## [0.16.163](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.162...guest-init-v0.16.163) (2026-08-14)
+
+## [0.16.162](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.161...guest-init-v0.16.162) (2026-08-14)
+
+## [0.16.161](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.160...guest-init-v0.16.161) (2026-08-13)
+
+## [0.16.160](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.159...guest-init-v0.16.160) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
+## [0.16.159](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.158...guest-init-v0.16.159) (2026-08-13)
+
+## [0.16.158](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.157...guest-init-v0.16.158) (2026-08-13)
+
+## [0.16.157](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.156...guest-init-v0.16.157) (2026-08-12)
+
+## [0.16.156](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.155...guest-init-v0.16.156) (2026-08-12)
+
+## [0.16.155](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.154...guest-init-v0.16.155) (2026-08-11)
+
+## [0.16.154](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.153...guest-init-v0.16.154) (2026-08-11)
+
+## [0.16.153](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.152...guest-init-v0.16.153) (2026-08-10)
+
+## [0.16.152](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.151...guest-init-v0.16.152) (2026-08-10)
+
+## [0.16.151](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.150...guest-init-v0.16.151) (2026-08-09)
+
+## [0.16.150](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.149...guest-init-v0.16.150) (2026-08-09)
+
+## [0.16.149](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.148...guest-init-v0.16.149) (2026-08-09)
+
+## [0.16.148](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.147...guest-init-v0.16.148) (2026-08-07)
+
+## [0.16.147](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.146...guest-init-v0.16.147) (2026-08-07)
+
+## [0.16.146](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.145...guest-init-v0.16.146) (2026-08-07)
+
+## [0.16.145](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.144...guest-init-v0.16.145) (2026-08-06)
+
+## [0.16.144](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.143...guest-init-v0.16.144) (2026-08-06)
+
+## [0.16.143](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.142...guest-init-v0.16.143) (2026-08-05)
+
+
+### Documentation
+
+* **guest-init:** document cgroup containment bootstrap ([#25157](https://github.com/vm0-ai/vm0/issues/25157)) ([0f0c74b](https://github.com/vm0-ai/vm0/commit/0f0c74b90934398f1116bc0ad517b5ade744e181))
+
+## [0.16.142](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.141...guest-init-v0.16.142) (2026-08-04)
+
+## [0.16.141](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.140...guest-init-v0.16.141) (2026-08-04)
+
 ## [0.16.140](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.139...guest-init-v0.16.140) (2026-08-03)
 
 ## [0.16.139](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.138...guest-init-v0.16.139) (2026-08-03)

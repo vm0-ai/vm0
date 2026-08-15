@@ -1,16 +1,18 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { timeout } from "signal-timers";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   zeroIntegrationsTelegramContract,
   type TelegramBot,
   type TelegramBotStatus,
   type TelegramSetupStatus,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { writeToClipboard } from "./clipboard.ts";
 import { i18n } from "../../i18n/index.ts";
+import { resetSignal } from "../utils.ts";
 
 export type TelegramAddSetupStep = "token" | "domain" | "privacy" | "create";
 export type TelegramSetupCheckTarget = "token" | "domain" | "privacy";
@@ -35,16 +37,18 @@ const internalTelegramAddDialogOpen$ = state(false);
 const internalTelegramAddDialogSession$ = state(0);
 const internalTelegramBotTokenForm$ = state("");
 const internalTelegramBotAgentForm$ = state<string | null>(null);
+const internalTelegramRegisteredBotId$ = state<string | null>(null);
 const internalTelegramAddSetupState$ = state<TelegramAddSetupState>(
   initialTelegramAddSetupState(),
 );
 const internalTelegramCopiedValue$ = state<string | null>(null);
-const internalTelegramCopyTimeoutId$ = state<number | null>(null);
+const resetTelegramCopySignal$ = resetSignal();
 const internalTelegramFailedAvatarKeys$ = state<Record<string, boolean>>({});
 const internalTelegramSavingBotId$ = state<string | null>(null);
 const internalTelegramUnlinkingBotId$ = state<string | null>(null);
 const internalTelegramUninstallingBotId$ = state<string | null>(null);
 const internalTelegramUninstallDialogBotId$ = state<string | null>(null);
+const internalTelegramReinstallDialogOpen$ = state(false);
 const internalTelegramReinstallDialogBotId$ = state<string | null>(null);
 const internalTelegramReinstallTokenForm$ = state("");
 const internalTelegramReinstallingBotId$ = state<string | null>(null);
@@ -155,6 +159,10 @@ export const telegramReinstallDialogBotId$ = computed((get) => {
   return get(internalTelegramReinstallDialogBotId$);
 });
 
+export const telegramReinstallDialogOpen$ = computed((get) => {
+  return get(internalTelegramReinstallDialogOpen$);
+});
+
 export const telegramReinstallTokenForm$ = computed((get) => {
   return get(internalTelegramReinstallTokenForm$);
 });
@@ -169,15 +177,33 @@ export const setTelegramBotTokenForm$ = command(({ set }, value: string) => {
 });
 
 export const setTelegramAddDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalTelegramAddDialogOpen$, open);
   if (open) {
     set(internalTelegramAddDialogSession$, (previous) => {
       return previous + 1;
     });
+    set(internalTelegramBotTokenForm$, "");
+    set(internalTelegramBotAgentForm$, null);
+    set(internalTelegramRegisteredBotId$, null);
+    set(internalTelegramAddSetupState$, initialTelegramAddSetupState());
+  }
+  set(internalTelegramAddDialogOpen$, open);
+});
+
+export const closeTelegramAddDialogAfterRegistration$ = command(
+  ({ set }, botId: string) => {
+    set(internalTelegramRegisteredBotId$, botId);
+    set(internalTelegramAddDialogOpen$, false);
+  },
+);
+
+export const completeTelegramAddDialogClose$ = command(({ get, set }) => {
+  if (get(internalTelegramAddDialogOpen$)) {
+    return null;
   }
   set(internalTelegramBotTokenForm$, "");
-  set(internalTelegramBotAgentForm$, null);
-  set(internalTelegramAddSetupState$, initialTelegramAddSetupState());
+  const registeredBotId = get(internalTelegramRegisteredBotId$);
+  set(internalTelegramRegisteredBotId$, null);
+  return registeredBotId;
 });
 
 export const setTelegramBotAgentForm$ = command(
@@ -202,17 +228,22 @@ export const copyTelegramValue$ = command(
       return;
     }
 
-    const existingTimeoutId = get(internalTelegramCopyTimeoutId$);
-    if (existingTimeoutId !== null) {
-      window.clearTimeout(existingTimeoutId);
-    }
-
+    const copySignal = set(resetTelegramCopySignal$, signal);
     set(internalTelegramCopiedValue$, value);
-    const timeoutId = window.setTimeout(() => {
-      set(internalTelegramCopiedValue$, null);
-      set(internalTelegramCopyTimeoutId$, null);
-    }, 1500);
-    set(internalTelegramCopyTimeoutId$, timeoutId);
+    const clearCopiedValue = () => {
+      if (get(internalTelegramCopiedValue$) === value) {
+        set(internalTelegramCopiedValue$, null);
+      }
+    };
+    copySignal.addEventListener("abort", clearCopiedValue, { once: true });
+    timeout(
+      () => {
+        copySignal.removeEventListener("abort", clearCopiedValue);
+        clearCopiedValue();
+      },
+      1500,
+      { signal: copySignal },
+    );
   },
 );
 
@@ -262,12 +293,23 @@ export const setTelegramUninstallDialogBotId$ = command(
 
 export const setTelegramReinstallDialogBotId$ = command(
   ({ set }, value: string | null) => {
-    set(internalTelegramReinstallDialogBotId$, value);
-    if (!value) {
+    if (value) {
+      set(internalTelegramReinstallDialogBotId$, value);
       set(internalTelegramReinstallTokenForm$, "");
+      set(internalTelegramReinstallDialogOpen$, true);
+      return;
     }
+    set(internalTelegramReinstallDialogOpen$, false);
   },
 );
+
+export const completeTelegramReinstallDialogClose$ = command(({ get, set }) => {
+  if (get(internalTelegramReinstallDialogOpen$)) {
+    return;
+  }
+  set(internalTelegramReinstallDialogBotId$, null);
+  set(internalTelegramReinstallTokenForm$, "");
+});
 
 export const setTelegramReinstallTokenForm$ = command(
   ({ set }, value: string) => {
@@ -286,11 +328,13 @@ export const resetTelegramSettingsUi$ = command(({ set }) => {
   set(internalTelegramAddDialogSession$, 0);
   set(internalTelegramBotTokenForm$, "");
   set(internalTelegramBotAgentForm$, null);
+  set(internalTelegramRegisteredBotId$, null);
   set(internalTelegramAddSetupState$, initialTelegramAddSetupState());
   set(internalTelegramSavingBotId$, null);
   set(internalTelegramUnlinkingBotId$, null);
   set(internalTelegramUninstallingBotId$, null);
   set(internalTelegramUninstallDialogBotId$, null);
+  set(internalTelegramReinstallDialogOpen$, false);
   set(internalTelegramReinstallDialogBotId$, null);
   set(internalTelegramReinstallTokenForm$, "");
   set(internalTelegramReinstallingBotId$, null);

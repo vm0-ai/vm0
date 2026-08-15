@@ -13,7 +13,7 @@ export const zeroPhoneCommand = new Command()
     "after",
     `
 Examples:
-  Send a message:   zero phone message --to +15551234567 -t "Hello!"
-  Upload a file:    zero phone upload-file -f /tmp/report.pdf --to +15551234567
-  Download a file:  zero phone download-file <file-id> -o /tmp/out.jpg`,
+  Send a message:   okou phone message --to +15551234567 -t "Hello!"
+  Upload a file:    okou phone upload-file -f /tmp/report.pdf --to +15551234567
+  Download a file:  okou phone download-file <file-id> -o /tmp/out.jpg`,
   );

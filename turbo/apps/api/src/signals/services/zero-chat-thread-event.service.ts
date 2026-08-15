@@ -5,22 +5,21 @@ import type {
   ChatThreadServiceTier,
   ChatThreadSnapshotProjection,
   CodexServiceTier,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
 import {
   chatThreadEventSequences,
   chatThreadEvents,
   type ChatThreadEventKind,
-} from "@vm0/db/schema/chat-thread-event";
-import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
+} from "@okouai/db/schema/chat-thread-event";
+import { chatThreadSnapshots } from "@okouai/db/schema/chat-thread-snapshot";
 
-import type { Db, ReadonlyDb } from "../external/db";
+import type { ReadonlyDb } from "../external/db";
+import type { Tx } from "../../lib/db-types";
 
 // The sequence row lock must remain held until its event becomes visible.
 // Requiring a transaction prevents callers from splitting those two commits.
-export type ChatThreadEventTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+export type ChatThreadEventTransaction = Tx;
 const CHAT_THREAD_EVENTS_PAGE_SIZE = 1000;
 const cursorChatThreadEvent = alias(
   chatThreadEvents,
@@ -67,6 +66,7 @@ export async function appendChatThreadEvent(
     readonly serviceTier?: ChatThreadServiceTier | null;
     readonly computerUseHostId?: string | null;
     readonly cloudBrowserEnabled?: boolean;
+    readonly selectedVideoModel?: string | null;
     readonly createdAt?: Date;
   },
 ): Promise<void> {
@@ -101,6 +101,7 @@ export async function appendChatThreadEvent(
       serviceTier: args.serviceTier ?? null,
       computerUseHostId: args.computerUseHostId ?? null,
       cloudBrowserEnabled: args.cloudBrowserEnabled ?? false,
+      selectedVideoModel: args.selectedVideoModel ?? null,
       ...(args.createdAt !== undefined ? { createdAt: args.createdAt } : {}),
     })
     .onConflictDoNothing({ target: chatThreadEvents.id });
@@ -141,6 +142,13 @@ export async function getChatThreadSnapshot(
           serviceTier: thread.serviceTier ?? null,
           computerUseHostId: thread.computerUseHostId ?? null,
           cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
+          // Rollout fallback: snapshot rows compacted before this migration
+          // carry no selectedVideoModel key. Bounded by the compaction
+          // staleness cutoff (CHAT_THREAD_SNAPSHOT_STALE_MS, 24h) plus batch
+          // drain, not by a deploy window. Remove once every snapshot row has
+          // been recompacted. Follow-up:
+          // https://github.com/vm0-ai/vm0/issues/26765
+          selectedVideoModel: thread.selectedVideoModel ?? null,
         };
       }) ?? [],
     latestEventId: snapshot?.latestEventId ?? null,
@@ -159,6 +167,7 @@ type ChatThreadEventRow = {
   readonly serviceTier: ChatThreadServiceTier | null;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
+  readonly selectedVideoModel: string | null;
   readonly createdAt: Date;
 };
 
@@ -180,6 +189,7 @@ function toApiChatThreadEvent(row: ChatThreadEventRow): ChatThreadEvent {
     serviceTier: row.serviceTier,
     computerUseHostId: row.computerUseHostId,
     cloudBrowserEnabled: row.cloudBrowserEnabled,
+    selectedVideoModel: row.selectedVideoModel,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -190,7 +200,6 @@ export async function getChatThreadEventsSince(
     readonly userId: string;
     readonly orgId: string;
     readonly sinceSeqId?: number;
-    readonly sinceEventId?: string;
   },
 ): Promise<
   | {
@@ -202,14 +211,11 @@ export async function getChatThreadEventsSince(
 > {
   let rows: readonly ChatThreadEventRow[];
   const cursorPredicate =
-    args.sinceSeqId !== undefined
-      ? eq(cursorChatThreadEvent.seqId, args.sinceSeqId)
-      : args.sinceEventId !== undefined
-        ? eq(cursorChatThreadEvent.id, args.sinceEventId)
-        : undefined;
+    args.sinceSeqId === undefined
+      ? undefined
+      : eq(cursorChatThreadEvent.seqId, args.sinceSeqId);
   if (cursorPredicate !== undefined) {
-    // Keep a valid cursor row when its page is empty. UUID cursors remain
-    // accepted during rollout, but both cursor forms page on seq_id.
+    // Keep a valid cursor row when its page is empty.
     const cursorRows = await db
       .select({
         event: {
@@ -223,6 +229,7 @@ export async function getChatThreadEventsSince(
           serviceTier: pageChatThreadEvent.serviceTier,
           computerUseHostId: pageChatThreadEvent.computerUseHostId,
           cloudBrowserEnabled: pageChatThreadEvent.cloudBrowserEnabled,
+          selectedVideoModel: pageChatThreadEvent.selectedVideoModel,
           createdAt: pageChatThreadEvent.createdAt,
         },
       })
@@ -263,6 +270,7 @@ export async function getChatThreadEventsSince(
         serviceTier: chatThreadEvents.serviceTier,
         computerUseHostId: chatThreadEvents.computerUseHostId,
         cloudBrowserEnabled: chatThreadEvents.cloudBrowserEnabled,
+        selectedVideoModel: chatThreadEvents.selectedVideoModel,
         createdAt: chatThreadEvents.createdAt,
       })
       .from(chatThreadEvents)

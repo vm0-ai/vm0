@@ -1,18 +1,17 @@
 import { command, computed, type Computed } from "ccstate";
-import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
-import { extractAndGroupVariables } from "@vm0/core/variable-expander";
+import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
+import { extractAndGroupVariables } from "@okouai/core/variable-expander";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
-import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
+} from "@okouai/db/schema/agent-compose";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
+import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/zero-teams-bot";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -25,9 +24,9 @@ import {
   sendTeamsMessageReply,
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { zeroConnectorList } from "./zero-connector-data.service";
-import { userSecrets, userVariables } from "./zero-user-data.service";
+import { userSecrets, userVariables } from "./user-data.service";
 
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 
@@ -144,7 +143,7 @@ function buildTeamsOauthConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
 }): string {
-  const url = new URL("/api/zero/teams/oauth/connect", internalApiBaseUrl());
+  const url = new URL("/api/okou/teams/oauth/connect", internalApiBaseUrl());
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("vm0UserId", args.userId);
   return url.toString();
@@ -400,7 +399,6 @@ type ConnectorProvidedBindings = Parameters<
 
 interface ConnectedTeamsStatusFields {
   readonly defaultAgentName: string | null;
-  readonly agentOrgSlug: string | null;
   readonly environment: TeamsEnvironment;
 }
 
@@ -415,7 +413,6 @@ interface TeamsConnectStatus {
   readonly teamId?: string | null;
   readonly teamName?: string | null;
   readonly defaultAgentName?: string | null;
-  readonly agentOrgSlug?: string | null;
   readonly permissionMismatch?: boolean | null;
   readonly reinstallUrl?: string | null;
   readonly environment?: TeamsEnvironment;
@@ -428,18 +425,6 @@ function emptyTeamsEnvironment(): TeamsEnvironment {
     missingSecrets: [],
     missingVars: [],
   };
-}
-
-async function getTeamsAgentOrgSlug(
-  db: ReadonlyDb,
-  orgId: string,
-): Promise<string | null> {
-  const [orgCacheRow] = await db
-    .select({ slug: orgCache.slug })
-    .from(orgCache)
-    .where(eq(orgCache.orgId, orgId))
-    .limit(1);
-  return orgCacheRow?.slug ?? null;
 }
 
 async function resolveTeamsEnvironment(args: {
@@ -531,15 +516,11 @@ async function resolveConnectedStatusFields(args: {
     args.userId,
     args.orgId,
   );
-  const [agentOrgSlug, environment] = await Promise.all([
-    getTeamsAgentOrgSlug(args.db, args.orgId),
-    resolveTeamsEnvironment(args),
-  ]);
+  const environment = await resolveTeamsEnvironment(args);
   return {
     defaultAgentName: composeId
       ? ((await getTeamsAgentName(args.db, composeId)) ?? null)
       : null,
-    agentOrgSlug,
     environment,
   };
 }
@@ -643,7 +624,6 @@ function activeTeamsStatus(args: {
   }
   return {
     ...status,
-    agentOrgSlug: args.connectedFields.agentOrgSlug,
     environment: args.connectedFields.environment,
   };
 }
@@ -781,28 +761,32 @@ function buildTeamsWelcomeCard(): TeamsAdaptiveCard {
   };
 }
 
-async function resolveTeamsWelcomeConversationId(args: {
-  readonly tenantId: string;
-  readonly serviceUrl: string;
-  readonly teamsUserId: string | undefined;
-  readonly teamsUserDisplayName: string | undefined;
-  readonly botId: string | null;
-  readonly botName: string | null;
-  readonly conversationId: string | undefined;
-  readonly conversationType: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<string | undefined> {
+async function resolveTeamsWelcomeConversationId(
+  args: {
+    readonly tenantId: string;
+    readonly serviceUrl: string;
+    readonly teamsUserId: string | undefined;
+    readonly teamsUserDisplayName: string | undefined;
+    readonly botId: string | null;
+    readonly botName: string | null;
+    readonly conversationId: string | undefined;
+    readonly conversationType: string | undefined;
+  },
+  signal: AbortSignal,
+): Promise<string | undefined> {
   if (args.teamsUserId && args.botId) {
-    const conversation = await createTeamsPersonalConversation({
-      serviceUrl: args.serviceUrl,
-      tenantId: args.tenantId,
-      botId: args.botId,
-      botName: args.botName,
-      teamsUserId: args.teamsUserId,
-      teamsUserDisplayName: args.teamsUserDisplayName,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const conversation = await createTeamsPersonalConversation(
+      {
+        serviceUrl: args.serviceUrl,
+        tenantId: args.tenantId,
+        botId: args.botId,
+        botName: args.botName,
+        teamsUserId: args.teamsUserId,
+        teamsUserDisplayName: args.teamsUserDisplayName,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (conversation.kind === "ok") {
       return conversation.conversationId;
     }
@@ -816,56 +800,62 @@ async function resolveTeamsWelcomeConversationId(args: {
   return args.conversationType === "personal" ? args.conversationId : undefined;
 }
 
-async function notifyTeamsConnect(args: {
-  readonly db: Db;
-  readonly connectionId: string;
-  readonly installation: TeamsInstallation;
-  readonly orgId: string;
-  readonly tenantId: string;
-  readonly serviceUrl: string | undefined;
-  readonly conversationId: string | undefined;
-  readonly conversationType: string | undefined;
-  readonly teamsUserId: string | undefined;
-  readonly teamsUserDisplayName: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function notifyTeamsConnect(
+  args: {
+    readonly db: Db;
+    readonly connectionId: string;
+    readonly installation: TeamsInstallation;
+    readonly orgId: string;
+    readonly tenantId: string;
+    readonly serviceUrl: string | undefined;
+    readonly conversationId: string | undefined;
+    readonly conversationType: string | undefined;
+    readonly teamsUserId: string | undefined;
+    readonly teamsUserDisplayName: string | undefined;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const [connection] = await args.db
     .select({ dmWelcomeSent: teamsOrgConnections.dmWelcomeSent })
     .from(teamsOrgConnections)
     .where(eq(teamsOrgConnections.id, args.connectionId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!connection || connection.dmWelcomeSent || !args.serviceUrl) {
     return;
   }
 
-  const conversationId = await resolveTeamsWelcomeConversationId({
-    tenantId: args.tenantId,
-    serviceUrl: args.serviceUrl,
-    teamsUserId: args.teamsUserId,
-    teamsUserDisplayName: args.teamsUserDisplayName,
-    botId: args.installation.botId,
-    botName: args.installation.botName,
-    conversationId: args.conversationId,
-    conversationType: args.conversationType,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const conversationId = await resolveTeamsWelcomeConversationId(
+    {
+      tenantId: args.tenantId,
+      serviceUrl: args.serviceUrl,
+      teamsUserId: args.teamsUserId,
+      teamsUserDisplayName: args.teamsUserDisplayName,
+      botId: args.installation.botId,
+      botName: args.installation.botName,
+      conversationId: args.conversationId,
+      conversationType: args.conversationType,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
 
   if (!conversationId) {
     return;
   }
 
-  const sendResult = await sendTeamsMessageReply({
-    serviceUrl: args.serviceUrl,
-    conversationId,
-    tenantId: args.tenantId,
-    text: "You're connected!",
-    card: buildTeamsWelcomeCard(),
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const sendResult = await sendTeamsMessageReply(
+    {
+      serviceUrl: args.serviceUrl,
+      conversationId,
+      tenantId: args.tenantId,
+      text: "You're connected!",
+      card: buildTeamsWelcomeCard(),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
 
   if (sendResult.kind === "teams-error") {
     L.warn("Failed to send Teams connect welcome", {
@@ -881,14 +871,16 @@ async function notifyTeamsConnect(args: {
     .update(teamsOrgConnections)
     .set({ dmWelcomeSent: true, updatedAt: nowDate() })
     .where(eq(teamsOrgConnections.id, args.connectionId));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function bindUnclaimedTeamsInstallation(args: {
-  readonly db: Db;
-  readonly connectArgs: ConnectTeamsInstallationArgs;
-  readonly signal: AbortSignal;
-}): Promise<BindTeamsInstallationResult> {
+async function bindUnclaimedTeamsInstallation(
+  args: {
+    readonly db: Db;
+    readonly connectArgs: ConnectTeamsInstallationArgs;
+  },
+  signal: AbortSignal,
+): Promise<BindTeamsInstallationResult> {
   const [updated] = await args.db
     .update(teamsOrgInstallations)
     .set({
@@ -903,7 +895,7 @@ async function bindUnclaimedTeamsInstallation(args: {
       ),
     )
     .returning();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (updated) {
     return { kind: "bound", installation: updated };
@@ -914,7 +906,7 @@ async function bindUnclaimedTeamsInstallation(args: {
     .from(teamsOrgInstallations)
     .where(eq(teamsOrgInstallations.teamsTenantId, args.connectArgs.tenantId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!existing) {
     return { kind: "not_found", message: installationNotFoundMessage };
   }
@@ -924,13 +916,15 @@ async function bindUnclaimedTeamsInstallation(args: {
   return { kind: "bound", installation: existing };
 }
 
-async function finalizeTeamsConnection(args: {
-  readonly db: Db;
-  readonly connectArgs: ConnectTeamsInstallationArgs;
-  readonly installation: TeamsInstallation;
-  readonly role: "admin" | "member";
-  readonly signal: AbortSignal;
-}): Promise<Extract<TeamsConnectResult, { readonly kind: "ok" }>> {
+async function finalizeTeamsConnection(
+  args: {
+    readonly db: Db;
+    readonly connectArgs: ConnectTeamsInstallationArgs;
+    readonly installation: TeamsInstallation;
+    readonly role: "admin" | "member";
+  },
+  signal: AbortSignal,
+): Promise<Extract<TeamsConnectResult, { readonly kind: "ok" }>> {
   const { connectArgs } = args;
   const connectionId = await upsertTeamsConnection(args.db, {
     teamsUserId: connectArgs.teamsUserId,
@@ -940,23 +934,25 @@ async function finalizeTeamsConnection(args: {
     teamsUserDisplayName: connectArgs.teamsUserDisplayName,
     teamsUserPrincipalName: connectArgs.teamsUserPrincipalName,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
-  await notifyTeamsConnect({
-    db: args.db,
-    connectionId,
-    installation: args.installation,
-    orgId: connectArgs.orgId,
-    tenantId: connectArgs.tenantId,
-    serviceUrl:
-      connectArgs.serviceUrl ?? args.installation.serviceUrl ?? undefined,
-    conversationId: connectArgs.conversationId,
-    conversationType: connectArgs.conversationType,
-    teamsUserId: connectArgs.teamsUserId,
-    teamsUserDisplayName: connectArgs.teamsUserDisplayName,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  await notifyTeamsConnect(
+    {
+      db: args.db,
+      connectionId,
+      installation: args.installation,
+      orgId: connectArgs.orgId,
+      tenantId: connectArgs.tenantId,
+      serviceUrl:
+        connectArgs.serviceUrl ?? args.installation.serviceUrl ?? undefined,
+      conversationId: connectArgs.conversationId,
+      conversationType: connectArgs.conversationType,
+      teamsUserId: connectArgs.teamsUserId,
+      teamsUserDisplayName: connectArgs.teamsUserDisplayName,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
 
   return {
     kind: "ok",
@@ -1068,22 +1064,26 @@ export const connectTeamsInstallation$ = command(
       });
       signal.throwIfAborted();
 
-      const bindResult = await bindUnclaimedTeamsInstallation({
-        db: writeDb,
-        connectArgs: args,
+      const bindResult = await bindUnclaimedTeamsInstallation(
+        {
+          db: writeDb,
+          connectArgs: args,
+        },
         signal,
-      });
+      );
       if (bindResult.kind !== "bound") {
         return bindResult;
       }
 
-      return finalizeTeamsConnection({
-        db: writeDb,
-        connectArgs: args,
-        installation: bindResult.installation,
-        role: "admin",
+      return finalizeTeamsConnection(
+        {
+          db: writeDb,
+          connectArgs: args,
+          installation: bindResult.installation,
+          role: "admin",
+        },
         signal,
-      });
+      );
     }
 
     if (installation.orgId !== args.orgId) {
@@ -1098,13 +1098,15 @@ export const connectTeamsInstallation$ = command(
     });
     signal.throwIfAborted();
 
-    return finalizeTeamsConnection({
-      db: writeDb,
-      connectArgs: args,
-      installation,
-      role: args.orgRole,
+    return finalizeTeamsConnection(
+      {
+        db: writeDb,
+        connectArgs: args,
+        installation,
+        role: args.orgRole,
+      },
       signal,
-    });
+    );
   },
 );
 

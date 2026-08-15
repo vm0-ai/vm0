@@ -1,12 +1,7 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import {
-  IconDotsVertical,
-  IconPencil,
-  IconPlus,
-  IconTrash,
-} from "@tabler/icons-react";
+import { EllipsisVertical, Pencil, Plus, Trash } from "lucide-react";
 import {
   Button,
   Checkbox,
@@ -21,11 +16,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Input,
-} from "@vm0/ui";
+  Textarea,
+} from "@okouai/ui";
 import type {
   ModelProviderConnectionResponse,
   ModelProviderSurfaceProtocol,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 
 import {
   deleteModelProviderConnection$,
@@ -34,6 +30,7 @@ import {
 import {
   closeDeleteModelProviderConnection$,
   closeModelProviderConnection$,
+  completeModelProviderConnectionClose$,
   modelProviderConnectionDialogSignal$,
   modelProviderConnectionDraft$,
   openCreateModelProviderConnection$,
@@ -55,13 +52,10 @@ const ZERO_BORDER = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
 
-function AddConnectionMenu({
-  settingsDialogSignal,
-}: {
-  settingsDialogSignal: AbortSignal;
-}) {
+function AddConnectionMenu() {
   const { t } = useTranslation();
   const openCreate = useSet(openCreateModelProviderConnection$);
+  const settingsDialogSignal = useGet(settingsDialogSignal$);
   const templateLabels: Record<ModelProviderConnectionTemplate, string> = {
     custom: t(($) => {
       return $.settings.models.gateways.presets.custom;
@@ -82,6 +76,9 @@ function AddConnectionMenu({
     "openrouter",
     "fireworks",
   ];
+  if (!settingsDialogSignal) {
+    return null;
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -91,7 +88,7 @@ function AddConnectionMenu({
           size="sm"
           className="zero-btn-morandi h-9 gap-2 rounded-lg border"
         >
-          <IconPlus size={14} />
+          <Plus size={14} />
           {t(($) => {
             return $.settings.models.gateways.add;
           })}
@@ -117,14 +114,16 @@ function AddConnectionMenu({
 
 function ConnectionCard({
   connection,
-  settingsDialogSignal,
 }: {
   connection: ModelProviderConnectionResponse;
-  settingsDialogSignal: AbortSignal;
 }) {
   const { t } = useTranslation();
   const openEdit = useSet(openEditModelProviderConnection$);
   const openDelete = useSet(openDeleteModelProviderConnection$);
+  const settingsDialogSignal = useGet(settingsDialogSignal$);
+  if (!settingsDialogSignal) {
+    return null;
+  }
   return (
     <div
       className="flex items-center gap-3 rounded-xl bg-card px-4 py-3"
@@ -160,7 +159,7 @@ function ConnectionCard({
               return $.settings.models.gateways.actions;
             })}
           >
-            <IconDotsVertical size={15} />
+            <EllipsisVertical size={15} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -169,7 +168,7 @@ function ConnectionCard({
               openEdit(connection, settingsDialogSignal);
             }}
           >
-            <IconPencil size={14} />
+            <Pencil size={14} />
             {t(($) => {
               return $.settings.shared.edit;
             })}
@@ -180,7 +179,7 @@ function ConnectionCard({
               openDelete(connection);
             }}
           >
-            <IconTrash size={14} />
+            <Trash size={14} />
             {t(($) => {
               return $.settings.shared.delete;
             })}
@@ -359,11 +358,11 @@ function SurfaceEditor({
             {t(($) => {
               return $.settings.models.gateways.modelMappings;
             })}
-            <textarea
+            <Textarea
               value={surface.modelMappings}
               spellCheck={false}
               rows={5}
-              className="min-h-28 rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-28 font-mono text-xs"
               onChange={(event) => {
                 update({
                   protocol,
@@ -430,6 +429,7 @@ function ConnectionDialog() {
   const draft = useGet(modelProviderConnectionDraft$);
   const dialogSignal = useGet(modelProviderConnectionDialogSignal$);
   const close = useSet(closeModelProviderConnection$);
+  const completeClose = useSet(completeModelProviderConnectionClose$);
   const [saveLoadable, save] = useLoadableSet(saveModelProviderConnection$);
   const saving = saveLoadable.state === "loading";
   const errorKey = draft.error;
@@ -453,6 +453,11 @@ function ConnectionDialog() {
       onOpenChange={(open) => {
         if (!open && !saving) {
           close();
+        }
+      }}
+      onOpenChangeComplete={(open) => {
+        if (!open) {
+          completeClose();
         }
       }}
     >
@@ -517,9 +522,7 @@ export function ModelProviderConnectionsSection() {
         description={t(($) => {
           return $.settings.models.gateways.description;
         })}
-        action={
-          <AddConnectionMenu settingsDialogSignal={settingsDialogSignal} />
-        }
+        action={<AddConnectionMenu />}
       />
       {connections.length === 0 ? (
         <p className="rounded-xl bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
@@ -531,11 +534,7 @@ export function ModelProviderConnectionsSection() {
         <div className="grid gap-2">
           {connections.map((connection) => {
             return (
-              <ConnectionCard
-                key={connection.id}
-                connection={connection}
-                settingsDialogSignal={settingsDialogSignal}
-              />
+              <ConnectionCard key={connection.id} connection={connection} />
             );
           })}
         </div>

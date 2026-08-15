@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { hostedSitePrepareRequestSchema } from "@vm0/api-contracts/contracts/zero-host";
+import { hostedSitePrepareRequestSchema } from "@okouai/api-contracts/contracts/zero-host";
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,22 +12,22 @@ import { DEFAULT_HOSTED_SITE_ROBOTS_TXT } from "../../../../lib/host/static-site
 import { server } from "../../../../mocks/server";
 import { zeroHostCommand } from "../index";
 
-const PREPARE_URL = "http://localhost:3000/api/zero/host/deployments/prepare";
+const PREPARE_URL = "http://localhost:3000/api/okou/host/deployments/prepare";
 const COMPLETE_URL =
-  "http://localhost:3000/api/zero/host/deployments/:deploymentId/complete";
+  "http://localhost:3000/api/okou/host/deployments/:deploymentId/complete";
 const INDEX_UPLOAD_URL = "https://uploads.example.com/index";
 const ROBOTS_UPLOAD_URL = "https://uploads.example.com/robots";
 const ALIAS_URL = "https://demo-site.sites.example.com";
 const ARTIFACT_URL =
   "https://dpl-00000000-0000-4000-8000-000000000002.sites.example.com";
 const CHAT_SCOPE_CONFLICT_MESSAGE =
-  'Hosted site slug "demo-site" is owned outside this chat. Choose a different --site value and rerun the same zero host command.';
+  'Hosted site slug "demo-site" is owned outside this chat. Choose a different --site value and rerun the same okou host command.';
 
 function sha256(bytes: string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-describe("zero host publish command", () => {
+describe("okou host publish command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -45,7 +45,7 @@ describe("zero host publish command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     tempDir = join(tmpdir(), `zero-host-publish-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
   });

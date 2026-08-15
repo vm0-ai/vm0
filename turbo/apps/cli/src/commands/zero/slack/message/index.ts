@@ -9,5 +9,5 @@ export const zeroSlackMessageCommand = new Command()
     "after",
     `
 Examples:
-  zero slack message send -c <channel-id> -t "Hello!"`,
+  okou slack message send -c <channel-id> -t "Hello!"`,
   );

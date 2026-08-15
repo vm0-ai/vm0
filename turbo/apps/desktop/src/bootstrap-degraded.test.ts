@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     },
     autoUpdater: {
       quitAndInstall: vi.fn(),
+      on: vi.fn(),
       once: vi.fn(),
       removeListener: vi.fn(),
     },
@@ -66,7 +67,11 @@ function productionConfig(): DesktopConfig {
     webUrl: new URL("https://app.vm0.ai"),
     environment: "production",
     identity: {
+      product: "zero",
+      brandName: "Zero",
       displayName: "Zero Computer Use",
+      userDataDirectoryName: "Zero Computer Use",
+      updateLine: "zero",
       bundleId: "ai.vm0.desktop",
       authProtocolName: "Zero Desktop",
       authScheme: "vm0-desktop",

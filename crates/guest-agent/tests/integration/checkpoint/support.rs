@@ -324,6 +324,85 @@ pub(super) fn write_prunable_codex_history(
     Ok((history_dir, history_path, candidate))
 }
 
+pub(super) fn write_codex_history_without_compact(
+    session_id: &str,
+    canonical_target_size: Option<usize>,
+    minimum_source_size: usize,
+) -> Result<(tempfile::TempDir, std::path::PathBuf, Vec<u8>), String> {
+    let history_dir =
+        tempfile::tempdir().map_err(|error| format!("create Codex history dir: {error}"))?;
+    let day_dir = history_dir
+        .path()
+        .join(".codex")
+        .join("sessions")
+        .join("2026")
+        .join("08")
+        .join("12");
+    std::fs::create_dir_all(&day_dir)
+        .map_err(|error| format!("create Codex session directory: {error}"))?;
+    let history_path = day_dir.join(format!("rollout-{session_id}.jsonl"));
+
+    let canonical_record = |padding: &str| -> Result<Vec<u8>, String> {
+        let mut bytes = serde_json::to_vec(&json!({
+            "timestamp": "2026-08-12T00:00:00Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "session_id": session_id,
+                "timestamp": "2026-08-12T00:00:00Z",
+                "cwd": guest_agent::paths::CANONICAL_WORKING_DIR,
+                "originator": "codex",
+                "cli_version": "0.144.6",
+                "source": "cli",
+                "history_mode": "legacy",
+                "padding": padding,
+            },
+        }))
+        .map_err(|error| format!("encode Codex canonical record: {error}"))?;
+        bytes.push(b'\n');
+        Ok(bytes)
+    };
+    let empty_canonical = canonical_record("")?;
+    let canonical = if let Some(target_size) = canonical_target_size {
+        let padding_size = target_size
+            .checked_sub(empty_canonical.len())
+            .ok_or_else(|| {
+                format!(
+                    "canonical target {target_size} is below minimum {}",
+                    empty_canonical.len()
+                )
+            })?;
+        let canonical = canonical_record(&"x".repeat(padding_size))?;
+        if canonical.len() != target_size {
+            return Err(format!(
+                "canonical record size mismatch: expected {target_size}, got {}",
+                canonical.len()
+            ));
+        }
+        canonical
+    } else {
+        empty_canonical
+    };
+    let mut filler = serde_json::to_vec(&json!({
+        "timestamp": "2026-08-12T00:00:01Z",
+        "type": "world_state",
+        "payload": {"full": true, "state": {"working_directory": "/workspace"}},
+    }))
+    .map_err(|error| format!("encode Codex filler record: {error}"))?;
+    filler.push(b'\n');
+
+    let mut history = canonical;
+    while history.len() <= minimum_source_size {
+        history.extend_from_slice(&filler);
+    }
+    std::fs::write(&history_path, &history)
+        .map_err(|error| format!("write Codex history: {error}"))?;
+    let (session_id_file, _) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, session_id)
+        .map_err(|error| format!("write Codex session id: {error}"))?;
+    Ok((history_dir, history_path, history))
+}
+
 pub(super) fn zstd_session_history_for_test(history: &[u8]) -> std::io::Result<Vec<u8>> {
     zstd::stream::encode_all(history, 3)
 }

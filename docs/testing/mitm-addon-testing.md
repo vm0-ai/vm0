@@ -117,7 +117,7 @@ suites before committing the upgrade.
 | `test_codex_model_catalog_cache_lifecycle.py`           | Codex catalog partitioning, expiry, ETag invalidation, and stored-entry eviction                                     |
 | `test_codex_model_catalog_cache_responses.py`           | Codex catalog response cacheability, decoding, framing, validation, and replay                                       |
 | `test_request_handler_passthrough.py`                   | Request-hook ordinary and browser user-agent passthrough decisions                                                   |
-| `test_request_handler_authority_validation.py`          | Request-hook Host/SNI/`:authority` validation and denial effects                                                     |
+| `test_request_handler_authority_validation.py`          | Request-hook SNI and asserted HTTP authority validation and denial effects                                           |
 | `test_request_handler_builtin_host_policy.py`           | Request-hook runtime built-in host-policy enforcement and compiled-policy reuse                                      |
 | `test_request_handler_connector_admission.py`           | Request-hook connector destination admission, TLS evidence, test-endpoint bypass, and API binding interaction        |
 | `test_request_handler_api_admission.py`                 | Request-hook platform API auto-allow, port scoping, registry gate, and destination binding                           |
@@ -125,6 +125,7 @@ suites before committing the upgrade.
 | `test_request_handler_registry_admission.py`            | Request-hook proxy-registry availability and VM entry admission                                                      |
 | `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
 | `test_request_handler_firewall_auth.py`                 | Request-hook firewall auth identity, credential guards, upstream-binding lifetime, and cancellation                  |
+| `test_request_handler_firewall_auth_revalidation.py`    | Registry authorization revalidation across request and requestheaders firewall-auth waits                            |
 | `test_request_handler_public_destination.py`            | Request-hook public destination validation and revalidation                                                          |
 | `test_request_handler_connector_diagnostics.py`         | Request-hook connector diagnostics and inactive built-in connector diagnostics                                       |
 | `test_request_handler_auth_base_body.py`                | Request-hook auth-base body admission and cleanup                                                                    |
@@ -132,7 +133,11 @@ suites before committing the upgrade.
 | `test_request_headers_api_admission.py`                 | Requestheaders platform API destination admission and binding                                                        |
 | `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                            |
 | `test_request_headers_firewall_auth.py`                 | Requestheaders stream-safe firewall auth, connector intent, fallback, and cancellation cleanup                       |
-| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                |
+| `mitmproxy_http_framing_helpers.py`                     | Shared HTTP layer and HTTP/2 request drivers for real mitmproxy framing suites                                       |
+| `test_mitmproxy_authority_framing.py`                   | HTTP/1 request-target and HTTP/2 authority validation through the real mitmproxy state machine                       |
+| `test_mitmproxy_bodyless_response_framing.py`           | Bodyless local firewall and connector-diagnostic responses through the real mitmproxy state machine                  |
+| `test_mitmproxy_codex_catalog_framing.py`               | Codex model-catalog cache and response framing through the real mitmproxy state machine                              |
+| `test_mitmproxy_request_body_admission_framing.py`      | auth.base and AWS SigV4 request-body admission through the real mitmproxy state machine                              |
 | `test_mitmproxy_websocket_framing.py`                   | Decoded WebSocket message bounds through mitmproxy's state machine and real addon hook dispatch                      |
 | `test_request_handler_usage_tracking.py`                | Request-hook billable usage tracking lifecycle                                                                       |
 | `test_response_headers_handler.py`                      | Response-header hook stream setup                                                                                    |
@@ -145,7 +150,7 @@ suites before committing the upgrade.
 | `test_runner_usage_flush_signal.py`                     | Runner-triggered usage and JSONL flush requests                                                                      |
 | `test_tls_clienthello_hook.py`                          | TLS clienthello admission behavior                                                                                   |
 | `test_tcp_hooks.py`                                     | TCP start, logging, message drain, end, and error hooks                                                              |
-| `test_state_file.py`                                    | Shared safe-open, descriptor identity, bounded-read, and cleanup contracts                                            |
+| `test_state_file.py`                                    | Shared safe-open, descriptor identity, bounded-read, and cleanup contracts                                           |
 | `test_registry_loading.py`                              | Registry loading, parsing, unavailable-state, and cache behavior                                                     |
 | `test_registry_auth_cache_eviction.py`                  | Registry-driven auth-cache ownership and eviction behavior                                                           |
 | `test_registry_context.py`                              | VM lookup and public compiled context API behavior                                                                   |
@@ -161,7 +166,6 @@ suites before committing the upgrade.
 | `test_matching_path_prefix.py`                          | Low-level firewall path-prefix matching                                                                              |
 | `test_matching_base_url_static.py`                      | Static firewall base URL matching and authority normalization                                                        |
 | `test_matching_base_url_parameterized.py`               | Parameterized firewall base URL matching                                                                             |
-| `test_matching_mixed_segments.py`                       | Mixed parameter-segment matcher regressions                                                                          |
 | `test_matching_anthropic_firewall_scope.py`             | Anthropic firewall scope matching regressions                                                                        |
 | `test_firewall_request_matching.py`                     | Raw firewall request matching through the compiled matcher                                                           |
 | `test_firewall_request_base_matching.py`                | Request-layer firewall base URL matching through raw firewall config                                                 |
@@ -194,6 +198,7 @@ suites before committing the upgrade.
 | `test_firewall_rewrite_safety.py`                       | Firewall auth URL rewrite fail-closed and safety behavior                                                            |
 | `test_auth_query_injection.py`                          | Firewall auth query injection and query rewrite behavior                                                             |
 | `test_host_normalization.py`                            | Shared hostname identity, ASCII fast-path, IDNA, and label-boundary contracts                                        |
+| `test_url_syntax.py`                                    | Shared raw URL code-point, whitespace, backslash, and safe-input fast-path contracts                                 |
 | `test_url_utils.py`                                     | Rewrite URL, path, query, and auth-base URL utility cases                                                            |
 | `test_url_utils_trusted_authority.py`                   | Trusted request authority success and URL reconstruction                                                             |
 | `test_url_utils_trusted_authority_rejection.py`         | Trusted request authority rejection matrices                                                                         |
@@ -214,14 +219,18 @@ suites before committing the upgrade.
 | `test_response_stream_state_release.py`                 | Direct response-stream state release, idempotency, and callback ownership                                            |
 | `test_model_provider_json_fallback.py`                  | Model provider buffered JSON fallback usage pipeline                                                                 |
 | `test_model_provider_json_streaming.py`                 | Model provider streaming JSON response usage pipeline                                                                |
-| `test_model_provider_sse_usage.py`                      | Model provider SSE usage pipeline                                                                                    |
-| `test_model_provider_websocket_usage.py`                | Model provider WebSocket usage reporting and source reconciliation                                                   |
+| `model_provider_sse_usage_helpers.py`                   | Shared model-provider SSE flow, hook-driving, compression, and warning test mechanics                               |
+| `test_model_provider_sse_usage_openai_responses.py`     | OpenAI Responses-shaped model-provider SSE usage pipeline                                                            |
+| `test_model_provider_sse_usage_anthropic.py`            | Anthropic Messages SSE recovery, usage, accounting, retention, and diagnostics pipeline                              |
+| `test_model_provider_websocket_prewarm.py`              | Model provider WebSocket prewarm intent, response correlation, and ignored-source diagnostics                        |
+| `test_model_provider_websocket_source_reporting.py`     | Model provider WebSocket source reporting, admission, and frame parsing                                              |
+| `test_model_provider_websocket_usage_aggregation.py`    | Model provider WebSocket source reconciliation, aggregation, and billing tier state                                  |
 | `test_model_provider_websocket_lifecycle.py`            | Model provider WebSocket HTTP upgrade and terminal usage lifecycle                                                   |
 | `test_codex_output_timing.py`                           | Default Codex provider-output timing observations over WebSocket                                                     |
 | `test_claude_output_timing.py`                          | Claude Code provider-output lifecycle timing over Anthropic SSE                                                      |
 | `test_provider_output_timing.py`                        | Cross-provider output-timing store capacity and lifecycle independence                                               |
 | `test_websocket_retention.py`                           | Registered WebSocket message retention and cleanup                                                                   |
-| `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing                                                                      |
+| `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing and valid-frame recovery                                              |
 | `test_model_provider_usage.py`                          | Model provider usage reporter                                                                                        |
 | `x_connector_usage/`                                    | Direct X connector usage billing, write refinement, unparseable fallback, and skip gates                             |
 | `test_connector_usage.py`                               | Connector usage reporter and stream-path detection                                                                   |
@@ -245,6 +254,7 @@ def registry_file(tmp_path):
         "vms": {
             "10.200.0.1": {
                 "runId": "run-abc-123",
+                "billableFirewalls": [],
                 "sandboxToken": "tok-xyz",
                 "networkLogPath": str(tmp_path / "network.jsonl"),
             },

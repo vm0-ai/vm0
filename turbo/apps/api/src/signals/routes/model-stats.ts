@@ -1,5 +1,5 @@
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
+import { cronAggregateModelStatsContract } from "@okouai/api-contracts/contracts/cron";
 import { command } from "ccstate";
 import { z } from "zod";
 
@@ -101,13 +101,21 @@ const readPublicModelRankingsRoute$ = command(
   },
 );
 
-export const modelStatsRoutes: readonly RouteEntry[] = [
+const aggregateModelStatsRoutes: readonly RouteEntry[] = [
   {
     route: cronAggregateModelStatsContract.aggregate,
     handler: aggregateModelStatsRoute$,
   },
+];
+
+export const modelStatsPublicRoutes: readonly RouteEntry[] = [
   {
     route: modelStatsContract.rankings,
     handler: readPublicModelRankingsRoute$,
   },
+];
+
+export const modelStatsRoutes: readonly RouteEntry[] = [
+  ...aggregateModelStatsRoutes,
+  ...modelStatsPublicRoutes,
 ];

@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroUserPreferencesContract,
+  userPreferencesContract,
   type UpdateUserPreferencesRequest,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
+} from "@okouai/api-contracts/contracts/user-preferences";
+import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 import { accept } from "../../../lib/accept.ts";
@@ -27,7 +27,7 @@ const reloadUserPreferences$ = command(({ set }) => {
 export const userPreferences$ = computed(async (get) => {
   get(internalReloadPreferences$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroUserPreferencesContract);
+  const client = createClient(userPreferencesContract);
   const result = await accept(client.get(), [200]);
   return result.body;
 });
@@ -43,7 +43,7 @@ export const updateUserPreference$ = command(
     _signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroUserPreferencesContract);
+    const client = createClient(userPreferencesContract);
     await accept(
       client.update({
         body: update,
@@ -66,7 +66,7 @@ export const triggerMorningBrief$ = command(
     _signal: AbortSignal,
   ): Promise<{ runId: string | null; queued: boolean }> => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroMorningBriefContract);
+    const client = createClient(morningBriefContract);
     const result = await accept(
       client.trigger({ body: {}, fetchOptions: { signal: _signal } }),
       [200],

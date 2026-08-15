@@ -27,7 +27,9 @@
 //!   branches do not restart polling;
 //! - heartbeat work is pinned and single-flight so its I/O does not stall the
 //!   main reactor or overlap a newer snapshot;
-//! - the first heartbeat and idle-cleanup ticks are deferred;
+//! - workspace-cache watcher work is pinned across reactor turns so async
+//!   metadata classification cannot lose already-drained kernel events;
+//! - the first routine heartbeat and idle-cleanup ticks are deferred;
 //! - teardown drains heartbeat work and drops discovery before provider
 //!   shutdown.
 
@@ -37,6 +39,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use clap::Args;
+use futures_util::future::BoxFuture;
 use sandbox::{RuntimeProvider, SandboxRuntime};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -64,18 +67,20 @@ use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
 use crate::provider::{
-    ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, JobCandidate, JobProvider,
-    LocalProvider, NetworkPolicyRefreshHandle,
+    ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, ConnectorRuntimeSyncHandle,
+    JobCandidate, JobProvider, LocalProvider, RunnerPreferenceRemovalReason,
 };
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::status::{StatusTracker, remove_stale_status_file};
+use crate::workspace_image_cache::WorkspaceCacheWatcher;
 use crate::workspace_image_cache::WorkspaceImageCache;
 
-mod active_reuse_keys;
+mod active_runs;
 mod factory_lifecycle;
+mod finalizing_claim;
 mod heartbeat;
 mod identity;
 mod idle_lifecycle;
@@ -89,12 +94,12 @@ mod ownership;
 mod sandbox_finalization;
 mod signals;
 
-use active_reuse_keys::{ActiveReuseKeys, new_active_reuse_keys};
+use active_runs::ActiveRuns;
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
     HeartbeatSnapshotMetadata, WorkspaceCacheStateSnapshot, collect_heartbeat_state,
-    refresh_workspace_cache_snapshot,
+    refresh_initial_workspace_cache_snapshot,
 };
 use identity::{load_or_generate_runner_id, next_heartbeat_generation};
 use idle_lifecycle::{
@@ -150,6 +155,33 @@ fn retain_finalizing_candidate(
 async fn sleep_until_optional_instant(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
+        None => std::future::pending().await,
+    }
+}
+
+type WorkspaceCacheChangeFuture = BoxFuture<
+    'static,
+    (
+        WorkspaceCacheWatcher,
+        RunnerResult<crate::workspace_image_cache::WorkspaceCacheChange>,
+    ),
+>;
+
+fn workspace_cache_change_future(mut watcher: WorkspaceCacheWatcher) -> WorkspaceCacheChangeFuture {
+    Box::pin(async move {
+        let result = watcher.next_change().await;
+        (watcher, result)
+    })
+}
+
+async fn next_workspace_cache_change(
+    future: &mut Option<WorkspaceCacheChangeFuture>,
+) -> (
+    WorkspaceCacheWatcher,
+    RunnerResult<crate::workspace_image_cache::WorkspaceCacheChange>,
+) {
+    match future {
+        Some(future) => future.await,
         None => std::future::pending().await,
     }
 }
@@ -465,7 +497,7 @@ async fn run_start_with_home(
     let mut memory_prefetch = prefetch::MemoryPrefetchTasks::spawn(
         resource_locks
             .profile_paths()
-            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory_bin()),
+            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory()),
     );
 
     // Compute the smallest profile resources for budget pre-check.
@@ -594,7 +626,6 @@ async fn run_start_with_home(
             .create_runtime(sandbox::RuntimeConfig {
                 proxy_port: Some(mitm.port()),
                 dns_port: Some(dns_port),
-                guest_dns_netfilter_trace: args.local,
             })
             .await
             .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
@@ -678,11 +709,10 @@ async fn run_start_with_home(
 
     // Create provider — handles discovery + claim + complete
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
-
-    let (provider, group_name, network_policy_refresh): (
+    let (provider, group_name, connector_runtime_sync): (
         Arc<dyn JobProvider>,
         String,
-        Option<NetworkPolicyRefreshHandle>,
+        Option<ConnectorRuntimeSyncHandle>,
     ) = if let Some(group_dir) = local_group_dir {
         let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
         let provider =
@@ -707,8 +737,8 @@ async fn run_start_with_home(
             cancel.clone(),
             cancel_tokens.clone(),
         );
-        let network_policy_refresh = provider.network_policy_refresh_handle();
-        (provider, group_name, Some(network_policy_refresh))
+        let connector_runtime_sync = provider.connector_runtime_sync_handle();
+        (provider, group_name, Some(connector_runtime_sync))
     };
 
     let exec_config = Arc::new(ExecutorConfig {
@@ -719,7 +749,7 @@ async fn run_start_with_home(
         network_log_manager,
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle()),
-        network_policy_refresh,
+        connector_runtime_sync,
         session_history_cpu: SessionHistoryCpuPool::for_host_cpus(host_cpus),
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
@@ -755,8 +785,8 @@ async fn run_start_with_home(
         )
         .await?;
 
-    let active_reuse_keys = new_active_reuse_keys();
     let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
+    let active_runs = ActiveRuns::new(Arc::clone(&reuse_state_notify));
     let config = RunConfig {
         runner: RunnerInfo {
             id: runner_id,
@@ -783,7 +813,7 @@ async fn run_start_with_home(
             idle_pool,
             parking_gate,
             status,
-            active_reuse_keys,
+            active_runs,
             reuse_state_notify,
         },
         provider: ProviderState {
@@ -813,6 +843,8 @@ async fn run_start_with_home(
         test_hooks: RunTestHooks {
             outer_job_panic: None,
             test_observer: StartLoopTestObserver::default(),
+            before_initial_workspace_cache_scan: None,
+            after_initial_workspace_cache_scan: None,
         },
     };
 
@@ -871,7 +903,7 @@ struct RunnerSharedState {
     idle_pool: SharedIdlePool,
     parking_gate: ParkingGate,
     status: Arc<StatusTracker>,
-    active_reuse_keys: ActiveReuseKeys,
+    active_runs: ActiveRuns,
     reuse_state_notify: Arc<tokio::sync::Notify>,
 }
 
@@ -912,6 +944,8 @@ struct OrphanReapState {
 struct RunTestHooks {
     outer_job_panic: Option<OuterJobPanicPoint>,
     test_observer: StartLoopTestObserver,
+    before_initial_workspace_cache_scan: Option<StartLoopTestGate>,
+    after_initial_workspace_cache_scan: Option<StartLoopTestGate>,
 }
 
 enum SignalSource {
@@ -929,7 +963,9 @@ enum SignalSource {
 #[derive(Debug, PartialEq, Eq)]
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
+    WorkspaceCacheChangeObserved,
     IdleCleanupProcessed { expired_count: usize },
+    ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
     VmParkedForReuse { run_id: RunId, reuse_key: String },
     UsageFlushRequested,
@@ -938,6 +974,31 @@ enum StartLoopEvent {
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct StartLoopCursor(usize);
+
+#[cfg(test)]
+#[derive(Clone, Default)]
+struct StartLoopTestGate {
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[cfg(test)]
+impl StartLoopTestGate {
+    async fn enter_and_wait(&self) {
+        self.entered.notify_one();
+        self.release.notified().await;
+    }
+
+    async fn wait_entered(&self, timeout: Duration, context: &str) {
+        tokio::time::timeout(timeout, self.entered.notified())
+            .await
+            .unwrap_or_else(|_| panic!("runner did not reach {context} within {timeout:?}"));
+    }
+
+    fn release(&self) {
+        self.release.notify_one();
+    }
+}
 
 #[cfg(test)]
 #[derive(Clone, Default)]
@@ -1033,8 +1094,32 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BudgetExhaustedReactorEntered);
     }
 
+    fn notify_workspace_cache_change_observed(&self) {
+        self.record(StartLoopEvent::WorkspaceCacheChangeObserved);
+    }
+
     fn notify_before_idle_pool_ownership_transfer(&self, run_id: RunId) {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
+    }
+
+    fn notify_active_run_status_published(&self, run_id: RunId) {
+        self.record(StartLoopEvent::ActiveRunStatusPublished { run_id });
+    }
+
+    fn active_run_status_was_published(&self, run_id: RunId) -> bool {
+        self.inner
+            .events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .any(|event| {
+                matches!(
+                    event,
+                    StartLoopEvent::ActiveRunStatusPublished {
+                        run_id: observed_run_id
+                    } if *observed_run_id == run_id
+                )
+            })
     }
 
     fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
@@ -1050,6 +1135,19 @@ impl StartLoopTestObserver {
             matches!(event, StartLoopEvent::BudgetExhaustedReactorEntered).then_some(())
         })
         .await;
+    }
+
+    async fn wait_workspace_cache_change_observed_after(
+        &self,
+        cursor: StartLoopCursor,
+        timeout: Duration,
+    ) -> StartLoopCursor {
+        let ((), cursor) = self
+            .wait_after(cursor, timeout, "workspace-cache change", |event| {
+                matches!(event, StartLoopEvent::WorkspaceCacheChangeObserved).then_some(())
+            })
+            .await;
+        cursor
     }
 
     async fn wait_idle_cleanup_processed_with_expired_entries(&self, timeout: Duration) -> usize {
@@ -1190,6 +1288,7 @@ mod start_loop_observer_tests {
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OuterJobPanicPoint {
+    ClaimedWithoutSandbox,
     ActiveOrUnknown,
     IdlePoolOwned,
     DestroyCompleted,
@@ -1472,7 +1571,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // waiting for the next 10-second tick.
     let reuse_state_notify = Arc::clone(&shared.reuse_state_notify);
     let orphaned_active_runs = OrphanedActiveRuns::new();
-    let active_reuse_keys = shared.active_reuse_keys.clone();
+    let active_runs = shared.active_runs.clone();
     let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
@@ -1480,6 +1579,20 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    let mut workspace_cache_watcher = match exec_config.workspace_cache.clone() {
+        Some(cache) => match WorkspaceCacheWatcher::new(cache).await {
+            Ok(watcher) => Some(watcher),
+            Err(error) => {
+                warn!(error = %error, "workspace cache watcher unavailable; using routine reconciliation");
+                None
+            }
+        },
+        None => None,
+    };
+    #[cfg(test)]
+    if let Some(gate) = &test_hooks.before_initial_workspace_cache_scan {
+        gate.enter_and_wait().await;
+    }
     let hb_ctx = HeartbeatContext::new(HeartbeatContextInit {
         idle_pool: &shared.idle_pool,
         runner_id: &runner.id,
@@ -1490,17 +1603,63 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         budget: &capacity.budget,
         provider: &*provider_state.provider,
         workspace_cache: exec_config.workspace_cache.clone(),
-        active_reuse_keys: &active_reuse_keys,
+        active_runs: &active_runs,
         workspace_cache_snapshot: workspace_cache_snapshot.clone(),
     });
-    refresh_workspace_cache_snapshot(
+    let initial_workspace_cache = refresh_initial_workspace_cache_snapshot(
         &workspace_cache_snapshot,
         exec_config.workspace_cache.as_ref(),
         &runner.profiles,
     )
     .await;
+    #[cfg(test)]
+    if let Some(gate) = &test_hooks.after_initial_workspace_cache_scan {
+        gate.enter_and_wait().await;
+    }
     debug_assert!(workspace_cache_snapshot.workspace_cache_loaded());
+    let mut initial_relevant_cache_keys = initial_workspace_cache.loaded_cache_keys;
+    initial_relevant_cache_keys.extend(initial_workspace_cache.locked_commit_keys.iter().cloned());
+    let mut initial_workspace_cache_change = match workspace_cache_watcher.as_mut() {
+        Some(watcher) => match watcher
+            .reconcile_initial_relevant_entries(&initial_relevant_cache_keys)
+            .await
+        {
+            Ok(change) => change,
+            Err(error) => {
+                warn!(error = %error, "workspace cache watcher failed during startup reconciliation; using routine reconciliation");
+                workspace_cache_watcher = None;
+                Some(crate::workspace_image_cache::WorkspaceCacheChange {
+                    observed_at: tokio::time::Instant::now(),
+                    committed_cache_keys: std::collections::BTreeSet::new(),
+                })
+            }
+        },
+        None => None,
+    };
+    if !initial_workspace_cache.locked_commit_keys.is_empty() {
+        let locked_change = crate::workspace_image_cache::WorkspaceCacheChange {
+            observed_at: tokio::time::Instant::now(),
+            committed_cache_keys: initial_workspace_cache.locked_commit_keys,
+        };
+        match initial_workspace_cache_change.as_mut() {
+            Some(change) => change.merge(locked_change),
+            None => initial_workspace_cache_change = Some(locked_change),
+        }
+    }
+    let mut workspace_cache_change_fut = workspace_cache_watcher.map(workspace_cache_change_future);
     let mut heartbeat = HeartbeatController::new(hb_ctx);
+    let initial_heartbeat_mode = lifecycle.current_mode();
+    if initial_heartbeat_mode == RunnerMode::Running {
+        match initial_workspace_cache_change {
+            Some(change) => {
+                heartbeat.request_initial_workspace_cache(initial_heartbeat_mode, change)?;
+            }
+            None if !initial_workspace_cache.states.is_empty() => {
+                heartbeat.request_initial_workspace_cache_snapshot(initial_heartbeat_mode)?;
+            }
+            None => {}
+        }
+    }
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
@@ -1510,6 +1669,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let mut current_mode = startup_mode;
     let spawn_ctx = SpawnContext {
+        runner_id: runner.id.clone(),
         provider: Arc::clone(&provider_state.provider),
         exec_config: Arc::clone(&exec_config),
         idle_pool: Arc::clone(&shared.idle_pool),
@@ -1518,7 +1678,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         parking_gate: shared.parking_gate.clone(),
         reuse_state_notify: Arc::clone(&reuse_state_notify),
         usage_flush_tx,
-        active_reuse_keys: active_reuse_keys.clone(),
+        active_runs: active_runs.clone(),
+        budget: Arc::clone(&capacity.budget),
         workspace_cache_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
@@ -1594,10 +1755,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     continue;
                 }
             }
+            // A selected finalizing successor can claim against an exact
+            // in-process predecessor without reserving fresh capacity.
             capacity
                 .budget
                 .can_afford(capacity.min_vcpu, capacity.min_memory_mb)
                 || shared.idle_pool.lock().await.len() > 0
+                || active_runs.has_reusable_run()
         } else {
             false
         };
@@ -1609,7 +1773,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let pending_finalizing_deadline = pending_finalizing_candidate
             .as_ref()
             .and_then(JobCandidate::runner_preference)
-            .map(crate::provider::RunnerPreference::deadline);
+            .map(crate::provider::ActiveRunnerPreference::deadline);
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
             // The future is pinned outside the loop so heartbeat/cleanup
@@ -1712,6 +1876,25 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 result?;
                 let live_mode = *mode_rx.borrow();
                 heartbeat.finish_send(live_mode)?;
+            }
+            (watcher, result) = next_workspace_cache_change(&mut workspace_cache_change_fut) => {
+                match result {
+                    Ok(change) => {
+                        workspace_cache_change_fut = Some(workspace_cache_change_future(watcher));
+                        #[cfg(test)]
+                        test_hooks
+                            .test_observer
+                            .notify_workspace_cache_change_observed();
+                        let live_mode = *mode_rx.borrow();
+                        if live_mode == RunnerMode::Running {
+                            heartbeat.request_workspace_cache(live_mode, change)?;
+                        }
+                    }
+                    Err(error) => {
+                        warn!(error = %error, "workspace cache watcher failed; using routine reconciliation");
+                        workspace_cache_change_fut = None;
+                    }
+                }
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
@@ -1834,7 +2017,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let Some(candidate) = pending_finalizing_candidate.take() else {
                     continue;
                 };
-                let candidate = candidate.without_runner_preference();
+                let candidate = candidate
+                    .without_runner_preference(RunnerPreferenceRemovalReason::Expired);
                 let result = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {
@@ -1926,6 +2110,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // the historical shutdown-deadlock regression covered by mock providers.
     drop(discover_fut);
     teardown.event("drop_discover_fut");
+    drop(workspace_cache_change_fut);
 
     // Drain idle pool first — these VMs hold budget reservations. This
     // also clears `idle_vms` in status.json so the final snapshot is

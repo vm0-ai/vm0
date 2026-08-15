@@ -1,8 +1,11 @@
 import {
   chatEventSchema,
+  serializeChatFollowupsContent,
   type ChatEvent,
+  type ChatRecommendedFollowup,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 
 type UnionKeys<T> = T extends unknown ? keyof T : never;
 type UnionValue<T, K extends PropertyKey> = T extends unknown
@@ -15,11 +18,18 @@ type OptionalUnionFields<T> = {
   [K in UnionKeys<T>]?: UnionValue<T, K>;
 };
 
+type UserMessageFilePart = Extract<
+  UserMessageDocument["parts"][number],
+  { readonly type: "file" }
+>;
+
 export type MockChatEventInput = OptionalUnionFields<ChatEvent> & {
   id?: string;
   role?: "user" | "assistant";
   content: string | null;
   createdAt: string;
+  fileParts?: readonly UserMessageFilePart[];
+  followups?: readonly ChatRecommendedFollowup[];
 };
 
 function inferredEventType(
@@ -52,13 +62,10 @@ function inferredEventType(
   if (message.runEventId === "queue:dequeued") {
     return "run.dequeued";
   }
-  if (message.goalEvent !== undefined) {
-    return "goal.changed";
-  }
   if (message.usage !== undefined) {
     return "usage.recorded";
   }
-  if (message.recommendedFollowups !== undefined) {
+  if (message.followups !== undefined) {
     return "output.followups";
   }
   if (message.thinking !== undefined || message.content === null) {
@@ -79,8 +86,6 @@ function baseEvent(
     content,
     runId: message.runId,
     runGroupId: message.runGroupId,
-    triggerSource: message.triggerSource,
-    isGoalRun: message.isGoalRun,
     runEventId: message.runEventId,
     revokesEventId: message.revokesEventId,
     seqId: message.seqId ?? fallbackSeqId,
@@ -101,14 +106,7 @@ function requiredMockUserMessage(
     return message.userMessage;
   }
   const parts: UserMessageDocument["parts"] = [
-    ...(message.attachFiles ?? []).map((file) => {
-      return {
-        type: "file" as const,
-        fileId: file.id,
-        filenameSnapshot: file.filename,
-        contentType: file.contentType,
-      };
-    }),
+    ...(message.fileParts ?? []),
     ...(message.content
       ? [{ type: "text" as const, text: message.content }]
       : []),
@@ -124,14 +122,11 @@ const mockChatEventOverrides = {
     return {
       content: null,
       userMessage: requiredMockUserMessage(message),
-      attachFiles: message.attachFiles,
-      generationTemplate: message.generationTemplate,
     };
   },
   "input.automation": (message, id) => {
     return {
       content: null,
-      triggerSource: message.triggerSource ?? "workflow-event",
       userMessage:
         message.userMessage ??
         ({
@@ -157,13 +152,17 @@ const mockChatEventOverrides = {
         } satisfies UserMessageDocument),
     };
   },
+  "input.budget": (message) => {
+    return {
+      content: null,
+      userMessage: requiredMockUserMessage(message),
+    };
+  },
   "input.rejected": (message) => {
     return {
       content: null,
       error: message.error ?? "Mock input rejected",
       userMessage: requiredMockUserMessage(message),
-      attachFiles: message.attachFiles,
-      generationTemplate: message.generationTemplate,
     };
   },
   "output.message": (message) => {
@@ -180,8 +179,9 @@ const mockChatEventOverrides = {
   },
   "output.followups": (message) => {
     return {
-      content: null,
-      recommendedFollowups: message.recommendedFollowups ?? [],
+      content:
+        message.content ??
+        serializeChatFollowupsContent(message.followups ?? []),
     };
   },
   "run.queued": (message, id) => {
@@ -201,7 +201,6 @@ const mockChatEventOverrides = {
   "run.completed": (message, id) => {
     return {
       runId: message.runId ?? `mock-run-${id}`,
-      attachFiles: message.attachFiles,
       runLifecycleEvent: "completed",
     };
   },
@@ -232,17 +231,17 @@ const mockChatEventOverrides = {
       revokesEventId,
     };
   },
-  "browser.started": () => {
+  "browser.open": () => {
     return { content: null };
   },
-  "browser.stopped": () => {
+  "browser.close": () => {
     return { content: null };
   },
-  "goal.changed": (message) => {
-    return {
-      content: null,
-      goalEvent: message.goalEvent,
-    };
+  "goal.open": (message) => {
+    return { content: message.content ?? "Mock active goal" };
+  },
+  "goal.close": () => {
+    return { content: null };
   },
   "usage.recorded": (message, id) => {
     return {
@@ -275,12 +274,55 @@ export function normalizeMockChatEvents(
     const fallbackId = `mock-chat-event-${index.toString()}`;
     const seqId = message.seqId ?? nextSeqId;
     nextSeqId = Math.max(nextSeqId, seqId + 1);
+    if (message.runLifecycleEvent === "completed" && message.content !== null) {
+      const output = normalizeMockChatEvent(
+        {
+          ...message,
+          eventType: "output.message",
+          runLifecycleEvent: undefined,
+          followups: undefined,
+        },
+        fallbackId,
+        seqId,
+      );
+      const terminal = normalizeMockChatEvent(
+        {
+          ...message,
+          id: `${output.id}:completed`,
+          content: null,
+          eventType: "run.completed",
+          runLifecycleEvent: "completed",
+          followups: undefined,
+        },
+        `${fallbackId}:completed`,
+        seqId + 1,
+      );
+      nextSeqId = Math.max(nextSeqId, seqId + 2);
+      if (message.followups === undefined) {
+        return [output, terminal];
+      }
+      const followups = normalizeMockChatEvent(
+        {
+          ...message,
+          id: `${output.id}:followups`,
+          seqId: seqId + 2,
+          content: serializeChatFollowupsContent(message.followups),
+          error: undefined,
+          runLifecycleEvent: undefined,
+          eventType: "output.followups",
+        },
+        `${fallbackId}:followups`,
+        seqId + 2,
+      );
+      nextSeqId = Math.max(nextSeqId, seqId + 3);
+      return [output, terminal, followups];
+    }
     if (
-      message.recommendedFollowups !== undefined &&
+      message.followups !== undefined &&
       message.runLifecycleEvent !== undefined
     ) {
       const terminal = normalizeMockChatEvent(
-        { ...message, recommendedFollowups: undefined },
+        { ...message, followups: undefined },
         fallbackId,
         seqId,
       );
@@ -289,7 +331,7 @@ export function normalizeMockChatEvents(
           ...message,
           id: `${terminal.id}:followups`,
           seqId: nextSeqId,
-          content: null,
+          content: serializeChatFollowupsContent(message.followups),
           error: undefined,
           runLifecycleEvent: undefined,
           eventType: "output.followups",
@@ -301,5 +343,83 @@ export function normalizeMockChatEvents(
       return [terminal, followups];
     }
     return [normalizeMockChatEvent(message, fallbackId, seqId)];
+  });
+}
+
+const NULL_PAYLOAD_EVENT_TYPES = [
+  "run.dequeued",
+  "run.completed",
+  "control.interrupt",
+  "control.revoke",
+  "browser.open",
+  "browser.close",
+  "goal.close",
+] as const satisfies readonly ChatEvent["eventType"][];
+
+function mockChatEventRowPayload(event: ChatEvent): ChatEventRow["payload"] {
+  if (
+    NULL_PAYLOAD_EVENT_TYPES.some((eventType) => {
+      return eventType === event.eventType;
+    })
+  ) {
+    return null;
+  }
+  switch (event.eventType) {
+    case "input.prompt":
+    case "input.goal":
+    case "input.budget": {
+      return { userMessage: event.userMessage };
+    }
+    case "input.automation": {
+      return event.userMessage ? { userMessage: event.userMessage } : null;
+    }
+    case "input.rejected": {
+      return { userMessage: event.userMessage, error: event.error };
+    }
+    case "output.message":
+    case "output.followups":
+    case "run.queued":
+    case "goal.open": {
+      return { content: event.content };
+    }
+    case "output.error": {
+      return { error: event.error };
+    }
+    case "output.thinking": {
+      return { thinking: event.thinking };
+    }
+    case "run.failed":
+    case "run.cancelled": {
+      return event.error === undefined ? null : { error: event.error };
+    }
+    case "usage.recorded": {
+      return { usage: event.usage };
+    }
+  }
+  return null;
+}
+
+export function mockChatEventRows(
+  events: readonly ChatEvent[],
+): ChatEventRow[] {
+  return events.map((event) => {
+    const goalContextId = event.runGroupId ?? null;
+    return {
+      id: event.id,
+      chatThreadId: event.threadId,
+      runId:
+        event.eventType === "control.interrupt"
+          ? event.interruptsRunId
+          : (event.runId ?? null),
+      revokesEventId: event.revokesEventId ?? null,
+      eventType: event.eventType,
+      payload: mockChatEventRowPayload(event),
+      contextType: goalContextId === null ? null : "goal",
+      contextId: goalContextId,
+      runEventSequenceNumber: event.sequenceNumber ?? null,
+      runEventId: event.runEventId ?? null,
+      seqId: event.seqId,
+      createdAt: event.createdAt,
+    };
   });
 }

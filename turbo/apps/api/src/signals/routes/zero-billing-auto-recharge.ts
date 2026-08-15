@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroBillingAutoRechargeContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingAutoRechargeContract } from "@okouai/api-contracts/contracts/zero-billing";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -9,7 +9,7 @@ import {
   autoRechargeConfig,
   updateAutoRechargeConfig$,
 } from "../services/billing.service";
-import { triggerAutoRecharge$ } from "../services/zero-credit-recharge.service";
+import { triggerAutoRecharge$ } from "../services/credit-recharge.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({

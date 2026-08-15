@@ -1,8 +1,20 @@
-import { screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+} from "@okouai/core";
+import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { logsListContract } from "@okouai/api-contracts/contracts/logs";
+import { zeroBrowserContract } from "@okouai/api-contracts/contracts/zero-browser";
 
 import {
   detachedSetupPage,
@@ -10,8 +22,22 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import {
+  mockChatEventRows,
+  normalizeMockChatEvents,
+} from "./chat-event-test-helpers.ts";
 
 const context = testContext();
+
+function linkByAriaLabel(label: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((element) => {
+    return element.getAttribute("aria-label") === label;
+  });
+  if (!link) {
+    throw new Error(`Expected link with aria-label: ${label}`);
+  }
+  return link;
+}
 
 describe("user messages", () => {
   it("renders templates inline in message and feedback-note order", async () => {
@@ -65,9 +91,6 @@ describe("user messages", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
     });
 
     const userMessageElement = await waitFor(() => {
@@ -75,18 +98,15 @@ describe("user messages", () => {
       expect(element).toBeInstanceOf(HTMLElement);
       return element as HTMLElement;
     });
-    const references = screen.getAllByLabelText(
-      `Message template ${templateItem.title}`,
+    const references = screen.getAllByTitle(
+      `Illustration · ${templateItem.title}`,
     );
     expect(references).toHaveLength(2);
+    const buttons = queryAllByRoleFast("button");
     for (const reference of references) {
-      expect(reference.tagName).toBe("BUTTON");
-      expect(reference).toHaveAttribute("aria-haspopup", "dialog");
-      expect(reference).toHaveAttribute(
-        "data-structured-template-reference",
-        "",
-      );
       expect(reference.textContent).toBe(templateItem.title);
+      // A sent template is a record, not a control, so it exposes no button.
+      expect(buttons).not.toContain(reference);
     }
     const feedback = document.querySelector("[data-structured-feedback-group]");
     expect(feedback).toBeInstanceOf(HTMLElement);
@@ -98,21 +118,100 @@ describe("user messages", () => {
 
     await user.click(references[0]!);
 
-    const dialog = await screen.findByRole("dialog");
-    expect(dialog).toBeInTheDocument();
-    const illustrationTab = queryAllByRoleFast("tab").find((tab) => {
-      return tab.textContent === "Illustration";
-    });
-    expect(illustrationTab).toHaveAttribute("aria-selected", "true");
-    expect(
-      screen.getByLabelText(`Select template ${templateItem.title}`),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      document.querySelector("[data-composer-inline-template]"),
-    ).toBeNull();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("renders ordered snapshots with literal Markdown text", async () => {
+  it("echoes the video parameters a sent template used", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000750";
+    const templateItem = VIDEO_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Sent video template",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000750",
+          role: "user",
+          content: "Make the clip",
+          runId: "d0000000-0000-4000-a000-000000000750",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: templateItem.title,
+                template: {
+                  type: "video",
+                  selection: {
+                    stylePresetId: templateItem.id,
+                    // Only the ratio was changed; the duration still resolves
+                    // from the catalog.
+                    videoOptions: { aspectRatio: "9:16" },
+                  },
+                },
+              },
+              { type: "text", text: "Make the clip" },
+            ],
+          },
+          createdAt: "2026-08-07T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+    });
+
+    // Wide viewports keep a static record: the inline echo plus a hover
+    // title that repeats the spec. No dialog opens from this variant.
+    const reference = await screen.findByTitle(
+      `Video \u00b7 ${templateItem.title} \u00b7 ` +
+        "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p",
+    );
+    expect(reference.tagName).toBe("SPAN");
+    // Every parameter is echoed, not only the one the user changed. Audio is
+    // the exception: it stays in the detail dialog below.
+    expect(reference).toHaveTextContent(
+      "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p",
+    );
+
+    await user.click(reference);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    // Touch-width viewports hide the inline echo and have no hover, so only
+    // there the chip swaps to a button that opens a read-only detail dialog.
+    const chipButton = queryAllByRoleFast("button").find((element) => {
+      return element.textContent === templateItem.title;
+    });
+    expect(chipButton).toBeInstanceOf(HTMLButtonElement);
+    await user.click(chipButton!);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(templateItem.title)).toBeInTheDocument();
+    expect(dialog.querySelector("img")).toBeInstanceOf(HTMLImageElement);
+    const rows = [
+      ["Model", "Seedance 2.0 fast"],
+      ["Ratio", "9:16"],
+      ["Duration", "8s"],
+      ["Resolution", "720p"],
+      ["Generate audio", "Audio"],
+    ] as const;
+    for (const [label, value] of rows) {
+      expect(within(dialog).getByText(label).parentElement).toHaveTextContent(
+        value,
+      );
+    }
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders ordered canonical snapshots with literal Markdown text", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000741";
     const referencedThreadId = "b0000000-0000-4000-a000-000000000742";
     mockChatLifecycle(context, {
@@ -122,28 +221,8 @@ describe("user messages", () => {
         {
           id: "00000000-0000-4000-8000-000000000741",
           role: "user",
-          content: "Legacy structured body should stay hidden",
+          content: null,
           runId: "d0000000-0000-4000-a000-000000000741",
-          generationTemplate: {
-            type: "presentation",
-            selection: { templateId: "retired-template" },
-          },
-          attachFiles: [
-            {
-              id: "image-live",
-              filename: "reference.png",
-              url: "/f/test-user/image-live/reference.png",
-              contentType: "image/png",
-              size: 84,
-            },
-            {
-              id: "file-live",
-              filename: "renamed-report.pdf",
-              url: "/f/test-user/file-live/renamed-report.pdf",
-              contentType: "application/pdf",
-              size: 42,
-            },
-          ],
           userMessage: {
             version: 1,
             parts: [
@@ -222,8 +301,7 @@ describe("user messages", () => {
       return element as HTMLElement;
     });
     expect(userMessageElement.textContent).toBe(
-      "Start Archived source with PDForiginal-report.pdf, then " +
-        "TXTdeleted-notes.txt.\n" +
+      "Archived deckStart Archived source with , then .\n" +
         "Use **literal** <span>.",
     );
     expect(userMessageElement.querySelector("strong")).toBeNull();
@@ -232,24 +310,33 @@ describe("user messages", () => {
       'a[aria-label="Open chat Archived source"]',
     );
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
-    const template = screen.getByLabelText("Message template Archived deck");
+    const template = screen.getByTitle("Presentation · Archived deck");
     const image = screen.getByLabelText("Preview reference.png");
-    expect(template).toBeInTheDocument();
     expect(image).toBeInTheDocument();
-    expect(
-      template.compareDocumentPosition(userMessageElement) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // Templates render inline at their position in the message, so the chip
+    // stays inside the bubble instead of being elevated above it.
+    expect(userMessageElement).toContainElement(template);
     expect(
       image.compareDocumentPosition(userMessageElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // Canonical file parts leave the bubble and keep their persisted snapshot;
+    // conflicting legacy response projection metadata is ignored.
+    const pdf = screen.getByLabelText(
+      "Open pdf preview for original-report.pdf",
+    );
     expect(
-      userMessageElement.querySelector(
-        'button[aria-label="Open pdf preview for original-report.pdf"]',
+      within(screen.getByTestId("message-file-attachments")).getByLabelText(
+        "Open pdf preview for original-report.pdf",
       ),
+    ).toBe(pdf);
+    expect(
+      pdf.compareDocumentPosition(userMessageElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText("Open text preview for deleted-notes.txt"),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("File deleted-notes.txt")).toBeInTheDocument();
     expect(
       screen.queryByText("Legacy structured body should stay hidden"),
     ).not.toBeInTheDocument();
@@ -438,6 +525,11 @@ describe("user messages", () => {
         );
       }
     });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    for (const agentLink of agentLinks) {
+      expect(agentLink.querySelector("img")).not.toHaveClass("bg-muted");
+    }
     expect(agentLinks[0]).toHaveAttribute(
       "href",
       `/agents/${mentionedAgentId}/chat`,
@@ -449,5 +541,350 @@ describe("user messages", () => {
     expect(
       userMessageElement.querySelector("[data-structured-feedback-group]"),
     ).toBeInstanceOf(HTMLElement);
+  });
+
+  it("renders agent-run source annotations with avatar, link, and run anchor", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000750";
+    const sourceThreadId = "b0000000-0000-4000-a000-000000000751";
+    const sourceRunId = "d0000000-0000-4000-a000-000000000751";
+    const targetRunId = "d0000000-0000-4000-a000-000000000750";
+    const sourceAgentId = "a1000000-0000-4000-a000-000000000010";
+    const sourceAgentAvatarUrl = "https://example.com/source-agent-avatar.png";
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: sourceAgentId,
+        displayName: "Source agent",
+        description: null,
+        sound: null,
+        avatarUrl: sourceAgentAvatarUrl,
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delegated work",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000750",
+          role: "user",
+          content: "Delegated prompt",
+          runId: targetRunId,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Delegated prompt" },
+              {
+                type: "source",
+                kind: "agent",
+                runId: sourceRunId,
+                threadId: sourceThreadId,
+                agentId: sourceAgentId,
+                titleSnapshot: "Source thread",
+                href: `/chats/${sourceThreadId}#run-${sourceRunId}`,
+              },
+            ],
+          },
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const sourceLink = await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+    expect(sourceLink).toHaveAttribute(
+      "href",
+      `/chats/${sourceThreadId}#run-${sourceRunId}`,
+    );
+    await waitFor(() => {
+      expect(sourceLink.querySelector("img")).toHaveAttribute(
+        "src",
+        sourceAgentAvatarUrl,
+      );
+    });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    expect(sourceLink.querySelector("img")).not.toHaveClass("bg-muted");
+    expect(document.getElementById(`run-${targetRunId}`)).toHaveAttribute(
+      "data-role",
+      "user",
+    );
+  });
+
+  it("restores cached agent source annotations after browser back from agents", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000752";
+    const sourceThreadId = "b0000000-0000-4000-a000-000000000753";
+    const sourceRunId = "d0000000-0000-4000-a000-000000000753";
+    const sourceAgentId = "a1000000-0000-4000-a000-000000000011";
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: sourceAgentId,
+        displayName: "Source agent",
+        description: null,
+        sound: null,
+        avatarUrl: "https://example.com/source-agent-avatar.png",
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsListContract.list, ({ respond }) => {
+      return respond(200, {
+        data: [],
+        pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        filters: { statuses: [], sources: [], agents: [] },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delegated work",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000752",
+          role: "user",
+          content: "Delegated prompt",
+          runId: "d0000000-0000-4000-a000-000000000752",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Delegated prompt" },
+              {
+                type: "source",
+                kind: "agent",
+                runId: sourceRunId,
+                threadId: sourceThreadId,
+                agentId: sourceAgentId,
+                titleSnapshot: "Source thread",
+                href: `/chats/${sourceThreadId}#run-${sourceRunId}`,
+              },
+            ],
+          },
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+
+    const agentsLink = await waitFor(() => {
+      const link = screen.getByText("Agents").closest("a");
+      if (!link) {
+        throw new Error("Expected the Agents navigation link");
+      }
+      return link;
+    });
+    await user.click(agentsLink);
+    await screen.findByRole("heading", { name: "Agents" });
+
+    act(() => {
+      window.history.back();
+    });
+
+    await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+    expect(
+      screen.queryByText("Oops! Something went sideways"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps structured message cards while opening a chat sidebar through navigation", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000754";
+    const sidebarThreadId = "b0000000-0000-4000-a000-000000000755";
+    const sourceThreadId = "b0000000-0000-4000-a000-000000000756";
+    const sourceRunId = "d0000000-0000-4000-a000-000000000756";
+    const sourceAgentId = "a1000000-0000-4000-a000-000000000012";
+    const createdAt = "2026-08-04T10:00:00Z";
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: sourceAgentId,
+        displayName: "Source agent",
+        description: null,
+        sound: null,
+        avatarUrl: "https://example.com/source-agent-avatar.png",
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    context.mocks.data.composesList([]);
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "BROWSER_NOT_FOUND", message: "Browser not found" },
+      });
+    });
+    const lifecycle = mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delegated work",
+      chatEvents: [],
+    });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: "Delegated work",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt,
+        updatedAt: createdAt,
+      },
+      {
+        id: sidebarThreadId,
+        title: "Sidebar chat",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ]);
+    const sourceEvents = normalizeMockChatEvents([
+      {
+        id: "00000000-0000-4000-8000-000000000754",
+        threadId,
+        role: "user",
+        content: "Delegated prompt",
+        runId: "d0000000-0000-4000-a000-000000000754",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Delegated prompt" },
+            {
+              type: "source",
+              kind: "agent",
+              runId: sourceRunId,
+              threadId: sourceThreadId,
+              agentId: sourceAgentId,
+              titleSnapshot: "Source thread",
+              href: `/chats/${sourceThreadId}#run-${sourceRunId}`,
+            },
+            {
+              type: "file",
+              fileId: "file-source-context",
+              filenameSnapshot: "source-context.bin",
+              contentType: "application/octet-stream",
+            },
+          ],
+        },
+        createdAt,
+      },
+    ]);
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ params, query, respond }) => {
+        if (params.threadId !== threadId) {
+          return respond(200, { rows: [] });
+        }
+        return respond(200, {
+          rows: mockChatEventRows(sourceEvents).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+    expect(screen.getAllByText("source-context.bin").length).toBeGreaterThan(0);
+
+    const sidebarThreadLink = await waitFor(() => {
+      const link = screen.getByText("Sidebar chat").closest("a");
+      if (!link) {
+        throw new Error("Expected the sidebar thread link");
+      }
+      return link;
+    });
+    fireEvent.click(sidebarThreadLink, { altKey: true });
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+    expect(screen.getAllByText("source-context.bin").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByText("Oops! Something went sideways"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders Morning Brief metadata outside the message body", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000760";
+    const prompt = "Generate my Morning Brief for 2026-08-05.";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Morning Brief",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000760",
+          role: "user",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: prompt },
+              { type: "morning_brief", briefDate: "2026-08-05" },
+            ],
+          },
+          createdAt: "2026-08-05T07:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const annotation = await screen.findByLabelText("Morning Brief");
+    const messageBody = await waitFor(() => {
+      const element = document.querySelector("[data-structured-user-message]");
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    expect(messageBody.textContent).toBe(prompt);
+    expect(messageBody).not.toContainElement(annotation);
   });
 });

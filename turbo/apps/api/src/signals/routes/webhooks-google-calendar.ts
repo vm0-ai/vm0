@@ -1,10 +1,10 @@
 import { command } from "ccstate";
-import { webhookGoogleCalendarContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookGoogleCalendarContract } from "@okouai/api-contracts/contracts/webhooks";
 
 import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
-import { now } from "../external/time";
-import { dispatchGoogleCalendarWebhook$ } from "../services/google-calendar-workflow-event.service";
+import { now } from "../../lib/time";
+import { dispatchGoogleCalendarWebhook$ } from "../services/google-calendar-automation-event.service";
 
 function jsonError(message: string, status: 400 | 401 | 429 | 503): Response {
   return Response.json({ error: message }, { status });

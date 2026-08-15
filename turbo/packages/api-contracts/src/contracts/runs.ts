@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { timestampQueryNumberSchema } from "./base";
-import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
+import { firewallPoliciesSchema } from "@okouai/connectors/firewall-types";
 import {
   modelProviderTypeSchema,
   type ModelProviderType,
@@ -246,18 +246,6 @@ const cancelRunResponseSchema = z.object({
   message: z.string(),
 });
 
-/**
- * Telemetry metric schema
- */
-const telemetryMetricSchema = z.object({
-  ts: z.string(),
-  cpu: z.number(),
-  mem_used: z.number(),
-  mem_total: z.number(),
-  disk_used: z.number(),
-  disk_total: z.number(),
-});
-
 type LogPaginationCursorKind = "sequence" | "time";
 type LogPaginationOrder = "asc" | "desc";
 
@@ -299,13 +287,6 @@ const sequenceQueryNumberSchema = safeIntegerQueryNumberSchema
     },
     { message: "Sequence cursor is out of range" },
   );
-
-function boundedIntegerQueryNumberSchema(min: number, max: number) {
-  return z.preprocess(
-    rejectBlankQueryNumber,
-    z.coerce.number().int().min(min).max(max),
-  );
-}
 
 function logSinceQuerySchema(cursorKind: LogPaginationCursorKind) {
   return cursorKind === "time"
@@ -514,31 +495,14 @@ export function createLogPaginationQuerySchema(
 }
 
 /**
- * System log response schema
- */
-const systemLogResponseSchema = z.object({
-  systemLog: z.string(),
-  hasMore: z.boolean(),
-  nextCursor: z.string().nullable().optional(),
-});
-
-/**
- * Metrics response schema
- */
-const metricsResponseSchema = z.object({
-  metrics: z.array(telemetryMetricSchema),
-  hasMore: z.boolean(),
-  nextCursor: z.string().nullable().optional(),
-});
-
-/**
- * Agent events response schema (for logs command)
+ * Agent events response schema
  */
 const agentEventsResponseSchema = z.object({
   events: z.array(runEventSchema),
   hasMore: z.boolean(),
   nextCursor: z.string().nullable().optional(),
-  framework: z.string(),
+  status: runStatusSchema,
+  lastEventSequence: eventSequenceNumberSchema.nullable(),
 });
 
 /**
@@ -617,6 +581,13 @@ const networkLogEntrySchema = z.object({
   port: z.number().optional(),
   method: z.string().optional(),
   url: z.string().optional(),
+  url_truncated: z.boolean().optional(),
+  url_original_char_count: z
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .optional(),
   status: z.number().optional(),
   latency_ms: z.number().optional(),
   request_size: z.number().optional(),
@@ -678,10 +649,12 @@ const networkLogEntrySchema = z.object({
   error: z.string().optional(),
   // Capture-only fields (opt-in via captureNetworkBodies)
   request_headers: z.record(z.string(), z.string()).optional(),
+  request_headers_truncated: z.boolean().optional(),
   request_body: z.string().optional(),
   request_body_encoding: z.enum(["utf-8", "base64", "binary"]).optional(),
   request_body_truncated: z.boolean().optional(),
   response_headers: z.record(z.string(), z.string()).optional(),
+  response_headers_truncated: z.boolean().optional(),
   response_body: z.string().optional(),
   response_body_encoding: z.enum(["utf-8", "base64", "binary"]).optional(),
   response_body_truncated: z.boolean().optional(),
@@ -694,36 +667,6 @@ const networkLogsResponseSchema = z.object({
   networkLogs: z.array(networkLogEntrySchema),
   hasMore: z.boolean(),
   nextCursor: z.string().nullable().optional(),
-});
-
-/**
- * Logs search result schema
- */
-const searchResultSchema = z.object({
-  runId: z.string(),
-  agentName: z.string(),
-  framework: z.string().nullable().optional(),
-  matchedEvent: runEventSchema,
-  contextBefore: z.array(runEventSchema),
-  contextAfter: z.array(runEventSchema),
-});
-
-/**
- * Logs search response schema
- */
-const logsSearchResponseSchema = z.object({
-  results: z.array(searchResultSchema),
-  hasMore: z.boolean(),
-});
-
-const logsSearchQuerySchema = z.object({
-  keyword: z.string().trim().min(1),
-  agentId: z.string().uuid().optional(),
-  runId: z.string().uuid().optional(),
-  since: timestampQueryNumberSchema.optional(),
-  limit: boundedIntegerQueryNumberSchema(1, 50).default(20),
-  before: boundedIntegerQueryNumberSchema(0, 10).default(0),
-  after: boundedIntegerQueryNumberSchema(0, 10).default(0),
 });
 
 /**
@@ -758,11 +701,18 @@ const runningTaskSchema = z.object({
 /**
  * Concurrency info schema
  */
+const concurrencyMemberUsageSchema = z.object({
+  userId: z.string(),
+  displayName: z.string(),
+  active: z.number(),
+});
+
 const concurrencyInfoSchema = z.object({
   tier: orgTierSchema,
   limit: z.number(),
   active: z.number(),
   available: z.number(),
+  memberUsage: z.array(concurrencyMemberUsageSchema),
 });
 
 /**
@@ -788,9 +738,6 @@ export {
   runEventSchema,
   runResultSchema,
   runStateSchema,
-  telemetryMetricSchema,
-  systemLogResponseSchema,
-  metricsResponseSchema,
   agentEventsResponseSchema,
   networkLogActionSchema,
   modelCatalogCacheStatusSchema,
@@ -801,11 +748,9 @@ export {
   modelCatalogCacheEvictionCountSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
-  searchResultSchema,
-  logsSearchQuerySchema,
-  logsSearchResponseSchema,
   queueEntrySchema,
   runningTaskSchema,
+  concurrencyMemberUsageSchema,
   concurrencyInfoSchema,
   queueResponseSchema,
 };
@@ -820,9 +765,6 @@ export type GetRunResponse = z.infer<typeof getRunResponseSchema>;
 export type RunListItem = z.infer<typeof runListItemSchema>;
 export type RunsListResponse = z.infer<typeof runsListResponseSchema>;
 export type CancelRunResponse = z.infer<typeof cancelRunResponseSchema>;
-export type TelemetryMetric = z.infer<typeof telemetryMetricSchema>;
-export type SystemLogResponse = z.infer<typeof systemLogResponseSchema>;
-export type MetricsResponse = z.infer<typeof metricsResponseSchema>;
 export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;
 export type NetworkLogAction = z.infer<typeof networkLogActionSchema>;
 export type NetworkLogEntry = z.infer<typeof networkLogEntrySchema>;
@@ -837,9 +779,10 @@ export type AxiomNetworkEvent = Omit<NetworkLogEntry, "timestamp"> & {
   runId: string;
   userId: string;
 };
-export type SearchResult = z.infer<typeof searchResultSchema>;
-export type LogsSearchResponse = z.infer<typeof logsSearchResponseSchema>;
 export type QueueEntry = z.infer<typeof queueEntrySchema>;
 export type RunningTask = z.infer<typeof runningTaskSchema>;
+export type ConcurrencyMemberUsage = z.infer<
+  typeof concurrencyMemberUsageSchema
+>;
 export type ConcurrencyInfo = z.infer<typeof concurrencyInfoSchema>;
 export type QueueResponse = z.infer<typeof queueResponseSchema>;

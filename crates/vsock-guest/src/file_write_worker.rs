@@ -20,6 +20,22 @@ pub(crate) enum FileWriteKind {
     Files,
 }
 
+impl FileWriteKind {
+    pub(crate) const fn operation_label(self) -> &'static str {
+        match self {
+            Self::File => "write_file",
+            Self::Files => "write_files",
+        }
+    }
+
+    pub(crate) fn validate_payload(self, payload: &[u8]) -> Result<(), vsock_proto::ProtocolError> {
+        match self {
+            Self::File => decode_write_file_message(payload).map(|_| ()),
+            Self::Files => decode_write_files_message(payload).map(|_| ()),
+        }
+    }
+}
+
 pub(crate) enum FileWriteSubmitError {
     Busy,
     Disconnected,

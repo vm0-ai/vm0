@@ -45,14 +45,14 @@ export const zoomProvider: AuthCodeConnectorAuthProvider<"zoom"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId, clientSecret } = args.authClient;
       return oauthRefreshResultToProviderResult(
         await refreshZoomToken(
           clientId,
           clientSecret,
           args.inputs.refreshToken,
-          args.signal,
+          signal,
         ),
       );
     },

@@ -18,8 +18,9 @@ import hashlib
 import hmac
 import re
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import NewType
 
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
 from runtime_url_parsing import split_runtime_url
@@ -59,6 +60,14 @@ _RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
 _DEFAULT_PORTS = {"http": 80, "https": 443}
+# ALB caps the complete request line at 16 KiB; CloudFront and API Gateway
+# impose smaller URL limits. Even one-byte non-empty query pairs require
+# 2 * count - 1 bytes with separators, so this admits every request within
+# those documented front-door limits while bounding synchronous signing work.
+MAX_AWS_SIGV4_QUERY_PAIRS = 8 * 1024
+_RAW_QUERY_PAIR_RE = re.compile(r"[^&]+")
+
+AwsSigV4BodyHash = NewType("AwsSigV4BodyHash", str)
 
 
 class AwsSigV4SigningError(Exception):
@@ -108,6 +117,42 @@ class _SigningUrl:
     query_pairs: tuple[tuple[str, str], ...]
 
 
+@dataclass(frozen=True)
+class AwsSigV4RequestInspection:
+    """Validated SigV4 request context for one exact URL/header representation."""
+
+    requires_body: bool
+    _url: str = field(repr=False)
+    _headers: tuple[tuple[str, str], ...] = field(repr=False)
+    _context: _SigningContext = field(repr=False)
+    _signing_url: _SigningUrl = field(repr=False)
+
+    def _matches(self, *, url: str, headers: list[tuple[str, str]]) -> bool:
+        """Return whether this inspection describes the exact current input."""
+        return self._url == url and self._headers == tuple(headers)
+
+
+def inspect_request(
+    *,
+    url: str,
+    headers: list[tuple[str, str]],
+) -> AwsSigV4RequestInspection:
+    """Validate and classify one exact SigV4 request representation."""
+    _validate_headers(headers)
+    context, signing_url = _classify_request(url, headers)
+    _validate_signing_context(context)
+    requires_body = _content_hash_header_value(headers) is None and not (
+        context.location is _AuthLocation.QUERY and context.scope.service in _S3_SIGNING_NAMES
+    )
+    return AwsSigV4RequestInspection(
+        requires_body=requires_body,
+        _url=url,
+        _headers=tuple(headers),
+        _context=context,
+        _signing_url=signing_url,
+    )
+
+
 def sign_request(
     *,
     method: str,
@@ -115,6 +160,8 @@ def sign_request(
     headers: list[tuple[str, str]],
     body: bytes | None,
     credentials: AwsSigV4Credentials,
+    precomputed_body_hash: AwsSigV4BodyHash | None = None,
+    inspection: AwsSigV4RequestInspection | None = None,
 ) -> tuple[str, list[tuple[str, str]]]:
     """Return a URL/header pair re-signed with real AWS credentials.
 
@@ -136,11 +183,17 @@ def sign_request(
     S3-family services keep S3 canonical URI behavior. For presigned S3
     requests without an explicit ``x-amz-content-sha256`` header, the payload
     hash is ``UNSIGNED-PAYLOAD``.
+
+    When supplied, ``precomputed_body_hash`` must be the SHA-256 digest of
+    ``body``. It is ignored when the request declares a supported payload hash.
+    ``inspection`` is reused only when it describes the exact current URL and
+    ordered headers; otherwise the current representation is inspected once.
     """
     _validate_credentials(credentials)
-    _validate_headers(headers)
-    context, signing_url = _classify_request(url, headers)
-    _validate_signing_context(context)
+    if inspection is None or not inspection._matches(url=url, headers=headers):
+        inspection = inspect_request(url=url, headers=headers)
+    context = inspection._context
+    signing_url = inspection._signing_url
     if context.source_access_key_id == credentials.access_key_id:
         raise AwsSigV4SigningError("AWS request must use a placeholder access key ID")
 
@@ -154,6 +207,7 @@ def sign_request(
             credentials=credentials,
             context=context,
             is_s3=is_s3,
+            precomputed_body_hash=precomputed_body_hash,
         )
     return _sign_header_request(
         method=method,
@@ -163,7 +217,13 @@ def sign_request(
         credentials=credentials,
         context=context,
         is_s3=is_s3,
+        precomputed_body_hash=precomputed_body_hash,
     )
+
+
+def hash_request_body(body: bytes | None) -> AwsSigV4BodyHash:
+    """Return the SHA-256 digest used by payload-dependent SigV4 signing."""
+    return AwsSigV4BodyHash(hashlib.sha256(body or b"").hexdigest())
 
 
 def request_requires_body_for_signing(
@@ -172,14 +232,7 @@ def request_requires_body_for_signing(
     headers: list[tuple[str, str]],
 ) -> bool:
     """Return whether re-signing must hash the request body bytes."""
-    _validate_headers(headers)
-    context, _signing_url = _classify_request(url, headers)
-    _validate_signing_context(context)
-    if _content_hash_header_value(headers) is not None:
-        return False
-    return not (
-        context.location is _AuthLocation.QUERY and context.scope.service in _S3_SIGNING_NAMES
-    )
+    return inspect_request(url=url, headers=headers).requires_body
 
 
 def _validate_signing_context(context: _SigningContext) -> None:
@@ -358,8 +411,9 @@ def _sign_header_request(
     credentials: AwsSigV4Credentials,
     context: _SigningContext,
     is_s3: bool,
+    precomputed_body_hash: AwsSigV4BodyHash | None,
 ) -> tuple[str, list[tuple[str, str]]]:
-    payload_hash = _payload_hash(headers, body)
+    payload_hash = _payload_hash(headers, body, precomputed_body_hash)
     clean_headers = _without_headers(headers, {"authorization", "x-amz-security-token"})
     clean_headers = _upsert_header(clean_headers, "host", _host_header_value(url))
     clean_headers = _upsert_header(clean_headers, "x-amz-date", context.amz_date)
@@ -412,11 +466,12 @@ def _sign_query_request(
     credentials: AwsSigV4Credentials,
     context: _SigningContext,
     is_s3: bool,
+    precomputed_body_hash: AwsSigV4BodyHash | None,
 ) -> tuple[str, list[tuple[str, str]]]:
     clean_headers = _without_headers(headers, {"authorization", "x-amz-security-token"})
     clean_headers = _upsert_header(clean_headers, "host", _host_header_value(url))
     signed_headers = frozenset(set(context.signed_headers) | {"host"})
-    payload_hash = _query_payload_hash(headers, body, is_s3)
+    payload_hash = _query_payload_hash(headers, body, is_s3, precomputed_body_hash)
     unsigned_url = _replace_query_signing_params(
         url,
         credentials=credentials,
@@ -529,20 +584,33 @@ def _normalize_header_value(value: str) -> str:
     return " ".join(value.strip().split())
 
 
-def _payload_hash(headers: list[tuple[str, str]], body: bytes | None) -> str:
+def _payload_hash(
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+    precomputed_body_hash: AwsSigV4BodyHash | None,
+) -> str:
     header_value = _content_hash_header_value(headers)
     if header_value is not None:
         return header_value
-    return hashlib.sha256(body or b"").hexdigest()
+    if precomputed_body_hash is not None:
+        return precomputed_body_hash
+    return hash_request_body(body)
 
 
-def _query_payload_hash(headers: list[tuple[str, str]], body: bytes | None, is_s3: bool) -> str:
+def _query_payload_hash(
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+    is_s3: bool,
+    precomputed_body_hash: AwsSigV4BodyHash | None,
+) -> str:
     header_value = _content_hash_header_value(headers)
     if header_value is not None:
         return header_value
     if is_s3:
         return _UNSIGNED_PAYLOAD
-    return hashlib.sha256(body or b"").hexdigest()
+    if precomputed_body_hash is not None:
+        return precomputed_body_hash
+    return hash_request_body(body)
 
 
 def _content_hash_header_value(headers: list[tuple[str, str]]) -> str | None:
@@ -682,6 +750,7 @@ def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
     if not query:
         return []
 
+    _validate_query_pair_count(query)
     pairs: list[tuple[str, str]] = []
     for raw_pair in query.split("&"):
         if not raw_pair:
@@ -689,6 +758,12 @@ def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
         raw_key, _separator, raw_value = raw_pair.partition("=")
         pairs.append((_unquote_query_component(raw_key), _unquote_query_component(raw_value)))
     return pairs
+
+
+def _validate_query_pair_count(query: str) -> None:
+    for pair_count, _match in enumerate(_RAW_QUERY_PAIR_RE.finditer(query), start=1):
+        if pair_count > MAX_AWS_SIGV4_QUERY_PAIRS:
+            raise AwsSigV4SigningError("AWS request has too many query parameters")
 
 
 def _unquote_query_component(value: str) -> str:

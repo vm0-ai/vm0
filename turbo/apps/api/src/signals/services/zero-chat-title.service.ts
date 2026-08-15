@@ -1,15 +1,15 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import type { SharedMessage } from "@okouai/api-contracts/contracts/shared-threads";
 import {
-  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
+import type { ChatRecommendedFollowup } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   chatEvents,
-  type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
-} from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   and,
   desc,
@@ -19,29 +19,31 @@ import {
   isNotNull,
   isNull,
   not,
-  or,
   type SQL,
 } from "drizzle-orm";
-
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { waitUntil } from "../context/wait-until";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTextCondition } from "./chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
   normalizeRecommendedFollowups,
-} from "./zero-chat-recommended-followups.service";
+} from "./chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -112,19 +114,6 @@ function completedConversationContextMessageCondition(db: SelectDb) {
             ),
         ),
       ) as SQL,
-    ),
-  ) as SQL;
-}
-
-function contextMessageContentCondition(): SQL {
-  return or(
-    and(
-      chatEventTypeIn(["input.prompt", "input.rejected"]),
-      isNotNull(chatEvents.userMessage),
-    ),
-    and(
-      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      isNotNull(chatEvents.content),
     ),
   ) as SQL;
 }
@@ -235,6 +224,33 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
   ]);
 }
 
+/** Generate the immutable title stored with a public shared-thread snapshot. */
+export async function generateSharedThreadTitle(
+  messages: readonly SharedMessage[],
+): Promise<string> {
+  const recent = messages.slice(-TITLE_PRIOR_MESSAGE_CAP);
+  const conversation = recent
+    .map((message) => {
+      return `${message.role}: ${message.content.slice(0, TITLE_CONTEXT_CHAR_CAP)}`;
+    })
+    .join("\n");
+  const title = await generateText([
+    {
+      role: "system",
+      content:
+        "Generate a short, descriptive title (max 60 chars) for this shared conversation. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
+    },
+    {
+      role: "user",
+      content: conversation,
+    },
+  ]);
+  if (!title) {
+    throw new Error("Shared thread title generation returned no title");
+  }
+  return title;
+}
+
 async function getLatestTitleContextMessages(
   db: Db,
   threadId: string,
@@ -242,8 +258,8 @@ async function getLatestTitleContextMessages(
   const rows = await db
     .select({
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
     })
@@ -252,8 +268,7 @@ async function getLatestTitleContextMessages(
     .where(
       and(
         eq(chatEvents.chatThreadId, threadId),
-        contextMessageContentCondition(),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
+        chatEventTextCondition(),
         visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
       ),
@@ -402,9 +417,7 @@ export function generateChatNotificationSummary(
   );
 }
 
-function parseRecommendedFollowups(
-  text: string,
-): ChatEventRecommendedFollowups {
+function parseRecommendedFollowups(text: string): ChatRecommendedFollowup[] {
   const unfenced = text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -421,8 +434,8 @@ async function getLatestFollowupContextMessages(
   const rows = await db
     .select({
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
     })
@@ -430,8 +443,7 @@ async function getLatestFollowupContextMessages(
     .where(
       and(
         eq(chatEvents.chatThreadId, threadId),
-        contextMessageContentCondition(),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
+        chatEventTextCondition(),
         visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
       ),
@@ -446,7 +458,7 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly ChatCompletionContextMessage[],
-): Promise<ChatEventRecommendedFollowups> {
+): Promise<ChatRecommendedFollowup[]> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
     return [];
@@ -494,7 +506,7 @@ export async function loadChatThreadRecommendedFollowupContext(args: {
 export async function generateChatThreadRecommendedFollowupsFromContext(args: {
   readonly messages: readonly ChatCompletionContextMessage[];
   readonly threadId?: string;
-}): Promise<ChatEventRecommendedFollowups> {
+}): Promise<ChatRecommendedFollowup[]> {
   return (
     (await tapError(generateRecommendedFollowups(args.messages), (err) => {
       log.warn("Recommended follow-up generation failed", {

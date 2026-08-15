@@ -26,6 +26,9 @@ from aws_sigv4 import AwsSigV4Credentials
 MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES = 256 * 1024
 FIREWALL_AUTH_FETCH_DEADLINE_SECONDS = 10.0
 _MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES = 64 * 1024
+# RFC 8305's default cadence; four slots keep the oldest path eligible for about one second.
+_FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS = 0.25
+_MAX_CONCURRENT_FIREWALL_AUTH_CONNECTION_ATTEMPTS = 4
 _DEFAULT_HTTP_PORT = 80
 _DEFAULT_HTTPS_PORT = 443
 _IPV6_VERSION = 6
@@ -63,7 +66,13 @@ class FirewallAuthDeadlineExceededError(Exception):
 
 
 class FirewallAuthApiError(Exception):
-    """Raised when /firewall/auth returns a structured error envelope."""
+    """Raised for general /firewall/auth errors recognized by the runner.
+
+    The recognized codes are ``FORBIDDEN``, ``TOKEN_REFRESH_FAILED``, and
+    ``TOKEN_ACCESS_RESOLUTION_FAILED``. A string-list ``connectors`` value is
+    preserved. The wire ``failureReason`` is preserved as ``failure_reason``
+    only for ``upstream_provider`` and ``reconnect_required``.
+    """
 
     def __init__(
         self,
@@ -132,6 +141,7 @@ class FirewallAuthRequest:
     secret_connector_metadata_map: dict | None = None
     vars_map: dict | None = None
     firewall_billable: bool = False
+    matched_firewall: dict | None = None
 
     def to_body(self, *, force_refresh: bool = False) -> dict:
         """Build the webhook JSON body while preserving omission semantics."""
@@ -153,6 +163,8 @@ class FirewallAuthRequest:
             body["vars"] = self.vars_map
         if self.firewall_billable:
             body["firewallBillable"] = True
+        if self.matched_firewall is not None:
+            body["matchedFirewall"] = self.matched_firewall
         if force_refresh:
             body["forceRefresh"] = True
         return body
@@ -209,13 +221,6 @@ def _get_https_context() -> ssl.SSLContext:
     return context
 
 
-def _normalized_host(host: str) -> str:
-    try:
-        return ipaddress.ip_address(host).compressed
-    except ValueError:
-        return host.encode("idna").decode("ascii")
-
-
 def _format_authority(host: str, port: int, *, include_port: bool) -> str:
     rendered_host = f"[{host}]" if ":" in host else host
     return f"{rendered_host}:{port}" if include_port else rendered_host
@@ -243,13 +248,13 @@ def _proxy_plan(
     scheme: str,
     origin_authority: str,
 ) -> tuple[str, int, str | None] | None:
-    if urllib.request.proxy_bypass(origin_authority):
-        return None
-
     configured_proxy = urllib.request.getproxies().get(scheme)
     if not configured_proxy:
         return None
-    proxy_url = configured_proxy if "://" in configured_proxy else f"http://{configured_proxy}"
+    normalized_proxy = platform_api.normalize_proxy_url(configured_proxy)
+    if urllib.request.proxy_bypass(origin_authority):
+        return None
+    proxy_url = normalized_proxy if "://" in normalized_proxy else f"http://{normalized_proxy}"
     parsed = urllib.parse.urlsplit(proxy_url)
     if parsed.scheme.lower() != "http":
         raise ValueError("Firewall auth supports only HTTP environment proxies")
@@ -258,7 +263,7 @@ def _proxy_plan(
     if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
         raise ValueError("Invalid firewall auth HTTP proxy URL")
     return (
-        _normalized_host(parsed.hostname),
+        parsed.hostname,
         _parsed_port(parsed, _DEFAULT_HTTP_PORT, subject="firewall auth HTTP proxy"),
         _proxy_authorization(parsed),
     )
@@ -273,7 +278,7 @@ def _build_connection_plan(req: urllib.request.Request) -> _ConnectionPlan:
         raise ValueError("Platform API URL must not contain user information")
 
     default_port = _DEFAULT_HTTPS_PORT if scheme == "https" else _DEFAULT_HTTP_PORT
-    origin_host = _normalized_host(parsed.hostname)
+    origin_host = parsed.hostname
     origin_port = _parsed_port(parsed, default_port, subject="platform API")
     origin_authority = _format_authority(
         origin_host,
@@ -341,42 +346,128 @@ def _abort_socket(sock: socket.socket) -> None:
         sock.close()
 
 
+async def _connect_socket(address: _ResolvedAddress) -> socket.socket:
+    sock = socket.socket(address.family, socket.SOCK_STREAM)
+    try:
+        sock.setblocking(False)
+        socket_address: tuple[str, int] | tuple[str, int, int, int]
+        if address.family == socket.AF_INET6:
+            socket_address = (address.host, address.port, 0, 0)
+        else:
+            socket_address = (address.host, address.port)
+        await asyncio.get_running_loop().sock_connect(sock, socket_address)
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError as exc:
+            if exc.errno != errno.ENOPROTOOPT:
+                raise
+    except BaseException:
+        _abort_socket(sock)
+        raise
+    return sock
+
+
+async def _abort_connection_attempts(
+    attempts: tuple[asyncio.Task[socket.socket], ...],
+) -> None:
+    for attempt in attempts:
+        attempt.cancel()
+    await asyncio.gather(*attempts, return_exceptions=True)
+    for attempt in attempts:
+        if attempt.cancelled():
+            continue
+        if attempt.exception() is None:
+            _abort_socket(attempt.result())
+
+
 async def _open_connected_stream(
     addresses: tuple[_ResolvedAddress, ...],
 ) -> _ConnectedStream:
+    if not addresses:
+        raise OSError("Firewall auth connection failed")
+
     loop = asyncio.get_running_loop()
-    last_error: OSError | None = None
-    for address in addresses:
-        sock = socket.socket(address.family, socket.SOCK_STREAM)
-        sock.setblocking(False)
-        try:
-            socket_address: tuple[str, int] | tuple[str, int, int, int]
-            if address.family == socket.AF_INET6:
-                socket_address = (address.host, address.port, 0, 0)
-            else:
-                socket_address = (address.host, address.port)
-            await loop.sock_connect(sock, socket_address)
-            try:
-                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            except OSError as exc:
-                if exc.errno != errno.ENOPROTOOPT:
-                    raise
-            reader, writer = await asyncio.open_connection(
-                sock=sock,
-                limit=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
+    attempts: dict[asyncio.Task[socket.socket], int] = {}
+    unclaimed_sockets: list[socket.socket] = []
+    next_address_index = 0
+    next_attempt_at = loop.time()
+    last_error: tuple[int, OSError] | None = None
+
+    def start_next_attempt() -> None:
+        nonlocal next_address_index
+        nonlocal next_attempt_at
+
+        attempt = asyncio.create_task(_connect_socket(addresses[next_address_index]))
+        attempts[attempt] = next_address_index
+        next_address_index += 1
+        next_attempt_at = loop.time() + _FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS
+
+    start_next_attempt()
+    try:
+        while attempts:
+            wait_timeout = (
+                max(0.0, next_attempt_at - loop.time())
+                if next_address_index < len(addresses)
+                else None
             )
-        except OSError as exc:
-            last_error = exc
-            _abort_socket(sock)
-            continue
-        except BaseException:
-            _abort_socket(sock)
-            raise
-        return _ConnectedStream(reader, writer, sock)
+            done, _pending = await asyncio.wait(
+                attempts,
+                timeout=wait_timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            successful_attempts: list[tuple[int, socket.socket]] = []
+            for attempt in sorted(done, key=attempts.__getitem__):
+                address_index = attempts.pop(attempt)
+                try:
+                    connected_socket = attempt.result()
+                except OSError as exc:
+                    if last_error is None or address_index > last_error[0]:
+                        last_error = (address_index, exc)
+                else:
+                    unclaimed_sockets.append(connected_socket)
+                    successful_attempts.append((address_index, connected_socket))
+
+            if successful_attempts:
+                winner_socket = successful_attempts[0][1]
+                for connected_socket in unclaimed_sockets:
+                    if connected_socket is not winner_socket:
+                        _abort_socket(connected_socket)
+                unclaimed_sockets[:] = [winner_socket]
+                await _abort_connection_attempts(tuple(attempts))
+                attempts.clear()
+                unclaimed_sockets.clear()
+                try:
+                    reader, writer = await asyncio.open_connection(
+                        sock=winner_socket,
+                        limit=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
+                    )
+                except BaseException:
+                    _abort_socket(winner_socket)
+                    raise
+                return _ConnectedStream(reader, writer, winner_socket)
+
+            if not attempts:
+                if next_address_index >= len(addresses):
+                    break
+                start_next_attempt()
+                continue
+
+            if next_address_index < len(addresses) and loop.time() >= next_attempt_at:
+                if len(attempts) >= _MAX_CONCURRENT_FIREWALL_AUTH_CONNECTION_ATTEMPTS:
+                    oldest_attempt = min(attempts, key=attempts.__getitem__)
+                    attempts.pop(oldest_attempt)
+                    await _abort_connection_attempts((oldest_attempt,))
+                start_next_attempt()
+    finally:
+        for connected_socket in unclaimed_sockets:
+            _abort_socket(connected_socket)
+        if attempts:
+            await _abort_connection_attempts(tuple(attempts))
 
     if last_error is None:
         raise OSError("Firewall auth connection failed")
-    raise last_error
+    raise last_error[1]
 
 
 def _abort_stream(stream: _ConnectedStream) -> None:
@@ -728,6 +819,19 @@ def _parse_firewall_auth_success(
 
 
 def _raise_firewall_auth_http_error(response: _HttpResponse, url: str) -> None:
+    """Raise the mapped runner exception for a non-success auth response.
+
+    ``CONNECTOR_NOT_CONFIGURED`` and ``INSUFFICIENT_CREDITS`` map to their
+    specialized exceptions. Recognized general codes map to
+    ``FirewallAuthApiError``. Responses that match neither path, including
+    envelopes without a usable code and otherwise unknown codes, retain the
+    original ``urllib.error.HTTPError``.
+
+    Preserving a new endpoint error requires an intentional specialized branch
+    or ``_STRUCTURED_FIREWALL_AUTH_ERROR_CODES`` update plus focused client and
+    handling tests. Propagating a new ``failureReason`` also requires updating
+    ``_FIREWALL_AUTH_FAILURE_REASONS`` and those tests.
+    """
     error = urllib.error.HTTPError(
         url,
         response.status,

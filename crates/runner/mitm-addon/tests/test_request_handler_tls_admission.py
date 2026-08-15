@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
@@ -258,6 +260,53 @@ async def test_registry_unavailable_tls_admission_blocks_when_registry_lacks_ip(
 
     assert tls_data.ignore_connection is False
     _assert_stale_tls_admission_block(flow, reason="registry_entry_missing")
+
+
+@pytest.mark.parametrize(
+    "initial_registry_state",
+    ["registry_unavailable", "invalid_registry_vm"],
+    ids=["registry-unavailable", "invalid-registry-vm"],
+)
+async def test_tls_admission_uses_repaired_registry_at_request_time(
+    tmp_path,
+    real_flow,
+    make_tls_data,
+    mitm_ctx,
+    initial_registry_state: str,
+):
+    client_ip = "10.200.0.5"
+    repaired_run_id = "run-repaired"
+    reg_path = tmp_path / "registry.json"
+    if initial_registry_state == "invalid_registry_vm":
+        reg_path.write_text(json.dumps({"vms": {client_ip: "broken"}, "updatedAt": 0}))
+    flow, tls_data = _bind_tls_admission_flow(real_flow, make_tls_data, client_ip=client_ip)
+    repaired_vm = _single_firewall_vm(
+        tmp_path,
+        run_id=repaired_run_id,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+        },
+        network_policy={
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.tls_clienthello(tls_data)
+        _write_registry(tmp_path, client_ip=client_ip, vm_info=repaired_vm)
+
+        await mitm_addon.request(flow)
+
+    assert tls_data.ignore_connection is False
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.VM_RUN_ID] == repaired_run_id
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
 
 
 async def test_missing_registry_entry_without_tls_admission_passes_through(

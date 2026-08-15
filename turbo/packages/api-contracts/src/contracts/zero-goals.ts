@@ -50,7 +50,7 @@ const chatThreadGoalParamsSchema = z.object({
 export const zeroGoalsContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/goal",
+    path: "/api/okou/goal",
     headers: authHeadersSchema,
     body: zeroGoalCreateRequestSchema,
     responses: {
@@ -64,7 +64,7 @@ export const zeroGoalsContract = c.router({
   },
   edit: {
     method: "PATCH",
-    path: "/api/zero/goal",
+    path: "/api/okou/goal",
     headers: authHeadersSchema,
     body: zeroGoalEditRequestSchema,
     responses: {
@@ -79,7 +79,7 @@ export const zeroGoalsContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/goal",
+    path: "/api/okou/goal",
     headers: authHeadersSchema,
     responses: {
       200: zeroGoalResponseSchema,
@@ -92,7 +92,7 @@ export const zeroGoalsContract = c.router({
   },
   getForChatThread: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/goal",
+    path: "/api/okou/chat-threads/:threadId/goal",
     headers: authHeadersSchema,
     pathParams: chatThreadGoalParamsSchema,
     responses: {
@@ -106,7 +106,7 @@ export const zeroGoalsContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/zero/goal/complete",
+    path: "/api/okou/goal/complete",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
@@ -120,7 +120,7 @@ export const zeroGoalsContract = c.router({
   },
   block: {
     method: "POST",
-    path: "/api/zero/goal/block",
+    path: "/api/okou/goal/block",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
@@ -134,7 +134,7 @@ export const zeroGoalsContract = c.router({
   },
   pause: {
     method: "POST",
-    path: "/api/zero/goal/pause",
+    path: "/api/okou/goal/pause",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
@@ -148,7 +148,7 @@ export const zeroGoalsContract = c.router({
   },
   pauseForChatThread: {
     method: "POST",
-    path: "/api/zero/chat-threads/:threadId/goal/pause",
+    path: "/api/okou/chat-threads/:threadId/goal/pause",
     headers: authHeadersSchema,
     pathParams: chatThreadGoalParamsSchema,
     body: c.noBody(),
@@ -163,7 +163,7 @@ export const zeroGoalsContract = c.router({
   },
   resume: {
     method: "POST",
-    path: "/api/zero/goal/resume",
+    path: "/api/okou/goal/resume",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
@@ -177,7 +177,7 @@ export const zeroGoalsContract = c.router({
   },
   clear: {
     method: "DELETE",
-    path: "/api/zero/goal",
+    path: "/api/okou/goal",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {

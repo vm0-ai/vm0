@@ -160,60 +160,70 @@ export function buildAwsSigninAuthorizationUrl(args: {
   return `${awsSigninAuthorizeUrl(args.providerState.signinRegion)}?${params.toString()}`;
 }
 
-export async function exchangeAwsSigninAuthorizationCode(args: {
-  readonly clientId: string;
-  readonly signinRegion: string;
-  readonly code: string;
-  readonly codeVerifier: string;
-  readonly dpopKey: string;
-  readonly redirectUri: string;
-  readonly signal: AbortSignal;
-}): Promise<AwsSigninTokenResult> {
-  return await fetchAwsSigninToken({
-    signinRegion: args.signinRegion,
-    operation: "exchange",
-    reconnectOnClientError: true,
-    dpopKey: args.dpopKey,
-    signal: args.signal,
-    body: {
-      clientId: args.clientId,
-      grantType: "authorization_code",
-      code: args.code,
-      codeVerifier: args.codeVerifier,
-      redirectUri: args.redirectUri,
+export async function exchangeAwsSigninAuthorizationCode(
+  args: {
+    readonly clientId: string;
+    readonly signinRegion: string;
+    readonly code: string;
+    readonly codeVerifier: string;
+    readonly dpopKey: string;
+    readonly redirectUri: string;
+  },
+  signal: AbortSignal,
+): Promise<AwsSigninTokenResult> {
+  return await fetchAwsSigninToken(
+    {
+      signinRegion: args.signinRegion,
+      operation: "exchange",
+      reconnectOnClientError: true,
+      dpopKey: args.dpopKey,
+      body: {
+        clientId: args.clientId,
+        grantType: "authorization_code",
+        code: args.code,
+        codeVerifier: args.codeVerifier,
+        redirectUri: args.redirectUri,
+      },
     },
-  });
+    signal,
+  );
 }
 
-export async function refreshAwsSigninToken(args: {
-  readonly clientId: string;
-  readonly signinRegion: string;
-  readonly refreshToken: string;
-  readonly dpopKey: string;
-  readonly signal: AbortSignal;
-}): Promise<AwsSigninTokenResult> {
-  return await fetchAwsSigninToken({
-    signinRegion: args.signinRegion,
-    operation: "refresh",
-    reconnectOnClientError: true,
-    dpopKey: args.dpopKey,
-    signal: args.signal,
-    body: {
-      clientId: args.clientId,
-      grantType: "refresh_token",
-      refreshToken: args.refreshToken,
+export async function refreshAwsSigninToken(
+  args: {
+    readonly clientId: string;
+    readonly signinRegion: string;
+    readonly refreshToken: string;
+    readonly dpopKey: string;
+  },
+  signal: AbortSignal,
+): Promise<AwsSigninTokenResult> {
+  return await fetchAwsSigninToken(
+    {
+      signinRegion: args.signinRegion,
+      operation: "refresh",
+      reconnectOnClientError: true,
+      dpopKey: args.dpopKey,
+      body: {
+        clientId: args.clientId,
+        grantType: "refresh_token",
+        refreshToken: args.refreshToken,
+      },
     },
-  });
+    signal,
+  );
 }
 
-async function fetchAwsSigninToken(args: {
-  readonly signinRegion: string;
-  readonly operation: "exchange" | "refresh";
-  readonly reconnectOnClientError: boolean;
-  readonly dpopKey: string;
-  readonly body: Readonly<Record<string, string>>;
-  readonly signal?: AbortSignal;
-}): Promise<AwsSigninTokenResult> {
+async function fetchAwsSigninToken(
+  args: {
+    readonly signinRegion: string;
+    readonly operation: "exchange" | "refresh";
+    readonly reconnectOnClientError: boolean;
+    readonly dpopKey: string;
+    readonly body: Readonly<Record<string, string>>;
+  },
+  signal?: AbortSignal,
+): Promise<AwsSigninTokenResult> {
   const tokenUrl = awsSigninTokenUrl(args.signinRegion);
   const response = await fetch(tokenUrl, {
     method: "POST",
@@ -225,7 +235,7 @@ async function fetchAwsSigninToken(args: {
       }),
     },
     body: JSON.stringify(args.body),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {

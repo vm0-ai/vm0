@@ -165,14 +165,14 @@ function createTestOauthAccess(): RefreshTokenAccessProvider<
 > {
   return {
     kind: "refresh-token",
-    refresh: async (refreshArgs) => {
+    refresh: async (refreshArgs, signal) => {
       const { clientId, clientSecret } = refreshArgs.authClient;
       const refreshToken = refreshArgs.inputs.refreshToken;
       const result = await refreshTestOAuthToken(
         clientId,
         clientSecret,
         refreshToken,
-        refreshArgs.signal,
+        signal,
       );
       return oauthRefreshResultToProviderResult(result);
     },
@@ -185,14 +185,14 @@ function createTestOauthApiAccess(): RefreshTokenAccessProvider<
 > {
   return {
     kind: "refresh-token",
-    refresh: async (refreshArgs) => {
+    refresh: async (refreshArgs, signal) => {
       const { clientId, clientSecret } = refreshArgs.authClient;
       const refreshToken = refreshArgs.inputs.apiRefreshToken;
       const result = await refreshTestOAuthToken(
         clientId,
         clientSecret,
         refreshToken,
-        refreshArgs.signal,
+        signal,
       );
       const providerResult: TestOAuthApiRefreshResult = {
         outputs: {
@@ -217,8 +217,8 @@ function createTestOauthApiTokenAccess(): RefreshTokenAccessProvider<
 > {
   return {
     kind: "refresh-token",
-    refresh: async (refreshArgs) => {
-      refreshArgs.signal.throwIfAborted();
+    refresh: async (refreshArgs, signal) => {
+      signal.throwIfAborted();
       const providerResult: TestOAuthApiTokenRefreshResult = {
         outputs: {
           accessToken: `fresh-test-oauth-api-token:${refreshArgs.inputs.inputSecret}:${refreshArgs.inputs.inputVariable}`,

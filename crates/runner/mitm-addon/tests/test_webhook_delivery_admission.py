@@ -1,6 +1,5 @@
 """Tests for usage webhook delivery admission and accounting."""
 
-import contextlib
 import json
 import time
 import urllib.request
@@ -25,7 +24,7 @@ def test_sync_executor_worker_error_preserves_other_pending_reports(tmp_path, sy
     proxy_log = tmp_path / "proxy.jsonl"
     pending_path = tmp_path / "usage-pending"
     usage.set_pending_path(str(pending_path))
-    usage.counters.increment_pending_reports()
+    other_pending_report = usage.counters.admit_pending_report()
 
     usage.webhook.enqueue_webhook_delivery(
         "not-a-url",
@@ -46,6 +45,7 @@ def test_sync_executor_worker_error_preserves_other_pending_reports(tmp_path, sy
     assert "non-retryable" in read_jsonl_text_after_flush(proxy_log)
     with pytest.raises(ValueError, match="absolute http"):
         sync_usage_executor.shutdown(wait=True)
+    other_pending_report.release()
 
 
 def test_enqueue_logs_body_free_payload_summary(
@@ -101,8 +101,7 @@ def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path, sync_usage
     with patch.object(
         urllib.request.OpenerDirector,
         "open",
-        return_value=contextlib.nullcontext(),
-    ):
+    ) as mock_open:
         assert usage.webhook.enqueue_webhook_delivery(
             SENSITIVE_WEBHOOK_URL,
             "tok",
@@ -110,6 +109,10 @@ def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path, sync_usage
             str(proxy_log),
             "usage_event",
         )
+        with pytest.raises(ValueError, match="user information"):
+            sync_usage_executor.shutdown(wait=True)
+
+    mock_open.assert_not_called()
 
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
     assert_current_pending(
@@ -127,6 +130,35 @@ def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path, sync_usage
     assert_body_free_webhook_entry(enqueued_entry, run_id="run-1", event_count=0)
     for entry in entries:
         assert_sensitive_webhook_url_parts_absent(entry)
+
+
+def test_enqueue_log_failure_releases_delivery_capacity(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+    executor = QueuedUsageExecutor()
+    errors = [OSError("disk full"), OSError("disk full")]
+    usage.set_pending_path(str(pending_path))
+
+    with (
+        patch.object(usage.webhook, "usage_executor", executor),
+        patch.object(usage.webhook, "_log_webhook_entry", side_effect=errors),
+    ):
+        for error in errors:
+            with pytest.raises(OSError, match="disk full") as exc_info:
+                usage.webhook.enqueue_webhook_delivery(
+                    "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                    "tok",
+                    {"runId": "run-1", "events": []},
+                    str(tmp_path / "proxy.jsonl"),
+                    "usage_event",
+                )
+
+            assert exc_info.value is error
+            assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+
+    assert not executor.submissions
+    assert_current_pending(
+        pending_path, flows=0, buffered=0, reports=0, flush_request_id="enqueue-log-failed"
+    )
 
 
 def test_submit_failure_rolls_back_pending_report(tmp_path):

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { usagePackUsdSchema } from "./zero-billing";
 
 /**
  * Org role enum
@@ -28,6 +29,7 @@ export const orgPendingInvitationSchema = z.object({
   email: z.string(),
   role: orgRoleSchema,
   createdAt: z.string(),
+  usagePackUsd: usagePackUsdSchema.optional(),
 });
 export type OrgPendingInvitation = z.infer<typeof orgPendingInvitationSchema>;
 
@@ -69,7 +71,7 @@ export type MembershipRequestAction = z.infer<
  * Org members response schema (status + members list)
  */
 export const orgMembersResponseSchema = z.object({
-  slug: z.string(),
+  name: z.string(),
   role: orgRoleSchema,
   members: z.array(orgMemberSchema),
   pendingInvitations: z.array(orgPendingInvitationSchema).optional(),
@@ -87,6 +89,26 @@ export const inviteOrgMemberRequestSchema = z.object({
 });
 export type InviteOrgMemberRequest = z.infer<
   typeof inviteOrgMemberRequestSchema
+>;
+
+export const previewOrgInvitationPurchaseRequestSchema =
+  inviteOrgMemberRequestSchema.extend({
+    usagePackUsd: usagePackUsdSchema,
+  });
+
+export const orgInvitationPurchasePreviewResponseSchema = z.object({
+  purchaseId: z.uuid(),
+  usagePackUsd: usagePackUsdSchema,
+  immediateAmountCents: z.number().int().positive(),
+  currency: z.string().length(3),
+  purchasedCredits: z.number().int().nonnegative(),
+  bonusCredits: z.number().int().nonnegative(),
+  totalCredits: z.number().int().positive(),
+  currentPeriodEnd: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+export type OrgInvitationPurchasePreviewResponse = z.infer<
+  typeof orgInvitationPurchasePreviewResponseSchema
 >;
 
 /**

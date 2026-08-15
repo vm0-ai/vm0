@@ -1,18 +1,12 @@
 // Slash-workflow domain helpers and the suggestion menu, shared by the chat
 // composer. Kept in its own module so the textarea composer and the TipTap
 // workflow composer can both reuse them without an import cycle.
-import { IconChevronRight, IconFileText } from "@tabler/icons-react";
-import { cn, PopoverContent } from "@vm0/ui";
+import { ChevronRight, FileText } from "lucide-react";
+import { cn, PopoverContent } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import type { ComposerSlashWorkflow } from "../../signals/zero-page/workflow-composer-domain.ts";
-
-export {
-  buildComposerSlashWorkflows,
-  findWorkflowQueryMatches,
-  type ComposerSlashWorkflow,
-} from "../../signals/zero-page/workflow-composer-domain.ts";
 
 function slashWorkflowOptionId(workflowName: string): string {
   return `slash-workflow-option-${workflowName}`;
@@ -23,7 +17,7 @@ const COMPOSER_SUGGESTION_COLLISION_GAP = 12;
 export function composerSuggestionCollisionPadding():
   | number
   | { top: number; right: number; bottom: number; left: number } {
-  // The global safe-area vars are applied as #root padding, while Radix portals
+  // The global safe-area vars are applied as #root padding, while Base UI portals
   // the menu to body. Read the resolved pixel values from #root so collision
   // detection keeps the portal inside the same visible content boundary.
   const root = document.getElementById("root");
@@ -88,7 +82,7 @@ export function SlashWorkflowMenu({
       onOpenAutoFocus={(event) => {
         event.preventDefault();
       }}
-      className="flex h-[min(16rem,var(--radix-popover-content-available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--radix-popover-content-available-height))]"
+      className="flex h-[min(16rem,var(--available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--available-height))]"
       data-testid="slash-workflow-menu"
     >
       <div className="px-2.5 pt-2 pb-2 text-xs font-medium text-muted-foreground">
@@ -117,7 +111,7 @@ export function SlashWorkflowMenu({
                 type="button"
                 className={cn(
                   "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left transition-colors",
-                  selected ? "bg-accent" : "hover:bg-accent/60",
+                  selected ? "bg-accent" : "hover:bg-state-hover",
                 )}
                 onMouseDown={(event) => {
                   event.preventDefault();
@@ -158,23 +152,18 @@ export function SlashWorkflowMenu({
               // Keep the composer focused until Link handles the click.
               event.preventDefault();
             }}
-            className="flex h-8 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
+            className="flex h-8 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-state-hover"
           >
             <span className="flex min-w-0 items-center gap-2">
-              <IconFileText
-                size={16}
-                stroke={1.8}
-                className="shrink-0 text-muted-foreground"
-              />
+              <FileText size={16} className="shrink-0 text-muted-foreground" />
               <span className="truncate">
                 {t(($) => {
                   return $.chat.composer.workflows.viewAll;
                 })}
               </span>
             </span>
-            <IconChevronRight
+            <ChevronRight
               size={16}
-              stroke={1.8}
               className="shrink-0 text-muted-foreground"
             />
           </Link>

@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
   check,
+  integer,
 } from "drizzle-orm/pg-core";
 import { zeroAgents } from "./zero-agent";
 import { chatThreads } from "./chat-thread";
@@ -41,6 +42,7 @@ export const threadGoals = pgTable(
       .notNull(),
     objective: text("objective").notNull(),
     objectiveBrief: text("objective_brief").notNull(),
+    autonomyBudget: integer("autonomy_budget").notNull().default(10),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -52,6 +54,10 @@ export const threadGoals = pgTable(
       check(
         "thread_goals_status_check",
         sql`status IN ('active', 'paused', 'blocked', 'complete')`,
+      ),
+      check(
+        "thread_goals_autonomy_budget_check",
+        sql`${table.autonomyBudget} BETWEEN 0 AND 10`,
       ),
     ];
   },

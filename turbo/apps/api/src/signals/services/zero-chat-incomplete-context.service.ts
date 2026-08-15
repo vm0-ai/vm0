@@ -1,10 +1,10 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
   CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
 import {
   and,
   asc,
@@ -24,8 +24,13 @@ import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  chatEventTextCondition,
+  chatEventTypeIn,
+  runOwnedChatEventCondition,
+} from "./chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_EVENT_CHAR_CAP = 4000;
@@ -117,6 +122,7 @@ async function selectIncompleteRoundFrontier(
         WHERE ${and(
           eq(chatEvents.chatThreadId, threadId),
           isNotNull(chatEvents.runId),
+          runOwnedChatEventCondition(),
           not(sql`${chatEvents.runId} = ANY(incomplete_frontier.seen_run_ids)`),
           visibleChatEventCondition(db),
           or(
@@ -213,7 +219,7 @@ async function loadSelectedIncompleteRounds(
     .select({
       runId: chatEvents.runId,
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
+      content: canonicalChatEventContent(),
       agentPrompt: agentRuns.prompt,
     })
     .from(chatEvents)
@@ -222,7 +228,7 @@ async function loadSelectedIncompleteRounds(
       and(
         eq(chatEvents.chatThreadId, threadId),
         inArray(chatEvents.runId, runIds),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
+        chatEventTextCondition(),
         visibleChatEventCondition(db),
         ...(selection.successfulRunId === null
           ? []

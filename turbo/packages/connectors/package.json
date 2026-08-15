@@ -1,6 +1,6 @@
 {
-  "name": "@vm0/connectors",
-  "version": "1.202.7",
+  "name": "@okouai/connectors",
+  "version": "1.206.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -27,6 +27,10 @@
     "./firewall-types": {
       "import": "./src/firewall-types.ts",
       "types": "./src/firewall-types.ts"
+    },
+    "./public-destination-policy": {
+      "import": "./src/public-destination-policy.ts",
+      "types": "./src/public-destination-policy.ts"
     },
     "./firewall-metadata/policy": {
       "import": "./src/firewall-metadata/policy.ts",
@@ -78,8 +82,8 @@
   "devDependencies": {
     "@types/node": "^24.3.0",
     "@types/tr46": "5.0.1",
-    "@vm0/eslint-config": "workspace:*",
-    "@vm0/typescript-config": "workspace:*",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "msw": "^2.13.2",
     "oxlint": "^1.75.0",

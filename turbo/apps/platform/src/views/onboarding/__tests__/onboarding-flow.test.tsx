@@ -1,19 +1,21 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
-} from "@vm0/core";
-import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
+  WEBSITE_TEMPLATE_ITEMS,
+} from "@okouai/core";
+import { zeroBillingCheckoutContract } from "@okouai/api-contracts/contracts/zero-billing";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorOauthStartContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
 
 import {
   click,
@@ -21,12 +23,41 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import {
+  PRESENTATION_LANDING_PROMPT,
+  PRESENTATION_ONBOARDING_PATH,
+  PRESENTATION_SHOWCASE_URL,
+} from "../../../__tests__/presentation-onboarding-fixture.ts";
 import { pathname } from "../../../signals/location.ts";
-import { searchParams$ } from "../../../signals/route.ts";
+import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onboarding-state.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
+import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
+
+const MARKETING_PRESENTATION_PROMPT = [
+  "/gen presentation with template `html-ppt-playful-launch`, create a 15-slide launch deck for SproutPop, a playful habit-building app for remote teams introducing a shared 30-day wellness challenge.",
+  "Present it to people and culture leaders with cover, agenda, launch story, audience pain points, product vision, feature tour, rollout timeline, activation moments, team, early metrics, testimonials, pricing, and next steps.",
+  "Make it saturated, joyful, idea-led, and structured.",
+].join(" ");
+
+const MARKETING_PRESENTATION_SHOWCASE =
+  "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8199ef0a-c692-4c20-8267-e91ffe060b4c/playful-launch-presentation.html";
+
+function templateFromUserMessage(document: UserMessageDocument | undefined) {
+  const part = document?.parts.find((candidate) => {
+    return candidate.type === "template";
+  });
+  return part?.type === "template" ? part.template : undefined;
+}
+
+function templateTypeFromUserMessage(
+  document: UserMessageDocument | undefined,
+): string | undefined {
+  return templateFromUserMessage(document)?.type;
+}
 
 function firstItem<Item>(items: readonly Item[]): Item {
   const item = items[0];
@@ -34,6 +65,51 @@ function firstItem<Item>(items: readonly Item[]): Item {
     throw new Error("Expected onboarding template data");
   }
   return item;
+}
+
+const ONBOARDING_START_SEND_TO = "AW-18144854014/GVKdCLbQ9LscEP7_kcxD";
+const CHECKOUT_START_SEND_TO = "AW-18144854014/EEovCKmuvbscEP7_kcxD";
+
+type GtagFn = (...args: unknown[]) => void;
+
+type WindowWithGtag = Window & {
+  gtag?: GtagFn;
+};
+
+function installGtagMock(): ReturnType<typeof vi.fn<GtagFn>> {
+  const windowWithGtag = window as WindowWithGtag;
+  const originalGtag = windowWithGtag.gtag;
+  const gtag = vi.fn<GtagFn>();
+
+  Object.defineProperty(windowWithGtag, "gtag", {
+    configurable: true,
+    value: gtag,
+    writable: true,
+  });
+  context.signal.addEventListener("abort", () => {
+    if (originalGtag !== undefined) {
+      Object.defineProperty(windowWithGtag, "gtag", {
+        configurable: true,
+        value: originalGtag,
+        writable: true,
+      });
+      return;
+    }
+    Reflect.deleteProperty(windowWithGtag, "gtag");
+  });
+
+  return gtag;
+}
+
+function sentConversions(gtag: ReturnType<typeof vi.fn<GtagFn>>): string[] {
+  return gtag.mock.calls.flatMap((call) => {
+    const [command, eventName, params] = call;
+    if (command !== "event" || eventName !== "conversion") {
+      return [];
+    }
+    const sendTo = (params as { readonly send_to?: unknown }).send_to;
+    return typeof sendTo === "string" ? [sendTo] : [];
+  });
 }
 
 function mockOnboardingNeeded(): void {
@@ -496,6 +572,42 @@ describe("onboarding flow", () => {
     expect(queryButtonByText("Connect", githubRow)).toBeNull();
   });
 
+  it("runs a presentation landing-page prompt through onboarding", async () => {
+    let runPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runPrompt = body.prompt;
+      },
+    });
+    mockOnboardingNeeded();
+
+    detachedSetupPage({
+      context,
+      path: PRESENTATION_ONBOARDING_PATH,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Try this prompt" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+      PRESENTATION_LANDING_PROMPT,
+    );
+
+    click(buttonByText("Next"));
+
+    await waitFor(() => {
+      expect(runPrompt).toBe(PRESENTATION_LANDING_PROMPT);
+      expect(pathname()).toMatch(/^\/chats\//u);
+    });
+    const routedParams = context.store.get(searchParams$);
+    expect(routedParams.has("prompt")).toBeFalsy();
+    expect(routedParams.get("showcase")).toBe(PRESENTATION_SHOWCASE_URL);
+    expect(routedParams.get("vm0_source")).toBe("presentation");
+    expect(routedParams.get("landing_host")).toBe("www.vm0.ai");
+    expect(routedParams.get("landing_path")).toBe("/en/presentation");
+    expect(routedParams.get("source_type")).toBe("direct");
+  });
+
   it("connects Ahrefs for the default agent without permission confirmation", async () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
@@ -545,6 +657,133 @@ describe("onboarding flow", () => {
     expect(screen.queryByRole("dialog", { name: "Ahrefs" })).toBeNull();
   });
 
+  describe("vm0-marketing onboarding entry contract", () => {
+    it("runs a presentation prompt from a marketing deep link without connectors", async () => {
+      let runPrompt: string | undefined;
+      mockChatLifecycle(context, {
+        onRunCreate: (body) => {
+          runPrompt = body.prompt;
+        },
+      });
+      mockOnboardingNeeded();
+      const params = new URLSearchParams({
+        prompt: MARKETING_PRESENTATION_PROMPT,
+        showcase: MARKETING_PRESENTATION_SHOWCASE,
+        vm0_source: "presentation",
+        landing_host: "www.vm0.ai",
+        landing_path: "/en/presentation",
+        source_type: "direct",
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/onboarding?${params.toString()}`,
+      });
+
+      await expect(
+        screen.findByRole("heading", { name: "Try this prompt" }),
+      ).resolves.toBeInTheDocument();
+      expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+        MARKETING_PRESENTATION_PROMPT,
+      );
+      expect(context.store.get(searchParams$).get("connector")).toBeNull();
+
+      click(buttonByText("Next"));
+
+      await waitFor(() => {
+        expect(runPrompt).toBe(MARKETING_PRESENTATION_PROMPT);
+        expect(pathname()).toMatch(/^\/chats\//u);
+      });
+      const handoffParams = context.store.get(searchParams$);
+      expect(handoffParams.get("showcase")).toBe(
+        MARKETING_PRESENTATION_SHOWCASE,
+      );
+      expect(handoffParams.get("vm0_source")).toBe("presentation");
+      expect(handoffParams.get("landing_host")).toBe("www.vm0.ai");
+      expect(handoffParams.get("landing_path")).toBe("/en/presentation");
+      expect(handoffParams.get("source_type")).toBe("direct");
+    });
+
+    it("keeps a website template through first-time onboarding", async () => {
+      const websiteTemplate = WEBSITE_TEMPLATE_ITEMS.find((item) => {
+        return item.id === "website-template:warm-cards";
+      });
+      if (!websiteTemplate) {
+        throw new Error("Expected the Warm Cards website template");
+      }
+
+      let websiteTemplateId: string | undefined;
+      mockChatLifecycle(context, {
+        onRunCreate: (body) => {
+          const template = templateFromUserMessage(body.userMessage);
+          websiteTemplateId =
+            template?.type === "website"
+              ? template.selection.websiteTemplateId
+              : undefined;
+        },
+      });
+      mockOnboardingNeeded();
+      const params = new URLSearchParams({
+        prompt: "Build a warm launch page",
+        template: websiteTemplate.id,
+        showcase: websiteTemplate.previewUrl,
+        vm0_source: "web_design",
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/onboarding?${params.toString()}`,
+      });
+
+      await expect(
+        screen.findByRole("heading", { name: "Try this prompt" }),
+      ).resolves.toBeInTheDocument();
+      click(buttonByText("Next"));
+
+      await waitFor(() => {
+        expect(websiteTemplateId).toBe(websiteTemplate.id);
+        expect(pathname()).toMatch(/^\/chats\//u);
+      });
+      expect(context.store.get(searchParams$).get("showcase")).toBe(
+        websiteTemplate.previewUrl,
+      );
+      expect(context.store.get(searchParams$).get("vm0_source")).toBe(
+        "web_design",
+      );
+    });
+
+    it("runs directly for an onboarded workspace", async () => {
+      let runPrompt: string | undefined;
+      mockChatLifecycle(context, {
+        onRunCreate: (body) => {
+          runPrompt = body.prompt;
+        },
+      });
+      const params = new URLSearchParams({
+        prompt: "Summarize this week's launch metrics",
+        connector: "google-analytics,slack",
+        vm0_source: "marketing",
+        landing_path: "/en/workflow-automation-examples",
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/onboarding?${params.toString()}`,
+      });
+
+      await waitFor(() => {
+        expect(runPrompt).toBe("Summarize this week's launch metrics");
+        expect(pathname()).toMatch(/^\/chats\//u);
+      });
+      const handoffParams = context.store.get(searchParams$);
+      expect(handoffParams.get("connector")).toBeNull();
+      expect(handoffParams.get("vm0_source")).toBe("marketing");
+      expect(handoffParams.get("landing_path")).toBe(
+        "/en/workflow-automation-examples",
+      );
+    });
+  });
+
   it("selects and reviews a presentation template", async () => {
     const template = firstItem(PRESENTATION_TEMPLATE_PICKER_ITEMS);
     await openMakePage();
@@ -590,7 +829,7 @@ describe("onboarding flow", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        generationType = body.generationTemplate?.type;
+        generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
 
@@ -619,10 +858,18 @@ describe("onboarding flow", () => {
     });
   });
 
-  it("starts Pro checkout from the video run page", async () => {
+  it("restores a long video brief from short checkout return URLs", async () => {
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
     let successUrl: string | undefined;
     let cancelUrl: string | undefined;
+    let runPrompt: string | undefined;
+    let generationType: string | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runPrompt = body.prompt;
+        generationType = templateTypeFromUserMessage(body.userMessage);
+      },
+    });
     context.mocks.api(
       zeroBillingCheckoutContract.create,
       ({ body, respond }) => {
@@ -633,6 +880,9 @@ describe("onboarding flow", () => {
         });
       },
     );
+    context.mocks.api(zeroBillingCheckoutContract.complete, ({ respond }) => {
+      return respond(200, { completed: true });
+    });
 
     await openMakePage();
     chooseMakeOption("Video production");
@@ -647,7 +897,7 @@ describe("onboarding flow", () => {
     await expect(
       screen.findByRole("heading", { name: "Customize your video" }),
     ).resolves.toBeInTheDocument();
-    const videoBrief = "A twenty-second launch film for a travel camera.";
+    const videoBrief = "A".repeat(6000);
     await fill(screen.getByLabelText("Custom video prompt"), videoBrief);
     const upgradeButton = await waitFor(() => {
       return buttonByText("Upgrade Pro to run");
@@ -666,15 +916,45 @@ describe("onboarding flow", () => {
     }
     const success = new URL(successUrl);
     const canceled = new URL(cancelUrl);
+    expect(successUrl.length).toBeLessThanOrEqual(5000);
+    expect(cancelUrl.length).toBeLessThanOrEqual(5000);
     expect(success.pathname).toBe("/onboarding/video-run");
     expect(success.searchParams.get("template")).toBe(template.id);
     expect(success.searchParams.get("onboarding_template")).toBe(template.slug);
+    expect(success.searchParams.has("prompt")).toBeFalsy();
+    expect(success.searchParams.has("onboarding_note")).toBeFalsy();
     expect(success.searchParams.get("onboarding_billing_session_id")).toBe(
       "{CHECKOUT_SESSION_ID}",
     );
     expect(canceled.pathname).toBe("/onboarding/video-run");
     expect(canceled.searchParams.get("onboarding_billing")).toBe("canceled");
-    expect(canceled.searchParams.get("onboarding_note")).toBe(videoBrief);
+    expect(canceled.searchParams.has("prompt")).toBeFalsy();
+    expect(canceled.searchParams.has("onboarding_note")).toBeFalsy();
+
+    mockOnboardingNeeded();
+    context.store.set(detachedNavigateTo$, ROUTES.onboardingVideoRun, {
+      searchParams: canceled.searchParams,
+    });
+    await expect(
+      screen.findByRole("heading", { name: "Customize your video" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Custom video prompt")).toHaveValue(
+      videoBrief,
+    );
+
+    success.searchParams.set(
+      "onboarding_billing_session_id",
+      "cs_test_onboarding_stored",
+    );
+    mockOnboardingNeeded();
+    context.store.set(detachedNavigateTo$, ROUTES.onboardingVideoRun, {
+      searchParams: success.searchParams,
+    });
+    await waitFor(() => {
+      expect(runPrompt).toContain(videoBrief);
+      expect(generationType).toBe("video");
+      expect(pathname()).toMatch(/^\/chats\//u);
+    });
   });
 
   it("resumes a video run after checkout and completes onboarding", async () => {
@@ -685,7 +965,7 @@ describe("onboarding flow", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        generationType = body.generationTemplate?.type;
+        generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
     context.mocks.api(zeroBillingCheckoutContract.complete, ({ respond }) => {
@@ -712,6 +992,29 @@ describe("onboarding flow", () => {
       expect(checkoutCompletionAttempts).toBe(2);
       expect(pathname()).toMatch(/^\/chats\//u);
     });
+  });
+
+  it("returns to video configuration when checkout storage is unavailable", async () => {
+    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+    mockOnboardingNeeded();
+    const params = new URLSearchParams({
+      choice: "video",
+      template: template.id,
+      onboarding_template: template.slug,
+      onboarding_billing: "pro",
+      onboarding_billing_session_id: "cs_test_missing_storage",
+      [ONBOARDING_CHECKOUT_STATE_PARAM]: "missing-state",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/onboarding/video-run?${params.toString()}`,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Customize your video" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Custom video prompt")).toHaveValue("");
   });
 
   it("returns an invalid template deep link to its picker", async () => {
@@ -750,5 +1053,48 @@ describe("onboarding flow", () => {
       screen.findByRole("heading", { name: "Customize your video" }),
     ).resolves.toBeInTheDocument();
     expect(screen.getByLabelText("Custom video prompt")).toHaveValue(note);
+  });
+
+  it("reports Onboarding Start and Checkout Start to Google Ads", async () => {
+    const gtag = installGtagMock();
+    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+    mockChatLifecycle(context);
+    context.mocks.api(zeroBillingCheckoutContract.create, ({ respond }) => {
+      return respond(200, {
+        url: "https://checkout.stripe.com/test/onboarding-video",
+      });
+    });
+
+    await openMakePage();
+
+    expect(sentConversions(gtag)).toStrictEqual([ONBOARDING_START_SEND_TO]);
+
+    chooseMakeOption("Video production");
+    await expect(
+      screen.findByRole("heading", {
+        name: "Pick a video template to start from",
+      }),
+    ).resolves.toBeInTheDocument();
+    chooseTemplate(template.title, "video");
+
+    await expect(
+      screen.findByRole("heading", { name: "Customize your video" }),
+    ).resolves.toBeInTheDocument();
+    await fill(
+      screen.getByLabelText("Custom video prompt"),
+      "A 20-second launch teaser for a habit-tracking app.",
+    );
+    click(
+      await waitFor(() => {
+        return buttonByText("Upgrade Pro to run");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(sentConversions(gtag)).toStrictEqual([
+        ONBOARDING_START_SEND_TO,
+        CHECKOUT_START_SEND_TO,
+      ]);
+    });
   });
 });

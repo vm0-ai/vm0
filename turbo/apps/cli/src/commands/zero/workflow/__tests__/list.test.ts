@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow list command
+ * Tests for okou workflow list command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -15,7 +15,7 @@ import chalk from "chalk";
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
 
-describe("zero workflow list command", () => {
+describe("okou workflow list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -27,7 +27,7 @@ describe("zero workflow list command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -39,7 +39,7 @@ describe("zero workflow list command", () => {
   describe("successful list", () => {
     it("should display workflows in table format", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json([
             {
               id: "22222222-2222-2222-2222-222222222222",
@@ -86,7 +86,7 @@ describe("zero workflow list command", () => {
     it("should pass agentId query when --agent is provided", async () => {
       let capturedUrl: string | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", ({ request }) => {
+        http.get("http://localhost:3000/api/okou/workflows", ({ request }) => {
           capturedUrl = request.url;
           return HttpResponse.json([]);
         }),
@@ -99,7 +99,7 @@ describe("zero workflow list command", () => {
 
     it("should show empty state when no workflows", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json([]);
         }),
       );
@@ -114,7 +114,7 @@ describe("zero workflow list command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },

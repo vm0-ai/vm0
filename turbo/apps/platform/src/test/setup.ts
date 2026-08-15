@@ -269,7 +269,7 @@ window.addEventListener("error", (event) => {
 });
 
 beforeAll(() => {
-  // Disable CSS animations/transitions so Radix UI dialog open/close
+  // Disable CSS animations/transitions so Base UI dialog open/close
   // does not wait for animation frames to settle in act().
   const style = document.createElement("style");
   style.textContent =
@@ -281,6 +281,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   ensureTestLocalStorage();
+  document.documentElement.dataset.appBrandName = "VM0";
 
   // Override console.error to throw on unexpected errors.
   // - NotSupportedError / AbortError: expected happy-dom noise, silently ignored.

@@ -1,18 +1,21 @@
-import { Command } from "commander";
+import type { ZeroAgentVisibility } from "@okouai/api-contracts/contracts/zero-agents";
+import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
 import {
   getZeroAgent,
   updateZeroAgent,
   updateZeroAgentInstructions,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-agents";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { type AvatarOptions, resolveAvatarUrl } from "./avatar";
+import { parseAgentVisibility } from "./visibility";
 
 interface AgentEditOptions extends AvatarOptions {
   displayName?: string;
   description?: string;
   sound?: string;
+  visibility?: ZeroAgentVisibility;
   instructionsFile?: string;
 }
 
@@ -33,6 +36,7 @@ function hasAgentFieldUpdate(options: AgentEditOptions): boolean {
     options.displayName !== undefined ||
     options.description !== undefined ||
     options.sound !== undefined ||
+    options.visibility !== undefined ||
     hasAvatarUpdate(options)
   );
 }
@@ -63,19 +67,26 @@ async function applyAgentUpdate(
       options.sound !== undefined
         ? options.sound
         : (current.sound ?? undefined),
+    visibility: options.visibility,
     avatarUrl,
   });
 }
 
 export const editCommand = new Command()
   .name("edit")
-  .description("Edit a zero agent")
+  .description("Edit an agent")
   .argument("<agent-id>", "Agent ID")
   .option("--display-name <name>", "New display name")
   .option("--description <text>", "New description")
   .option(
     "--sound <tone>",
     "New tone: professional, friendly, direct, supportive",
+  )
+  .addOption(
+    new Option(
+      "--visibility <visibility>",
+      "New visibility: private or public",
+    ).argParser(parseAgentVisibility),
   )
   .option("--avatar <preset>", "Avatar preset: preset:0 through preset:4")
   .option(
@@ -119,17 +130,18 @@ Avatar:
   Note: --avatar and --avatar-* cannot be used together.
 
 Examples:
-  Update description:      zero agent edit <agent-id> --description "new role"
-  Update tone:             zero agent edit <agent-id> --sound friendly
-  Quick preset avatar:     zero agent edit <agent-id> --avatar preset:2
-  Custom avatar:           zero agent edit <agent-id> --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
-  Update instructions:     zero agent edit <agent-id> --instructions-file ./instructions.md
-  Update yourself:         zero agent edit $ZERO_AGENT_ID --description "new role"
+  Update description:      okou agent edit <agent-id> --description "new role"
+  Update tone:             okou agent edit <agent-id> --sound friendly
+  Make public:             okou agent edit <agent-id> --visibility public
+  Quick preset avatar:     okou agent edit <agent-id> --avatar preset:2
+  Custom avatar:           okou agent edit <agent-id> --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
+  Update instructions:     okou agent edit <agent-id> --instructions-file ./instructions.md
+  Update yourself:         okou agent edit $OKOU_AGENT_ID --description "new role"
 
 Notes:
   - At least one option is required
   - Unspecified fields are preserved (not cleared)
-  - To attach workflows to agents, use: zero workflow attach --help`,
+  - To attach workflows to agents, use: okou workflow attach --help`,
   )
   .action(
     withErrorHandler(async (agentId: string, options: AgentEditOptions) => {
@@ -137,7 +149,7 @@ Notes:
 
       if (!hasAgentUpdate && !options.instructionsFile) {
         throw new Error(
-          "At least one option is required (--display-name, --description, --sound, --avatar, --avatar-*, --instructions-file)",
+          "At least one option is required (--display-name, --description, --sound, --visibility, --avatar, --avatar-*, --instructions-file)",
         );
       }
 

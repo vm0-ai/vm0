@@ -1,8 +1,9 @@
 import { command } from "ccstate";
 import {
   isCodexFastModeModel,
+  isSupportedRunModel,
   type OrgModelPoliciesResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import {
@@ -13,12 +14,13 @@ import {
 
 interface UserModelDefaultSource {
   selectedModel: string | null;
+  serviceTier?: "priority" | null;
 }
 
 function createModelFirstSelection(
   selectedModel: string | null | undefined,
 ): ModelProviderSelection | null {
-  if (!selectedModel) {
+  if (!isSupportedRunModel(selectedModel)) {
     return null;
   }
   return {
@@ -51,40 +53,31 @@ export function isCodexFastModeAvailableForSelection(params: {
   const policy = params.policies?.policies.find((candidate) => {
     return candidate.model === params.selectedModel;
   });
-  return (
-    policy?.routeStatus === "valid" &&
-    policy.defaultProviderType === "codex-oauth-token"
-  );
-}
-
-export function applyCodexFastModeDefault(params: {
-  readonly selection: ModelProviderSelection | null;
-  readonly policies: OrgModelPoliciesResponse | null | undefined;
-  readonly codexFastModeEnabled: boolean;
-  readonly codexFastModeDefault: boolean;
-}): ModelProviderSelection | null {
-  if (
-    !params.codexFastModeDefault ||
-    !params.selection ||
-    !isCodexFastModeAvailableForSelection({
-      policies: params.policies,
-      selectedModel: params.selection.selectedModel,
-      codexFastModeEnabled: params.codexFastModeEnabled,
-    })
-  ) {
-    return params.selection;
-  }
-  return { ...params.selection, codexServiceTier: "fast" };
+  return policy?.routeStatus === "valid";
 }
 
 export function resolveModelFirstUserDefaultSelection(params: {
   userPreference: UserModelDefaultSource | null | undefined;
   policies: OrgModelPoliciesResponse | null | undefined;
+  codexFastModeEnabled: boolean;
 }): ModelProviderSelection | null {
-  return (
-    createModelFirstSelection(params.userPreference?.selectedModel) ??
-    resolveModelFirstWorkspaceDefaultSelection(params.policies)
+  const userSelection = createModelFirstSelection(
+    params.userPreference?.selectedModel,
   );
+  if (!userSelection) {
+    return resolveModelFirstWorkspaceDefaultSelection(params.policies);
+  }
+  if (
+    params.userPreference?.serviceTier === "priority" &&
+    isCodexFastModeAvailableForSelection({
+      policies: params.policies,
+      selectedModel: userSelection.selectedModel,
+      codexFastModeEnabled: params.codexFastModeEnabled,
+    })
+  ) {
+    return { ...userSelection, codexServiceTier: "fast" };
+  }
+  return userSelection;
 }
 
 type ExplicitModelSelectionResult =
@@ -96,8 +89,6 @@ export const resolveExplicitModelSelection$ = command(
     { get },
     params: {
       selection: ModelProviderSelection | null;
-      current: ModelProviderSelection | null;
-      codexFastModeEnabled: boolean;
     },
     signal: AbortSignal,
   ): Promise<ExplicitModelSelectionResult> => {
@@ -116,20 +107,6 @@ export const resolveExplicitModelSelection$ = command(
         !modelPolicyAllowedForPlan(selectedPolicy, modelCapabilities))
     ) {
       return { kind: "compare-plans" };
-    }
-    if (
-      params.selection &&
-      params.current?.codexServiceTier === "fast" &&
-      isCodexFastModeAvailableForSelection({
-        policies,
-        selectedModel: params.selection.selectedModel,
-        codexFastModeEnabled: params.codexFastModeEnabled,
-      })
-    ) {
-      return {
-        kind: "select",
-        selection: { ...params.selection, codexServiceTier: "fast" },
-      };
     }
     return { kind: "select", selection: params.selection };
   },

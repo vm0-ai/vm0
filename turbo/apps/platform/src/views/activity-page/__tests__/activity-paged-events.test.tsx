@@ -1,9 +1,15 @@
 import { screen, waitFor } from "@testing-library/react";
-import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
-import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
+import { zeroRunAgentEventsContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type {
   AgentEventsResponse,
@@ -22,7 +28,6 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
     modelProvider: null,
     selectedModel: null,
     triggerSource: "web",
-    triggerAgentName: null,
     status: "running",
     prompt: "Hello",
     appendSystemPrompt: null,
@@ -62,15 +67,17 @@ describe("activity paged events", () => {
     context.mocks.api(
       zeroRunAgentEventsContract.getAgentEvents,
       async ({ query, respond }) => {
-        if (query.since === undefined) {
+        if (query.cursor === undefined) {
           return respond(200, {
             events: [makeAssistantEvent(0, "Page one content")],
             hasMore: true,
-            framework: "claude-code",
+            nextCursor: "second-page",
+            status: "completed",
+            lastEventSequence: 1,
           } satisfies AgentEventsResponse);
         }
 
-        if (query.since === 0) {
+        if (query.cursor === "second-page") {
           if (!secondPageStartedResolved) {
             secondPageStartedResolved = true;
             secondPageStarted.resolve();
@@ -79,14 +86,16 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [makeAssistantEvent(1, "Page two content")],
             hasMore: false,
-            framework: "claude-code",
+            status: "completed",
+            lastEventSequence: 1,
           } satisfies AgentEventsResponse);
         }
 
         return respond(200, {
           events: [],
           hasMore: false,
-          framework: "claude-code",
+          status: "completed",
+          lastEventSequence: null,
         } satisfies AgentEventsResponse);
       },
     );
@@ -94,14 +103,15 @@ describe("activity paged events", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000099",
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await secondPageStarted.promise;
 
     expect(screen.queryByText("Page one content")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Test Agent" }),
-    ).not.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "Test Agent" }),
+    ).resolves.toBeInTheDocument();
 
     releaseSecondPage.resolve();
 
@@ -110,38 +120,38 @@ describe("activity paged events", () => {
         screen.getByRole("heading", { name: "Test Agent" }),
       ).toBeInTheDocument();
     });
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent?.trim() === "Steps";
+      }),
+    ).toBeTruthy();
     expect(screen.getByText("Page one content")).toBeInTheDocument();
     expect(screen.getByText("Page two content")).toBeInTheDocument();
   });
 
-  it("loads every paged event and reaches a completed state", async () => {
-    let completed = false;
-
+  it("loads every paged event", async () => {
     context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(
-        200,
-        makeLogDetail({
-          status: completed ? "completed" : "running",
-        }),
-      );
+      return respond(200, makeLogDetail({ status: "completed" }));
     });
     context.mocks.api(
       zeroRunAgentEventsContract.getAgentEvents,
       ({ query, respond }) => {
-        if (query.since === undefined) {
+        if (query.cursor === undefined) {
           return respond(200, {
             events: [makeAssistantEvent(0, "Page one content")],
             hasMore: true,
-            framework: "claude-code",
+            nextCursor: "second-page",
+            status: "completed",
+            lastEventSequence: 1,
           } satisfies AgentEventsResponse);
         }
 
-        completed = true;
         return respond(200, {
           events: [makeAssistantEvent(1, "Page two content")],
           hasMore: false,
-          framework: "claude-code",
+          status: "completed",
+          lastEventSequence: 1,
         } satisfies AgentEventsResponse);
       },
     );
@@ -159,9 +169,6 @@ describe("activity paged events", () => {
     await waitFor(() => {
       expect(screen.getByText("Page one content")).toBeInTheDocument();
       expect(screen.getByText("Page two content")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText("Done")).toBeInTheDocument();
     });
   });
 
@@ -183,14 +190,16 @@ describe("activity paged events", () => {
           return respond(200, {
             events: [makeAssistantEvent(1, "Second cursor page")],
             hasMore: false,
-            framework: "claude-code",
+            status: "completed",
+            lastEventSequence: 1,
           } satisfies AgentEventsResponse);
         }
         if (query.since !== undefined) {
           return respond(200, {
             events: [],
             hasMore: false,
-            framework: "claude-code",
+            status: "completed",
+            lastEventSequence: null,
           } satisfies AgentEventsResponse);
         }
 
@@ -198,7 +207,8 @@ describe("activity paged events", () => {
           events: [makeAssistantEvent(0, "First cursor page")],
           hasMore: true,
           nextCursor: "server-page-2",
-          framework: "claude-code",
+          status: "completed",
+          lastEventSequence: 1,
         } satisfies AgentEventsResponse);
       },
     );
@@ -219,5 +229,230 @@ describe("activity paged events", () => {
       { since: undefined, cursor: undefined },
       { since: undefined, cursor: "server-page-2" },
     ]);
+  });
+
+  it("polls until the terminal event watermark is visible and then stops", async () => {
+    let requestCount = 0;
+    const requestedSequences: (number | undefined)[] = [];
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "running" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ query, respond }) => {
+        requestCount++;
+        requestedSequences.push(query.since);
+        if (requestCount === 1) {
+          return respond(200, {
+            events: [makeAssistantEvent(0, "Running event")],
+            hasMore: false,
+            status: "running",
+            lastEventSequence: null,
+          } satisfies AgentEventsResponse);
+        }
+        if (requestCount === 2) {
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            status: "completed",
+            lastEventSequence: 1,
+          } satisfies AgentEventsResponse);
+        }
+        return respond(200, {
+          events: [makeAssistantEvent(1, "Final indexed event")],
+          hasMore: false,
+          status: "completed",
+          lastEventSequence: 1,
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+    });
+
+    const finalEvent = await screen.findByText("Final indexed event");
+    expect(finalEvent).toBeInTheDocument();
+    expect(screen.getByText("Running event")).toBeInTheDocument();
+    expect(requestCount).toBe(3);
+    expect(requestedSequences).toStrictEqual([undefined, 0, 0]);
+  });
+
+  it("polls safely while waiting for the first indexed event", async () => {
+    let requestCount = 0;
+    const requestedSequences: (number | undefined)[] = [];
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "running" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ query, respond }) => {
+        requestCount++;
+        requestedSequences.push(query.since);
+        if (requestCount === 1) {
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            status: "running",
+            lastEventSequence: null,
+          } satisfies AgentEventsResponse);
+        }
+        return respond(200, {
+          events: [makeAssistantEvent(0, "First indexed event")],
+          hasMore: false,
+          status: "completed",
+          lastEventSequence: 0,
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+    });
+
+    await expect(
+      screen.findByText("First indexed event"),
+    ).resolves.toBeInTheDocument();
+    expect(requestedSequences).toStrictEqual([undefined, undefined]);
+  });
+
+  it("stops polling a terminal run when an event gap never closes", async () => {
+    let requestCount = 0;
+    const requestedSequences: (number | undefined)[] = [];
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "completed" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ query, respond }) => {
+        requestCount++;
+        requestedSequences.push(query.since);
+        return respond(200, {
+          events:
+            query.since === undefined
+              ? [makeAssistantEvent(0, "Only indexed event")]
+              : [],
+          hasMore: false,
+          status: "completed",
+          lastEventSequence: 2,
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    await setupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+    });
+
+    expect(screen.getByText("Only indexed event")).toBeInTheDocument();
+    expect(requestCount).toBe(31);
+    expect(requestedSequences[0]).toBeUndefined();
+    expect(
+      requestedSequences.slice(1).every((sequence) => {
+        return sequence === 0;
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps activity details visible when event loading fails", async () => {
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "completed" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(500, {
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Event storage unavailable",
+          },
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Test Agent" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("tab").map((tab) => {
+        return tab.textContent?.trim();
+      }),
+    ).toStrictEqual(["Steps", "Context", "Runner", "Network"]);
+  });
+
+  it("starts a fresh event poller when navigating between activity runs", async () => {
+    const firstRunId = "a0000000-0000-4000-a000-000000000099";
+    const secondRunId = "a0000000-0000-4000-a000-000000000100";
+    let secondRunRequestCount = 0;
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: params.id,
+          displayName:
+            params.id === firstRunId ? "First Agent" : "Second Agent",
+          status: params.id === firstRunId ? "completed" : "running",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ params, respond }) => {
+        if (params.id === firstRunId) {
+          return respond(200, {
+            events: [makeAssistantEvent(0, "First run event")],
+            hasMore: false,
+            status: "completed",
+            lastEventSequence: 0,
+          } satisfies AgentEventsResponse);
+        }
+
+        secondRunRequestCount++;
+        if (secondRunRequestCount < 3) {
+          return respond(200, {
+            events: [makeAssistantEvent(0, "Second run initial event")],
+            hasMore: false,
+            status: secondRunRequestCount === 1 ? "running" : "completed",
+            lastEventSequence: secondRunRequestCount === 1 ? null : 1,
+          } satisfies AgentEventsResponse);
+        }
+        return respond(200, {
+          events: [
+            makeAssistantEvent(0, "Second run initial event"),
+            makeAssistantEvent(1, "Second run final event"),
+          ],
+          hasMore: false,
+          status: "completed",
+          lastEventSequence: 1,
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({ context, path: `/activities/${firstRunId}` });
+    await screen.findByText("First run event");
+
+    context.store.set(detachedNavigateTo$, "/activities/:activityRunId", {
+      pathParams: { activityRunId: secondRunId },
+    });
+
+    await screen.findByText("Second run final event");
+    expect(secondRunRequestCount).toBe(3);
   });
 });

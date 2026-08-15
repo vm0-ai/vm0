@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 
-import { cronRefreshStoragePresignedUrlsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronRefreshStoragePresignedUrlsContract } from "@okouai/api-contracts/contracts/cron";
 import type {
   TestWorkflowSkillStoragePresignedUrlCacheStateActionBody,
   TestWorkflowSkillStoragePresignedUrlCacheStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
+} from "@okouai/api-contracts/contracts/test-workflow-skill-storage-presigned-url-cache-state";
 import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
+} from "@okouai/core/storage-names";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -23,6 +23,8 @@ import {
   createRunsApi,
   expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-presigned-urls";
 import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "../test-workflow-skill-storage-presigned-url-cache-state";
 
@@ -80,24 +82,31 @@ async function stateAction(
   return (await response.json()) as TestWorkflowSkillStoragePresignedUrlCacheStateActionResponse;
 }
 
-async function cleanupCacheState(objectKeyPrefix: string): Promise<void> {
+type CacheScope = "workflow_skill_storage" | "readonly_storage";
+
+async function cleanupCacheState(
+  objectKeyPrefix: string,
+  scope?: CacheScope,
+): Promise<void> {
   await stateAction({
     action: "cleanup",
     object_key_prefix: objectKeyPrefix,
+    ...(scope ? { scope } : {}),
   });
 }
 
 async function withCacheCleanup(
   objectKeyPrefix: string,
   run: () => Promise<void>,
+  scope?: CacheScope,
 ): Promise<void> {
-  await cleanupCacheState(objectKeyPrefix);
+  await cleanupCacheState(objectKeyPrefix, scope);
   await run().then(
     async () => {
-      await cleanupCacheState(objectKeyPrefix);
+      await cleanupCacheState(objectKeyPrefix, scope);
     },
     async (error: unknown) => {
-      await cleanupCacheState(objectKeyPrefix);
+      await cleanupCacheState(objectKeyPrefix, scope);
       throw error;
     },
   );
@@ -105,10 +114,12 @@ async function withCacheCleanup(
 
 async function readCacheRowsByObjectKeyPrefix(
   objectKeyPrefix: string,
+  scope?: CacheScope,
 ): Promise<readonly CacheRow[]> {
   const response = await stateAction({
     action: "read-cache-by-object-key-prefix",
     object_key_prefix: objectKeyPrefix,
+    ...(scope ? { scope } : {}),
   });
   return response.rows ?? [];
 }
@@ -319,6 +330,88 @@ beforeEach(() => {
 });
 
 describe("workflow skill storage presigned URL cache", () => {
+  it("reuses DB-cached URLs for ordinary read-only Storage mounts", async () => {
+    const { actor, runnerGroup } = await entitledWorkflowActor();
+    if (!actor.orgId) {
+      throw new Error("Expected readonly cache test actor to have an org");
+    }
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    storages.mockStorageObjectsExist(2048);
+    const volumeName = `readonly-cache-${randomUUID().slice(0, 8)}`;
+    const file = storageTextFile("payload.txt", "readonly cache payload");
+    const prepared = await storages.prepareStorage(actor, {
+      storageName: volumeName,
+      storageOwner: "organization",
+      files: [file],
+    });
+    await storages.commitStorage(actor, {
+      storageName: volumeName,
+      storageOwner: "organization",
+      versionId: prepared.versionId,
+      files: [file],
+    });
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        cache: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "readonly-cache-key" },
+          volumes: ["data:/data"],
+        },
+      },
+      volumes: { data: { name: volumeName, version: prepared.versionId } },
+    });
+    const objectKeyPrefix = await readStorageS3PrefixFixture({
+      orgId: actor.orgId,
+      userId: VOLUME_ORG_USER_ID,
+      name: volumeName,
+    });
+
+    await withCacheCleanup(
+      objectKeyPrefix,
+      async () => {
+        mockUniquePresignedUrls();
+        const createAndClaim = async (prompt: string) => {
+          const run = await api.createDirectRun(actor, {
+            agentComposeId: compose.composeId,
+            prompt,
+          });
+          await api.heartbeatRunner(runnerGroup);
+          const claim = await api.claimRunnerJob(run.runId);
+          const mount = expectCanonicalStorageManifest(
+            claim.storageManifest,
+          )?.storageMounts.find((entry) => {
+            return entry.name === volumeName;
+          });
+          if (!mount?.archiveUrl) {
+            throw new Error("Missing ordinary readonly Storage archive URL");
+          }
+          return { runId: run.runId, mount };
+        };
+
+        const first = await createAndClaim("warm ordinary readonly DB cache");
+        const rows = await readCacheRowsByObjectKeyPrefix(
+          objectKeyPrefix,
+          "readonly_storage",
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({
+          resolved_org_id: actor.orgId,
+          storage_version_id: prepared.versionId,
+          ttl_seconds: 60 * 60,
+          presigned_url: first.mount.archiveUrl,
+        });
+        await api.requestCancelRun(actor, first.runId, [200]);
+
+        const second = await createAndClaim("reuse ordinary readonly DB cache");
+        expect(second.mount.archiveUrl).toBe(first.mount.archiveUrl);
+        await api.requestCancelRun(actor, second.runId, [200]);
+      },
+      "readonly_storage",
+    );
+  });
+
   it("reuses cached workflow skill storage URLs and throttles active touches", async () => {
     const fixture = await createWorkflowSkillRunFixture();
     await withCacheCleanup(fixture.objectKeyPrefix, async () => {
@@ -577,6 +670,11 @@ describe("workflow skill storage presigned URL cache", () => {
           refreshed: WORKFLOW_CACHE_REFRESH_LIMIT,
           pruned: 2,
         },
+        readOnly: expect.objectContaining({
+          due: expect.any(Number),
+          refreshed: expect.any(Number),
+          pruned: expect.any(Number),
+        }),
       });
 
       const rowsAfterFirstTick = await readCacheRowsByObjectKeyPrefix(prefix);

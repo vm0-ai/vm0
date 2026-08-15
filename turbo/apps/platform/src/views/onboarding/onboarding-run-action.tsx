@@ -76,7 +76,6 @@ export function OnboardingRunAction({
         note: note ?? "",
         templateId: template ?? "",
         templateSlug: templateSlug ?? "",
-        searchParams,
       },
       pageSignal,
     );

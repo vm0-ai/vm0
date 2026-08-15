@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from typing import TypeGuard
 
 
+def _target_requires_unpacking(node: ast.AST | None) -> bool:
+    """Return whether binding ``node`` starts with structural sequence unpacking."""
+    return isinstance(node, ast.List | ast.Tuple)
+
+
 def _target_names(node: ast.AST | None) -> set[str]:
     if isinstance(node, ast.Name):
         return {node.id}
@@ -393,6 +398,7 @@ def _is_modeled_implicit_exception_operation(node: ast.AST) -> bool:
             ast.Await,
             ast.BinOp,
             ast.Call,
+            ast.FormattedValue,
             ast.Subscript,
             ast.UnaryOp,
             ast.YieldFrom,
@@ -591,7 +597,7 @@ def _assertion_may_raise(node: ast.Assert) -> bool:
 
 
 def _function_definition_may_raise(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return _expressions_may_raise(
+    return bool(node.decorator_list) or _expressions_may_raise(
         [
             *node.decorator_list,
             *node.args.defaults,
@@ -601,7 +607,7 @@ def _function_definition_may_raise(node: ast.FunctionDef | ast.AsyncFunctionDef)
 
 
 def _class_definition_may_raise(node: ast.ClassDef) -> bool:
-    return _expressions_may_raise(
+    return bool(node.decorator_list) or _expressions_may_raise(
         [
             *node.decorator_list,
             *node.bases,
@@ -620,7 +626,7 @@ def _annotation_target_may_raise(node: ast.AST) -> bool:
 
 def _with_protected_region_may_raise(items: list[ast.withitem], body_flow: _FlowSummary) -> bool:
     target_may_raise = any(
-        _expression_may_raise(item.optional_vars)
+        _target_requires_unpacking(item.optional_vars) or _expression_may_raise(item.optional_vars)
         for item in items
         if item.optional_vars is not None
     )

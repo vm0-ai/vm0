@@ -1,5 +1,5 @@
 /**
- * Tests for zero chat get command
+ * Tests for okou chat get command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -16,9 +16,11 @@ import { zeroChatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const AGENT_ID = "00000000-0000-4000-8000-000000000010";
-const GET_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
+const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
+const GET_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/metadata`;
+const OTHER_GET_URL = `http://localhost:3000/api/okou/chat-threads/${OTHER_THREAD_ID}/metadata`;
 
-describe("zero chat get command", () => {
+describe("okou chat get command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -30,8 +32,8 @@ describe("zero chat get command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", THREAD_ID);
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
   afterEach(() => {
@@ -109,16 +111,42 @@ describe("zero chat get command", () => {
     expect(output).toContain("Model:  (default)");
   });
 
-  it("requires ZERO_CHAT_THREAD_ID from the current web chat", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+  it("loads another chat thread passed with --thread-id", async () => {
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
+    server.use(
+      http.get(OTHER_GET_URL, () => {
+        return HttpResponse.json({
+          id: OTHER_THREAD_ID,
+          agentId: AGENT_ID,
+          title: "Delegation source",
+          selectedModel: "claude-sonnet-5",
+        });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync([
+      "node",
+      "cli",
+      "get",
+      "--thread-id",
+      OTHER_THREAD_ID,
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(`Thread: ${OTHER_THREAD_ID}`);
+    expect(output).toContain("Title:  Delegation source");
+  });
+
+  it("requires a thread ID from the flag or the current web chat", async () => {
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
 
     await expect(async () => {
       await zeroChatCommand.parseAsync(["node", "cli", "get"]);
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain("ZERO_CHAT_THREAD_ID is not set");
-    expect(stderr).toContain("Run this command from a Zero web chat thread.");
+    expect(stderr).toContain("OKOU_CHAT_THREAD_ID is not set");
+    expect(stderr).toContain("Pass --thread-id <thread-id>");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

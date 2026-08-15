@@ -120,9 +120,11 @@ impl NbdCowDevice {
 
     /// Destroy the device but keep the COW file for snapshot persistence.
     ///
-    /// Saves the dirty bitmap as a sidecar file (`{cow_file}.bitmap`)
-    /// so that a future `create()` call with the same paths can restore
-    /// the dirty state and serve reads from the COW file correctly.
+    /// Saves the dirty bitmap as a sidecar file (`{cow_file}.bitmap`). To
+    /// restore the device, keep the COW file and sidecar paired, then call
+    /// [`DevicePoolHandle::create_cow_device`](crate::pool::DevicePoolHandle::create_cow_device)
+    /// with a base image containing the original unchanged-block contents, the
+    /// preserved COW path, and the original device size.
     pub async fn destroy_keep_cow(&mut self) -> Result<()> {
         self.shutdown_inner(true).await
     }

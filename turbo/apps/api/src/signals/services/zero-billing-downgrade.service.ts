@@ -1,23 +1,37 @@
 import { command } from "ccstate";
-import type { Stripe } from "stripe";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
-import { getStripeClient } from "../external/stripe-client";
+import { nowDate } from "../../lib/time";
+import {
+  getStripeClient,
+  type StripePrice,
+  type StripePriceRecurring,
+  type StripeSchedulePhaseDiscountParam,
+  type StripeSchedulePhaseItemParam,
+  type StripeSchedulePhaseParam,
+  type StripeSubscription,
+  type StripeSubscriptionItem,
+  type StripeSubscriptionSchedule,
+} from "../external/stripe-client";
 import {
   subscriptionScheduleFinalEnd,
   subscriptionScheduleId,
 } from "./stripe-subscription-schedules.service";
-import { activePriceId } from "./zero-billing-checkout.service";
+import {
+  activePriceId,
+  activeUsagePackPlanPriceId,
+  isUsagePackPlanPriceId,
+  knownPlanPriceItem,
+} from "./zero-billing-checkout.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
   billingDefaultPaymentMethodStatus,
   createBillingSetupCheckout,
-} from "./zero-billing-payment-method.service";
+} from "./billing-payment-method.service";
 
 const L = logger("BillingDowngrade");
 
@@ -83,12 +97,11 @@ interface DowngradeContext {
   readonly stripe: ReturnType<typeof getStripeClient>;
   readonly orgId: string;
   readonly org: DowngradeOrg;
-  readonly signal?: AbortSignal;
 }
 
 function subscriptionPhaseRange(
-  schedule: Stripe.SubscriptionSchedule,
-  subscriptionItem: Stripe.SubscriptionItem,
+  schedule: StripeSubscriptionSchedule,
+  subscriptionItem: StripeSubscriptionItem,
 ): { readonly startDate: number; readonly endDate: number } {
   const startDate =
     schedule.current_phase?.start_date ?? subscriptionItem.current_period_start;
@@ -102,9 +115,7 @@ function subscriptionPhaseRange(
   return { startDate, endDate };
 }
 
-function phaseDuration(
-  price: Stripe.Price,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Duration {
+function phaseDuration(price: StripePrice): StripePriceRecurring {
   const recurring = price.recurring;
   if (!recurring) {
     throw new Error("Subscription price is not recurring");
@@ -119,7 +130,7 @@ function phaseDuration(
 function schedulePhaseItem(
   priceId: string,
   quantity: number | undefined,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Item {
+): StripeSchedulePhaseItemParam {
   return {
     price: priceId,
     quantity: quantity ?? 1,
@@ -136,14 +147,9 @@ function stripeObjectId(
 }
 
 function subscriptionSchedulePhaseDiscounts(
-  subscription: Stripe.Subscription,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[] {
-  const discounts =
-    (
-      subscription as {
-        readonly discounts?: readonly (string | Stripe.Discount)[];
-      }
-    ).discounts ?? [];
+  subscription: StripeSubscription,
+): StripeSchedulePhaseDiscountParam[] {
+  const discounts = subscription.discounts ?? [];
   return discounts.flatMap((discount) => {
     const discountId = stripeObjectId(discount);
     return discountId ? [{ discount: discountId }] : [];
@@ -151,9 +157,9 @@ function subscriptionSchedulePhaseDiscounts(
 }
 
 function phaseWithDiscounts(
-  phase: Stripe.SubscriptionScheduleUpdateParams.Phase,
-  discounts: Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[],
-): Stripe.SubscriptionScheduleUpdateParams.Phase {
+  phase: StripeSchedulePhaseParam,
+  discounts: StripeSchedulePhaseDiscountParam[],
+): StripeSchedulePhaseParam {
   if (discounts.length === 0) {
     return phase;
   }
@@ -165,18 +171,27 @@ function phaseWithDiscounts(
 }
 
 function subscriptionCurrentItem(
-  subscription: Stripe.Subscription,
-): Stripe.SubscriptionItem {
-  const currentItem = subscription.items.data[0];
+  subscription: StripeSubscription,
+): StripeSubscriptionItem {
+  const currentItem = knownPlanPriceItem(subscription.items.data);
   if (!currentItem) {
-    throw new Error("Subscription has no items");
+    throw new Error("Subscription has no known plan item");
   }
   return currentItem;
 }
 
-function subscriptionItemPhaseRange(
-  subscriptionItem: Stripe.SubscriptionItem,
-): { readonly startDate: number; readonly endDate: number } {
+function subscriptionPhaseItems(
+  subscription: StripeSubscription,
+): StripeSchedulePhaseItemParam[] {
+  return subscription.items.data.map((item) => {
+    return schedulePhaseItem(item.price.id, item.quantity);
+  });
+}
+
+function subscriptionItemPhaseRange(subscriptionItem: StripeSubscriptionItem): {
+  readonly startDate: number;
+  readonly endDate: number;
+} {
   const startDate = subscriptionItem.current_period_start;
   const endDate = subscriptionItem.current_period_end;
 
@@ -187,7 +202,7 @@ function subscriptionItemPhaseRange(
   return { startDate, endDate };
 }
 
-function subscriptionCancelAt(subscription: Stripe.Subscription): Date | null {
+function subscriptionCancelAt(subscription: StripeSubscription): Date | null {
   return typeof subscription.cancel_at === "number"
     ? new Date(subscription.cancel_at * 1000)
     : null;
@@ -210,11 +225,12 @@ function shouldReplacePendingDowngradeSchedule(
 
 async function scheduleCancellationAtPeriodEnd(
   context: DowngradeContext,
+  signal?: AbortSignal,
 ): Promise<string> {
   const subscription = await context.stripe.subscriptions.retrieve(
     context.org.stripeSubscriptionId,
   );
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const scheduleId =
     context.org.pendingSubscriptionScheduleId ??
@@ -235,9 +251,7 @@ async function scheduleCancellationAtPeriodEnd(
             {
               start_date: currentPhaseRange.startDate,
               end_date: currentPhaseRange.endDate,
-              items: [
-                schedulePhaseItem(currentItem.price.id, currentItem.quantity),
-              ],
+              items: subscriptionPhaseItems(subscription),
               proration_behavior: "none",
             },
             discounts,
@@ -280,7 +294,7 @@ async function scheduleCancellationAtPeriodEnd(
       );
     }
   }
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   await context.db
     .update(orgMetadata)
@@ -293,7 +307,7 @@ async function scheduleCancellationAtPeriodEnd(
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.orgId, context.orgId));
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const effectiveDateIso = effectiveDate.toISOString();
   L.debug("subscription cancellation initiated", {
@@ -307,10 +321,13 @@ async function scheduleCancellationAtPeriodEnd(
 async function scheduleDowngradeToPro(
   context: DowngradeContext,
   currentTier: OrgTier,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
+  signal?: AbortSignal,
 ): Promise<string> {
   const currentItem = subscriptionCurrentItem(subscription);
-  const proPriceId = activePriceId("pro");
+  const proPriceId = isUsagePackPlanPriceId(currentItem.price.id)
+    ? activeUsagePackPlanPriceId("pro")
+    : activePriceId("pro");
   if (!proPriceId) {
     throw new Error("Pro plan price ID not configured");
   }
@@ -323,7 +340,7 @@ async function scheduleDowngradeToPro(
     : await context.stripe.subscriptionSchedules.create({
         from_subscription: context.org.stripeSubscriptionId,
       });
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const scheduleId = existingScheduleId ?? createdSchedule?.id;
   if (!scheduleId) {
@@ -345,7 +362,7 @@ async function scheduleDowngradeToPro(
         {
           start_date: startDate,
           end_date: endDate,
-          items: [schedulePhaseItem(currentPriceId, quantity)],
+          items: subscriptionPhaseItems(subscription),
           proration_behavior: "none",
         },
         discounts,
@@ -354,14 +371,19 @@ async function scheduleDowngradeToPro(
         {
           start_date: endDate,
           duration: phaseDuration(currentItem.price),
-          items: [schedulePhaseItem(proPriceId, quantity)],
+          items: subscription.items.data.map((item) => {
+            return schedulePhaseItem(
+              item.price.id === currentPriceId ? proPriceId : item.price.id,
+              item.price.id === currentPriceId ? quantity : item.quantity,
+            );
+          }),
           proration_behavior: "none",
         },
         discounts,
       ),
     ],
   });
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const effectiveDate = new Date(endDate * 1000);
   await context.db
@@ -375,7 +397,7 @@ async function scheduleDowngradeToPro(
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.orgId, context.orgId));
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const effectiveDateIso = effectiveDate.toISOString();
   L.debug("subscription downgrade scheduled", {
@@ -442,14 +464,16 @@ export async function downgradeSubscriptionForOrg(
     stripe,
     orgId: args.orgId,
     org: downgradeOrg,
-    signal,
   };
 
   if (
     args.targetTier === CANCELED_SUBSCRIPTION_TARGET_TIER ||
     args.targetTier === "pro-suspend"
   ) {
-    const effectiveDate = await scheduleCancellationAtPeriodEnd(context);
+    const effectiveDate = await scheduleCancellationAtPeriodEnd(
+      context,
+      signal,
+    );
     return { ok: true, status: "scheduled", effectiveDate };
   }
 
@@ -489,6 +513,7 @@ export async function downgradeSubscriptionForOrg(
     context,
     currentTier,
     subscription,
+    signal,
   );
   return { ok: true, status: "scheduled", effectiveDate };
 }

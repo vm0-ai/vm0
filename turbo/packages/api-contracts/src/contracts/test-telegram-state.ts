@@ -65,8 +65,6 @@ export const testTelegramStateResponseSchema = z.object({
   default_agent: z.unknown().nullable(),
   default_compose: z.unknown().nullable(),
   default_compose_version: testTelegramStateComposeVersionSchema.nullable(),
-  resolved_telegram_api_url: z.string().nullable(),
-  mock_calls: z.array(z.unknown()),
   messages: z.array(z.unknown()),
   official_messages: z.array(z.unknown()),
   routes: z.array(z.unknown()),

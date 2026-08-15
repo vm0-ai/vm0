@@ -1,67 +1,23 @@
 import { readFile } from "node:fs/promises";
 
-import {
-  customConnectorAuthModeSchema,
-  customConnectorOAuthConfigInputSchema,
-  customConnectorValueInputSchema,
-  updateCustomConnectorBodySchema,
-  type CustomConnectorResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import chalk from "chalk";
 import { Command } from "commander";
 
-import {
-  addZeroAgentCustomConnector,
-  createZeroCustomConnector,
-  getZeroAgent,
-  setZeroCustomConnectorValues,
-  startZeroCustomConnectorOAuth2,
-} from "../../../../lib/api";
+import { createZeroCustomConnector } from "../../../../lib/api/domains/zero-connectors";
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
-import { withErrorHandler } from "../../../../lib/command";
-
-const customConnectorDefinitionSchema = updateCustomConnectorBodySchema.omit({
-  authMode: true,
-  oauthConfig: true,
-});
-
-const manualCustomConnectorCreateSchema = customConnectorDefinitionSchema
-  .extend({
-    authMode: customConnectorAuthModeSchema.extract(["manual"]),
-    values: customConnectorValueInputSchema.array(),
-  })
-  .strict();
-
-const oauthCreateConfigSchema = customConnectorOAuthConfigInputSchema.required({
-  clientSecret: true,
-});
-
-const oauthCustomConnectorCreateSchema = customConnectorDefinitionSchema
-  .extend({
-    authMode: customConnectorAuthModeSchema.extract(["oauth"]),
-    oauthConfig: oauthCreateConfigSchema,
-    values: customConnectorValueInputSchema.array(),
-  })
-  .strict();
-
-const customConnectorCreateSchema = manualCustomConnectorCreateSchema.or(
-  oauthCustomConnectorCreateSchema,
-);
-
-type CustomConnectorCreateInput = ReturnType<
-  typeof customConnectorCreateSchema.parse
->;
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../../../lib/okou-env";
+import {
+  connectorActionUrl,
+  printCallbackActionUrlExample,
+} from "../action-url";
+import { getPlatformOrigin } from "../../doctor/platform-url";
+import { createCustomConnectorDefinitionFileSchema } from "./definition";
 
 interface CreateOptions {
   readonly file: string;
-  readonly agent?: string;
   readonly json?: boolean;
-}
-
-interface CreateResult {
-  readonly connector: CustomConnectorResponse;
-  readonly agentId?: string;
-  readonly authorizationUrl?: string;
 }
 
 function requireCustomConnectorWriteCapability(): void {
@@ -73,192 +29,86 @@ function requireCustomConnectorWriteCapability(): void {
   }
 }
 
-function valueMarker(value: {
-  readonly key: string;
-  readonly kind: "secret" | "variable";
-}): string {
-  return `${value.kind}:${value.key}`;
-}
-
-function validateValues(definition: CustomConnectorCreateInput): void {
-  const fields = new Map(
-    definition.fields.map((field) => {
-      return [valueMarker(field), field] as const;
-    }),
-  );
-  const provided = new Set<string>();
-  for (const value of definition.values) {
-    const marker = valueMarker(value);
-    if (!fields.has(marker)) {
-      throw new Error(`Unknown custom connector value: ${marker}`);
-    }
-    if (provided.has(marker)) {
-      throw new Error(`Duplicate custom connector value: ${marker}`);
-    }
-    provided.add(marker);
-  }
-  const missing = definition.fields.flatMap((field) => {
-    const marker = valueMarker(field);
-    return field.required && !provided.has(marker) ? [marker] : [];
-  });
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required custom connector values: ${missing.join(", ")}`,
-    );
-  }
-}
-
-function printCreateResult(result: CreateResult, json: boolean): void {
+async function printCreateResult(
+  connector: CustomConnectorResponse,
+  json: boolean,
+): Promise<void> {
   if (json) {
-    console.log(JSON.stringify(result, null, 2));
+    console.log(JSON.stringify(connector, null, 2));
     return;
   }
 
   console.log(
-    chalk.green(`✓ Custom connector "${result.connector.displayName}" created`),
+    chalk.green(`✓ Custom connector "${connector.displayName}" created`),
   );
-  console.log(chalk.dim(`  ID:             ${result.connector.id}`));
-  console.log(chalk.dim(`  Slug:           ${result.connector.slug}`));
-  console.log(
-    chalk.dim(`  Authentication: ${result.connector.authMode ?? "manual"}`),
-  );
-  console.log(
-    chalk.dim(
-      `  Status:         ${
-        result.connector.connected ? "connected" : "awaiting authorization"
-      }`,
-    ),
-  );
-  if (result.agentId && !result.authorizationUrl) {
-    console.log(chalk.dim(`  Agent:          ${result.agentId} (authorized)`));
-  }
-  if (!result.authorizationUrl) {
-    return;
-  }
-
+  console.log(chalk.dim(`  ID:             ${connector.id}`));
+  console.log(chalk.dim(`  Slug:           ${connector.slug}`));
+  console.log(chalk.dim(`  Authentication: ${connector.authMode}`));
+  console.log(chalk.dim("  Status:         awaiting connection"));
   console.log();
-  console.log("Complete OAuth authorization:");
-  console.log(
-    `  [Authorize ${result.connector.displayName}](${result.authorizationUrl})`,
-  );
-  if (result.agentId) {
-    console.log(
-      chalk.dim(
-        `  Approval will also authorize this connector for agent ${result.agentId}.`,
-      ),
-    );
-  }
-}
-
-async function createManualCustomConnector(
-  definition: Extract<CustomConnectorCreateInput, { authMode: "manual" }>,
-  agentId: string | undefined,
-): Promise<CreateResult> {
-  validateValues(definition);
-  const { values, ...body } = definition;
-  const created = await createZeroCustomConnector(body);
-  const connector = await setZeroCustomConnectorValues(created.id, values);
-  if (agentId) {
-    await addZeroAgentCustomConnector(agentId, connector.id);
-  }
-  return {
-    connector,
+  const agentId = getOkouAgentId()?.trim() || undefined;
+  const origin = await getPlatformOrigin();
+  const url = connectorActionUrl({
+    origin,
+    path: `/connectors/${connector.slug}/connect`,
     ...(agentId ? { agentId } : {}),
-  };
-}
-
-async function createOAuthCustomConnector(
-  definition: Extract<CustomConnectorCreateInput, { authMode: "oauth" }>,
-  agentId: string | undefined,
-): Promise<CreateResult> {
-  const { values, ...body } = definition;
-  if (body.fields.length > 0 || values.length > 0) {
-    throw new Error(
-      "OAuth custom connectors require empty fields and values arrays",
-    );
-  }
-  const created = await createZeroCustomConnector(body);
-  const authorizationUrl = await startZeroCustomConnectorOAuth2(
-    created.id,
-    agentId,
-  );
-  return {
-    connector: created,
-    authorizationUrl,
-    ...(agentId ? { agentId } : {}),
-  };
+  });
+  console.log(`Connect it at: [Connect ${connector.displayName}](${url})`);
+  printCallbackActionUrlExample(url, agentId);
 }
 
 export const createCustomConnectorCommand = new Command()
   .name("create")
-  .description(
-    "Create and configure a manual or OAuth custom connector from JSON",
-  )
-  .requiredOption(
-    "-f, --file <path>",
-    "JSON file containing the connector definition and credentials",
-  )
-  .option(
-    "--agent <id>",
-    "Authorize this agent (defaults to ZERO_AGENT_ID when available)",
-  )
-  .option("--json", "Print the connector and authorization result as JSON")
+  .description("Create a manual or OAuth custom connector definition from JSON")
+  .requiredOption("-f, --file <path>", "JSON connector definition file")
+  .option("--json", "Print the created connector as JSON")
   .addHelpText(
     "after",
     `
-File format:
-  The file must contain one complete connector definition. The agent should
-  generate this file from the user's requirements and credentials.
+Definition file:
+  Describe only the connector metadata, Header/Query injection templates, and
+  OAuth app configuration when applicable. Never include an API token,
+  end-user OAuth token, or values array. Creating the definition is separate
+  from connecting it with a user's credential or OAuth grant.
 
 Agent workflow:
-  1. Ask the user in chat only for missing API details and credentials.
-  2. Derive the prefixes, fields, injections, and OAuth settings.
-  3. Write a temporary JSON file, run this command, then remove the file.
-  The user should not need to write JSON or run this command.
+  1. For manual connectors, ask only for missing metadata: name, HTTPS API
+     prefix for HTTP or endpoint for MCP, and the Header or Query injection
+     template. Do not ask the user for the actual API token.
+  2. Declare every credential input as a secret or variable field, then use
+     references such as {{secrets.api_token}} or {{variables.account_id}} in
+     Header and Query injection templates.
+  3. For OAuth connectors, collect the same OAuth app configuration shown by
+     the Connectors page, including the client ID and client secret. Never ask
+     for an end-user access token or refresh token.
+  4. Write a temporary JSON definition, run this command, then remove the file.
+  5. Share the emitted Connect link so the user can finish the separate
+     credential or OAuth flow when they are ready.
 
-  Common fields:
-    displayName       Human-readable connector name
-    prefixTemplates   Allowed HTTPS API URL prefixes
-    fields            Inputs referenced by manual templates
-    headerInjections  Headers added to matching requests
-    queryInjections   Query parameters added to matching requests
-    authMode          "manual" or "oauth"
-
-Manual mode:
-  Add a values array with one entry for every required field. References use
-  {{secrets.KEY}} or {{variables.KEY}}. The command creates the connector,
-  stores the values, and authorizes --agent in one flow.
-
+Manual API connector example:
   {
     "displayName": "Acme API",
     "prefixTemplates": ["https://api.acme.example/v1/"],
     "fields": [
       {
-        "key": "api_key",
-        "label": "API key",
+        "key": "secret",
+        "label": "API Token",
         "kind": "secret",
-        "required": true
+        "required": true,
+        "description": "API credential"
       }
     ],
     "headerInjections": [
       {
         "name": "Authorization",
-        "valueTemplate": "Bearer {{secrets.api_key}}"
+        "valueTemplate": "Bearer {{secrets.secret}}"
       }
     ],
     "queryInjections": [],
-    "authMode": "manual",
-    "values": [
-      { "key": "api_key", "kind": "secret", "value": "<user-api-key>" }
-    ]
+    "authMode": "manual"
   }
 
-OAuth mode:
-  Use {{oauth.access_token}} in an injection and provide the complete OAuth
-  client configuration. OAuth mode requires empty fields and values arrays.
-  The command prints an authorization link. If --agent is set, completing
-  OAuth also authorizes that agent.
-
+OAuth connector example:
   {
     "displayName": "Acme OAuth API",
     "prefixTemplates": ["https://api.acme.example/v1/"],
@@ -271,7 +121,6 @@ OAuth mode:
     ],
     "queryInjections": [],
     "authMode": "oauth",
-    "values": [],
     "oauthConfig": {
       "providerAdapter": "standard",
       "clientId": "<oauth-client-id>",
@@ -285,33 +134,50 @@ OAuth mode:
     }
   }
 
+Manual Streamable HTTP MCP connector example:
+  {
+    "kind": "mcp",
+    "displayName": "Acme MCP",
+    "endpoint": "https://mcp.acme.example/mcp",
+    "transport": "streamable-http",
+    "fields": [
+      {
+        "key": "secret",
+        "label": "API Token",
+        "kind": "secret",
+        "required": true
+      }
+    ],
+    "headerInjections": [
+      {
+        "name": "Authorization",
+        "valueTemplate": "Bearer {{secrets.secret}}"
+      }
+    ],
+    "queryInjections": [],
+    "authMode": "manual"
+  }
+
 Examples:
-  zero connector custom create --file ./connector.json
-  zero connector custom create --file ./connector.json --agent <agent-id>
-  zero connector custom create --file ./connector.json --json
+  okou connector custom create --file ./connector.json
+  okou connector custom create --file ./connector.json --json
 
 Notes:
-  - Requires an organization admin
-  - Requires the customConnectorCliCreate feature
-  - OAuth custom connectors also require the customConnectorOAuth2 feature
-  - --agent defaults to ZERO_AGENT_ID inside an agent run
-  - OAuth always requires the user to approve the generated authorization link
-  - The file contains plaintext credentials; keep it temporary and never commit it`,
+  - This command only creates the connector definition; it does not store a
+    manual API token, start OAuth authorization, or authorize an agent.
+  - Manual credentials and end-user OAuth grants are supplied later through
+    the Connect dialog.
+  - OAuth app client secrets are definition-time configuration, matching UI
+    creation, and should be kept in a temporary file that is never committed.
+  - Requires an organization admin.`,
   )
   .action(
     withErrorHandler(async (options: CreateOptions) => {
       requireCustomConnectorWriteCapability();
       const raw = await readFile(options.file, "utf8");
       const input: unknown = JSON.parse(raw);
-      const definition = customConnectorCreateSchema.parse(input);
-      const agentId = options.agent ?? process.env.ZERO_AGENT_ID;
-      if (agentId) {
-        await getZeroAgent(agentId);
-      }
-      const result =
-        definition.authMode === "manual"
-          ? await createManualCustomConnector(definition, agentId)
-          : await createOAuthCustomConnector(definition, agentId);
-      printCreateResult(result, options.json ?? false);
+      const definition = createCustomConnectorDefinitionFileSchema.parse(input);
+      const connector = await createZeroCustomConnector(definition);
+      await printCreateResult(connector, options.json ?? false);
     }),
   );

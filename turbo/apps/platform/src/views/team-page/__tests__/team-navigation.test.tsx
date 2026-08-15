@@ -1,45 +1,48 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogPermissionSummary,
   type PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
   type AgentCustomConnectorUpdate,
-} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/zero-agents";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
+  type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
   type CustomConnectorResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -54,6 +57,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { testConnectorPermissionDetails } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
+import { mockChatEventRows } from "../../zero-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
@@ -85,24 +89,32 @@ function applyUserConnectorUpdate(
 }
 
 function applyCustomConnectorUpdate(
-  current: readonly string[],
+  current: readonly AgentCustomConnectorGrant[],
   body: AgentCustomConnectorUpdate,
-): string[] {
-  const enabledIds =
-    "enabledIds" in body
-      ? body.enabledIds
-      : body.grants.map((grant) => {
-          return grant.customConnectorId;
-        });
+): AgentCustomConnectorGrant[] {
+  const requested = body.grants;
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...enabledIds]));
+    const byConnectorId = new Map(
+      current.map((grant) => {
+        return [grant.customConnectorId, grant] as const;
+      }),
+    );
+    for (const grant of requested) {
+      byConnectorId.set(grant.customConnectorId, grant);
+    }
+    return [...byConnectorId.values()];
   }
   if (body.operation === "remove") {
-    return current.filter((id) => {
-      return !enabledIds.includes(id);
+    const removedIds = new Set(
+      requested.map((grant) => {
+        return grant.customConnectorId;
+      }),
+    );
+    return current.filter((grant) => {
+      return !removedIds.has(grant.customConnectorId);
     });
   }
-  return [...enabledIds];
+  return [...requested];
 }
 
 function createAgent(id: string, displayName: string): TeamComposeItem {
@@ -213,14 +225,13 @@ function axiomCatalogStatusItem(
   };
 }
 
-function createCustomConnector(): CustomConnectorResponse {
+function createCustomConnector(): CustomConnectorHttpResponse {
   return {
+    kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
+    storageVersion: 1,
     slug: "acme-search",
     displayName: "Acme Search",
-    prefixes: ["https://api.acme.test/v1/"],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
     prefixTemplates: ["https://api.acme.test/v1/"],
     fields: [
       {
@@ -237,12 +248,47 @@ function createCustomConnector(): CustomConnectorResponse {
       },
     ],
     queryInjections: [],
+    authMode: "manual",
     connected: true,
     missingRequiredFields: [],
     configuredFieldKeys: ["secret"],
-    hasSecret: true,
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",
+  };
+}
+
+function createMcpCustomConnector(): CustomConnectorMcpResponse {
+  return {
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    storageVersion: 1,
+    slug: "_deepwiki",
+    displayName: "DeepWiki",
+    endpoint: "https://mcp.deepwiki.com/mcp",
+    transport: "streamable-http",
+    prefixTemplates: [],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "X-VM0-Test-Token",
+        valueTemplate: "{{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    permissionBundleRef: null,
+    connected: true,
+    missingRequiredFields: [],
+    configuredFieldKeys: ["secret"],
+    createdAt: "2026-08-11T00:00:00Z",
+    updatedAt: "2026-08-11T00:00:00Z",
   };
 }
 
@@ -391,7 +437,10 @@ function mockTeamAPIs({
     createConnector("slack", "ops"),
   ]);
   const enabledConnectorSlugsByAgent = new Map<string, string[]>();
-  const enabledCustomConnectorIdsByAgent = new Map<string, string[]>();
+  const customConnectorGrantsByAgent = new Map<
+    string,
+    AgentCustomConnectorGrant[]
+  >();
   context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
       enabledConnectorSlugs: enabledConnectorSlugsByAgent.get(params.id) ?? [],
@@ -414,24 +463,20 @@ function mockTeamAPIs({
   context.mocks.api(
     zeroAgentCustomConnectorsContract.get,
     ({ params, respond }) => {
-      return respond(200, {
-        enabledIds: enabledCustomConnectorIdsByAgent.get(params.id) ?? [],
-      });
+      const grants = customConnectorGrantsByAgent.get(params.id) ?? [];
+      return respond(200, { grants });
     },
   );
   context.mocks.api(
     zeroAgentCustomConnectorsContract.update,
     ({ body, params, respond }) => {
       onCustomConnectorUpdate?.();
-      const enabledCustomConnectorIds = applyCustomConnectorUpdate(
-        enabledCustomConnectorIdsByAgent.get(params.id) ?? [],
+      const grants = applyCustomConnectorUpdate(
+        customConnectorGrantsByAgent.get(params.id) ?? [],
         body,
       );
-      enabledCustomConnectorIdsByAgent.set(
-        params.id,
-        enabledCustomConnectorIds,
-      );
-      return respond(200, { enabledIds: enabledCustomConnectorIds });
+      customConnectorGrantsByAgent.set(params.id, grants);
+      return respond(200, { grants });
     },
   );
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -444,8 +489,8 @@ function mockTeamAPIs({
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-    return respond(200, { threadIds: [] });
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, { agents: {}, threads: {} });
   });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
     const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
@@ -459,6 +504,7 @@ function mockTeamAPIs({
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
+      visibility: "public",
     });
   });
   context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
@@ -562,12 +608,10 @@ describe("team page navigation", () => {
       expect(screen.getByText("https://api.acme.test/v1/")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Authorize Acme Search for this agent"));
+    click(screen.getByLabelText("Grant Acme Search access"));
     await waitFor(() => {
       expect(screen.getByText("Custom connectors saved")).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Authorize Acme Search for this agent"),
-      ).toBeChecked();
+      expect(screen.getByLabelText("Revoke Acme Search access")).toBeChecked();
     });
     toast.dismiss();
     await waitFor(() => {
@@ -577,141 +621,111 @@ describe("team page navigation", () => {
     });
   });
 
-  it("does not allow enabling custom connectors without a secret", async () => {
-    let updateCalls = 0;
-    mockTeamAPIs({
-      customConnector: {
-        ...createCustomConnector(),
-        connected: false,
-        missingRequiredFields: ["secret"],
-        configuredFieldKeys: [],
-        hasSecret: false,
-      },
-      onCustomConnectorUpdate: () => {
-        updateCalls += 1;
-      },
-    });
+  it("shows and authorizes connected MCP custom connectors", async () => {
+    const connector = createMcpCustomConnector();
+    mockTeamAPIs({ customConnector: connector });
 
-    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
 
     await waitFor(() => {
+      expect(screen.getByText("DeepWiki")).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
+        screen.getByText("https://mcp.deepwiki.com/mcp"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Acme Search")).toBeInTheDocument();
-      expect(screen.getByText(/no secret set/)).toBeInTheDocument();
     });
-
-    const toggle = screen.getByLabelText(
-      "Authorize Acme Search for this agent",
-    );
-    expect(toggle).toBeDisabled();
-
-    fireEvent.click(toggle);
-    expect(updateCalls).toBe(0);
     expect(
-      screen.queryByText("Custom connectors saved"),
+      screen.queryByLabelText("Manage DeepWiki permissions"),
     ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Grant DeepWiki access"));
+    await waitFor(() => {
+      expect(screen.getByText("Custom connectors saved")).toBeInTheDocument();
+      expect(screen.getByLabelText("Revoke DeepWiki access")).toBeChecked();
+    });
+    toast.dismiss();
   });
 
-  it("manages grant-required custom connector permissions from the agent auth tab", async () => {
-    const customConnector = {
-      ...createCustomConnector(),
-      permissionBundleRef: "builtin:feishu@1" as const,
-    };
-    let capturedUpdate: AgentCustomConnectorUpdate | null = null;
-    mockTeamAPIs({ customConnector });
+  it("keeps authorized MCP custom connectors revocable while disabled", async () => {
+    const connector = createMcpCustomConnector();
+    let grants: AgentCustomConnectorGrant[] = [
+      { customConnectorId: connector.id, permissionNames: [] },
+    ];
+    let updateCount = 0;
+    mockTeamAPIs({ customConnector: connector });
     context.mocks.api(
-      zeroCustomConnectorByIdContract.permissions,
+      zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
-        expect(params.id).toBe(customConnector.id);
-        return respond(200, {
-          ref: "builtin:feishu@1",
-          permissions: [
-            {
-              name: "standard:use",
-              description: "Use standard Feishu APIs with approval.",
-            },
-            {
-              name: "messages:send-as-user",
-              description: "Send or edit messages as the connected user.",
-            },
-            {
-              name: "resources:delete",
-              description: "Delete Feishu content.",
-            },
-          ],
-          defaultPolicies: {
-            "standard:use": "allow",
-            "messages:send-as-user": "deny",
-            "resources:delete": "deny",
-          },
-        });
+        expect(params.id).toBe(researchAgentId);
+        return respond(200, { grants });
       },
     );
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-      return respond(200, {
-        enabledIds: [customConnector.id],
-        grants: [
-          {
-            customConnectorId: customConnector.id,
-            permissionNames: [],
-          },
-        ],
-      });
-    });
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
-      ({ body, respond }) => {
-        capturedUpdate = body;
-        return respond(200, {
-          enabledIds: [customConnector.id],
-          grants:
-            "grants" in body
-              ? body.grants
-              : [
-                  {
-                    customConnectorId: customConnector.id,
-                    permissionNames: [],
-                  },
-                ],
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(researchAgentId);
+        expect(body).toStrictEqual({
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+          operation: "remove",
         });
+        updateCount += 1;
+        grants = [];
+        return respond(200, { grants });
       },
     );
 
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorPermissions]: true,
-      },
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: false },
     });
 
-    await screen.findByText("Acme Search");
-    click(screen.getByLabelText("Manage Acme Search permissions"));
-
-    const messagePermission = await screen.findByText("messages:send-as-user");
-    const drawer = dialogForElement(messagePermission);
-    expect(within(drawer).queryByText("standard:use")).not.toBeInTheDocument();
-    const messageRow = messagePermission.parentElement?.parentElement;
-    if (!(messageRow instanceof HTMLElement)) {
-      throw new Error("custom connector permission row not found");
-    }
-    click(buttonByText("Allow", messageRow));
-    click(buttonByText("Apply", drawer));
+    await screen.findByText("DeepWiki");
+    expect(
+      screen.queryByLabelText("Grant DeepWiki access"),
+    ).not.toBeInTheDocument();
+    click(screen.getByLabelText("Revoke DeepWiki access"));
 
     await waitFor(() => {
-      expect(capturedUpdate).toStrictEqual({
-        grants: [
-          {
-            customConnectorId: customConnector.id,
-            permissionNames: ["messages:send-as-user"],
-          },
-        ],
-        operation: "add",
-      });
-      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      expect(updateCount).toBe(1);
+      expect(screen.queryByText("DeepWiki")).not.toBeInTheDocument();
     });
+  });
+
+  it("hides unavailable custom connectors without loading agent access", async () => {
+    const customConnector = {
+      ...createCustomConnector(),
+      connected: false,
+      missingRequiredFields: ["secret"],
+      configuredFieldKeys: [],
+      permissionBundleRef: "builtin:feishu@1" as const,
+    };
+    let connectorListReads = 0;
+    let agentAccessReads = 0;
+    mockTeamAPIs({ customConnector });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      connectorListReads += 1;
+      return respond(200, { connectors: [customConnector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      agentAccessReads += 1;
+      return respond(200, { grants: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(connectorListReads).toBeGreaterThan(0);
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Acme Search")).not.toBeInTheDocument();
+    expect(agentAccessReads).toBe(0);
   });
 
   it("does not show a custom connector permission draft on another agent", async () => {
@@ -721,6 +735,24 @@ describe("team page navigation", () => {
     };
     const updatedAgentIds: string[] = [];
     mockTeamAPIs({ customConnector });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        return respond(
+          200,
+          params.id === researchAgentId
+            ? {
+                grants: [
+                  {
+                    customConnectorId: customConnector.id,
+                    permissionNames: [],
+                  },
+                ],
+              }
+            : { grants: [] },
+        );
+      },
+    );
     context.mocks.api(
       zeroCustomConnectorByIdContract.permissions,
       ({ respond }) => {
@@ -743,16 +775,7 @@ describe("team page navigation", () => {
       ({ body, params, respond }) => {
         updatedAgentIds.push(params.id);
         return respond(200, {
-          enabledIds: [customConnector.id],
-          grants:
-            "grants" in body
-              ? body.grants
-              : [
-                  {
-                    customConnectorId: customConnector.id,
-                    permissionNames: [],
-                  },
-                ],
+          grants: body.grants,
         });
       },
     );
@@ -760,9 +783,6 @@ describe("team page navigation", () => {
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorPermissions]: true,
-      },
     });
 
     await screen.findByText("Acme Search");
@@ -794,9 +814,6 @@ describe("team page navigation", () => {
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorPermissions]: true,
-      },
     });
 
     await screen.findByText("Acme Search");
@@ -988,27 +1005,20 @@ describe("team page navigation", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (
-          query.sinceSeqId !== undefined ||
-          query.beforeSeqId !== undefined ||
-          query.sinceId !== undefined ||
-          query.beforeId !== undefined
-        ) {
-          return respond(200, { events: [] });
-        }
         return respond(200, {
-          events:
+          rows: mockChatEventRows(
             params.threadId === firstThreadId
               ? [
                   {
@@ -1030,6 +1040,9 @@ describe("team page navigation", () => {
                   },
                 ]
               : [],
+          ).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );
@@ -1115,6 +1128,7 @@ describe("team page navigation", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
 
@@ -1197,6 +1211,7 @@ describe("team page navigation", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
 
@@ -1512,7 +1527,7 @@ describe("team page navigation", () => {
   });
 
   it("ignores expired allow grants when opening connector permissions", async () => {
-    mockNow();
+    mockNow(context.signal);
     mockTeamAPIs();
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
@@ -1563,7 +1578,7 @@ describe("team page navigation", () => {
   });
 
   it("shows aggregate persisted durations on permission category headers", async () => {
-    mockNow();
+    mockNow(context.signal);
     mockTeamAPIs();
     const metadata = testConnectorPermissionDetails.get("slack");
     if (!metadata?.categories) {
@@ -1648,7 +1663,7 @@ describe("team page navigation", () => {
   });
 
   it("saves permission duration changes from an agent page", async () => {
-    mockNow();
+    mockNow(context.signal);
     mockTeamAPIs();
     const capturedApplies: ApplyUserPermissionGrantsRequest[] = [];
     let grants: UserPermissionGrantResponse[] = [

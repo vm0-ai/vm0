@@ -96,27 +96,13 @@ async function postInbound(event: WebhookEvent) {
   );
 }
 
-function sendCallsTo(recipient: string): number {
-  return resendMocks.send.mock.calls.filter((call) => {
-    const [payload] = call;
-    if (typeof payload !== "object" || payload === null || !("to" in payload)) {
-      return false;
-    }
-    const to = payload.to;
-    return typeof to === "string"
-      ? to === recipient
-      : Array.isArray(to) && to.includes(recipient);
-  }).length;
-}
-
 beforeEach(() => {
   resendMocks.send.mockReset();
   resendMocks.send.mockResolvedValue({ data: { id: "resend-test-id" } });
   mockEnv("RESEND_API_KEY", "test-resend-key");
   mockEnv("RESEND_WEBHOOK_SECRET", INBOUND_SECRET);
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
-  // This route drains a cross-file outbox; Resend pacing is not part of these
-  // transactional delivery assertions.
+  // Resend pacing is not part of these transactional delivery assertions.
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
 });
 
@@ -187,9 +173,14 @@ describe("low-credit email delivery", () => {
     // the organization's admin recipients.
     await billing.readBillingStatus(actor);
     await billing.processOrgUsageEvents(actor);
-    const drain = await email.drainEmailOutboxCron(true);
+    const item = await email.findEmailOutboxItem({
+      to: actor.email,
+      subject: "Your credit balance is running low",
+    });
+    const drained = await email.drainEmailOutboxItems([item.id]);
 
-    expect(drain.status).toBe(200);
+    expect(drained).toBe(1);
+    expect(resendMocks.send).toHaveBeenCalledTimes(1);
     expect(context.mocks.resend.send).toHaveBeenCalledWith(
       expect.objectContaining({
         from: "VM0 Team <support@vm0.ai>",
@@ -228,10 +219,15 @@ describe("POST /api/zero/email/inbound", () => {
   it("sends data-export email to eligible recipients", async () => {
     const controlActor = bdd.user();
 
-    await email.enqueueDataExportEmail(controlActor);
-    const drain = await email.drainEmailOutboxCron(true);
-    expect(drain.status).toBe(200);
-    expect(sendCallsTo(controlActor.email)).toBe(1);
+    const locator = await email.enqueueDataExportEmail(controlActor);
+    const item = await email.findEmailOutboxItem(locator);
+    const drained = await email.drainEmailOutboxItems([item.id]);
+
+    expect(drained).toBe(1);
+    expect(resendMocks.send).toHaveBeenCalledTimes(1);
+    expect(resendMocks.send).toHaveBeenCalledWith(
+      expect.objectContaining({ to: controlActor.email }),
+    );
   });
 
   it("keeps bounced recipients out of transactional sends", async () => {
@@ -245,10 +241,12 @@ describe("POST /api/zero/email/inbound", () => {
       },
     });
 
-    await email.enqueueDataExportEmail(bouncedActor);
-    const drain = await email.drainEmailOutboxCron(true);
-    expect(drain.status).toBe(200);
-    expect(sendCallsTo(bouncedActor.email)).toBe(0);
+    const locator = await email.enqueueDataExportEmail(bouncedActor);
+    const item = await email.findEmailOutboxItem(locator);
+    const drained = await email.drainEmailOutboxItems([item.id]);
+
+    expect(drained).toBe(1);
+    expect(resendMocks.send).toHaveBeenCalledTimes(0);
   });
 
   it("keeps complained recipients out of transactional sends", async () => {
@@ -265,10 +263,11 @@ describe("POST /api/zero/email/inbound", () => {
       },
     });
 
-    await email.enqueueDataExportEmail(complainedActor);
-    const drain = await email.drainEmailOutboxCron(true);
-    expect(drain.status).toBe(200);
-    expect(sendCallsTo(complainedActor.email)).toBe(0);
+    const locator = await email.enqueueDataExportEmail(complainedActor);
+    const items = await email.findEmailOutboxItems(locator);
+
+    expect(items).toHaveLength(0);
+    expect(resendMocks.send).toHaveBeenCalledTimes(0);
   });
 
   it("acknowledges new and reply-address email without creating Agent runs", async () => {

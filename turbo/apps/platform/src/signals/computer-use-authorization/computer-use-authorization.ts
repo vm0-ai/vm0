@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroComputerUseAuthorizationRequestsContract,
   type ComputerUseHost,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
 import { accept } from "../../lib/accept.ts";
 import { pathParams$ } from "../route.ts";
 import { zeroClient$ } from "../api-client.ts";

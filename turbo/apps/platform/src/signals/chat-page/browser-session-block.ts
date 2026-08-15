@@ -2,8 +2,8 @@ import {
   ZERO_BROWSER_IDLE_LEASE_MINUTES,
   zeroBrowserContract,
   type ZeroBrowserSession,
-} from "@vm0/api-contracts/contracts/zero-browser";
-import { browserSessionChangedPayloadSchema } from "@vm0/api-contracts/contracts/realtime";
+} from "@okouai/api-contracts/contracts/zero-browser";
+import { browserSessionChangedPayloadSchema } from "@okouai/api-contracts/contracts/realtime";
 import {
   command,
   computed,
@@ -16,12 +16,14 @@ import {
 import { formatAppNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
-import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
 import { onRef, settle, setLoop, withCleanup } from "../utils.ts";
+import {
+  createImageLoadSignals,
+  type ImageLoadSignals,
+} from "../image-load.ts";
 import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 
 // One heartbeat per minute keeps a viewed browser comfortably inside its
@@ -34,17 +36,23 @@ export interface BrowserSessionDescriptor {
 }
 
 export interface BrowserSessionSignals extends BrowserSessionDescriptor {
+  /** Load state of the session's screenshot thumbnail. */
+  readonly screenshotImageLoad: ImageLoadSignals;
   readonly session$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly panelSession$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly starting$: Computed<boolean>;
-  readonly stopping$: Computed<boolean>;
   readonly fittingWindow$: Computed<boolean>;
   readonly reload$: Command<void, []>;
   readonly reloadPanel$: Command<void, []>;
   readonly start$: Command<Promise<void>, [AbortSignal]>;
-  readonly stop$: Command<Promise<void>, [AbortSignal]>;
-  readonly fitWindow$: Command<Promise<void>, [number, AbortSignal]>;
+  readonly close$: Command<Promise<void>, [AbortSignal]>;
+  readonly fitViewport$: Command<Promise<void>, [AbortSignal]>;
+  readonly syncFitActionVisibility$: Command<void, []>;
   readonly subscribe$: Command<Promise<void>, [AbortSignal]>;
+  readonly fitViewportRef$: Command<
+    (() => void) | undefined,
+    [HTMLDivElement | null]
+  >;
   // Attach to the visible panel container: the lease heartbeat lives exactly as
   // long as that element is mounted.
   readonly keepAliveRef$: Command<
@@ -59,7 +67,7 @@ export interface BrowserLifecycleOptimisticEvents {
     [
       {
         readonly eventId: string;
-        readonly eventType: "browser.started" | "browser.stopped";
+        readonly eventType: "browser.open" | "browser.close";
       },
       AbortSignal,
     ]
@@ -92,6 +100,138 @@ function viewerIsVisible(): boolean {
     : document.visibilityState === "visible";
 }
 
+const BROWSER_FIT_GAP_TOLERANCE_PX = 2;
+
+interface ViewportSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+interface BrowserFitDomSignals extends Pick<
+  BrowserSessionSignals,
+  "fitViewportRef$" | "syncFitActionVisibility$"
+> {
+  readonly syncFitActionForScreen$: Command<
+    void,
+    [ZeroBrowserSession["screen"]]
+  >;
+  readonly viewportAspectRatio$: Command<number | null, []>;
+}
+
+function measuredViewport(element: HTMLElement | null): ViewportSize | null {
+  if (!element) {
+    return null;
+  }
+  const { width, height } = element.getBoundingClientRect();
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return null;
+  }
+  return { width, height };
+}
+
+function browserFrameNeedsFit(
+  viewport: ViewportSize | null,
+  browserAspectRatio: number,
+): boolean {
+  if (
+    !viewport ||
+    !Number.isFinite(browserAspectRatio) ||
+    browserAspectRatio <= 0
+  ) {
+    return false;
+  }
+  const fittedWidth = Math.min(
+    viewport.width,
+    viewport.height * browserAspectRatio,
+  );
+  const fittedHeight = Math.min(
+    viewport.height,
+    viewport.width / browserAspectRatio,
+  );
+  return (
+    viewport.width - fittedWidth > BROWSER_FIT_GAP_TOLERANCE_PX ||
+    viewport.height - fittedHeight > BROWSER_FIT_GAP_TOLERANCE_PX
+  );
+}
+
+function createBrowserFitDomSignals(): BrowserFitDomSignals {
+  const runtime: { viewport: HTMLDivElement | null } = { viewport: null };
+  const fitAction = (): HTMLElement | null => {
+    return (
+      runtime.viewport?.querySelector("[data-browser-session-fit-action]") ??
+      null
+    );
+  };
+  const updateFitActionVisibility = (
+    browserAspectRatio: number,
+    canFitWindow: boolean,
+  ): void => {
+    const action = fitAction();
+    if (!action) {
+      return;
+    }
+    action.hidden = !(
+      canFitWindow &&
+      browserFrameNeedsFit(
+        measuredViewport(runtime.viewport),
+        browserAspectRatio,
+      )
+    );
+  };
+  const syncFitActionVisibility$ = command(() => {
+    const viewport = runtime.viewport;
+    const browserAspectRatio = Number(
+      viewport?.dataset.browserAspectRatio ?? "",
+    );
+    const canFitWindow = viewport?.dataset.canFitWindow === "true";
+    updateFitActionVisibility(browserAspectRatio, canFitWindow);
+  });
+  const syncFitActionForScreen$ = command(
+    (_, screen: ZeroBrowserSession["screen"]): void => {
+      updateFitActionVisibility(
+        screen ? screen.width / screen.height : Number.NaN,
+        screen?.resizable === true,
+      );
+    },
+  );
+  const viewportAspectRatio$ = command((): number | null => {
+    const size = measuredViewport(runtime.viewport);
+    return size ? size.width / size.height : null;
+  });
+  const fitViewportRef$ = onRef(
+    command(({ set }, viewport: HTMLDivElement, signal: AbortSignal): void => {
+      runtime.viewport = viewport;
+      const syncFitActionVisibility = () => {
+        set(syncFitActionVisibility$);
+      };
+      const win = viewport.ownerDocument.defaultView;
+      win?.addEventListener("resize", syncFitActionVisibility);
+      signal.addEventListener(
+        "abort",
+        () => {
+          win?.removeEventListener("resize", syncFitActionVisibility);
+          if (runtime.viewport === viewport) {
+            runtime.viewport = null;
+          }
+        },
+        { once: true },
+      );
+      set(syncFitActionVisibility$);
+    }),
+  );
+  return {
+    fitViewportRef$,
+    syncFitActionForScreen$,
+    syncFitActionVisibility$,
+    viewportAspectRatio$,
+  };
+}
+
 async function fetchBrowserSession(
   createClient: ZeroClientFactory,
   threadId: string,
@@ -110,15 +250,16 @@ async function fetchBrowserSession(
 function createFitWindowSignals(
   descriptor: BrowserSessionDescriptor,
   sessionOverride$: State<ZeroBrowserSession | null | undefined>,
-): Pick<BrowserSessionSignals, "fittingWindow$" | "fitWindow$"> {
+  browserFitDom: BrowserFitDomSignals,
+): Pick<BrowserSessionSignals, "fittingWindow$" | "fitViewport$"> {
   const fittingWindowState$ = state(false);
-  const fitWindow$ = command(
-    async (
-      { get, set },
-      aspectRatio: number,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      if (!get(zeroBrowserEnabled$) || get(fittingWindowState$)) {
+  const fitViewport$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      if (get(fittingWindowState$)) {
+        return;
+      }
+      const aspectRatio = set(browserFitDom.viewportAspectRatio$);
+      if (aspectRatio === null) {
         return;
       }
       set(fittingWindowState$, true);
@@ -130,7 +271,7 @@ function createFitWindowSignals(
               body: { aspectRatio },
               fetchOptions: { signal },
             }),
-            [200],
+            [200, 404],
             signal,
           ),
           () => {
@@ -139,8 +280,12 @@ function createFitWindowSignals(
         ),
         signal,
       );
-      if (fitted.ok) {
+      if (fitted.ok && fitted.value.status === 200) {
         set(sessionOverride$, fitted.value.body.browser);
+        set(
+          browserFitDom.syncFitActionForScreen$,
+          fitted.value.body.browser.screen,
+        );
       }
     },
   );
@@ -148,13 +293,12 @@ function createFitWindowSignals(
     fittingWindow$: computed((get) => {
       return get(fittingWindowState$);
     }),
-    fitWindow$,
+    fitViewport$,
   };
 }
 
 interface BrowserMutationSignalContext {
   readonly descriptor: BrowserSessionDescriptor;
-  readonly session$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly sessionOverride$: State<ZeroBrowserSession | null | undefined>;
   readonly reload$: Command<void, []>;
   readonly optimisticEvents?: BrowserLifecycleOptimisticEvents;
@@ -171,9 +315,6 @@ function createStartBrowserSignals({
 > {
   const startingState$ = state(false);
   const start$ = command(async ({ get, set }, signal: AbortSignal) => {
-    if (!get(zeroBrowserEnabled$)) {
-      return;
-    }
     const eventId = crypto.randomUUID();
     set(startingState$, true);
     if (optimisticEvents) {
@@ -181,7 +322,7 @@ function createStartBrowserSignals({
         optimisticEvents.append$,
         {
           eventId,
-          eventType: "browser.started",
+          eventType: "browser.open",
         },
         signal,
       );
@@ -189,7 +330,7 @@ function createStartBrowserSignals({
     }
     const started = await settle(
       accept(
-        get(zeroClient$)(zeroBrowserContract).start({
+        get(zeroClient$)(zeroBrowserContract).open({
           params: { threadId: descriptor.threadId },
           body: { eventId },
           fetchOptions: { signal },
@@ -214,51 +355,26 @@ function createStartBrowserSignals({
   };
 }
 
-function createStopBrowserSignals({
+function createCloseBrowserSignals({
   descriptor,
-  session$,
-  sessionOverride$,
-  reload$,
   optimisticEvents,
-}: BrowserMutationSignalContext): Pick<
-  BrowserSessionSignals,
-  "stopping$" | "stop$"
-> {
-  const stoppingState$ = state(false);
-  const stop$ = command(async ({ get, set }, signal: AbortSignal) => {
-    if (!get(zeroBrowserEnabled$)) {
-      return;
-    }
+}: BrowserMutationSignalContext): Pick<BrowserSessionSignals, "close$"> {
+  const close$ = command(async ({ get, set }, signal: AbortSignal) => {
     const eventId = crypto.randomUUID();
-    const current = await settle(get(session$), signal);
-    signal.throwIfAborted();
-    set(stoppingState$, true);
     if (optimisticEvents) {
       await set(
         optimisticEvents.append$,
         {
           eventId,
-          eventType: "browser.stopped",
+          eventType: "browser.close",
         },
         signal,
       );
       signal.throwIfAborted();
     }
-    if (current.ok && current.value) {
-      const stoppedAt = nowDate().toISOString();
-      set(sessionOverride$, {
-        ...current.value,
-        status: "suspended",
-        liveUrl: null,
-        idleExpiresAt: null,
-        suspendedAt: stoppedAt,
-        suspensionReason: "user",
-        updatedAt: stoppedAt,
-      });
-    }
-    const stopped = await settle(
+    await settle(
       accept(
-        get(zeroClient$)(zeroBrowserContract).stop({
+        get(zeroClient$)(zeroBrowserContract).close({
           params: { threadId: descriptor.threadId },
           body: { eventId },
           fetchOptions: { signal },
@@ -268,36 +384,34 @@ function createStopBrowserSignals({
       ),
       signal,
     );
-    set(stoppingState$, false);
-    if (stopped.ok) {
-      set(sessionOverride$, stopped.value.body.browser);
-      return;
-    }
-    set(reload$);
   });
-  return {
-    stopping$: computed((get) => {
-      return get(stoppingState$);
-    }),
-    stop$,
-  };
+  return { close$ };
 }
 
 function createBrowserSessionSubscriptionSignals(
   descriptor: BrowserSessionDescriptor,
+  session$: BrowserSessionSignals["session$"],
   reload$: BrowserSessionSignals["reload$"],
+  browserFitDom: BrowserFitDomSignals,
 ): Pick<BrowserSessionSignals, "subscribe$"> {
   const reloadBrowserSession$ = command(
-    ({ set }, _signal: AbortSignal): boolean => {
+    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
       set(reload$);
+      const session = await get(session$);
+      signal.throwIfAborted();
+      set(browserFitDom.syncFitActionForScreen$, session?.screen);
       return false;
     },
   );
   const onBrowserSessionChanged$ = command(
-    ({ set }, payload: unknown, _signal: AbortSignal): boolean => {
+    (
+      { set },
+      payload: unknown,
+      signal: AbortSignal,
+    ): Promise<boolean> | boolean => {
       const parsed = browserSessionChangedPayloadSchema.safeParse(payload);
       if (parsed.success && parsed.data.threadId === descriptor.threadId) {
-        set(reload$);
+        return set(reloadBrowserSession$, signal);
       }
       return false;
     },
@@ -328,14 +442,12 @@ export function createBrowserSessionSignals(
     href: `/browsers/${threadId}`,
   };
   const reloadVersion$ = state(0);
+  const screenshotImageLoad = createImageLoadSignals();
   const sessionOverride$ = state<ZeroBrowserSession | null | undefined>(
     undefined,
   );
   const session$ = computed(async (get): Promise<ZeroBrowserSession | null> => {
     get(reloadVersion$);
-    if (!get(zeroBrowserEnabled$)) {
-      return null;
-    }
     const override = get(sessionOverride$);
     return override === undefined
       ? await fetchBrowserSession(
@@ -352,22 +464,25 @@ export function createBrowserSessionSignals(
     });
   });
 
-  const { fittingWindow$, fitWindow$ } = createFitWindowSignals(
+  const browserFitDom = createBrowserFitDomSignals();
+  const { fittingWindow$, fitViewport$ } = createFitWindowSignals(
     descriptor,
     sessionOverride$,
+    browserFitDom,
   );
   const mutationContext: BrowserMutationSignalContext = {
     descriptor,
-    session$,
     sessionOverride$,
     reload$,
     ...(optimisticEvents ? { optimisticEvents } : {}),
   };
   const startSignals = createStartBrowserSignals(mutationContext);
-  const stopSignals = createStopBrowserSignals(mutationContext);
+  const closeSignals = createCloseBrowserSignals(mutationContext);
   const subscriptionSignals = createBrowserSessionSubscriptionSignals(
     descriptor,
+    session$,
     reload$,
+    browserFitDom,
   );
 
   const keepAliveRef$ = onRef(
@@ -375,9 +490,6 @@ export function createBrowserSessionSignals(
       async ({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
         await setLoop(
           async () => {
-            if (!get(zeroBrowserEnabled$)) {
-              return true;
-            }
             if (!viewerIsVisible()) {
               return false;
             }
@@ -419,14 +531,17 @@ export function createBrowserSessionSignals(
 
   return {
     ...descriptor,
+    screenshotImageLoad,
     session$,
     panelSession$: session$,
     ...startSignals,
-    ...stopSignals,
+    ...closeSignals,
     fittingWindow$,
     reload$,
     reloadPanel$: reload$,
-    fitWindow$,
+    fitViewport$,
+    fitViewportRef$: browserFitDom.fitViewportRef$,
+    syncFitActionVisibility$: browserFitDom.syncFitActionVisibility$,
     ...subscriptionSignals,
     keepAliveRef$,
   };

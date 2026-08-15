@@ -43,14 +43,14 @@ export const stravaProvider: AuthCodeConnectorAuthProvider<"strava"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId, clientSecret } = args.authClient;
       return oauthRefreshResultToProviderResult(
         await refreshStravaToken(
           clientId,
           clientSecret,
           args.inputs.refreshToken,
-          args.signal,
+          signal,
         ),
       );
     },

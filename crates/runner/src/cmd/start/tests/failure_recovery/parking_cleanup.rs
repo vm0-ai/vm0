@@ -1,10 +1,10 @@
 use super::super::super::*;
 use super::super::support::{
-    MockRunEnv, context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool,
-    shutdown, test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
+    context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool, shutdown,
+    test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
     wait_status_idle_reuse_keys_and_active_runs, wait_workspace_cache_reuse_keys,
 };
-use super::support::assert_no_completion_for_run;
+use super::support::assert_successful_completion_for_run;
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
@@ -13,7 +13,49 @@ use sandbox_mock::MockLifecycleGate;
 
 fn severe_memory_retention() -> sandbox::SandboxParkOutcome {
     sandbox::SandboxParkOutcome::NonReusable(
-        sandbox::SandboxParkNonReusableReason::SevereMemoryRetention,
+        sandbox::SandboxParkNonReusableReason::SevereMemoryRetention(Box::new(
+            sandbox::SevereMemoryRetentionDiagnostics {
+                requested_target_mib: 3584,
+                first_observed_target_mib: Some(3584),
+                observed_target_mib: Some(3584),
+                target_observed: true,
+                first_actual_mib: Some(2048),
+                actual_mib: Some(2448),
+                max_actual_mib: Some(2448),
+                deficit_mib: Some(1136),
+                actual_delta_mib: Some(400),
+                elapsed_ms: 5000,
+                sample_count: 9,
+                reported_free_memory_bytes: Some(8 * 1024 * 1024),
+                reported_available_memory_bytes: Some(8 * 1024 * 1024),
+                reported_total_memory_bytes: Some(4_i64 * 1024 * 1024 * 1024),
+                reported_swap_in_bytes: Some(11),
+                reported_swap_out_bytes: Some(12),
+                reported_major_faults: Some(13),
+                reported_minor_faults: Some(14),
+                reported_disk_caches_bytes: Some(15),
+                guest_memory_snapshot: Some(sandbox::GuestMemorySnapshot {
+                    mem_total_bytes: 1,
+                    mem_free_bytes: 2,
+                    mem_available_bytes: 3,
+                    buffers_bytes: 4,
+                    cached_bytes: 5,
+                    anon_pages_bytes: 6,
+                    mapped_bytes: 7,
+                    dirty_bytes: 8,
+                    writeback_bytes: 9,
+                    shmem_bytes: 10,
+                    slab_bytes: 11,
+                    slab_reclaimable_bytes: 12,
+                    slab_unreclaimable_bytes: 13,
+                    unevictable_bytes: 14,
+                    kernel_stack_bytes: 15,
+                    page_tables_bytes: 16,
+                    swap_total_bytes: 17,
+                    swap_free_bytes: 18,
+                }),
+            },
+        )),
     )
 }
 
@@ -80,10 +122,13 @@ async fn park_failure_promotes_workspace_cache_before_destroy() {
 }
 
 #[tokio::test]
-async fn non_reusable_park_promotes_workspace_cache_through_parked_path() {
+async fn non_reusable_park_destroy_panic_preserves_workspace_cache_and_cleanup() {
     assert_workspace_cache_after_park_cleanup(
-        "sess-severe-retention-cache",
-        |overrides| overrides.push_park_result(Ok(severe_memory_retention())),
+        "sess-severe-retention-destroy-panic-cache",
+        |overrides| {
+            overrides.push_park_result(Ok(severe_memory_retention()));
+            overrides.push_destroy_panic("simulated non-reusable destroy panic");
+        },
         true,
         1,
     )
@@ -160,6 +205,7 @@ async fn assert_workspace_cache_after_park_cleanup(
         .await
         .expect("job should complete normally after park cleanup destroy");
     assert_eq!(completion.exit_code, 0);
+    assert!(completion.error.is_none());
 
     wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
     assert_eq!(idle_pool.lock().await.len(), 0);
@@ -224,19 +270,13 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
         Duration::from_secs(5),
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until non-reusable VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "successful job should complete after non-reusable VM destroy finishes",
+        "host completion should report while non-reusable VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, None, run_id, 0, 0).await;
     wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
@@ -292,45 +332,6 @@ async fn repeated_non_reusable_parks_use_fresh_sandboxes() {
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test(start_paused = true)]
-async fn non_reusable_park_destroy_panic_still_completes_and_releases_budget() {
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_park_result(Ok(severe_memory_retention()));
-    overrides.push_destroy_panic("simulated non-reusable destroy panic");
-    let counter = Arc::clone(&overrides);
-    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.capacity.budget);
-    let idle_pool = Arc::clone(&config.shared.idle_pool);
-    let run_handle = tokio::spawn(run(config));
-
-    let run_id = RunId::new_v4();
-    push_job(
-        &env,
-        run_id,
-        "vm0/default",
-        Some(context_with_session(run_id, "sess-severe-destroy-panic")),
-    );
-
-    let completion = env
-        .handle
-        .wait_completion(run_id, Duration::from_secs(5))
-        .await
-        .expect("destroy uncertainty must not rewrite or skip provider completion");
-    assert_eq!(completion.exit_code, 0);
-    assert!(completion.error.is_none());
-    wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
-    assert_idle_pool_len(
-        &idle_pool,
-        0,
-        "destroy uncertainty must not publish a non-reusable VM as idle",
-    )
-    .await;
-    assert_eq!(counter.park_call_count(), 1);
-    assert_eq!(counter.destroy_call_count(), 1);
-
-    shutdown(&env, run_handle).await;
-}
-
 #[tokio::test]
 async fn cancellation_during_sandbox_park_promotes_workspace_cache_before_destroy() {
     assert_workspace_cache_after_late_cancellation(
@@ -380,25 +381,6 @@ fn assert_destroy_in_flight(
 
 async fn assert_idle_pool_len(idle_pool: &SharedIdlePool, expected_len: usize, message: &str) {
     assert_eq!(idle_pool.lock().await.len(), expected_len, "{message}");
-}
-
-async fn release_destroy_and_wait_for_successful_completion(
-    env: &MockRunEnv,
-    destroy_gate: &MockLifecycleGate,
-    run_id: RunId,
-    completion_message: &str,
-) {
-    destroy_gate.release_one();
-    let completion = env
-        .handle
-        .wait_completion(run_id, Duration::from_secs(5))
-        .await
-        .expect(completion_message);
-    assert_eq!(completion.exit_code, 0);
-    assert!(
-        completion.error.is_none(),
-        "parking cleanup should not rewrite job result"
-    );
 }
 
 async fn assert_post_destroy_cleanup(
@@ -502,19 +484,13 @@ async fn assert_workspace_cache_after_late_cancellation(
         "cancelled VM should be sent to destroy exactly once",
         "cancelled VM must retain budget while destroy is in-flight",
     );
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until cancelled VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after destroy finishes",
+        "host completion should report while cancelled VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, Some(&cancel_tokens), run_id, 0, 0).await;
     wait_workspace_cache_reuse_keys(&workspace_cache, &[session_id], Duration::from_secs(2)).await;
@@ -592,19 +568,13 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
         "rejected VM should be sent to destroy",
         "rejected active VM must retain its budget while destroy is in-flight",
     );
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until rejected VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after rejected VM destroy",
+        "host completion should report while rejected VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
     let pool = idle_pool.lock().await;
@@ -663,19 +633,13 @@ async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy()
         "closed gate must reject the candidate instead of parking it",
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until rejected VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after destroy finishes",
+        "host completion should report while rejected VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, None, run_id, 0, 0).await;
 
@@ -733,19 +697,13 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
         "cancelled VM must not enter the idle pool after waiting for the lock",
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until cancelled VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after destroy finishes",
+        "host completion should report while cancelled VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, Some(&cancel_tokens), run_id, 0, 0).await;
 
@@ -801,19 +759,13 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
         "cancelled VM must not enter the idle pool after park returns",
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until cancelled VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after destroy finishes",
+        "host completion should report while cancelled VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, Some(&cancel_tokens), run_id, 0, 0).await;
 

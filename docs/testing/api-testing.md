@@ -4,8 +4,8 @@
 
 In the API app (`turbo/apps/api`), route behavior should be covered by
 **API route integration tests**. These tests exercise the real Hono app through
-`setupApp()` and the route's ts-rest contract, not by importing route handlers or
-service functions directly.
+`setupApp()`, an explicit route slice, and the route's ts-rest contract, not by
+importing route handlers or service functions directly.
 
 Use this guide for endpoints implemented in `apps/api` or promoted to
 API-authoritative behavior.
@@ -22,9 +22,11 @@ turbo/apps/api/src/signals/routes/__tests__/
 ## Route Test Structure
 
 ```typescript
-import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
 
@@ -33,11 +35,13 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroAgentsMainContract);
+  return setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsMainContract,
+  );
 }
 
-describe("GET /api/zero/agents", () => {
-  it("returns an agent created through POST /api/zero/agents", async () => {
+describe("GET /api/okou/agents", () => {
+  it("returns an agent created through POST /api/okou/agents", async () => {
     context.mocks.clerk.session("user_api_test", "org_api_test");
     context.mocks.s3.send.mockResolvedValue({});
 
@@ -73,8 +77,8 @@ describe("GET /api/zero/agents", () => {
 
 Key points:
 
-1. Import the contract from `@vm0/api-contracts`, then call it through
-   `setupApp({ context })(contract)`.
+1. Import the contract from `@okouai/api-contracts` and the matching route array,
+   then call it through `setupApp({ context, routes })(contract)`.
 2. Use `accept()` to narrow the response type and produce useful failure output.
 3. Put `testContext()` at module scope.
 4. Use API calls for setup and verification.
@@ -91,9 +95,10 @@ Route tests should cover user-visible HTTP behavior:
 - persisted side effects through follow-up API calls
 - external service calls at the boundary, using the centralized mocks
 
-`setupApp()` creates the Hono app with the real route registry and validates
-ts-rest responses. A route test should fail if the handler returns a body that no
-longer matches the contract.
+`setupApp()` creates the Hono app with only the declared route slice and validates
+ts-rest responses. This keeps tests independent from the production bootstrap
+registry while preserving the real route behavior. A route test should fail if
+the handler returns a body that no longer matches the contract.
 
 ## Mocks
 
@@ -130,6 +135,43 @@ raise the gap during review.
 
 For the full reasoning, see
 [Testing External Behavior](./testing-external-behavior.md).
+
+## Shared Persistent State
+
+Teardown cannot establish correctness for shared persistent state. Another
+file or worker can observe, overwrite, or depend on that state before
+`afterEach` or `onTestFinished` runs, and a crashed test may not run teardown at
+all. A test must therefore be correct while other API tests execute
+concurrently, even if its cleanup has not happened yet.
+
+Give every test uniquely owned, explicitly addressable users, organizations,
+providers, storage identities, external entities, cache namespaces, and rows.
+When a production cron scans a global table, keep production behavior global
+but drive correctness through a test-only route whose request names the owned
+IDs. Production-global routes may be mounted only by the focused contract
+harness for fixed missing/wrong-auth assertions. Do not isolate tests with a
+global lock, test ordering, worker serialization, broad clock partitions,
+snapshot/restore of shared rows, or residue-tolerant assertions.
+
+Operator-managed usage-pricing identities and the fixed production staff
+organization are shared production data. Use `createUsagePricingFixture()` to
+map a logical canonical provider to a UUID-owned physical lookup row, and use a
+unique organization fixture for entitlement writes. Fixed production
+identities remain valid in read-only/hash/auth behavior. Raw pricing mutation
+helpers are only for providers already proven UUID-, run-, or fixture-owned.
+
+Cache assertions own their key or namespace. Set and advance mocked time inside
+the test that exercises the TTL; never stagger tests with a module- or
+describe-scoped counter to outlive another test's cache entry. Process-wide
+caches and overrides need an explicit request/test owner and scoped reset
+semantics, such as an `AbortSignal` or async-local boundary.
+
+Cleanup is still useful after ownership establishes correctness. It may remove
+rows and resources created by that test, and it should terminate or release
+test-owned handles, `AbortController`s/signals, MSW handlers, connections,
+sockets/streams, detached work, and temporary files. Such cleanup bounds
+residue and resource lifetime; it must not delete, overwrite, or restore
+pre-existing shared state to make an assertion pass.
 
 ## Commands
 

@@ -1,5 +1,4 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-
 import { command, computed } from "ccstate";
 import { v5 as uuidv5 } from "uuid";
 import {
@@ -8,28 +7,27 @@ import {
   isSupportedRunModel,
   normalizeRunModelId,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   telegramMessages,
   type TelegramMessageEntity,
-} from "@vm0/db/schema/telegram-message";
-import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
+} from "@okouai/db/schema/telegram-message";
+import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread-route";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
+import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { and, desc, eq, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-
 import { escapeHtml } from "../../lib/telegram-format";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -56,7 +54,7 @@ import {
   getOfficialTelegramBotConfig,
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { safeJsonParse, safeUrlParse, tapError } from "../utils";
 import {
   decryptPersistentSecretValue,
@@ -75,10 +73,13 @@ import {
   type TelegramOwnerLink,
 } from "./telegram-chat-ingress.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { insertChatEvent } from "./chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
+import {
+  chatEventTypeIn,
+  chatInputPromptDispatchCondition,
+} from "./chat-event-type.service";
 import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
 import {
   formatTelegramUserDisplayName,
@@ -88,7 +89,7 @@ import {
 import {
   updateUserModelPreference$,
   userModelPreference,
-} from "./zero-user-data.service";
+} from "./user-data.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import type { ApiOrgRole, AuthTokenType } from "../../types/auth";
 
@@ -1710,7 +1711,6 @@ function telegramLaunchContext(args: {
   return {
     chatId: args.chatId,
     messageId: String(args.source.message.message_id),
-    isDm: args.source.isDM,
     messageThreadId: args.source.message.message_thread_id ?? null,
     messageText: args.prompt,
     threadContext: args.context,
@@ -1741,16 +1741,18 @@ function telegramChatMessageId(args: {
   );
 }
 
-async function persistTelegramChatMessage(args: {
-  readonly source: TelegramAgentMessageArgs;
-  readonly chatId: string;
-  readonly rootMessageId: string | undefined;
-  readonly context: string;
-  readonly prompt: string;
-  readonly userInfoExtras: TelegramUserInfoExtras;
-  readonly modelRoute: ModelRoutePin | undefined;
-  readonly signal: AbortSignal;
-}): Promise<
+async function persistTelegramChatMessage(
+  args: {
+    readonly source: TelegramAgentMessageArgs;
+    readonly chatId: string;
+    readonly rootMessageId: string | undefined;
+    readonly context: string;
+    readonly prompt: string;
+    readonly userInfoExtras: TelegramUserInfoExtras;
+    readonly modelRoute: ModelRoutePin | undefined;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly inserted: true;
       readonly chatThreadId: string;
@@ -1765,7 +1767,7 @@ async function persistTelegramChatMessage(args: {
     .from(chatEvents)
     .where(eq(chatEvents.id, chatEventId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (existingMessage) {
     return { inserted: false };
   }
@@ -1774,6 +1776,7 @@ async function persistTelegramChatMessage(args: {
     orgId: args.source.orgId,
     agentComposeId: args.source.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
+    serviceTier: args.modelRoute?.serviceTier ?? null,
     currentTime,
   };
   const binding =
@@ -1785,7 +1788,7 @@ async function persistTelegramChatMessage(args: {
           chatId: args.chatId,
           rootMessageId: args.rootMessageId,
         });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const inserted = await args.source.db.transaction(async (tx) => {
     const event = await insertChatEvent(
@@ -1805,13 +1808,12 @@ async function persistTelegramChatMessage(args: {
           }),
         }),
         runId: null,
-        triggerSource: "telegram",
         telegramContext: telegramLaunchContext(args),
         createdAt: currentTime,
       },
       "id",
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!event) {
       return false;
     }
@@ -1823,7 +1825,7 @@ async function persistTelegramChatMessage(args: {
     );
     return true;
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return inserted
     ? {
         inserted: true,
@@ -1846,13 +1848,10 @@ async function telegramMessageDispatchState(
       .from(chatEvents)
       .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
       .where(
-        and(
-          eq(chatEvents.chatThreadId, args.chatThreadId),
-          or(
-            eq(chatEvents.id, args.chatEventId),
-            eq(chatEvents.revokesEventId, args.chatEventId),
-          ),
-        ),
+        chatInputPromptDispatchCondition({
+          eventId: args.chatEventId,
+          chatThreadId: args.chatThreadId,
+        }),
       )
       .limit(1),
     db
@@ -1902,10 +1901,12 @@ const runAgentForTelegram$ = command(
     },
     signal: AbortSignal,
   ): Promise<TelegramMessageDispatchResult> => {
-    const persisted = await persistTelegramChatMessage({
-      ...args,
+    const persisted = await persistTelegramChatMessage(
+      {
+        ...args,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (!persisted.inserted) {
       return { kind: "ignored" };
@@ -2107,7 +2108,7 @@ const handleModelCommand$ = command(
       {
         orgId: args.orgId,
         userId: args.userId,
-        preference: { selectedModel: option.model },
+        preference: { selectedModel: option.model, serviceTier: null },
       },
       signal,
     );
@@ -2762,16 +2763,21 @@ const processCustomWebhookMessage$ = command(
   },
 );
 
-async function storeUnaddressedOfficialMessage(args: {
-  readonly db: Db;
-  readonly userLink:
-    | { readonly id: string; readonly orgId: string }
-    | null
-    | undefined;
-  readonly chatId: string;
-  readonly message: TelegramMessage;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function storeUnaddressedOfficialMessage(
+  args: {
+    readonly db: Db;
+    readonly userLink:
+      | {
+          readonly id: string;
+          readonly orgId: string;
+        }
+      | null
+      | undefined;
+    readonly chatId: string;
+    readonly message: TelegramMessage;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (!args.userLink) {
     return;
   }
@@ -2785,7 +2791,7 @@ async function storeUnaddressedOfficialMessage(args: {
     chatId: args.chatId,
     message: args.message,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 const processOfficialWebhookMessage$ = command(
@@ -2838,13 +2844,15 @@ const processOfficialWebhookMessage$ = command(
       hasBotMention(args.message, config.botUsername) ||
       isTelegramReplyToBotUsername(args.message, config.botUsername);
     if (!isAddressed) {
-      await storeUnaddressedOfficialMessage({
-        db,
-        userLink,
-        chatId,
-        message: args.message,
+      await storeUnaddressedOfficialMessage(
+        {
+          db,
+          userLink,
+          chatId,
+          message: args.message,
+        },
         signal,
-      });
+      );
       return;
     }
 

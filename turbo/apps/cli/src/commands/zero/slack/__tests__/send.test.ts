@@ -1,5 +1,5 @@
 /**
- * Tests for zero slack message send command
+ * Tests for okou slack message send command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -14,9 +14,9 @@ import { sendCommand } from "../message/send";
 import chalk from "chalk";
 
 const SLACK_MESSAGE_URL =
-  "http://localhost:3000/api/zero/integrations/slack/message";
+  "http://localhost:3000/api/okou/integrations/slack/message";
 
-describe("zero slack message send command", () => {
+describe("okou slack message send command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -28,7 +28,7 @@ describe("zero slack message send command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   describe("help text", () => {

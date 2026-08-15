@@ -9,7 +9,7 @@ use std::time::Duration;
 const EVENT_MESSAGE: &str = "quoted \"message\" with slash \\\\ and newline\n你好 🚀";
 
 #[tokio::test]
-async fn ordinary_cli_sends_a_no_backlog_event_without_collection_delay()
+async fn claude_code_sends_a_no_backlog_event_without_collection_delay()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock_cli = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;

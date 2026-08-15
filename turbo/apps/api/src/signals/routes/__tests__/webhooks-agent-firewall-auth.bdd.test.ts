@@ -1,21 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  DecryptCommand,
-  type DecryptCommandOutput,
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-} from "@aws-sdk/client-kms";
 import { HttpResponse, http } from "msw";
 import { delay } from "signal-timers";
 import { describe, expect, it, onTestFinished } from "vitest";
 
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import {
   setSecretKmsClientForTests,
   type SecretKmsClient,
+  type SecretKmsDataKey,
+  type SecretKmsGenerateDataKeyRequest,
 } from "../../../lib/secret-kms-client";
 import { now } from "../../../lib/time";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
@@ -111,36 +107,30 @@ function gateFirstStoredSecretDecrypt(): {
   };
   onTestFinished(release);
 
-  async function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  async function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  async function send(
-    command: GenerateDataKeyCommand | DecryptCommand,
-  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
-    if (command instanceof GenerateDataKeyCommand) {
-      return {
-        $metadata: {},
-        KeyId: command.input.KeyId,
-        CiphertextBlob: Buffer.from(
-          `encrypted-data-key:${command.input.KeyId}`,
+  const client: SecretKmsClient = {
+    generateDataKey(
+      request: SecretKmsGenerateDataKeyRequest,
+    ): Promise<SecretKmsDataKey> {
+      return Promise.resolve({
+        keyId: request.keyId,
+        plaintext: TEST_DATA_KEY,
+        encryptedDataKey: Buffer.from(
+          `encrypted-data-key:${request.keyId}`,
           "utf8",
         ),
-        Plaintext: TEST_DATA_KEY,
-      };
-    }
-
-    decryptCalls += 1;
-    // The encrypted request payload is first. The second decrypt starts after
-    // the connector credential SELECT has captured its statement snapshot.
-    if (decryptCalls === 2) {
-      started.resolve(undefined);
-      await resume.promise;
-    }
-    return { $metadata: {}, Plaintext: TEST_DATA_KEY };
-  }
-
-  const client: SecretKmsClient = { send };
+      });
+    },
+    async decrypt(): Promise<Uint8Array> {
+      decryptCalls += 1;
+      // The encrypted request payload is first. The second decrypt starts after
+      // the connector credential SELECT has captured its statement snapshot.
+      if (decryptCalls === 2) {
+        started.resolve(undefined);
+        await resume.promise;
+      }
+      return TEST_DATA_KEY;
+    },
+  };
   setSecretKmsClientForTests(client);
   return { started: started.promise, release };
 }
@@ -279,6 +269,52 @@ describe("FW-2: template resolution without connector refresh", () => {
     expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
   });
 
+  it("uses pinned routing variables and current auth-only variables for builtin connectors", async () => {
+    const fw = createFirewallApi(context);
+    const connectorsApi = createConnectorBddApi(context);
+    const { actor, headers } = await firewallRun();
+    await connectorsApi.connectManualGrant(actor, "jira", "api-token", {
+      apiToken: "current-jira-token",
+      domain: "current.atlassian.net",
+      email: "current@example.test",
+    });
+    const body = {
+      encryptedSecrets: fw.encryptedSecretsBody({}),
+      authHeaders: {
+        "X-Domain": varTemplate("JIRA_DOMAIN"),
+        "X-Email": varTemplate("JIRA_EMAIL"),
+      },
+      vars: {
+        JIRA_DOMAIN: "run-start.atlassian.net",
+        JIRA_EMAIL: "run-start@example.test",
+      },
+      matchedFirewall: {
+        name: "jira",
+        apiId: "jira:0",
+        connectorSlug: "jira" as const,
+        routingVariables: {
+          JIRA_DOMAIN: "run-start.atlassian.net",
+        },
+      },
+    };
+
+    const resolved = await fw.requestFirewallAuth(headers, body, [200]);
+    if (resolved.status !== 200) {
+      throw new Error("Expected builtin connector auth resolution to succeed");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      "X-Domain": "run-start.atlassian.net",
+      "X-Email": "current@example.test",
+    });
+
+    await connectorsApi.deleteConnectorBySlug(actor, "jira");
+    const disconnected = await fw.requestFirewallAuth(headers, body, [424]);
+    if (disconnected.status !== 424) {
+      throw new Error("Expected disconnected builtin connector auth to fail");
+    }
+    expect(disconnected.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+  });
+
   it("passes literals through query templates and keeps basic-literal templates opaque", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();
@@ -400,6 +436,54 @@ describe("FW-3: billable firewall lease", () => {
       throw new Error("Expected pro-suspend billable auth to be denied");
     }
     expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("does not refresh an expired connector when billable auth is denied", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "stale-access",
+      refreshToken: "refresh-1",
+      expiresIn: -60,
+    });
+    let refreshRequests = 0;
+    fw.mockTestOauthTokenRefresh(() => {
+      refreshRequests += 1;
+      return fw.oauthTokenResponse({
+        accessToken: "should-not-refresh",
+        expiresIn: 3600,
+      });
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected firewall actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 20_000,
+    });
+
+    const denied = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({
+          TEST_OAUTH_TOKEN: "stale-access",
+        }),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+        },
+        secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+        firewallBillable: true,
+      },
+      [402],
+    );
+    if (denied.status !== 402) {
+      throw new Error("Expected billable connector auth to be denied");
+    }
+    expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(refreshRequests).toBe(0);
   });
 
   it("bounds billable auth expiry by the credit authorization lease", async () => {
@@ -776,9 +860,6 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, headers } = await firewallRun();
     context.mocks.ably.publish.mockResolvedValue(undefined);
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.AwsConnector]: true,
-    });
     const oldCredentials = {
       accessKeyId: "old-aws-access-key-id",
       secretAccessKey: "old-aws-secret-access-key",
@@ -840,7 +921,6 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     });
 
     await connectors.deleteConnectorBySlug(actor, "aws");
-    await connectors.deleteFeatureSwitches(actor);
   });
 
   it("classifies invalid_grant refresh failures as reconnect-required and recovers", async () => {

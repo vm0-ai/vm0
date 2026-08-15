@@ -1,5 +1,5 @@
 /**
- * Tests for zero chat rename command
+ * Tests for okou chat rename command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -16,10 +16,10 @@ import { zeroChatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
-const RENAME_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/rename`;
-const OTHER_RENAME_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/rename`;
+const RENAME_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/rename`;
+const OTHER_RENAME_URL = `http://localhost:3000/api/okou/chat-threads/${OTHER_THREAD_ID}/rename`;
 
-describe("zero chat rename command", () => {
+describe("okou chat rename command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -31,8 +31,8 @@ describe("zero chat rename command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", THREAD_ID);
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
   afterEach(() => {
@@ -97,7 +97,7 @@ describe("zero chat rename command", () => {
   });
 
   it("renames --thread instead of the current chat thread", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.post(OTHER_RENAME_URL, async ({ request }) => {
         await expect(request.json()).resolves.toStrictEqual({
@@ -133,12 +133,12 @@ describe("zero chat rename command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("Title is required");
-    expect(stderr).toContain('Run: zero chat rename "New title"');
+    expect(stderr).toContain('Run: okou chat rename "New title"');
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("requires ZERO_CHAT_THREAD_ID from the current web chat", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+  it("requires OKOU_CHAT_THREAD_ID from the current web chat", async () => {
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
 
     await expect(async () => {
       await zeroChatCommand.parseAsync([
@@ -150,7 +150,7 @@ describe("zero chat rename command", () => {
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain("ZERO_CHAT_THREAD_ID is not set");
+    expect(stderr).toContain("OKOU_CHAT_THREAD_ID is not set");
     expect(stderr).toContain("Pass --thread <thread-id>");
     expect(mockExit).toHaveBeenCalledWith(1);
   });

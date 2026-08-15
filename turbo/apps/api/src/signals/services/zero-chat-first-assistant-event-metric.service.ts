@@ -1,5 +1,5 @@
-import { elapsedSinceApiStartMs } from "@vm0/api-contracts/contracts/runners";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { elapsedSinceApiStartMs } from "@okouai/api-contracts/contracts/runners";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -7,8 +7,9 @@ import { waitUntil } from "../context/wait-until";
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { tapError } from "../utils";
+import { writeRunMetadata } from "./agent-run-metadata-write.service";
 
 const L = logger("api:zero:chat-first-assistant-message-metric");
 
@@ -31,21 +32,20 @@ async function recordFirstAssistantEventAcknowledgement(args: {
   readonly runId: string;
   readonly acknowledgedAt: number;
 }): Promise<void> {
-  const [claimed] = await args.db
-    .update(zeroRuns)
-    .set({
+  const firstAssistantClaimWhere = and(
+    eq(agentRuns.id, args.runId),
+    isNotNull(agentRuns.apiStartedAt),
+    isNull(agentRuns.firstAssistantEventAcknowledgedAt),
+  );
+  if (!firstAssistantClaimWhere) {
+    throw new Error("First assistant acknowledgement predicate is empty");
+  }
+  const [claimed] = await writeRunMetadata(args.db, {
+    patch: {
       firstAssistantEventAcknowledgedAt: new Date(args.acknowledgedAt),
-    })
-    .where(
-      and(
-        eq(zeroRuns.id, args.runId),
-        isNotNull(zeroRuns.apiStartedAt),
-        isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
-      ),
-    )
-    .returning({
-      apiStartedAt: zeroRuns.apiStartedAt,
-    });
+    },
+    where: firstAssistantClaimWhere,
+  });
   if (!claimed?.apiStartedAt) {
     return;
   }
@@ -83,20 +83,10 @@ export function recordFirstAssistantEventAcknowledgementMetric(args: {
 export async function publishFirstAssistantEventCreatedSignalSafely(args: {
   readonly threadId: string;
   readonly userId: string;
-  readonly runId: string;
 }): Promise<void> {
-  await tapError(
-    publishUserSignal(
-      [args.userId],
-      `chatThreadMessageCreated:${args.threadId}`,
-    ),
-    (error) => {
-      L.warn("Failed to publish first assistant message created signal", {
-        runId: args.runId,
-        threadId: args.threadId,
-        error,
-      });
-    },
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadMessageCreated:${args.threadId}`,
   );
 }
 
@@ -134,11 +124,5 @@ export async function publishFirstAssistantEventCreatedSafely(args: {
   readonly userId: string;
   readonly runId: string;
 }): Promise<void> {
-  await tapError(publishFirstAssistantEventCreated(args), (error) => {
-    L.warn("Failed to publish first assistant message created signal", {
-      runId: args.runId,
-      threadId: args.threadId,
-      error,
-    });
-  });
+  await publishFirstAssistantEventCreated(args);
 }

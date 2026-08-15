@@ -1,11 +1,12 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
 import { mockNow } from "../../../lib/time";
@@ -17,10 +18,21 @@ import {
   createWorkflowsBddApi,
   mockNotionConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
-import { chatEventAutomationPart } from "./helpers/chat-event";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+import { webhooksNotionRoutes } from "../webhooks-notion";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...testWorkflowAutomationExecutionRoutes,
+  ...webhooksNotionRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -79,7 +91,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function workflowAutomationExecutionClient() {
@@ -323,17 +337,17 @@ async function postNotionWebhook(args: {
   readonly rawBody: string;
   readonly signature?: string;
 }): Promise<{ readonly status: number; readonly body: unknown }> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/notion",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(args.signature ? { "X-Notion-Signature": args.signature } : {}),
-      },
-      body: args.rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/notion", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(args.signature ? { "X-Notion-Signature": args.signature } : {}),
     },
-  );
+    body: args.rawBody,
+  });
   return { status: response.status, body: await response.json() };
 }
 
@@ -375,15 +389,11 @@ function record(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function notionEventContextFromPrompt(
-  appendSystemPrompt: string,
-): Record<string, unknown> {
-  const marker = "# This run's event\n";
-  const markerIndex = appendSystemPrompt.indexOf(marker);
+function notionEventContextFromPrompt(prompt: string): Record<string, unknown> {
+  const marker = "\nEvent data:\n";
+  const markerIndex = prompt.indexOf(marker);
   expect(markerIndex).toBeGreaterThanOrEqual(0);
-  const parsed: unknown = JSON.parse(
-    appendSystemPrompt.slice(markerIndex + marker.length),
-  );
+  const parsed: unknown = JSON.parse(prompt.slice(markerIndex + marker.length));
   return record(parsed, "Notion event context");
 }
 
@@ -499,6 +509,7 @@ describe("POST /api/webhooks/notion", () => {
   });
 
   it("verifies, signs, de-duplicates, and refreshes pending child page events", async () => {
+    const runnerGroup = runsApi.configureRunnerGroup();
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
     await enableNotionWorkflowAutomations(fixture);
@@ -594,9 +605,34 @@ describe("POST /api/webhooks/notion", () => {
         duplicates: 1,
       },
     });
+
+    configureNotionChildPageMock(entities);
+    mockNow(new Date("2026-07-06T12:20:00.000Z"));
+    const executed = await executeDueWorkflowAutomations(created.body.id);
+    expect(executed.body).toStrictEqual({
+      success: true,
+      executed: 1,
+      skipped: 0,
+    });
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the Notion automation to bind a chat thread");
+    }
+    const messages = await wf.readThreadEvents(created.body.chatThreadId);
+    const workflowMessage = messages.find((message) => {
+      return message.eventType === "input.prompt";
+    });
+    if (!workflowMessage?.runId) {
+      throw new Error("Expected a dispatched Notion child page event");
+    }
+    expect(chatEventDisplayText(workflowMessage)).toBe(
+      'Notion page "Launch notes" was created under the configured parent page.',
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    await runsApi.claimRunnerJob(workflowMessage.runId);
   });
 
   it("enqueues and refreshes pending database item events", async () => {
+    const runnerGroup = runsApi.configureRunnerGroup();
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
     await enableNotionWorkflowAutomations(fixture);
@@ -675,6 +711,38 @@ describe("POST /api/webhooks/notion", () => {
         duplicates: 0,
       },
     });
+
+    configureNotionChildPageMock(
+      entities,
+      {
+        type: "data_source_id",
+        data_source_id: entities.dataSourceId,
+        database_id: entities.databaseId,
+      },
+      { title: "Bug Bash item" },
+    );
+    mockNow(new Date("2026-07-06T12:20:00.000Z"));
+    const executed = await executeDueWorkflowAutomations(created.body.id);
+    expect(executed.body).toStrictEqual({
+      success: true,
+      executed: 1,
+      skipped: 0,
+    });
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the Notion automation to bind a chat thread");
+    }
+    const messages = await wf.readThreadEvents(created.body.chatThreadId);
+    const workflowMessage = messages.find((message) => {
+      return message.eventType === "input.prompt";
+    });
+    if (!workflowMessage?.runId) {
+      throw new Error("Expected a dispatched Notion database item event");
+    }
+    expect(chatEventDisplayText(workflowMessage)).toBe(
+      'Notion item "Bug Bash item" was created in the configured database.',
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    await runsApi.claimRunnerJob(workflowMessage.runId);
   });
 
   it("enqueues and debounces page content updated events for a page scope", async () => {
@@ -851,8 +919,8 @@ describe("POST /api/webhooks/notion", () => {
       skipped: 0,
     });
 
-    // The run landed in the automation's bound chat thread with the friendly
-    // Notion brief, linked to the created run.
+    // The run landed in the automation's bound chat thread with the public
+    // user-facing message, linked to the created run.
     const messages = await wf.readThreadEvents(threadId);
     const workflowMessage = messages.find((message) => {
       return (
@@ -863,19 +931,15 @@ describe("POST /api/webhooks/notion", () => {
     if (!workflowMessage?.runId) {
       throw new Error("Expected a dispatched Notion workflow run message");
     }
-    expect(chatEventAutomationPart(workflowMessage)?.automationBrief).toBe(
-      'Notion page content updated "Launch notes v2" in Launch notes v2',
+    expect(chatEventDisplayText(workflowMessage)).toBe(
+      'Notion page "Launch notes v2" was updated.',
     );
 
     // The runner claim exposes the persisted event context: latest page
     // title, properties, and no page body/content.
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(workflowMessage.runId);
-    const appendSystemPrompt = claim.appendSystemPrompt;
-    if (typeof appendSystemPrompt !== "string") {
-      throw new Error("Expected appendSystemPrompt on the claimed run");
-    }
-    const eventContext = notionEventContextFromPrompt(appendSystemPrompt);
+    const eventContext = notionEventContextFromPrompt(claim.prompt);
     const page = record(eventContext.page, "Notion page");
     const properties = record(page.properties, "Notion page properties");
     expect(eventContext).toMatchObject({
@@ -899,6 +963,8 @@ describe("POST /api/webhooks/notion", () => {
     expect(eventContext).not.toHaveProperty("content");
     expect(page).not.toHaveProperty("body");
     expect(page).not.toHaveProperty("content");
+    expect(claim.appendSystemPrompt).toContain("# Agent Identity");
+    expect(claim.appendSystemPrompt).not.toContain("# Current context");
   });
 
   it("enqueues page content updated events for a database scope", async () => {

@@ -1,14 +1,14 @@
 import { command, computed } from "ccstate";
-import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { zeroSlackOauthContract } from "@okouai/api-contracts/contracts/zero-slack-oauth";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { eq } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   exchangeSlackOAuthCode,
   exchangeSlackOAuthCodeForUser,
@@ -29,7 +29,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
-} from "./oauth-web-origin";
+} from "../../lib/oauth-origin";
 
 const L = logger("SlackOAuth");
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";

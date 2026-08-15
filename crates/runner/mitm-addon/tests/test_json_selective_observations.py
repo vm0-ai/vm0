@@ -4,8 +4,10 @@ import json
 import sys
 from types import FrameType
 
+import pytest
+
 from usage import json_selective
-from usage.json_selective import JsonSelectiveExtractor, ScalarField
+from usage.json_selective import FIRST_ARRAY_ELEMENT, JsonSelectiveExtractor, ScalarField
 
 _COMMON_SCALAR_FIELDS = {
     ("id",): ScalarField("string"),
@@ -287,6 +289,50 @@ def test_array_element_object_fields_do_not_match_object_paths():
     assert result.wildcard_array_counts == {}
 
 
+def test_selects_only_first_array_element_across_chunks():
+    prompt_tokens_path = (
+        "choices",
+        FIRST_ARRAY_ELEMENT,
+        "usage",
+        "prompt_tokens",
+    )
+    usage_path = ("choices", FIRST_ARRAY_ELEMENT, "usage")
+    payload = b'{"choices":[{"usage":{"prompt_tokens":7}},{"usage":{"prompt_tokens":99}}]}'
+
+    for chunk_size in (1, 2, 5, len(payload)):
+        extractor = JsonSelectiveExtractor(
+            scalar_fields={prompt_tokens_path: ScalarField("int")},
+            object_presence_paths={usage_path},
+            value_presence_paths={usage_path},
+        )
+        for offset in range(0, len(payload), chunk_size):
+            extractor.feed(payload[offset : offset + chunk_size])
+        result = extractor.finish()
+
+        assert result.complete is True
+        assert result.values == {prompt_tokens_path: 7}
+        assert result.object_present == {usage_path}
+        assert result.value_present == {usage_path}
+
+
+def test_first_array_element_marker_cannot_match_an_object_key():
+    prompt_tokens_path = (
+        "choices",
+        FIRST_ARRAY_ELEMENT,
+        "usage",
+        "prompt_tokens",
+    )
+    extractor = JsonSelectiveExtractor(scalar_fields={prompt_tokens_path: ScalarField("int")})
+
+    extractor.feed(
+        b'{"choices":{"\\u0000__vm0_json_array_element__":{"usage":{"prompt_tokens":99}}}}'
+    )
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {}
+
+
 def test_array_value_fields_do_not_match_object_paths():
     extractor = JsonSelectiveExtractor(
         scalar_fields={
@@ -390,6 +436,32 @@ def test_records_object_presence():
 
     assert result.complete is True
     assert result.object_present == {("data",)}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [b"null", b"false", b"0", b'"text"', b"[]", b"{}"],
+)
+def test_records_any_selected_value_presence(value):
+    extractor = JsonSelectiveExtractor(value_presence_paths={("usage",)})
+
+    extractor.feed(b'{"usage":' + value + b"}")
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.value_present == {("usage",)}
+
+
+def test_duplicate_parent_clears_descendant_value_presence():
+    extractor = JsonSelectiveExtractor(
+        value_presence_paths={("usage",), ("usage", "cached_tokens")}
+    )
+
+    extractor.feed(b'{"usage":{"cached_tokens":7},"usage":null}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.value_present == {("usage",)}
 
 
 def test_rejects_excessive_depth():

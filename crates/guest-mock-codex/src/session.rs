@@ -52,20 +52,6 @@ pub fn build_session_path(
         .join(format!("{thread_id}.jsonl")))
 }
 
-pub(crate) fn persist_new_session(
-    codex_home: &Path,
-    today: NaiveDate,
-    thread_id: &str,
-    events: &[Value],
-) -> io::Result<()> {
-    validate_thread_id(thread_id)?;
-    let _lock = lock_session(codex_home, thread_id)?;
-    let path = build_session_path(codex_home, today, thread_id)?;
-    let mut buf = Vec::new();
-    append_events_to_jsonl_bytes(&mut buf, events)?;
-    write_session_bytes_in_store(codex_home, &path, buf)
-}
-
 pub(crate) fn persist_resume_session(
     codex_home: &Path,
     today: NaiveDate,
@@ -99,22 +85,7 @@ fn invalid_thread_id_error(thread_id: &str) -> io::Error {
     )
 }
 
-/// Write events as one JSON object per line to the writer, flushing at end.
-pub fn emit_events<W: Write>(out: &mut W, events: &[Value]) -> io::Result<()> {
-    for ev in events {
-        writeln!(out, "{ev}")?;
-    }
-    out.flush()
-}
-
-/// Encode events as JSONL and atomically write to `path`, creating parent
-/// directories as needed.
-pub fn write_session_file(path: &Path, events: &[Value]) -> io::Result<()> {
-    let mut buf = Vec::new();
-    append_events_to_jsonl_bytes(&mut buf, events)?;
-    write_session_bytes(path, buf)
-}
-
+#[cfg(not(unix))]
 fn write_session_bytes(path: &Path, buf: Vec<u8>) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -164,15 +135,7 @@ pub fn read_session_file(path: &Path) -> io::Result<Vec<Value>> {
     Ok(out)
 }
 
-/// Append `new_events` to an existing session file by preserving existing bytes
-/// and atomically renaming. If the file does not exist, falls back to a fresh
-/// write so the resume call does not fail.
-pub fn append_session_file(path: &Path, new_events: &[Value]) -> io::Result<()> {
-    let mut existing = read_session_bytes_for_append(path)?;
-    append_events_to_jsonl_bytes(&mut existing, new_events)?;
-    write_session_bytes(path, existing)
-}
-
+#[cfg(not(unix))]
 fn read_session_bytes_for_append(path: &Path) -> io::Result<Vec<u8>> {
     match path.symlink_metadata() {
         Ok(metadata) if metadata.file_type().is_file() => fs::read(path),
@@ -232,6 +195,7 @@ fn write_session_bytes_in_store(_codex_home: &Path, path: &Path, buf: Vec<u8>) -
     write_session_bytes(path, buf)
 }
 
+#[cfg(not(unix))]
 fn ensure_final_session_file_usable(path: &Path) -> io::Result<()> {
     match path.symlink_metadata() {
         Ok(metadata) if metadata.file_type().is_file() => Ok(()),
@@ -241,6 +205,7 @@ fn ensure_final_session_file_usable(path: &Path) -> io::Result<()> {
     }
 }
 
+#[cfg(not(unix))]
 fn create_unique_path_temp_file(
     parent: &Path,
     final_name: &OsStr,
@@ -688,7 +653,6 @@ fn lock_session(_codex_home: &Path, _thread_id: &str) -> io::Result<SessionLock>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::build_events;
 
     #[test]
     fn build_session_path_zero_pads() {
@@ -712,53 +676,5 @@ mod tests {
             p,
             PathBuf::from(format!("/var/codex/sessions/2026/12/31/{thread_id}.jsonl"))
         );
-    }
-
-    #[test]
-    fn emit_events_writes_jsonl() {
-        let mut buf = Vec::new();
-        let evs = build_events("id-1", "echo");
-        emit_events(&mut buf, &evs).unwrap();
-        let text = String::from_utf8(buf).unwrap();
-        let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines.len(), 3);
-        for line in lines {
-            let _: Value = serde_json::from_str(line).unwrap();
-        }
-    }
-
-    #[test]
-    fn write_then_read_roundtrip() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nested/deep/file.jsonl");
-        let evs = build_events("rt-1", "hi");
-        write_session_file(&path, &evs).unwrap();
-        let read_back = read_session_file(&path).unwrap();
-        assert_eq!(read_back.len(), 3);
-        assert_eq!(read_back[0]["thread_id"], "rt-1");
-    }
-
-    #[test]
-    fn append_to_missing_file_creates_it() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("appended.jsonl");
-        let evs = build_events("a-1", "first");
-        append_session_file(&path, &evs).unwrap();
-        let read_back = read_session_file(&path).unwrap();
-        assert_eq!(read_back.len(), 3);
-    }
-
-    #[test]
-    fn append_to_existing_file_extends() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("extend.jsonl");
-        let first = build_events("e-1", "turn-1");
-        write_session_file(&path, &first).unwrap();
-        let second = build_events("e-1", "turn-2");
-        append_session_file(&path, &second).unwrap();
-        let read_back = read_session_file(&path).unwrap();
-        assert_eq!(read_back.len(), 6);
-        assert_eq!(read_back[1]["item"]["text"], "turn-1");
-        assert_eq!(read_back[4]["item"]["text"], "turn-2");
     }
 }

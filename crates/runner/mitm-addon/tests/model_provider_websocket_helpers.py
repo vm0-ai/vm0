@@ -100,6 +100,12 @@ def feed_websocket_server_message(flow: http.HTTPFlow, content: bytes) -> None:
     mitm_addon.websocket_message(flow)
 
 
+def feed_websocket_client_message(flow: http.HTTPFlow, content: bytes) -> None:
+    _assert_model_websocket_usage_started(flow)
+    set_websocket_message(flow, from_client=True, content=content)
+    mitm_addon.websocket_message(flow)
+
+
 def feed_websocket_server_text_message(flow: http.HTTPFlow, content: str) -> None:
     _assert_model_websocket_usage_started(flow)
     set_websocket_message(flow, from_client=False, content=content.encode())

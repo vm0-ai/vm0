@@ -1,55 +1,63 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { command, computed } from "ccstate";
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getProviderRuntimeModel,
   getVm0Vendor,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   testTelegramStateContract,
   type TestTelegramStateActionBody,
-} from "@vm0/api-contracts/contracts/test-telegram-state";
+} from "@okouai/api-contracts/contracts/test-telegram-state";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-
+} from "@okouai/db/schema/agent-compose";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread-route";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramMessages } from "@okouai/db/schema/telegram-message";
+import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
+import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
+import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { pgTextDecoder } from "../../lib/db-structured-result";
-import { optionalEnv } from "../../lib/env";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import {
+  normalizeRunMetadata,
+  writeRunMetadata,
+} from "../services/agent-run-metadata-write.service";
 import { tapError } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const testTelegramStateQuery$ = queryOf(testTelegramStateContract.get);
 const deleteTestTelegramStateQuery$ = queryOf(testTelegramStateContract.delete);
@@ -66,7 +74,7 @@ const TELEGRAM_E2E_FIXTURES = {
   webhookSecret: "e2e-telegram-webhook-secret",
 } as const;
 
-type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type StarterGrantTx = Tx;
 
 interface SeedDefaultAgentInput {
   readonly orgId: string;
@@ -95,22 +103,6 @@ interface TelegramPostFixtureSeed {
   readonly telegramBotId: string;
   readonly webhookSecret: string;
   readonly name: string;
-}
-
-function resolveTelegramApiUrlForDiagnostics(): string | null {
-  const telegramApiUrl = optionalEnv("TELEGRAM_API_URL");
-  if (telegramApiUrl) {
-    return telegramApiUrl;
-  }
-
-  const mockFlag = optionalEnv("E2E_TELEGRAM_MOCK_ENABLED");
-  const mockEnabled = mockFlag === "1" || mockFlag === "true";
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (mockEnabled && vercelUrl) {
-    return `https://${vercelUrl}/api/test/telegram-mock/bot`;
-  }
-
-  return null;
 }
 
 async function loadInstallation(db: ReadonlyDb, botId: string) {
@@ -152,8 +144,8 @@ function loadRecentRuns(db: ReadonlyDb, orgId: string | undefined) {
       id: agentRuns.id,
       status: agentRuns.status,
       createdAt: agentRuns.createdAt,
-      triggerSource: zeroRuns.triggerSource,
-      chatThreadId: zeroRuns.chatThreadId,
+      triggerSource: agentRuns.triggerSource,
+      chatThreadId: agentRuns.chatThreadId,
       userId: agentRuns.userId,
       error: agentRuns.error,
       promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
@@ -161,7 +153,6 @@ function loadRecentRuns(db: ReadonlyDb, orgId: string | undefined) {
       ),
     })
     .from(agentRuns)
-    .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .where(eq(agentRuns.orgId, orgId))
     .orderBy(desc(agentRuns.createdAt))
     .limit(50);
@@ -322,20 +313,6 @@ async function loadChatThreadRoutes(db: ReadonlyDb, botId: string) {
       .where(eq(telegramInstallations.telegramBotId, botId)),
   ]);
   return [...customRoutes, ...officialRoutes];
-}
-
-function loadMockCalls(db: ReadonlyDb) {
-  return db
-    .select({
-      method: e2eTelegramMockCallLog.method,
-      botToken: e2eTelegramMockCallLog.botToken,
-      chatId: e2eTelegramMockCallLog.chatId,
-      bodyJson: e2eTelegramMockCallLog.bodyJson,
-      createdAt: e2eTelegramMockCallLog.createdAt,
-    })
-    .from(e2eTelegramMockCallLog)
-    .orderBy(desc(e2eTelegramMockCallLog.createdAt))
-    .limit(50);
 }
 
 function readString(value: unknown): string | null {
@@ -730,10 +707,12 @@ async function updateRunForAction(
   if (!runId) {
     return actionBadRequest("run_id is required");
   }
-  await db
-    .update(zeroRuns)
-    .set({ selectedModel: readActionNullableString(body, "selected_model") })
-    .where(eq(zeroRuns.id, runId));
+  await writeRunMetadata(db, {
+    patch: {
+      selectedModel: readActionNullableString(body, "selected_model") ?? null,
+    },
+    where: eq(agentRuns.id, runId),
+  });
   signal.throwIfAborted();
   return actionOk();
 }
@@ -751,15 +730,14 @@ async function getRunForAction(
     .select({
       sessionId: agentRuns.sessionId,
       conversationId: agentSessions.conversationId,
-      selectedModel: zeroRuns.selectedModel,
-      chatThreadId: zeroRuns.chatThreadId,
+      selectedModel: agentRuns.selectedModel,
+      chatThreadId: agentRuns.chatThreadId,
       chatThreadAgentSessionId: chatThreads.agentSessionId,
       chatThreadAgentSessionRunId: chatThreads.agentSessionRunId,
     })
     .from(agentRuns)
-    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .leftJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .leftJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   signal.throwIfAborted();
@@ -898,35 +876,26 @@ async function seedTelegramPostModelKeys(
   seed: TelegramPostFixtureSeed,
   signal: AbortSignal,
 ): Promise<void> {
-  await db.insert(vm0ApiKeys).values([
-    {
-      vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      model: getProviderRuntimeModel(
-        "vm0",
-        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      ),
-      apiKey: `vm0-key-default-${seed.composeId}`,
-      label: seed.composeId,
-    },
-    {
-      vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: `vm0-key-anthropic-${seed.composeId}`,
-      label: seed.composeId,
-    },
-    {
-      vendor: "deepseek",
-      model: "deepseek-v4-pro",
-      apiKey: `vm0-key-deepseek-${seed.composeId}`,
-      label: seed.composeId,
-    },
-    {
-      vendor: "moonshot",
-      model: "kimi-k2.7-code",
-      apiKey: `vm0-key-moonshot-${seed.composeId}`,
-      label: seed.composeId,
-    },
-  ]);
+  await db
+    .insert(vm0ApiKeys)
+    .values([
+      {
+        vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+        apiKey: `vm0-key-default-${seed.composeId}`,
+        label: seed.composeId,
+      },
+      {
+        vendor: "anthropic",
+        apiKey: `vm0-key-anthropic-${seed.composeId}`,
+        label: seed.composeId,
+      },
+      {
+        vendor: "moonshot",
+        apiKey: `vm0-key-moonshot-${seed.composeId}`,
+        label: seed.composeId,
+      },
+    ])
+    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
   signal.throwIfAborted();
 }
 
@@ -1072,8 +1041,6 @@ async function deleteTelegramPostFixtureForAction(
       .delete(agentRunCallbacks)
       .where(inArray(agentRunCallbacks.runId, runIds));
     signal.throwIfAborted();
-    await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-    signal.throwIfAborted();
     await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
     signal.throwIfAborted();
   }
@@ -1180,14 +1147,14 @@ async function getTelegramPostRunStateForAction(
   const [[zeroRun], callbacks, [job]] = await Promise.all([
     db
       .select({
-        id: zeroRuns.id,
-        triggerSource: zeroRuns.triggerSource,
-        chatThreadId: zeroRuns.chatThreadId,
-        modelProvider: zeroRuns.modelProvider,
-        selectedModel: zeroRuns.selectedModel,
+        id: agentRuns.id,
+        triggerSource: agentRuns.triggerSource,
+        chatThreadId: agentRuns.chatThreadId,
+        modelProvider: agentRuns.modelProvider,
+        selectedModel: agentRuns.selectedModel,
       })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, run.id))
+      .from(agentRuns)
+      .where(and(eq(agentRuns.id, run.id), isNotNull(agentRuns.triggerSource)))
       .limit(1),
     db
       .select({
@@ -1367,6 +1334,7 @@ async function seedRunningRunForAction(
     return actionBadRequest("failed to seed agent session");
   }
   const startedAt = nowDate();
+  const metadata = normalizeRunMetadata({ triggerSource: "telegram" });
   await db.insert(agentRuns).values({
     userId: required.user_id!,
     orgId: required.org_id!,
@@ -1376,6 +1344,7 @@ async function seedRunningRunForAction(
     prompt: "existing running telegram run",
     startedAt,
     lastHeartbeatAt: startedAt,
+    ...metadata,
   });
   signal.throwIfAborted();
   return actionOk({ agent_session_id: sessionId });
@@ -1410,6 +1379,11 @@ async function seedCompletedRunForAction(
   if (!sessionId) {
     return actionBadRequest("failed to seed agent session");
   }
+  const metadata = normalizeRunMetadata({
+    triggerSource: "telegram",
+    modelProvider: readActionNullableString(body, "model_provider"),
+    selectedModel: required.selected_model!,
+  });
   const [run] = await db
     .insert(agentRuns)
     .values({
@@ -1422,19 +1396,13 @@ async function seedCompletedRunForAction(
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
       startedAt: new Date("2026-01-01T00:00:00.000Z"),
       completedAt: new Date("2026-01-01T00:01:00.000Z"),
+      ...metadata,
     })
     .returning({ id: agentRuns.id });
   signal.throwIfAborted();
   if (!run) {
     return actionBadRequest("failed to seed completed run");
   }
-  await db.insert(zeroRuns).values({
-    id: run.id,
-    triggerSource: "telegram",
-    modelProvider: readActionNullableString(body, "model_provider") ?? null,
-    selectedModel: required.selected_model!,
-  });
-  signal.throwIfAborted();
   return actionOk({ agent_session_id: sessionId, run_id: run.id });
 }
 
@@ -1454,7 +1422,7 @@ async function seedModelPoliciesForAction(
   await db.insert(orgModelPolicies).values([
     {
       orgId: required.org_id!,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       isDefault: true,
       defaultProviderType: "vm0",
       credentialScope: "org",
@@ -1463,7 +1431,7 @@ async function seedModelPoliciesForAction(
     },
     {
       orgId: required.org_id!,
-      model: "claude-opus-4-7",
+      model: "claude-opus-4-8",
       defaultProviderType: "vm0",
       credentialScope: "org",
       createdByUserId: required.user_id!,
@@ -1471,7 +1439,7 @@ async function seedModelPoliciesForAction(
     },
     {
       orgId: required.org_id!,
-      model: "deepseek-v4-pro",
+      model: "deepseek-v4-flash",
       defaultProviderType: "vm0",
       credentialScope: "org",
       createdByUserId: required.user_id!,
@@ -1479,20 +1447,14 @@ async function seedModelPoliciesForAction(
     },
   ]);
   signal.throwIfAborted();
-  await db.insert(vm0ApiKeys).values([
-    {
+  await db
+    .insert(vm0ApiKeys)
+    .values({
       vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: "vm0-key-claude-sonnet-4-6",
+      apiKey: "vm0-key-anthropic",
       label: required.compose_id!,
-    },
-    {
-      vendor: "anthropic",
-      model: "claude-opus-4-7",
-      apiKey: "vm0-key-claude-opus-4-7",
-      label: required.compose_id!,
-    },
-  ]);
+    })
+    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
   signal.throwIfAborted();
   await db
     .insert(orgMembersMetadata)
@@ -1862,10 +1824,7 @@ const getTestTelegramState$ = computed(async (get) => {
     loadOfficialMessages(db, installation?.orgId),
     loadChatThreadRoutes(db, query.bot_id),
   ]);
-  const [composeVersion, mockCalls] = await Promise.all([
-    loadComposeVersion(db, compose?.headVersionId),
-    loadMockCalls(db),
-  ]);
+  const composeVersion = await loadComposeVersion(db, compose?.headVersionId);
 
   return {
     status: 200 as const,
@@ -1885,8 +1844,6 @@ const getTestTelegramState$ = computed(async (get) => {
             ),
           }
         : null,
-      resolved_telegram_api_url: resolveTelegramApiUrlForDiagnostics(),
-      mock_calls: mockCalls,
       messages,
       official_messages: officialMessages,
       routes,
@@ -2040,11 +1997,10 @@ const deleteTestTelegramState$ = command(
       const telegramAgentRuns = await db
         .select({ id: agentRuns.id })
         .from(agentRuns)
-        .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
         .where(
           and(
             eq(agentRuns.orgId, existing.orgId),
-            eq(zeroRuns.triggerSource, "telegram"),
+            eq(agentRuns.triggerSource, "telegram"),
           ),
         );
       signal.throwIfAborted();
@@ -2054,9 +2010,6 @@ const deleteTestTelegramState$ = command(
       });
 
       if (ids.length > 0) {
-        await db.delete(zeroRuns).where(inArray(zeroRuns.id, ids));
-        signal.throwIfAborted();
-
         await db.delete(agentRuns).where(inArray(agentRuns.id, ids));
         signal.throwIfAborted();
       }

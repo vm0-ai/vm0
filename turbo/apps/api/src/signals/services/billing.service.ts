@@ -1,11 +1,16 @@
 import { command, computed, type Computed } from "ccstate";
-import type { AutoRechargeConfig } from "@vm0/api-contracts/contracts/zero-billing";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import type { AutoRechargeConfig } from "@okouai/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
 import { eq } from "drizzle-orm";
 
-import { db$, writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
-import { getStripeClient } from "../external/stripe-client";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
+import { nowDate } from "../../lib/time";
+import {
+  ensurePaymentMethodPortalConfiguration,
+  getStripeClient,
+} from "../external/stripe-client";
+import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 export function autoRechargeConfig(
@@ -31,34 +36,60 @@ export function autoRechargeConfig(
   });
 }
 
-/**
- * Create a Stripe Billing Portal session for managing subscriptions.
- * Mirrors apps/web's `createBillingPortalSession`. Returns the portal URL.
- *
- * Throws if the org has no Stripe customer yet (defensive — web's
- * tests don't exercise this branch either; framework returns 500).
- */
+async function stripeCustomerIdForOrg(
+  db: ReadonlyDb,
+  orgId: string,
+): Promise<string | null> {
+  const [org] = await db
+    .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  if (org?.stripeCustomerId) {
+    return org.stripeCustomerId;
+  }
+
+  const [allowance] = await db
+    .select({
+      stripeCustomerId: orgUsageAllowanceEntitlements.stripeCustomerId,
+    })
+    .from(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, orgId))
+    .limit(1);
+  return allowance?.stripeCustomerId ?? null;
+}
+
+/** Create either a legacy billing or restricted payment-method portal. */
 export const createBillingPortalSession$ = command(
   async (
-    { get },
-    args: { readonly orgId: string; readonly returnUrl: string },
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly returnUrl: string;
+    },
     signal: AbortSignal,
   ): Promise<string> => {
     const db = get(db$);
-    const [org] = await db
-      .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, args.orgId))
-      .limit(1);
+    let stripeCustomerId = await stripeCustomerIdForOrg(db, args.orgId);
     signal.throwIfAborted();
 
-    if (!org?.stripeCustomerId) {
-      throw new Error("Org has no Stripe customer — subscribe first");
+    if (!stripeCustomerId) {
+      stripeCustomerId = await set(
+        getOrCreateStripeCustomer$,
+        { orgId: args.orgId },
+        signal,
+      );
+      signal.throwIfAborted();
     }
 
     const stripe = getStripeClient();
+    const portalConfigurationId =
+      await ensurePaymentMethodPortalConfiguration(signal);
+    signal.throwIfAborted();
+
     const session = await stripe.billingPortal.sessions.create({
-      customer: org.stripeCustomerId,
+      customer: stripeCustomerId,
+      configuration: portalConfigurationId,
       return_url: args.returnUrl,
     });
     signal.throwIfAborted();

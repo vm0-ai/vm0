@@ -1,0 +1,1 @@
+ALTER TABLE "usage_event" DROP COLUMN "gross_credits";

@@ -20,7 +20,7 @@ vi.mock("os", async (importOriginal) => {
   };
 });
 
-describe("zero banking command", () => {
+describe("okou banking command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -33,7 +33,7 @@ describe("zero banking command", () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
   });
 
   afterEach(async () => {
@@ -48,7 +48,7 @@ describe("zero banking command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/banking/transactions",
+        "http://localhost:3000/api/okou/banking/transactions",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -106,7 +106,7 @@ describe("zero banking command", () => {
 
   it("renders provider and account data in human output", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/banking/accounts", () => {
+      http.post("http://localhost:3000/api/okou/banking/accounts", () => {
         return HttpResponse.json({
           operation: "accounts",
           provider: "finicity",
@@ -133,7 +133,7 @@ describe("zero banking command", () => {
   });
 
   it("shows auth guidance when no token is available", async () => {
-    vi.stubEnv("ZERO_TOKEN", undefined);
+    vi.stubEnv("OKOU_TOKEN", undefined);
 
     await expect(
       zeroBankingCommand.parseAsync(["node", "cli", "accounts"]),
@@ -141,6 +141,6 @@ describe("zero banking command", () => {
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("Not authenticated");
-    expect(errors).toContain("Set ZERO_TOKEN to a valid run token");
+    expect(errors).toContain("Set OKOU_TOKEN to a valid run token");
   });
 });

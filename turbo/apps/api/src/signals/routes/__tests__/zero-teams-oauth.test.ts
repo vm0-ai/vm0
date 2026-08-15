@@ -1,18 +1,19 @@
 import { createStore } from "ccstate";
-import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
+import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { zeroTeamsOauthRoutes } from "../zero-teams-oauth";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import {
   installTeamsForTest,
   removeTeamsForTest,
@@ -20,6 +21,7 @@ import {
   teamsConnectFixture,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
+import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -37,7 +39,7 @@ async function appRequest(
   path: string,
   options: {
     readonly origin?: string;
-    readonly headers?: HeadersInit;
+    readonly headers?: RequestInit["headers"];
   } = {},
 ): Promise<Response> {
   const app = createAppWithRoutes({
@@ -82,7 +84,7 @@ function mockMicrosoftOAuth(args: {
   readonly tenantId: string;
   readonly aadObjectId: string;
   readonly displayName?: string;
-  readonly userPrincipalName?: string;
+  readonly userPrincipalName: string;
   readonly expectedRedirectUri?: string;
 }): void {
   server.use(
@@ -110,7 +112,7 @@ function mockMicrosoftOAuth(args: {
       return HttpResponse.json({
         id: args.aadObjectId,
         displayName: args.displayName ?? "Ada Lovelace",
-        userPrincipalName: args.userPrincipalName ?? "ada@example.com",
+        userPrincipalName: args.userPrincipalName,
         mail: null,
       });
     }),
@@ -213,6 +215,7 @@ describe("Teams OAuth API routes", () => {
     mockMicrosoftOAuth({
       tenantId: fixture.teamsTenantId,
       aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: fixture.teamsUserPrincipalName,
     });
 
     const response = await appRequest(
@@ -229,7 +232,9 @@ describe("Teams OAuth API routes", () => {
     );
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     const pendingStatus = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },
@@ -265,6 +270,7 @@ describe("Teams OAuth API routes", () => {
     mockMicrosoftOAuth({
       tenantId: fixture.teamsTenantId,
       aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: fixture.teamsUserPrincipalName,
     });
 
     const response = await appRequest(
@@ -281,7 +287,9 @@ describe("Teams OAuth API routes", () => {
     );
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     const status = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },
@@ -300,7 +308,9 @@ describe("Teams OAuth API routes", () => {
     const fixture = await seedTeamsInstallation(track);
     await seedMembership(fixture.orgId, fixture.userId, "admin");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+      zeroTeamsConnectContract,
+    );
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -314,8 +324,9 @@ describe("Teams OAuth API routes", () => {
     );
 
     mockMicrosoftOAuth({
-      tenantId: "tenant-other",
+      tenantId: `other-${fixture.teamsTenantId}`,
       aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: fixture.teamsUserPrincipalName,
     });
 
     const response = await appRequest(

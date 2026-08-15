@@ -5,9 +5,9 @@ import {
   getZeroAgentInstructions,
   getZeroAgentUserConnectors,
   listZeroUserPermissionGrants,
-  listZeroConnectors,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-agents";
+import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import type { ZeroConnector } from "../../../lib/api/domains/zero-connectors";
 import { policyIcon } from "../../../lib/utils/format-utils";
 import { formatAvatar } from "./avatar";
@@ -15,7 +15,7 @@ import {
   loadConnectorPermissionInfos,
   connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
-} from "../shared/firewall-permissions";
+} from "../../shared/firewall-permissions";
 
 function printDetailedPermissions(info: ConnectorPermissionInfo): void {
   if (!info.policies) {
@@ -82,7 +82,7 @@ function formatDetailIdentity(connector: ZeroConnector | undefined): string {
 
 export const viewCommand = new Command()
   .name("view")
-  .description("View a zero agent")
+  .description("View an agent")
   .argument("<agent-id>", "Agent ID")
   .option("--instructions", "Also show instructions content")
   .option("--permissions", "Show full permission details for each connector")
@@ -90,10 +90,10 @@ export const viewCommand = new Command()
     "after",
     `
 Examples:
-  View basic info:         zero agent view <agent-id>
-  Include instructions:    zero agent view <agent-id> --instructions
-  Show permissions:        zero agent view <agent-id> --permissions
-  View yourself:           zero agent view $ZERO_AGENT_ID --instructions`,
+  View basic info:         okou agent view <agent-id>
+  Include instructions:    okou agent view <agent-id> --instructions
+  Show permissions:        okou agent view <agent-id> --permissions
+  View yourself:           okou agent view $OKOU_AGENT_ID --instructions`,
   )
   .action(
     withErrorHandler(
@@ -119,6 +119,7 @@ Examples:
         if (agent.displayName) console.log(chalk.dim(agent.displayName));
         console.log();
         console.log(`Agent ID:     ${agent.agentId}`);
+        console.log(`Visibility:   ${agent.visibility}`);
 
         const storedPolicies = options.permissions
           ? connectorPermissionGrantsToFirewallPolicies(

@@ -1,21 +1,22 @@
 import { randomUUID } from "node:crypto";
 
-import { authContract } from "@vm0/api-contracts/contracts/auth";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
 import {
   onboardingCompleteContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
-} from "@vm0/api-contracts/contracts/onboarding";
-import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/api-contracts/contracts/onboarding";
+import type { ApiErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import {
   zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
   zeroAgentsMainContract,
   type ZeroAgentMetadataRequest,
   type ZeroAgentRequest,
   type ZeroAgentResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
-import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -23,10 +24,11 @@ import { now } from "../../../../lib/time";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
-import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
+import { zeroAgentInstructionsRoutes } from "../../zero-agent-instructions";
+import { onboardingCompleteRoutes } from "../../onboarding-complete";
+import { onboardingStatusRoutes } from "../../onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { userPreferencesRoutes } from "../../user-preferences";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -120,14 +122,14 @@ export function createBddApi(context: TestContext) {
   function onboardingStatusClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroOnboardingStatusRoutes,
+      routes: onboardingStatusRoutes,
     })(onboardingStatusContract);
   }
 
   function onboardingCompleteClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroOnboardingCompleteRoutes,
+      routes: onboardingCompleteRoutes,
     })(onboardingCompleteContract);
   }
 
@@ -141,8 +143,8 @@ export function createBddApi(context: TestContext) {
   function userPreferencesClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroUserPreferencesRoutes,
-    })(zeroUserPreferencesContract);
+      routes: userPreferencesRoutes,
+    })(userPreferencesContract);
   }
 
   function agentsClient() {
@@ -157,6 +159,13 @@ export function createBddApi(context: TestContext) {
       context,
       routes: zeroAgentsRoutes,
     })(zeroAgentsByIdContract);
+  }
+
+  function agentInstructionsClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroAgentInstructionsRoutes,
+    })(zeroAgentInstructionsContract);
   }
 
   function user(options: ApiTestUserOptions = {}): ApiTestUser {
@@ -431,6 +440,22 @@ export function createBddApi(context: TestContext) {
           params: { id: agentId },
           headers: authenticate(nextUser),
           body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async updateAgentInstructions(
+      nextUser: ApiTestUser,
+      agentId: string,
+      content: string,
+    ): Promise<ZeroAgentResponse> {
+      const response = await accept(
+        agentInstructionsClient().update({
+          params: { id: agentId },
+          headers: authenticate(nextUser),
+          body: { content },
         }),
         [200],
       );

@@ -1,8 +1,8 @@
 import { command } from "ccstate";
-import { cronRenewGoogleWorkspaceEventSubscriptionsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronRenewGoogleWorkspaceEventSubscriptionsContract } from "@okouai/api-contracts/contracts/cron";
 
 import type { RouteEntry } from "../route-entry";
-import { renewGoogleWorkspaceEventSubscriptions$ } from "../services/google-meet-workflow-event.service";
+import { renewGoogleWorkspaceEventSubscriptions$ } from "../services/google-meet-automation-event.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const renewGoogleWorkspaceEventSubscriptionsRoute$ = command(

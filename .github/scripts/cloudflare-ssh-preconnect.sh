@@ -22,7 +22,8 @@ fi
 SSH_USER="${1:-}"
 SSH_HOSTS="${2:-}"
 REQUIRE_ALL_HOSTS="${3:-true}"
-MAX_ATTEMPTS=4
+RETRY_DELAYS_SECONDS=(1 5 15)
+MAX_ATTEMPTS=$((${#RETRY_DELAYS_SECONDS[@]} + 1))
 MASTER_START_TIMEOUT_SECONDS=40
 MASTER_START_KILL_AFTER_SECONDS=5
 CONTROL_TIMEOUT_SECONDS=5
@@ -184,7 +185,7 @@ preconnect_host() {
 
     echo "::warning title=Retrying Cloudflare SSH preconnection::Transient SSH transport failure for ${host} on attempt ${attempt}/${MAX_ATTEMPTS}; retrying before any remote command is submitted" >&2
     emit_retry_diagnostics "$stderr_file"
-    sleep "$attempt"
+    sleep "${RETRY_DELAYS_SECONDS[$((attempt - 1))]}"
   done
 }
 

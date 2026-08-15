@@ -1,6 +1,13 @@
 import { command } from "ccstate";
-import { brandName$ } from "./branding.ts";
+import { brandName$, type BrandName } from "./branding.ts";
 
-export const updateDocumentTitle$ = command(({ get }, pageName: string) => {
-  document.title = `${pageName} | ${get(brandName$)}`;
-});
+export const updateDocumentTitle$ = command(
+  ({ get }, pageName: string, brandNameOverride?: BrandName) => {
+    const brandName = brandNameOverride ?? get(brandName$);
+    const brandSuffix = ` | ${brandName}`;
+    document.title =
+      pageName === brandName || pageName.endsWith(brandSuffix)
+        ? pageName
+        : `${pageName}${brandSuffix}`;
+  },
+);

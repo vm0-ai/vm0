@@ -15,10 +15,13 @@ use api_contracts::generated::constants::runners::{
     SESSION_HISTORY_GZIP_MIN_BYTES,
 };
 use bytes::Bytes;
-use guest_common::telemetry::record_sandbox_op;
+use guest_common::telemetry::{
+    SandboxOpDimensions, record_sandbox_op, record_sandbox_op_with_dimensions,
+};
 use guest_common::{log_info, log_warn};
 use guest_session_prune::{
-    ClaudeHistorySelection, CodexHistorySelection, select_claude_compact_generation,
+    ClaudeHistoryIneligibleReason, ClaudeHistorySelection, CodexHistoryIneligibleReason,
+    CodexHistorySelection, select_claude_compact_generation,
     select_claude_compact_generation_with_candidate_limit_for_test,
     select_codex_compact_generation, select_codex_compact_generation_with_candidate_limit_for_test,
 };
@@ -30,6 +33,59 @@ use std::time::Duration;
 
 const SESSION_HISTORY_ZSTD_LEVEL: i32 = 3;
 const SESSION_HISTORY_COMPRESSION_MIN_BYTES: usize = SESSION_HISTORY_GZIP_MIN_BYTES as usize;
+
+#[derive(Clone, Copy)]
+enum SessionHistoryPruneOutcome {
+    Selected,
+    Ineligible,
+    Error,
+}
+
+impl SessionHistoryPruneOutcome {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Selected => "selected",
+            Self::Ineligible => "ineligible",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SessionHistoryPruneReason {
+    Selector(&'static str),
+    CompressedSource,
+    SelectorIo,
+}
+
+impl SessionHistoryPruneReason {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Selector(reason) => reason,
+            Self::CompressedSource => "compressed_source",
+            Self::SelectorIo => "selector_io",
+        }
+    }
+}
+
+fn record_session_history_prune(
+    started: std::time::Instant,
+    outcome: SessionHistoryPruneOutcome,
+    reason: Option<SessionHistoryPruneReason>,
+) {
+    let reason = reason.map(SessionHistoryPruneReason::as_str);
+    let error = matches!(outcome, SessionHistoryPruneOutcome::Error).then_some("selector_io");
+    record_sandbox_op_with_dimensions(
+        "session_history_prune",
+        started.elapsed(),
+        !matches!(outcome, SessionHistoryPruneOutcome::Error),
+        error,
+        SandboxOpDimensions {
+            outcome: Some(outcome.as_str()),
+            reason,
+        },
+    );
+}
 
 #[derive(Clone, Copy)]
 pub(super) enum CheckpointSessionHistoryLimits {
@@ -103,6 +159,11 @@ struct PreparedSessionHistory {
     raw_size: u64,
     upload_source: PreparedSessionHistoryUploadSource,
     live_history: PreparedLiveHistory,
+}
+
+enum PreparedSessionHistoryOutcome {
+    Upload(PreparedSessionHistory),
+    DiscardedOversized,
 }
 
 pub(super) enum PreparedLiveHistory {
@@ -275,7 +336,7 @@ impl CheckpointSessionHistoryInputs {
     }
 }
 
-pub(super) struct CheckpointSessionHistory {
+pub(super) struct UploadedCheckpointSessionHistory {
     pub(super) cli_agent_session_id: String,
     pub(super) history_marker_payload: String,
     pub(super) history_hash: String,
@@ -283,9 +344,53 @@ pub(super) struct CheckpointSessionHistory {
     pub(super) live_history: PreparedLiveHistory,
 }
 
-struct PreparedCheckpointSessionHistory {
-    checkpoint: CheckpointSessionHistory,
-    upload: SessionHistoryUpload,
+pub(super) enum CheckpointSessionHistory {
+    Uploaded(UploadedCheckpointSessionHistory),
+    DiscardedOversized { cli_agent_session_id: String },
+}
+
+enum PreparedCheckpointSessionHistory {
+    Upload {
+        checkpoint: UploadedCheckpointSessionHistory,
+        upload: SessionHistoryUpload,
+    },
+    DiscardedOversized {
+        cli_agent_session_id: String,
+    },
+}
+
+const fn should_discard_oversized_claude(reason: ClaudeHistoryIneligibleReason) -> bool {
+    match reason {
+        ClaudeHistoryIneligibleReason::NoCompactBoundary => true,
+        ClaudeHistoryIneligibleReason::SourceWithinGuard
+        | ClaudeHistoryIneligibleReason::InvalidRecord
+        | ClaudeHistoryIneligibleReason::RecordTooLarge
+        | ClaudeHistoryIneligibleReason::InvalidCompactBoundary
+        | ClaudeHistoryIneligibleReason::InvalidCompactSummary
+        | ClaudeHistoryIneligibleReason::SessionIdMismatch
+        | ClaudeHistoryIneligibleReason::InvalidUuid
+        | ClaudeHistoryIneligibleReason::BrokenParent
+        | ClaudeHistoryIneligibleReason::BrokenToolPair
+        | ClaudeHistoryIneligibleReason::SourceChanged => false,
+    }
+}
+
+const fn should_discard_oversized_codex(reason: CodexHistoryIneligibleReason) -> bool {
+    match reason {
+        CodexHistoryIneligibleReason::NoCompactBoundary
+        | CodexHistoryIneligibleReason::CandidateTooLarge => true,
+        CodexHistoryIneligibleReason::SourceWithinGuard
+        | CodexHistoryIneligibleReason::InvalidCanonicalMetadata
+        | CodexHistoryIneligibleReason::ThreadIdMismatch
+        | CodexHistoryIneligibleReason::UnsupportedHistoryMode
+        | CodexHistoryIneligibleReason::InvalidRecord
+        | CodexHistoryIneligibleReason::RecordTooLarge
+        | CodexHistoryIneligibleReason::InvalidCompactBoundary
+        | CodexHistoryIneligibleReason::InvalidTurn
+        | CodexHistoryIneligibleReason::MissingTurnContext
+        | CodexHistoryIneligibleReason::RollbackAfterCompact
+        | CodexHistoryIneligibleReason::SourceChanged => false,
+    }
 }
 
 async fn run_session_history_blocking<T>(
@@ -418,7 +523,7 @@ fn prepare_session_history(
     cli_agent_session_id: &str,
     history_marker_payload: &str,
     history_read_start: std::time::Instant,
-) -> Result<PreparedSessionHistory, AgentError> {
+) -> Result<PreparedSessionHistoryOutcome, AgentError> {
     if mode.can_prune_history()
         && framework == env::Framework::ClaudeCode
         && !history::is_codex_marker(history_marker_payload)
@@ -439,14 +544,18 @@ fn prepare_session_history(
                     "Selected Claude compact generation for checkpoint \
                      (source_size={source_size}, candidate_size={candidate_size})"
                 );
-                record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+                record_session_history_prune(
+                    prune_start,
+                    SessionHistoryPruneOutcome::Selected,
+                    None,
+                );
                 let mut prepared =
-                    prepare_raw_session_history(mode, history_read_start, candidate)?;
+                    prepare_raw_session_history(mode, history_read_start, candidate, true)?;
                 prepared.live_history = PreparedLiveHistory::NativeCandidate {
                     kind: NativeHistoryKind::ClaudeCode,
                     replacement,
                 };
-                return Ok(prepared);
+                return Ok(PreparedSessionHistoryOutcome::Upload(prepared));
             }
             Ok(ClaudeHistorySelection::Ineligible(reason)) => {
                 log_info!(
@@ -454,18 +563,28 @@ fn prepare_session_history(
                     "Claude session history not eligible for pruning: {}",
                     reason.as_str()
                 );
-                record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+                record_session_history_prune(
+                    prune_start,
+                    SessionHistoryPruneOutcome::Ineligible,
+                    Some(SessionHistoryPruneReason::Selector(reason.as_str())),
+                );
+                if should_discard_oversized_claude(reason) {
+                    log_info!(
+                        LOG_TAG,
+                        "Discarding oversized Claude session history without a bounded generation"
+                    );
+                    return Ok(PreparedSessionHistoryOutcome::DiscardedOversized);
+                }
             }
             Err(error) => {
                 log_warn!(
                     LOG_TAG,
                     "Claude session history selector failed; using ordinary checkpoint path: {error}"
                 );
-                record_sandbox_op(
-                    "session_history_prune",
-                    prune_start.elapsed(),
-                    false,
-                    Some("selector_io"),
+                record_session_history_prune(
+                    prune_start,
+                    SessionHistoryPruneOutcome::Error,
+                    Some(SessionHistoryPruneReason::SelectorIo),
                 );
             }
         }
@@ -493,19 +612,22 @@ fn prepare_session_history(
                                 "Selected Codex compact generation for checkpoint \
                              (source_size={source_size}, candidate_size={candidate_size})"
                             );
-                            record_sandbox_op(
-                                "session_history_prune",
-                                prune_start.elapsed(),
-                                true,
+                            record_session_history_prune(
+                                prune_start,
+                                SessionHistoryPruneOutcome::Selected,
                                 None,
                             );
-                            let mut prepared =
-                                prepare_raw_session_history(mode, history_read_start, candidate)?;
+                            let mut prepared = prepare_raw_session_history(
+                                mode,
+                                history_read_start,
+                                candidate,
+                                true,
+                            )?;
                             prepared.live_history = PreparedLiveHistory::NativeCandidate {
                                 kind: NativeHistoryKind::Codex,
                                 replacement,
                             };
-                            return Ok(prepared);
+                            return Ok(PreparedSessionHistoryOutcome::Upload(prepared));
                         }
                         Ok(CodexHistorySelection::Ineligible(reason)) => {
                             log_info!(
@@ -513,12 +635,18 @@ fn prepare_session_history(
                                 "Codex session history not eligible for pruning: {}",
                                 reason.as_str()
                             );
-                            record_sandbox_op(
-                                "session_history_prune",
-                                prune_start.elapsed(),
-                                true,
-                                None,
+                            record_session_history_prune(
+                                prune_start,
+                                SessionHistoryPruneOutcome::Ineligible,
+                                Some(SessionHistoryPruneReason::Selector(reason.as_str())),
                             );
+                            if should_discard_oversized_codex(reason) {
+                                log_info!(
+                                    LOG_TAG,
+                                    "Discarding oversized Codex session history without a bounded generation"
+                                );
+                                return Ok(PreparedSessionHistoryOutcome::DiscardedOversized);
+                            }
                         }
                         Err(error) => {
                             log_warn!(
@@ -526,11 +654,10 @@ fn prepare_session_history(
                                 "Codex session history selector failed; using ordinary checkpoint \
                              path: {error}"
                             );
-                            record_sandbox_op(
-                                "session_history_prune",
-                                prune_start.elapsed(),
-                                false,
-                                Some("selector_io"),
+                            record_session_history_prune(
+                                prune_start,
+                                SessionHistoryPruneOutcome::Error,
+                                Some(SessionHistoryPruneReason::SelectorIo),
                             );
                         }
                     }
@@ -539,7 +666,11 @@ fn prepare_session_history(
                         LOG_TAG,
                         "Codex session history not eligible for pruning: compressed_source"
                     );
-                    record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+                    record_session_history_prune(
+                        prune_start,
+                        SessionHistoryPruneOutcome::Ineligible,
+                        Some(SessionHistoryPruneReason::CompressedSource),
+                    );
                 }
                 resolved_codex_history = Some(source);
             }
@@ -549,11 +680,10 @@ fn prepare_session_history(
                     "Codex session history selector failed; using ordinary checkpoint path: \
                      {error}"
                 );
-                record_sandbox_op(
-                    "session_history_prune",
-                    prune_start.elapsed(),
-                    false,
-                    Some("selector_io"),
+                record_session_history_prune(
+                    prune_start,
+                    SessionHistoryPruneOutcome::Error,
+                    Some(SessionHistoryPruneReason::SelectorIo),
                 );
             }
         }
@@ -582,7 +712,8 @@ fn prepare_session_history(
     };
     match source {
         history::SessionHistoryCheckpointSource::Decoded(history_bytes) => {
-            prepare_raw_session_history(mode, history_read_start, history_bytes)
+            prepare_raw_session_history(mode, history_read_start, history_bytes, true)
+                .map(PreparedSessionHistoryOutcome::Upload)
         }
         history::SessionHistoryCheckpointSource::CodexZstd { encoded } => {
             prepare_reused_zstd_session_history(
@@ -591,6 +722,7 @@ fn prepare_session_history(
                 encoded,
                 checkpoint_max_bytes,
             )
+            .map(PreparedSessionHistoryOutcome::Upload)
         }
     }
 }
@@ -599,6 +731,7 @@ fn prepare_raw_session_history(
     mode: CheckpointMode,
     history_read_start: std::time::Instant,
     history_bytes: Vec<u8>,
+    validate_recovery: bool,
 ) -> Result<PreparedSessionHistory, AgentError> {
     let history_size = history_bytes.len() as u64;
 
@@ -606,7 +739,7 @@ fn prepare_raw_session_history(
         Ok(s) => Some(s),
         Err(e) => {
             let msg = format!("Session history is not valid UTF-8: {e}");
-            if mode.validate_history() {
+            if mode.validate_history() && validate_recovery {
                 return Err(fail(mode, "session_history_read", history_read_start, msg));
             }
             log_warn!(LOG_TAG, "{msg}; preserving raw bytes for checkpoint");
@@ -628,7 +761,7 @@ fn prepare_raw_session_history(
     }
 
     if let Some(session_history) = session_history_text {
-        if mode.validate_history() {
+        if mode.validate_history() && validate_recovery {
             validate_recoverable_session_history(session_history)
                 .map_err(|msg| fail(mode, "session_history_validate", history_read_start, msg))?;
         }
@@ -900,24 +1033,32 @@ fn prepare_checkpoint_session_history(
         &history_marker_payload,
         history_read_start,
     )?;
-    let PreparedSessionHistory {
-        hash: history_hash,
-        raw_size: history_size,
-        upload_source,
-        live_history,
-    } = prepared_history;
-    let upload = upload_source.into_upload(history_size)?;
-
-    Ok(PreparedCheckpointSessionHistory {
-        checkpoint: CheckpointSessionHistory {
-            cli_agent_session_id,
-            history_marker_payload,
-            history_hash,
-            history_size,
-            live_history,
-        },
-        upload,
-    })
+    match prepared_history {
+        PreparedSessionHistoryOutcome::Upload(prepared_history) => {
+            let PreparedSessionHistory {
+                hash: history_hash,
+                raw_size: history_size,
+                upload_source,
+                live_history,
+            } = prepared_history;
+            let upload = upload_source.into_upload(history_size)?;
+            Ok(PreparedCheckpointSessionHistory::Upload {
+                checkpoint: UploadedCheckpointSessionHistory {
+                    cli_agent_session_id,
+                    history_marker_payload,
+                    history_hash,
+                    history_size,
+                    live_history,
+                },
+                upload,
+            })
+        }
+        PreparedSessionHistoryOutcome::DiscardedOversized => {
+            Ok(PreparedCheckpointSessionHistory::DiscardedOversized {
+                cli_agent_session_id,
+            })
+        }
+    }
 }
 
 pub(super) async fn prepare_and_upload_session_history(
@@ -927,9 +1068,17 @@ pub(super) async fn prepare_and_upload_session_history(
 ) -> Result<CheckpointSessionHistory, AgentError> {
     let prepared =
         run_session_history_blocking(move || prepare_checkpoint_session_history(inputs)).await?;
-    let PreparedCheckpointSessionHistory { checkpoint, upload } = prepared;
-    upload_session_history(http, run_id, &checkpoint.history_hash, upload).await?;
-    Ok(checkpoint)
+    match prepared {
+        PreparedCheckpointSessionHistory::Upload { checkpoint, upload } => {
+            upload_session_history(http, run_id, &checkpoint.history_hash, upload).await?;
+            Ok(CheckpointSessionHistory::Uploaded(checkpoint))
+        }
+        PreparedCheckpointSessionHistory::DiscardedOversized {
+            cli_agent_session_id,
+        } => Ok(CheckpointSessionHistory::DiscardedOversized {
+            cli_agent_session_id,
+        }),
+    }
 }
 
 pub(super) fn reconcile_live_history_after_checkpoint(live_history: PreparedLiveHistory) -> bool {
@@ -1146,5 +1295,39 @@ mod tests {
         let err = validate_recoverable_session_history(&history).unwrap_err();
 
         assert!(err.contains("line 2"));
+    }
+
+    #[test]
+    fn pi_recovery_checkpoint_validates_official_jsonl() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_path = dir.path().join("session.jsonl");
+        let history = br#"{"type":"session","id":"00000000-0000-4000-8000-000000000001"}
+{"type":"message","id":"message-1","parentId":null}"#;
+        std::fs::write(&session_path, history).unwrap();
+
+        let prepared = match prepare_session_history(
+            CheckpointMode::Recovery,
+            env::Framework::Pi,
+            CheckpointSessionHistoryLimits::Production,
+            "00000000-0000-4000-8000-000000000001",
+            session_path.to_str().unwrap(),
+            std::time::Instant::now(),
+        )
+        .expect("Pi JSONL should pass recovery validation")
+        {
+            PreparedSessionHistoryOutcome::Upload(prepared) => prepared,
+            PreparedSessionHistoryOutcome::DiscardedOversized => {
+                panic!("Pi JSONL history must not use native history pruning")
+            }
+        };
+
+        assert_eq!(prepared.raw_size, history.len() as u64);
+        assert_eq!(prepared.hash, hex::encode(Sha256::digest(history)));
+        match prepared.upload_source {
+            PreparedSessionHistoryUploadSource::Raw(bytes) => assert_eq!(bytes, history),
+            PreparedSessionHistoryUploadSource::ReusedCodexZstd(_) => {
+                panic!("Pi history must remain raw JSONL bytes")
+            }
+        }
     }
 }

@@ -106,6 +106,7 @@ class _FlushBatch:
 @dataclass(frozen=True)
 class _PendingBatch:
     batch: _FlushBatch
+    flush_batch_index: int
     retained_retry_count: int = 0
 
 

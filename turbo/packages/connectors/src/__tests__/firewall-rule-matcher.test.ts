@@ -71,11 +71,6 @@ describe("matchFirewallPath", () => {
     expect(matchFirewallPath("/api/a/b/tail", "/api/{rest*}/tail")).toBeNull();
   });
 
-  it("rejects mixed greedy path params", () => {
-    expect(matchFirewallPath("/api/file-123", "/api/file-{id+}")).toBeNull();
-    expect(matchFirewallPath("/api/file-123", "/api/file-{id*}")).toBeNull();
-  });
-
   it("matches greedy * (zero or more) with segments", () => {
     expect(matchFirewallPath("/anything/here", "/{path*}")).toEqual({
       path: "anything/here",
@@ -144,20 +139,6 @@ describe("matchFirewallHost", () => {
     });
   });
 
-  it("matches mixed host params case-insensitively", () => {
-    expect(
-      matchFirewallHost("API-US.EXAMPLE.COM", "api-{region}.example.com"),
-    ).toEqual({
-      region: "us",
-    });
-  });
-
-  it("rejects mixed host params with an empty capture", () => {
-    expect(
-      matchFirewallHost("api-.example.com", "api-{region}.example.com"),
-    ).toBeNull();
-  });
-
   it("matches leading greedy host params", () => {
     expect(
       matchFirewallHost("foo.bar.bentoml.ai", "{deployment+}.bentoml.ai"),
@@ -194,15 +175,6 @@ describe("matchFirewallHost", () => {
     ).toBeNull();
     expect(
       matchFirewallHost("foo.bar.example.com", "foo.{deployment*}.com"),
-    ).toBeNull();
-  });
-
-  it("rejects mixed greedy host params", () => {
-    expect(
-      matchFirewallHost("api-us.example.com", "api-{region+}.example.com"),
-    ).toBeNull();
-    expect(
-      matchFirewallHost("api-us.example.com", "api-{region*}.example.com"),
     ).toBeNull();
   });
 
@@ -255,21 +227,6 @@ describe("matchFirewallPathPrefix", () => {
     ).toBeNull();
   });
 
-  it("matches mixed path segments in base prefixes", () => {
-    expect(
-      matchFirewallPathPrefix(
-        "/owner/repo.git/info/refs",
-        "/{owner}/{repo}.git",
-      ),
-    ).toBe("/info/refs");
-  });
-
-  it("rejects mixed path base prefixes with an empty capture", () => {
-    expect(
-      matchFirewallPathPrefix("/owner/.git/info/refs", "/{owner}/{repo}.git"),
-    ).toBeNull();
-  });
-
   it("keeps base boundary strict", () => {
     expect(matchFirewallPathPrefix("/apiary/users", "/api")).toBeNull();
   });
@@ -280,15 +237,6 @@ describe("matchFirewallPathPrefix", () => {
     ).toBeNull();
     expect(
       matchFirewallPathPrefix("/api/a/b/tail", "/api/{rest*}/tail"),
-    ).toBeNull();
-  });
-
-  it("rejects mixed greedy path params in base prefixes", () => {
-    expect(
-      matchFirewallPathPrefix("/api/file-123", "/api/file-{id+}"),
-    ).toBeNull();
-    expect(
-      matchFirewallPathPrefix("/api/file-123", "/api/file-{id*}"),
     ).toBeNull();
   });
 

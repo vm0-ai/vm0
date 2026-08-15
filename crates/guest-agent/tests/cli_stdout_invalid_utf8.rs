@@ -1,4 +1,4 @@
-//! Invalid ordinary CLI stdout UTF-8 must fail without exposing record content
+//! Invalid Claude Code stdout UTF-8 must fail without exposing record content
 //! and must trigger bounded cleanup of a live child.
 
 mod common;

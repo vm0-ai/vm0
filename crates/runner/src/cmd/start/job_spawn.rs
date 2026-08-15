@@ -14,28 +14,31 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tracing::{error, warn};
 
-use super::active_reuse_keys::{ActiveReuseKeyGuard, ActiveReuseKeys};
+use super::active_runs::{ActiveRunGuard, ActiveRunReusePublisher, ActiveRuns};
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
-    ActiveBudgetLease, CompletionPayload, CompletionReady, RunCleanupDisposition, RunCleanupState,
+    ActiveBudgetLease, CompletionPayload, FinalizationReady, RunCleanupDisposition, RunCleanupState,
 };
 use super::job_terminal_log::log_terminal_job_outcome;
 use super::orphan_reap::OrphanedActiveRuns;
 use super::ownership::{OwnershipTransitions, RunSandbox};
-use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
+use super::sandbox_finalization::{
+    FinalizeContext, finalize_sandbox_for_completion_with_telemetry,
+};
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{
     self, ExecutorConfig, RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryRestorePlan,
 };
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
-use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
-use crate::resource_budget::BudgetLease;
+use crate::provider::{ClaimedJob, CompletionReportTiming, JobProvider};
+use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{
     RunCancellationHandle, RunCancellationRegistration, RunCancellationSignals,
 };
@@ -58,7 +61,9 @@ pub(super) struct JobProfile {
 }
 
 /// Shared state passed to each spawned job task.
+#[derive(Clone)]
 pub(super) struct SpawnContext {
+    pub(super) runner_id: String,
     pub(super) provider: Arc<dyn JobProvider>,
     pub(super) exec_config: Arc<ExecutorConfig>,
     pub(super) idle_pool: SharedIdlePool,
@@ -75,7 +80,8 @@ pub(super) struct SpawnContext {
     pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
-    pub(super) active_reuse_keys: ActiveReuseKeys,
+    pub(super) active_runs: ActiveRuns,
+    pub(super) budget: Arc<ResourceBudget>,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
@@ -92,7 +98,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) reuse_result: SandboxReuseResult,
     pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
-    pub(super) active_reuse_key_guard: ActiveReuseKeyGuard,
+    pub(super) active_run_guard: ActiveRunGuard,
 }
 
 struct ExecutorInvocation {
@@ -196,8 +202,8 @@ impl ExecutorInvocation {
                 }
             }
             Err(e) => {
-                if let Some(refresh) = exec_config_for_panic.network_policy_refresh.as_ref() {
-                    refresh.unregister_run(run_id).await;
+                if let Some(runtime_sync) = exec_config_for_panic.connector_runtime_sync.as_ref() {
+                    runtime_sync.unregister_run(run_id).await;
                 }
                 // Panic lost the in-flight telemetry buffer; substitute an
                 // empty collector so the post-complete flush path stays
@@ -211,10 +217,13 @@ impl ExecutorInvocation {
                 ExecutorPhaseOutcome {
                     outcome: executor::ExecuteOutcome {
                         failure: Some(failure),
+                        active_input_delivery_ids: Vec::new(),
+                        sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
                         sandbox: None,
                         source_ip: String::new(),
                         network_log_session: None,
                         workspace_image: None,
+                        workspace_reuse_result: None,
                         discovered_cli_agent_session_id: None,
                         restored_session_identity: None,
                     },
@@ -230,7 +239,7 @@ impl ExecutorInvocation {
 struct FinalizationPhase {
     run_id: RunId,
     sandbox_id: SandboxId,
-    completion_auth: CompletionAuth,
+    runner_id: String,
     active_lease: BudgetLease,
     reuse_result: SandboxReuseResult,
     workspace_disk_mb: u32,
@@ -239,6 +248,7 @@ struct FinalizationPhase {
     cli_agent_session_id: Option<String>,
     storage_fingerprints: StorageFingerprints,
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    guest_timezone_intent: GuestTimezoneIntent,
     factory: SharedFactory,
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
@@ -248,6 +258,7 @@ struct FinalizationPhase {
     network_log_drain: NetworkLogDrainCoordinator,
     cancel: RunCancellationHandle,
     cleanup_state: RunCleanupState,
+    active_run_reuse: ActiveRunReusePublisher,
     #[cfg(test)]
     outer_job_panic: Option<OuterJobPanicPoint>,
     #[cfg(test)]
@@ -255,7 +266,7 @@ struct FinalizationPhase {
 }
 
 struct FinalizedJob {
-    completion_ready: CompletionReady,
+    finalization_ready: FinalizationReady,
     telemetry: JobTelemetry,
 }
 
@@ -264,7 +275,7 @@ impl FinalizationPhase {
         let Self {
             run_id,
             sandbox_id,
-            completion_auth,
+            runner_id,
             active_lease,
             reuse_result,
             workspace_disk_mb,
@@ -273,6 +284,7 @@ impl FinalizationPhase {
             cli_agent_session_id,
             storage_fingerprints,
             device_rate_limits,
+            guest_timezone_intent,
             factory,
             idle_pool,
             status,
@@ -282,6 +294,7 @@ impl FinalizationPhase {
             network_log_drain,
             cancel,
             cleanup_state,
+            active_run_reuse,
             #[cfg(test)]
             outer_job_panic,
             #[cfg(test)]
@@ -290,41 +303,45 @@ impl FinalizationPhase {
         let ExecutorPhaseOutcome {
             outcome,
             exit_code,
-            err,
+            err: _,
             mut telemetry,
         } = executor_result;
         let executor::ExecuteOutcome {
             failure: _,
+            active_input_delivery_ids: _,
+            sandbox_reuse_disposition,
             sandbox,
             source_ip,
             network_log_session,
             workspace_image,
+            workspace_reuse_result: _,
             discovered_cli_agent_session_id,
             restored_session_identity,
         } = outcome;
         let had_sandbox = sandbox.is_some();
         let has_restored_session_identity = restored_session_identity.is_some();
+        let has_reuse_key = reuse_key.is_some();
         let cleanup_state_after_finalize = cleanup_state.clone();
 
-        let completion_payload = CompletionPayload::new(
-            run_id,
-            exit_code,
-            err,
-            sandbox_id,
-            reuse_result,
-            completion_auth,
-        );
         // Cancellation can arrive after terminal logging or while
         // `sandbox.park()` is in flight. Pass the live handle so finalization
         // can synchronize the final idle-pool ownership transfer.
         let finalization_started = Instant::now();
-        let completion_ready = finalize_sandbox_for_completion(
+        telemetry.record(
+            "runner_host_finalization_started",
+            Duration::ZERO,
+            true,
+            None,
+        );
+        let finalization_ready = finalize_sandbox_for_completion_with_telemetry(
             sandbox,
             ActiveBudgetLease::new(active_lease),
-            completion_payload,
+            &mut telemetry,
             FinalizeContext {
                 run_id,
                 sandbox_id,
+                runner_id,
+                reuse_result,
                 profile_name,
                 reuse_key,
                 cli_agent_session_id,
@@ -336,14 +353,17 @@ impl FinalizationPhase {
                 workspace_image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
                 storage_fingerprints,
                 device_rate_limits,
+                guest_timezone_intent,
                 factory,
                 idle_pool,
                 status,
-                reuse_state_notify,
+                reuse_state_notify: Arc::clone(&reuse_state_notify),
+                active_run_reuse: active_run_reuse.clone(),
                 workspace_cache_snapshot,
                 parking_gate,
                 network_log_drain,
                 exit_code,
+                sandbox_reuse_disposition,
                 cancel,
                 cleanup_state,
                 #[cfg(test)]
@@ -353,9 +373,20 @@ impl FinalizationPhase {
             },
         )
         .await;
+        if has_reuse_key && active_run_reuse.publish_no_exact_sandbox() {
+            reuse_state_notify.notify_one();
+        }
         let finalization_duration = finalization_started.elapsed();
         let disposition = cleanup_state_after_finalize.disposition();
-        let reuse_state_changed = completion_ready.reuse_state_changed();
+        let reuse_state_changed = finalization_ready.reuse_state_changed();
+        if had_sandbox {
+            telemetry.record(
+                sandbox_reuse_disposition.telemetry_action(),
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
         let (finalization_action, finalization_success, finalization_error) = match disposition {
             RunCleanupDisposition::IdlePoolOwned => {
                 ("runner_host_finalization_reusable_sandbox", true, None)
@@ -386,7 +417,7 @@ impl FinalizationPhase {
         );
 
         FinalizedJob {
-            completion_ready,
+            finalization_ready,
             telemetry,
         }
     }
@@ -408,51 +439,39 @@ fn record_session_history_identity_park_telemetry(
     telemetry.record(action_type, Duration::ZERO, true, None);
 }
 
-struct CompletionPhase {
+struct CompletionSettlementPhase {
     run_id: RunId,
-    provider: Arc<dyn JobProvider>,
+    sandbox_id: SandboxId,
     status: Arc<StatusTracker>,
-    usage_flush_tx: mpsc::Sender<()>,
-    reuse_state_notify: Arc<tokio::sync::Notify>,
-    active_reuse_key_guard: ActiveReuseKeyGuard,
+    active_run_guard: ActiveRunGuard,
     cleanup_state: RunCleanupState,
 }
 
-impl CompletionPhase {
-    async fn complete(self, completion_ready: CompletionReady, telemetry: &mut JobTelemetry) {
+impl CompletionSettlementPhase {
+    async fn settle(self, finalization_ready: FinalizationReady, telemetry: &mut JobTelemetry) {
         let Self {
             run_id,
-            provider,
+            sandbox_id,
             status,
-            usage_flush_tx,
-            reuse_state_notify,
-            active_reuse_key_guard,
+            active_run_guard,
             cleanup_state,
         } = self;
 
-        // Structural guarantee: claim (in provider) is always paired with complete.
-        signal_usage_flush(run_id, &usage_flush_tx);
         let ownership = OwnershipTransitions::new(status.as_ref());
-        let reuse_state_changed = completion_ready.reuse_state_changed();
-        let provider_completion_duration = completion_ready
-            .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
+        finalization_ready
+            .settle(
+                RunSandbox::new(run_id, sandbox_id),
+                &ownership,
+                &cleanup_state,
+            )
             .await;
-        telemetry.record(
-            "runner_host_completion_fallback",
-            provider_completion_duration,
-            true,
-            None,
-        );
-        if active_reuse_key_guard.release() {
+        if active_run_guard.release() {
             telemetry.record(
                 "runner_active_reuse_key_released",
                 Duration::ZERO,
                 true,
                 None,
             );
-        }
-        if reuse_state_changed {
-            reuse_state_notify.notify_one();
         }
     }
 }
@@ -512,26 +531,34 @@ impl DeferredUploadPhase {
 /// The provider has already claimed the job and the caller has reserved
 /// resources in the budget. The spawned task runs the executor, reports
 /// completion through the provider, and delegates the post-executor
-/// park-or-destroy decision to [`finalize_sandbox_for_completion`].
+/// park-or-destroy decision to [`finalize_sandbox_for_completion_with_telemetry`].
 ///
 /// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
 /// Otherwise it creates a new one via the factory.
 ///
-/// A sandbox is considered for idle parking only after a successful, uncancelled
-/// execution while parking is open and a reuse key is available. Park failure,
-/// cancellation before idle-pool transfer, or pool rejection falls back to
-/// destruction.
+/// A sandbox is considered for idle parking only after execution supplies a
+/// positive reuse disposition while parking is open, no hard cancellation is
+/// active, and a reuse key is available. Park failure, hard cancellation before
+/// idle-pool transfer, or pool rejection falls back to destruction.
 ///
-/// The completion state returned by finalization carries
+/// The ownership state returned by finalization carries
 /// [`BudgetOwnership`](super::job_lifecycle::BudgetOwnership). Non-accepted paths
-/// keep the active lease through provider completion and active-status removal,
-/// then release it. An accepted idle entry owns and retains the lease until reuse
-/// or destruction.
+/// keep the active lease until provider completion and active-status settlement
+/// have both finished, then release it. An accepted idle entry owns and retains
+/// the lease until reuse or destruction.
 pub(super) fn spawn_job(
-    request: SpawnJobRequest,
+    mut request: SpawnJobRequest,
     ctx: &SpawnContext,
     jobs: &mut JoinSet<RunCancellationRegistration>,
 ) {
+    request.pre_spawn_timing.mark_task_enqueued();
+    jobs.spawn(run_job(request, ctx.clone()));
+}
+
+pub(super) async fn run_job(
+    request: SpawnJobRequest,
+    ctx: SpawnContext,
+) -> RunCancellationRegistration {
     let started_at = Instant::now();
     let SpawnJobRequest {
         claimed,
@@ -541,8 +568,9 @@ pub(super) fn spawn_job(
         reuse_result,
         pre_spawn_timing,
         session_history_restore_plan,
-        active_reuse_key_guard,
+        active_run_guard,
     } = request;
+    let active_run_reuse = active_run_guard.reuse_publisher();
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
     let reuse_key = context.reuse_key().map(str::to_owned);
@@ -551,6 +579,7 @@ pub(super) fn spawn_job(
     } else {
         None
     };
+    let guest_timezone_intent = GuestTimezoneIntent::from_context(&context);
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let workspace_disk_mb = job_profile.workspace_disk_mb;
@@ -576,6 +605,7 @@ pub(super) fn spawn_job(
         .unwrap_or_default();
 
     let provider = Arc::clone(&ctx.provider);
+    let runner_id = ctx.runner_id.clone();
     let exec_config = Arc::clone(&ctx.exec_config);
     let status = Arc::clone(&ctx.status);
     let idle_pool = Arc::clone(&ctx.idle_pool);
@@ -641,7 +671,7 @@ pub(super) fn spawn_job(
     let finalization = FinalizationPhase {
         run_id,
         sandbox_id,
-        completion_auth,
+        runner_id,
         active_lease,
         reuse_result,
         workspace_disk_mb,
@@ -650,6 +680,7 @@ pub(super) fn spawn_job(
         cli_agent_session_id,
         storage_fingerprints,
         device_rate_limits: job_device_rate_limits,
+        guest_timezone_intent,
         factory,
         idle_pool: Arc::clone(&idle_pool),
         status: Arc::clone(&status),
@@ -659,10 +690,18 @@ pub(super) fn spawn_job(
         network_log_drain: exec_config.network_log_drain.clone(),
         cancel: job_cancel.clone(),
         cleanup_state: cleanup_state_for_body.clone(),
+        active_run_reuse,
         #[cfg(test)]
         outer_job_panic,
         #[cfg(test)]
         test_observer,
+    };
+    let completion_settlement = CompletionSettlementPhase {
+        run_id,
+        sandbox_id,
+        status,
+        active_run_guard,
+        cleanup_state: cleanup_state_for_body,
     };
     let deferred_upload = DeferredUploadPhase {
         run_id,
@@ -673,64 +712,78 @@ pub(super) fn spawn_job(
     executor
         .pre_spawn_timing
         .record_phase_elapsed(RunnerPreSpawnPhase::SpawnJobSetup, started_at);
-    executor.pre_spawn_timing.mark_task_enqueued();
-    jobs.spawn(async move {
-        let active_reuse_key_guard = active_reuse_key_guard;
-        let body = async move {
-            #[cfg(test)]
-            maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
+    let body = async move {
+        #[cfg(test)]
+        maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
-            let executor_result = executor.execute().await;
-            let cancelled_for_log = job_cancel.is_cancelled();
-            log_terminal_job_outcome(
-                run_id,
-                executor_result.exit_code,
-                reused,
-                cancelled_for_log,
-                executor_result.outcome.failure.as_ref(),
-            );
+        let mut executor_result = executor.execute().await;
+        let cancelled_for_log = job_cancel.is_cancelled();
+        log_terminal_job_outcome(
+            run_id,
+            executor_result.exit_code,
+            reused,
+            cancelled_for_log,
+            executor_result.outcome.failure.as_ref(),
+        );
 
-            let FinalizedJob {
-                completion_ready,
-                mut telemetry,
-            } = finalization.finalize(executor_result).await;
-            CompletionPhase {
-                run_id,
-                provider,
-                status,
-                usage_flush_tx,
-                reuse_state_notify,
-                active_reuse_key_guard,
-                cleanup_state: cleanup_state_for_body,
+        let completion_payload = CompletionPayload::new(
+            run_id,
+            executor_result.exit_code,
+            executor_result.err.take(),
+            sandbox_id,
+            reuse_result,
+            completion_auth,
+        )
+        .with_active_input_delivery_ids(std::mem::take(
+            &mut executor_result.outcome.active_input_delivery_ids,
+        ))
+        .with_workspace_reuse_result(executor_result.outcome.workspace_reuse_result);
+        // Structural guarantee: claim (in provider) is always paired with complete.
+        signal_usage_flush(run_id, &usage_flush_tx);
+        let (completion_report, finalized) = match provider.completion_report_timing() {
+            CompletionReportTiming::ConcurrentWithFinalization => tokio::join!(
+                completion_payload.report(provider.as_ref()),
+                finalization.finalize(executor_result),
+            ),
+            CompletionReportTiming::AfterFinalization => {
+                let finalized = finalization.finalize(executor_result).await;
+                let completion_report = completion_payload.report(provider.as_ref()).await;
+                (completion_report, finalized)
             }
-            .complete(completion_ready, &mut telemetry)
-            .await;
-            deferred_upload.flush(telemetry).await;
         };
+        let FinalizedJob {
+            finalization_ready,
+            mut telemetry,
+        } = finalized;
+        completion_report.record(&mut telemetry);
+        completion_settlement
+            .settle(finalization_ready, &mut telemetry)
+            .await;
+        deferred_upload.flush(telemetry).await;
+    };
 
-        match AssertUnwindSafe(body).catch_unwind().await {
-            Ok(()) => cancellation,
-            Err(payload) => {
-                let cleanup = cleanup_panicked_job(
-                    run_id,
-                    sandbox_id,
-                    cancellation,
-                    status_for_panic,
-                    idle_pool_for_panic,
-                    cleanup_state_for_panic,
-                    orphaned_active_runs_for_panic,
+    match AssertUnwindSafe(body).catch_unwind().await {
+        Ok(()) => cancellation,
+        Err(payload) => {
+            let cleanup = cleanup_panicked_job(
+                run_id,
+                sandbox_id,
+                cancellation,
+                status_for_panic,
+                idle_pool_for_panic,
+                cleanup_state_for_panic,
+                orphaned_active_runs_for_panic,
+            );
+            if AssertUnwindSafe(cleanup).catch_unwind().await.is_err() {
+                error!(
+                    run_id = %run_id,
+                    sandbox_id = %sandbox_id,
+                    "outer job panic cleanup panicked"
                 );
-                if AssertUnwindSafe(cleanup).catch_unwind().await.is_err() {
-                    error!(
-                        run_id = %run_id,
-                        sandbox_id = %sandbox_id,
-                        "outer job panic cleanup panicked"
-                    );
-                }
-                std::panic::resume_unwind(payload);
             }
+            std::panic::resume_unwind(payload);
         }
-    });
+    }
 }
 
 fn signal_usage_flush(run_id: RunId, usage_flush_tx: &mpsc::Sender<()>) {
@@ -798,6 +851,7 @@ mod tests {
 
     use sandbox::SandboxId;
 
+    use super::super::active_runs::ActiveRuns;
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::RunCleanupState;
     use super::super::orphan_reap::OrphanedActiveRuns;
@@ -808,40 +862,10 @@ mod tests {
     };
     use crate::idle_reuse_preparation::mock_sandbox_ready_for_idle_reuse;
     use crate::ids::RunId;
-    use crate::provider::JobCandidate;
     use crate::resource_budget::ResourceBudget;
     use crate::restored_session_identity::RestoredSessionIdentity;
     use crate::run_cancellation::RunCancellationRegistry;
     use crate::status::StatusTracker;
-    use crate::types::HeartbeatState;
-
-    struct NoopCompletionProvider;
-
-    #[async_trait::async_trait]
-    impl JobProvider for NoopCompletionProvider {
-        async fn discover(&self) -> Option<JobCandidate> {
-            None
-        }
-
-        async fn claim(&self, _candidate: JobCandidate) -> Option<ClaimedJob> {
-            None
-        }
-
-        async fn complete(
-            &self,
-            _run_id: RunId,
-            _exit_code: i32,
-            _error: Option<&str>,
-            _sandbox_id: Option<SandboxId>,
-            _reuse_result: Option<SandboxReuseResult>,
-            _completion_auth: CompletionAuth,
-        ) {
-        }
-
-        async fn heartbeat(&self, _state: &HeartbeatState) {}
-
-        async fn shutdown(&self) {}
-    }
 
     fn test_http_client() -> HttpClient {
         HttpClient::new(HttpClientConfig {
@@ -866,12 +890,31 @@ mod tests {
         );
     }
 
+    fn assert_failed_telemetry_action(telemetry: &JobTelemetry, action: &str, error: &str) {
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter()
+                .any(|op| op.0 == action && !op.1 && op.2.as_deref() == Some(error)),
+            "expected failed telemetry action {action} with {error}, got: {ops:?}"
+        );
+    }
+
+    fn assert_no_telemetry_action(telemetry: &JobTelemetry, action: &str) {
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter().all(|op| op.0 != action),
+            "unexpected telemetry action {action}, got: {ops:?}"
+        );
+    }
+
     struct FinalizationTelemetryFixture {
         _dir: tempfile::TempDir,
         status: Arc<StatusTracker>,
         idle_pool: SharedIdlePool,
         parking_gate: ParkingGate,
         reuse_state_notify: Arc<tokio::sync::Notify>,
+        active_runs: ActiveRuns,
+        active_run_guards: std::sync::Mutex<Vec<ActiveRunGuard>>,
     }
 
     impl FinalizationTelemetryFixture {
@@ -893,12 +936,16 @@ mod tests {
                 parking_gate.clone(),
             )));
 
+            let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
+            let active_runs = ActiveRuns::new(Arc::clone(&reuse_state_notify));
             Self {
                 _dir: dir,
                 status,
                 idle_pool,
                 parking_gate,
-                reuse_state_notify: Arc::new(tokio::sync::Notify::new()),
+                reuse_state_notify,
+                active_runs,
+                active_run_guards: std::sync::Mutex::new(Vec::new()),
             }
         }
 
@@ -910,10 +957,18 @@ mod tests {
             active_lease: BudgetLease,
             cleanup_state: RunCleanupState,
         ) -> FinalizationPhase {
+            let active_run_guard =
+                self.active_runs
+                    .register(run_id, Some(session_id.into()), "vm0/default".into());
+            let active_run_reuse = active_run_guard.reuse_publisher();
+            self.active_run_guards
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(active_run_guard);
             FinalizationPhase {
                 run_id,
                 sandbox_id,
-                completion_auth: CompletionAuth::local(),
+                runner_id: "runner-test".into(),
                 active_lease,
                 reuse_result: SandboxReuseResult::PoolMiss,
                 workspace_disk_mb: 0,
@@ -921,6 +976,7 @@ mod tests {
                 reuse_key: Some(session_id.into()),
                 cli_agent_session_id: Some(session_id.into()),
                 storage_fingerprints: StorageFingerprints::default(),
+                guest_timezone_intent: GuestTimezoneIntent::Unknown,
                 device_rate_limits: None,
                 factory: Arc::new(Box::new(sandbox_mock::MockSandboxFactory::new())),
                 idle_pool: Arc::clone(&self.idle_pool),
@@ -931,6 +987,7 @@ mod tests {
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
                 cancel: RunCancellationHandle::new(),
                 cleanup_state,
+                active_run_reuse,
                 outer_job_panic: None,
                 test_observer: StartLoopTestObserver::default(),
             }
@@ -942,13 +999,30 @@ mod tests {
         sandbox_name: &str,
         restored_session_identity: Option<RestoredSessionIdentity>,
     ) -> ExecutorPhaseOutcome {
+        executor_phase_outcome_with_sandbox(
+            run_id,
+            Box::new(mock_sandbox_ready_for_idle_reuse(sandbox_name)),
+            restored_session_identity,
+        )
+    }
+
+    fn executor_phase_outcome_with_sandbox(
+        run_id: RunId,
+        sandbox: Box<dyn sandbox::Sandbox>,
+        restored_session_identity: Option<RestoredSessionIdentity>,
+    ) -> ExecutorPhaseOutcome {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
-                sandbox: Some(Box::new(mock_sandbox_ready_for_idle_reuse(sandbox_name))),
+                active_input_delivery_ids: Vec::new(),
+                sandbox_reuse_disposition: executor::SandboxReuseDisposition::Eligible(
+                    executor::SandboxReuseTerminal::Success,
+                ),
+                sandbox: Some(sandbox),
                 source_ip: "10.0.0.1".into(),
                 network_log_session: None,
                 workspace_image: None,
+                workspace_reuse_result: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity,
             },
@@ -962,10 +1036,13 @@ mod tests {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
+                active_input_delivery_ids: Vec::new(),
+                sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
                 sandbox: None,
                 source_ip: String::new(),
                 network_log_session: None,
                 workspace_image: None,
+                workspace_reuse_result: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
             },
@@ -1024,7 +1101,7 @@ mod tests {
         let finalization = fixture.finalization_phase(
             run_id,
             sandbox_id,
-            "sess-restore-plan",
+            "thread:restore-plan",
             lease,
             cleanup_state.clone(),
         );
@@ -1041,6 +1118,18 @@ mod tests {
             &finalized.telemetry,
             "runner_host_finalization_reusable_sandbox",
         );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_eligible_success",
+        );
+        for action in [
+            "runner_host_finalization_started",
+            "runner_host_reuse_preparation",
+            "runner_host_physical_park",
+            "runner_host_idle_publication",
+        ] {
+            assert_telemetry_action(&finalized.telemetry, action);
+        }
         assert_telemetry_action(&finalized.telemetry, "session_history_identity_parked");
         assert_eq!(
             cleanup_state.disposition(),
@@ -1050,7 +1139,7 @@ mod tests {
             .idle_pool
             .lock()
             .await
-            .take("sess-restore-plan")
+            .take("thread:restore-plan")
             .expect("parked sandbox should be in idle pool");
         let IdleUnparkResult::Reused { sandbox, .. } =
             entry.try_unpark_for_run(RunId::new_v4()).await
@@ -1058,6 +1147,91 @@ mod tests {
             panic!("parked sandbox should unpark");
         };
         assert_eq!(sandbox.restored_session_identity(), Some(&identity));
+    }
+
+    #[tokio::test]
+    async fn cooperative_cancellation_reuse_does_not_record_hard_cancellation_marker() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-cooperative-cancellation";
+        let cleanup_state = RunCleanupState::new();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            session_id,
+            lease,
+            cleanup_state.clone(),
+        );
+        finalization
+            .cancel
+            .request_cooperative_user_cancellation()
+            .await;
+        let mut executor_result = executor_phase_outcome(run_id, "cooperative-cancellation", None);
+        executor_result.outcome.sandbox_reuse_disposition =
+            executor::SandboxReuseDisposition::Eligible(
+                executor::SandboxReuseTerminal::CooperativeCancellation,
+            );
+
+        let finalized = finalization.finalize(executor_result).await;
+
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_reusable_sandbox",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_eligible_cooperative_cancellation",
+        );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_finalization_cancelled");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::IdlePoolOwned,
+        );
+        assert!(fixture.idle_pool.lock().await.take(session_id).is_some());
+    }
+
+    #[tokio::test]
+    async fn hard_cancellation_records_finalization_cancellation_marker() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-hard-cancellation",
+            lease,
+            cleanup_state.clone(),
+        );
+        finalization.cancel.request_hard_cancellation().await;
+        let mut executor_result = executor_phase_outcome(run_id, "hard-cancellation", None);
+        executor_result.outcome.sandbox_reuse_disposition =
+            executor::SandboxReuseDisposition::Ineligible(
+                executor::SandboxReuseRejection::HardCancellation,
+            );
+
+        let finalized = finalization.finalize(executor_result).await;
+
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_cancelled",
+            "cancelled",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_rejected_hard_cancellation",
+        );
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_reuse_preparation");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_physical_park");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::DestroyCompleted,
+        );
     }
 
     #[tokio::test]
@@ -1128,74 +1302,84 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn completion_notifies_again_after_releasing_active_session_guard() {
+    async fn finalization_records_reuse_preparation_failure_without_physical_park() {
         let fixture = FinalizationTelemetryFixture::new().await;
         let (_budget, lease) = test_budget_lease();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        let session_id = "sess-post-complete-refresh";
-        fixture.status.add_run(run_id, sandbox_id).await;
+        let cleanup_state = RunCleanupState::new();
+        let sandbox = sandbox_mock::MockSandbox::new("reuse-preparation-failed");
+        sandbox.push_exec_result(Err(sandbox::SandboxError::Operation {
+            operation: sandbox::SandboxOperation::Exec,
+            reason: sandbox::SandboxOperationReason::Guest,
+            message: "reuse preparation disconnected".into(),
+        }));
         let finalization = fixture.finalization_phase(
             run_id,
             sandbox_id,
-            session_id,
+            "sess-reuse-preparation-failed",
             lease,
-            RunCleanupState::new(),
+            cleanup_state,
         );
-        let FinalizedJob {
-            completion_ready,
-            mut telemetry,
-        } = finalization
-            .finalize(executor_phase_outcome(
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome_with_sandbox(
                 run_id,
-                "post-complete-refresh",
+                Box::new(sandbox),
                 None,
             ))
             .await;
-        assert!(
-            fixture
-                .reuse_state_notify
-                .notified()
-                .now_or_never()
-                .is_some(),
-            "finalizer should send the early park refresh"
-        );
 
-        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
-        let active_reuse_key_guard = ActiveReuseKeyGuard::new(
-            Arc::clone(&active_reuse_keys),
-            Arc::clone(&fixture.reuse_state_notify),
-            Some(session_id.to_owned()),
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_reuse_preparation",
+            "reuse preparation failed",
         );
-        let (usage_flush_tx, _usage_flush_rx) = mpsc::channel(1);
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_physical_park");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+    }
 
-        CompletionPhase {
+    #[tokio::test]
+    async fn finalization_records_physical_park_failure_after_reuse_preparation() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+        overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
+            transition: sandbox::SandboxIdleTransition::Park,
+            message: "physical park failed".into(),
+        }));
+        let finalization = fixture.finalization_phase(
             run_id,
-            provider: Arc::new(NoopCompletionProvider),
-            status: Arc::clone(&fixture.status),
-            usage_flush_tx,
-            reuse_state_notify: Arc::clone(&fixture.reuse_state_notify),
-            active_reuse_key_guard,
-            cleanup_state: RunCleanupState::new(),
-        }
-        .complete(completion_ready, &mut telemetry)
-        .await;
-
-        assert_telemetry_action(&telemetry, "runner_host_completion_fallback");
-        assert_telemetry_action(&telemetry, "runner_active_reuse_key_released");
-
-        assert!(
-            super::super::active_reuse_keys::active_reuse_keys(&active_reuse_keys).is_empty(),
-            "completion should release the active reuse-key guard before notifying"
+            sandbox_id,
+            "sess-physical-park-failed",
+            lease,
+            cleanup_state,
         );
-        assert!(
-            fixture
-                .reuse_state_notify
-                .notified()
-                .now_or_never()
-                .is_some(),
-            "completion should send a post-guard-release refresh"
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome_with_sandbox(
+                run_id,
+                Box::new(sandbox_mock::MockSandbox::with_overrides(
+                    "physical-park-failed",
+                    overrides,
+                )),
+                None,
+            ))
+            .await;
+
+        assert_telemetry_action(&finalized.telemetry, "runner_host_reuse_preparation");
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_physical_park",
+            "physical park failed",
         );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
     }
 
     async fn status_idle_reuse_keys_and_active_runs(

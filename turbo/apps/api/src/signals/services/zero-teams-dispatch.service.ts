@@ -6,22 +6,22 @@ import {
   getVm0VisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import type {
   ChatTeamsMessageFile,
   ChatTeamsMessageFiles,
-} from "@vm0/db/jsonb-contracts/chat-teams-context";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
-import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/jsonb-contracts/chat-teams-context";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
+import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import type {
   TeamsInboundActivity,
   TeamsInboundAttachment,
-} from "@vm0/api-contracts/contracts/zero-teams-bot";
+} from "@okouai/api-contracts/contracts/zero-teams-bot";
 import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { convert } from "html-to-text";
@@ -63,17 +63,20 @@ import type { TeamsFileTokenPayload } from "./teams-file-token";
 import {
   updateUserModelPreference$,
   userModelPreference,
-} from "./zero-user-data.service";
+} from "./user-data.service";
 import {
   buildTeamsConnectUrlForActivity,
   disconnectTeamsConnection$,
   publishTeamsChanged$,
 } from "./zero-teams-connect.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { insertChatEvent } from "./chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
+import {
+  chatEventTypeIn,
+  chatInputPromptDispatchCondition,
+} from "./chat-event-type.service";
 
 const L = logger("TeamsDispatch");
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
@@ -692,32 +695,38 @@ async function resolveDefaultComposeId(
   return metadata?.defaultAgentId ?? null;
 }
 
-async function sendTeamsRunStartIndicator(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function sendTeamsRunStartIndicator(
+  args: {
+    readonly activity: TeamsMessageActivity;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const activityId = args.activity.activityId;
   let indicator:
     | ReturnType<typeof sendTeamsTypingActivity>
     | ReturnType<typeof sendTeamsReaction>;
   if (isTeamsDirectMessage(args.activity) || !activityId) {
-    indicator = sendTeamsTypingActivity({
-      serviceUrl: args.activity.serviceUrl,
-      conversationId: args.activity.conversationId,
-      tenantId: args.activity.tenantId,
-      signal: args.signal,
-    });
+    indicator = sendTeamsTypingActivity(
+      {
+        serviceUrl: args.activity.serviceUrl,
+        conversationId: args.activity.conversationId,
+        tenantId: args.activity.tenantId,
+      },
+      signal,
+    );
   } else {
-    indicator = sendTeamsReaction({
-      serviceUrl: args.activity.serviceUrl,
-      conversationId: args.activity.conversationId,
-      activityId,
-      tenantId: args.activity.tenantId,
-      reactionType: TEAMS_THINKING_REACTION_TYPE,
-      signal: args.signal,
-    });
+    indicator = sendTeamsReaction(
+      {
+        serviceUrl: args.activity.serviceUrl,
+        conversationId: args.activity.conversationId,
+        activityId,
+        tenantId: args.activity.tenantId,
+        reactionType: TEAMS_THINKING_REACTION_TYPE,
+      },
+      signal,
+    );
   }
-  await bestEffort(indicator, args.signal);
+  await bestEffort(indicator, signal);
 }
 
 async function getUserAgentPreference(
@@ -1156,22 +1165,26 @@ function teamsGraphSenderUserIds(
   ];
 }
 
-async function fetchTeamsGraphUserInfoMap(args: {
-  readonly tenantId: string;
-  readonly messages: readonly TeamsGraphMessage[];
-  readonly signal: AbortSignal;
-}): Promise<ReadonlyMap<string, TeamsGraphUserInfo>> {
+async function fetchTeamsGraphUserInfoMap(
+  args: {
+    readonly tenantId: string;
+    readonly messages: readonly TeamsGraphMessage[];
+  },
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, TeamsGraphUserInfo>> {
   const userIds = teamsGraphSenderUserIds(args.messages);
   if (userIds.length === 0) {
     return new Map();
   }
 
-  const result = await fetchTeamsUsers({
-    tenantId: args.tenantId,
-    userIds,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const result = await fetchTeamsUsers(
+    {
+      tenantId: args.tenantId,
+      userIds,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (result.kind === "teams-error") {
     L.debug("Teams user context fetch failed", {
       tenantId: args.tenantId,
@@ -1193,13 +1206,15 @@ function teamsSessionThreadId(args: {
   readonly activity: TeamsMessageActivity;
   readonly agentId: string;
   readonly selectedModel: string | null;
+  readonly serviceTier: IntegrationModelRoutePin["serviceTier"];
 }): string {
   const { activity } = args;
   if (
     activity.conversationType === "personal" &&
     !isTeamsThreadReply(activity)
   ) {
-    return `${TEAMS_DIRECT_MESSAGE_THREAD_ID}:${args.agentId}:${args.selectedModel ?? "default"}`;
+    const session = `${TEAMS_DIRECT_MESSAGE_THREAD_ID}:${args.agentId}:${args.selectedModel ?? "default"}`;
+    return args.serviceTier === "priority" ? `${session}:priority` : session;
   }
   return activity.threadId;
 }
@@ -1227,10 +1242,12 @@ function recentChannelContextExcludedIds(
   return ids;
 }
 
-async function fetchTeamsThreadRootMessage(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly signal: AbortSignal;
-}): Promise<TeamsGraphMessage | null> {
+async function fetchTeamsThreadRootMessage(
+  args: {
+    readonly activity: TeamsMessageActivity;
+  },
+  signal: AbortSignal,
+): Promise<TeamsGraphMessage | null> {
   const { activity } = args;
   if (
     !isTeamsThreadReply(activity) ||
@@ -1240,13 +1257,15 @@ async function fetchTeamsThreadRootMessage(args: {
     return null;
   }
 
-  const rootResult = await fetchTeamsChannelMessage({
-    tenantId: activity.tenantId,
-    teamId: activity.teamAadGroupId,
-    channelId: activity.channelId,
-    messageId: activity.threadId,
-    signal: args.signal,
-  });
+  const rootResult = await fetchTeamsChannelMessage(
+    {
+      tenantId: activity.tenantId,
+      teamId: activity.teamAadGroupId,
+      channelId: activity.channelId,
+      messageId: activity.threadId,
+    },
+    signal,
+  );
   if (rootResult.kind === "teams-error") {
     L.warn("Teams thread root context fetch failed", {
       tenantId: activity.tenantId,
@@ -1263,24 +1282,28 @@ async function fetchTeamsThreadRootMessage(args: {
   return rootResult.message;
 }
 
-async function fetchTeamsThreadContext(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly rootMessage: TeamsGraphMessage | null;
-  readonly signal: AbortSignal;
-}): Promise<TeamsPromptContext> {
+async function fetchTeamsThreadContext(
+  args: {
+    readonly activity: TeamsMessageActivity;
+    readonly rootMessage: TeamsGraphMessage | null;
+  },
+  signal: AbortSignal,
+): Promise<TeamsPromptContext> {
   const { activity } = args;
   if (!args.rootMessage || !activity.teamAadGroupId || !activity.channelId) {
     return { text: "", files: [] };
   }
 
-  const repliesResult = await fetchTeamsChannelMessageReplies({
-    tenantId: activity.tenantId,
-    teamId: activity.teamAadGroupId,
-    channelId: activity.channelId,
-    messageId: activity.threadId,
-    limit: 100,
-    signal: args.signal,
-  });
+  const repliesResult = await fetchTeamsChannelMessageReplies(
+    {
+      tenantId: activity.tenantId,
+      teamId: activity.teamAadGroupId,
+      channelId: activity.channelId,
+      messageId: activity.threadId,
+      limit: 100,
+    },
+    signal,
+  );
   if (repliesResult.kind === "teams-error") {
     L.warn("Teams thread replies context fetch failed", {
       tenantId: activity.tenantId,
@@ -1295,11 +1318,13 @@ async function fetchTeamsThreadContext(args: {
   }
 
   const messages = [args.rootMessage, ...repliesResult.messages];
-  const userInfoMap = await fetchTeamsGraphUserInfoMap({
-    tenantId: activity.tenantId,
-    messages,
-    signal: args.signal,
-  });
+  const userInfoMap = await fetchTeamsGraphUserInfoMap(
+    {
+      tenantId: activity.tenantId,
+      messages,
+    },
+    signal,
+  );
 
   const contextMessages = teamsContextMessages(
     activity.tenantId,
@@ -1327,11 +1352,13 @@ function teamsMessagesBeforeReference(
   });
 }
 
-async function fetchRecentTeamsChannelContext(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly beforeMessage: TeamsGraphMessage | null;
-  readonly signal: AbortSignal;
-}): Promise<TeamsPromptContext> {
+async function fetchRecentTeamsChannelContext(
+  args: {
+    readonly activity: TeamsMessageActivity;
+    readonly beforeMessage: TeamsGraphMessage | null;
+  },
+  signal: AbortSignal,
+): Promise<TeamsPromptContext> {
   const { activity } = args;
   const teamAadGroupId = activity.teamAadGroupId;
   const channelId = activity.channelId;
@@ -1339,13 +1366,15 @@ async function fetchRecentTeamsChannelContext(args: {
     return { text: "", files: [] };
   }
 
-  const result = await fetchTeamsChannelMessages({
-    tenantId: activity.tenantId,
-    teamId: teamAadGroupId,
-    channelId,
-    limit: 10,
-    signal: args.signal,
-  });
+  const result = await fetchTeamsChannelMessages(
+    {
+      tenantId: activity.tenantId,
+      teamId: teamAadGroupId,
+      channelId,
+      limit: 10,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     L.warn("Teams channel context fetch failed", {
       tenantId: activity.tenantId,
@@ -1362,11 +1391,13 @@ async function fetchRecentTeamsChannelContext(args: {
     result.messages,
     args.beforeMessage,
   );
-  const userInfoMap = await fetchTeamsGraphUserInfoMap({
-    tenantId: activity.tenantId,
-    messages,
-    signal: args.signal,
-  });
+  const userInfoMap = await fetchTeamsGraphUserInfoMap(
+    {
+      tenantId: activity.tenantId,
+      messages,
+    },
+    signal,
+  );
 
   const contextMessages = teamsContextMessages(
     activity.tenantId,
@@ -1384,10 +1415,12 @@ function isTeamsDirectMessage(activity: TeamsMessageActivity): boolean {
   return activity.conversationType === "personal";
 }
 
-async function fetchTeamsDirectMessageThreadContext(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly signal: AbortSignal;
-}): Promise<TeamsPromptContext> {
+async function fetchTeamsDirectMessageThreadContext(
+  args: {
+    readonly activity: TeamsMessageActivity;
+  },
+  signal: AbortSignal,
+): Promise<TeamsPromptContext> {
   const { activity } = args;
   const userId = activity.sender.aadObjectId;
   const teamsAppId = activity.teamsAppId ?? env("MICROSOFT_TEAMS_BOT_APP_ID");
@@ -1395,13 +1428,15 @@ async function fetchTeamsDirectMessageThreadContext(args: {
     return { text: "", files: [] };
   }
 
-  const result = await fetchTeamsPersonalChatMessages({
-    tenantId: activity.tenantId,
-    userId,
-    teamsAppId,
-    limit: 50,
-    signal: args.signal,
-  });
+  const result = await fetchTeamsPersonalChatMessages(
+    {
+      tenantId: activity.tenantId,
+      userId,
+      teamsAppId,
+      limit: 50,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     L.warn("Teams direct message thread context fetch failed", {
       tenantId: activity.tenantId,
@@ -1414,11 +1449,13 @@ async function fetchTeamsDirectMessageThreadContext(args: {
   }
 
   const messages = result.messages;
-  const userInfoMap = await fetchTeamsGraphUserInfoMap({
-    tenantId: activity.tenantId,
-    messages,
-    signal: args.signal,
-  });
+  const userInfoMap = await fetchTeamsGraphUserInfoMap(
+    {
+      tenantId: activity.tenantId,
+      messages,
+    },
+    signal,
+  );
   const contextMessages = teamsContextMessages(
     activity.tenantId,
     messages,
@@ -1448,28 +1485,36 @@ function teamsValidationFallbackNotice(args: {
   return null;
 }
 
-async function fetchTeamsPromptContext(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly signal: AbortSignal;
-}): Promise<TeamsPromptContext> {
+async function fetchTeamsPromptContext(
+  args: {
+    readonly activity: TeamsMessageActivity;
+  },
+  signal: AbortSignal,
+): Promise<TeamsPromptContext> {
   if (isTeamsDirectMessage(args.activity)) {
-    return await fetchTeamsDirectMessageThreadContext(args);
+    return await fetchTeamsDirectMessageThreadContext(args, signal);
   }
 
-  const threadRootMessage = await fetchTeamsThreadRootMessage({
-    activity: args.activity,
-    signal: args.signal,
-  });
-  const recentChannelContext = await fetchRecentTeamsChannelContext({
-    activity: args.activity,
-    beforeMessage: threadRootMessage,
-    signal: args.signal,
-  });
-  const threadContext = await fetchTeamsThreadContext({
-    activity: args.activity,
-    rootMessage: threadRootMessage,
-    signal: args.signal,
-  });
+  const threadRootMessage = await fetchTeamsThreadRootMessage(
+    {
+      activity: args.activity,
+    },
+    signal,
+  );
+  const recentChannelContext = await fetchRecentTeamsChannelContext(
+    {
+      activity: args.activity,
+      beforeMessage: threadRootMessage,
+    },
+    signal,
+  );
+  const threadContext = await fetchTeamsThreadContext(
+    {
+      activity: args.activity,
+      rootMessage: threadRootMessage,
+    },
+    signal,
+  );
   return {
     text: [recentChannelContext.text, threadContext.text]
       .filter((context) => {
@@ -1540,18 +1585,20 @@ function teamsChatMessageId(
   );
 }
 
-async function persistTeamsChatMessage(args: {
-  readonly db: Db;
-  readonly activity: TeamsMessageActivity;
-  readonly installation: BoundTeamsInstallation;
-  readonly connection: TeamsConnection;
-  readonly composeId: string;
-  readonly promptFiles: readonly TeamsPromptFile[];
-  readonly promptContext: TeamsPromptContext;
-  readonly apiStartTime: number;
-  readonly modelRoute: IntegrationModelRoutePin | undefined;
-  readonly signal: AbortSignal;
-}): Promise<
+async function persistTeamsChatMessage(
+  args: {
+    readonly db: Db;
+    readonly activity: TeamsMessageActivity;
+    readonly installation: BoundTeamsInstallation;
+    readonly connection: TeamsConnection;
+    readonly composeId: string;
+    readonly promptFiles: readonly TeamsPromptFile[];
+    readonly promptContext: TeamsPromptContext;
+    readonly apiStartTime: number;
+    readonly modelRoute: IntegrationModelRoutePin | undefined;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly inserted: true;
       readonly chatThreadId: string;
@@ -1564,6 +1611,7 @@ async function persistTeamsChatMessage(args: {
     activity: args.activity,
     agentId: args.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
+    serviceTier: args.modelRoute?.serviceTier ?? null,
   });
   const route = await ensureTeamsChatThreadRoute(args.db, {
     connectionId: args.connection.id,
@@ -1573,9 +1621,10 @@ async function persistTeamsChatMessage(args: {
     orgId: args.installation.orgId,
     agentComposeId: args.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
+    serviceTier: args.modelRoute?.serviceTier ?? null,
     currentTime,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const launchContext = canonicalTeamsLaunchContext({
     activity: args.activity,
@@ -1616,13 +1665,12 @@ async function persistTeamsChatMessage(args: {
           }),
         }),
         runId: null,
-        triggerSource: "teams",
         teamsContext: launchContext,
         createdAt: currentTime,
       },
       "id",
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!event) {
       return false;
     }
@@ -1634,7 +1682,7 @@ async function persistTeamsChatMessage(args: {
     );
     return true;
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return inserted
     ? { inserted: true, chatThreadId: route.chatThreadId, chatEventId }
     : { inserted: false };
@@ -1653,13 +1701,10 @@ async function teamsMessageDispatchState(
       .from(chatEvents)
       .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
       .where(
-        and(
-          eq(chatEvents.chatThreadId, args.chatThreadId),
-          or(
-            eq(chatEvents.id, args.chatEventId),
-            eq(chatEvents.revokesEventId, args.chatEventId),
-          ),
-        ),
+        chatInputPromptDispatchCondition({
+          eventId: args.chatEventId,
+          chatThreadId: args.chatThreadId,
+        }),
       )
       .limit(1),
     db
@@ -1715,18 +1760,20 @@ const runAgentForTeams$ = command(
       nowDate().getTime(),
     );
     const db = set(writeDb$);
-    const persisted = await persistTeamsChatMessage({
-      db,
-      activity: args.activity,
-      installation: args.installation,
-      connection: args.connection,
-      composeId: args.composeId,
-      promptFiles: args.promptFiles,
-      promptContext: args.promptContext,
-      apiStartTime: args.apiStartTime,
-      modelRoute: args.modelRoute,
+    const persisted = await persistTeamsChatMessage(
+      {
+        db,
+        activity: args.activity,
+        installation: args.installation,
+        connection: args.connection,
+        composeId: args.composeId,
+        promptFiles: args.promptFiles,
+        promptContext: args.promptContext,
+        apiStartTime: args.apiStartTime,
+        modelRoute: args.modelRoute,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (!persisted.inserted) {
       return { kind: "ignored" };
@@ -2070,7 +2117,7 @@ const connectedTeamsCardAction$ = command(
       {
         orgId: args.installation.orgId,
         userId: args.connection.vm0UserId,
-        preference: { selectedModel: option.model },
+        preference: { selectedModel: option.model, serviceTier: null },
       },
       signal,
     );
@@ -2113,10 +2160,12 @@ const runResolvedTeamsAgentForActivity$ = command(
       return { kind: "ignored" };
     }
 
-    await sendTeamsRunStartIndicator({
-      activity: args.activity,
+    await sendTeamsRunStartIndicator(
+      {
+        activity: args.activity,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     const modelRoute = await set(
@@ -2129,10 +2178,12 @@ const runResolvedTeamsAgentForActivity$ = command(
     );
     signal.throwIfAborted();
 
-    const promptContext = await fetchTeamsPromptContext({
-      activity: args.activity,
+    const promptContext = await fetchTeamsPromptContext(
+      {
+        activity: args.activity,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     return await set(

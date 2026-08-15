@@ -1,0 +1,99 @@
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import type { SQL } from "drizzle-orm";
+
+import type { Tx } from "../../lib/db-types";
+import type { Db } from "../external/db";
+
+type StoredRunMetadataValues = Pick<
+  typeof agentRuns.$inferSelect,
+  | "triggerSource"
+  | "autonomyBudget"
+  | "workflowAutomationId"
+  | "goalId"
+  | "modelProvider"
+  | "modelProviderId"
+  | "modelProviderCredentialScope"
+  | "selectedModel"
+  | "codexServiceTier"
+  | "selectedVideoModel"
+  | "chatThreadId"
+  | "apiStartedAt"
+  | "firstAssistantEventAcknowledgedAt"
+  | "summary"
+  | "triggerBrief"
+>;
+
+export type RunMetadataValues = Readonly<
+  Omit<StoredRunMetadataValues, "triggerSource" | "autonomyBudget"> & {
+    readonly triggerSource: NonNullable<
+      StoredRunMetadataValues["triggerSource"]
+    >;
+    readonly autonomyBudget: NonNullable<
+      StoredRunMetadataValues["autonomyBudget"]
+    >;
+  }
+>;
+
+type RunMetadataInput = Readonly<
+  Pick<RunMetadataValues, "triggerSource"> &
+    Partial<Omit<RunMetadataValues, "triggerSource">>
+>;
+
+type RunMetadataPatch = {
+  [Key in keyof RunMetadataValues]: Readonly<
+    Pick<RunMetadataValues, Key> & Partial<RunMetadataValues>
+  >;
+}[keyof RunMetadataValues];
+
+interface RunMetadataWriteArgs {
+  readonly patch: RunMetadataPatch;
+  readonly where: SQL;
+}
+
+interface RunMetadataRow {
+  readonly id: string;
+  readonly apiStartedAt: Date | null;
+}
+
+export function normalizeRunMetadata(
+  input: RunMetadataInput,
+): RunMetadataValues {
+  return {
+    triggerSource: input.triggerSource,
+    autonomyBudget: input.autonomyBudget ?? 10,
+    workflowAutomationId: input.workflowAutomationId ?? null,
+    goalId: input.goalId ?? null,
+    modelProvider: input.modelProvider ?? null,
+    modelProviderId: input.modelProviderId ?? null,
+    modelProviderCredentialScope: input.modelProviderCredentialScope ?? null,
+    selectedModel: input.selectedModel ?? null,
+    codexServiceTier: input.codexServiceTier ?? null,
+    selectedVideoModel: input.selectedVideoModel ?? null,
+    chatThreadId: input.chatThreadId ?? null,
+    apiStartedAt: input.apiStartedAt ?? null,
+    firstAssistantEventAcknowledgedAt:
+      input.firstAssistantEventAcknowledgedAt ?? null,
+    summary: input.summary ?? null,
+    triggerBrief: input.triggerBrief ?? null,
+  };
+}
+
+export async function writeRunMetadataInTransaction(
+  tx: Tx,
+  args: RunMetadataWriteArgs,
+): Promise<readonly RunMetadataRow[]> {
+  return await tx
+    .update(agentRuns)
+    .set(args.patch)
+    .where(args.where)
+    .returning({ id: agentRuns.id, apiStartedAt: agentRuns.apiStartedAt });
+}
+
+export function writeRunMetadata(
+  db: Db,
+  args: RunMetadataWriteArgs,
+): Promise<readonly RunMetadataRow[]> {
+  return db.transaction(async (tx) => {
+    return await writeRunMetadataInTransaction(tx, args);
+  });
+}

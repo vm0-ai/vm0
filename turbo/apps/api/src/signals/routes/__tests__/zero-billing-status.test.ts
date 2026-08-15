@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
 import { onTestFinished } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import {
@@ -22,13 +23,14 @@ import {
   deleteBillingStatusOrg$,
   seedBillingStatusOrg$,
   type BillingStatusFixture,
-} from "./helpers/zero-billing-status";
+} from "./helpers/billing-status";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
 
 const context = testContext();
 const store = createStore();
@@ -81,7 +83,9 @@ describe("GET /api/zero/billing/status", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(client.get({ headers: {} }), [401]);
 
@@ -92,7 +96,9 @@ describe("GET /api/zero/billing/status", () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -113,7 +119,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -121,6 +129,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("limited-free-1");
+    expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.videoGenerationAllowed).toBeFalsy();
@@ -142,7 +151,9 @@ describe("GET /api/zero/billing/status", () => {
       capabilities: ["billing:read"],
     });
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: `Bearer ${token}` } }),
@@ -159,7 +170,9 @@ describe("GET /api/zero/billing/status", () => {
       capabilities: [],
     });
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: `Bearer ${token}` } }),
@@ -192,7 +205,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -200,6 +215,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro");
+    expect(response.body.memberInvitationAllowed).toBeTruthy();
     expect(response.body.credits).toBe(100_000);
     expect(response.body.subscriptionStatus).toBe("active");
     expect(response.body.currentPeriodEnd).toBe(periodEnd.toISOString());
@@ -207,6 +223,40 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.scheduledChange).toBeNull();
     expect(response.body.hasSubscription).toBeTruthy();
   });
+
+  it.each(["canceled", "incomplete_expired"])(
+    "does not report a %s plan as a subscription",
+    async (status) => {
+      const fixture = await track(
+        store.set(
+          seedBillingStatusOrg$,
+          {
+            subscription: {
+              tier: "pro",
+              status,
+              currentPeriodEnd: new Date("2099-04-20T00:00:00Z"),
+              stripeCustomerId: `cus_${randomUUID()}`,
+              stripeSubscriptionId: `sub_${randomUUID()}`,
+            },
+          },
+          context.signal,
+        ),
+      );
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+
+      const response = await accept(
+        setupApp({ context, routes: zeroBillingStatusRoutes })(
+          zeroBillingStatusContract,
+        ).get({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.subscriptionStatus).toBe(status);
+      expect(response.body.hasSubscription).toBeFalsy();
+    },
+  );
 
   it("returns custom tier status without subscription plan credits", async () => {
     const fixture = await track(
@@ -219,7 +269,9 @@ describe("GET /api/zero/billing/status", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -227,11 +279,86 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("custom");
+    expect(response.body.memberInvitationAllowed).toBeTruthy();
     expect(response.body.hasSubscription).toBeFalsy();
     expect(response.body.currentPeriodEnd).toBeNull();
     expect(response.body.concurrencyLimit).toBe(10);
     expect(response.body.creditBreakdown).toStrictEqual([]);
   });
+
+  it.each([
+    { status: "active", hasSubscription: true },
+    { status: "canceled", hasSubscription: false },
+  ])(
+    "reports $status usage allowance subscription availability",
+    async ({ status, hasSubscription }) => {
+      const fixture = await track(
+        store.set(
+          seedBillingStatusOrg$,
+          {
+            usageAllowance: {
+              status,
+              shortWindowSeconds: 18_000,
+              shortWindowUnits: 5000,
+              weeklyWindowUnits: 50_000,
+              expiresAt: new Date("2099-04-20T00:00:00Z"),
+            },
+          },
+          context.signal,
+        ),
+      );
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+
+      const response = await accept(
+        setupApp({ context, routes: zeroBillingStatusRoutes })(
+          zeroBillingStatusContract,
+        ).get({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.hasSubscription).toBe(hasSubscription);
+    },
+  );
+
+  it.each([
+    { status: "active", hasSubscription: true },
+    { status: "canceled", hasSubscription: false },
+  ])(
+    "reports $status concurrency subscription availability",
+    async ({ status, hasSubscription }) => {
+      const fixture = await track(
+        store.set(
+          seedBillingStatusOrg$,
+          {
+            concurrencyEntitlements: [
+              {
+                stripeSubscriptionId: `sub_${randomUUID()}`,
+                slots: 2,
+                startsAt: new Date("2026-01-01T00:00:00Z"),
+                expiresAt: new Date("2099-04-20T00:00:00Z"),
+                subscriptionStatus: status,
+              },
+            ],
+          },
+          context.signal,
+        ),
+      );
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+
+      const response = await accept(
+        setupApp({ context, routes: zeroBillingStatusRoutes })(
+          zeroBillingStatusContract,
+        ).get({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.hasSubscription).toBe(hasSubscription);
+    },
+  );
 
   it("returns finite concurrency limit when the concurrency cap is disabled", async () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
@@ -252,7 +379,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -281,6 +410,8 @@ describe("GET /api/zero/billing/status", () => {
       baseConcurrencyLimit: 10,
       canBuyConcurrency: true,
       canBuyCredits: false,
+      memberInviteUsagePackRequired: true,
+      memberInvitationAllowed: false,
       autoRechargeAllowed: false,
       supportByok: false,
       restrictedVm0Models: true,
@@ -290,7 +421,9 @@ describe("GET /api/zero/billing/status", () => {
     mocks.clerk.session(userId, orgId);
 
     const response = await accept(
-      setupApp({ context })(zeroBillingStatusContract).get({
+      setupApp({ context, routes: zeroBillingStatusRoutes })(
+        zeroBillingStatusContract,
+      ).get({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -299,6 +432,8 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.tier).toBe("pro");
     expect(response.body.canBuyConcurrency).toBeTruthy();
     expect(response.body.canBuyCredits).toBeFalsy();
+    expect(response.body.memberInviteUsagePackRequired).toBeTruthy();
+    expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.autoRechargeAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
@@ -307,7 +442,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.concurrencyLimit).toBe(3);
   });
 
-  it("keeps credit purchase capability accurate for legacy rollout writes", async () => {
+  it("keeps plan capabilities accurate for legacy rollout writes", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     onTestFinished(async () => {
@@ -320,7 +455,9 @@ describe("GET /api/zero/billing/status", () => {
     });
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
     const initialResponse = await accept(
       client.get({
         headers: { authorization: "Bearer clerk-session" },
@@ -328,6 +465,7 @@ describe("GET /api/zero/billing/status", () => {
       [200],
     );
     expect(initialResponse.body.canBuyCredits).toBeFalsy();
+    expect(initialResponse.body.memberInvitationAllowed).toBeFalsy();
 
     await updateOrgPlanKeyAsLegacyWriterFixture({ orgId, planKey: "pro" });
 
@@ -339,6 +477,7 @@ describe("GET /api/zero/billing/status", () => {
     );
     expect(updatedResponse.body.tier).toBe("limited-free-1");
     expect(updatedResponse.body.canBuyCredits).toBeTruthy();
+    expect(updatedResponse.body.memberInvitationAllowed).toBeTruthy();
   });
 
   it("includes active concurrency subscription slots", async () => {
@@ -383,7 +522,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -448,7 +589,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -523,7 +666,9 @@ describe("GET /api/zero/billing/status", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
-      setupApp({ context })(zeroBillingStatusContract).get({
+      setupApp({ context, routes: zeroBillingStatusRoutes })(
+        zeroBillingStatusContract,
+      ).get({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -582,7 +727,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -617,7 +764,9 @@ describe("GET /api/zero/billing/status", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -647,7 +796,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -655,6 +806,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.cancelAtPeriodEnd).toBeTruthy();
+    expect(response.body.hasSubscription).toBeTruthy();
     expect(response.body.scheduledChange).toStrictEqual({
       type: "cancel",
       targetTier: "limited-free-1",
@@ -685,7 +837,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -706,7 +860,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -736,7 +892,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -764,7 +922,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -798,7 +958,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -845,7 +1007,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -895,7 +1059,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -938,7 +1104,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -974,7 +1142,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -1018,7 +1188,9 @@ describe("GET /api/zero/billing/status", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -1050,7 +1222,9 @@ describe("GET /api/zero/billing/status", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroBillingStatusContract);
+    const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      zeroBillingStatusContract,
+    );
 
     const response = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -1058,6 +1232,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro-suspend");
+    expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.credits).toBe(0);
     expect(response.body.hasSubscription).toBeFalsy();
   });

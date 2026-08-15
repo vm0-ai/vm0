@@ -1,13 +1,15 @@
-import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
-import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
+import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
+import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -15,18 +17,10 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
-import { clearMockNow, mockNow } from "../../../lib/time.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-
-afterEach(async () => {
-  clearMockNow();
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
-});
 
 function stalePersonalCodexProvider(): ModelProviderResponse {
   return {
@@ -73,6 +67,23 @@ function connectedPersonalCodexProvider(): ModelProviderResponse {
   };
 }
 
+function connectedPersonalCodexAccount(args: {
+  readonly id: string;
+  readonly email: string;
+  readonly isActive: boolean;
+  readonly createdAt: string;
+}): ModelProviderResponse {
+  return {
+    ...connectedPersonalCodexProvider(),
+    id: args.id,
+    modelProviderId: "00000000-0000-4000-a000-000000000300",
+    isActive: args.isActive,
+    accountEmail: args.email,
+    workspaceName: args.email,
+    createdAt: args.createdAt,
+  };
+}
+
 function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
   return {
     id: "00000000-0000-4000-a000-000000000302",
@@ -111,12 +122,11 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
 function mockPersonalProvidersStory(role: "admin" | "member" = "member"): void {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role,
   });
   context.mocks.data.personalModelProviders([stalePersonalCodexProvider()]);
-  context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+  context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
     return respond(200, {
       sessionToken: "mock-personal-codex-device-session",
       type: "codex",
@@ -128,7 +138,7 @@ function mockPersonalProvidersStory(role: "admin" | "member" = "member"): void {
       interval: 1,
     });
   });
-  context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+  context.mocks.api(codexDeviceAuthContract.complete, ({ respond }) => {
     return respond(200, { status: "pending", errorMessage: null });
   });
 }
@@ -162,10 +172,14 @@ function mockBillingCapabilities(modelCapabilities: {
   });
 }
 
-async function openModelSettings(heading = "Models"): Promise<void> {
+async function openModelSettings(
+  heading = "Models",
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
+): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=model",
+    featureSwitches,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -264,10 +278,103 @@ function mockBrowserTimeZone(timeZone: string): void {
 }
 
 describe("personal model providers settings", () => {
+  it("lists subscription accounts and switches only on an explicit click", async () => {
+    const user = userEvent.setup();
+    mockBrowserTimeZone("America/New_York");
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "member",
+    });
+    const accountA = {
+      ...connectedPersonalCodexAccount({
+        id: "00000000-0000-4000-a000-000000000311",
+        email: "account-a@example.com",
+        isActive: true,
+        createdAt: "2026-03-01T00:00:00Z",
+      }),
+      workspaceName: "Account A Organization",
+    };
+    const accountB = connectedPersonalCodexAccount({
+      id: "00000000-0000-4000-a000-000000000312",
+      email: "account-b@example.com",
+      isActive: false,
+      createdAt: "2026-03-02T00:00:00Z",
+    });
+    context.mocks.data.personalModelProviders([accountA, accountB]);
+
+    await openModelSettings("Models", {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+
+    const rowA = await screen.findByTestId(`oauth-account-${accountA.id}`);
+    const rowB = await screen.findByTestId(`oauth-account-${accountB.id}`);
+    expect(within(rowA).getByText("account-a@example.com")).toBeInTheDocument();
+    expect(within(rowB).getByText("account-b@example.com")).toBeInTheDocument();
+    expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
+    expect(within(rowB).queryByText("Active")).not.toBeInTheDocument();
+    expect(within(rowB).queryByText("Use")).not.toBeInTheDocument();
+    expect(within(rowA).getByRole("radio", { name: "Active" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(within(rowB).getByRole("radio", { name: "Use" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    const usageRings = within(rowA).getAllByRole("progressbar");
+    expect(usageRings).toHaveLength(2);
+    expect(usageRings[0]).toHaveAttribute("aria-valuenow", "82");
+    expect(usageRings[1]).toHaveAttribute("aria-valuenow", "55");
+    expect(within(rowA).queryByText("82% left")).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").filter((button) => {
+        return button.textContent?.trim() === "Add account";
+      }),
+    ).toHaveLength(2);
+
+    const accountIdentity = within(rowA).getByText("account-a@example.com");
+    await user.hover(accountIdentity);
+    await expect(
+      screen.findAllByText("Account A Organization"),
+    ).resolves.not.toHaveLength(0);
+
+    usageRings[0].focus();
+    await expect(screen.findAllByText("82% left")).resolves.not.toHaveLength(0);
+    expect(
+      screen.getAllByText(
+        formatResetInTimeZone(
+          "2030-01-01T05:00:00.000Z",
+          "America/New_York",
+        ).replace(/^resets /u, ""),
+      ),
+    ).not.toHaveLength(0);
+
+    click(within(rowA).getByLabelText("More options"));
+    expect(
+      queryAllByRoleFast("menuitem").some((item) => {
+        return item.textContent?.trim() === "Remove";
+      }),
+    ).toBeFalsy();
+    click(within(rowA).getByLabelText("More options"));
+
+    click(within(rowB).getByRole("radio", { name: "Use" }));
+    await waitFor(() => {
+      expect(
+        within(rowB).getByRole("radio", { name: "Active" }),
+      ).toHaveAttribute("aria-checked", "true");
+      expect(within(rowA).getByRole("radio", { name: "Use" })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+      expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
+    });
+  });
+
   it("offers Pro upgrade when personal BYOK is unsupported", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -299,12 +406,11 @@ describe("personal model providers settings", () => {
   it("opens personal Claude Code login from model settings", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
     context.mocks.data.personalModelProviders([]);
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-personal-claude-code-session",
         type: "claude-code",
@@ -345,12 +451,11 @@ describe("personal model providers settings", () => {
   it("connects personal Claude Code with an authorization code", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
     context.mocks.data.personalModelProviders([]);
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-personal-claude-code-session",
         type: "claude-code",
@@ -360,18 +465,15 @@ describe("personal model providers settings", () => {
         expiresIn: 30,
       });
     });
-    context.mocks.api(
-      zeroClaudeCodeDeviceAuthContract.complete,
-      ({ respond }) => {
-        const provider = connectedPersonalClaudeCodeProvider();
-        context.mocks.data.personalModelProviders([provider]);
-        return respond(200, {
-          status: "complete",
-          provider,
-          created: true,
-        });
-      },
-    );
+    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
+      const provider = connectedPersonalClaudeCodeProvider();
+      context.mocks.data.personalModelProviders([provider]);
+      return respond(200, {
+        status: "complete",
+        provider,
+        created: true,
+      });
+    });
 
     await openModelSettings();
 
@@ -410,12 +512,11 @@ describe("personal model providers settings", () => {
   it("keeps Claude Code validation inline and suppresses transport error toasts", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
     context.mocks.data.personalModelProviders([]);
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-personal-claude-code-session",
         type: "claude-code",
@@ -426,26 +527,23 @@ describe("personal model providers settings", () => {
       });
     });
     let completeCount = 0;
-    context.mocks.api(
-      zeroClaudeCodeDeviceAuthContract.complete,
-      ({ respond }) => {
-        completeCount += 1;
-        if (completeCount === 1) {
-          return respond(400, {
-            error: {
-              message: "Invalid Claude authorization code",
-              code: "BAD_REQUEST",
-            },
-          });
-        }
-        return respond(503, {
+    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
+      completeCount += 1;
+      if (completeCount === 1) {
+        return respond(400, {
           error: {
-            message: "Claude authorization is unavailable",
-            code: "UNAVAILABLE",
+            message: "Invalid Claude authorization code",
+            code: "BAD_REQUEST",
           },
         });
-      },
-    );
+      }
+      return respond(503, {
+        error: {
+          message: "Claude authorization is unavailable",
+          code: "UNAVAILABLE",
+        },
+      });
+    });
 
     await openModelSettings();
 
@@ -475,7 +573,7 @@ describe("personal model providers settings", () => {
     });
 
     context.mocks.http.post(
-      "*/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+      "*/api/okou/model-providers/claude-code/device-auth/sessions/complete",
       () => {
         return HttpResponse.error();
       },
@@ -489,10 +587,9 @@ describe("personal model providers settings", () => {
 
   it("shows available subscription details in the connected status", async () => {
     mockBrowserTimeZone("America/New_York");
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -547,10 +644,9 @@ describe("personal model providers settings", () => {
   it("localizes subscription reset dates and relative times in Japanese", async () => {
     const timeZone = "Asia/Tokyo";
     mockBrowserTimeZone(timeZone);
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -593,10 +689,9 @@ describe("personal model providers settings", () => {
   it("localizes subscription reset dates and relative times in Spanish", async () => {
     const timeZone = "Europe/Madrid";
     mockBrowserTimeZone(timeZone);
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -639,7 +734,6 @@ describe("personal model providers settings", () => {
   it("resets connected personal Codex usage from the row menu", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -692,7 +786,6 @@ describe("personal model providers settings", () => {
     mockBrowserTimeZone("America/New_York");
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -745,7 +838,6 @@ describe("personal model providers settings", () => {
   it("disconnects a connected personal Codex credential", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -789,7 +881,7 @@ describe("personal model providers settings", () => {
       name: "Adicionar modelo",
     });
     click(within(policyDialog).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "Claude Opus 4.7" }));
+    click(await screen.findByRole("option", { name: "Claude Opus 4.8" }));
     click(screen.getByRole("radio", { name: /Chave de API/u }));
     expect(
       within(policyDialog).getByText("Chave de API da Anthropic"),

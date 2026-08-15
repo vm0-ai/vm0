@@ -1,12 +1,16 @@
 import { command } from "ccstate";
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
-import { writeDb$ } from "../external/db";
-import { now, nowDate } from "../external/time";
-import { publishChatThreadDetailChangedSafely } from "../external/realtime";
+import { writeDb$, type Db } from "../external/db";
+import { now, nowDate } from "../../lib/time";
+import {
+  publishActiveInputToRunnerGroup,
+  publishChatThreadDetailChangedSafely,
+} from "../external/realtime";
 import { tapError } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { staleChatThreadQueueThreadIds } from "./workflow-chat-event-queue.service";
@@ -21,6 +25,7 @@ import {
 import { expiredCancellationRecoveryThreads } from "./zero-chat-active-run.service";
 import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
+import { pendingActiveInputCondition } from "./chat-event-queue.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
 export const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
@@ -44,17 +49,66 @@ interface DrainChatThreadQueueInput {
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
-  readonly workflowEventLaunch?: {
+  readonly automationEventLaunch?: {
     readonly eventId: string;
     readonly apiStartTime: number;
     readonly timing: ApiDispatchTimingCollector;
   };
 }
 
+export async function notifyRunningChatRunOfPendingInput(
+  db: Db,
+  chatThreadId: string,
+): Promise<boolean> {
+  const [run] = await db
+    .select({
+      id: agentRuns.id,
+      runnerGroup: agentRuns.runnerGroup,
+    })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.chatThreadId, chatThreadId),
+        eq(agentRuns.status, "running"),
+        isNotNull(agentRuns.triggerSource),
+      ),
+    )
+    .limit(1);
+  if (!run) {
+    return false;
+  }
+  const [pendingInput] = await db
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, chatThreadId),
+        pendingActiveInputCondition(db, run.id),
+      ),
+    )
+    .limit(1);
+  if (!pendingInput) {
+    return false;
+  }
+  if (run.runnerGroup) {
+    await tapError(
+      publishActiveInputToRunnerGroup(run.runnerGroup, run.id),
+      (error) => {
+        L.warn("Failed to notify runner about active input", {
+          chatThreadId,
+          runId: run.id,
+          error,
+        });
+      },
+    );
+  }
+  return true;
+}
+
 /**
  * The single per-thread scheduler entry: terminal run callbacks, cancel,
  * resume, and the stale sweep all converge here. User messages are attempted
- * first; workflow automation remains second and goal continuation third. Each
+ * first; goal continuation remains second and workflow automation third. Each
  * later drain observes a newly-created active run and stops. The final claims
  * serialize on the same thread row and fold pending events by class priority,
  * then original `created_at` and id.
@@ -69,6 +123,12 @@ export const drainChatThreadQueueForThread$ = command(
     signal: AbortSignal,
   ): Promise<WorkflowQueueDrainResult | null> => {
     const apiStartTime = input.apiStartTime ?? now();
+    const db = set(writeDb$);
+    if (await notifyRunningChatRunOfPendingInput(db, input.chatThreadId)) {
+      signal.throwIfAborted();
+      return null;
+    }
+    signal.throwIfAborted();
     await set(
       drainQueuedUserMessagesForThread$,
       {
@@ -80,23 +140,6 @@ export const drainChatThreadQueueForThread$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const workflowResult = await set(
-      drainWorkflowQueueForThread$,
-      {
-        chatThreadId: input.chatThreadId,
-        apiStartTime,
-        dispatchFailedCallbacks: input.dispatchFailedCallbacks,
-        queueItemCreatedBefore: input.queueItemCreatedBefore,
-        ...(input.workflowEventLaunch
-          ? { workflowEventLaunch: input.workflowEventLaunch }
-          : {}),
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (workflowResult) {
-      return workflowResult;
-    }
     await set(
       drainGoalQueueForThread$,
       {
@@ -107,7 +150,22 @@ export const drainChatThreadQueueForThread$ = command(
       },
       signal,
     );
-    return null;
+    signal.throwIfAborted();
+    const workflowResult = await set(
+      drainWorkflowQueueForThread$,
+      {
+        chatThreadId: input.chatThreadId,
+        apiStartTime,
+        dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+        queueItemCreatedBefore: input.queueItemCreatedBefore,
+        ...(input.automationEventLaunch
+          ? { automationEventLaunch: input.automationEventLaunch }
+          : {}),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return workflowResult;
   },
 );
 
@@ -124,9 +182,11 @@ export const drainChatThreadQueueForRun$ = command(
   ): Promise<void> => {
     const db = set(writeDb$);
     const [run] = await db
-      .select({ chatThreadId: zeroRuns.chatThreadId })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, input.runId))
+      .select({ chatThreadId: agentRuns.chatThreadId })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.id, input.runId), isNotNull(agentRuns.triggerSource)),
+      )
       .limit(1);
     signal.throwIfAborted();
     if (!run?.chatThreadId) {
@@ -148,9 +208,15 @@ export const drainChatThreadQueueForRun$ = command(
 export const drainStaleChatThreadQueues$ = command(
   async (
     { set },
-    input: { readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks },
+    input: {
+      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+      readonly chatThreadIds?: readonly string[];
+    },
     signal: AbortSignal,
   ): Promise<number> => {
+    if (input.chatThreadIds?.length === 0) {
+      return 0;
+    }
     const db = set(writeDb$);
     const currentTime = nowDate().getTime();
     const staleBefore = new Date(currentTime - STALE_QUEUE_ITEM_AGE_MS);
@@ -161,10 +227,12 @@ export const drainStaleChatThreadQueues$ = command(
       expiredCancellationRecoveryThreads(db, {
         expiredBefore: recoveryExpiredBefore,
         limit: DRAIN_SWEEP_LIMIT,
+        chatThreadIds: input.chatThreadIds,
       }),
       staleChatThreadQueueThreadIds(db, {
         staleBefore,
         limit: DRAIN_SWEEP_LIMIT,
+        chatThreadIds: input.chatThreadIds,
       }),
     ]);
     signal.throwIfAborted();

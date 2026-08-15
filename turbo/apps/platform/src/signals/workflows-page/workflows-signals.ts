@@ -10,16 +10,19 @@ import {
   type GoogleCalendarEventCancelledEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarEventUpdatedEventConfig,
+  type GoogleFormsResponseSubmittedEventCreateConfig,
   type GoogleMeetTranscriptGeneratedEventConfig,
   type GithubDeploymentStatusCreatedEventConfig,
   type GithubIssueCommentCreatedEventConfig,
-  type GithubLabelAppliedEventConfig,
+  type GithubPullRequestAction,
+  type GithubPullRequestEventConfig,
   type GithubPullRequestReviewSubmittedEventConfig,
   type GithubWorkflowJobCompletedEventConfig,
   type GithubWorkflowRunCompletedEventConfig,
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
   type NotionPageContentUpdatedEventCreateConfig,
+  type StripeInvoiceBillingReason,
   type StrapiEntryPublishedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
@@ -29,7 +32,7 @@ import {
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationSummary,
   type ZeroWorkflowUpdateRequest,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -96,7 +99,7 @@ export type WorkflowAutomationCreateDialog =
   | "once"
   | "gmail"
   | "gmail-label"
-  | "github-label"
+  | "github-pull-request"
   | "github-workflow-job"
   | "github-pull-request-review"
   | "github-deployment-status"
@@ -105,10 +108,12 @@ export type WorkflowAutomationCreateDialog =
   | "google-calendar-created"
   | "google-calendar-updated"
   | "google-calendar-cancelled"
+  | "google-forms"
   | "google-meet-transcript-generated"
   | "notion-child-page"
   | "notion-database-item"
   | "notion-page-content-updated"
+  | "stripe-invoice-paid"
   | "strapi-entry-published"
   | "webhook"
   | null;
@@ -117,14 +122,13 @@ type WorkflowAutomationCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
+  | "forms"
   | "notion"
   | "integrations";
 type WorkflowWebhookAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
-type WorkflowGithubLabelActor =
-  GithubLabelAppliedEventConfig["filters"]["actor"]["type"];
 export type WorkflowAutomationEntry = ZeroWorkflowAutomationsListEntry;
 const WORKFLOW_DETAIL_FILE_PARAM = "file";
 
@@ -232,22 +236,27 @@ const internalEditingWorkflowAutomationId$ = state<string | null>(null);
 const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
   null,
 );
+const internalCreateGithubPullRequestAction$ =
+  state<GithubPullRequestAction>("closed");
+const internalEditingGithubPullRequestAction$ =
+  state<GithubPullRequestAction | null>(null);
 const internalWorkflowAutomationCreateDialog$ =
   state<WorkflowAutomationCreateDialog>(null);
 const internalCreatedWorkflowWebhookAutomation$ =
   state<WorkflowWebhookAutomationSummary | null>(null);
 const internalWorkflowAutomationPickerOpen$ = state(false);
-const internalWorkflowWebhookUpgradeDialogOpen$ = state(false);
+type WorkflowWebhookUpgradeDialogSource =
+  | { readonly action: "create"; readonly workflowId: string }
+  | { readonly action: "enable"; readonly automationId: string }
+  | { readonly action: "menu" };
+const internalWorkflowWebhookUpgradeDialogSource$ =
+  state<WorkflowWebhookUpgradeDialogSource | null>(null);
 const internalCreateStrapiIntegrationId$ = state<string | null>(null);
 const internalWorkflowAutomationPickerCategory$ =
   state<WorkflowAutomationCategoryKey>("schedule");
 const internalCreateNotionPageContentUpdatedScope$ =
   state<NotionPageContentUpdatedScopeMode>("page");
 const internalRevealWebhookSecretAutomationId$ = state<string | null>(null);
-const internalCreateGithubLabelActor$ = state<WorkflowGithubLabelActor>("me");
-const internalEditingGithubLabelActors$ = state<
-  Record<string, WorkflowGithubLabelActor>
->({});
 const internalCreateGmailMatchConditions$ = state<
   readonly GmailMatchCondition[]
 >(defaultGmailMatchConditions());
@@ -395,8 +404,10 @@ export const setWorkflowAgentFilter$ = command(
 
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
+    if (dialog === "copy") {
+      set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
+    }
     set(internalWorkflowActionDialog$, dialog);
-    set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
   },
 );
 
@@ -455,8 +466,8 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowMetadataPatch$, null);
   set(internalWorkflowAutomationCreateDialog$, null);
   set(internalCreatedWorkflowWebhookAutomation$, null);
-  set(internalCreateGithubLabelActor$, "me");
-  set(internalEditingGithubLabelActors$, {});
+  set(internalCreateGithubPullRequestAction$, "closed");
+  set(internalEditingGithubPullRequestAction$, null);
   set(internalCreateGmailMatchConditions$, defaultGmailMatchConditions());
   set(internalEditingGmailMatchConditions$, {});
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
@@ -494,11 +505,11 @@ export const editingWorkflowAutomationId$ = computed((get) => {
 
 export const setEditingWorkflowAutomationId$ = command(
   ({ set }, automationId: string | null) => {
-    set(internalEditingWorkflowAutomationId$, automationId);
-    if (!automationId) {
-      set(internalEditingGithubLabelActors$, {});
+    if (automationId) {
+      set(internalEditingGithubPullRequestAction$, null);
       set(internalEditingGmailMatchConditions$, {});
     }
+    set(internalEditingWorkflowAutomationId$, automationId);
   },
 );
 
@@ -535,8 +546,8 @@ export const setWorkflowAutomationCreateDialog$ = command(
     if (dialog === "scheduled") {
       set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
     }
-    if (dialog === "github-label") {
-      set(internalCreateGithubLabelActor$, "me");
+    if (dialog === "github-pull-request") {
+      set(internalCreateGithubPullRequestAction$, "closed");
     }
     if (dialog === "gmail") {
       set(internalCreateGmailMatchConditions$, defaultGmailMatchConditions());
@@ -562,12 +573,19 @@ export const setWorkflowAutomationPickerOpen$ = command(
 );
 
 export const workflowWebhookUpgradeDialogOpen$ = computed((get) => {
-  return get(internalWorkflowWebhookUpgradeDialogOpen$);
+  return get(internalWorkflowWebhookUpgradeDialogSource$) !== null;
+});
+
+export const workflowWebhookUpgradeDialogSource$ = computed((get) => {
+  return get(internalWorkflowWebhookUpgradeDialogSource$);
 });
 
 export const setWorkflowWebhookUpgradeDialogOpen$ = command(
   ({ set }, open: boolean) => {
-    set(internalWorkflowWebhookUpgradeDialogOpen$, open);
+    set(
+      internalWorkflowWebhookUpgradeDialogSource$,
+      open ? { action: "menu" } : null,
+    );
   },
 );
 
@@ -601,31 +619,23 @@ export const setCreateNotionPageContentUpdatedScope$ = command(
   },
 );
 
-export const createGithubLabelActor$ = computed((get) => {
-  return get(internalCreateGithubLabelActor$);
+export const createGithubPullRequestAction$ = computed((get) => {
+  return get(internalCreateGithubPullRequestAction$);
 });
 
-export const setCreateGithubLabelActor$ = command(
-  ({ set }, actor: WorkflowGithubLabelActor) => {
-    set(internalCreateGithubLabelActor$, actor);
+export const setCreateGithubPullRequestAction$ = command(
+  ({ set }, action: GithubPullRequestAction) => {
+    set(internalCreateGithubPullRequestAction$, action);
   },
 );
 
-export const editingGithubLabelActors$ = computed((get) => {
-  return get(internalEditingGithubLabelActors$);
+export const editingGithubPullRequestAction$ = computed((get) => {
+  return get(internalEditingGithubPullRequestAction$);
 });
 
-export const setEditingGithubLabelActor$ = command(
-  (
-    { set },
-    input: {
-      readonly automationId: string;
-      readonly actor: WorkflowGithubLabelActor;
-    },
-  ) => {
-    set(internalEditingGithubLabelActors$, (actors) => {
-      return { ...actors, [input.automationId]: input.actor };
-    });
+export const setEditingGithubPullRequestAction$ = command(
+  ({ set }, action: GithubPullRequestAction) => {
+    set(internalEditingGithubPullRequestAction$, action);
   },
 );
 
@@ -1001,33 +1011,6 @@ export const createWorkflowGmailLabelAppliedAutomation$ = command(
   },
 );
 
-export const createWorkflowGithubLabelAppliedAutomation$ = command(
-  async (
-    { get, set },
-    input: {
-      readonly workflowId: string;
-      readonly eventConfig: GithubLabelAppliedEventConfig;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
-    await accept(
-      client.create({
-        params: { workflowId: input.workflowId },
-        body: {
-          kind: "event",
-          eventType: "github-label-applied",
-          eventConfig: input.eventConfig,
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
 export const createWorkflowGithubWorkflowRunCompletedAutomation$ = command(
   async (
     { get, set },
@@ -1058,6 +1041,11 @@ export const createWorkflowGithubWorkflowRunCompletedAutomation$ = command(
 type GithubWebhookAutomationCreateInput =
   | {
       readonly workflowId: string;
+      readonly eventType: "github-pull-request";
+      readonly eventConfig: GithubPullRequestEventConfig;
+    }
+  | {
+      readonly workflowId: string;
       readonly eventType: "github-workflow-job-completed";
       readonly eventConfig: GithubWorkflowJobCompletedEventConfig;
     }
@@ -1085,29 +1073,35 @@ export const createWorkflowGithubWebhookAutomation$ = command(
   ) => {
     const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const body: ZeroWorkflowAutomationCreateRequest =
-      input.eventType === "github-workflow-job-completed"
+      input.eventType === "github-pull-request"
         ? {
             kind: "event",
             eventType: input.eventType,
             eventConfig: input.eventConfig,
           }
-        : input.eventType === "github-pull-request-review-submitted"
+        : input.eventType === "github-workflow-job-completed"
           ? {
               kind: "event",
               eventType: input.eventType,
               eventConfig: input.eventConfig,
             }
-          : input.eventType === "github-deployment-status-created"
+          : input.eventType === "github-pull-request-review-submitted"
             ? {
                 kind: "event",
                 eventType: input.eventType,
                 eventConfig: input.eventConfig,
               }
-            : {
-                kind: "event",
-                eventType: input.eventType,
-                eventConfig: input.eventConfig,
-              };
+            : input.eventType === "github-deployment-status-created"
+              ? {
+                  kind: "event",
+                  eventType: input.eventType,
+                  eventConfig: input.eventConfig,
+                }
+              : {
+                  kind: "event",
+                  eventType: input.eventType,
+                  eventConfig: input.eventConfig,
+                };
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1171,6 +1165,41 @@ export const createWorkflowGoogleCalendarEventAutomation$ = command(
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowGoogleFormsResponseSubmittedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GoogleFormsResponseSubmittedEventCreateConfig;
+    },
+    signal: AbortSignal,
+  ): Promise<string | undefined> => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const result = await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+      signal,
+    );
+    signal.throwIfAborted();
+    if (
+      result.body.kind !== "event" ||
+      result.body.eventType !== "google-forms-response-submitted"
+    ) {
+      throw new Error("Expected Google Forms workflow automation summary");
+    }
+    set(reloadWorkflows$);
+    return result.body.warning;
   },
 );
 
@@ -1340,6 +1369,41 @@ export const createWorkflowStrapiEntryPublishedAutomation$ = command(
   },
 );
 
+export const createWorkflowStripeInvoicePaidAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly billingReasons: readonly StripeInvoiceBillingReason[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "stripe-invoice-paid",
+          eventConfig: {
+            provider: "stripe",
+            event: "invoice_paid",
+            ...(input.billingReasons.length > 0
+              ? { billingReasons: [...input.billingReasons] }
+              : {}),
+          },
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+      signal,
+      { showErrorToast: false },
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const createWorkflowWebhookAutomation$ = command(
   async (
     { get, set },
@@ -1366,7 +1430,10 @@ export const createWorkflowWebhookAutomation$ = command(
     signal.throwIfAborted();
     if (result.status === 402) {
       if (result.body.error.code === "TEAM_REQUIRED") {
-        set(internalWorkflowWebhookUpgradeDialogOpen$, true);
+        set(internalWorkflowWebhookUpgradeDialogSource$, {
+          action: "create",
+          workflowId: input.workflowId,
+        });
         return null;
       }
       throw new Error(result.body.error.message);
@@ -1447,29 +1514,6 @@ export const updateWorkflowGmailLabelAppliedAutomation$ = command(
   },
 );
 
-export const updateWorkflowGithubLabelAppliedAutomation$ = command(
-  async (
-    { get, set },
-    input: {
-      readonly automationId: string;
-      readonly eventConfig: GithubLabelAppliedEventConfig;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
-    await accept(
-      client.update({
-        params: { id: input.automationId },
-        body: { eventConfig: input.eventConfig },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
 export const updateWorkflowGithubWorkflowRunCompletedAutomation$ = command(
   async (
     { get, set },
@@ -1499,6 +1543,7 @@ export const updateWorkflowGithubWebhookAutomation$ = command(
     input: {
       readonly automationId: string;
       readonly eventConfig:
+        | GithubPullRequestEventConfig
         | GithubWorkflowJobCompletedEventConfig
         | GithubPullRequestReviewSubmittedEventConfig
         | GithubDeploymentStatusCreatedEventConfig
@@ -1563,7 +1608,10 @@ export const setWorkflowAutomationEnabled$ = command(
     signal.throwIfAborted();
     if (result.status === 402) {
       if (result.body.error.code === "TEAM_REQUIRED") {
-        set(internalWorkflowWebhookUpgradeDialogOpen$, true);
+        set(internalWorkflowWebhookUpgradeDialogSource$, {
+          action: "enable",
+          automationId: input.automationId,
+        });
         return;
       }
       throw new Error(result.body.error.message);

@@ -1,12 +1,11 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pathname } from "../../../signals/location.ts";
 import {
@@ -22,8 +21,6 @@ import {
   UNTITLED_THREAD_ID,
   OTHER_AGENT_THREAD_ID,
   linkByText,
-  mockNavigatorUserAgent,
-  mockIPadOSNavigator,
   mockOrgModelRoutes,
   mockAgent,
   mockThread,
@@ -32,6 +29,24 @@ import {
   placeCaretAfterText,
   workflowSummary,
 } from "./chat-composer-test-helpers.ts";
+import { PLACEHOLDER } from "./chat-test-helpers.ts";
+
+// The composer editor is mounted on first paint and mounted again once page
+// bootstrap settles, so an element captured too early is detached by the time a
+// test asserts on it. Read whichever editor is currently mounted.
+function mountedComposer(): HTMLElement {
+  const editor = document.querySelector(
+    '.zero-composer [contenteditable="true"]',
+  );
+  if (!(editor instanceof HTMLElement)) {
+    throw new Error("Composer editor is not mounted");
+  }
+  return editor;
+}
+
+function mountedComposerText(): string {
+  return mountedComposer().textContent ?? "";
+}
 
 function suggestionAgent({
   id,
@@ -62,24 +77,25 @@ beforeEach(() => {
 
 describe("chat composer models", () => {
   it("does not autofocus the agent chat composer on iPadOS", async () => {
-    const restoreNavigator = mockIPadOSNavigator();
-    try {
-      mockOrgModelRoutes("kimi-k2.7-code");
-      mockAgent();
+    context.mocks.browser.userAgent(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) " +
+        "AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15",
+    );
+    context.mocks.browser.platform("MacIntel");
+    context.mocks.browser.maxTouchPoints(5);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
 
-      detachedSetupPage({
-        context,
-        path: `/agents/${AGENT_ID}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
-      await expect(findComposerEditor()).resolves.not.toHaveFocus();
-    } finally {
-      restoreNavigator();
-    }
+    await expect(findComposerEditor()).resolves.not.toHaveFocus();
   });
 
   it("keeps the agent chat composer at three-line height", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
 
     detachedSetupPage({
@@ -93,7 +109,7 @@ describe("chat composer models", () => {
   });
 
   it("uses the mobile two-line height in chat thread composers", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
 
@@ -107,7 +123,7 @@ describe("chat composer models", () => {
   });
 
   it("keeps the agent chat slash composer at three-line height", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, []);
@@ -124,7 +140,7 @@ describe("chat composer models", () => {
   });
 
   it("uses the mobile two-line height in chat thread slash composers", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
@@ -140,9 +156,32 @@ describe("chat composer models", () => {
     expect(editor).toHaveClass("min-h-[68px]", "md:min-h-[96px]");
   });
 
-  it("positions the slash workflow menu from the caret inside the viewport safe area", async () => {
+  it("hides the placeholder for whitespace without enabling send", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const editor = await findComposerEditor();
+    expect(screen.getByText(PLACEHOLDER)).toBeInTheDocument();
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+
+    await user.click(editor);
+    await user.keyboard(" ");
+
+    await waitFor(() => {
+      expect(screen.queryByText(PLACEHOLDER)).not.toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+  });
+
+  it("selects from the slash workflow menu with a visual viewport offset", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -164,11 +203,14 @@ describe("chat composer models", () => {
     root.id = "root";
     root.style.padding = "44px 6px 8px 10px";
     document.body.append(root);
-
-    const originalVisualViewport = Object.getOwnPropertyDescriptor(
-      window,
-      "visualViewport",
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        root.remove();
+      },
+      { once: true },
     );
+
     const visualViewport = Object.assign(new EventTarget(), {
       height: 800,
       offsetLeft: 0,
@@ -180,56 +222,32 @@ describe("chat composer models", () => {
       scale: 1,
       width: 390,
     }) as VisualViewport;
-    Object.defineProperty(window, "visualViewport", {
-      configurable: true,
-      value: visualViewport,
-    });
+    vi.stubGlobal("visualViewport", visualViewport);
 
     const caretRect = new DOMRect(20, 300, 0, 24);
-    const getClientRects = vi
-      .spyOn(Range.prototype, "getClientRects")
-      .mockReturnValue([caretRect] as unknown as DOMRectList);
-    const getBoundingClientRect = vi
-      .spyOn(Range.prototype, "getBoundingClientRect")
-      .mockReturnValue(caretRect);
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([
+      caretRect,
+    ] as unknown as DOMRectList);
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(
+      caretRect,
+    );
 
     const editor = await findComposerEditor();
     await user.click(editor);
     await user.keyboard("/");
 
-    const menu = await screen.findByTestId("slash-workflow-menu");
-    const wrapper = menu.parentElement;
-    if (!(wrapper instanceof HTMLElement)) {
-      throw new Error("Slash workflow menu wrapper not found");
-    }
+    await expect(
+      screen.findByText("sales-research"),
+    ).resolves.toBeInTheDocument();
+    await user.keyboard("{Enter}");
     await waitFor(() => {
-      expect(wrapper.style.transform).not.toContain("-200%");
+      expect(mountedComposerText()).toContain("/sales-research");
     });
-    const transform = wrapper.style.transform;
-    const availableWidth = wrapper.style.getPropertyValue(
-      "--radix-popper-available-width",
-    );
-    const availableHeight = wrapper.style.getPropertyValue(
-      "--radix-popper-available-height",
-    );
-
-    getClientRects.mockRestore();
-    getBoundingClientRect.mockRestore();
-    root.remove();
-    if (originalVisualViewport) {
-      Object.defineProperty(window, "visualViewport", originalVisualViewport);
-    } else {
-      delete (window as { visualViewport?: VisualViewport }).visualViewport;
-    }
-
-    expect(transform).toBe("translate(20px, 392px)");
-    expect(availableWidth).toBe("350px");
-    expect(availableHeight).toBe("236px");
   });
 
   it("suggests current agent workflows from slash input and highlights inserted workflow tokens", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -275,19 +293,9 @@ describe("chat composer models", () => {
     expect(screen.getByText("support-escalation")).toBeInTheDocument();
     expect(screen.queryByText("deep-dive")).not.toBeInTheDocument();
     expect(screen.queryByText("other-agent-workflow")).not.toBeInTheDocument();
-    // The menu renders in a Radix Popover portal (Floating UI handles
+    // The menu renders in a Base UI Popover portal (Floating UI handles
     // cross-browser placement), so it lives outside the composer element.
-    const slashWorkflowMenu = screen.getByTestId("slash-workflow-menu");
-    expect(slashWorkflowMenu).toBeInTheDocument();
-    expect(slashWorkflowMenu).toHaveClass(
-      "h-[min(16rem,var(--radix-popover-content-available-height))]",
-      "md:h-[min(20rem,var(--radix-popover-content-available-height))]",
-    );
-    expect(slashWorkflowMenu).not.toHaveClass(
-      "max-h-[min(16rem,var(--radix-popover-content-available-height))]",
-      "md:max-h-[min(20rem,var(--radix-popover-content-available-height))]",
-    );
-    expect(slashWorkflowMenu).not.toHaveClass("max-h-80");
+    expect(screen.getByTestId("slash-workflow-menu")).toBeInTheDocument();
 
     await user.keyboard("ReSeArCh");
 
@@ -302,7 +310,7 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(editor.textContent).toContain("/sales-research");
+      expect(mountedComposerText()).toContain("/sales-research");
     });
     // The colored token is a real inline decoration in the same layer as the
     // text (no overlay), so it stays aligned when the composer scrolls.
@@ -316,7 +324,7 @@ describe("chat composer models", () => {
 
   it("matches slash skills by substring while prioritizing prefixes", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -371,13 +379,13 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(editor.textContent).toContain("/release-production");
+      expect(mountedComposerText()).toContain("/release-production");
     });
   });
 
   it("does not highlight workflow names inside URLs", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -399,55 +407,10 @@ describe("chat composer models", () => {
     await user.click(editor);
     await user.keyboard("https://www.vm0.ai/en/use-cases/pr-review");
 
-    expect(editor).toHaveTextContent(
+    expect(mountedComposerText()).toContain(
       "https://www.vm0.ai/en/use-cases/pr-review",
     );
     expect(editor.querySelector("span.text-primary")).not.toBeInTheDocument();
-  });
-
-  it("inserts a current-agent chat thread mention chip from @ suggestions", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-    mockThread();
-    mockComposerThreadSnapshot([
-      { id: THREAD_ID, agentId: AGENT_ID, title: "My thread" },
-      {
-        id: SUGGESTED_THREAD_ID,
-        agentId: AGENT_ID,
-        title: "Project Alpha",
-      },
-      { id: UNTITLED_THREAD_ID, agentId: AGENT_ID, title: null },
-      {
-        id: OTHER_AGENT_THREAD_ID,
-        agentId: OTHER_AGENT_ID,
-        title: "Other Alpha",
-      },
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Review @ALPHA");
-
-    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
-    expect(within(menu).getByText("Project Alpha")).toBeInTheDocument();
-    expect(within(menu).queryByText("Other Alpha")).not.toBeInTheDocument();
-    expect(within(menu).queryByText("New chat")).not.toBeInTheDocument();
-
-    await user.keyboard("{Enter}next");
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("Review Project Alpha next");
-    });
-    const chip = editor.querySelector(
-      `span[data-chat-thread-mention="${SUGGESTED_THREAD_ID}"]`,
-    );
-    expect(chip).toHaveTextContent("Project Alpha");
   });
 
   it("suggests threads from every agent with aligned agent avatars", async () => {
@@ -455,7 +418,7 @@ describe("chat composer models", () => {
       "https://example.com/current-agent-avatar.png";
     const otherAgentAvatarUrl = "https://example.com/other-agent-avatar.png";
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.data.team([
@@ -487,9 +450,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroChatMessaging]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -518,52 +478,21 @@ describe("chat composer models", () => {
     expect(currentAgentThreadAvatar).toHaveClass("h-5", "w-5");
     expect(otherAgentThreadAvatar).toHaveAttribute("src", otherAgentAvatarUrl);
     expect(otherAgentThreadAvatar).toHaveClass("h-5", "w-5");
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    expect(currentAgentThreadAvatar).not.toHaveClass("bg-muted");
+    expect(otherAgentThreadAvatar).not.toHaveClass("bg-muted");
 
     await user.click(otherAgentThread);
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent("Review Other Alpha");
+      expect(mountedComposerText()).toContain("Review Other Alpha");
     });
     expect(
       editor.querySelector(
         `span[data-chat-thread-mention="${OTHER_AGENT_THREAD_ID}"]`,
       ),
     ).toHaveTextContent("Other Alpha");
-  });
-
-  it("keeps agent suggestions behind zero chat messaging", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-    mockThread();
-    context.mocks.data.team([
-      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
-      suggestionAgent({
-        id: OTHER_AGENT_ID,
-        displayName: "Other Agent",
-      }),
-    ]);
-    mockComposerThreadSnapshot([
-      { id: THREAD_ID, agentId: AGENT_ID, title: null },
-      {
-        id: SUGGESTED_THREAD_ID,
-        agentId: AGENT_ID,
-        title: "Other thread",
-      },
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("@other");
-
-    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
-    expect(within(menu).getByText("Other thread")).toBeInTheDocument();
-    expect(within(menu).queryByText("Other Agent")).not.toBeInTheDocument();
   });
 
   it("suggests agents above chat threads and inserts an agent item", async () => {
@@ -575,7 +504,7 @@ describe("chat composer models", () => {
     const zetaAvatarUrl = "https://example.com/zeta-avatar.png";
     const draftPatches: Record<string, unknown>[] = [];
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.data.team([
@@ -622,9 +551,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroChatMessaging]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -664,6 +590,13 @@ describe("chat composer models", () => {
         within(filteredMenu).queryByText("Project Alpha"),
       ).not.toBeInTheDocument();
     });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    const zetaAgentAvatar = screen
+      .getByTestId("chat-thread-suggestion-menu")
+      .querySelector("img");
+    expect(zetaAgentAvatar).toHaveAttribute("src", zetaAvatarUrl);
+    expect(zetaAgentAvatar).not.toHaveClass("bg-muted");
     await user.keyboard("{Enter}");
 
     const item = editor.querySelector(
@@ -694,7 +627,7 @@ describe("chat composer models", () => {
     const mentionedAgentAvatarUrl =
       "https://example.com/restored-agent-avatar.png";
     const mention = `[Restored Agent](/agents/${mentionedAgentId}/chat)`;
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.data.team([
@@ -718,9 +651,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroChatMessaging]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -738,7 +668,7 @@ describe("chat composer models", () => {
 
   it("hides @ suggestions when no titled thread matches", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     mockComposerThreadSnapshot([
@@ -776,7 +706,7 @@ describe("chat composer models", () => {
   it("reloads workflow suggestions and highlights without remounting the composer", async () => {
     const user = userEvent.setup({ delay: null });
     let workflows: ReturnType<typeof workflowSummary>[] = [];
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
@@ -825,7 +755,7 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent("/new-chat-workflow");
+      expect(mountedComposerText()).toContain("/new-chat-workflow");
     });
     const highlightedWorkflow = screen
       .getAllByText("/new-chat-workflow")
@@ -852,7 +782,7 @@ describe("chat composer models", () => {
     let staleRequestCount = 0;
     let freshRequestCount = 0;
     let barrierRequestCount = 0;
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     mockComposerThreadSnapshot([
@@ -989,7 +919,7 @@ describe("chat composer models", () => {
 
   it("closes the slash workflow menu when focus leaves the composer input", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -1026,7 +956,7 @@ describe("chat composer models", () => {
 
   it("closes the slash workflow menu with Escape after a non-empty query", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -1058,13 +988,13 @@ describe("chat composer models", () => {
         screen.queryByTestId("slash-workflow-menu"),
       ).not.toBeInTheDocument();
     });
-    expect(editor).toHaveTextContent("/sales");
-    expect(editor).toHaveFocus();
+    expect(mountedComposerText()).toContain("/sales");
+    expect(mountedComposer()).toHaveFocus();
   });
 
   it("does not suggest workflows that are not attached to the current agent", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -1094,12 +1024,12 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.queryByText("deep-dive")).not.toBeInTheDocument();
     });
-    expect(editor.textContent).toContain("/");
+    expect(mountedComposerText()).toContain("/");
   });
 
   it("links to the workflows page from the slash workflow menu footer", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -1138,7 +1068,7 @@ describe("chat composer models", () => {
       configurable: true,
       value: scrollIntoView,
     });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     const customWorkflows = Array.from({ length: 12 }, (_, index) => {
       return `custom-workflow-${index + 1}`;
     });
@@ -1177,47 +1107,56 @@ describe("chat composer models", () => {
   });
 
   it("keeps Shift+Enter and Mac Ctrl+A/Ctrl+E scoped to composer lines", async () => {
-    const restoreUserAgent = mockNavigatorUserAgent(
+    context.mocks.browser.userAgent(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     );
-    try {
-      const user = userEvent.setup({ delay: null });
-      mockOrgModelRoutes("kimi-k2.7-code");
-      mockAgent();
-      context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
-        return respond(200, []);
-      });
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
 
-      detachedSetupPage({
-        context,
-        path: `/agents/${AGENT_ID}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
-      const editor = await findComposerEditor();
-      await user.click(editor);
+    await findComposerEditor();
+    // Select-all before typing so a retry against a freshly mounted editor
+    // replaces the draft instead of appending to it.
+    await waitFor(async () => {
+      const composer = mountedComposer();
+      await user.click(composer);
+      await user.keyboard("{Control>}a{/Control}");
       await user.keyboard("first line{Shift>}{Enter}{/Shift}second line");
-      await user.keyboard("{Control>}a{/Control}X");
+      if (
+        !mountedComposer().innerHTML.includes(
+          "<p>first line</p><p>second line</p>",
+        )
+      ) {
+        throw new Error("Composer did not accept the typed lines");
+      }
+    });
+    await user.keyboard("{Control>}a{/Control}X");
 
-      await waitFor(() => {
-        expect(editor.innerHTML).toContain(
-          "<p>first line</p><p>Xsecond line</p>",
-        );
-        expect(editor.innerHTML).not.toContain("<br>");
-      });
+    await waitFor(() => {
+      expect(mountedComposer().innerHTML).toContain(
+        "<p>first line</p><p>Xsecond line</p>",
+      );
+      expect(mountedComposer().innerHTML).not.toContain("<br>");
+    });
 
-      placeCaretAfterText(editor, "Xsecond line");
-      await user.keyboard("{Shift>}{Enter}{/Shift}third line");
-      placeCaretAfterText(editor, "Xsecond line");
-      await user.keyboard("{Control>}e{/Control}Y");
+    placeCaretAfterText(mountedComposer(), "Xsecond line");
+    await user.keyboard("{Shift>}{Enter}{/Shift}third line");
+    placeCaretAfterText(mountedComposer(), "Xsecond line");
+    await user.keyboard("{Control>}e{/Control}Y");
 
-      await waitFor(() => {
-        expect(editor.innerHTML).toContain(
-          "<p>first line</p><p>Xsecond lineY</p><p>third line</p>",
-        );
-        expect(editor.innerHTML).not.toContain("<br>");
-      });
-    } finally {
-      restoreUserAgent();
-    }
+    await waitFor(() => {
+      expect(mountedComposer().innerHTML).toContain(
+        "<p>first line</p><p>Xsecond lineY</p><p>third line</p>",
+      );
+      expect(mountedComposer().innerHTML).not.toContain("<br>");
+    });
   });
 });

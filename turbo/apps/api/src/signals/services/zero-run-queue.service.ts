@@ -1,8 +1,7 @@
 import { command } from "ccstate";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import {
   and,
   count,
@@ -15,34 +14,33 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import {
-  publishOrgSignal,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
-import { notifyRunnerJob } from "./runner-dispatch.service";
-import {
-  recordSameThreadRunnerJobPersisted,
-  runnerJobQueueTimestamps,
-} from "./runner-job-queue-lifecycle.service";
+import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   revokeQueuedRunAssistantMarkers,
   type QueueMarkerRevokeNotification,
 } from "./zero-chat-queue-marker.service";
-import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
 import { tapError } from "../utils";
+import type { Tx } from "../../lib/db-types";
+import {
+  activatePendingRun$,
+  type PendingRunActivation,
+} from "./agent-run-activation.service";
+import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -68,7 +66,7 @@ async function effectiveOrgConcurrencyState(
   };
 }
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 type QueuedRunnerJobPayload = NonNullable<
   Awaited<ReturnType<typeof decryptQueuedRunnerJobPayload>>
 >;
@@ -82,36 +80,45 @@ interface QueueCandidate {
   readonly chatThreadId: string | null;
 }
 
-interface RunnerNotification {
-  readonly runId: string;
-  readonly runnerGroup: string;
-  readonly profile: string;
-  readonly reuseKey: string | null;
-  readonly cliAgentSessionId: string | null;
-  readonly historyGenerationRunId: string | undefined;
-  readonly createdAt: Date;
-}
-
-interface FirstAssistantEventEligibility {
-  readonly runId: string;
-  readonly apiStartedAt: number;
-}
-
 interface PromotedRunnerJob {
   readonly createdAt: Date;
   readonly apiStartedAt: number;
+  readonly profile: string;
 }
+
+type PreparedPendingRunActivation = Omit<PendingRunActivation, "timing">;
+
+type PromoteQueuedCandidateNonPromotedResult =
+  | { readonly status: "full" }
+  | { readonly status: "removed-stale" }
+  | { readonly status: "lost" };
+
+interface PromotedQueuedCandidateTransactionResult {
+  readonly status: "promoted";
+  readonly pendingActivation: PreparedPendingRunActivation;
+  readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+}
+
+type PromotionResult =
+  | PromotedQueuedCandidateTransactionResult
+  | PromoteQueuedCandidateNonPromotedResult;
 
 type PromoteQueuedCandidateResult =
   | {
       readonly status: "promoted";
-      readonly runnerNotification: RunnerNotification | null;
+      readonly pendingActivation: PreparedPendingRunActivation;
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
-      readonly firstAssistantEventEligibility: FirstAssistantEventEligibility | null;
+      readonly transactionReturnedAt: number;
+    }
+  | PromoteQueuedCandidateNonPromotedResult;
+
+type PromoteQueuedCandidateSideEffectResult =
+  | {
+      readonly status: "drained";
+      readonly pendingActivation: PendingRunActivation;
     }
   | { readonly status: "full" }
-  | { readonly status: "removed-stale" }
-  | { readonly status: "lost" };
+  | { readonly status: "skipped" };
 
 interface TimedOutQueuedRunRow {
   readonly runId: string;
@@ -177,18 +184,19 @@ async function insertPromotedRunnerJob(
     },
   });
 
-  await tx
-    .update(zeroRuns)
-    .set({ apiStartedAt: new Date(promotedAt) })
-    .where(eq(zeroRuns.id, args.runId));
+  await writeRunMetadataInTransaction(tx, {
+    patch: { apiStartedAt: new Date(promotedAt) },
+    where: eq(agentRuns.id, args.runId),
+  });
 
   const timestamps = runnerJobQueueTimestamps();
+  const profile = args.payload.profile;
   const [runnerJob] = await tx
     .insert(runnerJobQueue)
     .values({
       runId: args.runId,
       runnerGroup: args.payload.runnerGroup,
-      profile: args.payload.profile,
+      profile,
       cliAgentSessionId: args.payload.cliAgentSessionId,
       reuseKey: args.payload.reuseKey,
       executionContext: {
@@ -204,6 +212,7 @@ async function insertPromotedRunnerJob(
   return {
     createdAt: runnerJob.createdAt,
     apiStartedAt: promotedAt,
+    profile,
   };
 }
 
@@ -226,11 +235,10 @@ async function loadDrainCandidates(
         createdAt: agentRunQueue.createdAt,
         encryptedParams: agentRunQueue.encryptedParams,
         runStatus: agentRuns.status,
-        chatThreadId: zeroRuns.chatThreadId,
+        chatThreadId: agentRuns.chatThreadId,
       })
       .from(agentRunQueue)
       .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
-      .leftJoin(zeroRuns, eq(agentRunQueue.runId, zeroRuns.id))
       .where(eq(agentRunQueue.orgId, orgId))
       .orderBy(agentRunQueue.createdAt);
   });
@@ -244,7 +252,7 @@ async function promoteQueuedCandidate(
     readonly payload: QueuedRunnerJobPayload | null;
   },
 ): Promise<PromoteQueuedCandidateResult> {
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx): Promise<PromotionResult> => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
     );
@@ -289,16 +297,17 @@ async function promoteQueuedCandidate(
       return { status: "lost" };
     }
 
-    const runValues = args.payload
-      ? {
-          status: "pending",
-          lastHeartbeatAt: nowDate(),
-          runnerGroup: args.payload.runnerGroup,
-        }
-      : {
-          status: "pending",
-          lastHeartbeatAt: nowDate(),
-        };
+    if (args.payload === null) {
+      throw new Error(
+        `Queued run "${args.row.runId}" is missing its runner job payload`,
+      );
+    }
+    const payload = args.payload;
+    const runValues = {
+      status: "pending",
+      lastHeartbeatAt: nowDate(),
+      runnerGroup: payload.runnerGroup,
+    };
     const [updated] = await tx
       .update(agentRuns)
       .set(runValues)
@@ -319,102 +328,49 @@ async function promoteQueuedCandidate(
       userId: args.row.userId,
     });
 
-    if (!args.payload) {
-      return {
-        status: "promoted",
-        runnerNotification: null,
-        queueMarkerNotification,
-        firstAssistantEventEligibility: null,
-      };
-    }
-
     const runnerJob = await insertPromotedRunnerJob(tx, {
       orgId: args.orgId,
       runId: args.row.runId,
       queuedAt: args.row.createdAt,
-      payload: args.payload,
+      payload,
     });
     return {
       status: "promoted",
       queueMarkerNotification,
-      firstAssistantEventEligibility: args.row.chatThreadId
-        ? {
-            runId: args.row.runId,
-            apiStartedAt: runnerJob.apiStartedAt,
-          }
-        : null,
-      runnerNotification: {
-        runId: args.row.runId,
-        runnerGroup: args.payload.runnerGroup,
-        profile: args.payload.profile,
-        reuseKey: args.payload.reuseKey,
-        cliAgentSessionId: args.payload.cliAgentSessionId,
-        historyGenerationRunId: args.payload.historyGenerationRunId,
-        createdAt: runnerJob.createdAt,
+      pendingActivation: {
+        apiStartTime: runnerJob.apiStartedAt,
+        chatThreadId: args.row.chatThreadId ?? undefined,
+        runnerNotification: {
+          runId: args.row.runId,
+          runnerGroup: payload.runnerGroup,
+          profile: runnerJob.profile,
+          reuseKey: payload.reuseKey,
+          cliAgentSessionId: payload.cliAgentSessionId,
+          historyGenerationRunId: payload.historyGenerationRunId,
+          createdAt: runnerJob.createdAt,
+        },
       },
     };
   });
-}
-
-async function publishRemovedStaleQueueSideEffects(
-  orgId: string,
-): Promise<void> {
-  await tapError(publishOrgSignal(orgId, "queue:changed"), (error) => {
-    L.error("Failed to publish queue changed after stale queue removal", {
-      orgId,
-      error,
-    });
-  });
-}
-
-async function publishPromotedQueueSideEffects(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
-    readonly runnerNotification: RunnerNotification | null;
-  },
-): Promise<void> {
-  await tapError(publishOrgSignal(args.orgId, "queue:changed"), (error) => {
-    L.error("Failed to publish queue changed after queued run promotion", {
-      orgId: args.orgId,
-      error,
-    });
-  });
-
-  if (args.queueMarkerNotification) {
-    await tapError(
-      publishUserSignal(
-        [args.queueMarkerNotification.userId],
-        `chatThreadMessageCreated:${args.queueMarkerNotification.chatThreadId}`,
-      ),
-      (error) => {
-        L.error("Failed to publish queued marker notification", {
-          userId: args.queueMarkerNotification?.userId,
-          chatThreadId: args.queueMarkerNotification?.chatThreadId,
-          error,
-        });
-      },
-    );
-    await tapError(
-      publishThreadListChanged(args.queueMarkerNotification.userId),
-      (error) => {
-        L.error("Failed to publish thread list changed after queue promotion", {
-          userId: args.queueMarkerNotification?.userId,
-          error,
-        });
-      },
-    );
+  const transactionReturnedAt = now();
+  if (result.status !== "promoted") {
+    return result;
   }
+  return {
+    ...result,
+    transactionReturnedAt,
+  };
+}
 
-  if (args.runnerNotification) {
-    await tapError(notifyRunnerJob(db, args.runnerNotification), (error) => {
-      L.error("Failed to notify runner after queued run promotion", {
-        runId: args.runnerNotification?.runId,
-        runnerGroup: args.runnerNotification?.runnerGroup,
-        error,
-      });
-    });
+async function publishPromotedQueueSideEffects(args: {
+  readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+}): Promise<void> {
+  if (args.queueMarkerNotification) {
+    await publishUserSignal(
+      [args.queueMarkerNotification.userId],
+      `chatThreadMessageCreated:${args.queueMarkerNotification.chatThreadId}`,
+    );
+    await publishThreadListChanged(args.queueMarkerNotification.userId);
   }
 }
 
@@ -425,38 +381,36 @@ async function promoteQueuedCandidateWithSideEffects(
     readonly row: QueueCandidate;
     readonly payload: QueuedRunnerJobPayload | null;
   },
-): Promise<"drained" | "full" | "skipped"> {
+): Promise<PromoteQueuedCandidateSideEffectResult> {
   const result = await promoteQueuedCandidate(db, args);
   if (result.status === "removed-stale") {
-    await publishRemovedStaleQueueSideEffects(args.orgId);
-    return "skipped";
+    return { status: "skipped" };
   }
   if (result.status === "full") {
-    return "full";
+    return { status: "full" };
   }
   if (result.status === "lost") {
     L.debug("drainOrgQueue: queued run already transitioned, skipping", {
       runId: args.row.runId,
     });
-    return "skipped";
+    return { status: "skipped" };
   }
 
-  if (result.firstAssistantEventEligibility) {
-    recordFirstAssistantEventEligibility(result.firstAssistantEventEligibility);
-  }
-  if (args.row.chatThreadId && result.runnerNotification) {
-    recordSameThreadRunnerJobPersisted({
-      runId: result.runnerNotification.runId,
-      createdAt: result.runnerNotification.createdAt,
-    });
-  }
-
-  await publishPromotedQueueSideEffects(db, {
-    orgId: args.orgId,
+  await publishPromotedQueueSideEffects({
     queueMarkerNotification: result.queueMarkerNotification,
-    runnerNotification: result.runnerNotification,
   });
-  return "drained";
+  const promotionSideEffectsRegisteredAt = now();
+  return {
+    status: "drained",
+    pendingActivation: {
+      ...result.pendingActivation,
+      timing: {
+        activationOrigin: "promotion",
+        commitReturnedAt: result.transactionReturnedAt,
+        promotionSideEffectsRegisteredAt,
+      },
+    },
+  };
 }
 
 /**
@@ -465,8 +419,8 @@ async function promoteQueuedCandidateWithSideEffects(
  * Scope: API-created queue entries carry a prepared runner job payload
  * in `agent_run_queue.encrypted_params`. Draining promotes one queued run
  * to pending and inserts the matching `runner_job_queue` row so the runner
- * can claim it. Legacy or fixture entries without that payload still get
- * the SQL-only queued → pending transition for compatibility.
+ * can claim it. A queued run without that payload violates the owning writer's
+ * invariant and fails before any state transition.
  *
  * Acquires `pg_advisory_xact_lock(hashtext(orgId))` — same hash key as
  * web's `drainOrgQueue` so the two backends serialize correctly on the
@@ -492,18 +446,44 @@ export const drainOrgQueue$ = command(
           ? await decryptQueuedRunnerJobPayload(row.encryptedParams)
           : null;
       signal.throwIfAborted();
-
       const result = await promoteQueuedCandidateWithSideEffects(writeDb, {
         orgId: args.orgId,
         row,
         payload,
       });
-      signal.throwIfAborted();
-      if (result === "full") {
+      // Promotion is durable now. Observe request cancellation for diagnostics,
+      // but let the commit-owned activation finish independently.
+      if (signal.aborted) {
+        L.debug("Request aborted after queued run promotion commit", {
+          runId: row.runId,
+          orgId: args.orgId,
+        });
+      }
+      if (result.status === "full") {
         return 0;
       }
-      if (result === "skipped") {
+      if (result.status === "skipped") {
         continue;
+      }
+      const activationScheduledAt = now();
+      await tapError(
+        set(activatePendingRun$, {
+          activation: result.pendingActivation,
+          activationScheduledAt,
+        }),
+        (error) => {
+          L.error("Failed to activate promoted queued run", {
+            runId: row.runId,
+            orgId: args.orgId,
+            error,
+          });
+        },
+      );
+      if (signal.aborted) {
+        L.debug("Request remained aborted after queued run activation", {
+          runId: row.runId,
+          orgId: args.orgId,
+        });
       }
       return 1;
     }
@@ -531,7 +511,11 @@ export const drainOrgQueueToCapacity$ = command(
 );
 
 export const cleanupExpiredQueueEntries$ = command(
-  async ({ set }, signal: AbortSignal): Promise<QueuedRunMaintenanceResult> => {
+  async (
+    { set },
+    runIds: readonly string[] | null,
+    signal: AbortSignal,
+  ): Promise<QueuedRunMaintenanceResult> => {
     const writeDb = set(writeDb$);
     const currentTime = nowDate();
 
@@ -539,7 +523,12 @@ export const cleanupExpiredQueueEntries$ = command(
       const expiredRunIds = tx
         .select({ runId: agentRunQueue.runId })
         .from(agentRunQueue)
-        .where(lt(agentRunQueue.expiresAt, currentTime));
+        .where(
+          and(
+            lt(agentRunQueue.expiresAt, currentTime),
+            runIds === null ? undefined : inArray(agentRunQueue.runId, runIds),
+          ),
+        );
 
       const candidates = await tx
         .select({
@@ -594,6 +583,7 @@ export const cleanupExpiredQueueEntries$ = command(
         .where(
           and(
             lt(agentRunQueue.expiresAt, currentTime),
+            runIds === null ? undefined : inArray(agentRunQueue.runId, runIds),
             or(isNull(agentRuns.id), ne(agentRuns.status, "queued")),
           ),
         );
@@ -635,6 +625,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
   async (
     { set },
     cutoff: Date,
+    runIds: readonly string[] | null,
     signal: AbortSignal,
   ): Promise<QueuedRunMaintenanceResult> => {
     const writeDb = set(writeDb$);
@@ -652,6 +643,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
           and(
             eq(agentRuns.status, "queued"),
             lt(agentRuns.createdAt, cutoff),
+            runIds === null ? undefined : inArray(agentRuns.id, runIds),
             notExists(
               tx
                 .select({ runId: agentRunQueue.runId })
@@ -719,13 +711,20 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
 );
 
 export const drainStaleQueues$ = command(
-  async ({ set }, signal: AbortSignal): Promise<number> => {
+  async (
+    { set },
+    orgIds: readonly string[] | null,
+    signal: AbortSignal,
+  ): Promise<number> => {
     const writeDb = set(writeDb$);
     const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
 
     const orgsWithQueued = await writeDb
       .selectDistinct({ orgId: agentRunQueue.orgId })
-      .from(agentRunQueue);
+      .from(agentRunQueue)
+      .where(
+        orgIds === null ? undefined : inArray(agentRunQueue.orgId, orgIds),
+      );
     signal.throwIfAborted();
 
     let drained = 0;

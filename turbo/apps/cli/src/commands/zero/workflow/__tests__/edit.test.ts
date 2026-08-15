@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow edit command
+ * Tests for okou workflow edit command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -59,7 +59,7 @@ function workflowSummary(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("zero workflow edit command", () => {
+describe("okou workflow edit command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -73,7 +73,7 @@ describe("zero workflow edit command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     workflowDir = join(tmpdir(), `test-workflow-edit-${Date.now()}`);
     mkdirSync(workflowDir, { recursive: true });
@@ -92,7 +92,7 @@ describe("zero workflow edit command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.patch(
-          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(detailResponse());
@@ -118,11 +118,11 @@ describe("zero workflow edit command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       let patchedWorkflowId: string | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json([workflowSummary()]);
         }),
         http.patch(
-          "http://localhost:3000/api/zero/workflows/:workflowId",
+          "http://localhost:3000/api/okou/workflows/:workflowId",
           async ({ request, params }) => {
             patchedWorkflowId = params.workflowId as string;
             capturedBody = (await request.json()) as Record<string, unknown>;
@@ -157,7 +157,7 @@ describe("zero workflow edit command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.patch(
-          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(detailResponse());

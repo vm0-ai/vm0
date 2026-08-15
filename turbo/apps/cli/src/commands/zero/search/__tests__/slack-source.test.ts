@@ -1,5 +1,5 @@
 /**
- * Tests for zero search --source slack (#10263).
+ * Tests for okou search --source slack (#10263).
  *
  * Entry point: zeroSearchCommand.parseAsync()
  * Mock (external): none — the CLI must make zero outbound HTTP calls.
@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { zeroSearchCommand, buildSlackRecipe } from "../index";
 
-describe("zero search --source slack", () => {
+describe("okou search --source slack", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -87,8 +87,8 @@ describe("zero search --source slack", () => {
       ]);
 
       const output = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(output).toContain("zero connector status slack");
-      expect(output).toContain("zero connector check --env-name SLACK_TOKEN");
+      expect(output).toContain("okou connector status slack");
+      expect(output).toContain("okou connector check --env-name SLACK_TOKEN");
     });
 
     it("links to Slack's search.messages docs", async () => {

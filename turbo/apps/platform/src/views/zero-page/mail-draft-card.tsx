@@ -1,31 +1,20 @@
-import {
-  IconChevronRight,
-  IconCircleCheck,
-  IconLoader2,
-  IconRoute,
-} from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { ChevronRight, Loader2 } from "lucide-react";
 import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
-} from "@vm0/api-contracts/contracts/zero-mail";
-import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { Button, cn } from "@vm0/ui";
+} from "@okouai/api-contracts/contracts/zero-mail";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 
 import { i18n } from "../../i18n/index.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
-import type {
-  MailDraftFollowUpState,
-  MailDraftSignals,
-} from "../../signals/chat-page/mail-draft.ts";
+import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import {
   activeSidebarMailDraftId$,
   openThreadMailDraft$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { useGmailReconnect } from "./use-gmail-reconnect.ts";
 
@@ -33,11 +22,18 @@ interface MailDraftCardProps {
   readonly signals: MailDraftSignals;
 }
 
-interface EnabledMailDraftCardProps extends MailDraftCardProps {
-  readonly followUpEnabled: boolean;
-}
-
 const MAIL_DRAFT_CARD_HEIGHT_CLASS = "h-[76px]";
+
+function MailDraftCardShell({ children }: { readonly children: ReactNode }) {
+  return (
+    <div
+      data-testid="mail-draft-card-shell"
+      className={cn("w-full max-w-xl", MAIL_DRAFT_CARD_HEIGHT_CLASS)}
+    >
+      {children}
+    </div>
+  );
+}
 
 function statusLabel(status: ZeroMailDraftStatus): string {
   switch (status) {
@@ -63,13 +59,10 @@ function MailDraftCardSkeleton() {
   return (
     <div
       data-testid="mail-draft-card-loading"
-      className={cn(
-        "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3",
-        MAIL_DRAFT_CARD_HEIGHT_CLASS,
-      )}
+      className="flex h-full w-full items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3"
     >
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-        <IconLoader2 className="animate-spin text-muted-foreground" size={16} />
+        <Loader2 className="animate-spin text-muted-foreground" size={16} />
       </span>
       <div className="min-w-0 flex-1 space-y-2">
         <div className="h-4 w-2/3 rounded bg-muted/70" />
@@ -149,141 +142,9 @@ function MailDraftCardContent({
                 })
               : statusLabel(draft.status)}
         </span>
-        {!deleted ? (
-          <IconChevronRight size={16} className="text-muted-foreground" />
-        ) : null}
+        {!deleted ? <ChevronRight size={16} className="" /> : null}
       </span>
     </>
-  );
-}
-
-function followUpDescription(state: MailDraftFollowUpState): string {
-  switch (state) {
-    case "active": {
-      return i18n.t(($) => {
-        return $.chat.mail.followUp.activeDescription;
-      });
-    }
-    case "paused": {
-      return i18n.t(($) => {
-        return $.chat.mail.followUp.pausedDescription;
-      });
-    }
-    case "submitting": {
-      return i18n.t(($) => {
-        return $.chat.mail.followUp.submittingDescription;
-      });
-    }
-    case "idle": {
-      return i18n.t(($) => {
-        return $.chat.mail.followUp.idleDescription;
-      });
-    }
-  }
-}
-
-function followUpButtonLabel(state: MailDraftFollowUpState): string {
-  switch (state) {
-    case "active": {
-      return i18n.t(($) => {
-        return $.chat.mail.followUp.active;
-      });
-    }
-    case "paused": {
-      return i18n.t(($) => {
-        return $.chat.mail.followUp.paused;
-      });
-    }
-    case "submitting": {
-      return i18n.t(($) => {
-        return $.chat.mail.followUp.submitting;
-      });
-    }
-    case "idle": {
-      return i18n.t(($) => {
-        return $.chat.mail.followUp.action;
-      });
-    }
-  }
-}
-
-function FollowUpIcon({ state }: { readonly state: MailDraftFollowUpState }) {
-  if (state === "submitting") {
-    return <IconLoader2 size={15} className="animate-spin" />;
-  }
-  return state === "active" ? (
-    <IconCircleCheck size={15} />
-  ) : (
-    <IconRoute size={15} />
-  );
-}
-
-function SentMailDraftCard({
-  draft,
-  gmailIcon,
-  selected,
-  followUpState,
-  onOpen,
-  onFollowUp,
-}: {
-  readonly draft: ZeroMailDraft;
-  readonly gmailIcon: PublicConnectorCatalogIcon | undefined;
-  readonly selected: boolean;
-  readonly followUpState: MailDraftFollowUpState;
-  readonly onOpen: () => void;
-  readonly onFollowUp: () => void;
-}) {
-  const { t } = useTranslation();
-  const subject =
-    draft.subject ||
-    t(($) => {
-      return $.chat.mail.noSubjectPlain;
-    });
-  return (
-    <div
-      data-mail-draft-card
-      data-mail-draft-status={draft.status}
-      className={cn(
-        "flex w-full max-w-xl items-center overflow-hidden rounded-[var(--zero-card-radius)] border bg-card",
-        MAIL_DRAFT_CARD_HEIGHT_CLASS,
-        selected ? "border-ring/60 bg-muted/20" : "border-border/70",
-      )}
-    >
-      <button
-        type="button"
-        aria-label={t(
-          ($) => {
-            return $.chat.mail.openEmail;
-          },
-          {
-            status: statusLabel(draft.status).toLocaleLowerCase(
-              i18n.resolvedLanguage,
-            ),
-            subject,
-          },
-        )}
-        onClick={onOpen}
-        className="flex h-full min-w-0 flex-1 items-center gap-3 overflow-hidden px-4 py-3 pr-2 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
-      >
-        <MailDraftCardContent
-          draft={draft}
-          gmailIcon={gmailIcon}
-          reconnecting={false}
-        />
-      </button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        title={followUpDescription(followUpState)}
-        disabled={followUpState !== "idle"}
-        onClick={onFollowUp}
-        className="h-full shrink-0 rounded-none px-4 focus-visible:ring-inset focus-visible:ring-offset-0"
-      >
-        <FollowUpIcon state={followUpState} />
-        {followUpButtonLabel(followUpState)}
-      </Button>
-    </div>
   );
 }
 
@@ -310,10 +171,7 @@ function DeletedMailDraftCard({
       )}
       data-mail-draft-card
       data-mail-draft-status="deleted"
-      className={cn(
-        "flex w-full max-w-xl cursor-default items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70",
-        MAIL_DRAFT_CARD_HEIGHT_CLASS,
-      )}
+      className="flex h-full w-full cursor-default items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70"
     >
       <MailDraftCardContent
         draft={draft}
@@ -324,33 +182,27 @@ function DeletedMailDraftCard({
   );
 }
 
-function EnabledMailDraftCard({
-  signals,
-  followUpEnabled,
-}: EnabledMailDraftCardProps) {
+export function MailDraftCard({ signals }: MailDraftCardProps) {
   const { t } = useTranslation();
   const draftLoadable = useLastLoadable(signals.draft$);
   const selectedMailDraftId = useGet(activeSidebarMailDraftId$);
   const openSidebar = useSet(openThreadMailDraft$);
   const reloadDraft = useSet(signals.reloadDraft$);
-  const pageSignal = useGet(pageSignal$);
-  const localFollowUpState = useGet(signals.followUpState$);
-  const followUp = useSet(signals.followUp$);
   const { connectorIcon, reconnect, reconnectDisabled, reconnecting } =
     useGmailReconnect(reloadDraft);
 
   if (draftLoadable.state === "loading") {
-    return <MailDraftCardSkeleton />;
+    return (
+      <MailDraftCardShell>
+        <MailDraftCardSkeleton />
+      </MailDraftCardShell>
+    );
   }
   if (draftLoadable.state === "hasError" || draftLoadable.data === null) {
     return null;
   }
 
   const draft = draftLoadable.data;
-  const followUpState =
-    localFollowUpState === "submitting"
-      ? localFollowUpState
-      : (draft.followUp?.status ?? localFollowUpState);
   const deleted = draft.status === "deleted";
   const needsReconnect = draft.accessStatus === "reconnect";
   const selected = selectedMailDraftId === signals.mailDraftId;
@@ -360,10 +212,7 @@ function EnabledMailDraftCard({
       return $.chat.mail.noSubjectPlain;
     });
   const openDraft = () => {
-    if (followUpEnabled) {
-      reloadDraft();
-    }
-    openSidebar(signals.mailDraftId);
+    openSidebar(signals);
   };
   const content = (
     <MailDraftCardContent
@@ -375,91 +224,66 @@ function EnabledMailDraftCard({
 
   if (deleted) {
     return (
-      <DeletedMailDraftCard
-        draft={draft}
-        gmailIcon={connectorIcon}
-        subject={subject}
-      />
+      <MailDraftCardShell>
+        <DeletedMailDraftCard
+          draft={draft}
+          gmailIcon={connectorIcon}
+          subject={subject}
+        />
+      </MailDraftCardShell>
     );
   }
 
   if (needsReconnect) {
     return (
+      <MailDraftCardShell>
+        <button
+          type="button"
+          disabled={reconnectDisabled}
+          onClick={reconnect}
+          aria-label={t(
+            ($) => {
+              return $.chat.mail.reconnectToAccess;
+            },
+            {
+              subject,
+            },
+          )}
+          data-mail-draft-card
+          data-mail-draft-status={draft.status}
+          className="flex h-full w-full items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
+        >
+          {content}
+        </button>
+      </MailDraftCardShell>
+    );
+  }
+
+  return (
+    <MailDraftCardShell>
       <button
         type="button"
-        disabled={reconnectDisabled}
-        onClick={reconnect}
         aria-label={t(
           ($) => {
-            return $.chat.mail.reconnectToAccess;
+            return $.chat.mail.openEmail;
           },
           {
+            status: statusLabel(draft.status).toLocaleLowerCase(
+              i18n.resolvedLanguage,
+            ),
             subject,
           },
         )}
         data-mail-draft-card
         data-mail-draft-status={draft.status}
+        onClick={openDraft}
         className={cn(
-          "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70",
-          MAIL_DRAFT_CARD_HEIGHT_CLASS,
+          "flex h-full w-full items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          selected ? "border-ring/60 bg-muted/20" : "border-border/70",
         )}
       >
         {content}
       </button>
-    );
-  }
-
-  if (draft.status === "sent" && followUpEnabled) {
-    return (
-      <SentMailDraftCard
-        draft={draft}
-        gmailIcon={connectorIcon}
-        selected={selected}
-        followUpState={followUpState}
-        onOpen={openDraft}
-        onFollowUp={() => {
-          detach(followUp(pageSignal), Reason.DomCallback);
-        }}
-      />
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      aria-label={t(
-        ($) => {
-          return $.chat.mail.openEmail;
-        },
-        {
-          status: statusLabel(draft.status).toLocaleLowerCase(
-            i18n.resolvedLanguage,
-          ),
-          subject,
-        },
-      )}
-      data-mail-draft-card
-      data-mail-draft-status={draft.status}
-      onClick={openDraft}
-      className={cn(
-        "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        MAIL_DRAFT_CARD_HEIGHT_CLASS,
-        selected ? "border-ring/60 bg-muted/20" : "border-border/70",
-      )}
-    >
-      {content}
-    </button>
-  );
-}
-
-export function MailDraftCard(props: MailDraftCardProps) {
-  const featureSwitches = useGet(featureSwitch$);
-  return (
-    <EnabledMailDraftCard
-      {...props}
-      followUpEnabled={
-        featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] ?? false
-      }
-    />
+    </MailDraftCardShell>
   );
 }

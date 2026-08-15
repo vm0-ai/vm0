@@ -1,5 +1,77 @@
 # Changelog
 
+## [0.8.7](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.6...guest-mock-codex-v0.8.7) (2026-08-14)
+
+## [0.8.6](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.5...guest-mock-codex-v0.8.6) (2026-08-14)
+
+## [0.8.5](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.4...guest-mock-codex-v0.8.5) (2026-08-14)
+
+## [0.8.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.3...guest-mock-codex-v0.8.4) (2026-08-14)
+
+## [0.8.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.2...guest-mock-codex-v0.8.3) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** build the pi prompt inside the sandbox ([#27036](https://github.com/vm0-ai/vm0/issues/27036)) ([1e248af](https://github.com/vm0-ai/vm0/commit/1e248afd1118468a8950f81c668d65b27fe6f429))
+
+## [0.8.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.1...guest-mock-codex-v0.8.2) (2026-08-13)
+
+## [0.8.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.0...guest-mock-codex-v0.8.1) (2026-08-13)
+
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.4...guest-mock-codex-v0.8.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate pi child environment to okou ([#26810](https://github.com/vm0-ai/vm0/issues/26810)) ([9c54e70](https://github.com/vm0-ai/vm0/commit/9c54e70777750b608dad06fde2a44a5a08f9796b))
+
+## [0.7.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.3...guest-mock-codex-v0.7.4) (2026-08-13)
+
+## [0.7.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.2...guest-mock-codex-v0.7.3) (2026-08-12)
+
+## [0.7.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.1...guest-mock-codex-v0.7.2) (2026-08-12)
+
+
+### Refactoring
+
+* **rust:** centralize guest stdout framing limits ([#26648](https://github.com/vm0-ai/vm0/issues/26648)) ([962e753](https://github.com/vm0-ai/vm0/commit/962e7532f4e8d319fb05b096bdbfca85431731ed))
+
+## [0.7.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.0...guest-mock-codex-v0.7.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound oversized codex event delivery ([#26520](https://github.com/vm0-ai/vm0/issues/26520)) ([cf619b1](https://github.com/vm0-ai/vm0/commit/cf619b153ddae4fdb3c4b00065d737d1d9194bb0))
+
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.18...guest-mock-codex-v0.7.0) (2026-08-11)
+
+
+### Features
+
+* **guest:** persist active-input acceptance receipts ([#26191](https://github.com/vm0-ai/vm0/issues/26191)) ([f6ede96](https://github.com/vm0-ai/vm0/commit/f6ede96f136515283ec1f76d380cc3c835f85420))
+
+## [0.6.18](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.17...guest-mock-codex-v0.6.18) (2026-08-10)
+
+
+### Performance Improvements
+
+* **guest-mock-codex:** stream oversized stdout fixture ([#26099](https://github.com/vm0-ai/vm0/issues/26099)) ([c28c39d](https://github.com/vm0-ai/vm0/commit/c28c39de2779d3e81dea969c016a83e7425230a6))
+
+## [0.6.17](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.16...guest-mock-codex-v0.6.17) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
+## [0.6.16](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.15...guest-mock-codex-v0.6.16) (2026-08-04)
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+
 ## [0.6.15](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.14...guest-mock-codex-v0.6.15) (2026-08-01)
 
 
@@ -96,7 +168,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 
 ## [0.6.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.0...guest-mock-codex-v0.6.1) (2026-07-01)
 

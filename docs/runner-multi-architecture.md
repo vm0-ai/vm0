@@ -93,10 +93,9 @@ specific checks, including NBD COW tests, on matching metal. Jobs that need an
 actual host resolve the host subset inside the job instead of reading hosts from
 the matrix.
 
-Turbo runner consumers use the same metal inventory for runner bootstrap and
-runner E2E jobs. These jobs validate behavior against the configured runner
-fleet, but heavy behavior suites do not need to be duplicated per architecture
-unless they assert architecture-specific behavior.
+Playwright uses the same metal inventory to bootstrap the runner exercised by
+the deployed product chat flow. Architecture-specific runner behavior remains
+in the host-bound crates checks instead of being duplicated in product E2E.
 
 Release publishing builds runner assets for all supported target triples. The
 asset names come from `.github/scripts/runner-image-target.sh`.

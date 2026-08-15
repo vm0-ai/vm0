@@ -1,62 +1,71 @@
 import type {
   CSSProperties,
   FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
 import {
   useGet,
+  useLoadable,
   useSet,
   useLastLoadable,
   useLastResolved,
-  useLoadable,
 } from "ccstate-react";
+import type { TFunction } from "i18next";
 import { equalArrays } from "../../lib/equality.ts";
-import { now } from "../../lib/time.ts";
-import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { resolvedAppLocale } from "../../i18n/format.ts";
-import { i18n } from "../../i18n/index.ts";
+import { formatChatTimestamp } from "../../i18n/format.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   runUsagePopoverOpenRunId$,
   setRunUsagePopoverOpenRunId$,
 } from "../../signals/chat-page/run-usage-popover.ts";
 import {
-  IconAlertCircle,
-  IconHandStop,
-  IconPhoto,
-  IconChartLine,
-  IconWorld,
-  IconPlayerPlay,
-  IconVideo,
-  IconCopy,
-  IconDeviceDesktop,
-  IconCheck,
-  IconArrowDown,
-  IconArrowUpRight,
-  IconChevronRight,
-  IconLink,
-  IconLoader2,
-  IconMessageCircle,
-  IconMoodPlus,
-  IconPackage,
-  IconRoute,
-  IconSearch,
-  IconTarget,
-  IconTemplate,
-  IconX,
-  IconClock,
-  IconCoins,
-  IconHourglass,
-  IconBrandSlack,
-} from "@tabler/icons-react";
+  AlertCircle,
+  Coffee,
+  Flag,
+  Hand,
+  Heart,
+  Leaf,
+  Lightbulb,
+  Plane,
+  Smile,
+  Trophy,
+  Image,
+  ChartLine,
+  Globe,
+  Video,
+  Copy,
+  Check,
+  SwatchBook,
+  ArrowDown,
+  ArrowUpRight,
+  ChevronRight,
+  Link as LinkIcon,
+  Coins,
+  Loader2,
+  Play,
+  MessageCircle,
+  SmilePlus,
+  Package,
+  Route,
+  Search,
+  Sunrise,
+  Target,
+  X,
+  Clock,
+  Hourglass,
+  Share2,
+  type LucideIcon,
+} from "lucide-react";
 import {
   cn,
   getShortcutLabel,
   getShortcutParts,
   Button,
+  Checkbox,
   Input,
   Skeleton,
   Dialog,
@@ -77,49 +86,62 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+  BrandSlack,
+} from "@okouai/ui";
+import { RUN_ERROR_GUIDANCE } from "@okouai/api-contracts/contracts/errors";
 import type {
   ChatEventUsagePayload,
-  FeedbackNotePart,
-  ChatFollowupsEvent,
+  ChatRecommendedFollowup,
   GenerationTemplateRequest,
-  ResolvedAttachFile,
   UserMessageDocument,
   UserMessagePart,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
+  isChatEventContentTextType,
+  isChatRunTerminalEventType,
   terminatedChatRunIds,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
 } from "../../signals/zero-page/user-message-document-codec.ts";
+import { avatarTemplateSelection } from "../../signals/zero-page/avatar-template-selection.ts";
+import { steerAcknowledgementRef$ } from "../../signals/zero-page/steer-acknowledgement.ts";
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import {
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  r2ImageTransformUrl,
-} from "@vm0/core";
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type {
-  PlatformConnectorPermissionMetadata,
-  PlatformUserPermissionGrant,
-} from "../../signals/connector-domain.ts";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import { emptyChatImg } from "./platform-assets.ts";
-import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason } from "../../signals/utils.ts";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
+import { Markdown, MarkdownEventBody } from "../components/markdown.tsx";
+import { hasChatEventBodyContent } from "../../signals/chat-page/chat-event-body-blocks.ts";
+import { i18n } from "../../i18n/index.ts";
+import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
+  CHAT_INLINE_IMAGE_PREVIEW_CLASS,
+  CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS,
+  ChatImagePreviewLink,
+  ChatVideoPreviewButton,
+} from "./chat-body-cards.tsx";
+import { detach, Reason } from "../../signals/utils.ts";
+import { ChatConversationLocator } from "./chat-conversation-locator.tsx";
+import {
+  customConnectorMcpEnabled$,
   featureSwitch$,
-  mermaidDiagramsEnabled$,
-  pwaChatKeyboardGesturesEnabled$,
+  videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
+import {
+  videoTemplateSpec,
+  videoTemplateSpecText,
+  type VideoTemplateSpec,
+} from "../../signals/zero-page/video-template-spec.ts";
+import { openSentTemplateDetail$ } from "../../signals/zero-page/sent-template-detail.ts";
+import { SentTemplateDetailDialog } from "./sent-template-detail-dialog.tsx";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -131,26 +153,13 @@ import {
   FileAttachmentChip,
   PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
-  publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
-import { MailDraftCard } from "./mail-draft-card.tsx";
-import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
-import {
-  classifyChatAttachment,
-  contentTypeForBodyPreviewKind,
-  type BodyRenderBlock,
-} from "../../signals/chat-page/parse-body-blocks.ts";
+import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
-import {
-  isTextPreviewKind,
-  type TextPreviewComputed,
-} from "../../signals/text-preview.ts";
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
-  type ConnectorSignals,
-  type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
 import {
   completedWorkExpandedKeys$,
@@ -164,35 +173,24 @@ import {
   type RunGroupFold,
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
-import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import {
   activeGoalDialogGoal$,
   activeGoalDialogThreadId$,
   closeChatThreadGoalDialog$,
 } from "../../signals/chat-page/chat-goal.ts";
-import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
-import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
-import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
-import { AttachmentPreview } from "./zero-attachment-preview.tsx";
-import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
-import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
-import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
+import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
+import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
   openImageLightbox$ as openAttachmentImageLightbox$,
   openVideoLightbox$ as openAttachmentVideoLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
-  DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
-  permissionGrantExpiresInByScope$,
-  setPermissionGrantExpiresIn$,
-} from "../../signals/permission-allow/permission-grant-expiration.ts";
-import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
-import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+  writeToClipboard,
+  type ChatClipboardAttachment,
+} from "../../signals/zero-page/clipboard.ts";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import type {
   HeaderAutomationSignals,
   HeaderWorkflowAutomationEntry,
@@ -221,7 +219,6 @@ import {
   atTimeInTimezone,
   cronWallTimeInTimezone,
 } from "../../signals/zero-page/cron.ts";
-
 import {
   buildGmailLabelAppliedEventConfig,
   buildGmailNewMessageEventConfig,
@@ -234,33 +231,42 @@ import {
   WorkflowAutomationCard,
   type WorkflowAutomationCardRow,
 } from "../workflows-page/workflow-automation-card.tsx";
-
 import {
   renameChatThread$,
   type EnrichedChatEvent,
   type ChatEventGroup,
+  type UserMessageFeedbackNoteRenderPart,
+  type UserMessageRenderDocument,
+  type UserMessageRenderPart,
 } from "../../signals/chat-page/chat-event.ts";
 import type {
   ChatInputEvent,
   ChatEvent,
 } from "../../signals/chat-page/chat-event-types.ts";
+import type { ChatRunModelSelection } from "../../signals/chat-page/chat-event-state.ts";
 import type { AgentReferenceSignals } from "../../signals/chat-page/agent-reference-signals.ts";
 import type { AssistantErrorRecovery } from "../../signals/chat-page/assistant-error-recovery.ts";
+import { userMessageFileAttachments } from "../../signals/chat-page/user-message-files.ts";
 import type {
-  ChatThreadSignals,
+  ChatPanelSignals,
   RecommendedFollowupSource,
   ThinkingIndicatorMode,
-} from "../../signals/chat-page/chat-thread-signals.ts";
-import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
+} from "../../signals/chat-page/chat-panel-signals.ts";
 import {
   applyChatThreadEmoji,
   removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
 import {
+  chatThreadEmojiActiveCategory$,
   chatThreadEmojiGroups$,
+  chatThreadEmojiPendingJump$,
+  chatThreadEmojiPreview$,
   chatThreadEmojiQuery$,
   filterChatThreadEmojiGroups,
+  setChatThreadEmojiActiveCategory$,
+  setChatThreadEmojiPendingJump$,
+  setChatThreadEmojiPreview$,
   setChatThreadEmojiQuery$,
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
@@ -277,26 +283,18 @@ import { setBillingSubPage$ } from "../../signals/zero-page/settings/workspace-s
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
-  applyUserPermissionGrant$,
-  findPermissionInMetadata,
-  resolveUserPermissionGrantPolicy,
-} from "../../signals/permission-allow/permission-allow-signals.ts";
-import {
   billingStatusAsync$,
+  creditPurchaseOrigin$,
   type CreditCheckoutSelection,
   startCheckout$,
   startCreditCheckout$,
 } from "../../signals/zero-page/billing.ts";
 import { orgPlanCapabilitiesFromBilling } from "../../signals/zero-page/org-plan-capabilities.ts";
 import {
-  imageLoadStatusByKey$,
-  imageLoadStatusRef$,
-  setImageLoadStatus$,
-} from "../../signals/view-component-state.ts";
-import {
-  currentLeftThread$,
-  currentRightThread$,
+  currentLeftPane$,
+  currentRightPane$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
+import type { ChatThreadPaneState } from "../../signals/chat-page/chat-thread-pane-state.ts";
 import {
   focusChatThreadContainer$,
   setChatKeyboardScrollRoot$,
@@ -304,21 +302,40 @@ import {
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
-type RecommendedFollowup = NonNullable<
-  ChatFollowupsEvent["recommendedFollowups"]
->[number];
+type RecommendedFollowup = ChatRecommendedFollowup;
 
 type UserMessageNonContentPart = Extract<
   UserMessagePart,
-  { readonly type: "source" | "automation" | "goal" }
+  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
+>;
+
+type UserMessageAnnotationRenderPart = Extract<
+  UserMessageRenderPart,
+  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
 >;
 
 function isUserMessageNonContentPart(
   part: UserMessagePart,
 ): part is UserMessageNonContentPart {
   return (
-    part.type === "source" || part.type === "automation" || part.type === "goal"
+    part.type === "source" ||
+    part.type === "automation" ||
+    part.type === "goal" ||
+    part.type === "morning_brief"
   );
+}
+
+type UserMessageHiddenPart = Extract<
+  UserMessagePart,
+  {
+    readonly type: "source" | "automation" | "goal" | "morning_brief" | "model";
+  }
+>;
+
+function isUserMessageHiddenPart(
+  part: UserMessagePart,
+): part is UserMessageHiddenPart {
+  return isUserMessageNonContentPart(part) || part.type === "model";
 }
 
 function isInputChatEvent(event: ChatEvent): event is ChatInputEvent {
@@ -334,16 +351,127 @@ function asInputChatEvent(event: ChatEvent): ChatInputEvent | undefined {
   return isInputChatEvent(event) ? event : undefined;
 }
 
-function visibleUserMessage(
-  inputEvent: ChatInputEvent | undefined,
-): UserMessageDocument | undefined {
-  return inputEvent?.userMessage;
+function modelSelectionFromUserMessage(
+  document: UserMessageDocument | undefined,
+): ChatRunModelSelection | undefined {
+  const modelPart = document?.parts.find((part) => {
+    return part.type === "model";
+  });
+  return modelPart?.type === "model"
+    ? {
+        selectedModel: modelPart.selectedModel,
+        ...(modelPart.serviceTier === undefined
+          ? {}
+          : { serviceTier: modelPart.serviceTier }),
+      }
+    : undefined;
+}
+
+function modelChangeRunKey(
+  inputEvent: ChatInputEvent,
+  modelSelection: ChatRunModelSelection | undefined,
+): string | undefined {
+  if (inputEvent.runId !== undefined) {
+    return `run:${inputEvent.runId}`;
+  }
+  if (modelSelection !== undefined) {
+    return `event:${inputEvent.id}`;
+  }
+  return undefined;
+}
+
+type RunModelChange =
+  | {
+      readonly kind: "model";
+      readonly selection: ChatRunModelSelection;
+    }
+  | {
+      readonly kind: "fast-mode";
+      readonly enabled: boolean;
+    };
+
+function fastModeEnabled(selection: ChatRunModelSelection): boolean {
+  return selection.serviceTier === "priority";
+}
+
+function runModelDisplayName(
+  t: TFunction<"common">,
+  selection: ChatRunModelSelection,
+): string {
+  const model = getModelDisplayName(selection.selectedModel);
+  return fastModeEnabled(selection)
+    ? t(
+        ($) => {
+          return $.chat.run.fastModelName;
+        },
+        { model },
+      )
+    : model;
+}
+
+function modelChangesByEventId(
+  groups: readonly ChatEventGroup[],
+): ReadonlyMap<string, RunModelChange> {
+  const changes = new Map<string, RunModelChange>();
+  let previousRunKey: string | undefined;
+  let previousSelection: ChatRunModelSelection | undefined;
+  let hasPreviousRun = false;
+
+  for (const group of groups) {
+    for (const event of group.events) {
+      const inputEvent = asInputChatEvent(event);
+      if (inputEvent === undefined) {
+        continue;
+      }
+      const selection = modelSelectionFromUserMessage(inputEvent.userMessage);
+      const runKey = modelChangeRunKey(inputEvent, selection);
+      if (runKey === undefined || runKey === previousRunKey) {
+        continue;
+      }
+      if (
+        hasPreviousRun &&
+        previousSelection !== undefined &&
+        selection !== undefined
+      ) {
+        if (selection.selectedModel !== previousSelection.selectedModel) {
+          changes.set(event.id, { kind: "model", selection });
+        } else if (
+          fastModeEnabled(selection) !== fastModeEnabled(previousSelection)
+        ) {
+          changes.set(event.id, {
+            kind: "fast-mode",
+            enabled: fastModeEnabled(selection),
+          });
+        }
+      }
+      previousRunKey = runKey;
+      previousSelection = selection;
+      hasPreviousRun = true;
+    }
+  }
+
+  return changes;
 }
 
 function userMessageNonContentPart(
   document: UserMessageDocument | undefined,
 ): UserMessageNonContentPart | undefined {
   return document?.parts.find(isUserMessageNonContentPart);
+}
+
+function userMessageAnnotationRenderPart(
+  document: UserMessageRenderDocument | undefined,
+): UserMessageAnnotationRenderPart | undefined {
+  return document?.parts.find(
+    (renderPart): renderPart is UserMessageAnnotationRenderPart => {
+      return (
+        renderPart.type === "source" ||
+        renderPart.type === "automation" ||
+        renderPart.type === "goal" ||
+        renderPart.type === "morning_brief"
+      );
+    },
+  );
 }
 
 function eventNonContentPart(
@@ -355,10 +483,8 @@ function eventNonContentPart(
 }
 
 function chatEventAttachments(event: ChatEvent) {
-  return isInputChatEvent(event) || event.eventType === "run.completed"
-    ? "attachFiles" in event
-      ? event.attachFiles
-      : undefined
+  return isInputChatEvent(event)
+    ? userMessageFileAttachments(event.userMessage)
     : undefined;
 }
 
@@ -374,11 +500,11 @@ function chatEventError(event: ChatEvent): string | undefined {
   return undefined;
 }
 
-function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
+function ArtifactsButton({ thread }: { thread: ChatPanelSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
 }
 
-function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
@@ -389,25 +515,26 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
             onClick={() => {
               reloadArtifacts();
               openThreadArtifacts();
             }}
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openArtifacts;
             })}
             aria-pressed={open}
           >
-            <IconPackage size={17} stroke={1.5} />
-          </button>
+            <Package size={18} />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -424,7 +551,7 @@ export function AutomationMenuButton({
   thread,
   ariaLabel,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   ariaLabel?: string;
 }) {
   const { t } = useTranslation();
@@ -450,13 +577,14 @@ export function AutomationMenuButton({
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={
               ariaLabel ??
@@ -470,8 +598,8 @@ export function AutomationMenuButton({
               openAutomationSidebar(thread);
             }}
           >
-            <IconClock size={18} />
-          </button>
+            <Clock size={18} />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -483,39 +611,35 @@ export function AutomationMenuButton({
   );
 }
 
-function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
+function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const sidebarTarget = useGet(thread.sidebar.target$);
   const openBrowserSidebar = useSet(openThreadBrowserSession$);
-  const enabled = useGet(featureSwitch$)[FeatureSwitchKey.ZeroBrowser] ?? false;
 
   const open = sidebarTarget?.type === "browser";
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
-            disabled={!enabled}
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
-              !enabled && "cursor-not-allowed opacity-50",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openBrowser;
             })}
             aria-pressed={open}
             onClick={() => {
-              if (enabled) {
-                openBrowserSidebar(thread.threadId);
-              }
+              openBrowserSidebar(thread.threadId);
             }}
           >
-            <IconWorld size={18} stroke={1.5} />
-          </button>
+            <Globe size={18} />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -527,7 +651,11 @@ function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
+const CHAT_THREAD_HEADER_CLASS =
+  "hidden h-14 shrink-0 items-center justify-between bg-transparent px-6 sm:flex";
+
+function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
   const threadTitle = useGet(thread.threadTitle$)?.trim() ?? "";
   const threadTitleEmoji = useGet(thread.threadTitleEmoji$);
   const threadTitleText = useGet(thread.threadTitleText$);
@@ -535,6 +663,12 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
     openRenameChatThreadDialogForThreadId$,
   );
   const pageSignal = useGet(pageSignal$);
+  const sharingPhase = useGet(thread.sharing.phase$);
+  const selectedCount = useGet(thread.sharing.selectedCount$);
+  const startSharing = useSet(thread.sharing.start$);
+  const closeSharing = useSet(thread.sharing.close$);
+  const sharingEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
   function openRenameDialog(event: ReactMouseEvent<HTMLSpanElement>) {
     event.preventDefault();
     detach(
@@ -543,8 +677,38 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
     );
   }
 
+  if (sharingPhase !== "idle") {
+    return (
+      <header className={CHAT_THREAD_HEADER_CLASS}>
+        <span className="text-sm font-medium text-foreground">
+          {t(
+            ($) => {
+              return $.chat.sharing.selectedCount;
+            },
+            { count: selectedCount },
+          )}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            detach(
+              closeSharing(pageSignal),
+              Reason.DomCallback,
+              "close shared thread selection",
+            );
+          }}
+        >
+          {t(($) => {
+            return $.chat.sharing.cancel;
+          })}
+        </Button>
+      </header>
+    );
+  }
+
   return (
-    <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
+    <header className={CHAT_THREAD_HEADER_CLASS}>
       <div className="flex min-w-0 items-center gap-2">
         <ChatThreadEmojiMenuButton
           threadId={thread.threadId}
@@ -562,7 +726,39 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <AutomationMenuButton key={thread.threadId} thread={thread} />
+        {sharingEnabled ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    detach(
+                      startSharing(pageSignal),
+                      Reason.DomCallback,
+                      "start shared thread selection",
+                    );
+                  }}
+                  variant="quiet"
+                  size="icon-sm"
+                  iconSize="md"
+                  className="shrink-0 duration-150"
+                  aria-label={t(($) => {
+                    return $.chat.sharing.start;
+                  })}
+                >
+                  <Share2 size={18} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t(($) => {
+                  return $.chat.sharing.start;
+                })}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
+        <AutomationMenuButton thread={thread} />
         <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
       </div>
@@ -654,6 +850,9 @@ function ChatThreadEmojiMenuButton({
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
+  const setEmojiActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const setEmojiPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setEmojiPreview = useSet(setChatThreadEmojiPreview$);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -662,6 +861,9 @@ function ChatThreadEmojiMenuButton({
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
             setEmojiQuery("");
+            setEmojiActiveCategory(null);
+            setEmojiPendingJump(null);
+            setEmojiPreview(null);
             openChatThreadEmojiMenu({ threadId, title });
           } else {
             closeMenu();
@@ -671,12 +873,15 @@ function ChatThreadEmojiMenuButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
-              <button
+              <Button
                 type="button"
                 aria-label={t(($) => {
                   return $.chat.thread.changeIcon;
                 })}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                variant="quiet"
+                size="icon-xs"
+                iconSize="md"
+                className="shrink-0"
               >
                 {emoji ? (
                   <span
@@ -686,9 +891,9 @@ function ChatThreadEmojiMenuButton({
                     {emoji}
                   </span>
                 ) : (
-                  <IconMoodPlus size={18} stroke={1.75} aria-hidden="true" />
+                  <SmilePlus size={18} aria-hidden="true" />
                 )}
-              </button>
+              </Button>
             </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">
@@ -751,6 +956,222 @@ function useFrequentlyUsedEmoji(): ChatThreadEmojiItem[] {
   });
 }
 
+// unicode-emoji-json ships the CLDR group names, so key the rail icons off the
+// same strings the sections are titled with.
+function chatThreadEmojiCategoryIcon(group: string): LucideIcon {
+  switch (group) {
+    case "People & Body": {
+      return Hand;
+    }
+    case "Animals & Nature": {
+      return Leaf;
+    }
+    case "Food & Drink": {
+      return Coffee;
+    }
+    case "Travel & Places": {
+      return Plane;
+    }
+    case "Activities": {
+      return Trophy;
+    }
+    case "Objects": {
+      return Lightbulb;
+    }
+    case "Symbols": {
+      return Heart;
+    }
+    case "Flags": {
+      return Flag;
+    }
+    default: {
+      return Smile;
+    }
+  }
+}
+
+const CHAT_THREAD_EMOJI_FREQUENT_CATEGORY = "frequently-used";
+
+interface ChatThreadEmojiCategory {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  items: ChatThreadEmojiItem[];
+  showShortcutDigits: boolean;
+  // The emoji dataset names an emoji the way a shortcode does; the frequently
+  // used row names it the way this product does ("Done", "Urgent"), which is
+  // translated and must not be dressed up as a shortcode.
+  shortcodeNames: boolean;
+}
+
+function chatThreadEmojiDisplayName(
+  name: string,
+  shortcodeNames: boolean,
+): string {
+  return shortcodeNames ? `:${name.replace(/\s+/g, "_")}:` : name;
+}
+
+function chatThreadEmojiSectionId(key: string): string {
+  return `chat-thread-emoji-section-${key}`;
+}
+
+// The category whose title is pinned right now: the last section that has
+// already reached the top of the feed.
+function pinnedChatThreadEmojiCategory(feed: HTMLElement): string | null {
+  const sections = Array.from(
+    feed.querySelectorAll<HTMLElement>("[data-chat-thread-emoji-section]"),
+  );
+  let pinned: string | null = null;
+  for (const section of sections) {
+    if (section.offsetTop > feed.scrollTop + 1) {
+      break;
+    }
+    pinned = section.dataset.chatThreadEmojiSection ?? null;
+  }
+  return pinned;
+}
+
+// Where the feed lands when it jumps to a section. A short final category
+// cannot scroll all the way to its own offset, so clamp to the last reachable
+// position: the jump and the arrival check have to agree on the same number.
+function chatThreadEmojiScrollTarget(
+  feed: HTMLElement,
+  section: HTMLElement,
+): number {
+  return Math.min(section.offsetTop, feed.scrollHeight - feed.clientHeight);
+}
+
+// Returns whether the feed will actually move. A jump that scrolls nowhere
+// emits no scroll event, so the caller must not wait for one.
+function scrollChatThreadEmojiCategoryIntoView(key: string): boolean {
+  const section = document.getElementById(chatThreadEmojiSectionId(key));
+  const feed = section?.closest<HTMLElement>("[data-chat-thread-emoji-feed]");
+  if (!section || !feed || typeof feed.scrollTo !== "function") {
+    return false;
+  }
+  const top = chatThreadEmojiScrollTarget(feed, section);
+  if (Math.abs(top - feed.scrollTop) <= 1) {
+    return false;
+  }
+  feed.scrollTo({ top, behavior: "smooth" });
+  return true;
+}
+
+function chatThreadEmojiCategories(
+  frequentLabel: string,
+  frequentItems: ChatThreadEmojiItem[],
+  groups: { name: string; emojis: ChatThreadEmojiItem[] }[] | null,
+): ChatThreadEmojiCategory[] {
+  return [
+    {
+      key: CHAT_THREAD_EMOJI_FREQUENT_CATEGORY,
+      label: frequentLabel,
+      icon: Clock,
+      items: frequentItems,
+      showShortcutDigits: true,
+      shortcodeNames: false,
+    },
+    ...(groups ?? []).map((group) => {
+      return {
+        key: group.name,
+        label: group.name,
+        icon: chatThreadEmojiCategoryIcon(group.name),
+        items: group.emojis,
+        showShortcutDigits: false,
+        shortcodeNames: true,
+      };
+    }),
+  ];
+}
+
+function ChatThreadEmojiCategoryRail({
+  categories,
+  onSelect,
+}: {
+  categories: ChatThreadEmojiCategory[];
+  onSelect: (key: string) => void;
+}) {
+  const { t } = useTranslation();
+  // Held here rather than in the picker so that following the feed re-renders
+  // the rail alone, not the ~1,900 emoji buttons below it.
+  const activeCategory = useGet(chatThreadEmojiActiveCategory$);
+  const selectedCategory =
+    activeCategory ?? CHAT_THREAD_EMOJI_FREQUENT_CATEGORY;
+
+  // A tablist takes one tab stop, and the arrow keys move between the tabs
+  // inside it.
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    const step =
+      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (step === 0) {
+      return;
+    }
+    const tabs = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'),
+    );
+    const current = tabs.findIndex((tab) => {
+      return tab === document.activeElement;
+    });
+    if (current === -1) {
+      return;
+    }
+    event.preventDefault();
+    const next = (current + step + tabs.length) % tabs.length;
+    tabs[next]?.focus();
+    const nextCategory = categories[next];
+    if (nextCategory) {
+      onSelect(nextCategory.key);
+    }
+  }
+
+  return (
+    <div
+      role="tablist"
+      aria-label={t(($) => {
+        return $.chat.thread.emojiCategories;
+      })}
+      // 7px top and bottom keeps the buttons clear of the popover edge and of
+      // the divider; the active bar then sits inside the bottom gap.
+      className="flex gap-0.5 border-b border-border px-2 py-[7px]"
+      onKeyDown={handleKeyDown}
+    >
+      {categories.map((category) => {
+        const CategoryIcon = category.icon;
+        const selected = category.key === selectedCategory;
+        return (
+          <button
+            key={category.key}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-controls={chatThreadEmojiSectionId(category.key)}
+            aria-label={category.label}
+            title={category.label}
+            tabIndex={selected ? 0 : -1}
+            className={cn(
+              "relative flex h-8 flex-1 items-center justify-center rounded-lg transition-colors hover:bg-state-hover hover:text-foreground",
+              selected ? "text-foreground" : "text-muted-foreground",
+            )}
+            onClick={() => {
+              onSelect(category.key);
+            }}
+          >
+            <CategoryIcon size={16} aria-hidden="true" />
+            {selected && (
+              <span
+                aria-hidden="true"
+                // -8px == the row's 7px bottom padding plus its 1px border, so
+                // the bar seats on the divider instead of floating above it.
+                className="absolute -bottom-2 h-0.5 w-4 rounded-t-sm bg-primary"
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ChatThreadEmojiPicker({
   hasEmoji,
   onSelect,
@@ -765,16 +1186,55 @@ function ChatThreadEmojiPicker({
   const setQuery = useSet(setChatThreadEmojiQuery$);
   const groups = useLastResolved(chatThreadEmojiGroups$) ?? null;
   const frequentlyUsedEmoji = useFrequentlyUsedEmoji();
+  const railEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.EmojiPickerCategoryRail] ?? false;
+  const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
 
   const isSearching = query.trim().length > 0;
   const searchResults =
     isSearching && groups ? filterChatThreadEmojiGroups(groups, query) : [];
 
+  const categories = chatThreadEmojiCategories(
+    t(($) => {
+      return $.chat.thread.frequentlyUsed;
+    }),
+    frequentlyUsedEmoji,
+    groups,
+  );
+  function jumpToCategory(key: string): void {
+    if (isSearching) {
+      setQuery("");
+    }
+    setActiveCategory(key);
+    // The sections may only mount once the query clears, so scroll on the next
+    // frame rather than against the pre-clear layout. Only hold the highlight
+    // when the feed really moves — otherwise no scroll event would arrive to
+    // release the hold and the rail would stop following the feed for good.
+    window.requestAnimationFrame(() => {
+      setPendingJump(scrollChatThreadEmojiCategoryIntoView(key) ? key : null);
+    });
+  }
+
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-2 p-2">
+      {railEnabled && (
+        <ChatThreadEmojiCategoryRail
+          categories={categories}
+          onSelect={jumpToCategory}
+        />
+      )}
+      <div
+        className={cn(
+          "flex items-center gap-2 px-2 pt-2",
+          // Pull the first section title up towards the search field. The title
+          // keeps its own box height so the fade under it is unchanged; only
+          // the gap above it closes.
+          railEnabled ? "pb-1" : "pb-2",
+        )}
+      >
         <div className="relative flex-1">
-          <IconSearch
+          <Search
             size={15}
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
@@ -797,7 +1257,7 @@ function ChatThreadEmojiPicker({
         {hasEmoji && (
           <button
             type="button"
-            className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
             onClick={onRemove}
           >
             {t(($) => {
@@ -806,54 +1266,179 @@ function ChatThreadEmojiPicker({
           </button>
         )}
       </div>
-      <div className="max-h-72 overflow-y-auto px-2 pb-2">
-        {isSearching ? (
-          searchResults.length > 0 ? (
-            <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
-          ) : (
-            <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-              {t(($) => {
-                return $.chat.thread.noEmojiFound;
-              })}
-            </p>
-          )
+      <ChatThreadEmojiFeed
+        categories={categories}
+        searchResults={isSearching ? searchResults : null}
+        onSelect={onSelect}
+        railEnabled={railEnabled}
+      />
+      {railEnabled && <ChatThreadEmojiPreview />}
+    </div>
+  );
+}
+
+// Names whichever emoji the pointer or keyboard is on, so the grid stays a
+// grid of glyphs and the reader still gets a label for the one in question.
+function ChatThreadEmojiPreview() {
+  const { t } = useTranslation();
+  const preview = useGet(chatThreadEmojiPreview$);
+
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3">
+      {preview ? (
+        <>
+          <span aria-hidden="true" className="zero-emoji text-lg leading-none">
+            {preview.emoji}
+          </span>
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            {preview.name}
+          </span>
+        </>
+      ) : (
+        <span className="text-xs text-muted-foreground/70">
+          {t(($) => {
+            return $.chat.thread.pickEmoji;
+          })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ChatThreadEmojiFeed({
+  categories,
+  searchResults,
+  onSelect,
+  railEnabled,
+}: {
+  categories: ChatThreadEmojiCategory[];
+  searchResults: ChatThreadEmojiItem[] | null;
+  onSelect: (emoji: string) => void;
+  railEnabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const pendingJump = useGet(chatThreadEmojiPendingJump$);
+  const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setPreview = useSet(setChatThreadEmojiPreview$);
+
+  // One delegated listener on the feed rather than a pair on each of the ~1,900
+  // buttons. Pointer and keyboard both report through it.
+  function previewEmojiUnder(target: EventTarget): void {
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLElement>("[data-chat-thread-emoji]");
+    const emoji = button?.dataset.chatThreadEmoji;
+    const name = button?.dataset.chatThreadEmojiName;
+    setPreview(emoji && name ? { emoji, name } : null);
+  }
+
+  function handleScroll(event: ReactUIEvent<HTMLDivElement>): void {
+    const feed = event.currentTarget;
+    if (pendingJump !== null) {
+      const target = feed.querySelector<HTMLElement>(
+        `[data-chat-thread-emoji-section="${pendingJump}"]`,
+      );
+      // Release the hold once the jump lands, and also when its section is no
+      // longer around to land on, so the hold can never outlive the jump.
+      if (
+        !target ||
+        Math.abs(chatThreadEmojiScrollTarget(feed, target) - feed.scrollTop) <=
+          1
+      ) {
+        setPendingJump(null);
+      }
+      return;
+    }
+    setActiveCategory(pinnedChatThreadEmojiCategory(feed));
+  }
+
+  // Scrolling by hand aborts an in-flight smooth scroll, so the jump will never
+  // reach its target: hand the feed back the highlight immediately.
+  function releasePendingJump(): void {
+    if (pendingJump !== null) {
+      setPendingJump(null);
+    }
+  }
+
+  return (
+    <div
+      data-chat-thread-emoji-feed=""
+      // relative so each section's offsetTop is measured against the feed.
+      className="relative max-h-72 overflow-y-auto px-2 pb-2"
+      onScroll={railEnabled ? handleScroll : undefined}
+      onWheel={railEnabled ? releasePendingJump : undefined}
+      onTouchStart={railEnabled ? releasePendingJump : undefined}
+      onPointerDown={railEnabled ? releasePendingJump : undefined}
+      onMouseOver={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onFocus={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onMouseLeave={
+        railEnabled
+          ? () => {
+              setPreview(null);
+            }
+          : undefined
+      }
+    >
+      {searchResults !== null ? (
+        searchResults.length > 0 ? (
+          <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
         ) : (
-          <>
-            <ChatThreadEmojiSection
-              label={t(($) => {
-                return $.chat.thread.frequentlyUsed;
-              })}
-              items={frequentlyUsedEmoji}
-              onSelect={onSelect}
-              showShortcutDigits
-            />
-            {groups?.map((group) => {
-              return (
-                <ChatThreadEmojiSection
-                  key={group.name}
-                  label={group.name}
-                  items={group.emojis}
-                  onSelect={onSelect}
-                />
-              );
+          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+            {t(($) => {
+              return $.chat.thread.noEmojiFound;
             })}
-          </>
-        )}
-      </div>
+          </p>
+        )
+      ) : (
+        categories.map((category) => {
+          return (
+            <ChatThreadEmojiSection
+              key={category.key}
+              categoryKey={category.key}
+              label={category.label}
+              items={category.items}
+              onSelect={onSelect}
+              showShortcutDigits={category.showShortcutDigits}
+              shortcodeNames={category.shortcodeNames}
+              pinnedTitle={railEnabled}
+            />
+          );
+        })
+      )}
     </div>
   );
 }
 
 function ChatThreadEmojiSection({
+  categoryKey,
   label,
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
+  pinnedTitle = false,
 }: {
+  categoryKey: string;
   label: string;
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
+  pinnedTitle?: boolean;
 }) {
   const { t } = useTranslation();
   // Ctrl+Shift is a shared prefix for every digit shortcut, so surface it once
@@ -865,8 +1450,22 @@ function ChatThreadEmojiSection({
       })}`
     : null;
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-2 px-1 pb-1 pt-2">
+    <div
+      id={chatThreadEmojiSectionId(categoryKey)}
+      data-chat-thread-emoji-section={categoryKey}
+    >
+      <div
+        className={cn(
+          "flex items-baseline justify-between gap-2 px-1 pb-1 pt-2",
+          // Fade to transparent at the lower edge so emoji dissolve as they
+          // scroll under the pinned title instead of colliding with it.
+          // pt-1/pb-3 shifts the label up towards the search field while
+          // keeping the box — and so the painted fade — the same 32px tall as
+          // the pt-2/pb-2 it replaces.
+          pinnedTitle &&
+            "sticky top-0 z-10 bg-gradient-to-b from-popover from-60% to-transparent pb-3 pt-1",
+        )}
+      >
         <span className="text-xs font-medium text-muted-foreground">
           {label}
         </span>
@@ -880,6 +1479,7 @@ function ChatThreadEmojiSection({
         items={items}
         onSelect={onSelect}
         showShortcutDigits={showShortcutDigits}
+        shortcodeNames={shortcodeNames}
       />
     </div>
   );
@@ -896,10 +1496,12 @@ function ChatThreadEmojiGrid({
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
 }: {
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
 }) {
   // Nine columns so the nine frequently-used digit shortcuts sit on a single
   // row; every other emoji group uses the same width to stay aligned.
@@ -920,8 +1522,13 @@ function ChatThreadEmojiGrid({
             key={`${item.name}-${item.emoji}`}
             type="button"
             aria-label={item.name}
+            data-chat-thread-emoji={item.emoji}
+            data-chat-thread-emoji-name={chatThreadEmojiDisplayName(
+              item.name,
+              shortcodeNames,
+            )}
             title={shortcutLabel}
-            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-accent"
+            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover"
             onClick={() => {
               onSelect(item.emoji);
             }}
@@ -941,210 +1548,6 @@ function ChatThreadEmojiGrid({
         );
       })}
     </div>
-  );
-}
-
-function formatChatTimestamp(value: string): string {
-  return new Date(value).toLocaleString(resolvedAppLocale(), {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-type ChatImagePreviewLinkProps = {
-  alt: string;
-  ariaLabel: string;
-  imageClassName: string;
-  linkClassName: string;
-  onPreview: () => void;
-  placeholderClassName: string;
-  url: string;
-};
-
-const CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS = cn(
-  "border border-foreground/10 shadow-sm transition-all duration-200",
-  "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30",
-);
-const CHAT_INLINE_MEDIA_THUMBNAIL_PREVIEW_CLASS = cn(
-  "aspect-[10/9] w-[50px] max-w-full cursor-pointer rounded-lg",
-  CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS,
-);
-const CHAT_INLINE_IMAGE_PREVIEW_CLASS = cn(
-  CHAT_INLINE_MEDIA_THUMBNAIL_PREVIEW_CLASS,
-  "bg-muted/30",
-);
-const CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS = cn(
-  CHAT_INLINE_MEDIA_THUMBNAIL_PREVIEW_CLASS,
-  "bg-black",
-);
-const CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS = cn(
-  "aspect-[16/10] w-[min(100%,400px)] max-w-full cursor-pointer rounded-lg",
-  CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS,
-  "bg-black",
-);
-
-function ChatImagePreviewLink({
-  alt,
-  ariaLabel,
-  imageClassName,
-  linkClassName,
-  onPreview,
-  placeholderClassName,
-  url,
-}: ChatImagePreviewLinkProps) {
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
-  const imageUrl = publicAttachmentUrl(url);
-  const previewImageUrl = r2ImageTransformUrl(imageUrl, {
-    width: 800,
-    height: 720,
-  });
-  const imageLoadKey = `chat-image-preview:${previewImageUrl}`;
-  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
-
-  const showPlaceholder = imageStatus !== "loaded";
-
-  const openPreview = (event: ReactMouseEvent<HTMLAnchorElement>) => {
-    if (
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey ||
-      event.button !== 0
-    ) {
-      return;
-    }
-    event.preventDefault();
-    onPreview();
-  };
-
-  return (
-    <a
-      href={imageUrl}
-      onClick={openPreview}
-      className={cn(
-        "group/image-preview relative inline-flex self-start items-center justify-center overflow-hidden",
-        linkClassName,
-      )}
-      aria-label={ariaLabel}
-    >
-      {/* Preserve one flex item so the inline baseline cannot change on load. */}
-      <span aria-hidden="true" className="block h-full w-full" />
-      {showPlaceholder && (
-        <span
-          data-testid="chat-image-preview-loading"
-          className={cn(
-            "absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground",
-            placeholderClassName,
-          )}
-        >
-          {imageStatus === "loading" ? (
-            <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
-          ) : (
-            <IconPhoto size={18} stroke={1.5} />
-          )}
-        </span>
-      )}
-      <img
-        key={imageLoadKey}
-        ref={imageLoadStatusRef}
-        src={previewImageUrl}
-        alt={alt}
-        data-image-load-key={imageLoadKey}
-        loading="lazy"
-        onLoad={() => {
-          setImageLoadStatus(imageLoadKey, "loaded");
-        }}
-        onError={() => {
-          setImageLoadStatus(imageLoadKey, "error");
-        }}
-        className={cn(
-          "absolute inset-0",
-          imageClassName,
-          showPlaceholder && "opacity-0",
-        )}
-      />
-    </a>
-  );
-}
-
-type ChatVideoPreviewButtonProps = {
-  ariaLabel: string;
-  buttonClassName: string;
-  filename: string;
-  onPreview: () => void;
-  posterClassName: string;
-  previewImagePending?: boolean;
-  previewImageUrl?: string;
-  url: string;
-  videoClassName: string;
-};
-
-function videoPosterFrameUrl(url: string): string {
-  const hashIndex = url.indexOf("#");
-  const urlWithoutHash = hashIndex === -1 ? url : url.slice(0, hashIndex);
-  return `${urlWithoutHash}#t=0.001`;
-}
-
-function ChatVideoPreviewButton({
-  ariaLabel,
-  buttonClassName,
-  filename,
-  onPreview,
-  posterClassName,
-  previewImagePending,
-  previewImageUrl,
-  url,
-  videoClassName,
-}: ChatVideoPreviewButtonProps) {
-  const videoUrl = publicAttachmentUrl(url);
-  const posterVideoUrl = videoPosterFrameUrl(videoUrl);
-  const videoFallback = (
-    <video
-      src={posterVideoUrl}
-      preload="metadata"
-      muted
-      playsInline
-      aria-hidden="true"
-      className={cn("absolute inset-0", videoClassName)}
-      data-testid="chat-video-preview-fallback"
-    />
-  );
-
-  return (
-    <button
-      type="button"
-      onClick={onPreview}
-      title={filename}
-      aria-label={ariaLabel}
-      className={cn(
-        "group/video-preview relative inline-flex items-center justify-center overflow-hidden",
-        buttonClassName,
-      )}
-    >
-      <span
-        data-testid="chat-video-preview-poster"
-        className={cn("block bg-black", posterClassName)}
-      />
-      {previewImageUrl ? (
-        <ArtifactThumbnailImage
-          src={previewImageUrl}
-          testId="chat-video-preview-thumbnail"
-          className={cn("absolute inset-0", videoClassName)}
-          fallback={videoFallback}
-        />
-      ) : previewImagePending ? null : (
-        videoFallback
-      )}
-      <span className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors group-hover/video-preview:bg-black/35">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
-          <IconPlayerPlay size={17} stroke={1.8} />
-        </span>
-      </span>
-    </button>
   );
 }
 
@@ -1524,8 +1927,7 @@ function headerWorkflowAutomationMatchSummary(
     return null;
   }
   switch (automation.eventType) {
-    case "gmail-label-applied":
-    case "github-label-applied": {
+    case "gmail-label-applied": {
       return i18n.t(
         ($) => {
           return $.chat.automations.matchSummary.label;
@@ -1534,6 +1936,9 @@ function headerWorkflowAutomationMatchSummary(
           value: quotedAutomationValue(automation.eventConfig.labelName),
         },
       );
+    }
+    case "github-pull-request": {
+      return `${automation.eventConfig.repository} · ${automation.eventConfig.action}`;
     }
     case "gmail-new-message": {
       return headerGmailMatchSummary(automation.eventConfig);
@@ -1703,12 +2108,12 @@ function HeaderWorkflowAutomationCard({
               workflowId: automation.workflowId,
             },
           }}
-          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
         >
           {t(($) => {
             return $.chat.actions.view;
           })}
-          <IconArrowUpRight size={12} stroke={1.5} />
+          <ArrowUpRight size={12} />
         </Link>
       </div>
       <WorkflowAutomationCard
@@ -1747,9 +2152,9 @@ function HeaderWorkflowAutomationCard({
               }}
             >
               {running ? (
-                <IconLoader2 size={13} className="animate-spin" />
+                <Loader2 size={13} className="animate-spin" />
               ) : (
-                <IconPlayerPlay size={13} stroke={1.5} />
+                <Play size={13} />
               )}
               {running
                 ? t(($) => {
@@ -2010,7 +2415,7 @@ function HeaderScheduleAutomationEditForm({
           })}
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
           {t(($) => {
             return $.chat.automations.save;
           })}
@@ -2256,7 +2661,7 @@ function HeaderGmailNewMessageAutomationEditForm({
           })}
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
           {t(($) => {
             return $.chat.automations.save;
           })}
@@ -2338,7 +2743,7 @@ function HeaderGmailLabelAutomationEditForm({
           })}
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
           {t(($) => {
             return $.chat.automations.save;
           })}
@@ -2351,7 +2756,7 @@ function HeaderAutomationSidebar({
   thread,
   onClose,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -2381,16 +2786,17 @@ function HeaderAutomationSidebar({
             })}
           </div>
         </div>
-        <button
+        <Button
           type="button"
           onClick={onClose}
           aria-label={t(($) => {
             return $.chat.automations.close;
           })}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
-          <IconX size={16} />
-        </button>
+          <X size={16} />
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -2433,7 +2839,7 @@ function ChatThread({
   thread,
 }: {
   isMain?: boolean;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
   const setContainerRef = useSet(
@@ -2455,12 +2861,42 @@ function ChatThread({
   );
 }
 
-function ChatThreadArea({
-  leftThread,
-  rightThread,
+function MissingChatThread({ threadId }: { threadId: string }) {
+  const { t } = useTranslation();
+  return (
+    <section
+      aria-label={t(($) => {
+        return $.chat.thread.ariaLabel;
+      })}
+      className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
+      data-chat-thread-container-id={threadId}
+      tabIndex={-1}
+    >
+      <ChatThreadNotFound />
+    </section>
+  );
+}
+
+function ChatThreadPane({
+  isMain,
+  pane,
 }: {
-  leftThread: ChatThreadSignals | null;
-  rightThread: ChatThreadSignals | null;
+  isMain?: boolean;
+  pane: Exclude<ChatThreadPaneState, null>;
+}) {
+  return pane.kind === "thread" ? (
+    <ChatThread isMain={isMain} thread={pane.thread} />
+  ) : (
+    <MissingChatThread threadId={pane.threadId} />
+  );
+}
+
+function ChatThreadArea({
+  leftPane,
+  rightPane,
+}: {
+  leftPane: ChatThreadPaneState;
+  rightPane: ChatThreadPaneState;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
 
@@ -2469,11 +2905,11 @@ function ChatThreadArea({
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {leftThread && <ChatThread isMain thread={leftThread} />}
-      {rightThread && (
+      {leftPane && <ChatThreadPane isMain pane={leftPane} />}
+      {rightPane && (
         <>
           <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-          <ChatThread thread={rightThread} />
+          <ChatThreadPane pane={rightPane} />
         </>
       )}
     </div>
@@ -2483,7 +2919,7 @@ function ChatThreadArea({
 function ThreadAutomationsSidebarSlot({
   thread,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const close = useSet(thread.sidebar.close$);
   return <HeaderAutomationSidebar thread={thread} onClose={close} />;
@@ -2491,8 +2927,8 @@ function ThreadAutomationsSidebarSlot({
 
 export function ZeroChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
+  const leftPane = useGet(currentLeftPane$);
+  const rightPane = useGet(currentRightPane$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   return (
     <>
@@ -2503,7 +2939,6 @@ export function ZeroChatThreadPage() {
           activeThreadSidebar ? (
             activeThreadSidebar.target.type === "automations" ? (
               <ThreadAutomationsSidebarSlot
-                key={activeThreadSidebar.thread.threadId}
                 thread={activeThreadSidebar.thread}
               />
             ) : (
@@ -2515,9 +2950,10 @@ export function ZeroChatThreadPage() {
           ) : null
         }
       >
-        <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
+        <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
+      <SentTemplateDetailDialog />
       <ChatConnectorActionConnectModal />
     </>
   );
@@ -2545,17 +2981,104 @@ const CHAT_THREAD_CONTENT_MAIN_CLASS =
   "items-center py-4 pl-4 pr-4 sm:pl-6 sm:pr-6 @container";
 const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 
+function renderedChatEventKeys(
+  groups: readonly ChatEventGroup[],
+): readonly string[] {
+  return groups.flatMap((group) => {
+    return group.events.map((event) => {
+      return `${event.id}:${event.isQueued ? "queued" : "active"}`;
+    });
+  });
+}
+
+function chatGroupsContainEvent(
+  groups: readonly ChatEventGroup[],
+  eventId: string | undefined,
+): boolean {
+  return groups.some((group) => {
+    return group.events.some((event) => {
+      return event.id === eventId;
+    });
+  });
+}
+
+function ChatThreadScrollCommitMarker({
+  thread,
+  renderedGroups,
+}: {
+  thread: ChatPanelSignals;
+  renderedGroups: ChatEventGroup[] | undefined;
+}) {
+  const readyScrollRequestLoadable = useLoadable(
+    thread.readyScrollAfterRenderRequest$,
+  );
+  const commitScroll = useSet(thread.scrollCommitOnRef$);
+  if (
+    renderedGroups === undefined ||
+    readyScrollRequestLoadable.state !== "hasData" ||
+    readyScrollRequestLoadable.data === null
+  ) {
+    return null;
+  }
+
+  const readyScrollRequest = readyScrollRequestLoadable.data;
+  if (
+    !equalArrays(
+      readyScrollRequest.renderedEventKeys,
+      renderedChatEventKeys(renderedGroups),
+    )
+  ) {
+    return null;
+  }
+
+  const { activeGroups, queuedGroups } =
+    splitQueuedEventsForThinkingIndicator(renderedGroups);
+  const { request } = readyScrollRequest;
+  const targetEventId = request.position?.targetEventId;
+  const activeTargetRendered = chatGroupsContainEvent(
+    activeGroups,
+    targetEventId,
+  );
+  const targetMovedToQueue = chatGroupsContainEvent(
+    queuedGroups,
+    targetEventId,
+  );
+  const activeEventsRendered = activeGroups.some((group) => {
+    return group.events.length > 0;
+  });
+  if (
+    !activeEventsRendered ||
+    (request.position !== null && !activeTargetRendered && !targetMovedToQueue)
+  ) {
+    return null;
+  }
+
+  const commitToTail = request.position === null || targetMovedToQueue;
+  return (
+    <span
+      key={request.revision}
+      ref={commitScroll}
+      data-chat-scroll-commit-revision={request.revision}
+      data-chat-scroll-commit-to-tail={commitToTail ? "" : undefined}
+      aria-hidden
+      className="hidden"
+    />
+  );
+}
+
 function ChatThreadRenderedEventGroups({
   thread,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
-  const renderedGroups =
-    useLastResolved(thread.visibleRenderedChatGroups$, {
-      equalityFn: equalArrays,
-    }) ?? [];
+  const resolvedRenderedGroups = useLastResolved(
+    thread.visibleRenderedChatGroups$,
+    { equalityFn: equalArrays },
+  );
+  const renderedGroups = resolvedRenderedGroups ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedEventsForThinkingIndicator(renderedGroups);
+  const modelChanges = modelChangesByEventId(renderedActiveGroups);
   const scrollTargetEventId =
     useGet(thread.threadScrollPosition$)?.targetEventId ?? null;
   const runGroupExpansionOverrides = useGet(runGroupExpansionOverrides$);
@@ -2580,19 +3103,26 @@ function ChatThreadRenderedEventGroups({
     completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups;
 
   return (
-    <ChatThreadEventGroups
-      thread={thread}
-      groups={visibleGroups}
-      runGroupFolding={runGroupFolding}
-      onToggleRunGroup={toggleRunGroupExpanded}
-      completedWorkFolding={completedWorkFolding}
-      completedWorkExpandedKeys={effectiveCompletedWorkExpandedKeys}
-      onToggleCompletedWork={toggleCompletedWorkExpanded}
-    />
+    <>
+      <ChatThreadEventGroups
+        thread={thread}
+        groups={visibleGroups}
+        modelChanges={modelChanges}
+        runGroupFolding={runGroupFolding}
+        onToggleRunGroup={toggleRunGroupExpanded}
+        completedWorkFolding={completedWorkFolding}
+        completedWorkExpandedKeys={effectiveCompletedWorkExpandedKeys}
+        onToggleCompletedWork={toggleCompletedWorkExpanded}
+      />
+      <ChatThreadScrollCommitMarker
+        thread={thread}
+        renderedGroups={resolvedRenderedGroups}
+      />
+    </>
   );
 }
 
-function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadSessionError({ thread }: { thread: ChatPanelSignals }) {
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
@@ -2603,20 +3133,18 @@ function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
   return (
     <div className="flex-1 flex items-center justify-center py-16">
       <div className="flex items-center gap-2 text-destructive">
-        <IconAlertCircle size={16} />
+        <AlertCircle size={16} />
         <p className="text-sm">{sessionError}</p>
       </div>
     </div>
   );
 }
 
-function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadEmptyState({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
-  const renderedGroupsReady =
-    useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
-  const threadSettledInServer = useGet(thread.threadSettledInServer$);
+  const initialEventsReady = useGet(thread.initialEventsReady$);
   const hasEvents = useLastResolved(thread.hasEvents$);
-  if (!renderedGroupsReady || !threadSettledInServer || hasEvents !== false) {
+  if (!initialEventsReady || hasEvents !== false) {
     return null;
   }
   return (
@@ -2637,54 +3165,246 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const scrollContentOnRef = useSet(thread.scrollContentOnRef$);
-  // Following content that grows after its scroll was committed rides with the
-  // diagrams that made it necessary: a diagram is the only chat content that
-  // settles long after its message, and one switch keeps the rollback single.
-  // Without the ref the message container is never observed, which is exactly
-  // how the thread behaved before #24658.
-  const followContentGrowth = useGet(mermaidDiagramsEnabled$);
+  const sharingPhase = useGet(thread.sharing.phase$);
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
       <div
-        ref={followContentGrowth ? scrollContentOnRef : undefined}
+        ref={scrollContentOnRef}
         data-message-container
-        className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
+        className={cn(
+          "w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible",
+          sharingPhase !== "idle" && "pr-10 lg:pr-0",
+        )}
         style={{ visibility: renderedGroupsReady ? "visible" : "hidden" }}
       >
         <ChatThreadSessionError thread={thread} />
         <ChatThreadEmptyState thread={thread} />
-        <ChatHistoryBackfillSkeleton thread={thread} />
         <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
+        <ChatThreadNextRunModelNotice thread={thread} />
       </div>
     </main>
   );
 }
 
-function ChatThreadThinkingIndicator({
+function ChatThreadThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
+  return <ThinkingIndicator thread={thread} />;
+}
+
+function ChatThreadNextRunModelNotice({
   thread,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
-  return <ThinkingIndicator thread={thread} />;
+  const { t } = useTranslation();
+  const continuationPresentationEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
+  const selectedSelection = useLastResolved(
+    thread.composer.model.modelSelection$,
+  );
+  const runningSelection = useLastResolved(
+    thread.composer.model.runningModelSelection$,
+  );
+  if (
+    selectedSelection === undefined ||
+    selectedSelection === null ||
+    runningSelection === undefined ||
+    runningSelection === null
+  ) {
+    return null;
+  }
+
+  const selectedRunSelection: ChatRunModelSelection = {
+    selectedModel: selectedSelection.selectedModel,
+    ...(selectedSelection.codexServiceTier === "fast"
+      ? { serviceTier: "priority" as const }
+      : {}),
+  };
+  let label: string;
+  if (selectedRunSelection.selectedModel !== runningSelection.selectedModel) {
+    label = t(
+      ($) => {
+        return $.chat.run.selectedModelAppliesAfterCurrentRun;
+      },
+      { model: runModelDisplayName(t, selectedRunSelection) },
+    );
+  } else if (
+    fastModeEnabled(selectedRunSelection) !== fastModeEnabled(runningSelection)
+  ) {
+    label = fastModeEnabled(selectedRunSelection)
+      ? t(($) => {
+          return $.chat.run.fastModeWillBeOn;
+        })
+      : t(($) => {
+          return $.chat.run.fastModeWillBeOff;
+        });
+  } else {
+    return null;
+  }
+  // Only inside the steer feature does this notice collide with anything: there
+  // it sits two rows under the acknowledgement wearing the same serif-italic
+  // rule while meaning the opposite thing, so it drops the rule and reads as
+  // the live status it is. Everywhere else the divider is unchanged.
+  if (!continuationPresentationEnabled) {
+    return <RunSectionDividerRow label={label} announce />;
+  }
+  return (
+    <div role="status" aria-live="polite" className={RUN_SECTION_ROW_CLASS}>
+      <div className="hidden @[900px]:block" />
+      <p className="min-w-0 break-words text-right text-[13px] text-muted-foreground">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+interface ChatRunPresentation {
+  readonly actionOwnerEventIds: ReadonlySet<string>;
+  readonly steerEventIds: ReadonlySet<string>;
+}
+
+const EMPTY_CHAT_EVENT_IDS: ReadonlySet<string> = new Set();
+
+function isSteerPromptEvent(
+  event: EnrichedChatEvent,
+  seenUserRunIds: ReadonlySet<string>,
+  actionOwnerEventIdByRunId: ReadonlyMap<string, string>,
+  lastAssociatedRunId: string | undefined,
+): boolean {
+  if (event.eventType !== "input.prompt") {
+    return false;
+  }
+  if (event.runId !== undefined) {
+    return (
+      seenUserRunIds.has(event.runId) ||
+      actionOwnerEventIdByRunId.has(event.runId)
+    );
+  }
+  return (
+    event.optimisticUserMessageAssociation !== "run" &&
+    lastAssociatedRunId !== undefined
+  );
+}
+
+function chatRunPresentationForGroups(
+  groups: readonly ChatEventGroup[],
+): ChatRunPresentation {
+  const actionOwnerEventIdByRunId = new Map<string, string>();
+  const runlessAssistantOwnerEventIds = new Set<string>();
+  const seenUserRunIds = new Set<string>();
+  const steerEventIds = new Set<string>();
+  // The run each steer was picked up by, so the acknowledgement can retire
+  // with it. The terminal event arrives after the steer, so the two are
+  // reconciled once the whole transcript has been walked.
+  const runIdBySteerEventId = new Map<string, string>();
+  const finishedRunIds = new Set<string>();
+  let lastAssociatedRunId: string | undefined;
+
+  for (const group of groups) {
+    for (const event of group.events) {
+      const role = chatEventCompatibilityRole(event.eventType);
+      const runId = event.runId;
+      if (isChatRunTerminalEventType(event.eventType) && runId !== undefined) {
+        finishedRunIds.add(runId);
+      }
+      if (role === "user") {
+        const isSteer = isSteerPromptEvent(
+          event,
+          seenUserRunIds,
+          actionOwnerEventIdByRunId,
+          lastAssociatedRunId,
+        );
+        if (isSteer) {
+          steerEventIds.add(event.id);
+        }
+        const steerRunId = isSteer ? (runId ?? lastAssociatedRunId) : undefined;
+        if (steerRunId !== undefined) {
+          runIdBySteerEventId.set(event.id, steerRunId);
+        }
+        if (runId !== undefined) {
+          actionOwnerEventIdByRunId.delete(runId);
+          seenUserRunIds.add(runId);
+          lastAssociatedRunId = runId;
+        } else if (isSteer && lastAssociatedRunId !== undefined) {
+          actionOwnerEventIdByRunId.delete(lastAssociatedRunId);
+        }
+        continue;
+      }
+
+      if (runId !== undefined) {
+        lastAssociatedRunId = runId;
+      }
+      if (!isRenderableAssistantEvent(event)) {
+        continue;
+      }
+      if (runId === undefined) {
+        runlessAssistantOwnerEventIds.add(event.id);
+      } else {
+        actionOwnerEventIdByRunId.set(runId, event.id);
+      }
+    }
+  }
+
+  // The acknowledgement answers "did my correction land in the work that is
+  // running" — a condition, true until that run ends, not a permanent
+  // transcript landmark. Once the run finishes, its answer is the work itself,
+  // so the line retires and stops accumulating down the thread.
+  for (const [steerEventId, steerRunId] of runIdBySteerEventId) {
+    if (finishedRunIds.has(steerRunId)) {
+      steerEventIds.delete(steerEventId);
+    }
+  }
+
+  return {
+    actionOwnerEventIds: new Set([
+      ...actionOwnerEventIdByRunId.values(),
+      ...runlessAssistantOwnerEventIds,
+    ]),
+    steerEventIds,
+  };
+}
+
+// An assistant group whose events are all bookkeeping — a run's terminal event,
+// usage — puts nothing on screen, so it must not break a stack of user
+// messages that visually sit right on top of each other.
+function groupRendersContent(
+  group: ChatEventGroup,
+  embeddedFolds: readonly RunGroupFoldControl[],
+  completedWorkFold: CompletedWorkFold | null,
+): boolean {
+  if (embeddedFolds.length > 0 || completedWorkFold !== null) {
+    return true;
+  }
+  if (group.role === "user") {
+    return group.events.some(rendersUserBubble);
+  }
+  return group.events.some(isRenderableAssistantEvent);
+}
+
+// A user group can be on screen for its fold alone, with every message in it
+// rendering as a card or as nothing, and there is no bubble to stack against.
+function groupHasUserBubble(group: ChatEventGroup): boolean {
+  return group.events.some(rendersUserBubble);
 }
 
 function ChatThreadEventGroups({
   thread,
   groups,
+  modelChanges,
   runGroupFolding,
   onToggleRunGroup,
   completedWorkFolding,
   completedWorkExpandedKeys,
   onToggleCompletedWork,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   groups: readonly ChatEventGroup[];
+  modelChanges: ReadonlyMap<string, RunModelChange>;
   runGroupFolding: RunGroupFolding | null;
   onToggleRunGroup: (key: string, expanded: boolean) => void;
   completedWorkFolding: CompletedWorkFolding | null;
@@ -2697,6 +3417,17 @@ function ChatThreadEventGroups({
       runGroupFolding,
       onToggleRunGroup,
     });
+  const continuationPresentationEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
+  const runPresentation = continuationPresentationEnabled
+    ? chatRunPresentationForGroups(groups)
+    : null;
+
+  // A run that ends re-forms the groups around it, so the messages the user
+  // sent back to back can land in separate groups with nothing rendered in
+  // between. Tracking the last group that actually put something on screen
+  // keeps the stack from springing open the moment a run finishes.
+  let previousVisibleGroup: ChatEventGroup | undefined;
 
   return (
     <>
@@ -2709,6 +3440,14 @@ function ChatThreadEventGroups({
           completedWorkFolding,
           group,
         );
+        const stackFirstOnPrevious =
+          runGroupFolds.length === 0 &&
+          previousVisibleGroup !== undefined &&
+          previousVisibleGroup.role === "user" &&
+          groupHasUserBubble(previousVisibleGroup);
+        if (groupRendersContent(group, embeddedFolds, completedWorkFold)) {
+          previousVisibleGroup = group;
+        }
         const completedWorkExpanded =
           completedWorkFold !== null &&
           completedWorkExpandedKeys.has(completedWorkFold.key);
@@ -2722,9 +3461,20 @@ function ChatThreadEventGroups({
                 />
               );
             })}
-            <PagedGroupRow
+            <SelectablePagedGroupRow
               group={group}
               thread={thread}
+              modelChanges={modelChanges}
+              showActions={
+                runPresentation === null ||
+                group.events.some((event) => {
+                  return runPresentation.actionOwnerEventIds.has(event.id);
+                })
+              }
+              steerEventIds={
+                runPresentation?.steerEventIds ?? EMPTY_CHAT_EVENT_IDS
+              }
+              stackFirstOnPrevious={stackFirstOnPrevious}
               runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null
@@ -2994,12 +3744,31 @@ function attachUsageToCompletedWorkGroups(
   groups: readonly ChatEventGroup[],
   usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
 ): ChatEventGroup[] {
-  return groups.map((group) => {
+  const lastAssistantGroupIndexByRunId = new Map<string, number>();
+  for (const [index, group] of groups.entries()) {
+    if (
+      group.role !== "assistant" ||
+      !group.events.some(isRenderableAssistantEvent)
+    ) {
+      continue;
+    }
+    const runId = firstRunIdForEvents(group.events);
+    if (runId !== undefined) {
+      lastAssistantGroupIndexByRunId.set(runId, index);
+    }
+  }
+  return groups.map((group, index) => {
     if (group.role !== "assistant") {
       return group;
     }
     const runId = firstRunIdForEvents(group.events);
-    const usage = runId === undefined ? undefined : usageByRunId.get(runId);
+    if (
+      runId === undefined ||
+      lastAssistantGroupIndexByRunId.get(runId) !== index
+    ) {
+      return group;
+    }
+    const usage = usageByRunId.get(runId);
     return usage === undefined ? group : { ...group, usage };
   });
 }
@@ -3007,17 +3776,10 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
-    (Boolean(event.content) ||
+    ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
       Boolean(chatEventError(event)) ||
-      event.blocks.length > 0 ||
+      hasChatEventBodyContent(event) ||
       Boolean(chatEventAttachments(event)?.length))
-  );
-}
-
-function isPrimaryAssistantResultEvent(event: EnrichedChatEvent): boolean {
-  return (
-    (event.eventType !== "run.completed" || Boolean(event.content)) &&
-    isRenderableAssistantEvent(event)
   );
 }
 
@@ -3033,6 +3795,103 @@ function terminatedRunIdsForCompletedWork(
   return terminatedChatRunIds(events);
 }
 
+function splitCompletedWorkEventsAtUsers(
+  events: readonly EnrichedChatEvent[],
+): EnrichedChatEvent[][] {
+  const phases: EnrichedChatEvent[][] = [];
+  let phase: EnrichedChatEvent[] = [];
+  for (const event of events) {
+    if (
+      phase.length > 0 &&
+      chatEventCompatibilityRole(event.eventType) === "user"
+    ) {
+      phases.push(phase);
+      phase = [];
+    }
+    phase.push(event);
+  }
+  if (phase.length > 0) {
+    phases.push(phase);
+  }
+  return phases;
+}
+
+function lastCompletedWorkEventIndex(
+  events: readonly EnrichedChatEvent[],
+  predicate: (event: EnrichedChatEvent) => boolean,
+): number {
+  for (let index = events.length - 1; index >= 0; index--) {
+    if (predicate(events[index]!)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function completedWorkFinalEventIndex(
+  events: readonly EnrichedChatEvent[],
+): number {
+  return lastCompletedWorkEventIndex(events, isRenderableAssistantEvent);
+}
+
+function canFoldCompletedWorkTrailingEvent(event: EnrichedChatEvent): boolean {
+  const role = chatEventCompatibilityRole(event.eventType);
+  return (
+    role === "user" ||
+    (role === "assistant" && !isRenderableAssistantEvent(event))
+  );
+}
+
+interface CompletedWorkPhaseFolding {
+  visibleEvents: readonly EnrichedChatEvent[];
+  fold: CompletedWorkFold | null;
+}
+
+function foldCompletedWorkPhase(
+  runId: string,
+  events: readonly EnrichedChatEvent[],
+): CompletedWorkPhaseFolding {
+  const finalEventIndex = completedWorkFinalEventIndex(events);
+  const finalEvent =
+    finalEventIndex >= 0 ? events[finalEventIndex]! : undefined;
+  const precedingEvents =
+    finalEventIndex > 0 ? events.slice(0, finalEventIndex) : [];
+  const hiddenEvents = precedingEvents.filter((event) => {
+    return (
+      chatEventCompatibilityRole(event.eventType) !== "user" &&
+      !isThinkingOnlyAssistantEvent(event)
+    );
+  });
+  const userEvents = events.filter((event) => {
+    return chatEventCompatibilityRole(event.eventType) === "user";
+  });
+  const trailingEvents =
+    finalEventIndex >= 0 ? events.slice(finalEventIndex + 1) : [];
+  const trailingEventsCanFold = trailingEvents.every((event) => {
+    return canFoldCompletedWorkTrailingEvent(event);
+  });
+  if (
+    finalEvent === undefined ||
+    hiddenEvents.length === 0 ||
+    !trailingEventsCanFold
+  ) {
+    return { visibleEvents: events, fold: null };
+  }
+  return {
+    visibleEvents: [
+      ...userEvents,
+      finalEvent,
+      ...trailingEvents.filter(isRenderableAssistantEvent),
+    ],
+    fold: {
+      key: `${runId}:${finalEvent.id}`,
+      finalEventId: finalEvent.id,
+      hiddenGroups: groupEventsByRole(hiddenEvents),
+      labelGroups: groupEventsByRole(events),
+    },
+  };
+}
+
 function buildCompletedWorkFolding(
   groups: readonly ChatEventGroup[],
 ): CompletedWorkFolding | null {
@@ -3043,6 +3902,7 @@ function buildCompletedWorkFolding(
   const terminatedRunIds = terminatedRunIdsForCompletedWork(events);
   const visibleEvents: EnrichedChatEvent[] = [];
   const folds: CompletedWorkFold[] = [];
+  let hasCompletedWorkPhaseBoundary = false;
 
   for (let index = 0; index < events.length; ) {
     const runId = events[index]!.runId;
@@ -3064,69 +3924,22 @@ function buildCompletedWorkFolding(
       continue;
     }
 
-    let finalEventIndex = -1;
-    for (let offset = runEvents.length - 1; offset >= 0; offset--) {
-      if (isPrimaryAssistantResultEvent(runEvents[offset]!)) {
-        finalEventIndex = offset;
-        break;
-      }
+    const completedWorkEventGroups = splitCompletedWorkEventsAtUsers(runEvents);
+    if (completedWorkEventGroups.length > 1) {
+      hasCompletedWorkPhaseBoundary = true;
     }
-    if (finalEventIndex < 0) {
-      for (let offset = runEvents.length - 1; offset >= 0; offset--) {
-        if (isRenderableAssistantEvent(runEvents[offset]!)) {
-          finalEventIndex = offset;
-          break;
-        }
+    for (const completedWorkEvents of completedWorkEventGroups) {
+      const phaseFolding = foldCompletedWorkPhase(runId, completedWorkEvents);
+      visibleEvents.push(...phaseFolding.visibleEvents);
+      if (phaseFolding.fold !== null) {
+        folds.push(phaseFolding.fold);
       }
-    }
-    const finalEvent =
-      finalEventIndex >= 0 ? runEvents[finalEventIndex]! : undefined;
-    const precedingEvents =
-      finalEventIndex > 0 ? runEvents.slice(0, finalEventIndex) : [];
-    const hiddenEvents = precedingEvents.filter((event) => {
-      return (
-        chatEventCompatibilityRole(event.eventType) !== "user" &&
-        !isThinkingOnlyAssistantEvent(event)
-      );
-    });
-    const trailingEvents =
-      finalEventIndex >= 0 ? runEvents.slice(finalEventIndex + 1) : [];
-    const trailingEventsAreMarkers = trailingEvents.every((event) => {
-      return (
-        chatEventCompatibilityRole(event.eventType) === "assistant" &&
-        (!isRenderableAssistantEvent(event) ||
-          event.eventType === "run.completed")
-      );
-    });
-    const visibleTrailingEvents = trailingEvents.filter((event) => {
-      return isRenderableAssistantEvent(event);
-    });
-    if (
-      finalEvent !== undefined &&
-      hiddenEvents.length > 0 &&
-      trailingEventsAreMarkers
-    ) {
-      visibleEvents.push(
-        ...precedingEvents.filter((event) => {
-          return chatEventCompatibilityRole(event.eventType) === "user";
-        }),
-        finalEvent,
-        ...visibleTrailingEvents,
-      );
-      folds.push({
-        key: `${runId}:${finalEvent.id}`,
-        finalEventId: finalEvent.id,
-        hiddenGroups: groupEventsByRole(hiddenEvents),
-        labelGroups: groupEventsByRole(runEvents),
-      });
-    } else {
-      visibleEvents.push(...runEvents);
     }
 
     index = endIndex;
   }
 
-  if (folds.length === 0) {
+  if (folds.length === 0 && !hasCompletedWorkPhaseBoundary) {
     return null;
   }
 
@@ -3218,7 +4031,141 @@ function completedWorkLabel(groups: readonly ChatEventGroup[]): string {
 }
 
 const RUN_SECTION_LABEL_CLASS =
-  "shrink-0 font-serif text-[13px] italic text-muted-foreground/50";
+  "min-w-0 max-w-full shrink-0 break-words font-serif text-[13px] italic text-muted-foreground/50";
+const RUN_SECTION_ROW_CLASS =
+  "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
+
+// A steer burst reads as one thing the user said, which means an even rhythm:
+// the copy button sits the same distance from the text above it as from
+// whatever follows — the next message, or the burst's acknowledgement. The
+// button already sits `mt-1` under its own message, so this pull cancels the
+// thread's 24px gap down to that same 4px on the other side of it. It is the
+// same pull a run-section row uses, which is why the acknowledgement can go on
+// carrying `RUN_SECTION_ROW_CLASS`.
+const MESSAGE_STACK_PULL_CLASS = "-mt-5";
+
+function RunSectionDivider({
+  label,
+  labelPosition = "left",
+}: {
+  label: ReactNode;
+  labelPosition?: "left" | "right";
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-5 items-center gap-2",
+        labelPosition === "right" && "flex-row-reverse",
+      )}
+    >
+      <p
+        className={cn(
+          RUN_SECTION_LABEL_CLASS,
+          labelPosition === "right" && "text-right",
+        )}
+      >
+        {label}
+      </p>
+      <div role="separator" className="h-px flex-1 bg-border/40" />
+    </div>
+  );
+}
+
+function RunSectionDividerRow({
+  label,
+  announce = false,
+}: {
+  label: ReactNode;
+  announce?: boolean;
+}) {
+  return (
+    <div
+      role={announce ? "status" : undefined}
+      aria-live={announce ? "polite" : undefined}
+      className={RUN_SECTION_ROW_CLASS}
+    >
+      <div className="hidden @[900px]:block" />
+      <div className="min-w-0">
+        <RunSectionDivider label={label} labelPosition="right" />
+      </div>
+    </div>
+  );
+}
+
+// One acknowledgement per burst of consecutive steers, not one per message.
+// What the user is actually asking after firing off three corrections is
+// whether all three landed, so the label counts them; repeating "this one
+// arrived" under each message answers a question nobody asked and chops the
+// burst into unrelated pieces.
+//
+// The row carries no rule. A hairline is how the transcript marks a boundary
+// between two stretches of work, and drawing one under the burst cut the
+// acknowledgement away from the very messages it is about — the label ended up
+// reading as the start of something else rather than the closing line of what
+// the user just sent. It sits one stack gap under the burst for the same
+// reason: the burst and its acknowledgement are one block.
+function SteerAcknowledgementRow({ count }: { count: number }) {
+  const { t } = useTranslation();
+  const sweepRef = useSet(steerAcknowledgementRef$);
+  const label = t(
+    ($) => {
+      return $.chat.thread.steerAcknowledgement;
+    },
+    { count },
+  );
+  return (
+    <div className={RUN_SECTION_ROW_CLASS}>
+      <div className="hidden @[900px]:block" />
+      {/* The label keeps its own width rather than filling the column: the
+          sweep masks are sized from this box, so a full-width one would drag
+          the boundary across empty space beside the text. No min-height: the
+          row is the text, so the gap above it is the gap that was measured. */}
+      <div className="flex justify-end">
+        <p className={cn(RUN_SECTION_LABEL_CLASS, "text-right")}>
+          {/* Remounting on every change is what tells the sweep to run. The
+              outgoing layer stays empty here: the wording it erases is whatever
+              this row said last, which only the row itself still knows. */}
+          <span
+            key={label}
+            ref={sweepRef}
+            data-testid="chat-steer-acknowledgement"
+            data-steer-acknowledgement-label={label}
+            className="zero-steer-ack"
+          >
+            <span
+              aria-hidden="true"
+              data-steer-acknowledgement-outgoing=""
+              className="zero-steer-ack-layer zero-steer-ack-outgoing"
+            />
+            <span className="zero-steer-ack-layer zero-steer-ack-incoming">
+              {label}
+            </span>
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ModelChangeDividerRow({ change }: { change: RunModelChange }) {
+  const { t } = useTranslation();
+  const label =
+    change.kind === "model"
+      ? t(
+          ($) => {
+            return $.chat.run.modelChangedTo;
+          },
+          { model: runModelDisplayName(t, change.selection) },
+        )
+      : change.enabled
+        ? t(($) => {
+            return $.chat.run.fastModeOn;
+          })
+        : t(($) => {
+            return $.chat.run.fastModeOff;
+          });
+  return <RunSectionDividerRow label={label} />;
+}
 
 function CompletedWorkFoldRow({
   groups,
@@ -3246,15 +4193,11 @@ function CompletedWorkFoldRow({
               })
         }
         onClick={onToggle}
-        className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
+        className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover"
       >
-        <IconHourglass
-          aria-hidden
-          size={14}
-          className="shrink-0 text-muted-foreground/70"
-        />
+        <Hourglass aria-hidden size={14} className="shrink-0" />
         <span className="text-[13px]">{label}</span>
-        <IconChevronRight
+        <ChevronRight
           aria-hidden
           size={14}
           className={cn(
@@ -3312,8 +4255,8 @@ function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
 }
 
 function runGroupFoldGoalLabel(fold: RunGroupFold): string {
-  const goalEvent = runGroupFoldEvents(fold).find(isGoalUserMessage);
-  const part = goalEvent ? eventNonContentPart(goalEvent) : undefined;
+  const goalInputEvent = runGroupFoldEvents(fold).find(isGoalUserMessage);
+  const part = goalInputEvent ? eventNonContentPart(goalInputEvent) : undefined;
   const content = part?.type === "goal" ? part.goalBrief.trim() : null;
   return content
     ? normalizedInlineLabel(content)
@@ -3324,13 +4267,24 @@ function runGroupFoldGoalLabel(fold: RunGroupFold): string {
         .toLocaleLowerCase(i18n.resolvedLanguage);
 }
 
+function isRejectedGoalUserMessage(event: EnrichedChatEvent): boolean {
+  return (
+    event.eventType === "input.rejected" &&
+    eventNonContentPart(event)?.type === "goal"
+  );
+}
+
 function isGoalUserMessage(
   event: EnrichedChatEvent,
 ): event is EnrichedChatEvent & ChatInputEvent {
-  return isInputChatEvent(event) && eventNonContentPart(event)?.type === "goal";
+  return (
+    isInputChatEvent(event) &&
+    !isRejectedGoalUserMessage(event) &&
+    eventNonContentPart(event)?.type === "goal"
+  );
 }
 
-function isGoalRunGroupFold(fold: RunGroupFold): boolean {
+function isGoalGroupFold(fold: RunGroupFold): boolean {
   return fold.labelGroups.some((group) => {
     return group.events.some(isGoalUserMessage);
   });
@@ -3386,7 +4340,7 @@ function verboseDurationLabelForRunGroupFold(
 }
 
 function runGroupFoldLabel(fold: RunGroupFold): string {
-  if (isGoalRunGroupFold(fold)) {
+  if (isGoalGroupFold(fold)) {
     const duration = verboseDurationLabelForRunGroupFold(fold);
     const label = runGroupFoldGoalLabel(fold);
     return duration
@@ -3425,8 +4379,8 @@ function RunGroupFoldRow({
   const { t } = useTranslation();
   const { fold, expanded, onToggle } = control;
   const label = runGroupFoldLabel(fold);
-  const isGoal = isGoalRunGroupFold(fold);
-  const Icon = isGoal ? IconTarget : IconPackage;
+  const isGoal = isGoalGroupFold(fold);
+  const Icon = isGoal ? Target : Package;
   return (
     <div
       data-chat-run-group-fold
@@ -3446,19 +4400,15 @@ function RunGroupFoldRow({
         }
         onClick={onToggle}
         className={cn(
-          "inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50",
+          "inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover",
           embedded && "mt-1.5",
         )}
       >
-        <Icon
-          aria-hidden
-          size={14}
-          className="shrink-0 text-muted-foreground/70"
-        />
+        <Icon aria-hidden size={14} className="shrink-0" />
         <span className="min-w-0 truncate whitespace-nowrap text-[13px]">
           {label}
         </span>
-        <IconChevronRight
+        <ChevronRight
           aria-hidden
           size={14}
           className={cn(
@@ -3471,9 +4421,9 @@ function RunGroupFoldRow({
   );
 }
 
-function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
-  const chatSkeletonVisible = useGet(thread.chatSkeletonVisible$);
-  if (!chatSkeletonVisible) {
+function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
+  const initialEventsReady = useGet(thread.initialEventsReady$);
+  if (initialEventsReady) {
     return null;
   }
 
@@ -3483,7 +4433,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
       className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
     >
       <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
-        <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
+        <div className="zero-chat-skeleton-reveal w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
           <ChatSkeleton />
         </div>
       </main>
@@ -3491,12 +4441,11 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
   const scrollContainerOnRef = useSet(thread.scrollContainerOnRef$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
-  const pwaChatKeyboardGesturesEnabled =
-    useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
+  const standalonePwa = isStandalonePwa();
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
     if (
@@ -3516,51 +4465,41 @@ function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
         onScroll={handleScroll}
         className={cn(
           "absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]",
-          pwaChatKeyboardGesturesEnabled && "overscroll-contain",
+          standalonePwa && "overscroll-contain",
         )}
       >
-        <ChatThreadEventsMain
-          key={`messages:${thread.threadId}`}
-          thread={thread}
-        />
+        <ChatThreadEventsMain thread={thread} />
       </div>
-      <ChatThreadSkeletonOverlay
-        key={`skeleton:${thread.threadId}`}
-        thread={thread}
-      />
-      <ScrollToBottomButton
-        key={`scroll-button:${thread.threadId}`}
-        thread={thread}
-      />
+      <ChatThreadSkeletonOverlay thread={thread} />
+      <ScrollToBottomButton thread={thread} />
+      <ChatConversationLocator thread={thread} />
     </div>
   );
 }
 
-function ChatHistoryBackfillSkeleton({
-  thread,
-}: {
-  thread: ChatThreadSignals;
-}) {
+function ChatThreadNotFound() {
   const { t } = useTranslation();
-  const historyBackfillPending = useGet(thread.historyBackfillPending$);
-  if (!historyBackfillPending) {
-    return null;
-  }
   return (
-    <div
-      data-history-backfill-skeleton
-      role="status"
-      aria-label={t(($) => {
-        return $.chat.thread.loadingEarlier;
-      })}
-      className="flex flex-col gap-6"
+    <main
+      data-chat-thread-not-found
+      className="flex min-h-0 flex-1 items-center justify-center px-6 py-16 text-center"
     >
-      <ChatEventSkeletonPair />
-    </div>
+      <h1 className="text-lg font-semibold text-foreground">
+        {t(($) => {
+          return $.chat.thread.notFound;
+        })}
+      </h1>
+    </main>
   );
 }
 
-function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const threadMeta = useGet(thread.threadMeta$);
+  if (!threadMeta) {
+    return <ChatThreadNotFound />;
+  }
+
   return (
     <>
       <ChatThreadHeader thread={thread} />
@@ -3568,21 +4507,151 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
           <ChatThreadEventsPane thread={thread} />
-          {/* Command loadables are hook-owned, so keep their identity boundary
-              narrower than the persistent thread and event owners. */}
-          <ChatThreadComposer key={thread.threadId} thread={thread} />
+          <ChatThreadBottomBar thread={thread} />
         </div>
       </div>
 
-      <ChatFeedbackSelection feedback={thread.feedback} />
+      <ChatFeedbackSelection
+        feedback={thread.feedback}
+        sourceAgentId={threadMeta.agentId}
+        sourceThreadTitle={
+          threadMeta.title ??
+          t(($) => {
+            return $.chat.newChat;
+          })
+        }
+      />
     </>
   );
 }
 
-function ScrollToBottomButton({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const selectedCount = useGet(thread.sharing.selectedCount$);
+  const sharedThreadId = useGet(thread.sharing.createdSharedThreadId$);
+  const close = useSet(thread.sharing.close$);
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createSharedThread] = useLoadableSet(
+    thread.sharing.create$,
+  );
+  if (phase === "idle") {
+    return <ChatThreadComposer thread={thread} />;
+  }
+
+  const creating = createLoadable.state === "loading";
+  const shareUrl = sharedThreadId
+    ? `${window.location.origin}/share/threads/${sharedThreadId}`
+    : null;
+  return (
+    <footer className="relative shrink-0 border-t border-border/60 bg-background px-4 py-3 sm:px-6">
+      <div className="mx-auto flex w-full max-w-[900px] flex-col gap-2">
+        {shareUrl ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              readOnly
+              value={shareUrl}
+              aria-label={t(($) => {
+                return $.chat.sharing.shareLink;
+              })}
+              className="min-w-0 flex-1"
+            />
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                onClick={() => {
+                  detach(
+                    (async () => {
+                      const copied = await writeToClipboard(shareUrl);
+                      if (copied) {
+                        toast.success(
+                          t(($) => {
+                            return $.chat.sharing.linkCopied;
+                          }),
+                        );
+                        return;
+                      }
+                      toast.error(
+                        t(($) => {
+                          return $.chat.sharing.copyFailed;
+                        }),
+                      );
+                    })(),
+                    Reason.DomCallback,
+                    "copy shared thread link",
+                  );
+                }}
+              >
+                <Copy size={16} />
+                {t(($) => {
+                  return $.chat.sharing.copyLink;
+                })}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  detach(
+                    close(pageSignal),
+                    Reason.DomCallback,
+                    "close shared thread selection",
+                  );
+                }}
+              >
+                {t(($) => {
+                  return $.chat.sharing.close;
+                })}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {t(
+                  ($) => {
+                    return $.chat.sharing.selectedCount;
+                  },
+                  { count: selectedCount },
+                )}
+              </p>
+              {createLoadable.state === "hasError" ? (
+                <p className="mt-0.5 text-xs text-destructive">
+                  {t(($) => {
+                    return $.chat.sharing.createFailed;
+                  })}
+                </p>
+              ) : null}
+            </div>
+            <Button
+              disabled={selectedCount === 0 || creating}
+              onClick={() => {
+                detach(
+                  createSharedThread(pageSignal),
+                  Reason.DomCallback,
+                  "create shared thread",
+                );
+              }}
+            >
+              {creating ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Share2 size={16} />
+              )}
+              {t(($) => {
+                return $.chat.sharing.create;
+              })}
+            </Button>
+          </div>
+        )}
+      </div>
+    </footer>
+  );
+}
+
+function ScrollToBottomButton({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const awayFromBottom = useGet(thread.awayFromBottom$);
   const scrollToBottom = useSet(thread.scrollToBottom$);
+  const pageSignal = useGet(pageSignal$);
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
@@ -3601,11 +4670,11 @@ function ScrollToBottomButton({ thread }: { thread: ChatThreadSignals }) {
         return $.chat.thread.scrollToBottom;
       })}
       onClick={() => {
-        scrollToBottom();
+        detach(scrollToBottom(pageSignal), Reason.DomCallback);
       }}
-      className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+      className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-background-hover hover:text-foreground"
     >
-      <IconArrowDown size={18} />
+      <ArrowDown size={18} />
     </button>
   );
 }
@@ -3616,22 +4685,22 @@ function RecommendedFollowupIcon({
   followup: RecommendedFollowup;
 }) {
   if (followup.kind !== "generate") {
-    return <IconMessageCircle size={14} stroke={1.8} />;
+    return <MessageCircle size={14} />;
   }
 
   if (followup.generationType === "image") {
-    return <IconPhoto size={14} stroke={1.8} />;
+    return <Image size={14} />;
   }
   if (followup.generationType === "video") {
-    return <IconVideo size={14} stroke={1.8} />;
+    return <Video size={14} />;
   }
   if (followup.generationType === "presentation") {
-    return <IconChartLine size={14} stroke={1.8} />;
+    return <ChartLine size={14} />;
   }
   if (followup.generationType === "website") {
-    return <IconLink size={14} stroke={1.8} />;
+    return <LinkIcon size={14} />;
   }
-  return <IconPackage size={14} stroke={1.8} />;
+  return <Package size={14} />;
 }
 
 function recommendedFollowupShownKey(
@@ -3655,10 +4724,10 @@ function reportRecommendedFollowupsShown(
   }
 
   const shownKey = recommendedFollowupShownKey(source);
-  if (element.dataset.recommendedFollowupsShownKey === shownKey) {
+  if (element.dataset.followupsShownKey === shownKey) {
     return;
   }
-  element.dataset.recommendedFollowupsShownKey = shownKey;
+  element.dataset.followupsShownKey = shownKey;
 
   captureRecommendedFollowupsShown({
     messageId: source.eventId,
@@ -3670,9 +4739,17 @@ function RecommendedFollowupList({
   thread,
   source,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   source: RecommendedFollowupSource;
 }) {
+  const { t } = useTranslation();
+  const responsiveFollowupCards =
+    useGet(featureSwitch$)[FeatureSwitchKey.ResponsiveFollowupCards] ?? false;
+  // Card rail only on actual mobile/touch text-entry devices, mirroring the
+  // composer auto-focus heuristic. A desktop window dragged narrow must still
+  // render the flat list, so container width is not the deciding factor.
+  const showFollowupCards =
+    responsiveFollowupCards && isMobileTextInputDevice();
   const selectOrAppendComposerText = useSet(
     thread.composer.editor.selectOrAppendText$,
   );
@@ -3694,28 +4771,59 @@ function RecommendedFollowupList({
   };
 
   return (
-    <div ref={handleRecommendedFollowupsRef} className="-mx-2">
+    <div
+      ref={handleRecommendedFollowupsRef}
+      role="group"
+      aria-label={t(($) => {
+        return $.chat.run.keepGoing;
+      })}
+      className={cn(
+        // The flat list pulls out by the row buttons' own px-2 so its text
+        // aligns with the message column. Cards carry no such inner offset,
+        // so the rail must stay flush with the column and the composer.
+        showFollowupCards
+          ? "flex items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : "-mx-2",
+      )}
+    >
       {source.followups.map((followup, followupIndex) => {
         return (
           <button
             key={followup.prompt}
             type="button"
             title={followup.prompt}
-            className="group flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/40"
+            className={cn(
+              "group flex text-left transition-colors",
+              showFollowupCards
+                ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--zero-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                : "min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-state-hover",
+            )}
             onClick={() => {
               handleSelect(followup, followupIndex);
             }}
           >
-            <span className="shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground">
+            <span
+              className={cn(
+                "shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground",
+                showFollowupCards && "hidden",
+              )}
+            >
               <RecommendedFollowupIcon followup={followup} />
             </span>
-            <span className="min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 text-muted-foreground group-hover:text-foreground">
+            <span
+              className={cn(
+                "min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 group-hover:text-foreground",
+                showFollowupCards ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
               {followup.prompt}
             </span>
-            <IconArrowUpRight
+            <ArrowUpRight
               size={14}
-              stroke={1.8}
-              className="shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100"
+              className={cn(
+                "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100",
+                showFollowupCards && "hidden",
+              )}
             />
           </button>
         );
@@ -3810,12 +4918,7 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
         <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
           {goalLoadable.state === "loading" ? (
             <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
-              <IconLoader2
-                size={16}
-                stroke={1.7}
-                className="animate-spin"
-                aria-hidden="true"
-              />
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
               <span>
                 {t(($) => {
                   return $.chat.queue.loadingGoal;
@@ -3855,20 +4958,24 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
   );
 }
 
-function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
-  const pwaChatKeyboardGesturesEnabled =
-    useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
+function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
+  const standalonePwa = isStandalonePwa();
 
   return (
     <footer
       data-chat-composer
-      className="relative shrink-0 bg-[hsl(var(--background))] pb-2"
+      className="relative shrink-0 bg-[hsl(var(--background))]"
+      style={{
+        // Overlap the footer's breathing room with the root-owned safe area;
+        // --sab is zero while the software keyboard is open.
+        paddingBottom: "max(0.5rem - var(--sab), 0px)",
+      }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div
         className={cn(
           "overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
-          pwaChatKeyboardGesturesEnabled && "overscroll-contain",
+          standalonePwa && "overscroll-contain",
         )}
       >
         <div className="mx-auto max-w-[900px]">
@@ -3935,11 +5042,52 @@ function ChatSkeleton() {
 
 interface ServerThinkingLabel {
   readonly displayedText: string;
+  readonly fadingOut: boolean;
   readonly fullText: string;
   readonly id: string;
   readonly setRef: (
     el: HTMLParagraphElement | null,
   ) => (() => void) | undefined;
+}
+
+function ShimmerText({
+  ariaLabel,
+  children,
+  className,
+  setRef,
+  visualChildren = children,
+}: {
+  readonly ariaLabel?: string;
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly setRef?: ServerThinkingLabel["setRef"];
+  readonly visualChildren?: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "zero-shimmer-text-shell h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5",
+        className,
+      )}
+    >
+      <p
+        ref={setRef}
+        className="zero-shimmer-text h-5 w-full truncate"
+        aria-label={ariaLabel}
+      >
+        {children}
+      </p>
+      <span className="zero-shimmer-window" aria-hidden>
+        <span className="zero-shimmer-highlight">{visualChildren}</span>
+      </span>
+      <span
+        className="zero-shimmer-window zero-shimmer-window-secondary"
+        aria-hidden
+      >
+        <span className="zero-shimmer-highlight">{visualChildren}</span>
+      </span>
+    </div>
+  );
 }
 
 function ThinkingLabel({
@@ -3953,47 +5101,56 @@ function ThinkingLabel({
 }) {
   const { t } = useTranslation();
   const openQueueDrawer = useSet(openQueueDrawer$);
-  const pageSignal = useGet(pageSignal$);
 
   if (isQueued) {
+    const waitingIn = t(($) => {
+      return $.chat.run.waitingIn;
+    });
+    const queueEllipsis = t(($) => {
+      return $.chat.run.queueEllipsis;
+    });
     return (
-      <p className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5">
-        {t(($) => {
-          return $.chat.run.waitingIn;
-        })}{" "}
+      <ShimmerText
+        visualChildren={
+          <>
+            {waitingIn}{" "}
+            <span className="underline underline-offset-2">
+              {queueEllipsis}
+            </span>
+          </>
+        }
+      >
+        {waitingIn}{" "}
         <button
           type="button"
           onClick={() => {
-            openQueueDrawer(pageSignal);
+            openQueueDrawer();
           }}
           className="cursor-pointer underline underline-offset-2"
         >
-          {t(($) => {
-            return $.chat.run.queueEllipsis;
-          })}
+          {queueEllipsis}
         </button>
-      </p>
+      </ShimmerText>
     );
   }
 
   if (serverThinkingLabel) {
     return (
-      <p
+      <ShimmerText
         key={serverThinkingLabel.id}
-        ref={serverThinkingLabel.setRef}
-        className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5"
-        aria-label={serverThinkingLabel.fullText}
+        setRef={serverThinkingLabel.setRef}
+        className={cn(
+          "transition-opacity duration-200",
+          serverThinkingLabel.fadingOut ? "opacity-0" : "opacity-100",
+        )}
+        ariaLabel={serverThinkingLabel.fullText}
       >
         {serverThinkingLabel.displayedText || "\u00a0"}
-      </p>
+      </ShimmerText>
     );
   }
 
-  return (
-    <p className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5">
-      {thinkingLabel}
-    </p>
-  );
+  return <ShimmerText>{thinkingLabel}</ShimmerText>;
 }
 
 function InlineThinkingRow({
@@ -4027,7 +5184,7 @@ function FinishedRunRow({
   thread,
   source,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   source: RecommendedFollowupSource | null;
 }) {
   const { t } = useTranslation();
@@ -4055,13 +5212,7 @@ function FinishedRunRow({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex h-5 flex-col justify-center gap-1.5">
-        <div className="h-px w-full bg-border/40" />
-        <div className="flex items-center gap-2">
-          <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
-          <div className="h-px flex-1 bg-border/40" />
-        </div>
-      </div>
+      <RunSectionDivider label={label} />
       {source ? (
         <RecommendedFollowupList thread={thread} source={source} />
       ) : null}
@@ -4076,7 +5227,7 @@ function WaitingForAssistantResponse({
   thinkingLabel,
   serverThinkingLabel,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
@@ -4130,7 +5281,7 @@ function AssistantThinkingStatusRow({
   isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   recommendedFollowupSource: RecommendedFollowupSource | null;
 }) {
   const thinkingIndicatorProps = running
@@ -4141,7 +5292,7 @@ function AssistantThinkingStatusRow({
     <div
       {...thinkingIndicatorProps}
       data-role="assistant-thinking"
-      className="-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
+      className={RUN_SECTION_ROW_CLASS}
     >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
@@ -4185,7 +5336,7 @@ function equalRecommendedFollowupSources(
   );
 }
 
-function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
+function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
@@ -4204,6 +5355,8 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const thinkingEventId = useLastResolved(thread.thinkingEventId$);
   const displayedThinkingText =
     useLastResolved(thread.displayedThinkingText$) ?? "";
+  const thinkingTextFadingOut =
+    useLastResolved(thread.thinkingTextFadingOut$) ?? false;
   const setThinkingIndicatorTextRef = useSet(
     thread.setThinkingIndicatorTextRef$,
   );
@@ -4211,6 +5364,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
     thinkingText && thinkingEventId && running
       ? {
           displayedText: displayedThinkingText,
+          fadingOut: thinkingTextFadingOut,
           fullText: thinkingText,
           id: thinkingEventId,
           setRef: setThinkingIndicatorTextRef,
@@ -4248,1144 +5402,54 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-/**
- * Parse inline attachment lines from event content.
- * Matches `[Attached file: name](url)` optionally followed by a curl line.
- * Returns the cleaned content and parsed attachments.
- */
-function parseInlineAttachments(content: string): {
-  cleanContent: string;
-  parsed: { filename: string; url: string }[];
-} {
-  const parsed: { filename: string; url: string }[] = [];
-  const cleaned = content.replace(
-    /\[Attached file: ([^\]]+)\]\(([^)]+)\)(?:\nDownload with: curl [^\n]*)?\n?/g,
-    (_match, filename: string, url: string) => {
-      parsed.push({ filename, url });
-      return "";
-    },
-  );
-  return { cleanContent: cleaned.trim(), parsed };
-}
-
-function BodyContentBlocks({
-  blocks,
-  openLightbox,
-  hardBreaks,
-  escapeMarkdownHtml = false,
-  markdownMediaPreview = true,
-}: {
-  blocks: BodyRenderBlock[];
-  openLightbox: (url: string) => void;
-  hardBreaks: boolean;
-  escapeMarkdownHtml?: boolean;
-  markdownMediaPreview?: boolean;
-}) {
-  const cardOccurrences = new Map<string, number>();
-  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-  return (
-    <div className="flex flex-col gap-3">
-      {blocks.map((block) => {
-        return (
-          <BodyRenderBlockView
-            key={bodyRenderBlockKey(block, cardOccurrences)}
-            block={block}
-            openLightbox={openLightbox}
-            openVideoLightbox={openVideoLightbox}
-            hardBreaks={hardBreaks}
-            escapeMarkdownHtml={escapeMarkdownHtml}
-            markdownMediaPreview={markdownMediaPreview}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function bodyRenderBlockKey(
-  block: BodyRenderBlock,
-  cardOccurrences: Map<string, number>,
-): string {
-  if (block.type === "markdown") {
-    return block.id;
-  }
-  const resourceKey = `${block.type}:${block.resourceKey}`;
-  const occurrence = (cardOccurrences.get(resourceKey) ?? 0) + 1;
-  cardOccurrences.set(resourceKey, occurrence);
-  return `${resourceKey}:${String(occurrence)}`;
-}
-
-function BodyRenderBlockView({
-  block,
-  openLightbox,
-  openVideoLightbox,
-  hardBreaks,
-  escapeMarkdownHtml,
-  markdownMediaPreview,
-}: {
-  block: BodyRenderBlock;
-  openLightbox: (url: string) => void;
-  openVideoLightbox: (value: { url: string; filename: string }) => void;
-  hardBreaks: boolean;
-  escapeMarkdownHtml: boolean;
-  markdownMediaPreview: boolean;
-}) {
-  switch (block.type) {
-    case "markdown": {
-      return (
-        <Markdown
-          source={
-            hardBreaks ? block.content.replace(/\n/g, "  \n") : block.content
-          }
-          mediaPreview={markdownMediaPreview}
-          mathEnabled
-          escapeHtml={escapeMarkdownHtml}
-          style={{ fontSize: "inherit", lineHeight: "inherit" }}
-        />
-      );
-    }
-    case "connector-action": {
-      return <ConnectorActionCard signals={block.signals} />;
-    }
-    case "custom-connector-action": {
-      return <CustomConnectorActionCard signals={block.signals} />;
-    }
-    case "permission-action": {
-      return <PermissionActionCard signals={block.signals} />;
-    }
-    case "computer-use-authorization": {
-      return <ComputerUseAuthorizationCard signals={block.signals} />;
-    }
-    case "plan-upgrade": {
-      return <PlanUpgradeCard signals={block.signals} />;
-    }
-    case "mail-draft": {
-      return <MailDraftCard signals={block.signals} />;
-    }
-    case "browser-session": {
-      return <BrowserSessionCard signals={block.signals} />;
-    }
-    case "artifact": {
-      return (
-        <ArtifactBodyRenderBlockView
-          signals={block.signals}
-          openLightbox={openLightbox}
-          openVideoLightbox={openVideoLightbox}
-        />
-      );
-    }
-  }
-}
-
-function ArtifactBodyRenderBlockView({
-  signals,
-  openLightbox,
-  openVideoLightbox,
-}: {
-  signals: ArtifactSignals;
-  openLightbox: (url: string) => void;
-  openVideoLightbox: (value: { url: string; filename: string }) => void;
-}) {
-  const { t } = useTranslation();
-  const previewImageLoadable = useLastLoadable(signals.previewImageUrl$);
-  const previewImagePending = previewImageLoadable.state === "loading";
-  const previewImageUrl =
-    previewImageLoadable.state === "hasData"
-      ? previewImageLoadable.data
-      : undefined;
-
-  if (signals.kind === "image") {
-    return (
-      <ChatImagePreviewLink
-        alt={signals.filename}
-        ariaLabel={t(
-          ($) => {
-            return $.chat.attachments.previewFile;
-          },
-          {
-            filename: signals.filename,
-          },
-        )}
-        imageClassName="block h-full w-full object-contain"
-        linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
-        onPreview={() => {
-          openLightbox(signals.url);
-        }}
-        placeholderClassName="h-full w-full"
-        url={signals.url}
-      />
-    );
-  }
-  if (signals.kind === "video") {
-    return (
-      <ChatVideoPreviewButton
-        ariaLabel={t(
-          ($) => {
-            return $.chat.attachments.previewFile;
-          },
-          {
-            filename: signals.filename,
-          },
-        )}
-        buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
-        filename={signals.filename}
-        onPreview={() => {
-          openVideoLightbox({
-            url: signals.url,
-            filename: signals.filename,
-          });
-        }}
-        posterClassName="h-full w-full"
-        previewImagePending={previewImagePending}
-        previewImageUrl={previewImageUrl}
-        url={signals.url}
-        videoClassName="h-full w-full object-contain"
-      />
-    );
-  }
-  return (
-    <AttachmentPreview
-      attachment={{
-        filename: signals.filename,
-        url: signals.url,
-        contentType: contentTypeForBodyPreviewKind(signals.kind),
-        ...(previewImagePending ? { previewImagePending: true } : {}),
-        ...(previewImageUrl ? { previewImageUrl } : {}),
-      }}
-      text$={signals.text$}
-    />
-  );
-}
-
-const CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS = "h-[136px] sm:h-[88px]";
-
-function ConnectorActionCardSkeleton() {
-  return (
-    <Skeleton
-      data-testid="connector-action-card-loading"
-      className={cn(
-        "w-full rounded-[var(--zero-card-radius)]",
-        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
-      )}
-    />
-  );
-}
-
-function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
-  const pageSignal = useGet(pageSignal$);
-  const catalogItemLoadable = useLastLoadable(signals.catalogItem$);
-  const catalogItem = useLastResolved(signals.catalogItem$);
-  const connected = useLastResolved(signals.connected$) ?? false;
-  const completeLoadable = useLoadable(signals.complete$);
-  const complete =
-    completeLoadable.state === "hasData" && completeLoadable.data;
-  const [activateLoadable, activate] = useLoadableSet(signals.activate$);
-  const loading =
-    completeLoadable.state === "loading" ||
-    activateLoadable.state === "loading";
-  if (!catalogItem && catalogItemLoadable.state === "loading") {
-    return <ConnectorActionCardSkeleton />;
-  }
-  if (!catalogItem) {
-    return null;
-  }
-
-  return (
-    <ConnectorCard
-      variant="action"
-      className={cn(
-        "justify-between overflow-hidden",
-        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
-      )}
-      connector={catalogItem}
-      connected={connected}
-      complete={complete}
-      busy={loading}
-      onActivate={() => {
-        detach(activate(pageSignal), Reason.DomCallback);
-      }}
-    />
-  );
-}
-
-function CustomConnectorActionCard({
-  signals,
-}: {
-  signals: CustomConnectorSignals;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      data-testid="custom-connector-action-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <IconPackage size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {signals.displayName}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {signals.agentId
-              ? t(($) => {
-                  return $.chat.connectors.customAuthorizeDescription;
-                })
-              : t(($) => {
-                  return $.chat.connectors.customConnectDescription;
-                })}
-          </div>
-        </div>
-      </div>
-      <a
-        href={signals.originalUrl}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
-      >
-        {t(($) => {
-          return $.chat.actions.configure;
-        })}
-        <IconArrowUpRight size={15} />
-      </a>
-    </div>
-  );
-}
-
-function ComputerUseAuthorizationCard({
-  signals,
-}: {
-  signals: ComputerUseAuthorizationSignals;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      data-testid="computer-use-authorization-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <IconDeviceDesktop size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {t(($) => {
-              return $.chat.computerUse.authorization;
-            })}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {t(($) => {
-              return $.chat.computerUse.authorizationDescription;
-            })}
-          </div>
-        </div>
-      </div>
-      <a
-        href={signals.href}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
-      >
-        {t(($) => {
-          return $.chat.actions.authorize;
-        })}
-        <IconArrowUpRight size={15} />
-      </a>
-    </div>
-  );
-}
-
-function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
-  const { t } = useTranslation();
-  return (
-    <div
-      data-testid="plan-upgrade-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <IconCoins size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {t(($) => {
-              return $.chat.billing.upgradeWorkspace;
-            })}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {t(($) => {
-              return $.chat.billing.comparePlansDescription;
-            })}
-          </div>
-        </div>
-      </div>
-      <a
-        href={signals.href}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
-      >
-        {t(($) => {
-          return $.chat.billing.comparePlans;
-        })}
-        <IconArrowUpRight size={15} />
-      </a>
-    </div>
-  );
-}
-
-type PermissionAction = "allow" | "deny";
-
-type PermissionActionUserGrant = PlatformUserPermissionGrant;
-
-type PermissionActionCardStatus =
-  | { kind: "loading" }
-  | { kind: "load-error" }
-  | { kind: "save-error" }
-  | { kind: "ready" }
-  | { kind: "saving" }
-  | { kind: "saved" }
-  | { kind: "already-applied" }
-  | { kind: "missing-target" }
-  | { kind: "missing-permission" };
-
-interface LoadableLike<T> {
-  state: string;
-  data?: T;
-}
-
-type ApplyUserPermissionGrantFn = (
-  params: {
-    agentId?: string;
-    workflowId?: string;
-    connectorSlug: string;
-    permission: string;
-    action: PermissionAction;
-    expiresIn?: UserPermissionGrantExpiresIn;
-  },
-  signal: AbortSignal,
-) => Promise<PlatformUserPermissionGrant>;
-
-function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
-  return loadable.state === "hasData" ? loadable.data : undefined;
-}
-
-function permissionActionVerb(action: PermissionAction): string {
-  return action === "allow"
-    ? i18n.t(($) => {
-        return $.chat.permissions.allow;
-      })
-    : i18n.t(($) => {
-        return $.chat.permissions.deny;
-      });
-}
-
-function permissionActionStatusText(
-  status: PermissionActionCardStatus,
-  action: "allow" | "deny",
-): { label: string; className: string } | null {
-  if (status.kind === "saved") {
-    return action === "allow"
-      ? {
-          label: i18n.t(($) => {
-            return $.chat.permissions.updated;
-          }),
-          className: "text-green-600",
-        }
-      : {
-          label: i18n.t(($) => {
-            return $.chat.permissions.denied;
-          }),
-          className: "text-destructive",
-        };
-  }
-  if (status.kind === "already-applied") {
-    return action === "allow"
-      ? {
-          label: i18n.t(($) => {
-            return $.chat.permissions.alreadyAllowed;
-          }),
-          className: "text-green-600",
-        }
-      : {
-          label: i18n.t(($) => {
-            return $.chat.permissions.alreadyDenied;
-          }),
-          className: "text-destructive",
-        };
-  }
-  return null;
-}
-
-function PermissionActionButton({
-  status,
-  onClick,
-}: {
-  status: PermissionActionCardStatus;
-  onClick: () => void;
-}) {
-  const { t } = useTranslation();
-  if (
-    status.kind !== "ready" &&
-    status.kind !== "saving" &&
-    status.kind !== "save-error"
-  ) {
-    return null;
-  }
-
-  const saving = status.kind === "saving";
-  return (
-    <button
-      type="button"
-      disabled={saving}
-      onClick={onClick}
-      className="inline-flex h-9 w-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:flex-none"
-    >
-      {saving && <IconLoader2 size={15} className="animate-spin" />}
-      {saving
-        ? t(($) => {
-            return $.chat.actions.saving;
-          })
-        : t(($) => {
-            return $.chat.actions.confirm;
-          })}
-    </button>
-  );
-}
-
-function PermissionActionTerminalStatus({
-  status,
-  action,
-}: {
-  status: PermissionActionCardStatus;
-  action: "allow" | "deny";
-}) {
-  const text = permissionActionStatusText(status, action);
-  if (!text) {
-    return null;
-  }
-  return (
-    <span className={`shrink-0 text-[0.9375rem] font-medium ${text.className}`}>
-      {text.label}
-    </span>
-  );
-}
-
-function PermissionActionInlineStatus({
-  status,
-}: {
-  status: PermissionActionCardStatus;
-}) {
-  const { t } = useTranslation();
-  switch (status.kind) {
-    case "loading": {
-      return (
-        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <IconLoader2 size={13} className="animate-spin" />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.checking;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "load-error": {
-      return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <IconAlertCircle size={13} />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.loadFailed;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "save-error": {
-      return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <IconAlertCircle size={13} />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.updateFailed;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "missing-target": {
-      return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <IconAlertCircle size={13} />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.agentNotFound;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "missing-permission": {
-      return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <IconAlertCircle size={13} />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.unknown;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "ready":
-    case "saving":
-    case "saved":
-    case "already-applied": {
-      return null;
-    }
-  }
-}
-
-function permissionActionHasControls(
-  status: PermissionActionCardStatus,
-): boolean {
-  switch (status.kind) {
-    case "loading":
-    case "save-error":
-    case "ready":
-    case "saving":
-    case "saved":
-    case "already-applied": {
-      return true;
-    }
-    case "load-error":
-    case "missing-target":
-    case "missing-permission": {
-      return false;
-    }
-  }
-}
-
-function isPermissionActionLoading(params: {
-  agentLoading: boolean;
-  permissionMetadataLoading: boolean;
-  userGrantsLoading: boolean;
-}): boolean {
-  return (
-    params.agentLoading ||
-    params.permissionMetadataLoading ||
-    params.userGrantsLoading
-  );
-}
-
-function isPermissionActionSaving(params: { grantLoading: boolean }): boolean {
-  return params.grantLoading;
-}
-
-function isPermissionActionLoadError(params: {
-  agentError: boolean;
-  permissionMetadataError: boolean;
-  userGrantsError: boolean;
-}): boolean {
-  return (
-    params.agentError ||
-    params.permissionMetadataError ||
-    params.userGrantsError
-  );
-}
-
-function isPermissionActionAlreadyApplied(params: {
-  hasAgent: boolean;
-  userGrantPolicy: FirewallPolicyValue | undefined;
-  action: "allow" | "deny";
-}): boolean {
-  if (!params.hasAgent) {
-    return false;
-  }
-  return params.userGrantPolicy === params.action;
-}
-
-function findPermissionActionPermission(
-  block: PermissionSignals,
-  metadata: PlatformConnectorPermissionMetadata | undefined,
-) {
-  return metadata
-    ? (findPermissionInMetadata(metadata, block.permission) ?? undefined)
-    : undefined;
-}
-
-function permissionActionUserGrantPolicy(
-  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
-  block: PermissionSignals,
-  metadata: PlatformConnectorPermissionMetadata | undefined,
-): FirewallPolicyValue | undefined {
-  const grants = loadableData(loadable);
-  if (!grants || !metadata) {
-    return undefined;
-  }
-  return resolveUserPermissionGrantPolicy(grants, metadata, block.permission);
-}
-
-function permissionActionUserGrant(
-  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
-  block: PermissionSignals,
-): PermissionActionUserGrant | undefined {
-  const grants = loadableData(loadable);
-  if (!grants) {
-    return undefined;
-  }
-  return grants.find((grant) => {
-    return (
-      grant.connectorSlug === block.connectorSlug &&
-      grant.permission === block.permission &&
-      grant.action === block.action
-    );
-  });
-}
-
-function permissionActionGrantExpiresAt({
-  savedGrant,
-  savedGrantActive,
-  existingGrant,
-  existingGrantActive,
-  status,
-}: {
-  savedGrant: PermissionActionUserGrant | null;
-  savedGrantActive: boolean;
-  existingGrant: PermissionActionUserGrant | undefined;
-  existingGrantActive: boolean;
-  status: PermissionActionCardStatus;
-}): string | null {
-  if (savedGrantActive) {
-    return savedGrant?.expiresAt ?? null;
-  }
-  if (existingGrantActive) {
-    return existingGrant?.expiresAt ?? null;
-  }
-  if (status.kind !== "ready") {
-    return null;
-  }
-  return savedGrant?.expiresAt ?? existingGrant?.expiresAt ?? null;
-}
-
-function createPermissionActionCardStatus(params: {
-  hasAgent: boolean;
-  hasPermission: boolean;
-  loading: boolean;
-  loadError: boolean;
-  saving: boolean;
-  saveDone: boolean;
-  saveError: boolean;
-  alreadyApplied: boolean;
-}): PermissionActionCardStatus {
-  if (params.saving) {
-    return { kind: "saving" };
-  }
-  if (params.saveDone) {
-    return { kind: "saved" };
-  }
-  if (params.loading) {
-    return { kind: "loading" };
-  }
-  if (params.loadError) {
-    return { kind: "load-error" };
-  }
-  if (!params.hasAgent) {
-    return { kind: "missing-target" };
-  }
-  if (!params.hasPermission) {
-    return { kind: "missing-permission" };
-  }
-  if (params.alreadyApplied) {
-    return { kind: "already-applied" };
-  }
-  if (params.saveError) {
-    return { kind: "save-error" };
-  }
-  return { kind: "ready" };
-}
-
-function createPermissionActionCardViewState(params: {
-  block: PermissionSignals;
-  hasAgent: boolean;
-  agentLoadableState: string;
-  permissionMetadataLoadable: LoadableLike<PlatformConnectorPermissionMetadata | null>;
-  userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
-  grantLoadableState: string;
-  savedGrantActive: boolean;
-}) {
-  const permissionMetadata =
-    params.permissionMetadataLoadable.state === "hasData"
-      ? (params.permissionMetadataLoadable.data ?? undefined)
-      : undefined;
-  const focusedPermission = findPermissionActionPermission(
-    params.block,
-    permissionMetadata,
-  );
-  const actionLabel = permissionActionVerb(params.block.action);
-  const loading = isPermissionActionLoading({
-    agentLoading: params.agentLoadableState === "loading",
-    permissionMetadataLoading:
-      params.permissionMetadataLoadable.state === "loading",
-    userGrantsLoading: params.userGrantsLoadable.state === "loading",
-  });
-  const loadError = isPermissionActionLoadError({
-    agentError: params.agentLoadableState === "hasError",
-    permissionMetadataError:
-      params.permissionMetadataLoadable.state === "hasError",
-    userGrantsError: params.userGrantsLoadable.state === "hasError",
-  });
-  const saving = isPermissionActionSaving({
-    grantLoading: params.grantLoadableState === "loading",
-  });
-  const saveError = params.grantLoadableState === "hasError";
-  const userGrantPolicy = permissionActionUserGrantPolicy(
-    params.userGrantsLoadable,
-    params.block,
-    permissionMetadata,
-  );
-  const alreadyApplied = isPermissionActionAlreadyApplied({
-    hasAgent: params.hasAgent,
-    userGrantPolicy,
-    action: params.block.action,
-  });
-  const saveDone =
-    params.grantLoadableState === "hasData" && params.savedGrantActive;
-  const status = createPermissionActionCardStatus({
-    hasAgent: params.hasAgent,
-    hasPermission: Boolean(focusedPermission),
-    loading,
-    loadError,
-    saving,
-    saveDone,
-    saveError,
-    alreadyApplied,
-  });
-  return {
-    actionLabel,
-    status,
-    focusedPermission,
-  };
-}
-
-function runPermissionAction(params: {
-  status: PermissionActionCardStatus;
-  runUserGrant: () => void;
-}): void {
-  if (params.status.kind !== "ready" && params.status.kind !== "save-error") {
-    return;
-  }
-
-  params.runUserGrant();
-}
-
-function createPermissionActionHandler(params: {
-  block: PermissionSignals;
-  pageSignal: AbortSignal;
-  focusedPermission: { name: string } | undefined;
-  status: PermissionActionCardStatus;
-  expirationAvailable: boolean;
-  expiresIn: UserPermissionGrantExpiresIn;
-  applyGrant: ApplyUserPermissionGrantFn;
-  runCallback: (
-    args: {
-      readonly threadId: string;
-      readonly agentId: string;
-      readonly callbackPrompt: string;
-    },
-    signal: AbortSignal,
-  ) => Promise<void>;
-}): () => void {
-  return () => {
-    const permissionName =
-      params.focusedPermission?.name ?? params.block.permission;
-    runPermissionAction({
-      status: params.status,
-      runUserGrant: () => {
-        detach(
-          (async () => {
-            await params.applyGrant(
-              {
-                agentId: params.block.agentId,
-                connectorSlug: params.block.connectorSlug,
-                permission: permissionName,
-                action: params.block.action,
-                ...(params.expirationAvailable
-                  ? { expiresIn: params.expiresIn }
-                  : {}),
-              },
-              params.pageSignal,
-            );
-            if (params.block.callbackPrompt && params.block.threadId) {
-              await params.runCallback(
-                {
-                  threadId: params.block.threadId,
-                  agentId: params.block.agentId,
-                  callbackPrompt: params.block.callbackPrompt,
-                },
-                params.pageSignal,
-              );
-            }
-          })(),
-          Reason.DomCallback,
-        );
-      },
-    });
-  };
-}
-
-function PermissionActionCardContent({
-  signals,
-  icon,
-  connectorLabel,
-  actionLabel,
-  permissionName,
-  status,
-  expirationAvailable,
-  expiresIn,
-  onExpiresInChange,
-  expiresAt,
-  onClick,
-}: {
-  signals: PermissionSignals;
-  icon: PlatformConnectorPermissionMetadata["icon"] | undefined;
-  connectorLabel: string;
-  actionLabel: string;
-  permissionName: string;
-  status: PermissionActionCardStatus;
-  expirationAvailable: boolean;
-  expiresIn: UserPermissionGrantExpiresIn;
-  onExpiresInChange: (value: UserPermissionGrantExpiresIn) => void;
-  expiresAt: string | null;
-  onClick: () => void;
-}) {
-  const { t } = useTranslation();
-  const expiresAtMs = expiresAt ? Date.parse(expiresAt) : Number.NaN;
-  const remainingMs = expiresAtMs - now();
-  const hourCount = Math.ceil(remainingMs / (60 * 60 * 1000));
-  const dayCount = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
-  const expiryText =
-    !expirationAvailable || !Number.isFinite(expiresAtMs)
-      ? null
-      : remainingMs <= 0
-        ? t(($) => {
-            return $.chat.permissions.expired;
-          })
-        : remainingMs >= 24 * 60 * 60 * 1000
-          ? t(
-              ($) => {
-                return $.chat.permissions.expiresInDays;
-              },
-              { count: dayCount },
-            )
-          : remainingMs < 59 * 60 * 1000 || hourCount === 1
-            ? null
-            : t(
-                ($) => {
-                  return $.chat.permissions.expiresInHours;
-                },
-                {
-                  count: hourCount,
-                },
-              );
-  const showDurationSelect =
-    expirationAvailable &&
-    (status.kind === "ready" ||
-      status.kind === "saving" ||
-      status.kind === "save-error");
-  return (
-    <div
-      data-testid="permission-action-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon icon={icon} size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {t(
-              ($) => {
-                return $.chat.permissions.connectorTitle;
-              },
-              {
-                connectorName: connectorLabel,
-              },
-            )}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {t(
-              ($) => {
-                return $.chat.permissions.actionDescription;
-              },
-              {
-                action: actionLabel,
-                permissionName,
-              },
-            )}
-          </div>
-          {status.kind !== "loading" && (
-            <PermissionActionInlineStatus status={status} />
-          )}
-          {expiryText && (
-            <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-              {expiryText}
-            </div>
-          )}
-        </div>
-      </div>
-      {permissionActionHasControls(status) && (
-        <div
-          data-testid="permission-action-card-controls"
-          className="flex min-h-9 w-full shrink-0 flex-row items-center gap-2 sm:w-auto"
-        >
-          {status.kind === "loading" && (
-            <PermissionActionInlineStatus status={status} />
-          )}
-          {showDurationSelect && (
-            <PermissionGrantDurationSelect
-              value={expiresIn}
-              onValueChange={onExpiresInChange}
-              disabled={status.kind === "saving"}
-              ariaLabel={t(($) => {
-                return $.chat.permissions.duration;
-              })}
-            />
-          )}
-          <PermissionActionTerminalStatus
-            status={status}
-            action={signals.action}
-          />
-          <PermissionActionButton status={status} onClick={onClick} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PermissionActionCardForTarget({
-  signals,
-  hasTarget,
-  targetLoadableState,
-  userGrantsLoadable,
-}: {
-  signals: PermissionSignals;
-  hasTarget: boolean;
-  targetLoadableState: string;
-  userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const expirationAvailable = signals.action === "allow";
-  const durationScope = `${signals.href}\u0000${signals.expiresIn ?? ""}`;
-  const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
-  const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
-  const expiresIn =
-    expiresInByScope[durationScope] ??
-    signals.expiresIn ??
-    DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
-  const permissionMetadataLoadable = useLoadable(signals.metadata$);
-  const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
-  const runCallback = useSet(runChatActionCallback$);
-  const savedGrant =
-    grantLoadable.state === "hasData" ? grantLoadable.data : null;
-  const savedGrantActive = savedGrant
-    ? isActiveUserPermissionGrant(savedGrant)
-    : false;
-  const existingGrant = permissionActionUserGrant(userGrantsLoadable, signals);
-  const existingGrantActive = existingGrant
-    ? isActiveUserPermissionGrant(existingGrant)
-    : false;
-  const actionState = createPermissionActionCardViewState({
-    block: signals,
-    hasAgent: hasTarget,
-    agentLoadableState: targetLoadableState,
-    permissionMetadataLoadable,
-    userGrantsLoadable,
-    grantLoadableState: grantLoadable.state,
-    savedGrantActive,
-  });
-  const permissionMetadata =
-    permissionMetadataLoadable.state === "hasData"
-      ? permissionMetadataLoadable.data
-      : null;
-  const grantExpiresAt = permissionActionGrantExpiresAt({
-    savedGrant,
-    savedGrantActive,
-    existingGrant,
-    existingGrantActive,
-    status: actionState.status,
-  });
-
-  return (
-    <PermissionActionCardContent
-      signals={signals}
-      icon={permissionMetadata?.icon}
-      connectorLabel={permissionMetadata?.label ?? signals.connectorSlug}
-      actionLabel={actionState.actionLabel}
-      permissionName={actionState.focusedPermission?.name ?? signals.permission}
-      status={actionState.status}
-      expirationAvailable={expirationAvailable}
-      expiresIn={expiresIn}
-      onExpiresInChange={(value) => {
-        setExpiresInForScope(durationScope, value);
-      }}
-      expiresAt={grantExpiresAt}
-      onClick={createPermissionActionHandler({
-        block: signals,
-        pageSignal,
-        focusedPermission: actionState.focusedPermission,
-        status: actionState.status,
-        expirationAvailable,
-        expiresIn,
-        applyGrant,
-        runCallback,
-      })}
-    />
-  );
-}
-
-function PermissionActionCard({ signals }: { signals: PermissionSignals }) {
-  const agentLoadable = useLastLoadable(signals.agent$);
-  const userGrantsLoadable = useLoadable(signals.grants$);
-  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
-  return (
-    <PermissionActionCardForTarget
-      signals={signals}
-      hasTarget={Boolean(agent)}
-      targetLoadableState={agentLoadable.state}
-      userGrantsLoadable={userGrantsLoadable}
-    />
-  );
-}
-
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
   const runCallback = useSet(runChatActionCallback$);
   const pageSignal = useGet(pageSignal$);
+  const customConnectors = useLastResolved(customConnectors$);
 
   if (!active) {
     return null;
   }
 
+  const onSuccess = async () => {
+    if (active.callbackPrompt && active.threadId) {
+      await runCallback(
+        {
+          threadId: active.threadId,
+          agentId: active.agentId,
+          callbackPrompt: active.callbackPrompt,
+        },
+        pageSignal,
+      );
+    }
+  };
+
+  if (active.kind === "custom") {
+    const connector = customConnectors?.find((candidate) => {
+      return (
+        candidate.slug === active.connectorSlug &&
+        (candidate.kind === "http" || mcpEnabled)
+      );
+    });
+    return connector ? (
+      <CustomConnectorConnectDialog
+        connector={connector}
+        agentId={active.agentId}
+        onClose={close}
+        onSuccess={onSuccess}
+      />
+    ) : null;
+  }
+
   return (
     <ConnectModal
+      item={active.catalogItem}
       agentId={active.agentId}
       onClose={close}
-      onSuccess={async () => {
-        if (active.callbackPrompt && active.threadId) {
-          await runCallback(
-            {
-              threadId: active.threadId,
-              agentId: active.agentId,
-              callbackPrompt: active.callbackPrompt,
-            },
-            pageSignal,
-          );
-        }
-      }}
+      onSuccess={onSuccess}
     />
   );
 }
@@ -5485,10 +5549,10 @@ function insufficientCreditsCopy(params: {
 }
 
 function PaidCreditCheckoutActions({
-  redirecting,
+  preparing,
   handleCreditClick,
 }: {
-  readonly redirecting: boolean;
+  readonly preparing: boolean;
   readonly handleCreditClick: (
     selection: CreditCheckoutSelection,
     event: ReactMouseEvent<HTMLButtonElement>,
@@ -5515,23 +5579,25 @@ function PaidCreditCheckoutActions({
       <div className="flex flex-wrap gap-2">
         {CREDIT_TOP_UP_OPTIONS.map((credits) => {
           return (
-            <button
+            <Button
               key={credits}
               type="button"
               onClick={(event) => {
                 handleCreditClick({ credits }, event);
               }}
-              disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              disabled={preparing}
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
               {formatCreditsUsd(credits)}
-            </button>
+            </Button>
           );
         })}
         <details>
           <summary
             role="button"
-            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
+            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-state-hover marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
           >
             {t(($) => {
               return $.chat.billing.custom;
@@ -5539,7 +5605,7 @@ function PaidCreditCheckoutActions({
           </summary>
           <form className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">$</span>
-            <input
+            <Input
               type="text"
               inputMode="numeric"
               name="customUsd"
@@ -5553,22 +5619,24 @@ function PaidCreditCheckoutActions({
               aria-label={t(($) => {
                 return $.chat.billing.customDollarAmount;
               })}
-              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-colors focus:border-ring"
+              className="h-8 w-24 px-2"
             />
-            <button
+            <Button
               type="button"
               onClick={handleCustomCreditClick}
-              disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              disabled={preparing}
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
-              {redirecting
+              {preparing
                 ? t(($) => {
-                    return $.chat.billing.redirecting;
+                    return $.billing.common.preparing;
                   })
                 : t(($) => {
                     return $.chat.billing.buy;
                   })}
-            </button>
+            </Button>
           </form>
         </details>
       </div>
@@ -5585,6 +5653,7 @@ function InsufficientCreditsCard() {
   const openSettings = useSet(openSettingsDialogAt$);
   const setSubPage = useSet(setBillingSubPage$);
   const pageSignal = useGet(pageSignal$);
+  const creditPurchaseOrigin = useGet(creditPurchaseOrigin$);
 
   const billingResolved = billingLoadable.state === "hasData";
   const credits = billingResolved ? billingLoadable.data.credits : null;
@@ -5597,9 +5666,10 @@ function InsufficientCreditsCard() {
   const hasAvailableCredits = canBuyCredits && credits !== null && credits > 0;
   const shouldStartProCheckout = !canBuyCredits;
   const canShowBillingAction = billingResolved && canManageBilling;
-  const redirecting =
-    checkoutLoadable.state === "loading" ||
-    creditCheckoutLoadable.state === "loading";
+  const checkoutRedirecting = checkoutLoadable.state === "loading";
+  const creditCheckoutPreparing =
+    creditCheckoutLoadable.state === "loading" ||
+    creditPurchaseOrigin === "chat";
 
   if (hasAvailableCredits) {
     return <CreditsAvailableMessage />;
@@ -5633,7 +5703,10 @@ function InsufficientCreditsCard() {
     event: ReactMouseEvent<HTMLButtonElement>,
   ) => {
     const newTab = event.metaKey || event.ctrlKey;
-    detach(creditCheckout(selection, newTab, pageSignal), Reason.DomCallback);
+    detach(
+      creditCheckout(selection, newTab, "chat", pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -5641,23 +5714,25 @@ function InsufficientCreditsCard() {
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canShowBillingAction ? null : shouldStartProCheckout ? (
-        <button
+        <Button
           type="button"
           onClick={handleUpgradeClick}
-          disabled={redirecting}
-          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+          disabled={checkoutRedirecting}
+          variant="default"
+          size="sm"
+          className="mt-3 disabled:opacity-60"
         >
-          {redirecting
+          {checkoutRedirecting
             ? t(($) => {
                 return $.chat.billing.redirecting;
               })
             : t(($) => {
                 return $.chat.billing.upgradeToPro;
               })}
-        </button>
+        </Button>
       ) : (
         <PaidCreditCheckoutActions
-          redirecting={redirecting}
+          preparing={creditCheckoutPreparing}
           handleCreditClick={handleCreditClick}
         />
       )}
@@ -5692,9 +5767,7 @@ function assistantRecoveryResetText(
 }
 
 function AssistantRecoveryActionSpinner({ loading }: { loading: boolean }) {
-  return loading ? (
-    <IconLoader2 size={14} stroke={1.75} className="animate-spin" />
-  ) : null;
+  return loading ? <Loader2 size={14} className="animate-spin" /> : null;
 }
 
 function AssistantRecoveryActions({
@@ -5702,11 +5775,11 @@ function AssistantRecoveryActions({
   thread,
 }: {
   recovery: AssistantErrorRecovery;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const setModelSelection = useSet(thread.setModelSelection$);
+  const setModelSelection = useSet(thread.composer.model.setModelSelection$);
   const [retryLoadable, retry] = useLoadableSet(thread.retryAssistantError$);
   const [resetLoadable, resetAndRetry] = useLoadableSet(
     thread.resetCodexSubscriptionAndRetry$,
@@ -5773,7 +5846,7 @@ function AssistantErrorRecoveryCard({
   thread,
 }: {
   recovery: AssistantErrorRecovery;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
   const resetText = assistantRecoveryResetText(recovery);
@@ -5795,9 +5868,9 @@ function AssistantErrorRecoveryCard({
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
           {recovery.kind === "usage-limit" ? (
-            <IconClock size={17} stroke={1.75} />
+            <Clock size={17} />
           ) : (
-            <IconAlertCircle size={17} stroke={1.75} />
+            <AlertCircle size={17} />
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -5827,11 +5900,7 @@ function AssistantErrorRecoveryCard({
           </p>
           {resetText && (
             <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <IconClock
-                size={14}
-                stroke={1.75}
-                className="text-muted-foreground"
-              />
+              <Clock size={14} className="text-muted-foreground" />
               {resetText}
             </div>
           )}
@@ -5860,7 +5929,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
           borderRadius: "12px",
         }}
       >
-        <IconHandStop size={14} stroke={1.75} className="shrink-0" />
+        <Hand size={14} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.errors.runCancelled;
@@ -5878,10 +5947,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
   if (isNoModelProvider) {
     return (
       <div className="flex items-start gap-2 text-foreground">
-        <IconAlertCircle
-          size={16}
-          className="shrink-0 mt-[3px] text-amber-500"
-        />
+        <AlertCircle size={16} className="shrink-0 mt-[3px] text-amber-500" />
         <span>
           {t(($) => {
             return $.chat.errors.noModelProviderPrefix;
@@ -5915,10 +5981,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
   if (isProviderIncompatible) {
     return (
       <div className="flex items-start gap-2 text-foreground">
-        <IconAlertCircle
-          size={16}
-          className="shrink-0 mt-[3px] text-amber-500"
-        />
+        <AlertCircle size={16} className="shrink-0 mt-[3px] text-amber-500" />
         <span>
           {t(($) => {
             return $.chat.errors.providerIncompatiblePrefix;
@@ -5945,10 +6008,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
   if (isProviderDeleted) {
     return (
       <div className="flex items-start gap-2 text-foreground">
-        <IconAlertCircle
-          size={16}
-          className="shrink-0 mt-[3px] text-amber-500"
-        />
+        <AlertCircle size={16} className="shrink-0 mt-[3px] text-amber-500" />
         <span>
           {t(($) => {
             return $.chat.errors.providerDeletedPrefix;
@@ -5971,7 +6031,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   return (
     <div className="flex items-start gap-2 text-destructive">
-      <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
+      <AlertCircle size={16} className="shrink-0 mt-[3px]" />
       <Markdown
         source={error}
         style={{ fontSize: "inherit", lineHeight: "inherit" }}
@@ -5987,7 +6047,7 @@ function AssistantErrorContent({
 }: {
   error: string;
   eventId: string;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const recovery = useLastResolved(thread.assistantErrorRecovery$);
   return recovery?.sourceEventId === eventId ? (
@@ -5997,14 +6057,14 @@ function AssistantErrorContent({
   );
 }
 
-function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
+function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
-  const agentId = useGet(thread.agentId$) ?? "";
+  const agentId = thread.agentId;
   return (
     <Link
       pathname="/agents/:agentId"
       options={{ pathParams: { agentId } }}
-      className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-state-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       aria-label={t(($) => {
         return $.chat.agentPage.viewAgentProfile;
       })}
@@ -6026,11 +6086,19 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
 function PagedGroupRow({
   group,
   thread,
+  modelChanges,
+  showActions,
+  steerEventIds,
+  stackFirstOnPrevious = false,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
+  modelChanges: ReadonlyMap<string, RunModelChange>;
+  showActions: boolean;
+  steerEventIds: ReadonlySet<string>;
+  stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -6044,6 +6112,9 @@ function PagedGroupRow({
       <PagedUserGroup
         group={group}
         thread={thread}
+        modelChanges={modelChanges}
+        steerEventIds={steerEventIds}
+        stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
       />
     );
@@ -6052,32 +6123,216 @@ function PagedGroupRow({
     <PagedAssistantGroup
       group={group}
       thread={thread}
+      showActions={showActions}
       runGroupFolds={runGroupFolds}
       completedWorkFold={completedWorkFold}
     />
   );
 }
 
+function shareableEventFromChatEvent(
+  event: EnrichedChatEvent,
+): { readonly id: string; readonly text: string } | null {
+  if (event.seqId === undefined) {
+    return null;
+  }
+  if (event.eventType === "output.message") {
+    return event.content && event.content.length > 0
+      ? { id: event.id, text: event.content }
+      : null;
+  }
+  if (
+    event.eventType !== "input.prompt" &&
+    event.eventType !== "input.automation"
+  ) {
+    return null;
+  }
+  const displayText = messageDocumentToDisplayText(event.userMessage)?.trim();
+  if (displayText) {
+    return { id: event.id, text: displayText };
+  }
+  const automation = eventNonContentPart(event);
+  if (automation?.type !== "automation") {
+    return null;
+  }
+  const automationText =
+    automation.automationBrief?.trim() || automation.workflowName.trim();
+  return automationText.length > 0
+    ? { id: event.id, text: automationText }
+    : null;
+}
+
+function clickTargetsExistingInteraction(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      'a, button, input, textarea, select, [role="button"], [contenteditable="true"]',
+    ) !== null
+  );
+}
+
+function SelectablePagedGroupRow({
+  group,
+  thread,
+  modelChanges,
+  showActions,
+  steerEventIds,
+  stackFirstOnPrevious,
+  runGroupFolds,
+  completedWorkFold,
+}: Parameters<typeof PagedGroupRow>[0]) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const selectedEventIds = useGet(thread.sharing.selectedEventIds$);
+  const toggle = useSet(thread.sharing.toggle$);
+  const events = group.events.flatMap((event) => {
+    const shareable = shareableEventFromChatEvent(event);
+    return shareable ? [shareable] : [];
+  });
+  if (phase === "idle" || events.length === 0) {
+    return (
+      <PagedGroupRow
+        group={group}
+        thread={thread}
+        modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
+        stackFirstOnPrevious={stackFirstOnPrevious}
+        runGroupFolds={runGroupFolds}
+        completedWorkFold={completedWorkFold}
+      />
+    );
+  }
+  const selectedCount = events.filter((event) => {
+    return selectedEventIds.has(event.id);
+  }).length;
+  const allSelected = selectedCount === events.length;
+  const checked =
+    selectedCount === 0 ? false : allSelected ? true : "indeterminate";
+
+  const toggleGroup = () => {
+    if (phase !== "selecting") {
+      return;
+    }
+    const result = toggle(events);
+    if (result === "too-large") {
+      toast.error(
+        t(($) => {
+          return $.chat.sharing.tooLarge;
+        }),
+      );
+    }
+  };
+
+  return (
+    <div
+      data-chat-share-selectable-group
+      className={cn(
+        "relative -my-1 rounded-lg py-1 transition-colors",
+        phase === "selecting" && "cursor-pointer hover:bg-state-hover",
+      )}
+      onClick={(event) => {
+        if (!clickTargetsExistingInteraction(event.target)) {
+          toggleGroup();
+        }
+      }}
+    >
+      <PagedGroupRow
+        group={group}
+        thread={thread}
+        modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
+        stackFirstOnPrevious={stackFirstOnPrevious}
+        runGroupFolds={runGroupFolds}
+        completedWorkFold={completedWorkFold}
+      />
+      <Checkbox
+        checked={checked}
+        disabled={phase !== "selecting"}
+        aria-label={t(($) => {
+          return allSelected
+            ? $.chat.sharing.deselectGroup
+            : $.chat.sharing.selectGroup;
+        })}
+        className="absolute -right-9 top-1/2 -translate-y-1/2 lg:-right-10"
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+        onCheckedChange={toggleGroup}
+      />
+    </div>
+  );
+}
+
 function PagedUserGroup({
   group,
   thread,
+  modelChanges,
+  steerEventIds,
+  stackFirstOnPrevious = false,
   runGroupFolds,
 }: {
   group: ChatEventGroup;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
+  modelChanges: ReadonlyMap<string, RunModelChange>;
+  steerEventIds: ReadonlySet<string>;
+  stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
+  // Consecutive user events already arrive as one group, so the burst boundary
+  // is the group boundary — a run of steers separated by assistant output lands
+  // in a group of its own and gets its own acknowledgement.
+  const steerCount = group.events.filter((event) => {
+    return steerEventIds.has(event.id);
+  }).length;
   return (
     <>
-      {group.events.map((event) => {
+      {group.events.map((event, index) => {
+        const modelChange = modelChanges.get(event.id);
+        const previousEvent = group.events[index - 1];
+        // Anything the user sent back to back is one thing they said, so the
+        // whole run closes up — including the message the run started from and
+        // the first correction after it, which is the seam this rule used to
+        // leave wide. Adjacency is the whole condition on purpose: a burst that
+        // carries no acknowledgement is still a burst, so the spacing does not
+        // wait on the acknowledgement's feature switch. Anything that belongs
+        // between two messages — a model change, a message that renders as its
+        // own card rather than a bubble — ends the stack.
+        const stackedOnPrevious =
+          modelChange === undefined &&
+          rendersUserBubble(event) &&
+          (previousEvent !== undefined
+            ? rendersUserBubble(previousEvent)
+            : stackFirstOnPrevious);
         return (
-          <PagedUserMessage key={event.id} event={event} thread={thread} />
+          <div key={event.id} className="contents">
+            {modelChange === undefined ? null : (
+              <ModelChangeDividerRow change={modelChange} />
+            )}
+            <PagedUserMessage
+              event={event}
+              thread={thread}
+              stackedOnPrevious={stackedOnPrevious}
+            />
+          </div>
         );
       })}
+      {steerCount > 0 ? <SteerAcknowledgementRow count={steerCount} /> : null}
       {runGroupFolds?.map((fold) => {
         return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
     </>
+  );
+}
+
+// A user event does not always render as a bubble: a workflow run, a goal, and
+// a rejected goal each render as their own card or as nothing at all.
+function rendersUserBubble(event: EnrichedChatEvent): boolean {
+  return (
+    !isRejectedGoalUserMessage(event) &&
+    !isWorkflowUserMessage(event) &&
+    !isGoalUserMessage(event)
   );
 }
 
@@ -6094,83 +6349,33 @@ interface ResolvedMessageAttachment {
   readonly filename: string;
   readonly url: string;
   readonly contentType: string | undefined;
-  readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
   readonly isImage: boolean;
   readonly kind: ReturnType<typeof classifyChatAttachment>;
-  readonly text$?: TextPreviewComputed;
+  readonly signals: ArtifactSignals;
 }
 
-function resolveAttachments(
-  event: EnrichedChatEvent,
-  parsed: { filename: string; url: string }[],
-  artifactSignalsForUrl: ChatThreadSignals["artifactSignalsForUrl"],
+type OpenMessageImagePreview = (url: string, filename?: string) => void;
+
+function userMessageRenderAttachments(
+  document: UserMessageRenderDocument | undefined,
 ): ResolvedMessageAttachment[] {
-  const eventAttachments = chatEventAttachments(event);
-  const source =
-    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
-  return source.map((f) => {
-    const resolvedFile = "id" in f ? (f as ResolvedAttachFile) : undefined;
-    const contentType =
-      "contentType" in f && typeof f.contentType === "string"
-        ? f.contentType
-        : undefined;
-    const kind = classifyChatAttachment({
-      filename: f.filename,
-      url: f.url,
-      contentType,
-    });
-    const text$ = isTextPreviewKind(kind)
-      ? artifactSignalsForUrl(f.url)?.text$
-      : undefined;
-    return {
-      id: "id" in f && typeof f.id === "string" ? f.id : null,
-      filename: f.filename,
-      url: f.url,
-      contentType,
-      ...(resolvedFile?.assetRef ? { assetRef: resolvedFile.assetRef } : {}),
-      isImage: kind === "image" || isImageFilename(f.filename),
-      kind,
-      ...(text$ ? { text$ } : {}),
-    };
-  });
-}
-
-function attachmentIdFromUrl(url: string): string | null {
-  if (!URL.canParse(url, window.location.origin)) {
-    return null;
-  }
-  const parsed = new URL(url, window.location.origin);
-  const match = parsed.pathname.match(/^\/f\/[^/]+\/([^/]+)\/[^/]+$/);
-  return match?.[1] ?? null;
-}
-
-function clipboardAttachmentsFromEvent(
-  event: ChatEvent,
-  parsed: { filename: string; url: string }[],
-): ChatClipboardAttachment[] {
-  const eventAttachments = chatEventAttachments(event);
-  const source =
-    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
-  return source.map((f) => {
-    const contentType =
-      "contentType" in f && typeof f.contentType === "string"
-        ? f.contentType
-        : undefined;
-    const kind = classifyChatAttachment({
-      filename: f.filename,
-      url: f.url,
-      contentType,
-    });
-    return {
-      id:
-        "id" in f && typeof f.id === "string"
-          ? f.id
-          : attachmentIdFromUrl(f.url),
-      filename: f.filename,
-      url: f.url,
-      contentType: contentType ?? contentTypeForBodyPreviewKind(kind),
-      size: "size" in f && typeof f.size === "number" ? f.size : 0,
-    };
+  return (document?.parts ?? []).flatMap((renderPart) => {
+    if (renderPart.type !== "file") {
+      return [];
+    }
+    const { part, signals } = renderPart;
+    return [
+      {
+        id: part.fileId,
+        filename: part.filenameSnapshot,
+        url: signals.url,
+        contentType: part.contentType,
+        isImage:
+          signals.kind === "image" || isImageFilename(part.filenameSnapshot),
+        kind: signals.kind,
+        signals,
+      },
+    ];
   });
 }
 
@@ -6192,53 +6397,131 @@ function clipboardAttachmentsFromUserMessage(
   });
 }
 
-function AttachmentMaterializationState({
-  attachment,
+// Images and videos render as thumbnails, every other attachment as a chip.
+// The two shapes never share a row, so they are grouped before rendering.
+function isMediaAttachment(attachment: ResolvedMessageAttachment): boolean {
+  return attachment.isImage || attachment.kind === "video";
+}
+
+function MessageAttachment({
+  attachment: a,
+  onImageClick,
 }: {
-  attachment: {
-    readonly filename: string;
-    readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
-  };
+  attachment: ResolvedMessageAttachment;
+  onImageClick: OpenMessageImagePreview;
 }) {
   const { t } = useTranslation();
-  const materialization = attachment.assetRef?.materialization;
-  if (!materialization || materialization.status === "ready") {
+  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+
+  if (a.isImage) {
+    return (
+      <ChatImagePreviewLink
+        alt={a.filename}
+        ariaLabel={t(
+          ($) => {
+            return $.chat.attachments.previewFile;
+          },
+          {
+            filename: a.filename,
+          },
+        )}
+        load={a.signals.previewImageLoad}
+        imageClassName="block h-full w-full object-contain"
+        linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
+        onPreview={() => {
+          onImageClick(a.url, a.filename);
+        }}
+        placeholderClassName="h-full w-full"
+        resourceUrl$={a.signals.resourceUrl$}
+        url={a.url}
+      />
+    );
+  }
+  if (a.kind === "video") {
+    return (
+      <ChatVideoPreviewButton
+        posterLoad={a.signals.previewImageLoad}
+        ariaLabel={t(
+          ($) => {
+            return $.chat.attachments.previewFile;
+          },
+          {
+            filename: a.filename,
+          },
+        )}
+        buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
+        filename={a.filename}
+        onPreview={() => {
+          openVideoLightbox({
+            url: a.url,
+            filename: a.filename,
+          });
+        }}
+        posterClassName="h-full w-full"
+        url={a.url}
+        videoClassName="h-full w-full object-contain"
+      />
+    );
+  }
+  if (
+    a.kind === "markdown" ||
+    a.kind === "text" ||
+    a.kind === "json" ||
+    a.kind === "csv" ||
+    a.kind === "pdf" ||
+    a.kind === "html"
+  ) {
+    return (
+      <PreviewableFileAttachmentChip
+        filename={a.filename}
+        url={a.url}
+        kind={a.kind}
+        text$={a.signals.text$}
+      />
+    );
+  }
+  if (a.kind === "audio") {
+    return (
+      <PreviewableAudioAttachmentChip
+        filename={a.filename}
+        url={a.url}
+        contentType={a.contentType}
+      />
+    );
+  }
+  return (
+    <FileAttachmentChip
+      filename={a.filename}
+      url={a.url}
+      contentType={a.contentType}
+    />
+  );
+}
+
+function UserMessageAttachmentRow({
+  attachments,
+  onImageClick,
+  testId,
+}: {
+  attachments: ResolvedMessageAttachment[];
+  onImageClick: OpenMessageImagePreview;
+  testId: string;
+}) {
+  if (attachments.length === 0) {
     return null;
   }
-  const pending = materialization.status === "pending";
-  const error =
-    materialization.status === "failed" ? materialization.error : undefined;
+
   return (
-    <div
-      className="flex max-w-72 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
-      role={pending ? "status" : "alert"}
-      title={error?.message}
-    >
-      {pending ? (
-        <IconLoader2
-          aria-hidden="true"
-          className="size-4 shrink-0 animate-spin text-muted-foreground"
-        />
-      ) : (
-        <IconAlertCircle
-          aria-hidden="true"
-          className="size-4 shrink-0 text-destructive"
-        />
-      )}
-      <span className="min-w-0">
-        <span className="block truncate font-medium">
-          {attachment.filename}
-        </span>
-        <span className="block text-xs text-muted-foreground">
-          {pending
-            ? t(($) => {
-                return $.chat.attachments.importing;
-              })
-            : t(($) => {
-                return $.chat.attachments.unavailable;
-              })}
-        </span>
-      </span>
+    <div className="flex flex-wrap justify-end gap-2" data-testid={testId}>
+      {attachments.map((a) => {
+        return (
+          <MessageAttachment
+            key={a.id ?? a.url}
+            attachment={a}
+            onImageClick={onImageClick}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -6246,121 +6529,28 @@ function AttachmentMaterializationState({
 function UserMessageAttachments({
   attachments,
   onImageClick,
-  align = "end",
 }: {
-  attachments: ReturnType<typeof resolveAttachments>;
-  onImageClick: (url: string) => void;
-  align?: "start" | "end";
+  attachments: ReturnType<typeof userMessageRenderAttachments>;
+  onImageClick: OpenMessageImagePreview;
 }) {
-  const { t } = useTranslation();
-  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-
   if (attachments.length === 0) {
     return null;
   }
 
   return (
-    <div
-      className={cn(
-        "flex max-w-[85%] flex-wrap gap-2",
-        align === "start" ? "mt-2 justify-start" : "mb-2 justify-end self-end",
-      )}
-    >
-      {attachments.map((a) => {
-        if (a.assetRef && a.assetRef.materialization.status !== "ready") {
-          return (
-            <AttachmentMaterializationState
-              key={a.id ?? a.url}
-              attachment={a}
-            />
-          );
-        }
-        if (a.isImage) {
-          return (
-            <ChatImagePreviewLink
-              key={a.url}
-              alt={a.filename}
-              ariaLabel={t(
-                ($) => {
-                  return $.chat.attachments.previewFile;
-                },
-                {
-                  filename: a.filename,
-                },
-              )}
-              imageClassName="block h-full w-full object-contain"
-              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
-              onPreview={() => {
-                onImageClick(a.url);
-              }}
-              placeholderClassName="h-full w-full"
-              url={a.url}
-            />
-          );
-        }
-        if (a.kind === "video") {
-          return (
-            <ChatVideoPreviewButton
-              key={a.url}
-              ariaLabel={t(
-                ($) => {
-                  return $.chat.attachments.previewFile;
-                },
-                {
-                  filename: a.filename,
-                },
-              )}
-              buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
-              filename={a.filename}
-              onPreview={() => {
-                openVideoLightbox({
-                  url: a.url,
-                  filename: a.filename,
-                });
-              }}
-              posterClassName="h-full w-full"
-              url={a.url}
-              videoClassName="h-full w-full object-contain"
-            />
-          );
-        }
-        if (
-          a.kind === "markdown" ||
-          a.kind === "text" ||
-          a.kind === "json" ||
-          a.kind === "csv" ||
-          a.kind === "pdf" ||
-          a.kind === "html"
-        ) {
-          return (
-            <PreviewableFileAttachmentChip
-              key={a.url}
-              filename={a.filename}
-              url={a.url}
-              kind={a.kind}
-              text$={a.text$}
-            />
-          );
-        }
-        if (a.kind === "audio") {
-          return (
-            <PreviewableAudioAttachmentChip
-              key={a.url}
-              filename={a.filename}
-              url={a.url}
-              contentType={a.contentType}
-            />
-          );
-        }
-        return (
-          <FileAttachmentChip
-            key={a.url}
-            filename={a.filename}
-            url={a.url}
-            contentType={a.contentType}
-          />
-        );
-      })}
+    <div className="mb-2 flex max-w-[85%] flex-col items-end gap-2 self-end">
+      <UserMessageAttachmentRow
+        attachments={attachments.filter(isMediaAttachment)}
+        onImageClick={onImageClick}
+        testId="message-media-attachments"
+      />
+      <UserMessageAttachmentRow
+        attachments={attachments.filter((a) => {
+          return !isMediaAttachment(a);
+        })}
+        onImageClick={onImageClick}
+        testId="message-file-attachments"
+      />
     </div>
   );
 }
@@ -6383,16 +6573,12 @@ function UserMessageActions({
       <button
         type="button"
         onClick={onCopy}
-        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
         aria-label={t(($) => {
           return $.chat.actions.copyMessage;
         })}
       >
-        {copied ? (
-          <IconCheck size={18} stroke={1.5} />
-        ) : (
-          <IconCopy size={18} stroke={1.5} />
-        )}
+        {copied ? <Check size={18} /> : <Copy size={18} />}
       </button>
     </div>
   );
@@ -6403,6 +6589,11 @@ function generationTemplateTypeLabel(
 ): string | null {
   if (!value) {
     return null;
+  }
+  if (avatarTemplateSelection(value)) {
+    return i18n.t(($) => {
+      return $.artifacts.templates.avatar;
+    });
   }
   if (value.type === "video") {
     return i18n.t(($) => {
@@ -6437,12 +6628,17 @@ const annotationIconImgs = {
   agentphone: settingsIconAssetUrl("imessage"),
 } as const;
 
-function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
+function MessageAnnotation({
+  renderPart,
+}: {
+  renderPart: UserMessageAnnotationRenderPart;
+}) {
   const { t } = useTranslation();
   const className =
     "mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end " +
     "rounded-md px-1.5 text-xs font-medium text-muted-foreground";
-  if (part.type === "automation") {
+  if (renderPart.type === "automation") {
+    const { part } = renderPart;
     return (
       <div
         aria-label={t(
@@ -6456,12 +6652,12 @@ function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
         className={className}
         title={part.workflowName}
       >
-        <IconRoute size={15} stroke={1.8} className="shrink-0" />
+        <Route size={15} className="shrink-0" />
         <span className="min-w-0 truncate">{part.workflowName}</span>
       </div>
     );
   }
-  if (part.type === "goal") {
+  if (renderPart.type === "goal") {
     return (
       <div
         aria-label={t(($) => {
@@ -6469,7 +6665,7 @@ function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
         })}
         className={className}
       >
-        <IconTarget size={15} stroke={1.8} className="shrink-0" />
+        <Target size={15} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.queue.goal;
@@ -6478,17 +6674,46 @@ function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
       </div>
     );
   }
-  return <SourceMessageAnnotation part={part} className={className} />;
+  if (renderPart.type === "morning_brief") {
+    return (
+      <div
+        aria-label={t(($) => {
+          return $.settings.preferences.morningBrief.title;
+        })}
+        className={className}
+      >
+        <Sunrise size={15} className="shrink-0" />
+        <span>
+          {t(($) => {
+            return $.settings.preferences.morningBrief.title;
+          })}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <SourceMessageAnnotation renderPart={renderPart} className={className} />
+  );
 }
 
 function SourceMessageAnnotation({
-  part,
+  renderPart,
   className,
 }: {
-  part: Extract<UserMessageNonContentPart, { type: "source" }>;
+  renderPart: Extract<UserMessageAnnotationRenderPart, { type: "source" }>;
   className: string;
 }) {
   const { t } = useTranslation();
+  if (renderPart.kind === "agent") {
+    return (
+      <AgentRunSourceMessageAnnotation
+        part={renderPart.part}
+        className={className}
+        signals={renderPart.signals}
+      />
+    );
+  }
+  const { part } = renderPart;
   const sourceLabel =
     part.kind === "slack"
       ? t(($) => {
@@ -6546,7 +6771,7 @@ function SourceMessageAnnotation({
   const content = (
     <>
       {part.kind === "slack" ? (
-        <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
+        <BrandSlack size={15} className="shrink-0" />
       ) : (
         <img
           src={annotationIconImgs[part.kind]}
@@ -6559,7 +6784,7 @@ function SourceMessageAnnotation({
         <>
           <span className="shrink-0">·</span>
           <span className="min-w-0 truncate">{openLabel}</span>
-          <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+          <ArrowUpRight size={12} className="shrink-0" />
         </>
       ) : null}
     </>
@@ -6573,201 +6798,218 @@ function SourceMessageAnnotation({
       target="_blank"
       rel="noreferrer"
       aria-label={ariaLabel}
-      className={`${className} transition-colors hover:bg-gray-50 hover:text-foreground`}
+      className={`${className} transition-colors hover:bg-state-hover hover:text-foreground`}
     >
       {content}
     </a>
   );
 }
 
-const STRUCTURED_REFERENCE_CHIP_CLASS =
-  "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
-  "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
-  "text-xs font-medium";
-const STRUCTURED_INLINE_REFERENCE_CLASS =
-  "relative -top-px mx-0.5 inline-flex h-7 max-w-[240px] items-center " +
-  "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
-  "font-medium text-orange-600 transition-colors hover:bg-orange-500/15 " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 " +
-  "active:bg-orange-500/20 dark:bg-orange-400/15 dark:text-orange-300 " +
-  "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
-
-function templatePickerCategoryForReference(
-  template: GenerationTemplateRequest,
-): string {
-  return template.type === "presentation" ? "slides" : template.type;
-}
-
-function presentationTemplatePreviewSlug(
-  template: GenerationTemplateRequest,
-): string | null {
-  if (template.type !== "presentation") {
-    return null;
-  }
-  return (
-    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
-      return item.templateId === template.selection.templateId;
-    })?.slug ?? null
-  );
-}
-
-function UserMessageTemplateReference({
+function AgentRunSourceMessageAnnotation({
   part,
+  className,
   signals,
 }: {
-  part: Extract<UserMessagePart, { type: "template" }>;
-  signals: ComposerSignals;
+  part: Extract<
+    Extract<UserMessageNonContentPart, { type: "source" }>,
+    { kind: "agent" }
+  >;
+  className: string;
+  signals: AgentReferenceSignals;
 }) {
   const { t } = useTranslation();
-  const typeLabel = generationTemplateTypeLabel(part.template);
-  const setTemplatePickerCategory = useSet(
-    signals.template.setTemplatePickerCategory$,
-  );
-  const setTemplatePickerOpen = useSet(signals.template.setTemplatePickerOpen$);
-  const setTemplatePickerPreviewSlug = useSet(
-    signals.template.setTemplatePickerPreviewSlug$,
-  );
-  const setTemplatePickerReferenceValue = useSet(
-    signals.template.setTemplatePickerReferenceValue$,
-  );
-  const setTemplatePickerSearch = useSet(
-    signals.template.setTemplatePickerSearch$,
-  );
+  const agent = useLastResolved(signals.agent$);
   return (
-    <button
-      type="button"
-      data-structured-template-reference=""
+    <Link
+      pathname={ROUTES.chat}
+      options={{
+        pathParams: { threadId: part.threadId },
+        hash: `run-${part.runId}`,
+      }}
       aria-label={t(
         ($) => {
-          return $.chat.templates.messageTemplate;
+          return $.chat.thread.openNamedChat;
         },
-        {
-          title: part.titleSnapshot,
-        },
+        { title: part.titleSnapshot },
       )}
-      aria-haspopup="dialog"
-      className={STRUCTURED_INLINE_REFERENCE_CLASS}
-      title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
-      onClick={() => {
-        setTemplatePickerCategory(
-          templatePickerCategoryForReference(part.template),
-        );
-        setTemplatePickerSearch("");
-        setTemplatePickerPreviewSlug(
-          presentationTemplatePreviewSlug(part.template),
-        );
-        setTemplatePickerReferenceValue(part.template);
-        setTemplatePickerOpen(true);
-      }}
+      className={`${className} transition-colors hover:bg-state-hover hover:text-foreground`}
+      title={part.titleSnapshot}
     >
-      <IconTemplate size={13} stroke={1.7} className="shrink-0" />
+      <AvatarFromUrl
+        avatarUrl={agent?.avatarUrl}
+        alt=""
+        className="size-4 shrink-0 overflow-hidden rounded-full object-cover object-top"
+        size={16}
+      />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-    </button>
+    </Link>
+  );
+}
+
+// File chips carry their own border, so they need more breathing room from the
+// surrounding sentence than a borderless inline mention does.
+const INLINE_FILE_REFERENCE_SPACING_CLASS = "mx-1";
+// Layout without a display class so the spec-bearing chip can pick its own
+// responsive display (hidden sm:inline-flex / sm:hidden) per variant.
+const STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS =
+  "relative -top-px mx-0.5 h-7 items-center " +
+  "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
+  "font-medium text-orange-600 dark:bg-orange-400/15 dark:text-orange-300";
+const STRUCTURED_INLINE_REFERENCE_BASE_CLASS = `inline-flex ${STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS}`;
+const STRUCTURED_INLINE_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-[240px]`;
+const STRUCTURED_INLINE_INTERACTIVE_CLASS =
+  "transition-colors hover:bg-orange-500/15 focus-visible:outline-none " +
+  "focus-visible:ring-2 focus-visible:ring-orange-500/30 " +
+  "active:bg-orange-500/20 dark:hover:bg-orange-400/20 " +
+  "dark:active:bg-orange-400/25";
+const STRUCTURED_INLINE_LINK_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_CLASS} ${STRUCTURED_INLINE_INTERACTIVE_CLASS}`;
+
+/**
+ * Read-only echo of the parameters a sent video used. Rendered only inside
+ * the wide-viewport chip variant, which owns the responsive visibility.
+ */
+function SentVideoTemplateSpec({ spec }: { readonly spec: VideoTemplateSpec }) {
+  return (
+    <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
+      {videoTemplateSpecText(spec)}
+    </span>
+  );
+}
+
+/**
+ * A sent template is a record of what the message used, not an editing
+ * control. Templates without a spec render as static text. A spec-bearing
+ * video chip stays a static record on wide viewports too — the inline echo
+ * and hover title already carry the spec there — and only the touch-width
+ * variant is a button opening the read-only detail dialog, because narrow
+ * viewports hide the inline echo and touch has no hover title.
+ */
+function UserMessageTemplateReference({
+  part,
+}: {
+  part: Extract<UserMessagePart, { type: "template" }>;
+}) {
+  const typeLabel = generationTemplateTypeLabel(part.template);
+  const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
+  const openDetail = useSet(openSentTemplateDetail$);
+  const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
+  const label = `${typeLabel ?? part.template.type} · ${part.titleSnapshot}`;
+  if (spec === null) {
+    return (
+      <span
+        data-structured-template-reference=""
+        className={STRUCTURED_INLINE_REFERENCE_CLASS}
+        title={label}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      </span>
+    );
+  }
+  return (
+    <>
+      <span
+        data-structured-template-reference=""
+        // The spec is as wide as the chip's old fixed cap on its own, so a
+        // spec-bearing chip trades the cap for the full message width.
+        className={`hidden max-w-full sm:inline-flex ${STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS}`}
+        title={`${label} · ${videoTemplateSpecText(spec)}`}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+        <SentVideoTemplateSpec spec={spec} />
+      </span>
+      <button
+        type="button"
+        data-structured-template-reference=""
+        className={`max-w-full sm:hidden ${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} ${STRUCTURED_INLINE_INTERACTIVE_CLASS}`}
+        aria-haspopup="dialog"
+        onClick={() => {
+          openDetail({
+            titleSnapshot: part.titleSnapshot,
+            template: part.template,
+          });
+        }}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      </button>
+    </>
   );
 }
 
 function UserMessageFileReference({
   part,
-  attachment,
+  signals,
 }: {
   part: Extract<UserMessagePart, { type: "file" }>;
-  attachment: ResolvedAttachFile | undefined;
+  signals: ArtifactSignals;
 }) {
   const { t } = useTranslation();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-
-  if (
-    attachment?.assetRef &&
-    attachment.assetRef.materialization.status !== "ready"
+  let reference: ReactNode;
+  if (signals.kind === "video") {
+    reference = (
+      <ChatVideoPreviewButton
+        posterLoad={signals.previewImageLoad}
+        ariaLabel={t(
+          ($) => {
+            return $.chat.attachments.previewFile;
+          },
+          {
+            filename: part.filenameSnapshot,
+          },
+        )}
+        buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
+        filename={part.filenameSnapshot}
+        onPreview={() => {
+          openVideoLightbox({
+            url: signals.url,
+            filename: part.filenameSnapshot,
+          });
+        }}
+        posterClassName="h-full w-full"
+        url={signals.url}
+        videoClassName="h-full w-full object-contain"
+      />
+    );
+  } else if (
+    signals.kind === "markdown" ||
+    signals.kind === "text" ||
+    signals.kind === "json" ||
+    signals.kind === "csv" ||
+    signals.kind === "pdf" ||
+    signals.kind === "html"
   ) {
-    return <AttachmentMaterializationState attachment={attachment} />;
-  }
-  if (attachment) {
-    const kind = classifyChatAttachment({
-      filename: part.filenameSnapshot,
-      url: attachment.url,
-      contentType: part.contentType,
-    });
-    let reference: ReactNode;
-    if (kind === "video") {
-      reference = (
-        <ChatVideoPreviewButton
-          ariaLabel={t(
-            ($) => {
-              return $.chat.attachments.previewFile;
-            },
-            {
-              filename: part.filenameSnapshot,
-            },
-          )}
-          buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
-          filename={part.filenameSnapshot}
-          onPreview={() => {
-            openVideoLightbox({
-              url: attachment.url,
-              filename: part.filenameSnapshot,
-            });
-          }}
-          posterClassName="h-full w-full"
-          url={attachment.url}
-          videoClassName="h-full w-full object-contain"
-        />
-      );
-    } else if (
-      kind === "markdown" ||
-      kind === "text" ||
-      kind === "json" ||
-      kind === "csv" ||
-      kind === "pdf" ||
-      kind === "html"
-    ) {
-      reference = (
-        <PreviewableFileAttachmentChip
-          filename={part.filenameSnapshot}
-          url={attachment.url}
-          kind={kind}
-        />
-      );
-    } else if (kind === "audio") {
-      reference = (
-        <PreviewableAudioAttachmentChip
-          filename={part.filenameSnapshot}
-          url={attachment.url}
-          contentType={part.contentType}
-        />
-      );
-    } else {
-      reference = (
-        <FileAttachmentChip
-          contentType={part.contentType}
-          filename={part.filenameSnapshot}
-          url={attachment.url}
-        />
-      );
-    }
-    return <span className="inline-flex align-middle">{reference}</span>;
+    reference = (
+      <PreviewableFileAttachmentChip
+        filename={part.filenameSnapshot}
+        url={signals.url}
+        kind={signals.kind}
+      />
+    );
+  } else if (signals.kind === "audio") {
+    reference = (
+      <PreviewableAudioAttachmentChip
+        filename={part.filenameSnapshot}
+        url={signals.url}
+        contentType={part.contentType}
+      />
+    );
+  } else {
+    reference = (
+      <FileAttachmentChip
+        contentType={part.contentType}
+        filename={part.filenameSnapshot}
+        url={signals.url}
+      />
+    );
   }
   return (
     <span
-      aria-label={t(
-        ($) => {
-          return $.chat.attachments.file;
-        },
-        {
-          filename: part.filenameSnapshot,
-        },
-      )}
-      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} h-7`}
-      title={part.filenameSnapshot}
+      className={`${INLINE_FILE_REFERENCE_SPACING_CLASS} inline-flex align-middle`}
     >
-      <FilePreviewIcon
-        filename={part.filenameSnapshot}
-        contentType={part.contentType}
-        size="sm"
-        className="shrink-0"
-        testId="structured-message-file-icon"
-      />
-      <span className="min-w-0 truncate">{part.filenameSnapshot}</span>
+      {reference}
     </span>
   );
 }
@@ -6790,10 +7032,10 @@ function UserMessageChatThreadReference({
         },
         { title },
       )}
-      className={STRUCTURED_INLINE_REFERENCE_CLASS}
+      className={STRUCTURED_INLINE_LINK_REFERENCE_CLASS}
       title={title}
     >
-      <IconMessageCircle size={13} stroke={1.7} className="shrink-0" />
+      <MessageCircle size={13} className="shrink-0" />
       <span className="min-w-0 truncate">{title}</span>
     </Link>
   );
@@ -6820,13 +7062,13 @@ function UserMessageAgentReference({
         },
         { name },
       )}
-      className={STRUCTURED_INLINE_REFERENCE_CLASS}
+      className={STRUCTURED_INLINE_LINK_REFERENCE_CLASS}
       title={name}
     >
       <AvatarFromUrl
         avatarUrl={agent?.avatarUrl}
         alt=""
-        className="size-4 shrink-0 overflow-hidden rounded-full bg-muted object-cover object-top"
+        className="size-4 shrink-0 overflow-hidden rounded-full object-cover object-top"
         size={16}
       />
       <span className="min-w-0 truncate">{name}</span>
@@ -6836,60 +7078,55 @@ function UserMessageAgentReference({
 
 function UserMessageFeedbackNote({
   note,
-  agentReferenceSignalsForId,
-  composerSignals,
 }: {
-  note: readonly FeedbackNotePart[];
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
+  note: readonly UserMessageFeedbackNoteRenderPart[];
 }) {
   const partOccurrences = new Map<string, number>();
   return (
     <div>
-      {note.map((part) => {
-        const identity = JSON.stringify(part);
+      {note.map((renderPart) => {
+        const identity = JSON.stringify(renderPart.part);
         const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
         partOccurrences.set(identity, occurrence);
         const key = `${identity}:${String(occurrence)}`;
-        if (part.type === "chat_thread") {
+        if (renderPart.type === "chat_thread") {
           return (
             <UserMessageChatThreadReference
               key={key}
-              threadId={part.threadId}
-              title={part.titleSnapshot}
+              threadId={renderPart.part.threadId}
+              title={renderPart.part.titleSnapshot}
             />
           );
         }
-        if (part.type === "agent") {
+        if (renderPart.type === "agent") {
           return (
             <UserMessageAgentReference
               key={key}
-              agentId={part.agentId}
-              name={part.nameSnapshot}
-              signals={agentReferenceSignalsForId(part.agentId)}
+              agentId={renderPart.part.agentId}
+              name={renderPart.part.nameSnapshot}
+              signals={renderPart.signals}
             />
           );
         }
-        if (part.type === "template") {
+        if (renderPart.type === "template") {
           return (
-            <UserMessageTemplateReference
-              key={key}
-              part={part}
-              signals={composerSignals}
-            />
+            <UserMessageTemplateReference key={key} part={renderPart.part} />
           );
         }
-        return <span key={key}>{part.text}</span>;
+        return <span key={key}>{renderPart.part.text}</span>;
       })}
     </div>
   );
 }
 
-type UserMessageFeedbackPart = Extract<UserMessagePart, { type: "feedback" }>;
+type UserMessageFeedbackRenderPart = Extract<
+  UserMessageRenderPart,
+  { type: "feedback" }
+>;
 
 function equalFeedbackSources(
-  left: UserMessageFeedbackPart["source"],
-  right: UserMessageFeedbackPart["source"],
+  left: UserMessageFeedbackRenderPart["part"]["source"],
+  right: UserMessageFeedbackRenderPart["part"]["source"],
 ): boolean {
   if (left === undefined || right === undefined) {
     return left === right;
@@ -6903,9 +7140,9 @@ function equalFeedbackSources(
 }
 
 function userMessageFeedbackHeading(
-  parts: readonly UserMessageFeedbackPart[],
+  parts: readonly UserMessageFeedbackRenderPart[],
 ): string {
-  const source = parts[0]?.source;
+  const source = parts[0]?.part.source;
   if (!source) {
     return parts.length === 1
       ? i18n.t(($) => {
@@ -6968,20 +7205,16 @@ function userMessageFeedbackHeading(
 
 function UserMessageFeedbackGroup({
   parts,
-  agentReferenceSignalsForId,
-  composerSignals,
 }: {
-  parts: readonly UserMessageFeedbackPart[];
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
+  parts: readonly UserMessageFeedbackRenderPart[];
 }) {
   const partOccurrences = new Map<string, number>();
   let firstPart = true;
   return (
     <div data-structured-feedback-group="" className="space-y-3">
       <div>{userMessageFeedbackHeading(parts)}</div>
-      {parts.map((part) => {
-        const identity = JSON.stringify(part);
+      {parts.map((renderPart) => {
+        const identity = JSON.stringify(renderPart.part);
         const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
         partOccurrences.set(identity, occurrence);
         const showDivider = !firstPart;
@@ -6998,13 +7231,9 @@ function UserMessageFeedbackGroup({
               data-structured-feedback-quote=""
               className="border-l-2 border-border pl-3 text-muted-foreground"
             >
-              {part.quote}
+              {renderPart.part.quote}
             </blockquote>
-            <UserMessageFeedbackNote
-              note={part.note}
-              agentReferenceSignalsForId={agentReferenceSignalsForId}
-              composerSignals={composerSignals}
-            />
+            <UserMessageFeedbackNote note={renderPart.note} />
           </div>
         );
       })}
@@ -7012,86 +7241,70 @@ function UserMessageFeedbackGroup({
   );
 }
 
-type UserMessageContentPart = Exclude<
-  UserMessagePart,
-  { readonly type: "source" | "automation" | "goal" }
+type UserMessageContentRenderPart = Exclude<
+  UserMessageRenderPart,
+  {
+    readonly type: "source" | "automation" | "goal" | "morning_brief" | "model";
+  }
 >;
-type UserMessageStandalonePart = Exclude<
-  UserMessageContentPart,
+type UserMessageStandaloneRenderPart = Exclude<
+  UserMessageContentRenderPart,
   { readonly type: "feedback" }
 >;
 
 function UserMessagePartView({
-  part,
-  attachments,
-  agentReferenceSignalsForId,
-  composerSignals,
+  renderPart,
 }: {
-  part: UserMessageStandalonePart;
-  attachments: readonly ResolvedAttachFile[];
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
+  renderPart: UserMessageStandaloneRenderPart;
 }): ReactNode {
-  if (part.type === "text") {
-    return <span>{part.text}</span>;
+  if (renderPart.type === "text") {
+    return <span>{renderPart.part.text}</span>;
   }
-  if (part.type === "chat_thread") {
+  if (renderPart.type === "chat_thread") {
     return (
       <UserMessageChatThreadReference
-        threadId={part.threadId}
-        title={part.titleSnapshot}
+        threadId={renderPart.part.threadId}
+        title={renderPart.part.titleSnapshot}
       />
     );
   }
-  if (part.type === "agent") {
+  if (renderPart.type === "agent") {
     return (
       <UserMessageAgentReference
-        agentId={part.agentId}
-        name={part.nameSnapshot}
-        signals={agentReferenceSignalsForId(part.agentId)}
+        agentId={renderPart.part.agentId}
+        name={renderPart.part.nameSnapshot}
+        signals={renderPart.signals}
       />
     );
   }
-  if (part.type === "template") {
+  if (renderPart.type === "template") {
+    return <UserMessageTemplateReference part={renderPart.part} />;
+  }
+  if (renderPart.type === "file") {
     return (
-      <UserMessageTemplateReference part={part} signals={composerSignals} />
+      <UserMessageFileReference
+        part={renderPart.part}
+        signals={renderPart.signals}
+      />
     );
   }
-  if (part.type === "file") {
-    const attachment = attachments.find((candidate) => {
-      return candidate.id === part.fileId;
-    });
-    return <UserMessageFileReference part={part} attachment={attachment} />;
-  }
-  void (part satisfies never);
+  void (renderPart satisfies never);
   return null;
 }
 
 function UserMessageView({
   document,
-  attachments,
   elevatedFileIds,
-  inlineTemplatesEnabled,
-  agentReferenceSignalsForId,
-  composerSignals,
 }: {
-  document: UserMessageDocument;
-  attachments: readonly ResolvedAttachFile[];
+  document: UserMessageRenderDocument;
   elevatedFileIds: ReadonlySet<string>;
-  inlineTemplatesEnabled: boolean;
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
   const bodyParts = document.parts.filter(
-    (part): part is UserMessageContentPart => {
+    (renderPart): renderPart is UserMessageContentRenderPart => {
       return (
-        !isUserMessageNonContentPart(part) &&
-        !isElevatedUserMessagePart(
-          part,
-          elevatedFileIds,
-          inlineTemplatesEnabled,
-        )
+        !isUserMessageHiddenPart(renderPart.part) &&
+        !isElevatedUserMessagePart(renderPart, elevatedFileIds)
       );
     },
   );
@@ -7101,18 +7314,18 @@ function UserMessageView({
   const renderedParts: ReactNode[] = [];
   let index = 0;
   while (index < bodyParts.length) {
-    const part = bodyParts[index];
-    if (!part) {
+    const renderPart = bodyParts[index];
+    if (!renderPart) {
       break;
     }
-    if (part.type === "feedback") {
-      const feedbackParts: UserMessageFeedbackPart[] = [part];
+    if (renderPart.type === "feedback") {
+      const feedbackParts: UserMessageFeedbackRenderPart[] = [renderPart];
       let nextIndex = index + 1;
       while (nextIndex < bodyParts.length) {
         const candidate = bodyParts[nextIndex];
         if (
           candidate?.type !== "feedback" ||
-          !equalFeedbackSources(part.source, candidate.source)
+          !equalFeedbackSources(renderPart.part.source, candidate.part.source)
         ) {
           break;
         }
@@ -7123,23 +7336,18 @@ function UserMessageView({
         <UserMessageFeedbackGroup
           key={`feedback:${String(index)}`}
           parts={feedbackParts}
-          agentReferenceSignalsForId={agentReferenceSignalsForId}
-          composerSignals={composerSignals}
         />,
       );
       index = nextIndex;
       continue;
     }
-    const identity = JSON.stringify(part);
+    const identity = JSON.stringify(renderPart.part);
     const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
     partOccurrences.set(identity, occurrence);
     renderedParts.push(
       <UserMessagePartView
         key={`${identity}:${String(occurrence)}`}
-        part={part}
-        attachments={attachments}
-        agentReferenceSignalsForId={agentReferenceSignalsForId}
-        composerSignals={composerSignals}
+        renderPart={renderPart}
       />,
     );
     index += 1;
@@ -7152,89 +7360,64 @@ function UserMessageView({
 }
 
 function isElevatedUserMessagePart(
-  part: UserMessagePart,
+  renderPart: UserMessageRenderPart,
   elevatedFileIds: ReadonlySet<string>,
-  inlineTemplatesEnabled: boolean,
 ): boolean {
   return (
-    (!inlineTemplatesEnabled && part.type === "template") ||
-    (part.type === "file" && elevatedFileIds.has(part.fileId))
+    renderPart.type === "file" && elevatedFileIds.has(renderPart.part.fileId)
+  );
+}
+
+function UserMessageBubble({ children }: { children: ReactNode }) {
+  return (
+    <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+      {children}
+    </div>
   );
 }
 
 function UserMessageContent({
   document,
   attachments,
-  referenceAttachments,
   onImageClick,
-  inlineTemplatesEnabled,
-  agentReferenceSignalsForId,
-  composerSignals,
 }: {
-  document: UserMessageDocument;
-  attachments: ReturnType<typeof resolveAttachments>;
-  referenceAttachments: readonly ResolvedAttachFile[];
-  onImageClick: (url: string) => void;
-  inlineTemplatesEnabled: boolean;
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
+  document: UserMessageRenderDocument;
+  attachments: ReturnType<typeof userMessageRenderAttachments>;
+  onImageClick: OpenMessageImagePreview;
 }) {
-  const imageAttachments = attachments.filter((attachment) => {
-    return attachment.id !== null && attachment.isImage;
+  // Attachments read as their own object, so they all sit above the bubble
+  // instead of interrupting the sentence they were dropped into. Attachments
+  // without an id cannot be matched to a document part, so they stay inline.
+  const elevatedAttachments = attachments.filter((attachment) => {
+    return attachment.id !== null;
   });
-  const imageAttachmentIds = new Set(
-    imageAttachments.flatMap((attachment) => {
+  const elevatedFileIds = new Set(
+    elevatedAttachments.flatMap((attachment) => {
       return attachment.id ? [attachment.id] : [];
     }),
   );
-  const templateParts = inlineTemplatesEnabled
-    ? []
-    : document.parts.filter((part) => {
-        return part.type === "template";
-      });
-  const hasBody = document.parts.some((part) => {
+  const hasBody = document.parts.some((renderPart) => {
     return (
-      !isUserMessageNonContentPart(part) &&
-      !isElevatedUserMessagePart(
-        part,
-        imageAttachmentIds,
-        inlineTemplatesEnabled,
-      )
+      !isUserMessageHiddenPart(renderPart.part) &&
+      !isElevatedUserMessagePart(renderPart, elevatedFileIds)
     );
   });
 
   return (
     <>
-      {templateParts.length > 0 ? (
-        <div className="mb-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5">
-          {templateParts.map((part) => {
-            return (
-              <UserMessageTemplateReference
-                key={`${part.template.type}:${part.titleSnapshot}`}
-                part={part}
-                signals={composerSignals}
-              />
-            );
-          })}
-        </div>
-      ) : null}
       <UserMessageAttachments
-        attachments={imageAttachments}
+        attachments={elevatedAttachments}
         onImageClick={onImageClick}
       />
       {hasBody ? (
-        <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+        <UserMessageBubble>
           <div className="px-4 py-3">
             <UserMessageView
               document={document}
-              attachments={referenceAttachments}
-              elevatedFileIds={imageAttachmentIds}
-              inlineTemplatesEnabled={inlineTemplatesEnabled}
-              agentReferenceSignalsForId={agentReferenceSignalsForId}
-              composerSignals={composerSignals}
+              elevatedFileIds={elevatedFileIds}
             />
           </div>
-        </div>
+        </UserMessageBubble>
       ) : null}
     </>
   );
@@ -7246,16 +7429,21 @@ function WorkflowUserMessage({
   event: EnrichedChatEvent & ChatInputEvent;
 }) {
   const { t } = useTranslation();
-  const part = eventNonContentPart(event);
-  if (part?.type !== "automation") {
+  const renderPart = userMessageAnnotationRenderPart(
+    event.userMessageRenderDocument,
+  );
+  if (renderPart?.type !== "automation") {
     return null;
   }
+  const { part } = renderPart;
   const workflowTitle =
     part.workflowName.trim() ||
     t(($) => {
       return $.chat.templates.categories.workflow;
     });
-  const workflowBody = part.automationBrief?.trim();
+  const workflowBody =
+    messageDocumentToDisplayText(event.userMessage)?.trim() ||
+    part.automationBrief?.trim();
   const bubbleClassName =
     "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden whitespace-pre-wrap transition-colors duration-150";
   const body = workflowBody ? (
@@ -7270,12 +7458,13 @@ function WorkflowUserMessage({
     <div
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
+      data-turn-created-at={event.createdAt}
       className="group"
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          <MessageAnnotation part={part} />
+          <MessageAnnotation renderPart={renderPart} />
           {linked && body ? (
             <Link
               pathname={ROUTES.workflowDetailAutomations}
@@ -7310,21 +7499,25 @@ function GoalUserMessage({
 }: {
   event: EnrichedChatEvent & ChatInputEvent;
 }) {
-  const part = eventNonContentPart(event);
-  if (part?.type !== "goal") {
+  const renderPart = userMessageAnnotationRenderPart(
+    event.userMessageRenderDocument,
+  );
+  if (renderPart?.type !== "goal") {
     return null;
   }
+  const { part } = renderPart;
   const goalBrief = part.goalBrief.trim();
   return (
     <div
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
+      data-turn-created-at={event.createdAt}
       className="group"
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          <MessageAnnotation part={part} />
+          <MessageAnnotation renderPart={renderPart} />
           {goalBrief ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
               <div className="px-4 py-3 whitespace-pre-wrap">{goalBrief}</div>
@@ -7336,95 +7529,74 @@ function GoalUserMessage({
   );
 }
 
-function useUserMessageRendering() {
-  const featureSwitches = useGet(featureSwitch$);
-  return {
-    inlineTemplates:
-      featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
-      false,
-  };
-}
-
 function resolvePagedUserMessageRendering({
-  event,
-  inputEvent,
-  userMessage,
-  inlineTemplates,
+  renderDocument,
 }: {
-  event: EnrichedChatEvent;
-  inputEvent: ChatInputEvent | undefined;
-  userMessage: UserMessageDocument | undefined;
-  inlineTemplates: boolean;
+  renderDocument: UserMessageRenderDocument | undefined;
 }) {
-  const legacyContent = event.content ?? "";
-  const { cleanContent, parsed } = parseInlineAttachments(
-    inputEvent ? "" : legacyContent,
-  );
-  const canonicalUserMessage = userMessage;
-  const attachFiles =
-    inputEvent && "attachFiles" in inputEvent
-      ? inputEvent.attachFiles
-      : undefined;
+  const canonicalUserMessage = renderDocument?.document;
+  const userMessageAttachments = canonicalUserMessage
+    ? userMessageFileAttachments(canonicalUserMessage)
+    : undefined;
   const copyText = canonicalUserMessage
-    ? (messageDocumentToPrompt(canonicalUserMessage, {
-        inlineTemplates,
-      }) ?? "")
-    : cleanContent;
-  const legacyClipboardAttachments = clipboardAttachmentsFromEvent(
-    event,
-    parsed,
-  );
+    ? (messageDocumentToPrompt(canonicalUserMessage) ?? "")
+    : "";
   const clipboardAttachments = canonicalUserMessage
     ? clipboardAttachmentsFromUserMessage(
         canonicalUserMessage,
-        legacyClipboardAttachments,
+        userMessageAttachments ?? [],
       )
-    : legacyClipboardAttachments;
+    : [];
 
   return {
-    attachFiles,
     canonicalUserMessage,
     clipboardAttachments,
     copyText,
-    parsed,
   };
+}
+
+function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
+  return inputEvent?.eventType === "input.prompt" && inputEvent.runId
+    ? `run-${inputEvent.runId}`
+    : undefined;
+}
+
+function messageImageLightboxTarget(
+  threadId: string,
+  url: string,
+  filename: string | undefined,
+) {
+  return { threadId, url, ...(filename ? { filename } : {}) };
 }
 
 function PagedUserMessage({
   event,
   thread,
+  stackedOnPrevious = false,
 }: {
   event: EnrichedChatEvent;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
+  stackedOnPrevious?: boolean;
 }) {
-  const { inlineTemplates } = useUserMessageRendering();
   const inputEvent = asInputChatEvent(event);
-  const userMessage = visibleUserMessage(inputEvent);
-  const {
-    attachFiles,
-    canonicalUserMessage,
-    clipboardAttachments,
-    copyText,
-    parsed,
-  } = resolvePagedUserMessageRendering({
-    event,
-    inputEvent,
-    userMessage,
-    inlineTemplates,
-  });
-  const bodyBlocks = event.blocks;
+  const renderDocument = event.userMessageRenderDocument;
+  const { canonicalUserMessage, clipboardAttachments, copyText } =
+    resolvePagedUserMessageRendering({
+      renderDocument,
+    });
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = (url: string) => {
-    openImageLightbox({ threadId: thread.threadId, url });
+  const openLightbox: OpenMessageImagePreview = (url, filename) => {
+    openImageLightbox(
+      messageImageLightboxTarget(thread.threadId, url, filename),
+    );
   };
   const copiedId = useGet(thread.copiedEventId$);
   const copied = copiedId === event.id;
   const copyEvent = useSet(thread.copyEvent$);
-  const findArtifact = thread.artifactSignalsForUrl;
-  const allAttachments = resolveAttachments(event, parsed, findArtifact);
+  const allAttachments = userMessageRenderAttachments(renderDocument);
   const canCopy =
-    userMessage !== undefined ||
+    canonicalUserMessage !== undefined ||
     copyText.trim().length > 0 ||
     clipboardAttachments.length > 0;
 
@@ -7438,13 +7610,19 @@ function PagedUserMessage({
         {
           text: copyText,
           attachments: clipboardAttachments,
-          ...(userMessage ? { userMessage } : {}),
+          ...(canonicalUserMessage
+            ? { userMessage: canonicalUserMessage }
+            : {}),
         },
         pageSignal,
       ),
       Reason.DomCallback,
     );
   };
+
+  if (isRejectedGoalUserMessage(event)) {
+    return null;
+  }
 
   if (isWorkflowUserMessage(event)) {
     return <WorkflowUserMessage event={event} />;
@@ -7454,50 +7632,33 @@ function PagedUserMessage({
     return <GoalUserMessage event={event} />;
   }
 
-  const nonContentPart = eventNonContentPart(event);
+  const nonContentRenderPart = userMessageAnnotationRenderPart(renderDocument);
+  const annotationPart =
+    nonContentRenderPart?.type === "morning_brief" ||
+    nonContentRenderPart?.type === "source"
+      ? nonContentRenderPart
+      : undefined;
   return (
     <div
+      id={inputPromptRunAnchor(inputEvent)}
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
-      className="group"
+      data-turn-created-at={event.createdAt}
+      className={cn("group", stackedOnPrevious && MESSAGE_STACK_PULL_CLASS)}
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          {nonContentPart?.type === "source" ? (
-            <MessageAnnotation part={nonContentPart} />
+          {annotationPart ? (
+            <MessageAnnotation renderPart={annotationPart} />
           ) : null}
-          {canonicalUserMessage ? (
+          {renderDocument ? (
             <UserMessageContent
-              document={canonicalUserMessage}
+              document={renderDocument}
               attachments={allAttachments}
-              referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
-              inlineTemplatesEnabled={inlineTemplates}
-              agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
-              composerSignals={thread.composer}
             />
-          ) : (
-            <>
-              <UserMessageAttachments
-                attachments={allAttachments}
-                onImageClick={openLightbox}
-              />
-              {bodyBlocks.length > 0 && (
-                <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
-                  <div className="px-4 py-3">
-                    <BodyContentBlocks
-                      blocks={bodyBlocks}
-                      openLightbox={openLightbox}
-                      hardBreaks
-                      escapeMarkdownHtml
-                      markdownMediaPreview={false}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          ) : null}
           <UserMessageActions
             canCopy={canCopy}
             copied={copied}
@@ -7512,11 +7673,13 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
+  showActions,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
+  showActions: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -7535,6 +7698,7 @@ function PagedAssistantGroup({
   }
 
   const groupElementId = `chat-event-group-${group.beginEventId}`;
+  const runId = firstRunIdForEvents(group.events);
   const fullContent = group.events
     .map((m) => {
       return m.content;
@@ -7562,6 +7726,8 @@ function PagedAssistantGroup({
     <div
       id={groupElementId}
       data-role="assistant"
+      data-chat-run-id={runId}
+      data-turn-created-at={group.events[0]?.createdAt}
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -7595,7 +7761,13 @@ function PagedAssistantGroup({
           })}
         </div>
       </div>
-      <PagedGroupActions group={group} content={fullContent} thread={thread} />
+      {showActions ? (
+        <PagedGroupActions
+          group={group}
+          content={fullContent}
+          thread={thread}
+        />
+      ) : null}
     </div>
   );
 }
@@ -7607,23 +7779,14 @@ function PagedAssistantEventItem({
 }: {
   event: EnrichedChatEvent;
   compactTop?: boolean;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
-  const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = (url: string) => {
-    openImageLightbox({ threadId: thread.threadId, url });
-  };
-  const attachments = resolveAttachments(
-    event,
-    [],
-    thread.artifactSignalsForUrl,
-  );
-
   const error = chatEventError(event);
   if (error) {
     return (
       <div
         data-chat-scroll-anchor-event-id={event.id}
+        data-chat-run-id={event.runId}
         className={cn(
           "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
@@ -7638,28 +7801,22 @@ function PagedAssistantEventItem({
     );
   }
 
-  if (event.content || event.blocks.length > 0 || attachments.length > 0) {
-    const { blocks } = event;
+  if (
+    (isChatEventContentTextType(event.eventType) && event.content) ||
+    hasChatEventBodyContent(event)
+  ) {
     return (
       <div
         data-chat-scroll-anchor-event-id={event.id}
+        data-chat-run-id={event.runId}
         className={cn(
           "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
         )}
       >
-        {blocks.length > 0 ? (
-          <BodyContentBlocks
-            blocks={blocks}
-            openLightbox={openLightbox}
-            hardBreaks={false}
-          />
+        {event.tree !== undefined ? (
+          <MarkdownEventBody tree={event.tree} mediaPreview />
         ) : null}
-        <UserMessageAttachments
-          attachments={attachments}
-          onImageClick={openLightbox}
-          align="start"
-        />
       </div>
     );
   }
@@ -7753,10 +7910,10 @@ function UsageChip({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-state-hover hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
         >
-          <IconCoins size={17} stroke={1.5} />
+          <Coins size={17} />
           <span>{total}</span>
         </button>
       </PopoverTrigger>
@@ -7840,12 +7997,12 @@ function PagedGroupPrimaryActions({
                 options={{
                   pathParams: { activityRunId: firstRunId },
                 }}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
                 aria-label={t(($) => {
                   return $.chat.run.viewLogs;
                 })}
               >
-                <IconChartLine size={18} stroke={1.5} />
+                <ChartLine size={18} />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -7863,16 +8020,12 @@ function PagedGroupPrimaryActions({
               <button
                 type="button"
                 onClick={onCopy}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
                 aria-label={t(($) => {
                   return $.chat.actions.copyMessage;
                 })}
               >
-                {copied ? (
-                  <IconCheck size={18} stroke={1.5} />
-                ) : (
-                  <IconCopy size={18} stroke={1.5} />
-                )}
+                {copied ? <Check size={18} /> : <Copy size={18} />}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -7899,7 +8052,7 @@ function PagedGroupActions({
 }: {
   group: ChatEventGroup;
   content: string;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const pageSignal = useGet(pageSignal$);
   const copiedId = useGet(thread.copiedEventId$);

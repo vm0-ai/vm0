@@ -1,4 +1,4 @@
-import { cronCleanupSandboxesContract } from "@vm0/api-contracts/contracts/cron";
+import { cronCleanupSandboxesContract } from "@okouai/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
@@ -11,7 +11,7 @@ const cleanupSandboxesRoute$ = command(
       return cronUnauthorized();
     }
 
-    const body = await set(cleanupSandboxes$, signal);
+    const body = await set(cleanupSandboxes$, { kind: "global" }, signal);
     signal.throwIfAborted();
     return { status: 200 as const, body };
   },

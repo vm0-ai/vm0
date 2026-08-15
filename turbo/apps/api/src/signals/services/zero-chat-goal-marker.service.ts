@@ -1,60 +1,34 @@
-import type { ChatEventGoalEvent } from "@vm0/db/schema/chat-event";
-import { not, type SQL } from "drizzle-orm";
+import type { Tx } from "../../lib/db-types";
+import { insertChatEvent } from "./chat-event.service";
+import { nonEmptyGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
 
-import type { Db } from "../external/db";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { insertChatEvent } from "./zero-chat-event.service";
-import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
-
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 /**
- * Goal state is published into the chat thread as assistant control messages so
- * the web client can fold the current goal state from the message stream
- * without calling the goal API for display. Marker rows are not conversation:
- * they carry only goal_event, and transcript/search/unread queries exclude
- * them.
+ * Goal state is published into the chat thread as an assistant UI projection.
+ * thread_goals remains authoritative for runtime state and mutations.
  */
-export async function appendGoalEventMarker(
+export async function appendGoalOpenMarker(
   tx: DbTransaction,
   args: {
     readonly chatThreadId: string;
-    readonly event: ChatEventGoalEvent;
+    readonly objectiveBrief: string;
   },
 ): Promise<void> {
   await insertChatEvent(tx, {
     chatThreadId: args.chatThreadId,
-    eventType: "goal.changed",
-    content: null,
-    runId: null,
-    runEventId: null,
-    goalEvent: args.event,
+    eventType: "goal.open",
+    content: nonEmptyGoalObjectiveBrief(args.objectiveBrief),
   });
 }
 
-export function activeGoalEvent(objectiveBrief: string): ChatEventGoalEvent {
-  return {
-    type: "state",
-    status: "active",
-    objectiveBrief: nonEmptyGoalObjectiveBrief(objectiveBrief),
-  };
-}
-
-export function hiddenGoalStateEvent(
-  status: "paused" | "blocked" | "complete",
-): ChatEventGoalEvent {
-  return { type: "state", status };
-}
-
-export function clearedGoalEvent(): ChatEventGoalEvent {
-  return { type: "cleared" };
-}
-
-/**
- * Exclude goal marker rows from queries where control rows must not affect
- * user-visible chat semantics. The message-list endpoint does not apply this
- * because the client needs markers to fold active-goal display state.
- */
-export function excludeGoalMarkerCondition() {
-  return not(chatEventTypeIn(["goal.changed"]) as SQL);
+export async function appendGoalCloseMarker(
+  tx: DbTransaction,
+  args: { readonly chatThreadId: string },
+): Promise<void> {
+  await insertChatEvent(tx, {
+    chatThreadId: args.chatThreadId,
+    eventType: "goal.close",
+    content: null,
+  });
 }

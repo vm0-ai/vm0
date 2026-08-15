@@ -1,12 +1,12 @@
 import { command } from "ccstate";
-import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
 
 import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
 import {
-  isAllowedUploadType,
   MAX_UPLOAD_SIZE_BYTES,
   MAX_UPLOAD_SIZE_LABEL,
+  normalizeWebUploadContentType,
 } from "../../lib/uploads-constants";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -19,7 +19,7 @@ import {
   s3MetadataHeaders,
 } from "../external/s3";
 import { allocateArtifactObject$ } from "../services/artifact-storage.service";
-import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
+import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 import { onRejection, tapError } from "../utils";
 
@@ -37,16 +37,13 @@ const prepareUploadInner$ = command(
     }
 
     const { filename, size } = bodyResult.data;
-    const contentType =
-      bodyResult.data.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+    const contentType = normalizeWebUploadContentType(
+      bodyResult.data.contentType,
+    );
 
     if (size > MAX_UPLOAD_SIZE_BYTES) {
       return badRequestMessage(`File too large (max ${MAX_UPLOAD_SIZE_LABEL})`);
     }
-    if (!isAllowedUploadType(contentType)) {
-      return badRequestMessage(`Unsupported file type: ${contentType}`);
-    }
-
     if (auth.orgId) {
       const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
       if (suspended) {
@@ -59,16 +56,12 @@ const prepareUploadInner$ = command(
       allocateArtifactObject$,
       {
         userId: auth.userId,
-        orgId: auth.orgId,
         filename,
-        allowV2:
-          bodyResult.data.multipart === true ||
-          bodyResult.data.supportsUploadHeaders === true,
       },
       signal,
     );
     const { id, key: s3Key, url, metadata } = artifact;
-    const uploadHeaders = metadata ? s3MetadataHeaders(metadata) : undefined;
+    const uploadHeaders = s3MetadataHeaders(metadata);
 
     if (
       bodyResult.data.multipart === true &&

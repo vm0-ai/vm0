@@ -112,9 +112,9 @@ jobs:
           set -euo pipefail
           CHANGES_JSON=$(./scripts/changed.sh "$BASE_REF")
           web_changed=$(echo "$CHANGES_JSON" | jq -r '."web" // false')
-          platform_changed=$(echo "$CHANGES_JSON" | jq -r '."@vm0/app" // false')
+          platform_changed=$(echo "$CHANGES_JSON" | jq -r '."@okouai/app" // false')
           api_changed=$(echo "$CHANGES_JSON" | jq -r '."api" // false')
-          cli_changed=$(echo "$CHANGES_JSON" | jq -r '."@vm0/cli" // false')
+          cli_changed=$(echo "$CHANGES_JSON" | jq -r '."@okouai/cli" // false')
 
           if git diff --name-only "$BASE_REF" HEAD | grep -q "^crates/"; then
             crates_changed=true
@@ -384,6 +384,11 @@ jobs:
           retention-days: 1
           compression-level: 1
 
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/report-memory-peak
+
   build:
     name: Build runner image (${{ matrix.label }})
     runs-on: ubuntu-latest
@@ -625,7 +630,7 @@ jobs:
           name: ${{ steps.artifact.outputs.artifact-name }}
           path: runner-binary-asset/manifest.json
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7
 
       - name: Summarize runner binary asset
         if: always()

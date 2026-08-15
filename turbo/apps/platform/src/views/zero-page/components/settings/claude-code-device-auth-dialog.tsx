@@ -6,10 +6,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import { Button } from "@vm0/ui/components/ui/button";
-import { Input } from "@vm0/ui/components/ui/input";
-import { IconLoader2 } from "@tabler/icons-react";
+} from "@okouai/ui/components/ui/dialog";
+import { Button } from "@okouai/ui/components/ui/button";
+import { Input } from "@okouai/ui/components/ui/input";
+import { Loader2 } from "lucide-react";
 
 import {
   claudeCodeDeviceAuthDialogState$,
@@ -172,7 +172,6 @@ function ClaudeCodeDeviceAuthDialogView({
           onStart={handleStart}
           onSubmit={handleSubmit}
           openApprovalPage={openApprovalPage}
-          pageSignal={pageSignal}
           setAuthorizationCode={setAuthorizationCode}
           submitting={submitting}
         />
@@ -187,7 +186,6 @@ function ClaudeCodeDeviceAuthBody({
   onStart,
   onSubmit,
   openApprovalPage,
-  pageSignal,
   setAuthorizationCode,
   submitting,
 }: {
@@ -196,11 +194,11 @@ function ClaudeCodeDeviceAuthBody({
   onStart: () => void;
   onSubmit: () => void;
   openApprovalPage: (signal: AbortSignal) => boolean | Promise<boolean>;
-  pageSignal: AbortSignal;
   setAuthorizationCode: (value: string) => void;
   submitting: boolean;
 }) {
   const brandName = useGet(brandName$);
+  const pageSignal = useGet(pageSignal$);
   const { t } = useTranslation();
   switch (flow.status) {
     case "idle": {
@@ -274,7 +272,7 @@ function ClaudeCodeDeviceAuthBody({
             disabled={submitting}
             data-testid="claude-code-device-auth-submit"
           >
-            {submitting && <IconLoader2 size={14} className="animate-spin" />}
+            {submitting && <Loader2 size={14} className="animate-spin" />}
             {submitting
               ? t(($) => {
                   return $.settings.shared.connecting;
@@ -308,7 +306,7 @@ function ClaudeCodeDeviceAuthLoadingContent() {
       role="status"
       data-testid="claude-code-device-auth-loading"
     >
-      <IconLoader2 size={16} className="animate-spin" />
+      <Loader2 size={16} className="animate-spin" />
       <span>
         {t(($) => {
           return $.settings.models.deviceAuth.claude.preparing;

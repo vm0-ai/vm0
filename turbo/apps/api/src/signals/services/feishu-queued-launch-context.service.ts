@@ -1,8 +1,8 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
-import { feishuChatThreadRoutes } from "@vm0/db/schema/feishu-chat-thread-route";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
+import { feishuChatThreadRoutes } from "@okouai/db/schema/feishu-chat-thread-route";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -141,7 +141,6 @@ async function loadFeishuLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "feishu"),
-        eq(chatEvents.triggerSource, "feishu"),
       ),
     )
     .limit(1);

@@ -1,36 +1,40 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { command } from "ccstate";
+import { describe, expect, it, vi } from "vitest";
 
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  zeroBillingStatusContract,
+  zeroBillingUsagePackCreditsContract,
+} from "@okouai/api-contracts/contracts/zero-billing";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
-import { clearMockNow, mockNow } from "../../../lib/time.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { foregroundReady$ } from "../../../signals/auth-retry.ts";
+import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-
-afterEach(async () => {
-  clearMockNow();
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
-});
 
 function connectedPersonalCodexProvider(
   overrides: Partial<ModelProviderResponse> = {},
@@ -136,6 +140,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function linkByText(text: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`${text} link not found`);
+  }
+  return link;
+}
+
 function buttonByLabel(
   label: string,
   container: ParentNode = document.body,
@@ -192,54 +206,402 @@ async function openAccountMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu");
 }
 
-function mockAdminBillingStatus(credits: number): void {
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-    return respond(200, {
-      tier: "pro",
-      credits,
-      onboardingPaymentPending: false,
-      subscriptionStatus: "active",
-      currentPeriodEnd: "2026-04-01T00:00:00Z",
-      cancelAtPeriodEnd: false,
-      scheduledChange: null,
-      hasSubscription: true,
-      autoRecharge: { enabled: false, threshold: null, amount: null },
-      creditExpiry: {
-        expiringNextCycle: 0,
-        nextExpiryDate: null,
-      },
-      creditBreakdown: [
-        {
-          category: "plan",
-          tier: "pro",
-          label: "Pro credits",
-          credits: 10_000,
+interface MockAdminBillingStatusOptions {
+  readonly failFirstRequest?: boolean;
+  readonly firstRequestGate?: {
+    readonly onStarted: () => void;
+    readonly waitUntil: Promise<void>;
+  };
+  readonly onRequest?: () => void;
+}
+
+function mockAdminBillingStatus(
+  credits: number,
+  options: MockAdminBillingStatusOptions = {},
+): void {
+  let requestCount = 0;
+  context.mocks.api(
+    zeroBillingStatusContract.get,
+    async ({ respond, withSignal }) => {
+      requestCount += 1;
+      options.onRequest?.();
+      if (requestCount === 1 && options.firstRequestGate) {
+        options.firstRequestGate.onStarted();
+        await withSignal(options.firstRequestGate.waitUntil);
+      }
+      if (options.failFirstRequest && requestCount === 1) {
+        return respond(500, {
+          error: {
+            message: "Failed to load billing status",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        });
+      }
+      return respond(200, {
+        tier: "pro",
+        credits,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
         },
-        {
-          category: "promotional",
-          label: "Launch bonus",
-          credits: 2500,
-        },
-      ],
-      creditGrants: [],
-      concurrencyLimit: 0,
-      concurrencySubscriptions: [],
-    });
-  });
+        creditBreakdown: [
+          {
+            category: "plan",
+            tier: "pro",
+            label: "Pro credits",
+            credits: 10_000,
+          },
+          {
+            category: "promotional",
+            label: "Launch bonus",
+            credits: 2500,
+          },
+        ],
+        creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
+      });
+    },
+  );
 }
 
 function mockAdminAccountSidebar(): void {
   prepareDefaultAgent();
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
   mockAdminBillingStatus(12_500);
 }
 
+function mockMemberAccountSidebar(): void {
+  prepareDefaultAgent();
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
+  });
+}
+
 describe("zero sidebar account menu", () => {
+  it("restores visible focus to the account trigger when the menu closes", async () => {
+    const user = userEvent.setup();
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const accountName = await screen.findByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Account menu trigger not found");
+    }
+
+    await user.click(accountButton);
+    const menu = await screen.findByRole("menu");
+    expect(menu).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(accountButton).toHaveFocus();
+      expect(accountButton.matches(":focus-visible")).toBeTruthy();
+    });
+  });
+
+  it("shows realtime recovery status beside the expanded account only in debug mode", async () => {
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    const accountName = await screen.findByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Account menu trigger not found");
+    }
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("threadListChanged"),
+      ).toBeTruthy();
+      expect(within(accountButton).queryByRole("status")).toBeNull();
+    });
+
+    act(() => {
+      context.mocks.ably.triggerConnectionState("disconnected", {
+        retryIn: 5000,
+      });
+    });
+    await waitFor(() => {
+      expect(
+        within(accountButton).getByRole("status", {
+          name: "Realtime reconnecting",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    act(() => {
+      context.mocks.ably.triggerConnectionState("connected");
+    });
+    await waitFor(() => {
+      expect(within(accountButton).queryByRole("status")).toBeNull();
+    });
+
+    act(() => {
+      context.mocks.ably.triggerFailure("terminal connection failure");
+    });
+    await waitFor(() => {
+      expect(
+        within(accountButton).getByRole("status", {
+          name: "Realtime disconnected",
+        }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("keeps realtime recovery status hidden when debug mode is disabled", async () => {
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const accountName = await screen.findByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Account menu trigger not found");
+    }
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("threadListChanged"),
+      ).toBeTruthy();
+    });
+
+    act(() => {
+      context.mocks.ably.triggerConnectionState("disconnected", {
+        retryIn: 5000,
+      });
+    });
+    expect(within(accountButton).queryByRole("status")).toBeNull();
+  });
+
+  it("does not request or show member usage pack credits when the switch is disabled", async () => {
+    mockMemberAccountSidebar();
+    let billingRequests = 0;
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      billingRequests += 1;
+      return respond(200, {
+        tier: "pro",
+        credits: 12_500,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
+      });
+    });
+    let usagePackCreditRequests = 0;
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        usagePackCreditRequests += 1;
+        return respond(200, {
+          totalCredits: 20_400,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+          creditGrants: [],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(billingRequests).toBeGreaterThan(0);
+    });
+    billingRequests = 0;
+    const menu = await openAccountMenu();
+    expect(within(menu).getByText("Settings")).toBeInTheDocument();
+    expect(
+      within(menu).queryByTestId("account-menu-credit-balance"),
+    ).toBeNull();
+    expect(billingRequests).toBe(0);
+    expect(usagePackCreditRequests).toBe(0);
+  });
+
+  it("refreshes member usage pack credits without requesting org billing", async () => {
+    mockMemberAccountSidebar();
+    let usagePackCredits = 20_400;
+    let usagePackCreditRequests = 0;
+    let billingRequests = 0;
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      billingRequests += 1;
+      return respond(200, {
+        tier: "pro",
+        credits: 12_500,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
+      });
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        usagePackCreditRequests += 1;
+        return respond(200, {
+          totalCredits: usagePackCredits,
+          purchasedCredits: Math.max(0, usagePackCredits - 400),
+          bonusCredits: 400,
+          creditGrants: [],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(billingRequests).toBeGreaterThan(0);
+    });
+    billingRequests = 0;
+    const menu = await openAccountMenu();
+    const usagePackItem = await within(menu).findByTestId(
+      "account-menu-credit-balance",
+    );
+    expect(
+      within(usagePackItem).getByText("20,400 credits"),
+    ).toBeInTheDocument();
+    expect(within(menu).queryByText("32,900 credits")).toBeNull();
+
+    usagePackCredits = 500;
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    const refreshedMenu = await openAccountMenu();
+    const refreshedUsagePackItem = await within(refreshedMenu).findByTestId(
+      "account-menu-credit-balance",
+    );
+    await waitFor(() => {
+      expect(
+        within(refreshedUsagePackItem).getByText("500 credits"),
+      ).toBeInTheDocument();
+    });
+    expect(usagePackCreditRequests).toBe(2);
+    expect(billingRequests).toBe(0);
+
+    click(refreshedUsagePackItem);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Credit balance" }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("usage-pack-credit-card")).toBeInTheDocument();
+    });
+  });
+
+  it("shows admins one total combining organization and personal usage pack credits", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          totalCredits: 20_400,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+          creditGrants: [],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    const menu = await openAccountMenu();
+    const creditItem = await within(menu).findByTestId(
+      "account-menu-credit-balance",
+    );
+    expect(within(creditItem).getByText("32,900 credits")).toBeInTheDocument();
+    expect(within(menu).queryByText("12,500 credits")).toBeNull();
+    expect(within(menu).queryByText("20,400 credits")).toBeNull();
+  });
+
   it("opens credit balance and export data from the account menu", async () => {
     mockAdminAccountSidebar();
     const openMock = context.mocks.browser.open(null);
@@ -281,8 +643,8 @@ describe("zero sidebar account menu", () => {
       expect(
         screen.getByRole("heading", { name: "Credit balance" }),
       ).toBeInTheDocument();
-      expect(screen.getByText("Pro credits")).toBeInTheDocument();
-      expect(screen.getByText("Launch bonus")).toBeInTheDocument();
+      expect(screen.getByTestId("credit-balance-info")).toBeInTheDocument();
+      expect(screen.getByText("12,500")).toBeInTheDocument();
     });
   });
 
@@ -319,6 +681,297 @@ describe("zero sidebar account menu", () => {
     expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
   });
 
+  it("shares foreground indicator and billing refreshes with the account menu", async () => {
+    let billingRequests = 0;
+    let indicatorRequests = 0;
+    mockAdminAccountSidebar();
+    mockAdminBillingStatus(12_500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      indicatorRequests += 1;
+      return respond(200, { agents: {}, threads: {} });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(
+        context.mocks.ably.hasSubscription("threadListChanged"),
+      ).toBeTruthy();
+      expect(
+        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
+      ).toBeTruthy();
+      expect(billingRequests).toBeGreaterThan(0);
+      expect(indicatorRequests).toBeGreaterThan(0);
+    });
+
+    let previousIndicatorRequests = indicatorRequests;
+    context.mocks.ably.trigger("threadListChanged");
+    await waitFor(() => {
+      expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
+    });
+    previousIndicatorRequests = indicatorRequests;
+    context.mocks.ably.trigger("chatThreadReadCursorUpdated");
+    await waitFor(() => {
+      expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
+    });
+
+    mockAdminBillingStatus(500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    billingRequests = 0;
+    indicatorRequests = 0;
+
+    const accountName = screen.getByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Expected account menu trigger");
+    }
+    window.dispatchEvent(new Event("focus"));
+    fireEvent.click(accountButton);
+    let menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
+      expect(indicatorRequests).toBe(1);
+    });
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+    mockAdminBillingStatus(250, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    billingRequests = 0;
+
+    menu = await openAccountMenu();
+    await waitFor(() => {
+      expect(within(menu).getByText("250 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
+    });
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+    billingRequests = 0;
+    mockAdminBillingStatus(125, {
+      failFirstRequest: true,
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+
+    window.dispatchEvent(new Event("focus"));
+    fireEvent.click(accountButton);
+    menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(within(menu).getByText("125 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(2);
+    });
+  });
+
+  it("joins a foreground billing refresh that already started", async () => {
+    let billingRequests = 0;
+    mockAdminAccountSidebar();
+    mockAdminBillingStatus(12_500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(billingRequests).toBeGreaterThan(0);
+    });
+
+    const initialMenu = await openAccountMenu();
+    await waitFor(() => {
+      expect(
+        within(initialMenu).getByText("12,500 credits"),
+      ).toBeInTheDocument();
+    });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    const catchUpCanFinish = context.mocks.deferred<void>();
+    const holdForegroundCatchUp$ = command(
+      async (_ctx, signal: AbortSignal): Promise<void> => {
+        await catchUpCanFinish.promise;
+        signal.throwIfAborted();
+      },
+    );
+    context.store.set(
+      subscribeRealtimeReadyCatchUp$,
+      holdForegroundCatchUp$,
+      context.signal,
+    );
+
+    mockAdminBillingStatus(500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    billingRequests = 0;
+
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(billingRequests).toBe(1);
+    });
+    const foregroundReady = context.store.get(foregroundReady$);
+    expect(foregroundReady.pending).toBeTruthy();
+
+    const menu = await openAccountMenu();
+    expect(billingRequests).toBe(1);
+
+    catchUpCanFinish.resolve();
+    await foregroundReady.promise;
+    await waitFor(() => {
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
+    });
+  });
+
+  it("joins a foreground billing request after the catch-up barrier settles", async () => {
+    let billingRequests = 0;
+    mockAdminAccountSidebar();
+    mockAdminBillingStatus(12_500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(billingRequests).toBeGreaterThan(0);
+    });
+
+    const initialMenu = await openAccountMenu();
+    await waitFor(() => {
+      expect(
+        within(initialMenu).getByText("12,500 credits"),
+      ).toBeInTheDocument();
+    });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    const foregroundRequestStarted = context.mocks.deferred<void>();
+    const foregroundResponseReady = context.mocks.deferred<void>();
+    mockAdminBillingStatus(500, {
+      firstRequestGate: {
+        onStarted: () => {
+          foregroundRequestStarted.resolve();
+        },
+        waitUntil: foregroundResponseReady.promise,
+      },
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+    billingRequests = 0;
+
+    window.dispatchEvent(new Event("focus"));
+    await foregroundRequestStarted.promise;
+    await waitFor(() => {
+      expect(context.store.get(foregroundReady$).pending).toBeFalsy();
+    });
+
+    const menu = await openAccountMenu();
+    foregroundResponseReady.resolve();
+    await waitFor(() => {
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
+    });
+  });
+
+  it("defers minimal-layout billing refresh until the account menu opens", async () => {
+    let billingRequests = 0;
+    mockAdminAccountSidebar();
+    mockAdminBillingStatus(500, {
+      onRequest: () => {
+        billingRequests += 1;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/connect?agentId=${AGENT_ID}`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await screen.findByText("Zero needs GitHub to proceed");
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+    expect(billingRequests).toBe(0);
+
+    window.dispatchEvent(new Event("focus"));
+    const foregroundReady = context.store.get(foregroundReady$);
+    await foregroundReady.promise;
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+    expect(billingRequests).toBe(0);
+
+    const menu = await openAccountMenu();
+    await waitFor(() => {
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+      expect(billingRequests).toBe(1);
+    });
+  });
+
   it("hides account menu subscriptions when the feature switch is disabled", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
@@ -348,7 +1001,7 @@ describe("zero sidebar account menu", () => {
 
   it("shows subscription usage grouped below credits in the account menu", async () => {
     mockBrowserTimeZone("America/New_York");
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -593,7 +1246,7 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("keeps the user profile inside settings and changes debug capture", async () => {
+  it("links to the hosted user profile in a new tab and changes debug capture", async () => {
     prepareDefaultAgent();
     context.mocks.data.userPreferences({
       captureNetworkBodiesRemaining: 0,
@@ -630,15 +1283,19 @@ describe("zero sidebar account menu", () => {
     click(within(menu).getByText("Settings"));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
+      const dialog = screen.getByRole("dialog", { name: "Settings" });
+      expect(dialog).toBeInTheDocument();
       expect(
         screen.getByRole("heading", { name: "Preference" }),
       ).toBeInTheDocument();
-      expect(screen.getByText("Account & Security")).toBeInTheDocument();
-      expect(screen.getByText("Alex Rivera")).toBeInTheDocument();
-      expect(screen.getByText("alex.rivera@example.test")).toBeInTheDocument();
+      // Scoped to the dialog: the sidebar account row also carries the name.
+      expect(
+        within(dialog).getByText("Account & Security"),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText("Alex Rivera")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText("alex.rivera@example.test"),
+      ).toBeInTheDocument();
     });
 
     const openedSettingsDialog = screen.getByRole("dialog", {
@@ -653,49 +1310,17 @@ describe("zero sidebar account menu", () => {
       );
     });
 
-    const clerkProfileModals: HTMLDivElement[] = [];
-    mockedClerk.openUserProfile.mockImplementation((options) => {
-      const container = options?.getContainer?.();
-      if (!container) {
-        throw new Error("Clerk profile portal container not found");
-      }
-      const modal = document.createElement("div");
-      modal.dataset.clerkUserProfile = "";
-      container.append(modal);
-      clerkProfileModals.push(modal);
-    });
-
-    click(buttonByText("Manage"));
-
-    await waitFor(() => {
-      expect(clerkProfileModals).toHaveLength(1);
-      expect(mockedClerk.openUserProfile).toHaveBeenCalledWith({
-        apiKeysProps: { hide: true },
-        appearance: {
-          elements: {
-            modalBackdrop: {
-              position: "absolute",
-              width: "100%",
-              height: "100%",
-            },
-          },
-        },
-        getContainer: expect.any(Function),
-      });
-    });
-
-    const clerkProfileModal = clerkProfileModals[0];
-    if (!clerkProfileModal) {
-      throw new Error("Clerk profile modal not found");
-    }
-    expect(openedSettingsDialog).toContainElement(clerkProfileModal);
-    clerkProfileModal.remove();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
-    });
+    const userProfileLink = linkByText("Manage");
+    expect(userProfileLink).toHaveAttribute(
+      "href",
+      "https://accounts.example.test/user",
+    );
+    expect(userProfileLink).toHaveAttribute("target", "_blank");
+    expect(userProfileLink).toHaveAttribute("rel", "noreferrer");
+    expect(mockedClerk.buildUserProfileUrl).toHaveBeenCalledWith();
+    expect(mockedClerk.buildUrlWithAuth).toHaveBeenCalledWith(
+      "https://accounts.example.test/user",
+    );
 
     click(buttonByText("Debug"));
 
@@ -722,7 +1347,6 @@ describe("zero sidebar account menu", () => {
     });
 
     const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
-    mockedClerk.closeUserProfile.mockClear();
     click(buttonByLabel("Close", settingsDialog));
 
     await waitFor(() => {
@@ -731,11 +1355,34 @@ describe("zero sidebar account menu", () => {
       ).not.toBeInTheDocument();
       expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
     });
-    expect(mockedClerk.closeUserProfile).toHaveBeenCalledTimes(1);
     expect(document.body.style.pointerEvents).not.toBe("none");
 
     const reopenedMenu = await openAccountMenu();
     expect(within(reopenedMenu).getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("links the production satellite to the primary hosted user profile", async () => {
+    context.mocks.browser.url("https://app.okou.ai/");
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Settings"));
+
+    await screen.findByRole("dialog", { name: "Settings" });
+    expect(linkByText("Manage")).toHaveAttribute(
+      "href",
+      "https://accounts.vm0.ai/user",
+    );
   });
 
   it("hides debug settings when ZeroDebug is disabled", async () => {
@@ -875,7 +1522,7 @@ describe("zero sidebar account menu", () => {
 
   it("preserves satellite session sync after signing out", async () => {
     prepareDefaultAgent();
-    window.location.href = "https://app.okou.ai/";
+    context.mocks.browser.url("https://app.okou.ai/");
 
     detachedSetupPage({
       context,
@@ -900,77 +1547,7 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("retries auth recovery network failures before replaying the request", async () => {
-    mockAdminAccountSidebar();
-    const provider = connectedPersonalCodexProvider();
-    context.mocks.data.personalModelProviders([provider]);
-
-    let modelProviderRequests = 0;
-    let forcedTokenRefreshes = 0;
-    const authRecoveryCompleted = context.mocks.deferred<void>();
-    context.mocks.http.get("*/api/zero/me/model-providers", () => {
-      modelProviderRequests += 1;
-      if (modelProviderRequests === 1) {
-        return HttpResponse.json(
-          {
-            error: {
-              code: "UNAUTHORIZED",
-              message: "Unauthorized",
-            },
-          },
-          { status: 401 },
-        );
-      }
-      if (modelProviderRequests === 2) {
-        return HttpResponse.error();
-      }
-      if (modelProviderRequests === 3) {
-        authRecoveryCompleted.resolve();
-      }
-      return HttpResponse.json({ modelProviders: [provider] });
-    });
-    mockedClerk.sessionGetToken.mockImplementation((options) => {
-      if (options?.skipCache) {
-        forcedTokenRefreshes += 1;
-        if (forcedTokenRefreshes === 1) {
-          return Promise.reject(
-            Object.assign(new Error("Clerk is offline"), {
-              code: "clerk_offline",
-            }),
-          );
-        }
-        if (forcedTokenRefreshes === 2) {
-          return Promise.reject(new TypeError("Failed to fetch"));
-        }
-        return Promise.resolve("fresh-token");
-      }
-      return Promise.resolve("test-token");
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    await authRecoveryCompleted.promise;
-    expect(modelProviderRequests).toBe(3);
-    expect(forcedTokenRefreshes).toBe(3);
-    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
-
-    const menu = await openAccountMenu();
-    const panel = await within(menu).findByTestId("account-menu-subscriptions");
-    expect(
-      within(panel).getByRole("heading", { name: "Codex" }),
-    ).toBeInTheDocument();
-  });
-
-  it("redirects without a toast when the fresh-token request remains unauthorized", async () => {
+  it("keeps an active session open when the replay remains unauthorized", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -1006,74 +1583,23 @@ describe("zero sidebar account menu", () => {
 
     await waitFor(() => {
       expect(modelProviderRequests).toBe(2);
-      expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
     });
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
-  it("suppresses global sign-in redirects during add-account auth transitions", async () => {
-    mockNow(new Date("2026-01-01T00:00:00.000Z"));
+  it("keeps the app open when auth recovery remains unauthorized in the background", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
     ]);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-        imageUrl: "https://cdn.vm0.test/users/alex.png",
-        clientSessions: [
-          {
-            id: "test-session-id",
-            status: "active",
-            user: {
-              fullName: "Alex Rivera",
-              imageUrl: "https://cdn.vm0.test/users/alex.png",
-              primaryEmailAddress: {
-                emailAddress: "alex.rivera@example.test",
-              },
-            },
-          },
-          {
-            id: "session-jamie",
-            status: "active",
-            user: {
-              fullName: "Jamie Chen",
-              imageUrl: "https://cdn.vm0.test/users/jamie.png",
-              primaryEmailAddress: {
-                emailAddress: "jamie.chen@example.test",
-              },
-            },
-          },
-        ],
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    let menu = await openAccountMenu();
-    click(within(menu).getByText("Switch account"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Add account")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Add account"));
-    await waitFor(() => {
-      expect(mockedClerk.openSignIn).toHaveBeenCalledWith({
-        fallbackRedirectUrl: "/",
-        forceRedirectUrl: "/",
-      });
-    });
-
-    let modelProviderRefreshes = 0;
+    let modelProviderRequests = 0;
     context.mocks.api(
       zeroPersonalModelProvidersMainContract.list,
       ({ respond }) => {
-        modelProviderRefreshes += 1;
+        modelProviderRequests += 1;
         return respond(401, {
           error: {
             code: "UNAUTHORIZED",
@@ -1082,27 +1608,26 @@ describe("zero sidebar account menu", () => {
         });
       },
     );
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
+    });
 
-    menu = await openAccountMenu();
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
     await waitFor(() => {
-      expect(modelProviderRefreshes).toBeGreaterThan(0);
+      expect(modelProviderRequests).toBe(2);
     });
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
-
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-
-    mockedClerk.redirectToSignIn.mockClear();
-    modelProviderRefreshes = 0;
-    mockNow(new Date("2026-01-01T00:00:30.001Z"));
-
-    await openAccountMenu();
-    await waitFor(() => {
-      expect(modelProviderRefreshes).toBeGreaterThan(0);
-      expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
-    });
+    expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
   it("localizes account actions without changing account data or routes", async () => {
@@ -1183,8 +1708,25 @@ describe("zero sidebar account menu", () => {
 
     menu = await openAccountMenu();
     click(within(menu).getByText("Trocar de conta"));
-    expect(screen.getByText("Jamie Chen")).toBeVisible();
-    expect(screen.getByText("jamie.chen@example.test")).toBeVisible();
-    expect(screen.getByText("Adicionar conta")).toBeVisible();
+    await waitFor(() => {
+      const menuItems = queryAllByRoleFast("menuitem");
+      const switchAccount = menuItems.find((item) => {
+        return (
+          item.textContent?.includes("Jamie Chen") === true &&
+          item.textContent.includes("jamie.chen@example.test")
+        );
+      });
+      if (!switchAccount) {
+        throw new Error("Expected the account switch menu item");
+      }
+      expect(within(switchAccount).getByText("Jamie Chen")).toBeVisible();
+      expect(
+        within(switchAccount).getByText("jamie.chen@example.test"),
+      ).toBeVisible();
+      const addAccount = menuItems.find((item) => {
+        return item.textContent === "Adicionar conta";
+      });
+      expect(addAccount).toBeVisible();
+    });
   });
 });

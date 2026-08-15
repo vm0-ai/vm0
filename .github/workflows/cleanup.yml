@@ -5,95 +5,57 @@ on:
     types: [closed]
 
 concurrency:
-  group: ${{ github.head_ref || github.ref }}
+  group: cleanup-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  cleanup-okou-pages-domain:
+  cleanup-app-pages-deployments:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
 
-      - name: Delete Cloudflare Pages custom preview domain
+      - name: Wait for active CI owners before app Pages cleanup
         env:
-          CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
-          CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUNNER_OWNER_SCOPE: closed-pr-cleanup
+        run: .github/scripts/cancel-superseded-merge-group-runs.sh
+
+      - name: Delete Cloudflare Pages app preview deployments
+        env:
           CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PAGES_BRANCH: pr-${{ github.event.pull_request.number }}-app
         run: |
-          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
-          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          bash .github/scripts/manage-okou-pages-domain.sh \
-            delete \
+          bash .github/scripts/delete-okou-pages-preview-deployments.sh \
             "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
             "$CF_PAGES_PROJECT_NAME" \
-            "pr-${PR_NUMBER}-app.${CF_PAGES_PREVIEW_DOMAIN}"
-
-  # Deletion-only drain for WWW resources created before PR previews stopped
-  # provisioning them. Remove this job after all such PRs have closed.
-  cleanup-legacy-preview-www:
-    runs-on: ubuntu-latest
-    concurrency:
-      group: provision-preview-www-pr-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
-    steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Delete legacy Cloudflare WWW Worker route and Worker
-        env:
-          CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
-          CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${CLOUDFLARE_API_TOKEN:?CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN secret is required}"
-          hostname="pr-${PR_NUMBER}-www.${CF_PAGES_PREVIEW_DOMAIN}"
-          worker_name="vm0-www-pr-${PR_NUMBER}-runtime"
-          bash .github/scripts/manage-cloudflare-worker-route.sh \
-            delete \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "${hostname}/api/*" \
-            "$worker_name"
-          bash .github/scripts/delete-cloudflare-worker.sh \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$worker_name"
-
-      - name: Delete legacy Cloudflare WWW Pages domain and DNS
-        env:
-          CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
-          CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          WWW_PAGES_PROJECT_NAME: ${{ vars.CF_WWW_PAGES_PROJECT_NAME || 'okou-www' }}
-        run: |
-          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${CLOUDFLARE_API_TOKEN:?CF_PAGES_DEPLOY_API_TOKEN secret is required}"
-          hostname="pr-${PR_NUMBER}-www.${CF_PAGES_PREVIEW_DOMAIN}"
-          bash .github/scripts/manage-okou-pages-domain.sh \
-            delete \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "$WWW_PAGES_PROJECT_NAME" \
-            "$hostname"
+            "$PAGES_BRANCH"
 
   cleanup-runner:
     # Skip for release-please PRs (only version bumps and changelogs)
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
 
       - name: Check if cleanup needed
         id: check
@@ -107,6 +69,16 @@ jobs:
           else
             echo "should-cleanup=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Wait for active CI owners before runner cleanup
+        if: steps.check.outputs.should-cleanup == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUNNER_OWNER_SCOPE: closed-pr-cleanup
+        run: .github/scripts/cancel-superseded-merge-group-runs.sh
 
       - name: Install Ansible
         if: steps.check.outputs.should-cleanup == 'true'
@@ -126,18 +98,17 @@ jobs:
       - name: Cleanup turbo runner on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
-          cd ansible
           JOB_REF="pr-${PR_NUMBER}"
-          if ! ansible-playbook \
-            -i "${METAL_HOSTS}," \
-            playbooks/cleanup-turbo-runner.yml \
-            -e "ansible_user=${METAL_USER}" \
-            -e "job_ref=${JOB_REF}" \
-            -v; then
+          export JOB_REF
+          if ! "$GITHUB_WORKSPACE/.github/scripts/with-runner-lifecycle-lock.sh" \
+            "$GITHUB_WORKSPACE/.github/scripts/cleanup-turbo-runner-namespace.sh"; then
             echo "::warning::Turbo runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
           fi
 
@@ -194,38 +165,29 @@ jobs:
           branch-name: "pr-${{ github.event.pull_request.number }}"
           action: "cleanup"
 
-  cleanup-test-users:
-    # Delete Clerk test users created by e2e browser tests for this PR
+  cleanup-clerk-test-resources:
+    # Delete generation-scoped Clerk test users and organizations for this PR.
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Delete test users from Clerk
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Delete Clerk test resources for closed PR
+        run: cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts cleanup-job-ref
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          JOB_REF="pr-${PR_NUMBER}"
-          echo "Searching for test users with email matching ${JOB_REF}+clerk_test"
-          USERS=$(curl -sS -X GET "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
-            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-            -H "Content-Type: application/json")
-
-          while read -r user; do
-            USER_ID=$(echo "$user" | jq -r '.id')
-            EMAIL=$(echo "$user" | jq -r '.email_addresses[0].email_address // "unknown"')
-
-            # Verify email actually matches this PR (Clerk query is fuzzy)
-            if [[ "$EMAIL" != "${JOB_REF}+clerk_test"* ]]; then
-              echo "Skipping $USER_ID ($EMAIL) — does not match ${JOB_REF}"
-              continue
-            fi
-
-            echo "Deleting $USER_ID ($EMAIL)"
-            if ! curl -sS -X DELETE "https://api.clerk.com/v1/users/${USER_ID}" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}"; then
-              echo "::warning::Failed to delete user $USER_ID ($EMAIL)"
-            fi
-          done < <(echo "$USERS" | jq -c '.[]' 2>/dev/null)
+          JOB_REF: pr-${{ github.event.pull_request.number }}
 
   cleanup-deployments:
     # Skip for release-please PRs (only version bumps and changelogs)

@@ -3,7 +3,7 @@ import { mkdirSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { downloadWebFile } from "../../../lib/api/domains/web";
 
 interface ExtractedFrame {
@@ -24,15 +24,15 @@ export const framesCommand = new Command()
     "after",
     `
 Examples:
-  Frames at two moments:  zero video frames --url "https://..." --at 00:21,01:40
-  From a web file:        zero video frames --file-id abc-123 --at 12,95.5
+  Frames at two moments:  okou video frames --url "https://..." --at 00:21,01:40
+  From a web file:        okou video frames --file-id abc-123 --at 12,95.5
 
 Output:
   Prints a JSON object to stdout, one entry per timestamp:
     {"frames":[{"at":"00:21","path":"/tmp/zero-frames-.../frame-001.jpg"}]}
 
 Tip:
-  Pair with "zero video transcribe": read the timestamped transcript to find the
+  Pair with "okou video transcribe": read the timestamped transcript to find the
   moments that matter, then extract just those frames here for a closer look.
 
 Notes:

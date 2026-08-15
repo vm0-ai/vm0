@@ -69,6 +69,35 @@ def _sanitize_malformed_authority_for_network_log(
     return urllib.parse.urlunsplit((parts.scheme, netloc, path, "", ""))
 
 
+def _sanitize_retained_url_for_network_log(retained_value: str) -> str:
+    normalized_value = _normalize_for_urlsplit(retained_value)
+    try:
+        parts = split_runtime_url(normalized_value)
+    except ValueError:
+        return _sanitize_url_text_fallback_for_network_log(normalized_value)
+
+    malformed_authority_url = _sanitize_malformed_authority_for_network_log(normalized_value, parts)
+    if malformed_authority_url is not None:
+        return malformed_authority_url
+
+    netloc = _sanitize_netloc_for_network_log(parts.netloc)
+    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
+def _bounded_retained_url(value: str, max_characters: int) -> str | None:
+    if len(value) <= max_characters:
+        return strip_url_query_and_fragment(value)
+
+    search_end = max_characters + 1
+    query_start = value.find("?", 0, search_end)
+    fragment_start = value.find("#", 0, query_start if query_start >= 0 else search_end)
+    if fragment_start >= 0:
+        return value[:fragment_start]
+    if query_start >= 0:
+        return value[:query_start]
+    return None
+
+
 def sanitize_url_for_network_log(value: str) -> str:
     """Return a URL string without credentials or query data for diagnostics.
 
@@ -83,18 +112,21 @@ def sanitize_url_for_network_log(value: str) -> str:
     contents.
     """
     retained_value = strip_url_query_and_fragment(value)
-    normalized_value = _normalize_for_urlsplit(retained_value)
-    try:
-        parts = split_runtime_url(normalized_value)
-    except ValueError:
-        return _sanitize_url_text_fallback_for_network_log(normalized_value)
+    return _sanitize_retained_url_for_network_log(retained_value)
 
-    malformed_authority_url = _sanitize_malformed_authority_for_network_log(normalized_value, parts)
-    if malformed_authority_url is not None:
-        return malformed_authority_url
 
-    netloc = _sanitize_netloc_for_network_log(parts.netloc)
-    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+def sanitize_url_for_network_log_with_retained_limit(value: str, max_characters: int) -> str | None:
+    """Sanitize a URL only when its retained query-free value fits the limit.
+
+    Raw inputs above the limit search for query and fragment delimiters only
+    through the first ``max_characters + 1`` characters.  A delimiter within
+    that window proves the retained value is bounded; otherwise no raw prefix
+    is returned or processed.
+    """
+    retained_value = _bounded_retained_url(value, max_characters)
+    if retained_value is None:
+        return None
+    return _sanitize_retained_url_for_network_log(retained_value)
 
 
 def sanitize_request_url_for_network_log(value: str) -> str:

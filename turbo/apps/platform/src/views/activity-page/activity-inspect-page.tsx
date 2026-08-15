@@ -1,11 +1,11 @@
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
-import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import { Search, ChartLine, Upload } from "lucide-react";
+import { Button, Input, Tabs, TabsList, TabsTrigger } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import type {
   LogStatus,
   TriggerSource,
@@ -14,7 +14,7 @@ import {
   formatLogTime,
   formatDuration,
 } from "../../signals/activity-page/activity-signals.ts";
-import { eventGroupMatchesSearch } from "../zero-page/components/log-views/log-detail-utils.ts";
+import { eventGroupMatchesSearch } from "../../signals/activity-page/log-detail-utils";
 import {
   ActivityHeaderCard,
   StepsList,
@@ -32,7 +32,6 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { searchParams$, updateSearchParams$ } from "../../signals/route.ts";
 import { ContextContent } from "../zero-page/components/context-content.tsx";
 import { NetworkContent } from "../zero-page/components/network-content.tsx";
-import { Link } from "../router/link.tsx";
 import { formatAppNumber } from "../../i18n/format.ts";
 
 type InspectTab = "steps" | "context" | "network";
@@ -84,15 +83,12 @@ function InspectBreadcrumb({ title }: { title: string }) {
   const { t } = useTranslation();
   return (
     <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-      <Link
-        pathname="/activities"
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
-      >
-        <IconChartLine size={14} stroke={1.5} className="shrink-0" />
+      <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5">
+        <ChartLine size={14} className="shrink-0" />
         {t(($) => {
           return $.activity.detail.activity;
         })}
-      </Link>
+      </span>
       <span className="text-muted-foreground/40 select-none">/</span>
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
         {title}
@@ -115,7 +111,7 @@ function InspectEmptyState() {
         })}
       />
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-        <IconUpload size={48} stroke={1} className="text-muted-foreground/40" />
+        <Upload size={48} className="" />
         <h2 className="text-lg font-semibold text-foreground">
           {t(($) => {
             return $.activity.inspect.noLog.title;
@@ -133,7 +129,7 @@ function InspectEmptyState() {
         )}
         <Button variant="outline" asChild>
           <label className="cursor-pointer">
-            <IconUpload size={16} stroke={1.5} />
+            <Upload size={16} />
             {t(($) => {
               return $.activity.inspect.noLog.upload;
             })}
@@ -176,7 +172,6 @@ function prepareInspectData(data: InspectLogData, fallbackName: string) {
     displayName: stringValue(meta?.displayName) ?? fallbackName,
     status: logStatusValue(meta?.status),
     triggerSource: triggerSourceValue(meta?.triggerSource),
-    triggerAgentName: nullableStringValue(meta?.triggerAgentName),
     detail,
     duration: formatDuration(
       nullableStringValue(meta?.startedAt),
@@ -236,7 +231,7 @@ function StepsTab({
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="relative flex-1 sm:flex-none sm:w-44">
-            <IconSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder={t(($) => {
                 return $.activity.detail.steps.search;
@@ -342,16 +337,8 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
       return $.activity.inspect.fallbackName;
     }),
   );
-  const {
-    displayName,
-    status,
-    triggerSource,
-    triggerAgentName,
-    detail,
-    duration,
-    time,
-    events,
-  } = prepared;
+  const { displayName, status, triggerSource, detail, duration, time, events } =
+    prepared;
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
@@ -362,7 +349,6 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
             displayName={displayName}
             status={status}
             triggerSource={triggerSource}
-            triggerAgentName={triggerAgentName}
             detail={detail}
             duration={duration}
             time={time}

@@ -70,6 +70,7 @@
 mod connection;
 mod exec_operation;
 mod file;
+mod guest_dns_readiness;
 mod operation_tracker;
 #[cfg(test)]
 mod tests;
@@ -82,8 +83,8 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 use connection::{
-    CompositeNormalOperation, ConnectionState, Shared, normal_operation_transition_error,
-    normal_request_on_shared_with_write_observer_frame_builder,
+    CompositeNormalOperation, ConnectionState, RouteId, RouteReservation, Shared,
+    normal_operation_transition_error, normal_request_on_shared_with_write_observer_frame_builder,
     request_on_shared_with_composite_operation_and_observer_frame_builder,
 };
 #[cfg(test)]
@@ -97,6 +98,7 @@ pub use exec_operation::{
     SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest,
 };
 pub use file::{CopyFileOptions, CopyFileResult, WriteFileEntry};
+pub use guest_dns_readiness::GuestDnsReadinessResult;
 
 /// Observer called when a request frame reaches the guest-write boundary.
 ///
@@ -407,6 +409,7 @@ impl VsockHost {
             FrameWriteObserver::default(),
         )
         .await
+        .into_result()
         .map_err(FencedExecError::Operation)?;
         let fence = guard.complete().map_err(FencedExecError::Operation)?;
         Ok((result, fence))

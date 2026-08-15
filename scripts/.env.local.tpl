@@ -18,6 +18,11 @@ R2_ACCOUNT_ID=op://Development/cloudflare/R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID=op://Development/cloudflare/R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_SECRET_ACCESS_KEY
 R2_USER_STORAGES_BUCKET_NAME=op://Development/cloudflare/R2_USER_STORAGES_BUCKET_NAME
+
+# R2 static assets for local CLI uploads
+R2_STATIC_ACCESS_KEY_ID=op://Development/cloudflare/R2_STATIC_ACCESS_KEY_ID
+R2_STATIC_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_STATIC_SECRET_ACCESS_KEY
+
 R2_USER_ARTIFACTS_BUCKET_NAME=user-artifact-dev
 R2_USER_ARTIFACTS_ACCESS_KEY_ID=op://Development/cloudflare/R2_USER_ARTIFACTS_ACCESS_KEY_ID
 R2_USER_ARTIFACTS_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_USER_ARTIFACTS_SECRET_ACCESS_KEY
@@ -25,3 +30,10 @@ PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io
 
 # BytePlus ModelArk API key for local built-in video generation
 BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
+
+# MiniMax API key for local built-in H3 video generation
+MINIMAX_API_KEY=op://Development/minimax/MINIMAX_API_KEY
+
+# JoggAI API key for local built-in avatar video generation
+JOGGAI_API_KEY=op://Development/joggai/JOGGAI_API_KEY
+JOGGAI_WEBHOOK_SECRET=op://Development/joggai/JOGGAI_WEBHOOK_SECRET

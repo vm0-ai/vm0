@@ -1,10 +1,10 @@
 import { command, computed } from "ccstate";
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { z } from "zod";
-import { integrationsTelegramBotListContract } from "@vm0/api-contracts/contracts/integrations";
-import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
-import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
+import { integrationsTelegramBotListContract } from "@okouai/api-contracts/contracts/integrations";
+import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
+import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 
 import {
   organizationAuthContext$,
@@ -46,7 +46,7 @@ const c = initContract();
 const telegramDownloadFileContract = c.router({
   download: {
     method: "GET",
-    path: "/api/zero/integrations/telegram/download-file",
+    path: "/api/okou/integrations/telegram/download-file",
     headers: authHeadersSchema,
     query: z.object({
       file_id: z.string().min(1),
@@ -223,7 +223,7 @@ const getTelegramDownloadFileInner$ = command(
     }
 
     const response = await tapError(
-      downloadTelegramFile({ botToken, fileId: query.file_id, signal }),
+      downloadTelegramFile({ botToken, fileId: query.file_id }, signal),
     );
     signal.throwIfAborted();
     if (!response) {
@@ -237,13 +237,15 @@ const getTelegramDownloadFileInner$ = command(
   },
 );
 
-async function downloadTelegramFile(args: {
-  readonly botToken: string;
-  readonly fileId: string;
-  readonly signal: AbortSignal;
-}): Promise<Response> {
+async function downloadTelegramFile(
+  args: {
+    readonly botToken: string;
+    readonly fileId: string;
+  },
+  signal: AbortSignal,
+): Promise<Response> {
   const file = await getFile(args.botToken, args.fileId);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!file.file_path) {
     return errorResponse(
       404,
@@ -257,8 +259,8 @@ async function downloadTelegramFile(args: {
 
   const fileName = file.file_path.split("/").pop() ?? args.fileId;
   const downloadUrl = buildFileDownloadUrl(args.botToken, file.file_path);
-  const fileResponse = await fetch(downloadUrl, { signal: args.signal });
-  args.signal.throwIfAborted();
+  const fileResponse = await fetch(downloadUrl, { signal });
+  signal.throwIfAborted();
   if (!fileResponse.ok) {
     return errorResponse(
       502,
@@ -378,7 +380,7 @@ const getIntegrationTelegramAvatar$ = command(
     }
 
     const response = await tapError(
-      loadTelegramAvatar({ botToken, profileUserId, signal }),
+      loadTelegramAvatar({ botToken, profileUserId }, signal),
     );
     signal.throwIfAborted();
     if (!response) {
@@ -392,11 +394,13 @@ const getIntegrationTelegramAvatar$ = command(
   },
 );
 
-async function loadTelegramAvatar(args: {
-  readonly botToken: string;
-  readonly profileUserId: string | number;
-  readonly signal: AbortSignal;
-}): Promise<Response> {
+async function loadTelegramAvatar(
+  args: {
+    readonly botToken: string;
+    readonly profileUserId: string | number;
+  },
+  signal: AbortSignal,
+): Promise<Response> {
   const photos = await getUserProfilePhotos(
     args.botToken,
     args.profileUserId,
@@ -412,7 +416,7 @@ async function loadTelegramAvatar(args: {
   }
 
   const file = await getFile(args.botToken, photo.file_id);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!file.file_path) {
     return fallbackAvatarResponse();
   }
@@ -422,9 +426,9 @@ async function loadTelegramAvatar(args: {
 
   const downloadResponse = await fetch(
     buildFileDownloadUrl(args.botToken, file.file_path),
-    { signal: args.signal },
+    { signal },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!downloadResponse.ok) {
     return errorResponse(
       502,

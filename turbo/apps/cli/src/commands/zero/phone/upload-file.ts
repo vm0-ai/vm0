@@ -1,8 +1,11 @@
 import { readFileSync, statSync } from "fs";
 import { basename, extname } from "path";
 import { Command } from "commander";
-import { completePhoneFileUpload, initPhoneFileUpload } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  completePhoneFileUpload,
+  initPhoneFileUpload,
+} from "../../../lib/api/domains/integrations-phone";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
@@ -38,8 +41,8 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:    zero phone upload-file -f /tmp/report.pdf --to +15551234567
-  With a caption:   zero phone upload-file -f /tmp/photo.jpg --to +15551234567 --caption "Here it is"
+  Upload a file:    okou phone upload-file -f /tmp/report.pdf --to +15551234567
+  With a caption:   okou phone upload-file -f /tmp/photo.jpg --to +15551234567 --caption "Here it is"
 
 Output:
   Prints a JSON object to stdout on success:
@@ -80,7 +83,6 @@ Output:
           filename,
           contentType,
           length: fileSize,
-          supportsUploadHeaders: true,
         });
 
         const fileContent = readFileSync(options.file);

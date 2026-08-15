@@ -187,6 +187,55 @@ class TestTrustedAuthoritySuccess:
         assert trusted.url == "https://api.github.com:8443/repos"
 
     @pytest.mark.parametrize(
+        ("request_port", "request_authority", "expected_url"),
+        [
+            pytest.param(
+                443,
+                "API.GITHUB.COM.",
+                "https://api.github.com/repos",
+                id="normalized-host",
+            ),
+            pytest.param(
+                443,
+                "api.github.com:000443",
+                "https://api.github.com/repos",
+                id="explicit-default-port",
+            ),
+            pytest.param(
+                8443,
+                "api.github.com:8443",
+                "https://api.github.com:8443/repos",
+                id="matching-nondefault-port",
+            ),
+        ],
+    )
+    def test_accepts_matching_http1_request_target_authority(
+        self,
+        real_flow,
+        headers,
+        request_port,
+        request_authority,
+        expected_url,
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="203.0.113.10",
+            port=request_port,
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com")),
+        )
+        flow.request.authority = request_authority
+
+        trusted = get_trusted_authority(flow)
+
+        assert flow.request.http_version == "HTTP/1.1"
+        assert flow.request.authority == request_authority
+        assert trusted.host == "api.github.com"
+        assert trusted.port == request_port
+        assert trusted.url == expected_url
+
+    @pytest.mark.parametrize(
         "host_header",
         [
             pytest.param("[2001:db8::1]", id="ipv6-without-port"),

@@ -32,9 +32,8 @@ import { agentRuns } from "./agent-run";
  *   video     fal-ai/veo3.1/fast           output_video_seconds.audio
  *   video     bytedance/seedance-2.0       output_video_tokens
  *
- * Charging is applied by the billing processor. Historical model events may
- * retain runner-calculated `grossCredits`; other events use the
- * `(kind, provider, category)` pricing-table lookup. The processor applies
+ * Charging is applied by the billing processor, which looks up the
+ * `(kind, provider, category)` pricing-table entry. The processor applies
  * allowances to the gross amount and writes `creditsCharged`.
  *
  * `billingError` is a short code naming a billing-time problem on the
@@ -51,8 +50,8 @@ import { agentRuns } from "./agent-run";
  * Writers must keep the same UUID across retries of the same logical
  * event; the UNIQUE index blocks duplicate insertions.
  *
- * Healthy usage follows `pending -> processed -> hourly rollup`, after which
- * the source event is deleted.
+ * Healthy usage remains `processed` for at least four days before hourly
+ * rollup replacement, after which the source event is deleted.
  */
 export const usageEvent = pgTable(
   "usage_event",
@@ -71,7 +70,6 @@ export const usageEvent = pgTable(
     provider: varchar("provider", { length: 100 }).notNull(),
     category: varchar("category", { length: 100 }).notNull(),
     quantity: bigint("quantity", { mode: "number" }).notNull(),
-    grossCredits: bigint("gross_credits", { mode: "number" }),
     creditsCharged: bigint("credits_charged", { mode: "number" }),
     status: varchar("status", { length: 20 }).notNull().default("pending"),
     billingError: varchar("billing_error", { length: 50 }),
@@ -96,8 +94,7 @@ export const usageEvent = pgTable(
         table.status,
         table.processedAt,
       ),
-      // Supports aggregate-insights recent processed-ledger discovery and
-      // per-window credit aggregation.
+      // Supports finalized usage reads over processed ledger windows.
       index("idx_usage_event_processed_org_user")
         .on(table.processedAt.desc(), table.orgId, table.userId)
         .where(

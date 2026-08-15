@@ -4,8 +4,8 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import { ArrowUpRight, Pin, UserPlus } from "lucide-react";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
   Button,
@@ -13,7 +13,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   currentChatAgentId$,
   currentChatAgentDisplayName$,
@@ -27,7 +27,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
-import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
+import { relatedCatalogItems$ } from "../../signals/zero-page/settings/connectors.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
   chatPageTaglineIndex$,
@@ -244,8 +244,9 @@ function TypewriterText({
   );
 }
 
-function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
+function InviteButton() {
   const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
@@ -263,7 +264,7 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
       tabIndex={isAdmin ? undefined : -1}
       data-testid="invite-button"
     >
-      <IconUserPlus size={14} stroke={1.5} />
+      <UserPlus size={14} />
       {t(($) => {
         return $.chat.agentPage.invitePeople;
       })}
@@ -294,17 +295,19 @@ function PinPill() {
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
             onClick={handlePin}
             disabled={pinSaving}
-            className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            variant="quiet"
+            size="icon-2xs"
+            className="absolute -top-0.5 -right-0.5 rounded-full zero-border bg-background shadow-sm hover:shadow-md disabled:opacity-50"
             aria-label={t(($) => {
               return $.sidebar.pin;
             })}
           >
-            <IconPin size={12} stroke={2} />
-          </button>
+            <Pin size={12} />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           <p className="text-xs">
@@ -335,7 +338,7 @@ function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
                 aria-label={t(($) => {
                   return $.detail.viewProfile;
                 })}
-                className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
+                className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-state-hover cursor-pointer"
               >
                 <AgentAvatarImg
                   name={agentId}
@@ -393,14 +396,13 @@ function SuggestedPromptButton({
   return (
     <button
       type="button"
-      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-state-hover transition-colors"
       onClick={() => {
         onSelectPrompt(item.prompt);
       }}
     >
-      <IconArrowUpRight
+      <ArrowUpRight
         size={14}
-        stroke={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
       />
       <p className="text-sm font-semibold text-foreground pr-5">{item.title}</p>
@@ -442,12 +444,11 @@ function IdeasUseCasesButton() {
   return (
     <button
       type="button"
-      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-state-hover transition-colors"
       onClick={handleClick}
     >
-      <IconArrowUpRight
+      <ArrowUpRight
         size={14}
-        stroke={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
       />
       <p className="text-sm font-semibold text-foreground pr-5">
@@ -466,7 +467,7 @@ function IdeasUseCasesButton() {
             return $.ideation.entry.viewAll;
           })}
         </span>
-        <IconArrowUpRight size={14} stroke={2} />
+        <ArrowUpRight size={14} />
       </div>
     </button>
   );
@@ -478,7 +479,14 @@ function SuggestedPromptsGrid({
   onSelectPrompt: (prompt: string) => void;
 }) {
   const { t } = useTranslation("agents");
-  const connectorStatusBySlug = useLastResolved(connectorCatalogStatusBySlug$);
+  const relatedCatalogItems = useLastResolved(relatedCatalogItems$);
+  const connectorStatusBySlug = relatedCatalogItems
+    ? new Map(
+        relatedCatalogItems.map((connector) => {
+          return [connector.slug, connector];
+        }),
+      )
+    : undefined;
   const unfilteredSuggestedPrompts =
     useLastResolved(unfilteredSuggestedPrompts$) ?? [];
   const suggestedPromptsLoadable = useLoadable(suggestedPrompts$);
@@ -549,7 +557,7 @@ export function AgentChatPage() {
       <span ref={subscribeComputerUseHostsChangedRef} hidden />
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end items-center gap-2">
-          <InviteButton pageSignal={pageSignal} />
+          <InviteButton />
         </div>
       </header>
 

@@ -3,7 +3,7 @@ import chalk from "chalk";
 
 import { zeroUpgradeCommand } from "../upgrade";
 
-describe("zero upgrade command", () => {
+describe("okou upgrade command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {

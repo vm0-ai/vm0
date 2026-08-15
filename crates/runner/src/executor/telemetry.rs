@@ -3,11 +3,14 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use guest_contracts::epoch_milliseconds::{
+    MIN_PLAUSIBLE_EPOCH_MILLISECONDS, is_plausible_epoch_milliseconds,
+};
 use tracing::warn;
 
-use super::MIN_EPOCH_MS_TIMESTAMP;
-use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, SandboxReuseResult};
+use crate::guest_timezone::GuestTimezoneAssumption;
+use crate::telemetry::{JobTelemetry, RunnerStartupPath};
+use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
 
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
@@ -15,6 +18,7 @@ static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 #[derive(Clone, Copy)]
 pub(crate) enum RunnerPreSpawnPhase {
     ResumeSessionValidation,
+    FinalizingWait,
     SessionHistoryMaterializerStart,
     DeviceRateLimits,
     IdleReuseLookup,
@@ -26,8 +30,9 @@ pub(crate) enum RunnerPreSpawnPhase {
 }
 
 impl RunnerPreSpawnPhase {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::ResumeSessionValidation,
+        Self::FinalizingWait,
         Self::SessionHistoryMaterializerStart,
         Self::DeviceRateLimits,
         Self::IdleReuseLookup,
@@ -41,6 +46,7 @@ impl RunnerPreSpawnPhase {
     const fn action_type(self) -> &'static str {
         match self {
             Self::ResumeSessionValidation => "runner_claim_resume_session_validation",
+            Self::FinalizingWait => "runner_claim_finalizing_wait",
             Self::SessionHistoryMaterializerStart => {
                 "runner_claim_session_history_materializer_start"
             }
@@ -58,6 +64,7 @@ impl RunnerPreSpawnPhase {
 #[derive(Default)]
 struct RunnerPreSpawnPhaseDurations {
     resume_session_validation: Option<Duration>,
+    finalizing_wait: Option<Duration>,
     session_history_materializer_start: Option<Duration>,
     device_rate_limits: Option<Duration>,
     idle_reuse_lookup: Option<Duration>,
@@ -72,6 +79,7 @@ impl RunnerPreSpawnPhaseDurations {
     fn get_mut(&mut self, phase: RunnerPreSpawnPhase) -> &mut Option<Duration> {
         match phase {
             RunnerPreSpawnPhase::ResumeSessionValidation => &mut self.resume_session_validation,
+            RunnerPreSpawnPhase::FinalizingWait => &mut self.finalizing_wait,
             RunnerPreSpawnPhase::SessionHistoryMaterializerStart => {
                 &mut self.session_history_materializer_start
             }
@@ -92,6 +100,7 @@ impl RunnerPreSpawnPhaseDurations {
     fn get(&self, phase: RunnerPreSpawnPhase) -> Option<Duration> {
         match phase {
             RunnerPreSpawnPhase::ResumeSessionValidation => self.resume_session_validation,
+            RunnerPreSpawnPhase::FinalizingWait => self.finalizing_wait,
             RunnerPreSpawnPhase::SessionHistoryMaterializerStart => {
                 self.session_history_materializer_start
             }
@@ -112,6 +121,23 @@ pub(crate) struct RunnerPreSpawnTiming {
     claim_returned_at: Instant,
     phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
+    exact_reuse_speculation: Option<ExactReuseSpeculationTiming>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct RunnerPreSpawnOperationTiming {
+    pub(crate) duration: Duration,
+    pub(crate) succeeded: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct ExactReuseSpeculationTiming {
+    pub(crate) unpark: RunnerPreSpawnOperationTiming,
+    pub(crate) guest_restore: Option<RunnerPreSpawnOperationTiming>,
+    pub(crate) claim_overlap: Duration,
+    pub(crate) post_claim_remainder: Duration,
+    pub(crate) timezone_correction: Option<RunnerPreSpawnOperationTiming>,
+    pub(crate) timezone_assumption: Option<GuestTimezoneAssumption>,
 }
 
 pub(super) struct RunnerSpawnTiming {
@@ -120,12 +146,22 @@ pub(super) struct RunnerSpawnTiming {
 }
 
 impl RunnerPreSpawnTiming {
+    #[cfg(test)]
     pub(crate) fn start_after_claim() -> Self {
+        Self::start_at(Instant::now())
+    }
+
+    pub(crate) fn start_at(claim_returned_at: Instant) -> Self {
         Self {
-            claim_returned_at: Instant::now(),
+            claim_returned_at,
             phase_durations: RunnerPreSpawnPhaseDurations::default(),
             task_enqueued_at: None,
+            exact_reuse_speculation: None,
         }
+    }
+
+    pub(crate) fn record_exact_reuse_speculation(&mut self, timing: ExactReuseSpeculationTiming) {
+        self.exact_reuse_speculation = Some(timing);
     }
 
     pub(crate) fn record_phase(&mut self, phase: RunnerPreSpawnPhase, duration: Duration) {
@@ -157,6 +193,56 @@ impl RunnerPreSpawnTiming {
                 true,
                 None,
             );
+        }
+        if let Some(timing) = self.exact_reuse_speculation.as_ref() {
+            telemetry.record(
+                "runner_exact_reuse_preclaim_unpark",
+                timing.unpark.duration,
+                timing.unpark.succeeded,
+                (!timing.unpark.succeeded).then_some("speculative_unpark_failed"),
+            );
+            if let Some(operation) = timing.guest_restore {
+                telemetry.record(
+                    "runner_exact_reuse_preclaim_guest_restore",
+                    operation.duration,
+                    operation.succeeded,
+                    (!operation.succeeded).then_some("speculative_guest_restore_failed"),
+                );
+            }
+            telemetry.record(
+                "runner_exact_reuse_claim_overlap",
+                timing.claim_overlap,
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_exact_reuse_postclaim_remainder",
+                timing.post_claim_remainder,
+                true,
+                None,
+            );
+            if let Some(operation) = timing.timezone_correction {
+                telemetry.record(
+                    "runner_exact_reuse_timezone_correction",
+                    operation.duration,
+                    operation.succeeded,
+                    (!operation.succeeded).then_some("speculative_timezone_correction_failed"),
+                );
+            }
+            if let Some(assumption) = timing.timezone_assumption {
+                let action_type = match assumption {
+                    GuestTimezoneAssumption::Match => {
+                        "runner_exact_reuse_timezone_assumption_match"
+                    }
+                    GuestTimezoneAssumption::Mismatch => {
+                        "runner_exact_reuse_timezone_assumption_mismatch"
+                    }
+                    GuestTimezoneAssumption::Unknown => {
+                        "runner_exact_reuse_timezone_assumption_unknown"
+                    }
+                };
+                telemetry.record(action_type, Duration::ZERO, true, None);
+            }
         }
     }
 }
@@ -238,14 +324,39 @@ pub(super) fn record_api_latency(
     context: &ExecutionContext,
     telemetry: &mut JobTelemetry,
 ) {
+    if let Some(duration) = api_latency_duration(action_type, context) {
+        telemetry.record(action_type, duration, true, None);
+    }
+}
+
+pub(super) fn record_api_to_spawn(
+    context: &ExecutionContext,
+    telemetry: &mut JobTelemetry,
+    sandbox_reuse_result: SandboxReuseResult,
+    workspace_reuse_result: WorkspaceReuseResult,
+) {
+    let runner_startup_path = if sandbox_reuse_result == SandboxReuseResult::Reused {
+        RunnerStartupPath::Sandbox
+    } else if workspace_reuse_result == WorkspaceReuseResult::Reused {
+        RunnerStartupPath::Workspace
+    } else {
+        RunnerStartupPath::Cold
+    };
+    if let Some(duration) = api_latency_duration("api_to_spawn", context) {
+        telemetry.record_api_to_spawn(duration, runner_startup_path, sandbox_reuse_result);
+    }
+}
+
+fn api_latency_duration(action_type: &str, context: &ExecutionContext) -> Option<Duration> {
     if let Some(api_start_ms) = context.api_start_time {
         let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
         if let Some(duration) = elapsed_since_api_start_ms(api_start_ms, now_ms) {
-            telemetry.record(action_type, duration, true, None);
+            return Some(duration);
         } else {
             warn_invalid_api_start_time_once(action_type, context, api_start_ms);
         }
     }
+    None
 }
 
 pub(super) fn warn_invalid_api_start_time_once(
@@ -260,14 +371,14 @@ pub(super) fn warn_invalid_api_start_time_once(
     warn!(
         run_id = %context.run_id,
         api_start_ms,
-        min_epoch_ms_timestamp = MIN_EPOCH_MS_TIMESTAMP,
+        min_epoch_ms_timestamp = MIN_PLAUSIBLE_EPOCH_MILLISECONDS,
         action_type,
         "skipping API latency telemetry for invalid epoch-ms start timestamp"
     );
 }
 
 pub(super) fn elapsed_since_api_start_ms(api_start_ms: u64, now_ms: u64) -> Option<Duration> {
-    if api_start_ms < MIN_EPOCH_MS_TIMESTAMP {
+    if !is_plausible_epoch_milliseconds(api_start_ms) {
         return None;
     }
 

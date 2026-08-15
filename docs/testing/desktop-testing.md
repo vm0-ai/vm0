@@ -125,10 +125,10 @@ state-matrix size. Do not add unit tests just to raise coverage percentages.
 Desktop PRs should use workspace-scoped checks:
 
 ```bash
-pnpm -F @vm0/desktop check-types
-pnpm -F @vm0/desktop lint
-pnpm -F @vm0/desktop test
-pnpm -F @vm0/desktop test:native
+pnpm -F @okouai/desktop check-types
+pnpm -F @okouai/desktop lint
+pnpm -F @okouai/desktop test
+pnpm -F @okouai/desktop test:native
 ```
 
 Use narrower focused commands while iterating, then run the relevant full

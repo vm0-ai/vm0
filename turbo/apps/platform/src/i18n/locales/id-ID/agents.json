@@ -16,10 +16,7 @@
     "connectorsLink": "Konektor",
     "connectorsSaved": "Konektor disimpan",
     "customConnectors": {
-      "authorize": "Otorisasi {{connectorName}} untuk agen ini",
-      "description": "Konektor kustom yang didaftarkan oleh organisasi Anda. Hanya konektor yang sudah Anda beri secret yang bisa diaktifkan.",
-      "noSecret": "Belum ada secret",
-      "noSecretSuffix": " — belum ada secret",
+      "description": "Konektor kustom yang didaftarkan oleh organisasi Anda.",
       "saved": "Konektor kustom disimpan"
     },
     "description": "Saat dijalankan, agen dapat menggunakan layanan yang terhubung dengan aman. Anda dapat mengelola atau mematikan akses kapan saja.",
@@ -606,15 +603,12 @@
   },
   "sidebar": {
     "clearSearch": "Hapus pencarian",
-    "description": "Pilih agen untuk memulai percakapan.",
     "descriptionWithChats": "Pilih agen atau langsung ke chat.",
     "leadDescription": "Asisten utama Anda, selalu siap membantu",
     "markAllRead": "Tandai semua sudah dibaca",
     "more": "Lainnya",
     "new": "Baru",
-    "noAgents": "Tidak ada agen ditemukan",
     "noResults": "Tidak ada hasil ditemukan",
-    "noSubagents": "Belum ada subagen tersedia.",
     "openConversation": "Buka percakapan",
     "openMenu": "Buka menu agen",
     "pin": "Sematkan ke sidebar",
@@ -622,6 +616,7 @@
     "pinnedAgents": "Agen yang disematkan",
     "searchAgents": "Cari agen...",
     "searchAgentsAndChats": "Cari agen dan chat...",
+    "searching": "Mencari...",
     "sections": {
       "chats": "Chat",
       "lead": "Utama",

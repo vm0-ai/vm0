@@ -1,16 +1,16 @@
 import { command } from "ccstate";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { getStripeClient } from "../external/stripe-client";
 import {
   BILLING_RESTORE_PURPOSE,
   billingDefaultPaymentMethodStatus,
   createBillingSetupCheckout,
-} from "./zero-billing-payment-method.service";
+} from "./billing-payment-method.service";
 
 const L = logger("BillingRestore");
 

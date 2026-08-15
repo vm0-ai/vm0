@@ -10,7 +10,7 @@ const packageDir = path.join(dirname, "..");
 const schemaDir = path.join(packageDir, "src/schema");
 const contractImportPrefixes = [
   "../jsonb-contracts/",
-  "@vm0/db/jsonb-contracts/",
+  "@okouai/db/jsonb-contracts/",
 ];
 
 interface Violation {

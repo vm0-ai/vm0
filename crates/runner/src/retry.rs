@@ -156,14 +156,26 @@ mod tests {
         assert_eq!(rs.consecutive_failures, 0);
     }
 
-    #[test]
-    fn timer_ready_requires_no_handle_and_past_restart() {
-        let mut rs: RetryState<()> =
+    #[tokio::test]
+    async fn timer_ready_requires_no_handle_and_past_restart() {
+        let mut rs: RetryState<tokio::task::JoinHandle<()>> =
             RetryState::new(Duration::from_secs(0), Duration::from_secs(60), None);
         // No restart_at → not ready
         assert!(!rs.timer_ready());
         // Set restart_at to the past so it's immediately ready.
         rs.restart_at = Some(Instant::now() - Duration::from_secs(1));
+        assert!(rs.timer_ready());
+
+        rs.handle = Some(tokio::spawn(std::future::pending::<()>()));
+        let ready_while_in_flight = rs.timer_ready();
+
+        // Reap the task before asserting so a regression cannot detach it.
+        let handle = rs.handle.take().unwrap();
+        handle.abort();
+        let error = handle.await.unwrap_err();
+        assert!(error.is_cancelled());
+
+        assert!(!ready_while_in_flight);
         assert!(rs.timer_ready());
     }
 

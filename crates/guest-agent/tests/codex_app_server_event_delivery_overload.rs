@@ -1,5 +1,5 @@
 //! The Codex app-server backend must use the same bounded downstream event
-//! delivery queue as the ordinary CLI backend.
+//! delivery queue as the Claude Code subprocess path.
 
 mod common;
 

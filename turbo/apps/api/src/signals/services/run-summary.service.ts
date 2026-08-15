@@ -1,11 +1,12 @@
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 
 import { logger } from "../../lib/log";
 import { optionalEnv } from "../../lib/env";
 import { writeDb$, type Db } from "../external/db";
 import { tapError } from "../utils";
+import { writeRunMetadata } from "./agent-run-metadata-write.service";
 
 const log = logger("run-summary");
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -138,10 +139,10 @@ export async function saveRunSummary(
         return;
       }
 
-      await db
-        .update(zeroRuns)
-        .set({ summary })
-        .where(eq(zeroRuns.id, args.runId));
+      await writeRunMetadata(db, {
+        patch: { summary },
+        where: eq(agentRuns.id, args.runId),
+      });
       signal?.throwIfAborted();
     })(),
     (error) => {

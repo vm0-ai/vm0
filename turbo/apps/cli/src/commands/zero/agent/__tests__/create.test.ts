@@ -1,5 +1,5 @@
 /**
- * Tests for zero agent create command
+ * Tests for okou agent create command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -22,9 +22,10 @@ const mockAgent = {
   description: null,
   sound: null,
   avatarUrl: null,
+  visibility: "private",
 };
 
-describe("zero agent create command", () => {
+describe("okou agent create command", () => {
   let mockExit: ReturnType<typeof vi.spyOn>;
   let mockConsoleLog: ReturnType<typeof vi.spyOn>;
   let mockConsoleError: ReturnType<typeof vi.spyOn>;
@@ -38,13 +39,13 @@ describe("zero agent create command", () => {
     mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   describe("successful create", () => {
     it("should create agent with display name", async () => {
       server.use(
-        http.post("http://localhost:3000/api/zero/agents", () => {
+        http.post("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json(mockAgent, { status: 201 });
         }),
       );
@@ -63,18 +64,18 @@ describe("zero agent create command", () => {
         "Next steps to authorize connectors for this agent:",
       );
       expect(logCalls).toContain(
-        "zero connector search <keyword> --agent comp_xyz789",
+        "okou connector search <keyword> --agent comp_xyz789",
       );
       expect(logCalls).toContain(
-        "zero connector status <slug> --agent comp_xyz789",
+        "okou connector status <slug> --agent comp_xyz789",
       );
     });
 
-    it("should create agent without workflow attachments in request body", async () => {
+    it("should create a private agent by default", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/agents",
+          "http://localhost:3000/api/okou/agents",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent, { status: 201 });
@@ -90,13 +91,45 @@ describe("zero agent create command", () => {
       ]);
 
       expect(capturedBody?.displayName).toBe("New Agent");
+      expect(capturedBody?.visibility).toBe("private");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Visibility:   private");
+    });
+
+    it("should create a public agent when requested", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/okou/agents",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(
+              { ...mockAgent, visibility: "public" },
+              { status: 201 },
+            );
+          },
+        ),
+      );
+
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "--display-name",
+        "New Agent",
+        "--visibility",
+        "public",
+      ]);
+
+      expect(capturedBody?.visibility).toBe("public");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Visibility:   public");
     });
 
     it("should send preset avatar in request body", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/agents",
+          "http://localhost:3000/api/okou/agents",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent, { status: 201 });
@@ -120,7 +153,7 @@ describe("zero agent create command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/agents",
+          "http://localhost:3000/api/okou/agents",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent, { status: 201 });
@@ -159,11 +192,11 @@ describe("zero agent create command", () => {
       it("should create agent and upload instructions content from file", async () => {
         let capturedInstructionsContent: string | undefined;
         server.use(
-          http.post("http://localhost:3000/api/zero/agents", () => {
+          http.post("http://localhost:3000/api/okou/agents", () => {
             return HttpResponse.json(mockAgent, { status: 201 });
           }),
           http.put(
-            "http://localhost:3000/api/zero/agents/comp_xyz789/instructions",
+            "http://localhost:3000/api/okou/agents/comp_xyz789/instructions",
             async ({ request }) => {
               const body = (await request.json()) as { content: string };
               capturedInstructionsContent = body.content;
@@ -190,6 +223,19 @@ describe("zero agent create command", () => {
   });
 
   describe("error handling", () => {
+    it("should reject invalid visibility", async () => {
+      await expect(async () => {
+        await createCommand.parseAsync([
+          "node",
+          "cli",
+          "--visibility",
+          "unlisted",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should reject invalid avatar preset", async () => {
       await expect(async () => {
         await createCommand.parseAsync([
@@ -248,7 +294,7 @@ describe("zero agent create command", () => {
 
     it("should handle authentication error", async () => {
       server.use(
-        http.post("http://localhost:3000/api/zero/agents", () => {
+        http.post("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },

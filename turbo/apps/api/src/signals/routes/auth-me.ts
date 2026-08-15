@@ -1,13 +1,13 @@
 import { command } from "ccstate";
-import { authContract } from "@vm0/api-contracts/contracts/auth";
-import { userCache } from "@vm0/db/schema/user-cache";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
+import { userCache } from "@okouai/db/schema/user-cache";
 import { eq } from "drizzle-orm";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$ } from "../external/db";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 
 const USER_CACHE_TTL_MS = 15 * 60 * 1000;

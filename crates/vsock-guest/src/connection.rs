@@ -5,8 +5,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, BorrowedRawMessage, DecodeWithError, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START,
+    MSG_GUEST_DNS_READINESS, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY,
     MSG_RESUME_OPERATIONS, MSG_WRITE_FILE, MSG_WRITE_FILES,
 };
@@ -18,13 +20,14 @@ use crate::exec_operation::{
     start_exec_operation,
 };
 use crate::file_write_worker::{FileWriteKind, FileWriteSubmitError, FileWriteWorker};
-use crate::handlers::{
-    MessageOutcome, decode_write_file_message, decode_write_files_message, handle_basic_message,
+use crate::guest_dns_readiness::{
+    GuestDnsReadinessProgram, GuestDnsReadinessSubmitError, GuestDnsReadinessWorker,
 };
+use crate::handlers::{MessageOutcome, handle_basic_message};
 use crate::log::log;
+use crate::memory_snapshot::read_memory_snapshot;
 use crate::process_containment::{ProcessContainmentMode, verify_exec_process_containment_empty};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
-use crate::wait::DRAIN_DEADLINE;
 use crate::writer::GuestWriter;
 
 // Vsock constants (only used on Linux)
@@ -126,8 +129,10 @@ fn is_real_host_work_message(msg_type: u8) -> bool {
             | MSG_EXEC_CONTROL
             | MSG_WRITE_FILE
             | MSG_WRITE_FILES
+            | MSG_GUEST_DNS_READINESS
             | MSG_QUIESCE_OPERATIONS
             | MSG_RESUME_OPERATIONS
+            | MSG_MEMORY_SNAPSHOT
     )
 }
 
@@ -232,6 +237,38 @@ fn handle_quiesce_operations(
     }
 }
 
+fn handle_memory_snapshot(
+    seq: u32,
+    payload: &[u8],
+    operation_state: &OperationState,
+    writer: &GuestWriter,
+) -> io::Result<()> {
+    if !validate_empty_control_payload(
+        seq,
+        "memory_snapshot payload must be empty",
+        payload,
+        writer,
+    )? {
+        return Ok(());
+    }
+    if !operation_state.is_quiesced() {
+        return send_error_response(seq, "guest operations are not fully quiesced", writer);
+    }
+    match read_memory_snapshot() {
+        Ok(snapshot) => {
+            let payload = snapshot.encode_payload();
+            let response = vsock_proto::encode(MSG_MEMORY_SNAPSHOT_RESULT, seq, &payload)
+                .map_err(to_io_error)?;
+            writer.write_frame(&response)
+        }
+        Err(error) => send_error_response(
+            seq,
+            &format!("failed to read guest memory snapshot: {error}"),
+            writer,
+        ),
+    }
+}
+
 fn handle_resume_operations(
     seq: u32,
     payload: &[u8],
@@ -255,6 +292,7 @@ struct ConnectionDispatcher {
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     file_write_worker: FileWriteWorker,
+    guest_dns_readiness_worker: GuestDnsReadinessWorker,
     exec_operation_registry: ExecOperationRegistry,
     exec_control_registry: ExecControlRegistry,
     operation_state: OperationState,
@@ -268,13 +306,20 @@ impl ConnectionDispatcher {
         connection_cancel: Arc<AtomicBool>,
         process_containment_mode: ProcessContainmentMode,
         exec_drain_deadline: Duration,
+        guest_dns_readiness_program: GuestDnsReadinessProgram,
     ) -> io::Result<Self> {
         let file_write_worker =
             FileWriteWorker::start(writer.clone(), Arc::clone(&connection_cancel))?;
+        let guest_dns_readiness_worker = GuestDnsReadinessWorker::start(
+            writer.clone(),
+            Arc::clone(&connection_cancel),
+            guest_dns_readiness_program,
+        );
         Ok(Self {
             writer,
             connection_cancel,
             file_write_worker,
+            guest_dns_readiness_worker,
             exec_operation_registry: ExecOperationRegistry::default(),
             exec_control_registry: ExecControlRegistry::default(),
             operation_state: OperationState::default(),
@@ -288,10 +333,12 @@ impl ConnectionDispatcher {
             MSG_EXEC_START => self.handle_exec_start(msg)?,
             MSG_EXEC_CANCEL => self.handle_exec_cancel(msg)?,
             MSG_EXEC_CONTROL => self.handle_exec_control(msg)?,
-            MSG_WRITE_FILE => self.handle_write_file(msg)?,
-            MSG_WRITE_FILES => self.handle_write_files(msg)?,
+            MSG_WRITE_FILE => self.handle_file_write(msg, FileWriteKind::File)?,
+            MSG_WRITE_FILES => self.handle_file_write(msg, FileWriteKind::Files)?,
+            MSG_GUEST_DNS_READINESS => self.handle_guest_dns_readiness(msg)?,
             MSG_QUIESCE_OPERATIONS => self.handle_quiesce_operations(msg)?,
             MSG_RESUME_OPERATIONS => self.handle_resume_operations(msg)?,
+            MSG_MEMORY_SNAPSHOT => self.handle_memory_snapshot(msg)?,
             _ => return self.handle_basic_message(msg),
         }
 
@@ -397,14 +444,18 @@ impl ConnectionDispatcher {
         route_exec_control(msg.seq, decoded, &self.exec_control_registry, &self.writer)
     }
 
-    fn handle_write_file(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
-        if !require_non_zero_sequence(msg.seq, "write_file", &self.writer)? {
+    fn handle_file_write(
+        &self,
+        msg: BorrowedRawMessage<'_>,
+        kind: FileWriteKind,
+    ) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, kind.operation_label(), &self.writer)? {
             return Ok(());
         }
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
-        if let Err(error) = decode_write_file_message(msg.payload) {
+        if let Err(error) = kind.validate_payload(msg.payload) {
             send_error_response(msg.seq, &error.to_string(), &self.writer)?;
             return Ok(());
         }
@@ -417,13 +468,10 @@ impl ConnectionDispatcher {
         else {
             return Ok(());
         };
-        match self.file_write_worker.submit(
-            FileWriteKind::File,
-            msg.seq,
-            msg.payload,
-            operation_guard,
-            admission,
-        ) {
+        match self
+            .file_write_worker
+            .submit(kind, msg.seq, msg.payload, operation_guard, admission)
+        {
             Ok(()) => Ok(()),
             Err(FileWriteSubmitError::Busy) => {
                 send_error_response(msg.seq, "guest file write already active", &self.writer)
@@ -435,19 +483,26 @@ impl ConnectionDispatcher {
         }
     }
 
-    fn handle_write_files(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
-        if !require_non_zero_sequence(msg.seq, "write_files", &self.writer)? {
+    fn handle_guest_dns_readiness(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "guest DNS readiness", &self.writer)? {
             return Ok(());
         }
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
-        if let Err(error) = decode_write_files_message(msg.payload) {
-            send_error_response(msg.seq, &error.to_string(), &self.writer)?;
-            return Ok(());
-        }
-        let Some(admission) = self.file_write_worker.try_admit() else {
-            send_error_response(msg.seq, "guest file write already active", &self.writer)?;
+        let decoded = match vsock_proto::decode_guest_dns_readiness_request(msg.payload) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+                return Ok(());
+            }
+        };
+        let Some(admission) = self.guest_dns_readiness_worker.try_admit() else {
+            send_error_response(
+                msg.seq,
+                "guest DNS readiness operation already active",
+                &self.writer,
+            )?;
             return Ok(());
         };
         let Some(operation_guard) =
@@ -455,21 +510,28 @@ impl ConnectionDispatcher {
         else {
             return Ok(());
         };
-        match self.file_write_worker.submit(
-            FileWriteKind::Files,
+        match self.guest_dns_readiness_worker.submit(
             msg.seq,
-            msg.payload,
+            decoded.timeout_ms,
+            decoded.hostname,
             operation_guard,
             admission,
         ) {
             Ok(()) => Ok(()),
-            Err(FileWriteSubmitError::Busy) => {
-                send_error_response(msg.seq, "guest file write already active", &self.writer)
-            }
-            Err(FileWriteSubmitError::Disconnected) => Err(io::Error::new(
+            Err(GuestDnsReadinessSubmitError::Busy) => send_error_response(
+                msg.seq,
+                "guest DNS readiness operation already active",
+                &self.writer,
+            ),
+            Err(GuestDnsReadinessSubmitError::Disconnected) => Err(io::Error::new(
                 io::ErrorKind::BrokenPipe,
-                "guest file-write worker stopped",
+                "guest DNS readiness worker stopped",
             )),
+            Err(GuestDnsReadinessSubmitError::Start(error)) => send_error_response(
+                msg.seq,
+                &format!("failed to start guest DNS readiness worker: {error}"),
+                &self.writer,
+            ),
         }
     }
 
@@ -485,6 +547,10 @@ impl ConnectionDispatcher {
 
     fn handle_resume_operations(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
         handle_resume_operations(msg.seq, msg.payload, &self.operation_state, &self.writer)
+    }
+
+    fn handle_memory_snapshot(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+        handle_memory_snapshot(msg.seq, msg.payload, &self.operation_state, &self.writer)
     }
 
     fn handle_basic_message(&self, msg: BorrowedRawMessage<'_>) -> io::Result<DispatchOutcome> {
@@ -589,6 +655,23 @@ pub fn handle_connection_with_test_process_containment_and_exec_drain_deadline(
     )
 }
 
+/// Handles a host-side test connection with a test DNS readiness executable.
+///
+/// This remains available without `test-support` so integration tests can
+/// compile against the normal production library configuration.
+#[doc(hidden)]
+pub fn handle_connection_with_test_dns_readiness_program(
+    stream: UnixStream,
+    program: std::path::PathBuf,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_program(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+        GuestDnsReadinessProgram::for_test(program),
+    )
+}
+
 fn handle_connection_with_mode(
     stream: UnixStream,
     process_containment_mode: ProcessContainmentMode,
@@ -596,7 +679,7 @@ fn handle_connection_with_mode(
     handle_connection_with_mode_and_exec_drain_deadline(
         stream,
         process_containment_mode,
-        DRAIN_DEADLINE,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
     )
 }
 
@@ -605,7 +688,26 @@ fn handle_connection_with_mode_and_exec_drain_deadline(
     process_containment_mode: ProcessContainmentMode,
     exec_drain_deadline: Duration,
 ) -> io::Result<()> {
-    match handle_connection_with_outcome(stream, process_containment_mode, exec_drain_deadline) {
+    handle_connection_with_mode_and_program(
+        stream,
+        process_containment_mode,
+        exec_drain_deadline,
+        GuestDnsReadinessProgram::production(),
+    )
+}
+
+fn handle_connection_with_mode_and_program(
+    stream: UnixStream,
+    process_containment_mode: ProcessContainmentMode,
+    exec_drain_deadline: Duration,
+    guest_dns_readiness_program: GuestDnsReadinessProgram,
+) -> io::Result<()> {
+    match handle_connection_with_outcome(
+        stream,
+        process_containment_mode,
+        exec_drain_deadline,
+        guest_dns_readiness_program,
+    ) {
         Ok(_) => Ok(()),
         Err(failure) => Err(failure.error),
     }
@@ -615,6 +717,7 @@ fn handle_connection_with_outcome(
     stream: UnixStream,
     process_containment_mode: ProcessContainmentMode,
     exec_drain_deadline: Duration,
+    guest_dns_readiness_program: GuestDnsReadinessProgram,
 ) -> Result<ConnectionEnd, ConnectionFailure> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while worker threads write results.
@@ -642,6 +745,7 @@ fn handle_connection_with_outcome(
         connection_cancel.clone(),
         process_containment_mode,
         exec_drain_deadline,
+        guest_dns_readiness_program,
     )
     .map_err(|error| session.failure(error))?;
     let mut buf = [0u8; READ_BUFFER_SIZE];
@@ -785,7 +889,12 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream, process_containment_mode, DRAIN_DEADLINE)
+                    handle_connection_with_outcome(
+                        stream,
+                        process_containment_mode,
+                        EXEC_OUTPUT_DRAIN_DEADLINE,
+                        GuestDnsReadinessProgram::production(),
+                    )
                 })
         } else {
             log("INFO", "Connecting to host (CID=2)...");
@@ -793,7 +902,12 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream, process_containment_mode, DRAIN_DEADLINE)
+                    handle_connection_with_outcome(
+                        stream,
+                        process_containment_mode,
+                        EXEC_OUTPUT_DRAIN_DEADLINE,
+                        GuestDnsReadinessProgram::production(),
+                    )
                 })
         };
 
@@ -868,6 +982,7 @@ mod tests {
             MSG_EXEC_CONTROL,
             MSG_WRITE_FILE,
             MSG_WRITE_FILES,
+            MSG_GUEST_DNS_READINESS,
             MSG_QUIESCE_OPERATIONS,
             MSG_RESUME_OPERATIONS,
         ] {

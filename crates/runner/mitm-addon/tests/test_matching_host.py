@@ -50,10 +50,6 @@ class TestMatchHost:
     def test_greedy_param_rejects_non_leading_position(self, pattern):
         assert matching.match_host("foo.bar.example.com", pattern) is None
 
-    @pytest.mark.parametrize("pattern", ["api-{region+}.example.com", "api-{region*}.example.com"])
-    def test_greedy_param_rejects_mixed_segment(self, pattern):
-        assert matching.match_host("api-us.example.com", pattern) is None
-
     def test_literal_mismatch(self):
         assert matching.match_host("api.gitlab.com", "api.github.com") is None
 

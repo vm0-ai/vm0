@@ -3,7 +3,7 @@ import { unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   downloadWebFile,
   transcribeAudio,
@@ -54,10 +54,10 @@ export const transcribeCommand = new Command()
     "after",
     `
 Examples:
-  Transcribe from URL:      zero video transcribe --url "https://..."
-  Transcribe a web file:    zero video transcribe --file-id abc-123-def
-  Transcribe a local file:  zero video transcribe --file /tmp/video.mp4
-  Plain text only:          zero video transcribe --url "https://..." --no-timestamps
+  Transcribe from URL:      okou video transcribe --url "https://..."
+  Transcribe a web file:    okou video transcribe --file-id abc-123-def
+  Transcribe a local file:  okou video transcribe --file /tmp/video.mp4
+  Plain text only:          okou video transcribe --url "https://..." --no-timestamps
 
 Output:
   Structured Markdown printed to stdout:
@@ -67,9 +67,9 @@ Output:
 
 Notes:
   - Requires ffmpeg on PATH for audio extraction
-  - Authenticates via ZERO_TOKEN
+  - Authenticates via OKOU_TOKEN
   - Audio is extracted before upload to stay within the 25 MB size limit
-  - Uses the /api/zero/voice-io/stt endpoint (quota applies)`,
+  - Uses the /api/okou/voice-io/stt endpoint (quota applies)`,
   )
   .action(
     withErrorHandler(

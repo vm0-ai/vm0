@@ -1,6 +1,5 @@
 import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
-import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
 import {
   check,
   pgTable,
@@ -12,37 +11,18 @@ import {
   bigint,
   uniqueIndex,
   jsonb,
-  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
-import type {
-  ChatEventAttachFiles,
-  ChatEventGenerationTemplate,
-  ChatEventGoalEvent,
-  ChatEventRecommendedFollowups,
-  ChatEventUserMessage,
-  ChatEventUsagePayload,
-} from "@vm0/db/jsonb-contracts/chat-event";
+import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
 export type {
   ChatEventAttachFileMetadata,
   ChatEventAttachFileMetadataList,
-  ChatEventAttachFiles,
-  ChatEventGenerationTemplate,
-  ChatEventGoalEvent,
-  ChatEventIllustrationGenerationTemplate,
-  ChatEventPresentationGenerationTemplate,
-  ChatEventRecommendedFollowup,
-  ChatEventRecommendedFollowupGenerationType,
-  ChatEventRecommendedFollowupKind,
-  ChatEventRecommendedFollowups,
+  ChatEventPayload,
   ChatEventUserMessage,
   ChatEventUsageKindBreakdown,
   ChatEventUsagePayload,
   ChatEventUsageProviderBreakdown,
-  ChatEventVideoGenerationTemplate,
-  ChatEventWebsiteGenerationTemplate,
-  ChatEventWorkflowGenerationTemplate,
-} from "@vm0/db/jsonb-contracts/chat-event";
+} from "@okouai/db/jsonb-contracts/chat-event";
 
 /**
  * Shared literal predicate for partial-index selection and ON CONFLICT
@@ -56,9 +36,10 @@ export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
  * Physical storage for the immutable ChatEvent stream.
  * Each row is one typed event belonging to a chat_thread.
  *
- * User and automation inputs are persisted immediately. A run-less,
- * unrevoked input event is pending queue state; its run-attributed replacement
- * is the immutable claim.
+ * User, automation, goal, and budget inputs are persisted immediately. A
+ * run-less, unrevoked prompt, automation, or goal is pending thread queue
+ * state. A run-scoped budget is pending active input. Their run-attributed
+ * replacements are the immutable claims.
  *
  * Assistant rows are appended after run output exists. Queue marker control
  * rows can also be appended for queued runs and later revoked when the run
@@ -89,29 +70,24 @@ export const chatEvents = pgTable(
       )
       .notNull(),
     // Attribution only: identifies the run that consumed or produced this row.
-    // A null value on an unrevoked input.prompt/input.automation/input.goal is pending.
+    // A null value on an unrevoked input identifies pending queue or active-input state.
     runId: uuid("run_id"),
-    usagePayload: jsonb("usage_payload").$type<ChatEventUsagePayload>(),
-    revokesEventId: uuid("revokes_event_id").references(
-      (): AnyPgColumn => {
-        return chatEvents.id;
-      },
-      { onDelete: "no action" },
-    ),
-    interruptsRunId: uuid("interrupts_run_id"),
-    // Stable grouping key for autonomous goal continuations rendered in chat.
-    runGroupId: uuid("run_group_id"),
+    revokesEventId: uuid("revokes_event_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
+    payload: jsonb("payload").$type<ChatEventPayload>(),
     /**
-     * Optional polymorphic trigger-context pointer.
+     * Input source discriminator and optional polymorphic context pointer.
      *
-     * context_id is not unique: when a pending event is claimed, the revoke +
-     * insert replacement reuses it. A context row belongs to one trigger, not
-     * one event row. The pointer has no foreign key because context_type
-     * selects its table. Legal (event_type, context_type) combinations are
-     * enforced by the NewChatEvent TypeScript write union, not by SQL.
+     * `web` identifies a source without a context row, so its contextId is null.
+     * `goal` uses the goal ID as its canonical context pointer. For other values,
+     * contextId selects the row in the table named by contextType. contextId is
+     * not unique: when a pending event is claimed, the revoke + insert
+     * replacement reuses it. Legal
+     * (eventType, contextType) combinations are enforced by the NewChatEvent
+     * TypeScript write union, not by SQL.
      */
     contextType: text("context_type").$type<
+      | "web"
       | "slack"
       | "feishu"
       | "teams"
@@ -121,15 +97,9 @@ export const chatEvents = pgTable(
       | "automation"
       | "goal"
       | "morning_brief"
+      | "agent_run"
     >(),
     contextId: uuid("context_id"),
-    triggerSource: text("trigger_source").$type<TriggerSource>(),
-    content: text("content"),
-    /** Canonical rich user-message document for user input events. */
-    userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
-    thinking: text("thinking"),
-    error: text("error"),
-    activeInputSequence: integer("active_input_sequence"),
     runEventSequenceNumber: integer("run_event_sequence_number"),
     /**
      * Upstream run-event ID or a deterministic seed for synthesized rows.
@@ -138,20 +108,13 @@ export const chatEvents = pgTable(
      * our placeholder from real agent thinking stored in the same leaf.
      */
     runEventId: text("run_event_id"),
-    /** Strictly increasing position within the owning chat thread. */
+    /** Strictly increasing thread position; it may start above 1 and have gaps. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
-    goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
-    attachFiles: jsonb("attach_files").$type<ChatEventAttachFiles>(),
-    generationTemplate: jsonb(
-      "generation_template",
-    ).$type<ChatEventGenerationTemplate>(),
-    recommendedFollowups: jsonb(
-      "recommended_followups",
-    ).$type<ChatEventRecommendedFollowups>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
     return [
+      index("idx_chat_events_created_at_id").on(table.createdAt, table.id),
       index("idx_chat_events_thread_created").on(
         table.chatThreadId,
         table.createdAt,
@@ -160,15 +123,9 @@ export const chatEvents = pgTable(
         .on(table.chatThreadId, table.createdAt.desc())
         .where(chatEventTerminalPredicate(table.eventType)),
       index("idx_chat_events_run_id").on(table.runId),
-      index("chat_events_usage_run_id_idx")
-        .on(table.runId)
-        .where(sql`${table.usagePayload} IS NOT NULL`),
       uniqueIndex("chat_events_revokes_event_id_not_null_unique")
         .on(table.revokesEventId)
         .where(sql`${table.revokesEventId} IS NOT NULL`),
-      uniqueIndex("chat_events_interrupts_run_id_not_null_unique")
-        .on(table.interruptsRunId)
-        .where(sql`${table.interruptsRunId} IS NOT NULL`),
       index("chat_events_input_automation_context_idx")
         .on(table.contextId)
         .where(sql`${table.eventType} = 'input.automation'`),
@@ -181,9 +138,6 @@ export const chatEvents = pgTable(
         table.runId,
         table.runEventSequenceNumber,
       ),
-      uniqueIndex("chat_events_run_active_input_seq_unique")
-        .on(table.runId, table.activeInputSequence)
-        .where(sql`${table.activeInputSequence} IS NOT NULL`),
       uniqueIndex("chat_events_thread_seq_unique").on(
         table.chatThreadId,
         table.seqId,
@@ -191,15 +145,25 @@ export const chatEvents = pgTable(
       uniqueIndex("chat_events_run_terminal_unique")
         .on(table.runId)
         .where(chatEventTerminalPredicate(table.eventType)),
-      uniqueIndex("chat_events_run_thinking_unique")
+      uniqueIndex("chat_events_output_thinking_run_id_unique")
         .on(table.runId)
-        .where(sql`${table.thinking} IS NOT NULL`),
+        .where(
+          sql`${table.eventType} = 'output.thinking' AND ${table.runId} IS NOT NULL`,
+        ),
+      // control.interrupt rows carry their target run in run_id, so only one
+      // interrupt may target a run.
+      uniqueIndex("chat_events_control_interrupt_run_id_unique")
+        .on(table.runId)
+        .where(
+          sql`${table.eventType} = 'control.interrupt' AND ${table.runId} IS NOT NULL`,
+        ),
       check(
         "chat_events_event_type_check",
         sql`${table.eventType} IN (
           'input.prompt',
           'input.automation',
           'input.goal',
+          'input.budget',
           'input.rejected',
           'output.message',
           'output.error',
@@ -212,29 +176,63 @@ export const chatEvents = pgTable(
           'run.cancelled',
           'control.interrupt',
           'control.revoke',
-          'browser.started',
-          'browser.stopped',
-          'goal.changed',
+          'browser.open',
+          'browser.close',
+          'goal.open',
+          'goal.close',
           'usage.recorded'
         )`,
       ),
       check(
-        "chat_events_input_user_message_check",
-        sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
-          OR ${table.userMessage} IS NOT NULL`,
+        "chat_events_input_user_message_payload_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
+          OR (
+            ${table.payload} IS NOT NULL
+            AND ${table.payload} ? 'userMessage'
+          )`,
       ),
       check(
-        "chat_events_input_content_check",
-        sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
-          OR ${table.content} IS NULL`,
+        "chat_events_input_payload_content_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
+          OR ${table.payload} IS NULL
+          OR NOT (${table.payload} ? 'content')`,
+      ),
+      check(
+        "chat_events_goal_open_payload_check",
+        sql`${table.eventType} <> 'goal.open'
+          OR (
+            ${table.payload} IS NOT NULL
+            AND ${table.payload} ? 'content'
+            AND jsonb_typeof(${table.payload} -> 'content') = 'string'
+            AND ${table.payload} ->> 'content' = btrim(${table.payload} ->> 'content')
+            AND char_length(${table.payload} ->> 'content') > 0
+            AND ${table.payload} - 'content' = '{}'::jsonb
+          )`,
+      ),
+      check(
+        "chat_events_goal_close_payload_check",
+        sql`${table.eventType} <> 'goal.close' OR ${table.payload} IS NULL`,
+      ),
+      check(
+        "chat_events_goal_marker_payload_check",
+        sql`${table.eventType} NOT IN ('goal.open', 'goal.close')
+          OR (
+            ${table.runId} IS NULL
+            AND ${table.revokesEventId} IS NULL
+            AND ${table.contextType} IS NULL
+            AND ${table.contextId} IS NULL
+            AND ${table.runEventSequenceNumber} IS NULL
+            AND ${table.runEventId} IS NULL
+          )`,
       ),
       check(
         "chat_events_context_pair_check",
-        sql`(${table.contextType} IS NULL) = (${table.contextId} IS NULL)`,
+        sql`${table.contextId} IS NULL OR ${table.contextType} IS NOT NULL`,
       ),
       check(
         "chat_events_context_type_check",
         sql`${table.contextType} IN (
+          'web',
           'slack',
           'feishu',
           'teams',
@@ -243,8 +241,14 @@ export const chatEvents = pgTable(
           'agentphone',
           'automation',
           'goal',
-          'morning_brief'
+          'morning_brief',
+          'agent_run'
         )`,
+      ),
+      check(
+        "chat_events_input_context_type_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.automation', 'input.goal', 'input.budget')
+          OR ${table.contextType} IS NOT NULL`,
       ),
     ];
   },

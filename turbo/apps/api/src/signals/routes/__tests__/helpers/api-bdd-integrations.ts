@@ -1,5 +1,4 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
-
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import {
   integrationsTelegramBotListContract,
@@ -26,45 +25,97 @@ import {
   type SlackUploadInitBody,
   type TelegramUploadInitBody,
   type TelegramUploadCompleteBody,
-} from "@vm0/api-contracts/contracts/integrations";
-import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
+} from "@okouai/api-contracts/contracts/integrations";
+import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import {
   githubOauthContract,
   type GithubAppSetupCallbackQuery,
   type GithubOauthConnectCallbackQuery,
   type GithubOauthConnectQuery,
   type GithubOauthInstallQuery,
-} from "@vm0/api-contracts/contracts/github-oauth";
-import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
-import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
-import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import {
-  zeroModelProvidersByTypeContract,
-  zeroModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
-import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
-import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
-import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/github-oauth";
+import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { testSlackStateContract } from "@okouai/api-contracts/contracts/test-slack-state";
+import { zeroIntegrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
+import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
+import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
+import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
+import { zeroSlackOauthContract } from "@okouai/api-contracts/contracts/zero-slack-oauth";
+import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { HttpResponse, http } from "msw";
-
 import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser, ApiTestUserOptions } from "./api-bdd";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { githubOauthRoutes } from "../../github-oauth";
+import { integrationsGithubRoutes } from "../../integrations-github";
+import { testSlackStateRoutes } from "../../test-slack-state";
+import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+import { zeroIntegrationsAgentPhoneRoutes } from "../../zero-integrations-agentphone";
+import { integrationsGithubUploadCompleteRoutes } from "../../integrations-github-upload-complete";
+import { integrationsGithubUploadInitRoutes } from "../../integrations-github-upload-init";
+import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
+import { integrationsPhoneMessageRoutes } from "../../integrations-phone-message";
+import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-upload-complete";
+import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
+import { zeroIntegrationsSlackRoutes } from "../../zero-integrations-slack";
+import { integrationsSlackMessageRoutes } from "../../integrations-slack-message";
+import { integrationsSlackUploadCompleteRoutes } from "../../integrations-slack-upload-complete";
+import { integrationsSlackUploadInitRoutes } from "../../integrations-slack-upload-init";
+import { zeroIntegrationsTelegramRoutes } from "../../zero-integrations-telegram";
+import { integrationsTelegramMessageRoutes } from "../../integrations-telegram-message";
+import { integrationsTelegramUploadCompleteRoutes } from "../../integrations-telegram-upload-complete";
+import { integrationsTelegramUploadInitRoutes } from "../../integrations-telegram-upload-init";
+import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { slackChannelsRoutes } from "../../slack-channels";
+import { slackCommandsRoutes } from "../../slack-commands";
+import { zeroSlackConnectRoutes } from "../../zero-slack-connect";
+import { slackEventsRoutes } from "../../slack-events";
+import { slackInteractiveRoutes } from "../../slack-interactive";
+import { zeroSlackOauthRoutes } from "../../zero-slack-oauth";
+import { userModelPreferenceRoutes } from "../../user-model-preference";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...githubOauthRoutes,
+  ...integrationsGithubRoutes,
+  ...testSlackStateRoutes,
+  ...zeroFeatureSwitchesRoutes,
+  ...zeroIntegrationsAgentPhoneRoutes,
+  ...integrationsGithubUploadCompleteRoutes,
+  ...integrationsGithubUploadInitRoutes,
+  ...integrationsPhoneDownloadFileRoutes,
+  ...integrationsPhoneMessageRoutes,
+  ...integrationsPhoneUploadCompleteRoutes,
+  ...integrationsPhoneUploadInitRoutes,
+  ...integrationsSlackMessageRoutes,
+  ...integrationsSlackUploadCompleteRoutes,
+  ...integrationsSlackUploadInitRoutes,
+  ...zeroIntegrationsSlackRoutes,
+  ...integrationsTelegramMessageRoutes,
+  ...integrationsTelegramUploadCompleteRoutes,
+  ...integrationsTelegramUploadInitRoutes,
+  ...zeroIntegrationsTelegramRoutes,
+  ...zeroModelPoliciesRoutes,
+  ...zeroModelProvidersRoutes,
+  ...slackChannelsRoutes,
+  ...slackCommandsRoutes,
+  ...zeroSlackConnectRoutes,
+  ...slackEventsRoutes,
+  ...slackInteractiveRoutes,
+  ...zeroSlackOauthRoutes,
+  ...userModelPreferenceRoutes,
+]);
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -366,7 +417,10 @@ async function requestRawSlackIngress(
   headers: SlackSignatureHeaders,
   contentType: string,
 ): Promise<SlackIngressResponse> {
-  const response = await createApp({ signal: context.signal }).request(path, {
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(path, {
     method: "POST",
     headers: {
       "content-type": contentType,
@@ -411,17 +465,17 @@ async function requestRawAgentPhoneWebhook(
     readonly "x-webhook-id"?: string;
   },
 ): Promise<AgentPhoneWebhookResponse> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/agentphone/webhook",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...headers,
-      },
-      body,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/agentphone/webhook", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
     },
-  );
+    body,
+  });
   const result = {
     body: await parseRawResponseBody(response),
     headers: response.headers,
@@ -454,17 +508,17 @@ async function requestRawTelegramWebhook(
   body: string,
   headers: { readonly "x-telegram-bot-api-secret-token"?: string },
 ): Promise<TelegramWebhookResponse> {
-  const response = await createApp({ signal: context.signal }).request(
-    `/api/telegram/webhook/${telegramBotId}`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...headers,
-      },
-      body,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/telegram/webhook/${telegramBotId}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
     },
-  );
+    body,
+  });
   const result = {
     body: await parseRawResponseBody(response),
     headers: response.headers,
@@ -499,7 +553,10 @@ async function requestRawSlackDownloadFile(
     search.set("file_id", fileId);
   }
   const query = search.toString();
-  const response = await createApp({ signal: context.signal }).request(
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(
     `/api/zero/integrations/slack/download-file${query ? `?${query}` : ""}`,
     {
       method: "GET",
@@ -590,7 +647,9 @@ export function createBddIntegrationApi(context: TestContext) {
       query: GithubOauthInstallQuery,
       statuses: readonly (307 | 503)[],
     ) {
-      const client = setupApp({ context })(githubOauthContract);
+      const client = setupApp({ context, routes: githubOauthRoutes })(
+        githubOauthContract,
+      );
       return await accept(client.install({ query }), statuses);
     },
 
@@ -599,7 +658,9 @@ export function createBddIntegrationApi(context: TestContext) {
       query: GithubOauthConnectQuery,
       statuses: readonly (307 | 401 | 503)[],
     ) {
-      const client = setupApp({ context })(githubOauthContract);
+      const client = setupApp({ context, routes: githubOauthRoutes })(
+        githubOauthContract,
+      );
       return await accept(
         client.connect({
           extraHeaders: extraHeaders(authenticate(context, routeMocks, actor)),
@@ -613,7 +674,9 @@ export function createBddIntegrationApi(context: TestContext) {
       query: GithubOauthConnectCallbackQuery,
       statuses: readonly 307[],
     ) {
-      const client = setupApp({ context })(githubOauthContract);
+      const client = setupApp({ context, routes: githubOauthRoutes })(
+        githubOauthContract,
+      );
       return await accept(client.connectCallback({ query }), statuses);
     },
 
@@ -621,7 +684,9 @@ export function createBddIntegrationApi(context: TestContext) {
       query: GithubAppSetupCallbackQuery,
       statuses: readonly 307[],
     ) {
-      const client = setupApp({ context })(githubOauthContract);
+      const client = setupApp({ context, routes: githubOauthRoutes })(
+        githubOauthContract,
+      );
       return await accept(client.setupCallback({ query }), statuses);
     },
 
@@ -630,7 +695,9 @@ export function createBddIntegrationApi(context: TestContext) {
       action: string | undefined,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+        zeroIntegrationsSlackContract,
+      );
       return await accept(
         client.disconnect({
           headers: authenticate(context, routeMocks, actor),
@@ -644,7 +711,9 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+        zeroIntegrationsSlackContract,
+      );
       return await accept(
         client.getStatus({
           headers: authenticate(context, routeMocks, actor),
@@ -657,7 +726,9 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroSlackChannelsContract);
+      const client = setupApp({ context, routes: slackChannelsRoutes })(
+        slackChannelsContract,
+      );
       return await accept(
         client.list({ headers: authenticate(context, routeMocks, actor) }),
         statuses,
@@ -669,10 +740,31 @@ export function createBddIntegrationApi(context: TestContext) {
       body: SendSlackMessageBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(integrationsSlackMessageContract);
+      const client = setupApp({
+        context,
+        routes: integrationsSlackMessageRoutes,
+      })(integrationsSlackMessageContract);
       return await accept(
         client.sendMessage({
           headers: authenticate(context, routeMocks, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestSendSlackMessageAsRun(
+      zeroToken: string,
+      body: SendSlackMessageBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      const client = setupApp({
+        context,
+        routes: integrationsSlackMessageRoutes,
+      })(integrationsSlackMessageContract);
+      return await accept(
+        client.sendMessage({
+          headers: { authorization: `Bearer ${zeroToken}` },
           body,
         }),
         statuses,
@@ -684,7 +776,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: SlackUploadInitBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(integrationsSlackUploadInitContract);
+      const client = setupApp({
+        context,
+        routes: integrationsSlackUploadInitRoutes,
+      })(integrationsSlackUploadInitContract);
       return await accept(
         client.init({
           headers: authenticate(context, routeMocks, actor),
@@ -699,9 +794,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: SlackUploadCompleteBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(
-        integrationsSlackUploadCompleteContract,
-      );
+      const client = setupApp({
+        context,
+        routes: integrationsSlackUploadCompleteRoutes,
+      })(integrationsSlackUploadCompleteContract);
       return await accept(
         client.complete({
           headers: authenticate(context, routeMocks, actor),
@@ -730,7 +826,9 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401)[],
     ) {
-      const client = setupApp({ context })(zeroSlackConnectContract);
+      const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+        zeroSlackConnectContract,
+      );
       return await accept(
         client.getStatus({
           headers: authenticate(context, routeMocks, actor),
@@ -744,7 +842,9 @@ export function createBddIntegrationApi(context: TestContext) {
       body: SlackConnectBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroSlackConnectContract);
+      const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+        zeroSlackConnectContract,
+      );
       return await accept(
         client.connect({
           headers: authenticate(context, routeMocks, actor),
@@ -763,7 +863,9 @@ export function createBddIntegrationApi(context: TestContext) {
       },
       statuses: readonly (307 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroSlackOauthContract);
+      const client = setupApp({ context, routes: zeroSlackOauthRoutes })(
+        zeroSlackOauthContract,
+      );
       return await accept(client.install({ query }), statuses);
     },
 
@@ -889,6 +991,7 @@ export function createBddIntegrationApi(context: TestContext) {
             const url = new URL(request.url);
             const response = await createApp({
               signal: context.signal,
+              routes: TEST_APP_ROUTES,
             }).request(`${url.pathname}${url.search}`, {
               method: "POST",
               headers: request.headers,
@@ -938,7 +1041,9 @@ export function createBddIntegrationApi(context: TestContext) {
         authed_user: { id: installerSlackUserId },
         scope: SLACK_APP_BOT_SCOPES,
       });
-      const client = setupApp({ context })(zeroSlackOauthContract);
+      const client = setupApp({ context, routes: zeroSlackOauthRoutes })(
+        zeroSlackOauthContract,
+      );
       await accept(
         client.callback({
           query: {
@@ -960,7 +1065,9 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser,
       body: SlackConnectBody,
     ): Promise<void> {
-      const client = setupApp({ context })(zeroSlackConnectContract);
+      const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+        zeroSlackConnectContract,
+      );
       await accept(
         client.connect({
           headers: authenticate(context, routeMocks, actor),
@@ -1050,7 +1157,9 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     async readSlackTestState(teamId: string) {
-      const client = setupApp({ context })(testSlackStateContract);
+      const client = setupApp({ context, routes: testSlackStateRoutes })(
+        testSlackStateContract,
+      );
       const response = await accept(
         client.get({ query: { team_id: teamId } }),
         [200],
@@ -1059,12 +1168,17 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     async deleteSlackTestState(teamId: string): Promise<void> {
-      const client = setupApp({ context })(testSlackStateContract);
+      const client = setupApp({ context, routes: testSlackStateRoutes })(
+        testSlackStateContract,
+      );
       await accept(client.delete({ query: { team_id: teamId } }), [200]);
     },
 
     async readUserModelPreference(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroUserModelPreferenceContract);
+      const client = setupApp({
+        context,
+        routes: userModelPreferenceRoutes,
+      })(userModelPreferenceContract);
       const response = await accept(
         client.get({ headers: authenticate(context, routeMocks, actor) }),
         [200],
@@ -1075,19 +1189,25 @@ export function createBddIntegrationApi(context: TestContext) {
     async updateUserModelPreference(
       actor: ApiTestUser,
       selectedModel: SupportedRunModel | null,
+      serviceTier: "priority" | null = null,
     ): Promise<void> {
-      const client = setupApp({ context })(zeroUserModelPreferenceContract);
+      const client = setupApp({
+        context,
+        routes: userModelPreferenceRoutes,
+      })(userModelPreferenceContract);
       await accept(
         client.update({
           headers: authenticate(context, routeMocks, actor),
-          body: { selectedModel },
+          body: { selectedModel, serviceTier },
         }),
         [200],
       );
     },
 
     async configureSlackRunModelPolicies(actor: ApiTestUser): Promise<void> {
-      const providers = setupApp({ context })(zeroModelProvidersMainContract);
+      const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
+        zeroModelProvidersMainContract,
+      );
       const anthropic = await accept(
         providers.upsert({
           headers: authenticate(context, routeMocks, actor),
@@ -1103,7 +1223,9 @@ export function createBddIntegrationApi(context: TestContext) {
         [200, 201],
       );
       await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
+        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+          zeroModelPoliciesMainContract,
+        ).update({
           headers: authenticate(context, routeMocks, actor),
           body: {
             policies: [
@@ -1130,65 +1252,13 @@ export function createBddIntegrationApi(context: TestContext) {
 
     async enableAuditLinkSwitch(actor: ApiTestUser): Promise<void> {
       await accept(
-        setupApp({ context })(zeroFeatureSwitchesContract).update({
+        setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+          zeroFeatureSwitchesContract,
+        ).update({
           headers: authenticate(context, routeMocks, actor),
           body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
         }),
         [200],
-      );
-    },
-
-    async configureUnpinnedSlackModelRoute(actor: ApiTestUser): Promise<void> {
-      const providers = setupApp({ context })(zeroModelProvidersMainContract);
-      // openrouter-api-key is a claude-code provider whose catalog entry has
-      // no default model, so runs admitted through it keep selectedModel null.
-      await accept(
-        providers.upsert({
-          headers: authenticate(context, routeMocks, actor),
-          body: { type: "openrouter-api-key", secret: "bdd-openrouter-key" },
-        }),
-        [200, 201],
-      );
-      const openai = await accept(
-        providers.upsert({
-          headers: authenticate(context, routeMocks, actor),
-          body: { type: "openai-api-key", secret: "bdd-openai-key" },
-        }),
-        [200, 201],
-      );
-      await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
-          headers: authenticate(context, routeMocks, actor),
-          body: {
-            policies: [
-              {
-                model: "gpt-5.5",
-                isDefault: true,
-                defaultProviderType: "openai-api-key",
-                credentialScope: "org",
-                modelProviderId: openai.body.provider.id,
-              },
-            ],
-          },
-        }),
-        [200],
-      );
-      await accept(
-        setupApp({ context })(zeroModelProvidersByTypeContract).delete({
-          headers: authenticate(context, routeMocks, actor),
-          params: { type: "openai-api-key" },
-        }),
-        [204],
-      );
-      // Onboarding seeds an org "vm0" no-secret provider pinned to a model;
-      // delete it too so unpinned runs resolve the org openrouter provider,
-      // which carries no selected model.
-      await accept(
-        setupApp({ context })(zeroModelProvidersByTypeContract).delete({
-          headers: authenticate(context, routeMocks, actor),
-          params: { type: "vm0" },
-        }),
-        [204],
       );
     },
 
@@ -1251,7 +1321,9 @@ export function createBddIntegrationApi(context: TestContext) {
       },
       statuses: readonly (307 | 400 | 404 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroSlackOauthContract);
+      const client = setupApp({ context, routes: zeroSlackOauthRoutes })(
+        zeroSlackOauthContract,
+      );
       return await accept(client.connect({ query }), statuses);
     },
 
@@ -1263,7 +1335,9 @@ export function createBddIntegrationApi(context: TestContext) {
       },
       statuses: readonly (307 | 400 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroSlackOauthContract);
+      const client = setupApp({ context, routes: zeroSlackOauthRoutes })(
+        zeroSlackOauthContract,
+      );
       return await accept(client.callback({ query }), statuses);
     },
 
@@ -1271,7 +1345,10 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       return await accept(
         client.list({
           headers: authenticate(context, routeMocks, actor),
@@ -1284,7 +1361,10 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(integrationsTelegramBotListContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(integrationsTelegramBotListContract);
       return await accept(
         client.listBots({
           headers: authenticate(context, routeMocks, actor),
@@ -1294,7 +1374,10 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     async readTelegramLinkStatus(actor: ApiTestUser, botId: string) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       const response = await accept(
         client.getLinkStatus({
           headers: authenticate(context, routeMocks, actor),
@@ -1306,7 +1389,10 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     async requestTelegramAuthCallback(statuses: readonly 200[]) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       return await accept(client.authCallback(), statuses);
     },
 
@@ -1316,7 +1402,10 @@ export function createBddIntegrationApi(context: TestContext) {
       query: { readonly exp?: string; readonly sig?: string },
       statuses: readonly (200 | 401 | 404 | 413 | 502)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       return await accept(
         client.avatar({
           headers: authenticate(context, routeMocks, actor),
@@ -1332,7 +1421,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: TelegramLinkBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       return await accept(
         client.link({
           headers: authenticate(context, routeMocks, actor),
@@ -1347,7 +1439,10 @@ export function createBddIntegrationApi(context: TestContext) {
       botId: string | undefined,
       statuses: readonly (204 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       return await accept(
         client.unlink({
           headers: authenticate(context, routeMocks, actor),
@@ -1363,7 +1458,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: TelegramUpdateBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       return await accept(
         client.updateBot({
           headers: authenticate(context, routeMocks, actor),
@@ -1379,7 +1477,10 @@ export function createBddIntegrationApi(context: TestContext) {
       botId: string,
       statuses: readonly (204 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       return await accept(
         client.disconnect({
           headers: authenticate(context, routeMocks, actor),
@@ -1404,7 +1505,10 @@ export function createBddIntegrationApi(context: TestContext) {
         | 502
       )[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       return await accept(
         client.register({
           headers: authenticate(context, routeMocks, actor),
@@ -1419,7 +1523,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: TelegramSetupStatusBody,
       statuses: readonly (200 | 400 | 401 | 409)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramRoutes,
+      })(zeroIntegrationsTelegramContract);
       return await accept(
         client.setupStatus({
           headers: authenticate(context, routeMocks, actor),
@@ -1434,9 +1541,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: TelegramUploadInitBody,
       statuses: readonly (200 | 400 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(
-        integrationsTelegramUploadInitContract,
-      );
+      const client = setupApp({
+        context,
+        routes: integrationsTelegramUploadInitRoutes,
+      })(integrationsTelegramUploadInitContract);
       return await accept(
         client.init({
           headers: authenticate(context, routeMocks, actor),
@@ -1451,9 +1559,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: TelegramUploadCompleteBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 502)[],
     ) {
-      const client = setupApp({ context })(
-        integrationsTelegramUploadCompleteContract,
-      );
+      const client = setupApp({
+        context,
+        routes: integrationsTelegramUploadCompleteRoutes,
+      })(integrationsTelegramUploadCompleteContract);
       return await accept(
         client.complete({
           headers: authenticate(context, routeMocks, actor),
@@ -1468,7 +1577,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: SendTelegramMessageBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 502)[],
     ) {
-      const client = setupApp({ context })(integrationsTelegramMessageContract);
+      const client = setupApp({
+        context,
+        routes: integrationsTelegramMessageRoutes,
+      })(integrationsTelegramMessageContract);
       return await accept(
         client.sendMessage({
           headers: authenticate(context, routeMocks, actor),
@@ -1478,8 +1590,28 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
+    async requestSendTelegramMessageAsRun(
+      zeroToken: string,
+      body: SendTelegramMessageBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 502)[],
+    ) {
+      const client = setupApp({
+        context,
+        routes: integrationsTelegramMessageRoutes,
+      })(integrationsTelegramMessageContract);
+      return await accept(
+        client.sendMessage({
+          headers: { authorization: `Bearer ${zeroToken}` },
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async readGithubInstallation(actor: ApiTestUser) {
-      const client = setupApp({ context })(integrationsGithubContract);
+      const client = setupApp({ context, routes: integrationsGithubRoutes })(
+        integrationsGithubContract,
+      );
       return await accept(
         client.getInstallation({
           headers: authenticate(context, routeMocks, actor),
@@ -1493,9 +1625,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: GithubUploadInitBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500 | 502)[],
     ) {
-      const client = setupApp({ context })(
-        integrationsGithubUploadInitContract,
-      );
+      const client = setupApp({
+        context,
+        routes: integrationsGithubUploadInitRoutes,
+      })(integrationsGithubUploadInitContract);
       return await accept(
         client.init({
           headers: authenticate(context, routeMocks, actor),
@@ -1510,9 +1643,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: GithubUploadCompleteBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500 | 502)[],
     ) {
-      const client = setupApp({ context })(
-        integrationsGithubUploadCompleteContract,
-      );
+      const client = setupApp({
+        context,
+        routes: integrationsGithubUploadCompleteRoutes,
+      })(integrationsGithubUploadCompleteContract);
       return await accept(
         client.complete({
           headers: authenticate(context, routeMocks, actor),
@@ -1523,7 +1657,10 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     async getAgentPhoneLinkStatus(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsAgentPhoneRoutes,
+      })(zeroIntegrationsAgentPhoneContract);
       const response = await accept(
         client.getLinkStatus({
           headers: authenticate(context, routeMocks, actor),
@@ -1538,7 +1675,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: { readonly phoneHandle: string },
       statuses: readonly (200 | 400 | 401 | 409 | 429 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsAgentPhoneRoutes,
+      })(zeroIntegrationsAgentPhoneContract);
       return await accept(
         client.startLink({
           headers: authenticate(context, routeMocks, actor),
@@ -1552,7 +1692,10 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (204 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsAgentPhoneRoutes,
+      })(zeroIntegrationsAgentPhoneContract);
       return await accept(
         client.unlink({
           headers: authenticate(context, routeMocks, actor),
@@ -1572,7 +1715,10 @@ export function createBddIntegrationApi(context: TestContext) {
       },
       statuses: readonly (200 | 400 | 401 | 409)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsAgentPhoneRoutes,
+      })(zeroIntegrationsAgentPhoneContract);
       return await accept(
         client.connectAgentPhone({
           headers: authenticate(context, routeMocks, actor),
@@ -1615,7 +1761,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: PhoneUploadInitBody,
       statuses: readonly (200 | 400 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(integrationsPhoneUploadInitContract);
+      const client = setupApp({
+        context,
+        routes: integrationsPhoneUploadInitRoutes,
+      })(integrationsPhoneUploadInitContract);
       return await accept(
         client.init({
           headers: authenticate(context, routeMocks, actor),
@@ -1630,9 +1779,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: PhoneUploadCompleteBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 502)[],
     ) {
-      const client = setupApp({ context })(
-        integrationsPhoneUploadCompleteContract,
-      );
+      const client = setupApp({
+        context,
+        routes: integrationsPhoneUploadCompleteRoutes,
+      })(integrationsPhoneUploadCompleteContract);
       return await accept(
         client.complete({
           headers: authenticate(context, routeMocks, actor),
@@ -1647,9 +1797,10 @@ export function createBddIntegrationApi(context: TestContext) {
       fileId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 413 | 502)[],
     ) {
-      const client = setupApp({ context })(
-        integrationsPhoneDownloadFileContract,
-      );
+      const client = setupApp({
+        context,
+        routes: integrationsPhoneDownloadFileRoutes,
+      })(integrationsPhoneDownloadFileContract);
       return await accept(
         client.download({
           headers: authenticate(context, routeMocks, actor),
@@ -1664,7 +1815,10 @@ export function createBddIntegrationApi(context: TestContext) {
       body: SendPhoneMessageBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 502)[],
     ) {
-      const client = setupApp({ context })(integrationsPhoneMessageContract);
+      const client = setupApp({
+        context,
+        routes: integrationsPhoneMessageRoutes,
+      })(integrationsPhoneMessageContract);
       return await accept(
         client.sendMessage({
           headers: authenticate(context, routeMocks, actor),

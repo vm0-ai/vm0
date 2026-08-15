@@ -22,8 +22,8 @@ const INITIAL_SEQ_ID = 1;
 const RENAME_SEQ_ID = 2;
 const SORT_SEQ_ID = 3;
 const REFRESH_SEQ_ID = 4;
-const SNAPSHOT_URL = "http://localhost:3000/api/zero/chat-threads/snapshot";
-const EVENTS_URL = "http://localhost:3000/api/zero/chat-threads/events";
+const SNAPSHOT_URL = "http://localhost:3000/api/okou/chat-threads/snapshot";
+const EVENTS_URL = "http://localhost:3000/api/okou/chat-threads/events";
 
 function zeroToken(): string {
   const payload = Buffer.from(
@@ -31,7 +31,7 @@ function zeroToken(): string {
       userId: "user_test",
       runId: "00000000-0000-4000-8000-000000000401",
       orgId: "org_test",
-      scope: "zero",
+      scope: "okou",
       capabilities: ["chat-thread:read"],
       iat: 1,
       exp: 4_102_444_800,
@@ -58,7 +58,7 @@ function snapshotThread(options: {
 
 function event(options: {
   readonly id: string;
-  readonly seqId?: number;
+  readonly seqId: number;
   readonly kind: "renamed" | "sort_touched";
   readonly chatThreadId: string;
   readonly agentId: string;
@@ -71,7 +71,7 @@ function event(options: {
   };
 }
 
-describe("zero chat list command", () => {
+describe("okou chat list command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -85,8 +85,8 @@ describe("zero chat list command", () => {
     chalk.level = 0;
     cacheDirectory = await mkdtemp(join(tmpdir(), "zero-chat-list-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", zeroToken());
-    vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+    vi.stubEnv("OKOU_TOKEN", zeroToken());
+    vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     vi.stubEnv("XDG_CACHE_HOME", cacheDirectory);
   });
 
@@ -98,7 +98,7 @@ describe("zero chat list command", () => {
     await rm(cacheDirectory, { recursive: true, force: true });
   });
 
-  it("replays incremental events from the cache and defaults to ZERO_AGENT_ID", async () => {
+  it("replays incremental events from the cache and defaults to OKOU_AGENT_ID", async () => {
     let snapshotRequests = 0;
     let eventRequests = 0;
     server.use(
@@ -208,102 +208,6 @@ describe("zero chat list command", () => {
     expect(eventRequests).toBe(2);
   });
 
-  it("uses UUID pagination and cache cursors against the old API", async () => {
-    let snapshotRequests = 0;
-    const requestedCursors: Array<{
-      readonly eventId: string | null;
-      readonly seqId: string | null;
-    }> = [];
-    server.use(
-      http.get(SNAPSHOT_URL, () => {
-        snapshotRequests += 1;
-        return HttpResponse.json({
-          chatThreads: [
-            snapshotThread({
-              id: THREAD_ID,
-              agentId: AGENT_ID,
-              title: "Legacy snapshot title",
-              sortAt: "2026-07-24T03:00:00.000Z",
-            }),
-            snapshotThread({
-              id: SECOND_THREAD_ID,
-              agentId: AGENT_ID,
-              title: "Legacy second thread",
-              sortAt: "2026-07-24T02:00:00.000Z",
-            }),
-          ],
-          latestEventId: INITIAL_EVENT_ID,
-        });
-      }),
-      http.get(EVENTS_URL, ({ request }) => {
-        const url = new URL(request.url);
-        const eventId = url.searchParams.get("sinceEventId");
-        requestedCursors.push({
-          eventId,
-          seqId: url.searchParams.get("sinceSeqId"),
-        });
-        if (eventId === INITIAL_EVENT_ID) {
-          return HttpResponse.json({
-            events: [
-              event({
-                id: RENAME_EVENT_ID,
-                kind: "renamed",
-                chatThreadId: THREAD_ID,
-                agentId: AGENT_ID,
-                title: "Legacy renamed title",
-                createdAt: "2026-07-24T03:30:00.000Z",
-              }),
-            ],
-            hasMore: true,
-          });
-        }
-        if (eventId === RENAME_EVENT_ID) {
-          return HttpResponse.json({
-            events: [
-              event({
-                id: SORT_EVENT_ID,
-                kind: "sort_touched",
-                chatThreadId: SECOND_THREAD_ID,
-                agentId: AGENT_ID,
-                title: null,
-                createdAt: "2026-07-24T05:00:00.000Z",
-              }),
-            ],
-            hasMore: false,
-          });
-        }
-        return HttpResponse.json({ events: [], hasMore: false });
-      }),
-    );
-
-    await zeroChatCommand.parseAsync(["node", "cli", "list", "--json"]);
-    const firstOutput = JSON.parse(
-      String(mockConsoleLog.mock.calls[0]?.[0]),
-    ) as {
-      readonly threads: readonly {
-        readonly id: string;
-        readonly title: string;
-      }[];
-    };
-    expect(firstOutput.threads).toStrictEqual([
-      expect.objectContaining({
-        id: SECOND_THREAD_ID,
-        title: "Legacy second thread",
-      }),
-      expect.objectContaining({ id: THREAD_ID, title: "Legacy renamed title" }),
-    ]);
-
-    mockConsoleLog.mockClear();
-    await zeroChatCommand.parseAsync(["node", "cli", "list", "--json"]);
-
-    expect(snapshotRequests).toBe(1);
-    expect(requestedCursors).toStrictEqual([
-      { eventId: INITIAL_EVENT_ID, seqId: null },
-      { eventId: RENAME_EVENT_ID, seqId: null },
-      { eventId: SORT_EVENT_ID, seqId: null },
-    ]);
-  });
-
   it("reloads the snapshot when the cached event cursor expires", async () => {
     let snapshotRequests = 0;
     let eventRequests = 0;
@@ -359,7 +263,7 @@ describe("zero chat list command", () => {
     expect(eventRequests).toBe(3);
   });
 
-  it("lets --agent override ZERO_AGENT_ID", async () => {
+  it("lets --agent override OKOU_AGENT_ID", async () => {
     server.use(
       http.get(SNAPSHOT_URL, () => {
         return HttpResponse.json({
@@ -411,15 +315,15 @@ describe("zero chat list command", () => {
     );
   });
 
-  it("requires an agent id from --agent or ZERO_AGENT_ID", async () => {
-    vi.stubEnv("ZERO_AGENT_ID", "");
+  it("requires an agent id from --agent or OKOU_AGENT_ID", async () => {
+    vi.stubEnv("OKOU_AGENT_ID", "");
 
     await expect(async () => {
       await zeroChatCommand.parseAsync(["node", "cli", "list"]);
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain("ZERO_AGENT_ID is not set");
+    expect(stderr).toContain("OKOU_AGENT_ID is not set");
     expect(stderr).toContain("Pass --agent <agent-id>");
     expect(mockExit).toHaveBeenCalledWith(1);
   });

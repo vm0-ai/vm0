@@ -5,21 +5,17 @@ import {
   randomUUID,
   sign as signData,
 } from "node:crypto";
-
-import {
-  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getVm0Vendor,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -35,9 +31,19 @@ import {
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { chatEventAutomationPart } from "./helpers/chat-event";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
+import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { replaceBddVm0ApiKeys } from "../../../test-fixtures/chat-events";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { webhooksGmailRoutes } from "../webhooks-gmail";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksGmailRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -54,7 +60,6 @@ const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const GMAIL_WORKSPACE_MODEL = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
-const GMAIL_WORKSPACE_MODEL_VENDOR = getVm0Vendor(GMAIL_WORKSPACE_MODEL);
 const GOOGLE_OIDC_CERT_KID = "gmail-pubsub-test-key";
 const googleOidcKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const googleOidcPublicKeyPem = googleOidcKeyPair.publicKey.export({
@@ -73,7 +78,9 @@ function authHeaders(actor: ApiTestUser) {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -93,19 +100,11 @@ function sandboxOperationEvents(): readonly Record<string, unknown>[] {
   });
 }
 
-function gmailEventContextFromPrompt(
-  appendSystemPrompt: string,
-): Record<string, unknown> {
-  const marker = "# This run's event\n";
-  const markerIndex = appendSystemPrompt.indexOf(marker);
-  expect(markerIndex).toBeGreaterThanOrEqual(0);
-  const parsed: unknown = JSON.parse(
-    appendSystemPrompt.slice(markerIndex + marker.length),
-  );
-  if (!isRecord(parsed)) {
-    throw new Error("Expected Gmail event context to be an object");
-  }
-  return parsed;
+function expectGmailEventContextInPrompt(
+  prompt: string,
+  expected: Record<string, unknown>,
+): void {
+  expect(prompt).toContain(JSON.stringify(expected, null, 2));
 }
 
 function encodeJwtPart(value: unknown): string {
@@ -159,15 +158,27 @@ function configureGmailEnv(): void {
   configureGoogleOidcCertMock();
 }
 
-function configureGmailWatchMock(historyId = "100"): void {
+interface GmailWatchRecorder {
+  calls: number;
+}
+
+function configureGmailWatchMock(
+  historyIds: string | readonly string[] = "100",
+): GmailWatchRecorder {
+  const recorder: GmailWatchRecorder = { calls: 0 };
   server.use(
     http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
+      recorder.calls += 1;
       return HttpResponse.json({
-        historyId,
+        historyId:
+          typeof historyIds === "string"
+            ? historyIds
+            : historyIds[Math.min(recorder.calls - 1, historyIds.length - 1)],
         expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
       });
     }),
   );
+  return recorder;
 }
 
 function uniqueGmailEmail(): string {
@@ -327,17 +338,17 @@ function gmailPushBody(args: {
 async function postGmailWebhook(
   rawBody: string,
 ): Promise<{ readonly status: number; readonly body: unknown }> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/gmail",
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${signedGoogleIdToken()}`,
-        "Content-Type": "application/json",
-      },
-      body: rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/gmail", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${signedGoogleIdToken()}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: rawBody,
+  });
   return {
     status: response.status,
     body: await response.json(),
@@ -395,17 +406,7 @@ async function configureWorkspaceModelProvider(
 }
 
 async function configureVm0ManagedModelKey(): Promise<void> {
-  const keySuffix = randomUUID();
-  await replaceBddVm0ApiKeys({
-    vendor: GMAIL_WORKSPACE_MODEL_VENDOR,
-    model: GMAIL_WORKSPACE_MODEL,
-    keys: [
-      {
-        apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
-        label: "dev-seed",
-      },
-    ],
-  });
+  await seedVm0ManagedModelKey(context, GMAIL_WORKSPACE_MODEL);
 }
 
 async function configureAutomationThreadModel(
@@ -451,10 +452,12 @@ async function grantVisibleCredits(
 async function connectGmail(
   actor: ApiTestUser,
   gmailEmail: string,
+  subject = "bdd-gmail-user-id",
 ): Promise<void> {
   mockGmailConnectorOAuth({
     accessToken: "gmail-access-token",
     email: gmailEmail,
+    subject,
   });
   const start = await connectorsApi.startOauth(actor, "gmail", "oauth");
   const state = new URL(start.authorizationUrl).searchParams.get("state");
@@ -474,9 +477,11 @@ async function connectGmail(
   });
 }
 
-async function setupFixture(): Promise<GmailTestFixture> {
+async function setupFixture(
+  email = "gmail-webhook-owner@example.test",
+): Promise<GmailTestFixture> {
   const actor = bdd.user({
-    email: "gmail-webhook-owner@example.test",
+    email,
     orgRole: "org:admin",
   });
   if (!actor.orgId) {
@@ -531,13 +536,13 @@ async function runAutomationNow(
   actor: ApiTestUser,
   automationId: string,
 ): Promise<{ readonly chatThreadId: string; readonly runId: string }> {
-  const response = await createApp({ signal: context.signal }).request(
-    `/api/zero/workflow-automations/${automationId}/run`,
-    {
-      method: "POST",
-      headers: authHeaders(actor),
-    },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/zero/workflow-automations/${automationId}/run`, {
+    method: "POST",
+    headers: authHeaders(actor),
+  });
   const body = (await response.json()) as unknown;
   if (response.status !== 201) {
     expectApiError(body);
@@ -561,10 +566,10 @@ function requireAutomationChatThreadId(
   return automation.chatThreadId;
 }
 
-async function workflowAutomationBriefs(
+async function workflowAutomationDisplayTexts(
   actor: ApiTestUser,
   chatThreadId: string,
-): Promise<readonly (string | null | undefined)[]> {
+): Promise<readonly (string | null)[]> {
   const { events } = await chatApi.listThreadEvents(actor, chatThreadId, {
     limit: 20,
   });
@@ -573,7 +578,7 @@ async function workflowAutomationBriefs(
       return event.eventType === "input.prompt";
     })
     .map((event) => {
-      return chatEventAutomationPart(event)?.automationBrief;
+      return chatEventDisplayText(event);
     });
 }
 
@@ -624,10 +629,248 @@ async function completeRunThroughSandbox(
 }
 
 describe("POST /api/webhooks/gmail", () => {
+  it("keeps same-account watch state and drops it when reconnect changes accounts", async () => {
+    const gmailEmail = uniqueGmailEmail();
+    configureGmailEnv();
+    const watch = configureGmailWatchMock();
+    server.use(
+      http.get("https://gmail.googleapis.com/gmail/v1/users/me/history", () => {
+        return HttpResponse.json({ history: [], historyId: "101" });
+      }),
+    );
+
+    const { actor, workflowId } = await setupFixture();
+    await connectGmail(actor, gmailEmail, "gmail-account-one");
+    const initialConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "gmail",
+    );
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    expect(watch.calls).toBe(1);
+
+    const renamedGmailEmail = `renamed-${gmailEmail}`;
+    await connectGmail(actor, renamedGmailEmail, "gmail-account-one");
+    const sameAccountConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "gmail",
+    );
+    expect(sameAccountConnection).toMatchObject({
+      id: initialConnection.id,
+      externalEmail: renamedGmailEmail,
+    });
+    expect(watch.calls).toBe(1);
+    const sameAccountEvent = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: renamedGmailEmail,
+        historyId: 101,
+        messageId: "pubsub-same-account",
+      }),
+    );
+    expectResponseStatus(sameAccountEvent, 200);
+    expect(sameAccountEvent.body).toMatchObject({ watchStates: 1 });
+
+    await connectGmail(actor, `replacement-${gmailEmail}`, "gmail-account-two");
+    const replacementConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "gmail",
+    );
+    expect(replacementConnection).toMatchObject({
+      id: initialConnection.id,
+      externalId: "gmail-account-two",
+    });
+    const oldAccountEvent = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: renamedGmailEmail,
+        historyId: 102,
+        messageId: "pubsub-old-account",
+      }),
+    );
+    expectResponseStatus(oldAccountEvent, 200);
+    expect(oldAccountEvent.body).toMatchObject({ watchStates: 0 });
+
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+  });
+
+  it("short-circuits before Gmail history reads when no consumer remains", async () => {
+    const gmailEmail = uniqueGmailEmail();
+    configureGmailEnv();
+    configureGmailWatchMock();
+    let historyCalls = 0;
+    server.use(
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
+        return HttpResponse.json({ error: "stop failed" }, { status: 500 });
+      }),
+      http.get("https://gmail.googleapis.com/gmail/v1/users/me/history", () => {
+        historyCalls += 1;
+        return HttpResponse.json({ history: [], historyId: "101" });
+      }),
+    );
+
+    const { actor, workflowId } = await setupFixture();
+    await connectGmail(actor, gmailEmail);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    let refreshCalls = 0;
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        expect(body.get("grant_type")).toBe("refresh_token");
+        refreshCalls += 1;
+        return HttpResponse.json({
+          access_token: "gmail-refreshed-access-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+      }),
+    );
+    const connectedAt = now();
+    mockNow(connectedAt + 2 * 60 * 60 * 1000);
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(refreshCalls).toBe(1);
+    mockNow(connectedAt);
+
+    const response = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: gmailEmail,
+        historyId: 101,
+        messageId: "pubsub-no-consumer",
+      }),
+    );
+
+    expectResponseStatus(response, 200);
+    expect(response.body).toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    expect(historyCalls).toBe(0);
+    expect(refreshCalls).toBe(1);
+
+    server.use(
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+  });
+
+  it("preserves existing Gmail cursors when another identity starts watching the mailbox", async () => {
+    const gmailEmail = uniqueGmailEmail();
+    configureGmailEnv();
+    const watch = configureGmailWatchMock(["100", "200"]);
+    const first = await setupFixture(
+      `gmail-first-${randomUUID()}@example.test`,
+    );
+    await connectGmail(first.actor, gmailEmail);
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(first.actor),
+        params: { workflowId: first.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+
+    const second = await setupFixture(
+      `gmail-second-${randomUUID()}@example.test`,
+    );
+    await connectGmail(second.actor, gmailEmail);
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(second.actor),
+        params: { workflowId: second.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    expect(watch.calls).toBe(2);
+
+    const startHistoryIds: string[] = [];
+    server.use(
+      http.get(
+        "https://gmail.googleapis.com/gmail/v1/users/me/history",
+        ({ request }) => {
+          const startHistoryId = new URL(request.url).searchParams.get(
+            "startHistoryId",
+          );
+          if (!startHistoryId) {
+            throw new Error("Expected Gmail history cursor");
+          }
+          startHistoryIds.push(startHistoryId);
+          return HttpResponse.json({ history: [], historyId: "201" });
+        },
+      ),
+    );
+
+    const response = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: gmailEmail,
+        historyId: 201,
+        messageId: "pubsub-shared-mailbox",
+      }),
+    );
+
+    expectResponseStatus(response, 200);
+    expect(response.body).toStrictEqual({
+      success: true,
+      watchStates: 2,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    expect(startHistoryIds.sort()).toStrictEqual(["100", "200"]);
+  });
+
   it("dispatches matching new inbound messages and de-duplicates retries", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
-    mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", "true");
     const runnerGroup = runsApi.configureRunnerGroup();
     configureGmailWatchMock();
     configureGmailMessageMocks(gmailEmail);
@@ -635,7 +878,6 @@ describe("POST /api/webhooks/gmail", () => {
     const { actor, workflowId } = await setupFixture();
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
-
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
@@ -687,15 +929,12 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    const expectedAutomationBrief = [
-      "Gmail new message",
-      "From: Customer Example <customer@example.com>",
-      "Subject: Invoice needs a reply",
-    ].join("\n");
+    const expectedDisplayMessage =
+      'A new email arrived from Customer Example <customer@example.com> with subject "Invoice needs a reply".';
 
     await expect(
-      workflowAutomationBriefs(actor, chatThreadId),
-    ).resolves.toContain(expectedAutomationBrief);
+      workflowAutomationDisplayTexts(actor, chatThreadId),
+    ).resolves.toContain(expectedDisplayMessage);
     await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
       {
         lastRunAt: expect.any(String),
@@ -712,13 +951,9 @@ describe("POST /api/webhooks/gmail", () => {
     }
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(runId);
-    const appendSystemPrompt = claim.appendSystemPrompt;
-    if (typeof appendSystemPrompt !== "string") {
-      throw new Error("Expected appendSystemPrompt on the claimed run");
-    }
-    expect(appendSystemPrompt).toContain("Not included below: the email body.");
-    expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
-    expect(gmailEventContextFromPrompt(appendSystemPrompt)).toStrictEqual({
+    expect(claim.prompt).toContain("Not included below: the email body.");
+    expect(claim.prompt).not.toContain("Please draft a helpful reply.");
+    expectGmailEventContextInPrompt(claim.prompt, {
       automationId: created.body.id,
       event: "new_message",
       emailAddress: gmailEmail,
@@ -729,8 +964,10 @@ describe("POST /api/webhooks/gmail", () => {
       cc: [],
       subject: "Invoice needs a reply",
     });
+    expect(claim.appendSystemPrompt).toContain("# Agent Identity");
+    expect(claim.appendSystemPrompt).not.toContain("# Current context");
     const timingEvents = sandboxOperationEvents().filter((event) => {
-      return event.workflow_event_source === "gmail";
+      return event.automation_event_source === "gmail";
     });
     const timingRunIds = new Set(
       timingEvents.map((event) => {
@@ -746,22 +983,22 @@ describe("POST /api/webhooks/gmail", () => {
     );
     for (const actionType of [
       "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
-      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
-      "api_dispatch_pre_create_zero_workflow_event_load_external_events",
-      "api_dispatch_pre_create_zero_workflow_event_load_automations",
-      "api_dispatch_pre_create_zero_workflow_event_match_automations",
-      "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
-      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
-      "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+      "api_dispatch_pre_create_zero_automation_event_load_source_state",
+      "api_dispatch_pre_create_zero_automation_event_load_external_events",
+      "api_dispatch_pre_create_zero_automation_event_load_automations",
+      "api_dispatch_pre_create_zero_automation_event_match_automations",
+      "api_dispatch_pre_create_zero_automation_event_record_processed_event",
+      "api_dispatch_pre_create_zero_automation_event_build_run_input",
+      "api_dispatch_pre_create_zero_automation_event_handoff_run",
     ]) {
       expect(actionTypes).toContain(actionType);
     }
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
-          workflow_event_source: "gmail",
-          trigger_source: "workflow-event",
+          op_type: "api_dispatch_pre_create_zero_automation_event_handoff_run",
+          automation_event_source: "gmail",
+          trigger_source: "automation-event",
           zero_run_origin: "workflow_automation",
           span_kind: "nested",
         }),
@@ -787,13 +1024,13 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 0,
       duplicates: 1,
     });
-    const triggerBriefsAfterDuplicate = await workflowAutomationBriefs(
+    const displayMessagesAfterDuplicate = await workflowAutomationDisplayTexts(
       actor,
       chatThreadId,
     );
     expect(
-      triggerBriefsAfterDuplicate.filter((brief) => {
-        return brief === expectedAutomationBrief;
+      displayMessagesAfterDuplicate.filter((message) => {
+        return message === expectedDisplayMessage;
       }),
     ).toHaveLength(1);
   });
@@ -811,7 +1048,6 @@ describe("POST /api/webhooks/gmail", () => {
     const { actor, workflowId } = await setupFixture();
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
-
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
@@ -855,13 +1091,9 @@ describe("POST /api/webhooks/gmail", () => {
       duplicates: 0,
     });
     await expect(
-      workflowAutomationBriefs(actor, chatThreadId),
+      workflowAutomationDisplayTexts(actor, chatThreadId),
     ).resolves.toContain(
-      [
-        "Gmail label applied: Support",
-        "From: Support Team <support@example.com>",
-        "Subject: Support request",
-      ].join("\n"),
+      'Gmail label "Support" was added to an email from Support Team <support@example.com> with subject "Support request".',
     );
     await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
       {
@@ -935,13 +1167,20 @@ describe("POST /api/webhooks/gmail", () => {
     if (typeof appendSystemPrompt !== "string") {
       throw new Error("Expected appendSystemPrompt on the queued run");
     }
-    expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
-    expect(gmailEventContextFromPrompt(appendSystemPrompt)).toMatchObject({
+    expect(claim.prompt).toContain("Not included below: the email body.");
+    expect(claim.prompt).not.toContain("Please draft a helpful reply.");
+    expectGmailEventContextInPrompt(claim.prompt, {
       automationId: created.body.id,
       event: "new_message",
+      emailAddress: gmailEmail,
       messageId: "msg-1",
       threadId: "gmail-thread-1",
+      from: "Customer Example <customer@example.com>",
+      to: [gmailEmail],
+      cc: [],
       subject: "Invoice needs a reply",
     });
+    expect(appendSystemPrompt).toContain("# Agent Identity");
+    expect(appendSystemPrompt).not.toContain("# Current context");
   });
 });

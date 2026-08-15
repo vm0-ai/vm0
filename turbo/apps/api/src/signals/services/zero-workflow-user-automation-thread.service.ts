@@ -1,5 +1,5 @@
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { workflowUserAutomationThreads } from "@vm0/db/schema/zero-workflow";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { workflowUserAutomationThreads } from "@okouai/db/schema/workflow";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
@@ -55,6 +55,7 @@ export async function createAutomationChatThread(
       agentComposeId: args.agentId,
       title: args.title,
       ...chatThreadModelPinColumns(pin),
+      codexServiceTier: pin.serviceTier === "priority" ? "fast" : null,
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
@@ -71,6 +72,7 @@ export async function createAutomationChatThread(
     agentComposeId: args.agentId,
     title: args.title,
     selectedModel: pin.selectedModel,
+    serviceTier: pin.serviceTier,
     createdAt: thread.createdAt,
   });
   return thread.id;

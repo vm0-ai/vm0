@@ -1,11 +1,10 @@
 import {
   connectorAuthMethodOwnedSecretNames,
   connectorAuthMethodOwnedVariableNames,
-  connectorAuthMethodRuntimeMetadata,
-} from "@vm0/connectors/connector-auth-method";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+} from "@okouai/connectors/connector-auth-method";
+import { connectors } from "@okouai/db/schema/connector";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import {
   and,
   eq,
@@ -18,12 +17,15 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
+import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
 import {
   getConnectorRuntimeMethod,
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
+
+const log = logger("api:connector-credential-access");
 
 /**
  * One executable stored connection, resolved against one immutable catalog
@@ -77,15 +79,37 @@ export function connectorCredentialStorageIsCompatible(args: {
   return args.storageVersion === args.runtimeMethod.method.storage.version;
 }
 
-export function resolveConnectorCredentialAccess(args: {
+export function resolveStoredConnectorRuntimeMethod(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly stored: ConnectorCredentialStoredIdentity;
-}): ConnectorCredentialAccessResult {
+  readonly stored: {
+    readonly authMethodId: string;
+    readonly connectorId: string;
+    readonly connectorSlug: string;
+  };
+}): ConnectorRuntimeMethod | undefined {
   const runtimeMethod = getConnectorRuntimeMethod({
     snapshot: args.snapshot,
     connectorSlug: args.stored.connectorSlug,
     authMethodId: args.stored.authMethodId,
     requireExecutable: true,
+  });
+  if (runtimeMethod === undefined) {
+    log.warn("Stored connector runtime method is unavailable", {
+      connectorId: args.stored.connectorId,
+      connectorSlug: args.stored.connectorSlug,
+      authMethodId: args.stored.authMethodId,
+    });
+  }
+  return runtimeMethod;
+}
+
+export function resolveConnectorCredentialAccess(args: {
+  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly stored: ConnectorCredentialStoredIdentity;
+}): ConnectorCredentialAccessResult {
+  const runtimeMethod = resolveStoredConnectorRuntimeMethod({
+    snapshot: args.snapshot,
+    stored: args.stored,
   });
   if (!runtimeMethod) {
     return { kind: "unavailable" };
@@ -224,40 +248,4 @@ export function connectorCredentialVariableReadCondition(args: {
     ];
   });
   return conditions.length === 0 ? isNull(variables.id) : or(...conditions);
-}
-
-export function connectorCredentialStoredSecretDisplayInfo(args: {
-  readonly access: ConnectorCredentialAccess;
-  readonly name: string;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-}): {
-  readonly environmentNames: readonly string[];
-  readonly label: string;
-} | null {
-  if (
-    !connectorAuthMethodOwnedSecretNames(
-      args.access.runtimeMethod.method,
-    ).includes(args.name)
-  ) {
-    return null;
-  }
-  const connector = args.snapshot.connectors.get(args.access.connectorSlug);
-  if (connector === undefined) {
-    return null;
-  }
-  const environmentNames = [
-    ...new Set(
-      connectorAuthMethodRuntimeMetadata(
-        args.access.runtimeMethod.method,
-      ).runtimeBindings.flatMap((binding) => {
-        return binding.source.kind === "connector-secret" &&
-          binding.source.name === args.name
-          ? [binding.envName]
-          : [];
-      }),
-    ),
-  ];
-  return environmentNames.length === 0
-    ? null
-    : { environmentNames, label: connector.catalogConnector.label };
 }

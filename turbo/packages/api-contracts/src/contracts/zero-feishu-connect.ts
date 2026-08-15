@@ -91,7 +91,7 @@ const feishuConnectStatusSchema = z.object({
 export const zeroFeishuConnectContract = c.router({
   getStatus: {
     method: "GET",
-    path: "/api/zero/integrations/feishu",
+    path: "/api/okou/integrations/feishu",
     headers: authHeadersSchema,
     responses: {
       200: feishuConnectStatusSchema,
@@ -102,7 +102,7 @@ export const zeroFeishuConnectContract = c.router({
   },
   checkAppId: {
     method: "GET",
-    path: "/api/zero/integrations/feishu/app-id",
+    path: "/api/okou/integrations/feishu/app-id",
     headers: authHeadersSchema,
     query: z.object({
       appId: z.string().trim().min(1),
@@ -117,7 +117,7 @@ export const zeroFeishuConnectContract = c.router({
   },
   setup: {
     method: "POST",
-    path: "/api/zero/integrations/feishu",
+    path: "/api/okou/integrations/feishu",
     headers: authHeadersSchema,
     body: z.object({
       appId: z.string().trim().min(1),
@@ -139,7 +139,7 @@ export const zeroFeishuConnectContract = c.router({
   },
   updateInstallation: {
     method: "PATCH",
-    path: "/api/zero/integrations/feishu/installations/:installationId",
+    path: "/api/okou/integrations/feishu/installations/:installationId",
     headers: authHeadersSchema,
     pathParams: z.object({ installationId: z.string().uuid() }),
     body: z.object({
@@ -157,7 +157,7 @@ export const zeroFeishuConnectContract = c.router({
   },
   removeInstallation: {
     method: "DELETE",
-    path: "/api/zero/integrations/feishu/installations/:installationId",
+    path: "/api/okou/integrations/feishu/installations/:installationId",
     headers: authHeadersSchema,
     pathParams: z.object({ installationId: z.string().uuid() }),
     body: c.noBody(),
@@ -171,7 +171,7 @@ export const zeroFeishuConnectContract = c.router({
   },
   disconnectInstallation: {
     method: "DELETE",
-    path: "/api/zero/integrations/feishu/installations/:installationId/connect",
+    path: "/api/okou/integrations/feishu/installations/:installationId/connect",
     headers: authHeadersSchema,
     pathParams: z.object({ installationId: z.string().uuid() }),
     body: c.noBody(),
@@ -185,7 +185,7 @@ export const zeroFeishuConnectContract = c.router({
   },
   remove: {
     method: "DELETE",
-    path: "/api/zero/integrations/feishu",
+    path: "/api/okou/integrations/feishu",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
@@ -198,7 +198,7 @@ export const zeroFeishuConnectContract = c.router({
   },
   disconnect: {
     method: "DELETE",
-    path: "/api/zero/integrations/feishu/connect",
+    path: "/api/okou/integrations/feishu/connect",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {

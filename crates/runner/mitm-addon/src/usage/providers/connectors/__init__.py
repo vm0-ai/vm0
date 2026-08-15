@@ -9,9 +9,9 @@ delegates to the matching per-connector ``report_usage`` function.
 
 Billable connector metadata comes from the accepted connector catalog and
 reaches the runner through the claim's ``billableFirewalls`` list. Adding a new
-billable connector means marking its catalog firewall billable, adding a
-connector module here, and registering its reporter plus optional
-response-inspection capability in :data:`_REGISTRATIONS`.
+billable connector means marking its catalog firewall billable, adding its
+reporter and any focused response-inspection owner here, and registering those
+capabilities in :data:`_REGISTRATIONS`.
 Response inspection owns both parser creation and buffered-fallback selection,
 so those decisions cannot drift across independent registries.
 """
@@ -24,7 +24,7 @@ from mitmproxy import http
 import flow_metadata
 
 from ...underbilling import log_usage_underbilling
-from . import x
+from . import x, x_response_inspection
 from .response_parser import ConnectorResponseParser
 
 _ConnectorUsageHandler = Callable[[http.HTTPFlow, str, str], None]
@@ -51,7 +51,7 @@ _REGISTRATIONS: dict[str, _ConnectorUsageRegistration] = {
     "x": _ConnectorUsageRegistration(
         report_usage=x.report_usage,
         response_inspection=_ConnectorResponseInspection(
-            create_parser=x.create_response_parser,
+            create_parser=x_response_inspection.create_response_parser,
             needs_buffered_fallback=x.needs_response_buffer_fallback,
         ),
     ),

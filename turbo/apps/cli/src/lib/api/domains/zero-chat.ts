@@ -1,6 +1,5 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
-  type ChatEvent,
   type ChatEventSendBody,
   chatEventsContract,
   chatThreadEventsContract,
@@ -10,10 +9,17 @@ import {
   chatThreadModelSelectionContract,
   chatThreadRenameContract,
   chatSearchContract,
+  type ChatThreadServiceTier,
   type ChatThreadMetadata,
   type ChatThreadSnapshotProjection,
   type ChatSearchResponse,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export interface ZeroChatThreadSnapshot {
@@ -22,14 +28,48 @@ export interface ZeroChatThreadSnapshot {
   readonly latestSeqId: number | null;
 }
 
-export type ZeroChatThreadEvent = Omit<ChatThreadEvent, "seqId"> & {
-  readonly seqId?: number;
-};
+export type ZeroChatThreadEvent = ChatThreadEvent;
+
+interface ZeroChatEventSnapshotDownload {
+  readonly url: string;
+  readonly lastEventId: string | undefined;
+  readonly lastSeqId: number;
+}
+
+type ZeroChatEventRowsPage =
+  | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }
+  | { readonly kind: "expired" };
+
+const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
+  [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+    CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+});
+
+function assertChatEventSchemaVersion(headers: Headers): void {
+  const version = headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
+  // A current CLI context can briefly reach the previous API during the
+  // backend rollout/rollback window (observed maximum: 102 minutes). Remove
+  // the missing-header tolerance with #27194 after that window is closed.
+  if (
+    version !== null &&
+    version !== CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()
+  ) {
+    throw new Error(`Unexpected Chat Event schema version ${version}`);
+  }
+}
+
+function requireSupportedModel(model: string) {
+  if (!isSupportedRunModel(model)) {
+    throw new Error(`Unsupported chat model: ${model}`);
+  }
+  return model;
+}
 
 interface ZeroChatThreadCreateResult {
   readonly threadId: string;
   readonly title: string | null;
   readonly selectedModel: string | null;
+  readonly serviceTier: ChatThreadServiceTier | null;
 }
 
 interface ZeroChatEventSendResult {
@@ -79,9 +119,7 @@ export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapsho
     return {
       chatThreads: result.body.chatThreads,
       latestEventId: result.body.latestEventId,
-      // CLI releases can reach an API that has not promoted sequence cursors
-      // yet, so preserve the UUID cursor until the new field is present.
-      latestSeqId: result.body.latestSeqId ?? null,
+      latestSeqId: result.body.latestSeqId,
     };
   }
   handleError(result, "Failed to get chat thread snapshot");
@@ -89,15 +127,14 @@ export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapsho
 
 export async function listZeroChatThreadEvents(options: {
   sinceSeqId?: number;
-  sinceEventId?: string;
 }): Promise<ZeroChatThreadEventsResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadsContract, config);
   const result = await client.events({
-    query: {
-      ...(options.sinceSeqId ? { sinceSeqId: options.sinceSeqId } : {}),
-      ...(options.sinceEventId ? { sinceEventId: options.sinceEventId } : {}),
-    },
+    query:
+      options.sinceSeqId === undefined
+        ? {}
+        : { sinceSeqId: options.sinceSeqId },
   });
   if (result.status === 200) {
     return {
@@ -116,6 +153,7 @@ export async function createZeroChatThread(options: {
   agentId: string;
   title: string;
   model?: string;
+  serviceTier?: ChatThreadServiceTier | null;
 }): Promise<ZeroChatThreadCreateResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadsContract, config);
@@ -123,16 +161,20 @@ export async function createZeroChatThread(options: {
     body: {
       agentId: options.agentId,
       title: options.title,
-      ...(options.model === undefined ? {} : { model: options.model }),
+      ...(options.model === undefined
+        ? {}
+        : { model: requireSupportedModel(options.model) }),
+      ...(options.serviceTier === undefined
+        ? {}
+        : { serviceTier: options.serviceTier }),
     },
   });
   if (result.status === 201) {
     return {
       threadId: result.body.id,
       title: result.body.title,
-      // An API that predates the echoed pin leaves the CLI with only the
-      // model the caller asked for.
-      selectedModel: result.body.selectedModel ?? options.model ?? null,
+      selectedModel: result.body.selectedModel,
+      serviceTier: result.body.serviceTier,
     };
   }
   handleError(result, "Failed to create chat thread");
@@ -172,22 +214,7 @@ export async function getZeroChatThreadAgentId(options: {
   threadId: string;
 }): Promise<string> {
   const thread = await getZeroChatThread(options);
-  if (thread.agentId) {
-    return thread.agentId;
-  }
-
-  // Compatibility fallback for an API version that predates agentId on the
-  // narrow metadata response.
-  const snapshot = await getZeroChatThreadSnapshot();
-  const projection = snapshot.chatThreads.find((candidate) => {
-    return candidate.id === options.threadId;
-  });
-  if (!projection) {
-    throw new Error(
-      `Chat thread "${options.threadId}" was not found in the thread snapshot`,
-    );
-  }
-  return projection.agentId;
+  return thread.agentId;
 }
 
 export async function sendZeroChatEvent(
@@ -202,24 +229,54 @@ export async function sendZeroChatEvent(
   handleError(result, "Failed to send chat event");
 }
 
-export async function listZeroChatEvents(options: {
-  threadId: string;
-  beforeSeqId?: number;
-  limit?: number;
-}): Promise<readonly ChatEvent[]> {
+export async function getZeroChatEventSnapshot(options: {
+  readonly threadId: string;
+}): Promise<ZeroChatEventSnapshotDownload | null> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
-  const result = await client.list({
+  const result = await client.snapshot({
+    headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+    params: { threadId: options.threadId },
+  });
+  assertChatEventSchemaVersion(result.headers);
+  if (result.status === 200) {
+    return {
+      url: result.body.url,
+      lastEventId: result.body.lastEventId,
+      lastSeqId: result.body.lastSeqId,
+    };
+  }
+  if (result.status === 404) {
+    return null;
+  }
+  handleError(result, "Failed to get chat event snapshot");
+}
+
+export async function listZeroChatEventRows(options: {
+  readonly threadId: string;
+  readonly sinceEventId: string | null;
+  readonly sinceSeqId: number;
+  readonly limit: number;
+}): Promise<ZeroChatEventRowsPage> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadEventsContract, config);
+  const result = await client.rows({
+    headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
     params: { threadId: options.threadId },
     query: {
-      beforeSeqId: options.beforeSeqId,
+      sinceSeqId: options.sinceSeqId,
+      sinceEventId: options.sinceEventId ?? undefined,
       limit: options.limit,
     },
   });
+  assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {
-    return result.body.events;
+    return { kind: "rows", rows: result.body.rows };
   }
-  handleError(result, "Failed to list chat events");
+  if (result.status === 410) {
+    return { kind: "expired" };
+  }
+  handleError(result, "Failed to list chat event rows");
 }
 
 export async function updateZeroChatThreadModelSelection(options: {
@@ -228,14 +285,16 @@ export async function updateZeroChatThreadModelSelection(options: {
 }): Promise<{ threadId: string; selectedModel: string | null }> {
   const config = await getClientConfig();
   const client = initClient(chatThreadModelSelectionContract, config);
+  const model =
+    options.model === null ? null : requireSupportedModel(options.model);
   const result = await client.update({
     params: { id: options.threadId },
-    body: { model: options.model },
+    body: { model },
   });
   if (result.status === 204) {
     return {
       threadId: options.threadId,
-      selectedModel: options.model,
+      selectedModel: model,
     };
   }
   handleError(result, "Failed to update chat thread model");

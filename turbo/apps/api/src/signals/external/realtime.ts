@@ -1,16 +1,19 @@
 import Ably from "ably";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   BrowserSessionChangedPayload,
-  ConnectorChangedPayload,
-} from "@vm0/api-contracts/contracts/realtime";
-import type { RunnerPreference } from "@vm0/api-contracts/contracts/runners";
-import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
+  UserPreferenceChangedPayload,
+} from "@okouai/api-contracts/contracts/realtime";
+import type {
+  ConnectorRuntimeTarget,
+  RunnerPreference,
+} from "@okouai/api-contracts/contracts/runners";
+import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
-import { tapError } from "../utils";
+import { waitUntil } from "../context/wait-until";
+import { bestEffort, tapError } from "../utils";
 
 const L = logger("Realtime");
 
@@ -46,7 +49,7 @@ export async function createPlatformUserRealtimeToken(
 export async function createBuiltInGenerationRealtimeSubscription(
   userId: string,
   generationId: string,
-): Promise<ZeroBuiltInGenerationRealtimeSubscription> {
+): Promise<BuiltInGenerationRealtimeSubscription> {
   return {
     channelName: getUserChannelName(userId),
     eventName: getBuiltInGenerationEventName(generationId),
@@ -67,20 +70,10 @@ export async function createRunnerGroupRealtimeToken(
   return tokenRequest;
 }
 
-/**
- * Publish a per-user invalidation/notification signal.
- *
- * Platform clients subscribe via the existing /api/zero/realtime/token
- * endpoint and receive events published by the API backend.
- *
- * NOT best-effort: rejections from Ably propagate to the caller. Use this
- * directly only when delivery failure should fail the operation. Post-commit
- * invalidations should expose a topic-specific safe publisher instead.
- */
-export async function publishUserSignal(
+async function publishUserSignalNow(
   userIds: readonly string[],
   topic: string,
-  payload: unknown = null,
+  payload: unknown,
 ): Promise<void> {
   const client = ablyClient();
   await Promise.all(
@@ -92,34 +85,30 @@ export async function publishUserSignal(
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
 }
 
-export async function publishConnectorChangedForUserSafely(
-  userId: string,
-  connectorSlug: ConnectorSlug,
-): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], "connector:changed", {
-      connectorSlug,
-    } satisfies ConnectorChangedPayload),
-    (error) => {
-      L.warn("Failed to publish connector changed signal", {
-        connectorSlug,
-        error,
-      });
-    },
-  );
-}
-
-export async function publishRunChangedForUserSafely(
-  userId: string,
-  runId: string,
+/**
+ * Schedule a per-user invalidation/notification signal.
+ *
+ * Platform clients subscribe via the existing /api/okou/realtime/token
+ * endpoint and receive events published by the API backend. Ably delivery is
+ * best-effort: callers only wait for the background work to be registered, so
+ * a delayed or rejected publish cannot fail the business operation.
+ */
+export function publishUserSignal(
+  userIds: readonly string[],
+  topic: string,
   payload: unknown = null,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `run:changed:${runId}`, payload),
-    (error) => {
-      L.warn("Failed to publish run changed signal", { runId, error });
-    },
-  );
+  waitUntil(bestEffort(publishUserSignalNow(userIds, topic, payload)));
+  return Promise.resolve();
+}
+
+export async function publishUserPreferenceChangedForUserSafely(
+  userId: string,
+  kinds: UserPreferenceChangedPayload["kinds"],
+): Promise<void> {
+  await publishUserSignal([userId], "userPreferenceChanged", {
+    kinds,
+  } satisfies UserPreferenceChangedPayload);
 }
 
 /**
@@ -135,9 +124,7 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
 export async function publishThreadListChangedSafely(
   userId: string,
 ): Promise<void> {
-  await tapError(publishThreadListChanged(userId), (error) => {
-    L.warn("Failed to publish thread list changed signal", { userId, error });
-  });
+  await publishThreadListChanged(userId);
 }
 
 /**
@@ -148,15 +135,7 @@ export async function publishChatThreadDetailChangedSafely(
   userId: string,
   threadId: string,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadDetailChanged:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread detail changed signal", {
-        threadId,
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], `chatThreadDetailChanged:${threadId}`);
 }
 
 /**
@@ -176,38 +155,10 @@ export async function publishChatThreadMessageCreatedSafely(
   threadId: string,
   syncThroughSeqId?: number,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal(
-      [userId],
-      `chatThreadMessageCreated:${threadId}`,
-      syncThroughSeqId === undefined ? null : { syncThroughSeqId },
-    ),
-    (error) => {
-      L.warn("Failed to publish chat thread message created signal", {
-        threadId,
-        error,
-      });
-    },
-  );
-}
-
-/**
- * Notify an open chat thread that a persisted run was created.
- *
- * Best-effort: a failed publish must not fail the committed run creation.
- */
-export async function publishChatThreadRunCreatedSafely(
-  userId: string,
-  threadId: string,
-): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadRunCreated:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread run created signal", {
-        threadId,
-        error,
-      });
-    },
+  await publishUserSignal(
+    [userId],
+    `chatThreadMessageCreated:${threadId}`,
+    syncThroughSeqId === undefined ? null : { syncThroughSeqId },
   );
 }
 
@@ -224,15 +175,7 @@ export async function publishChatThreadAutomationsChangedSafely(
   userId: string,
   threadId: string,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadAutomationsChanged:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread automations changed signal", {
-        threadId,
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], `chatThreadAutomationsChanged:${threadId}`);
 }
 
 /**
@@ -249,14 +192,7 @@ export async function publishChatThreadAutomationsChangedSafely(
 export async function publishConnectorPermissionUpdatedSafely(
   userId: string,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], "connectorPermissionUpdated"),
-    (error) => {
-      L.warn("Failed to publish connector permission updated signal", {
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], "connectorPermissionUpdated");
 }
 
 /**
@@ -273,15 +209,7 @@ export async function publishBrowserSessionChangedSafely(
   },
 ): Promise<void> {
   const payload: BrowserSessionChangedPayload = browser;
-  await tapError(
-    publishUserSignal([userId], "browserSessionChanged", payload),
-    (error) => {
-      L.warn("Failed to publish browser session changed signal", {
-        threadId: browser.threadId,
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], "browserSessionChanged", payload);
 }
 
 /**
@@ -296,15 +224,7 @@ export async function publishChatThreadWorkflowsChangedSafely(
   userId: string,
   threadId: string,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadWorkflowsChanged:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread workflows changed signal", {
-        threadId,
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], `chatThreadWorkflowsChanged:${threadId}`);
 }
 
 export async function publishBuiltInGenerationChanged(
@@ -319,11 +239,7 @@ export async function publishBuiltInGenerationChanged(
   );
 }
 
-/**
- * Publish an org-scoped signal. Used for events that any org member's UI
- * may want to see (e.g. queue:changed when a run cancels and a queued
- * run becomes eligible to dispatch).
- */
+/** Publish an org-scoped signal for events shared by organization members. */
 export async function publishOrgSignal(
   orgId: string,
   topic: string,
@@ -352,57 +268,66 @@ export async function publishCancelToRunnerGroup(
   L.debug(`Published ${mode} cancel ${runId} to runner-group:${group}`);
 }
 
-export async function publishNetworkPolicyRefreshToRunnerGroup(
+export async function publishConnectorRuntimeSyncToRunnerGroup(
   group: string,
   runId: string,
-  connectorSlug: string,
+  target: ConnectorRuntimeTarget,
 ): Promise<void> {
   const channel = ablyClient().channels.get(`runner-group:${group}`);
-  await channel.publish("network-policy-refresh", {
-    runId,
-    connectorSlug,
-  });
+  await channel.publish("connector-runtime-sync", { runId, target });
   L.debug(
-    `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,
+    `Published connector runtime sync ${runId}/${target.kind} to runner-group:${group}`,
   );
 }
 
-export async function publishRunnerJobNotification(
+export async function publishActiveInputToRunnerGroup(
   group: string,
   runId: string,
-  profile: string,
-  metadata?: {
+): Promise<void> {
+  const channel = ablyClient().channels.get(`runner-group:${group}`);
+  await channel.publish("active-input", { runId });
+  L.debug(`Published active input ${runId} to runner-group:${group}`);
+}
+
+/** Publish an available runner job to the matching runner group. */
+export async function publishRunnerJobNotification(args: {
+  readonly group: string;
+  readonly runId: string;
+  readonly profile: string;
+  readonly runnerPreference: RunnerPreference;
+  readonly metadata?: {
     /** Raw key required for runner-local reuse matching; it stays on the internal runner-group channel. */
     readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationRunId: string | undefined;
-    readonly runnerPreference: RunnerPreference | null;
-  },
-): Promise<boolean> {
+  };
+}): Promise<boolean> {
   const published = await tapError(
     (async () => {
-      const channel = ablyClient().channels.get(`runner-group:${group}`);
+      const channel = ablyClient().channels.get(`runner-group:${args.group}`);
       await channel.publish("job", {
-        runId,
-        profile,
-        ...(metadata?.reuseKey ? { reuseKey: metadata.reuseKey } : {}),
-        ...(metadata?.cliAgentSessionId
-          ? { cliAgentSessionId: metadata.cliAgentSessionId }
+        runId: args.runId,
+        profile: args.profile,
+        ...(args.metadata?.reuseKey
+          ? { reuseKey: args.metadata.reuseKey }
           : {}),
-        ...(metadata?.historyGenerationRunId
-          ? { historyGenerationRunId: metadata.historyGenerationRunId }
+        ...(args.metadata?.cliAgentSessionId
+          ? { cliAgentSessionId: args.metadata.cliAgentSessionId }
           : {}),
-        ...(metadata?.runnerPreference
-          ? { runnerPreference: metadata.runnerPreference }
+        ...(args.metadata?.historyGenerationRunId
+          ? { historyGenerationRunId: args.metadata.historyGenerationRunId }
           : {}),
+        runnerPreference: args.runnerPreference,
       });
-      L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);
+      L.debug(
+        `Published job ${args.runId} to runner-group:${args.group} (broadcast)`,
+      );
       return true;
     })(),
     (error) => {
       L.warn("Failed to publish runner job notification", {
-        group,
-        runId,
+        group: args.group,
+        runId: args.runId,
         error,
       });
     },

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
+import { builtInGenerationAcceptedResponseSchema } from "./built-in-generation";
 
 const c = initContract();
 const stringOrStringArraySchema = z.union([
@@ -43,6 +43,9 @@ export const zeroImageIoGenerateResponseSchema = z.object({
   contentType: z.string(),
   size: z.number(),
   url: z.string(),
+  // Optional so a newly deployed client stays compatible with an API from
+  // before this field existed; the current API always sets it.
+  embedUrl: z.string().optional(),
   creditsCharged: z.number(),
   model: z.string(),
   provider: z.string(),
@@ -74,12 +77,12 @@ export type ZeroImageIoGenerateResponse = z.infer<
 export const zeroImageIoGenerateContract = c.router({
   post: {
     method: "POST",
-    path: "/api/zero/image-io/generate",
+    path: "/api/okou/image-io/generate",
     headers: authHeadersSchema,
     body: zeroImageIoGenerateRequestSchema,
     responses: {
       200: zeroImageIoGenerateResponseSchema,
-      202: zeroBuiltInGenerationAcceptedResponseSchema,
+      202: builtInGenerationAcceptedResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,

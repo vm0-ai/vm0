@@ -4,7 +4,8 @@ use std::future::Future;
 use std::os::fd::AsRawFd;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(test)]
+use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::time::Duration;
 
@@ -13,11 +14,8 @@ use nix::fcntl::{Flock, FlockArg};
 use tracing::{error, info, warn};
 
 use crate::command::{
-    IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_status_with_timeout,
+    CommandError, IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_status_with_timeout,
     exec_with_timeout,
-};
-use crate::guest_dns_netfilter_trace::{
-    GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceReader,
 };
 use crate::paths::LockPaths;
 
@@ -25,9 +23,8 @@ use super::super::error::{NetworkError, Result};
 use super::super::{GUEST_NETWORK, GuestNetwork};
 use super::HOST_NETWORK_COMMAND_TIMEOUT;
 use super::firewall::{
-    FirewallSnapshot, NamespaceFirewallConfig, apply_namespace_guest_dns_trace_rules,
-    apply_namespace_rules, delete_ipv4_rules_by_comment, delete_rules_with_comments,
-    setup_namespace_masquerade,
+    FirewallSnapshot, NamespaceFirewallConfig, apply_namespace_rules, delete_ipv4_rules_by_comment,
+    delete_rules_with_comments, setup_namespace_masquerade,
 };
 use super::naming::{
     MAX_NAMESPACES, MAX_POOLS, format_hex_index, generate_veth_ip_pair, make_host_device,
@@ -40,7 +37,8 @@ use super::types::{NamespaceDeleteOutcome, NetnsInfo};
 // 10-second waves leave room inside the runner's 300-second systemd stop
 // budget for firewall cleanup and the other teardown phases.
 const NAMESPACE_DELETE_CONCURRENCY: usize = 16;
-static CONNTRACK_NOT_FOUND_LOGGED: AtomicBool = AtomicBool::new(false);
+const CONNTRACK_ZERO_DELETE_PREFIX: &str = "conntrack v";
+const CONNTRACK_ZERO_DELETE_SUFFIX: &str = " (conntrack-tools): 0 flow entries have been deleted.";
 
 /// Peer-side device name inside namespaces (fixed).
 const PEER_DEVICE: &str = "veth0";
@@ -175,6 +173,7 @@ async fn create_netns_with_tap(
 async fn setup_veth_pair(
     name: &str,
     host_device: &str,
+    host_mac: &str,
     host_ip: &str,
     peer_ip: &str,
 ) -> Result<()> {
@@ -184,6 +183,8 @@ async fn setup_veth_pair(
         "link",
         "add",
         host_device,
+        "address",
+        host_mac,
         "type",
         "veth",
         "peer",
@@ -463,18 +464,10 @@ async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
     let src_args = ["-D", "-s", peer_ip];
     let dst_args = ["-D", "-d", peer_ip];
     let (src, dst) = tokio::join!(
-        exec_ignore_errors_with_timeout("conntrack", &src_args, HOST_NETWORK_COMMAND_TIMEOUT),
-        exec_ignore_errors_with_timeout("conntrack", &dst_args, HOST_NETWORK_COMMAND_TIMEOUT),
+        exec_status_with_timeout("conntrack", &src_args, HOST_NETWORK_COMMAND_TIMEOUT),
+        exec_status_with_timeout("conntrack", &dst_args, HOST_NETWORK_COMMAND_TIMEOUT),
     );
-    if conntrack_flush_is_trusted(src, dst) {
-        if conntrack_command_missing(src, dst)
-            && !CONNTRACK_NOT_FOUND_LOGGED.swap(true, Ordering::Relaxed)
-        {
-            warn!(
-                peer_ip,
-                "conntrack command not found; proceeding without conntrack reset"
-            );
-        }
+    if conntrack_flush_is_trusted(&src, &dst) {
         ConntrackFlushOutcome::Trusted
     } else {
         warn!(
@@ -487,19 +480,30 @@ async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
     }
 }
 
-fn conntrack_flush_is_trusted(src: IgnoredCommandOutcome, dst: IgnoredCommandOutcome) -> bool {
-    (src.completed_without_timeout() && dst.completed_without_timeout())
-        || conntrack_command_missing(src, dst)
+fn conntrack_flush_is_trusted(
+    src: &std::result::Result<(), CommandError>,
+    dst: &std::result::Result<(), CommandError>,
+) -> bool {
+    conntrack_delete_is_trusted(src) && conntrack_delete_is_trusted(dst)
 }
 
-fn conntrack_command_missing(src: IgnoredCommandOutcome, dst: IgnoredCommandOutcome) -> bool {
-    matches!(
-        (src, dst),
-        (
-            IgnoredCommandOutcome::NotFound,
-            IgnoredCommandOutcome::NotFound
-        )
-    )
+/// `conntrack -D` exits 1 both when no flows match and for operational errors.
+/// Only its standard zero-delete summary proves the former case.
+fn conntrack_delete_is_trusted(result: &std::result::Result<(), CommandError>) -> bool {
+    let Err(error) = result else {
+        return true;
+    };
+    if error.exit_code != Some(1) {
+        return false;
+    }
+    let Some(version) = error
+        .detail
+        .strip_prefix(CONNTRACK_ZERO_DELETE_PREFIX)
+        .and_then(|detail| detail.strip_suffix(CONNTRACK_ZERO_DELETE_SUFFIX))
+    else {
+        return false;
+    };
+    !version.is_empty() && !version.chars().any(char::is_whitespace)
 }
 
 // ---------------------------------------------------------------------------
@@ -587,8 +591,6 @@ pub(super) async fn create_single_namespace(
     default_iface: String,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
-    guest_dns_netfilter_trace_requested: bool,
-    guest_dns_netfilter_trace_reader: Option<GuestDnsNetfilterTraceReader>,
 ) -> Result<NetnsInfo> {
     if ns_index >= MAX_NAMESPACES {
         return Err(NetworkError::NamespaceLimitReached {
@@ -600,6 +602,9 @@ pub(super) async fn create_single_namespace(
     let ns_idx_str = format_hex_index(ns_index);
     let ns_name = make_ns_name(&pool_idx_str, &ns_idx_str);
     let host_device = make_host_device(&pool_idx_str, &ns_idx_str);
+    // Pool and namespace bytes keep the root-veth MAC unique on this host.
+    // Supplying it in RTM_NEWLINK prevents a later udev rewrite after neighbor learning.
+    let host_mac = format!("02:56:4d:{pool_idx_str}:{ns_idx_str}:01");
     let (host_ip, peer_ip) = generate_veth_ip_pair(pool_index, ns_index);
 
     info!(name = %ns_name, proxy = proxy_port.is_some(), "creating namespace");
@@ -608,6 +613,7 @@ pub(super) async fn create_single_namespace(
     let result = create_namespace_inner(
         &ns_name,
         &host_device,
+        &host_mac,
         &host_ip,
         &peer_ip,
         sn,
@@ -621,35 +627,8 @@ pub(super) async fn create_single_namespace(
 
     match result {
         Ok(()) => {
-            let trace = match (
-                guest_dns_netfilter_trace_requested,
-                guest_dns_netfilter_trace_reader,
-                dns_port,
-            ) {
-                (false, _, _) => GuestDnsNetfilterTraceAttachment::Disabled,
-                (true, None, _) => {
-                    GuestDnsNetfilterTraceAttachment::unavailable("monitor_unavailable")
-                }
-                (true, Some(_), None) => {
-                    GuestDnsNetfilterTraceAttachment::unavailable("dns_proxy_disabled")
-                }
-                (true, Some(reader), Some(_))
-                    if apply_namespace_guest_dns_trace_rules(
-                        "iptables-restore",
-                        &ns_name,
-                        &host_device,
-                        &peer_ip,
-                    )
-                    .await =>
-                {
-                    GuestDnsNetfilterTraceAttachment::enabled(reader)
-                }
-                (true, Some(_), Some(_)) => {
-                    GuestDnsNetfilterTraceAttachment::unavailable("rule_install_failed")
-                }
-            };
             info!(name = %ns_name, "namespace created");
-            Ok(NetnsInfo::new(ns_name, host_device, peer_ip).with_guest_dns_netfilter_trace(trace))
+            Ok(NetnsInfo::new(ns_name, host_device, peer_ip))
         }
         Err(e) => {
             error!(name = %ns_name, error = %e, "failed to create namespace, cleaning up");
@@ -663,6 +642,7 @@ pub(super) async fn create_single_namespace(
 async fn create_namespace_inner(
     name: &str,
     host_device: &str,
+    host_mac: &str,
     host_ip: &str,
     peer_ip: &str,
     sn: &GuestNetwork,
@@ -670,7 +650,7 @@ async fn create_namespace_inner(
 ) -> Result<()> {
     let gw_with_prefix = format!("{}/{}", sn.gateway_ip, sn.prefix_len);
     create_netns_with_tap(name, sn.tap_name, sn.tap_mac, &gw_with_prefix).await?;
-    setup_veth_pair(name, host_device, host_ip, peer_ip).await?;
+    setup_veth_pair(name, host_device, host_mac, host_ip, peer_ip).await?;
     setup_namespace_routing(name, host_ip, sn.gateway_ip, sn.prefix_len).await?;
     apply_namespace_rules(name, host_device, peer_ip, firewall_config).await?;
 
@@ -1062,51 +1042,94 @@ mod tests {
         }
     }
 
-    #[test]
-    fn conntrack_flush_trusts_completed_deletes() {
-        assert!(conntrack_flush_is_trusted(
-            IgnoredCommandOutcome::Success,
-            IgnoredCommandOutcome::NonZero
-        ));
+    #[tokio::test]
+    async fn conntrack_flush_trusts_success_and_verified_zero_delete() {
+        let success = exec_status_with_timeout("true", &[], Duration::from_secs(1)).await;
+        let zero_delete = exec_status_with_timeout(
+            "sh",
+            &[
+                "-c",
+                "printf '%s\\n' 'conntrack v1.4.8 (conntrack-tools): 0 flow entries have been deleted.' >&2; exit 1",
+            ],
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert!(conntrack_delete_is_trusted(&success));
+        assert!(conntrack_delete_is_trusted(&zero_delete));
+        assert!(conntrack_flush_is_trusted(&success, &zero_delete));
+        assert!(conntrack_flush_is_trusted(&zero_delete, &success));
     }
 
-    #[test]
-    fn conntrack_flush_trusts_missing_optional_command() {
-        assert!(conntrack_flush_is_trusted(
-            IgnoredCommandOutcome::NotFound,
-            IgnoredCommandOutcome::NotFound
-        ));
-    }
+    #[tokio::test]
+    async fn conntrack_flush_rejects_command_failures_and_invalid_invocations() {
+        let command_failure = exec_status_with_timeout(
+            "sh",
+            &["-c", "printf 'permission denied\\n' >&2; exit 1"],
+            Duration::from_secs(1),
+        )
+        .await;
+        let invalid_invocation = exec_status_with_timeout(
+            "sh",
+            &[
+                "-c",
+                "printf '%s\\n' 'conntrack v1.4.8 (conntrack-tools): 0 flow entries have been deleted.' >&2; exit 2",
+            ],
+            Duration::from_secs(1),
+        )
+        .await;
 
-    #[test]
-    fn conntrack_flush_does_not_trust_timeout_or_partial_missing_command() {
+        assert!(!conntrack_delete_is_trusted(&command_failure));
+        assert!(!conntrack_delete_is_trusted(&invalid_invocation));
         assert!(!conntrack_flush_is_trusted(
-            IgnoredCommandOutcome::Timeout,
-            IgnoredCommandOutcome::Success
-        ));
-        assert!(!conntrack_flush_is_trusted(
-            IgnoredCommandOutcome::NotFound,
-            IgnoredCommandOutcome::Success
+            &command_failure,
+            &invalid_invocation
         ));
     }
 
+    #[tokio::test]
+    async fn conntrack_flush_rejects_missing_command_timeout_and_partial_success() {
+        let success = exec_status_with_timeout("true", &[], Duration::from_secs(1)).await;
+        let missing = exec_status_with_timeout(
+            "vm0-definitely-missing-conntrack-command",
+            &[],
+            Duration::from_millis(50),
+        )
+        .await;
+        let timeout =
+            exec_status_with_timeout("sh", &["-c", "sleep 2"], Duration::from_millis(50)).await;
+
+        assert!(!conntrack_delete_is_trusted(&missing));
+        assert!(!conntrack_delete_is_trusted(&timeout));
+        assert!(!conntrack_flush_is_trusted(&success, &missing));
+        assert!(!conntrack_flush_is_trusted(&timeout, &success));
+    }
+
     #[test]
-    fn conntrack_flush_does_not_trust_uncertain_command_failures() {
-        for outcome in [
-            IgnoredCommandOutcome::SpawnError,
-            IgnoredCommandOutcome::WaitError,
-            IgnoredCommandOutcome::PipeError,
-            IgnoredCommandOutcome::OutputTooLarge,
-        ] {
-            assert!(
-                !conntrack_flush_is_trusted(outcome, IgnoredCommandOutcome::Success),
-                "trusted left-side outcome: {outcome:?}"
-            );
-            assert!(
-                !conntrack_flush_is_trusted(IgnoredCommandOutcome::Success, outcome),
-                "trusted right-side outcome: {outcome:?}"
-            );
-        }
+    fn conntrack_zero_delete_requires_exact_single_line_diagnostic() {
+        let misleading_prefix = Err(CommandError {
+            command: "conntrack -D -s 10.0.0.2".to_string(),
+            exit_code: Some(1),
+            detail: "not-conntrack v1.4.8 (conntrack-tools): 0 flow entries have been deleted."
+                .to_string(),
+        });
+        let multiline = Err(CommandError {
+            command: "conntrack -D -s 10.0.0.2".to_string(),
+            exit_code: Some(1),
+            detail:
+                "warning\nconntrack v1.4.8 (conntrack-tools): 0 flow entries have been deleted."
+                    .to_string(),
+        });
+        let truncated = Err(CommandError {
+            command: "conntrack -D -s 10.0.0.2".to_string(),
+            exit_code: Some(1),
+            detail: "conntrack v1.4.8 (conntrack-tools): 0 flow entries have been deleted.\n[output truncated]"
+                .to_string(),
+        });
+
+        assert!(!conntrack_delete_is_trusted(&misleading_prefix));
+        assert!(!conntrack_delete_is_trusted(&multiline));
+        assert!(!conntrack_delete_is_trusted(&truncated));
     }
 
     #[test]

@@ -17,13 +17,11 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
-use crate::ids::RunId;
+use super::{ClaimedJob, CompletionAuth, CompletionReportTiming, JobCandidate, JobProvider};
 use crate::local_queue::{LocalClaimResult, LocalDiscoveredJob, LocalQueue};
 use crate::run_cancellation::RunCancellationRegistry;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState};
 use cancel::{LocalCancelScanner, LocalCancelWatcher};
-use sandbox::SandboxId;
 
 /// Poll interval for discovering new job files and local cancel markers.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -190,6 +188,7 @@ impl JobProvider for LocalProvider {
             firewalls: None,
             network_policies: None,
             network_policy_refreshes: None,
+            connector_runtime_targets: Vec::new(),
             disallowed_tools: None,
             tools: None,
             settings: None,
@@ -197,6 +196,9 @@ impl JobProvider for LocalProvider {
             billable_firewalls: vec![],
             model_usage_provider: None,
             codex_runtime_config: None,
+            pi_launch_config: None,
+            pi_model_config: None,
+            pi_session_id: None,
         };
         let active_input_source = req.active_input.unwrap_or(false).then(|| {
             crate::active_input::ActiveInputSource::local_queue(self.queue.clone(), run_id)
@@ -226,18 +228,21 @@ impl JobProvider for LocalProvider {
         }
     }
 
-    async fn complete(
-        &self,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        _sandbox_id: Option<SandboxId>,
-        _reuse_result: Option<SandboxReuseResult>,
-        _completion_auth: CompletionAuth,
-    ) {
+    fn completion_report_timing(&self) -> CompletionReportTiming {
+        // Writing the result unblocks `runner local submit`, whose next turn
+        // may immediately depend on the finalized sandbox being reusable.
+        CompletionReportTiming::AfterFinalization
+    }
+
+    async fn complete(&self, request: CompleteRequest, _completion_auth: CompletionAuth) {
+        let CompleteRequest {
+            run_id,
+            exit_code,
+            error,
+            ..
+        } = request;
         self.cancel_scanner.remove_owned_claim(run_id).await;
         let queue = self.queue.clone();
-        let error = error.map(str::to_owned);
         if let Err(e) =
             tokio::task::spawn_blocking(move || queue.complete_job_sync(run_id, exit_code, error))
                 .await

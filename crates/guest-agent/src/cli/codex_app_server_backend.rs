@@ -1,14 +1,11 @@
-//! Experimental Codex app-server execution backend.
-//!
-//! This module owns only the experimental app-server runtime path. Ordinary
-//! Codex execution continues to use `codex exec --json` unless the explicit
-//! guest env flag selects this backend.
+//! Codex app-server execution backend.
 
 use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::time::Duration;
 
 use serde_json::{Map, Value, json};
-use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
@@ -27,10 +24,11 @@ use super::codex_app_server_events::{
 };
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
-    AgentExecutionDeadline, CliEventIngestor, CliExecutionResult, CliRuntimeConfig,
-    HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction, command,
+    AgentExecutionDeadline, BestEffortAgentLog, CliEventIngestor, CliExecutionControls,
+    CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus, LOG_TAG,
+    ParsedEventAction, codex_runtime_config,
 };
-use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
+use crate::active_input::{ActiveInputController, ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationDiagnostic, CliTerminationReason,
@@ -60,10 +58,10 @@ struct ThreadIdentity {
     canonical_id: String,
 }
 
-struct EventIngestSink<'a> {
-    ingestor: &'a mut CliEventIngestor,
+struct EventIngestSink<'a, 'startup> {
+    ingestor: &'a mut CliEventIngestor<'startup>,
     output_timing: &'a mut CodexOutputTiming,
-    log_file: &'a mut tokio::fs::File,
+    agent_log: &'a mut BestEffortAgentLog,
     masker: &'a SecretMasker,
     should_send_events: bool,
     event_tx: &'a EventDeliverySender,
@@ -110,10 +108,39 @@ enum AppServerRunOutcome {
     UserCancelled,
 }
 
+async fn settle_active_input_before_stop<Run>(
+    mut run: Pin<&mut Run>,
+    active_input: &ActiveInputController,
+    stopped: AppServerRunOutcome,
+) -> AppServerRunOutcome
+where
+    Run: Future<Output = Result<CliExecutionResult, AgentError>>,
+{
+    active_input.close_terminal();
+    if !active_input.sink_in_flight() {
+        return stopped;
+    }
+
+    let settle = async {
+        tokio::select! {
+            biased;
+            _ = run.as_mut() => {}
+            _ = active_input.wait_for_sink_idle() => {}
+        }
+    };
+    let _ = tokio::time::timeout(
+        Duration::from_secs(crate::constants::ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS),
+        settle,
+    )
+    .await;
+    stopped
+}
+
 async fn run_with_execution_deadline(
     run: impl Future<Output = Result<CliExecutionResult, AgentError>>,
     deadline: Option<AgentExecutionDeadline>,
     user_cancellation: &CancellationToken,
+    active_input: &ActiveInputController,
 ) -> AppServerRunOutcome {
     tokio::pin!(run);
 
@@ -125,9 +152,21 @@ async fn run_with_execution_deadline(
             tokio::select! {
                 biased;
                 result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
-                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
-                () = &mut deadline_sleep => AppServerRunOutcome::ExecutionTimedOut {
-                    timeout_secs: deadline.timeout_secs,
+                () = user_cancellation.cancelled() => {
+                    settle_active_input_before_stop(
+                        run.as_mut(),
+                        active_input,
+                        AppServerRunOutcome::UserCancelled,
+                    ).await
+                },
+                () = &mut deadline_sleep => {
+                    settle_active_input_before_stop(
+                        run.as_mut(),
+                        active_input,
+                        AppServerRunOutcome::ExecutionTimedOut {
+                            timeout_secs: deadline.timeout_secs,
+                        },
+                    ).await
                 },
             }
         }
@@ -135,7 +174,13 @@ async fn run_with_execution_deadline(
             tokio::select! {
                 biased;
                 result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
-                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
+                () = user_cancellation.cancelled() => {
+                    settle_active_input_before_stop(
+                        run.as_mut(),
+                        active_input,
+                        AppServerRunOutcome::UserCancelled,
+                    ).await
+                },
             }
         }
     }
@@ -145,8 +190,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
-    active_input: ActiveInputWriter,
-    user_cancellation: CancellationToken,
+    controls: CliExecutionControls<'_>,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting codex app-server execution...");
@@ -159,8 +203,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
         &mut heartbeat_monitor,
         should_send_events,
         event_delivery.sender(),
-        active_input,
-        user_cancellation,
+        controls,
         runtime,
     )
     .await;
@@ -190,18 +233,26 @@ async fn run_codex_app_server(
     heartbeat_monitor: &mut HeartbeatMonitor,
     should_send_events: bool,
     event_tx: &EventDeliverySender,
-    mut active_input: ActiveInputWriter,
-    user_cancellation: CancellationToken,
+    controls: CliExecutionControls<'_>,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
-    let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
-    let mut log_file = tokio::fs::File::from_std(log_file);
-    let mut ingestor = CliEventIngestor::new(runtime);
+    let CliExecutionControls {
+        mut active_input,
+        user_cancellation,
+        codex_startup,
+        workload_containment,
+    } = controls;
+    let mut agent_log = BestEffortAgentLog::open(runtime.agent_log_file.as_ref());
+    let mut ingestor = CliEventIngestor::new(runtime, codex_startup);
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
-    let mut client = CodexAppServerClient::spawn(codex_app_server_config(runtime))
-        .map_err(|error| app_server_error(masker, error))?;
+    let mut client = CodexAppServerClient::spawn(codex_app_server_config(
+        runtime,
+        workload_containment.cloned(),
+    ))
+    .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;
+    let active_input_controller = active_input.controller();
 
     let run = async {
         race_with_heartbeat(
@@ -227,7 +278,7 @@ async fn run_codex_app_server(
             let mut sink = EventIngestSink {
                 ingestor: &mut ingestor,
                 output_timing: &mut output_timing,
-                log_file: &mut log_file,
+                agent_log: &mut agent_log,
                 masker,
                 should_send_events,
                 event_tx,
@@ -249,7 +300,7 @@ async fn run_codex_app_server(
             let mut sink = EventIngestSink {
                 ingestor: &mut ingestor,
                 output_timing: &mut output_timing,
-                log_file: &mut log_file,
+                agent_log: &mut agent_log,
                 masker,
                 should_send_events,
                 event_tx,
@@ -292,7 +343,7 @@ async fn run_codex_app_server(
                     let mut sink = EventIngestSink {
                         ingestor: &mut ingestor,
                         output_timing: &mut output_timing,
-                        log_file: &mut log_file,
+                        agent_log: &mut agent_log,
                         masker,
                         should_send_events,
                         event_tx,
@@ -335,7 +386,7 @@ async fn run_codex_app_server(
                     let mut sink = EventIngestSink {
                         ingestor: &mut ingestor,
                         output_timing: &mut output_timing,
-                        log_file: &mut log_file,
+                        agent_log: &mut agent_log,
                         masker,
                         should_send_events,
                         event_tx,
@@ -377,11 +428,16 @@ async fn run_codex_app_server(
             failure_diagnostic: ingestor.failure_diagnostic(),
             control_error: None,
             cli_termination: None,
+            active_input_delivery_ids: Vec::new(),
         })
     };
-    let run_outcome =
-        run_with_execution_deadline(run, runtime.agent_execution_deadline, &user_cancellation)
-            .await;
+    let run_outcome = run_with_execution_deadline(
+        run,
+        runtime.agent_execution_deadline,
+        &user_cancellation,
+        &active_input_controller,
+    )
+    .await;
     active_input.close_terminal();
 
     let shutdown_result = match &run_outcome {
@@ -390,15 +446,38 @@ async fn run_codex_app_server(
         | AppServerRunOutcome::ExecutionTimedOut { .. }
         | AppServerRunOutcome::UserCancelled => client.terminate().await,
     };
+    if shutdown_result.is_ok()
+        && matches!(
+            &run_outcome,
+            AppServerRunOutcome::ExecutionTimedOut { .. } | AppServerRunOutcome::UserCancelled
+        )
+        && active_input_controller.sink_in_flight()
+    {
+        active_input_controller.mark_sink_stopped_after_consumer_exit();
+    }
+    let active_input_delivery_ids = active_input_controller.finalize_receipts().await;
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
     // Complete the final event-log write after the child is stopped and
     // before callers observe the finished app-server execution.
-    let _ = log_file.flush().await;
+    agent_log.flush().await;
+    let active_input_delivery_ids = match active_input_delivery_ids {
+        Ok(delivery_ids) => delivery_ids,
+        Err(active_input_error) => {
+            if let Err(shutdown_error) = &shutdown_result {
+                return Err(AgentError::Execution(format!(
+                    "codex app-server cleanup failed before active-input quiescence: {}",
+                    masker.mask_string(&shutdown_error.to_string())
+                )));
+            }
+            return Err(active_input_error);
+        }
+    };
 
     match run_outcome {
         AppServerRunOutcome::Completed(run_result) => match (*run_result, shutdown_result) {
             (Ok(mut result), Ok(())) => {
                 result.stderr_lines = stderr_lines;
+                result.active_input_delivery_ids = active_input_delivery_ids;
                 Ok(result)
             }
             (Ok(_result), Err(error)) => Err(AgentError::Execution(format!(
@@ -438,6 +517,7 @@ async fn run_codex_app_server(
                 cli_termination: Some(CliTerminationDiagnostic::new(
                     CliTerminationReason::ExecutionTimeout,
                 )),
+                active_input_delivery_ids,
             })
         }
         AppServerRunOutcome::UserCancelled => {
@@ -461,12 +541,16 @@ async fn run_codex_app_server(
                 cli_termination: Some(CliTerminationDiagnostic::new(
                     CliTerminationReason::UserCancellation,
                 )),
+                active_input_delivery_ids,
             })
         }
     }
 }
 
-fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConfig {
+fn codex_app_server_config(
+    runtime: &CliRuntimeConfig<'_>,
+    workload_containment: Option<crate::workload_containment::WorkloadContainment>,
+) -> CodexAppServerConfig {
     let binary = if runtime.use_mock_codex {
         log_info!(LOG_TAG, "Using mock-codex app-server for testing");
         PathBuf::from(runtime.mock_codex_path.as_ref())
@@ -484,10 +568,11 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
         )
         .with_config_overrides(config_overrides)
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
+        .with_workload_containment(workload_containment)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
-    if runtime.use_mock_codex
-        && let Ok(scenario) = std::env::var("MOCK_CODEX_APP_SERVER_SCENARIO")
-    {
+    if runtime.use_mock_codex {
+        let scenario = std::env::var("MOCK_CODEX_APP_SERVER_SCENARIO")
+            .unwrap_or_else(|_| "runtime-turn-complete".to_string());
         config = config.with_env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
     }
     if runtime.codex_oauth_mode {
@@ -606,7 +691,7 @@ fn turn_start_params(thread_id: &str, runtime: &CliRuntimeConfig<'_>) -> Value {
         );
     }
     if let Some(effort) =
-        command::default_codex_reasoning_effort_for_model(runtime.openai_model.as_ref())
+        codex_runtime_config::default_reasoning_effort_for_model(runtime.openai_model.as_ref())
     {
         params.insert("effort".to_string(), Value::String(effort.to_string()));
     }
@@ -667,8 +752,8 @@ async fn steer_active_input(
     let params = turn_steer_params(thread_id, turn_id, &frame);
     log_info!(
         LOG_TAG,
-        "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=attempt",
-        frame.message_id
+        "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=attempt",
+        frame.uuid
     );
     active_input.mark_writing(&frame.uuid);
     let result = race_with_heartbeat(
@@ -680,24 +765,25 @@ async fn steer_active_input(
     .await;
     match result {
         Ok(_) => {
-            active_input.mark_written_without_replay(&frame.uuid);
+            active_input.mark_backend_accepted_without_replay(&frame)?;
             log_info!(
                 LOG_TAG,
-                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=active_turn_advanced",
-                frame.message_id
+                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=active_turn_advanced",
+                frame.uuid
             );
             Ok(())
         }
         Err(error) => {
+            active_input.mark_backend_failed(&frame);
             active_input.close_terminal();
             log_warn!(
                 LOG_TAG,
-                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=failed error={error}",
-                frame.message_id
+                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=failed error={error}",
+                frame.uuid
             );
             Err(AgentError::Execution(format!(
-                "codex app-server active input steer failed for message {}: {error}",
-                frame.message_id
+                "codex app-server active input steer failed for input {}: {error}",
+                frame.uuid
             )))
         }
     }
@@ -707,7 +793,7 @@ fn turn_steer_params(thread_id: &str, turn_id: &str, frame: &ActiveInputFrame) -
     json!({
         "threadId": thread_id,
         "expectedTurnId": turn_id,
-        "clientUserMessageId": frame.message_id.as_str(),
+        "clientUserMessageId": frame.uuid.as_str(),
         "input": [{
             "type": "text",
             "text": frame.text.as_str(),
@@ -736,7 +822,7 @@ async fn race_with_heartbeat<T>(
 
 async fn drain_queued_notifications(
     client: &mut CodexAppServerClient,
-    sink: &mut EventIngestSink<'_>,
+    sink: &mut EventIngestSink<'_, '_>,
     active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
@@ -776,7 +862,7 @@ async fn drain_queued_notifications(
 
 async fn ingest_run_notification(
     notification: ServerNotification,
-    sink: &mut EventIngestSink<'_>,
+    sink: &mut EventIngestSink<'_, '_>,
     active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
@@ -837,7 +923,7 @@ fn heartbeat_error(result: Result<HeartbeatStatus, oneshot::error::RecvError>) -
 
 async fn ingest_notification(
     notification: ServerNotification,
-    sink: &mut EventIngestSink<'_>,
+    sink: &mut EventIngestSink<'_, '_>,
     thread_started_emitted: bool,
     expected_thread_id: &str,
     active_turn_id: &str,
@@ -977,7 +1063,10 @@ fn validate_scope(
     Ok(())
 }
 
-fn record_output_item_start(start: Option<&CodexOutputItemStart>, sink: &mut EventIngestSink<'_>) {
+fn record_output_item_start(
+    start: Option<&CodexOutputItemStart>,
+    sink: &mut EventIngestSink<'_, '_>,
+) {
     if let Some(start) = start {
         sink.output_timing.record(start, sink.ingestor);
     }
@@ -994,18 +1083,18 @@ fn event_turn_id(event: &Value) -> Option<&str> {
         .or_else(|| event.pointer("/turn/id").and_then(Value::as_str))
 }
 
-async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<(), AgentError> {
+async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_, '_>) -> Result<(), AgentError> {
     let raw_line = serde_json::to_vec(&event)?;
     match sink
         .ingestor
         .begin_event(
-            sink.log_file,
+            sink.agent_log,
             raw_line,
             &event,
             sink.masker,
-            super::framework::CliFrameworkBehavior::new(Framework::Codex),
+            Framework::Codex,
         )
-        .await?
+        .await
     {
         ParsedEventAction::Forward => {
             if let Some(text) = codex_agent_message_text(&event) {

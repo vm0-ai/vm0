@@ -1,5 +1,5 @@
 /**
- * Tests for `zero search --source chat`.
+ * Tests for `okou search --source chat`.
  *
  * Entry point: zeroSearchCommand.parseAsync()
  * Mock (external): Web API via MSW
@@ -28,7 +28,7 @@ function makeMessage(params: {
   };
 }
 
-describe("zero search --source chat", () => {
+describe("okou search --source chat", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -42,7 +42,7 @@ describe("zero search --source chat", () => {
     // see calls made by the current case.
     vi.clearAllMocks();
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     // Commander retains collector state across parseAsync calls on the
     // same command instance. Reset before each case.
     zeroSearchCommand.setOptionValue("source", []);
@@ -64,7 +64,7 @@ describe("zero search --source chat", () => {
 
   it("renders chat search results grouped by thread", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/chat/search", () => {
+      http.get("http://localhost:3000/api/okou/chat/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -98,7 +98,7 @@ describe("zero search --source chat", () => {
 
   it("tolerates invalid chat message timestamps", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/chat/search", () => {
+      http.get("http://localhost:3000/api/okou/chat/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -132,7 +132,7 @@ describe("zero search --source chat", () => {
 
   it("handles no matches", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/chat/search", () => {
+      http.get("http://localhost:3000/api/okou/chat/search", () => {
         return HttpResponse.json({ results: [], hasMore: false });
       }),
     );
@@ -153,7 +153,7 @@ describe("zero search --source chat", () => {
   it("passes keyword and -C context to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/chat/search", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -177,7 +177,7 @@ describe("zero search --source chat", () => {
   it("passes epoch --since to API instead of the default search window", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/chat/search", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -199,7 +199,7 @@ describe("zero search --source chat", () => {
   it("passes -A and -B independently", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/chat/search", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -225,7 +225,7 @@ describe("zero search --source chat", () => {
     let capturedUrl: URL | undefined;
     const agentId = "550e8400-e29b-41d4-a716-446655440001";
     server.use(
-      http.get("http://localhost:3000/api/zero/chat/search", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -277,41 +277,6 @@ describe("zero search --source chat", () => {
 
     errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("Invalid agent ID");
-  });
-
-  it("rejects --run flag for chat source with clear error", async () => {
-    await expect(
-      zeroSearchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "--run",
-        "550e8400-e29b-41d4-a716-446655440001",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    let errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--run is not supported with --source chat");
-
-    mockConsoleError.mockClear();
-    zeroSearchCommand.setOptionValue("source", []);
-
-    await expect(
-      zeroSearchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "--run",
-        "",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--run is not supported with --source chat");
   });
 
   it("rejects --limit outside the 1..50 range", async () => {
@@ -421,7 +386,7 @@ describe("zero search --source chat", () => {
 
   it("shows the hasMore hint when the API reports more results", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/chat/search", () => {
+      http.get("http://localhost:3000/api/okou/chat/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -451,7 +416,7 @@ describe("zero search --source chat", () => {
 
   it("surfaces API authentication errors", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/chat/search", () => {
+      http.get("http://localhost:3000/api/okou/chat/search", () => {
         return HttpResponse.json(
           { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
           { status: 401 },

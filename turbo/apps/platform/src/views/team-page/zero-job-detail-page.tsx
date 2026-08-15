@@ -11,16 +11,16 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconFileText,
-  IconUserCircle,
-  IconShield,
-  IconUsers,
-  IconSearch,
-  IconX,
-  IconMessageCircle,
-  IconWand,
-} from "@tabler/icons-react";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+  FileText,
+  UserCircle,
+  Shield,
+  Users,
+  Search,
+  X,
+  MessageCircle,
+  Wand,
+} from "lucide-react";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   Button,
   Tabs,
@@ -38,28 +38,31 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
 import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
-
 import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
+import { agentDetail$ } from "../../signals/zero-page/job-detail/detail";
 import {
-  agentDetail$,
   agentInstructions$,
   agentEditedContent$,
   agentInstructionsDirty$,
   setAgentEditedContent$,
   discardAgentEdit$,
   buildAgentInstructions$,
-  updateAgentSettings$,
-  deleteAgent$,
+} from "../../signals/zero-page/job-detail/instructions";
+import { updateAgentSettings$ } from "../../signals/zero-page/job-detail/settings";
+import { deleteAgent$ } from "../../signals/zero-page/job-detail/delete";
+import {
   agentAuthorizedConnectors$,
   authorizeAgentConnector$,
   deauthorizeAgentConnector$,
   saveAgentConnectors$,
+} from "../../signals/zero-page/job-detail/connectors";
+import {
   agentActiveTab$,
   setAgentActiveTab$,
-} from "../../signals/zero-page/zero-job-detail.ts";
+} from "../../signals/zero-page/job-detail/agent-name";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -89,15 +92,13 @@ import {
   applyUserPermissionGrants$,
   currentAgentUserPermissionGrants$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import {
-  allConnectorCatalogItems$,
-  matchesConnectorSearch,
-} from "../../signals/zero-page/settings/connectors.ts";
+import { matchesConnectorSearch } from "../../signals/zero-page/settings/connectors.ts";
+import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import {
   currentAgentVisibleWorkflows$,
   copyWorkflow$,
 } from "../../signals/workflows-page/workflows-signals.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   permConnectorSlug$,
   agentPermissionMetadata$,
@@ -109,7 +110,7 @@ import {
   permSavingConnectorSlug$,
   setPermSavingConnectorSlug$,
 } from "../../signals/zero-page/zero-job-detail-page.ts";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
 import type {
   PlatformConnectorCatalogStatusItem,
   PlatformConnectorPermissionMetadata,
@@ -153,9 +154,9 @@ function Breadcrumb({
     <DetailPageBreadcrumbBar className={className}>
       <Link
         pathname="/agents"
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors no-underline text-inherit"
       >
-        <IconUsers size={14} stroke={1.5} className="shrink-0" />
+        <Users size={14} className="shrink-0" />
         {t(($) => {
           return $.list.title;
         })}
@@ -216,7 +217,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             </div>
             <Link
               pathname="/agents"
-              className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
+              className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
             >
               {t(($) => {
                 return $.detail.notFound.back;
@@ -239,7 +240,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
               <Link
                 pathname="/agents/:agentId"
                 options={{ pathParams: { agentId: agentId } }}
-                className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
+                className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
               >
                 {t(($) => {
                   return $.actions.retry;
@@ -252,9 +253,6 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
     </DetailPageShell>
   );
 }
-
-const TAB_TRIGGER_CLASS =
-  "gap-1.5 text-sm data-[state=active]:bg-background px-3";
 
 function resolveVisibleTab(
   rawTab: string,
@@ -312,24 +310,24 @@ function AgentTabNav({
         </Select>
       </div>
       {/* Desktop: tab list */}
-      <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
-        <TabsTrigger value="authorization" className={TAB_TRIGGER_CLASS}>
-          <IconShield size={14} stroke={1.5} />
+      <TabsList className="hidden sm:inline-flex">
+        <TabsTrigger value="authorization">
+          <Shield size={14} />
           {t(($) => {
             return $.detail.tabs.authorization;
           })}
         </TabsTrigger>
         {showProfileAndInstructions && (
-          <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
-            <IconUserCircle size={14} stroke={1.5} />
+          <TabsTrigger value="profile">
+            <UserCircle size={14} />
             {t(($) => {
               return $.detail.tabs.profile;
             })}
           </TabsTrigger>
         )}
         {showProfileAndInstructions && (
-          <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
-            <IconFileText size={14} stroke={1.5} />
+          <TabsTrigger value="instructions">
+            <FileText size={14} />
             {t(($) => {
               return $.detail.tabs.instructions;
             })}
@@ -461,11 +459,7 @@ function ConnectedConnectorPermissions({
           </div>
           {searchActive && (
             <div className="absolute inset-0 flex items-center gap-2 px-5">
-              <IconSearch
-                size={14}
-                stroke={1.5}
-                className="shrink-0 text-muted-foreground"
-              />
+              <Search size={14} className="shrink-0 text-muted-foreground" />
               <input
                 ref={(el) => {
                   return el?.focus();
@@ -486,34 +480,38 @@ function ConnectedConnectorPermissions({
                 }}
                 className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
               />
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   setSearch("");
                   setSearchActive(false);
                 }}
-                className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                variant="quiet"
+                size="icon-xs"
+                className="shrink-0"
                 aria-label={t(($) => {
                   return $.authorization.closeSearch;
                 })}
               >
-                <IconX size={14} stroke={1.5} />
-              </button>
+                <X size={14} />
+              </Button>
             </div>
           )}
           {!searchActive && (
-            <button
+            <Button
               type="button"
               onClick={() => {
                 return setSearchActive(true);
               }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              variant="quiet"
+              size="icon-xs"
+              className="absolute right-3 top-1/2 -translate-y-1/2"
               aria-label={t(($) => {
                 return $.authorization.findConnectors;
               })}
             >
-              <IconSearch size={14} stroke={1.5} />
-            </button>
+              <Search size={14} />
+            </Button>
           )}
         </div>
         {filteredConnectors.length > 0 ? (
@@ -659,9 +657,11 @@ function JobPermissionsTab({
 
   const connectorsLoading = connectorsLoadable.state === "loading";
 
-  const catalogItemsLoadable = useLastLoadable(allConnectorCatalogItems$);
+  const catalogItemsLoadable = useLastLoadable(connectorCatalogStatus$);
   const allConnectors =
-    catalogItemsLoadable.state === "hasData" ? catalogItemsLoadable.data : [];
+    catalogItemsLoadable.state === "hasData"
+      ? catalogItemsLoadable.data.connectors
+      : [];
   const canManagePermissions = true;
 
   const connectedConnectors = allConnectors.filter((c) => {
@@ -749,16 +749,18 @@ function JobPermissionsTab({
               if (connectorSlug === null) {
                 throw new Error("Cannot save permissions without a connector");
               }
-              await savePermissionDraftPolicies({
-                scope: { agentId },
-                connectorSlug,
-                metadata,
-                initialPolicies: drawerInitialPolicies,
-                initialGrants: activeUserGrantSnapshot.grants,
-                intent,
+              await savePermissionDraftPolicies(
+                {
+                  scope: { agentId },
+                  connectorSlug,
+                  metadata,
+                  initialPolicies: drawerInitialPolicies,
+                  initialGrants: activeUserGrantSnapshot.grants,
+                  intent,
+                  applyGrantPolicies,
+                },
                 pageSignal,
-                applyGrantPolicies,
-              });
+              );
               toast.success(
                 t(($) => {
                   return $.authorization.permissionsUpdated;
@@ -875,7 +877,7 @@ function AgentHeader({
                         return $.avatar.actions.customize;
                       })}
                     >
-                      <IconWand size={12} stroke={1.5} />
+                      <Wand size={12} />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
@@ -917,7 +919,7 @@ function AgentHeader({
             { agentName: displayName },
           )}
         >
-          <IconMessageCircle size={14} stroke={2} className="shrink-0" />
+          <MessageCircle size={14} className="shrink-0" />
           <span className="truncate">
             {t(
               ($) => {

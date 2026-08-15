@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { join } from "node:path";
 
 import { enterDegradedDesktopMode } from "./bootstrap-degraded";
 import { resolveDesktopConfig } from "./config";
@@ -9,11 +10,17 @@ import type { DesktopMainModule } from "./desktop-main-module";
 // Crash-resilient entry point (package.json "main"). It owns the auto-updater
 // so a fixed release can still be installed when the main bundle fails at
 // module-load time. It must stay trivially safe to load: no workspace
-// (`@vm0/*`) imports, directly or transitively — guarded by
+// (`@okouai/*`) imports, directly or transitively — guarded by
 // bootstrap-imports.test.ts and scripts/check-bootstrap-bundle.mjs.
 
 const config = resolveDesktopConfig();
 const apiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
+app.setName(config.identity.displayName);
+app.name = config.identity.displayName;
+app.setPath(
+  "userData",
+  join(app.getPath("appData"), config.identity.userDataDirectoryName),
+);
 
 type DesktopMainLoadResult =
   | { readonly ok: true; readonly main: DesktopMainModule }

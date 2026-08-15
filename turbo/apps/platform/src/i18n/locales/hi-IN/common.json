@@ -108,23 +108,40 @@
         "title": "कोई नेटवर्क लॉग नहीं"
       },
       "notFound": {
-        "back": "गतिविधि पर वापस जाएँ",
+        "back": "चैट पर वापस जाएँ",
         "description": "यह लॉग मौजूद नहीं है या आपके पास इसे वर्तमान वर्कस्पेस में देखने की अनुमति नहीं है।",
         "title": "लॉग नहीं मिला"
       },
       "runner": {
+        "cacheMiss": "कोई भी कैश किया गया कार्यस्थान पुन: उपयोग कुंजी से मेल नहीं खाता।",
         "deviceLimitMismatch": "निष्क्रिय पूल प्रविष्टि मौजूद है लेकिन इसकी डिवाइस दर सीमक स्थिति मेल नहीं खाती है।",
+        "diskPressure": "रनर पर डिस्क दबाव के कारण कार्यस्थान का पुन: उपयोग छोड़ दिया गया।",
         "featureDisabled": "इस रन के लिए सैंडबॉक्स का पुन: उपयोग अक्षम है।",
+        "invalidMetadata": "कैश किए गए कार्यस्थान का मेटाडेटा अमान्य था।",
+        "invalidWorkingDir": "अनुरोधित कार्य निर्देशिका का पुन: उपयोग नहीं किया जा सका।",
+        "lockBusy": "कोई अन्य रन उसी कार्यस्थान को तैयार कर रहा था।",
         "noReuseKey": "निष्क्रिय सैंडबॉक्स से मिलान करने के लिए कोई पुन: उपयोग कुंजी उपलब्ध नहीं थी।",
         "noSessionId": "पुराना परिणाम: सैंडबॉक्स का पुन: उपयोग न होने का सटीक कारण उपलब्ध नहीं है।",
+        "notConfigured": "इस रन के लिए कार्यस्थान का पुन: उपयोग कॉन्फ़िगर नहीं किया गया था।",
         "notReused": "पुन: उपयोग नहीं किया गया",
         "poolMiss": "निष्क्रिय पूल में कोई मेल खाता सैंडबॉक्स नहीं मिला।",
         "profileMismatch": "निष्क्रिय पूल प्रविष्टि मौजूद है लेकिन इसकी प्रोफ़ाइल मेल नहीं खाती।",
+        "provisioning": "तैयार किया जा रहा है",
         "reused": "पुन: उपयोग",
         "reusedDescription": "सैंडबॉक्स को निष्क्रिय पूल से हटा दिया गया था।",
         "sandbox": "सैंडबॉक्स",
-        "unknown": "अज्ञात (पुराना रन, सैंडबॉक्स पुन: उपयोग ट्रैकिंग जोड़े जाने से पहले रिकॉर्ड किया गया)।",
-        "unparkFailed": "अनपार्क प्रयास विफल; एक ताज़ा सैंडबॉक्स का प्रावधान किया गया था।"
+        "sandboxPrepareFallback": "कैश किया गया कार्यस्थान मिला, लेकिन सैंडबॉक्स तैयार होने के बाद उसका उपयोग नहीं किया जा सका।",
+        "sandboxReusedDescription": "पुन: उपयोग किए गए सैंडबॉक्स में कार्यस्थान उपलब्ध रहा।",
+        "startup": "प्रारंभ",
+        "startupCold": "कोल्ड स्टार्ट",
+        "startupSandbox": "सैंडबॉक्स पुन: उपयोग",
+        "startupUnknown": "अज्ञात",
+        "startupWorkspace": "कार्यस्थान पुन: उपयोग",
+        "unavailable": "अनुपलब्ध",
+        "unparkFailed": "अनपार्क प्रयास विफल; एक ताज़ा सैंडबॉक्स का प्रावधान किया गया था।",
+        "workspace": "कार्यस्थान",
+        "workspaceNoReuseKey": "कोई कार्यस्थान पुन: उपयोग कुंजी उपलब्ध नहीं थी।",
+        "workspaceReusedDescription": "कार्यस्थान को रनर कैश से पुनर्स्थापित किया गया।"
       },
       "steps": {
         "matched": "({{matched}}/{{total}} मिलान हुआ)",
@@ -204,22 +221,6 @@
         "title": "कोई लॉग लोड नहीं हुआ",
         "upload": "JSON अपलोड करें"
       }
-    },
-    "list": {
-      "description": "लॉग करता है और आपके एजेंटों से चलता है।",
-      "errors": {
-        "description": "कुछ गलत हो गया। कृपया बाद में पुन: प्रयास करें।",
-        "title": "गतिविधि डेटा लोड करने में विफल"
-      },
-      "filters": {
-        "agent": "एजेंट फ़िल्टर",
-        "allAgents": "सभी एजेंट",
-        "allSources": "सभी स्रोत",
-        "allStatuses": "सभी स्थितियाँ",
-        "source": "स्रोत फ़िल्टर",
-        "status": "स्थिति फ़िल्टर"
-      },
-      "title": "गतिविधि"
     },
     "network": {
       "actions": {
@@ -320,30 +321,21 @@
       "unknown": "अज्ञात",
       "yes": "हाँ"
     },
-    "pagination": {
-      "backTwo": "पीछे 2 पेज",
-      "forwardTwo": "2 पेज फॉरवर्ड करें",
-      "next": "अगला पृष्ठ",
-      "page": "पेज {{current}}",
-      "pageOf": "{{total}} का पृष्ठ {{current}}",
-      "previous": "पिछला पृष्ठ",
-      "rowsPerPage": "प्रति पृष्ठ पंक्तियाँ"
-    },
     "sources": {
       "agent": "एजेंट",
       "agentphone": "AgentPhone",
-      "agentWithName": "एजेंट ({{name}})",
+      "automationEvent": "ऑटोमेशन घटना",
+      "automationSchedule": "ऑटोमेशन शेड्यूल",
       "email": "ईमेल",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "लक्ष्य",
       "slack": "Slack",
       "teams": "टीमें",
       "telegram": "Telegram",
       "test": "टेस्ट",
       "web": "वेब",
-      "webhook": "वेबहुक",
-      "workflowEvent": "वर्कफ़्लो घटना",
-      "workflowSchedule": "वर्कफ़्लो शेड्यूल"
+      "webhook": "वेबहुक"
     },
     "statuses": {
       "cancelled": "रद्द कर दिया गया",
@@ -353,34 +345,6 @@
       "queued": "कतारबद्ध",
       "running": "चल रहा है",
       "timeout": "समयबाह्य"
-    },
-    "statusFilters": {
-      "cancelled": "रद्द कर दिया गया",
-      "completed": "पूरा हुआ",
-      "failed": "असफल",
-      "pending": "लंबित",
-      "queued": "कतारबद्ध",
-      "running": "चल रहा है",
-      "timeout": "समयबाह्य"
-    },
-    "table": {
-      "empty": {
-        "description": "जब आपके एजेंट काम करना शुरू करेंगे, तो उनकी गतिविधि यहां दिखाई देगी.",
-        "title": "फिलहाल सब शांत"
-      },
-      "filteredEmpty": {
-        "description": "आप जो खोज रहे हैं उसे ढूंढने के लिए अलग-अलग फ़िल्टर आज़माएं।",
-        "title": "उन फ़िल्टर से कुछ भी मेल नहीं खाता"
-      },
-      "headers": {
-        "agent": "एजेंट",
-        "description": "विवरण",
-        "duration": "अवधि",
-        "session": "सत्र",
-        "source": "स्रोत",
-        "startTime": "समय शुरू",
-        "status": "स्थिति"
-      }
     }
   },
   "appShell": {
@@ -472,19 +436,15 @@
         "overlay": "साइडबार ओवरले"
       },
       "navigation": {
-        "activity": "गतिविधि लॉग",
         "agents": "एजेंटों",
         "artifacts": "आर्टिफ़ैक्ट्स",
         "connectors": "कनेक्टर्स",
-        "insights": "इनसाइट्स",
-        "insightsAndUsage": "अंतर्दृष्टि और उपयोग",
         "newChat": "नई चैट",
         "settings": "सेटिंग्स",
         "workflows": "वर्कफ़्लो",
         "works": "जहां {{agentName}} काम करता है"
       },
       "rail": {
-        "activity": "गतिविधि",
         "new": "नया",
         "workflows": "वर्कफ़्लो",
         "works": "काम करता है"
@@ -506,7 +466,6 @@
       "backToArtifacts": "आर्टिफ़ैक्ट्स पर वापस जाएँ",
       "close": "बंद करना",
       "closeArtifact": "आर्टिफ़ैक्ट बंद करें",
-      "closeDownloadMenu": "डाउनलोड मेनू बंद करें",
       "closeNamed": "{{title}} बंद करें",
       "closePreviewMenu": "पूर्वावलोकन मेनू बंद करें",
       "download": "डाउनलोड करना",
@@ -538,6 +497,8 @@
       "emptyTitle": "कोई आर्टिफ़ैक्ट नहीं मिला",
       "error": "आर्टिफ़ैक्ट लोड नहीं कर सके। बाद में पुनः प्रयास करें।",
       "filters": {
+        "avatar": "अवतार",
+        "avatarAria": "अवतार आर्टिफ़ैक्ट दिखाएँ",
         "file": "फ़ाइलें",
         "fileAria": "फ़ाइल आर्टिफ़ैक्ट दिखाएँ",
         "image": "इमेजिस",
@@ -545,6 +506,8 @@
         "label": "आर्टिफ़ैक्ट प्रकार फिल्टर",
         "presentation": "प्रस्तुतियों",
         "presentationAria": "प्रस्तुति आर्टिफ़ैक्ट दिखाएँ",
+        "sharedConversation": "साझा की गई बातचीत",
+        "sharedConversationAria": "साझा बातचीत वाले आर्टिफ़ैक्ट दिखाएँ",
         "video": "वीडियो",
         "videoAria": "वीडियो आर्टिफ़ैक्ट दिखाएँ",
         "website": "वेबसाइटें",
@@ -579,6 +542,7 @@
     },
     "kinds": {
       "audio": "ऑडियो",
+      "avatar": "अवतार",
       "code": "कोड",
       "csv": "CSV",
       "data": "डेटा",
@@ -589,6 +553,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "प्रस्तुति",
+      "sharedConversation": "साझा बातचीत",
       "text": "मूलपाठ",
       "video": "वीडियो"
     },
@@ -619,6 +584,7 @@
       "videoLabel": "{{filename}} के लिए वीडियो पूर्वावलोकन"
     },
     "sidebar": {
+      "openSharedConversation": "साझा बातचीत खोलें",
       "panelTitle": "आर्टिफ़ैक्ट",
       "singularTitle": "आर्टिफ़ैक्ट",
       "unavailable": "यह आर्टिफ़ैक्ट अब उपलब्ध नहीं है।"
@@ -626,8 +592,25 @@
     "templates": {
       "activeHtmlPreview": "{{title}} सक्रिय HTML पूर्वावलोकन",
       "all": "सभी",
+      "avatar": "अवतार",
+      "avatarWithId": "अवतार {{id}}",
+      "backToAvatars": "अवतार पर वापस जाएँ",
       "categories": "टेम्पलेट श्रेणियां",
       "category": "टेम्पलेट श्रेणी",
+      "chooseVoice": "{{title}} के लिए आवाज़ चुनें",
+      "filters": {
+        "age": "आयु",
+        "all": "सभी",
+        "aspectRatio": "आस्पेक्ट रेशियो",
+        "clear": "साफ़ करें",
+        "ethnicity": "जातीयता",
+        "gender": "लिंग",
+        "language": "भाषा",
+        "scene": "दृश्य",
+        "style": "शैली",
+        "title": "फ़िल्टर",
+        "useCase": "उपयोग का प्रकार"
+      },
       "fullPreview": "{{title}} वेबसाइट पूर्ण पूर्वावलोकन",
       "htmlPreview": "{{title}} HTML पूर्वावलोकन",
       "illustration": "चित्रण",
@@ -637,17 +620,21 @@
       "noMatches": "कोई मेल नहीं",
       "placeholder": "{{title}} वेबसाइट पूर्वावलोकन प्लेसहोल्डर",
       "playVideo": "वीडियो टेम्पलेट पूर्वावलोकन {{title}} चलाएँ",
+      "previewAvatarVideo": "अवतार वीडियो {{title}} का पूर्वावलोकन करें",
       "previewCurrentSlide": "वर्तमान स्लाइड पर {{title}} का पूर्वावलोकन करें",
       "previewSlide": "पूर्वावलोकन स्लाइड {{slideNumber}}",
+      "previewVoice": "आवाज़ {{title}} सुनें",
       "previewWebsite": "वेबसाइट टेम्पलेट {{title}} का पूर्वावलोकन करें",
       "previousHtmlPreview": "{{title}} पिछला HTML पूर्वावलोकन",
       "previousSlide": "पिछली स्लाइड का पूर्वावलोकन करें",
-      "searchConnector": "कनेक्टर खोजें...",
-      "searchConnectors": "कनेक्टर्स खोजें",
+      "recommended": "अनुशंसित",
+      "searchConnector": "टेम्पलेट खोजें",
+      "searchConnectors": "टेम्पलेट खोजें",
       "selected": "टेम्पलेट: {{title}}",
       "selectStyle": "शैली {{style}} चुनें",
       "selectTemplate": "टेम्पलेट {{title}} चुनें",
       "selectVideo": "वीडियो टेम्पलेट {{title}} चुनें",
+      "selectVoice": "आवाज़ {{title}} चुनें",
       "selectWebsite": "वेबसाइट टेम्पलेट {{title}} चुनें",
       "selectWorkflow": "वर्कफ़्लो टेम्पलेट {{title}} चुनें",
       "showVariant": "वैरिएंट {{variantNumber}} दिखाएँ",
@@ -722,7 +709,7 @@
       "lastSeen": "अंतिम बार {{date}} देखा गया",
       "linkExpires": "लिंक {{date}} समाप्त हो रहा है।",
       "macRequirement": "macOS 14 या नए संस्करण वाला Apple सिलिकॉन Mac आवश्यक है। Intel Mac समर्थित नहीं हैं.",
-      "noHostsDescription": "अपने मैक पर Zero कंप्यूटर उपयोग खोलें और ऑनलाइन आने पर इस पेज को रीफ्रेश करें।",
+      "noHostsDescription": "अपने मैक पर {{desktopApplicationName}} खोलें और ऑनलाइन आने पर इस पेज को रीफ्रेश करें।",
       "noHostsTitle": "कोई ऑनलाइन कंप्यूटर नहीं",
       "sources": {
         "chat": "यह चैट थ्रेड",
@@ -799,8 +786,10 @@
     "common": {
       "back": "पीछे",
       "cancel": "रद्द करना",
+      "confirm": "पुष्टि करें",
       "credits": "क्रेडिट",
       "manage": "प्रबंधित करना",
+      "preparing": "तैयार किया जा रहा है...",
       "redirecting": "पुनर्निर्देशन...",
       "restore": "पुनर्स्थापित करना",
       "retry": "पुन: प्रयास करें",
@@ -812,20 +801,37 @@
       "billedMonthly": "मासिक बिल भेजा गया",
       "buyAmount": "{{amount}} खरीदें",
       "buyButton": "समवर्ती खरीदें",
-      "buyDescription": "अधिक समवर्ती रनों के लिए मासिक सदस्यता जोड़ें।",
+      "buyDescription": "चुनें कि आपको कितने अतिरिक्त स्लॉट चाहिए।",
       "buyTitle": "समवर्ती खरीदें",
       "cancelDescription": "इससे वर्तमान बिलिंग अवधि के अंत में नवीनीकरण रुक जाता है। मौजूदा स्लॉट तब तक सक्रिय रहते हैं।",
+      "cancelEntireOption": "पूरी सदस्यता रद्द करें",
       "cancellationScheduled": "रद्दीकरण शेड्यूल किया गया",
-      "cancelTitle": "समवर्ती सदस्यता रद्द करें?",
+      "changeButton": "बदलें",
+      "changeDescription": "स्लॉट की नई कुल संख्या चुनें या नवीनीकरण रोकें।",
+      "changeOptionsAria": "समवर्ती सदस्यता बदलने के विकल्प",
+      "changeQuantityOption": "स्लॉट बदलें",
+      "changeQuantityOptionDescription": "बढ़ोतरी तुरंत लागू होती है। कटौती अगली बिलिंग तारीख से शुरू होती है।",
+      "changeTitle": "समवर्तीता बदलें",
       "concurrentRun_one": "{{value}} समवर्ती रन",
       "concurrentRun_other": "{{value}} समवर्ती चलता है",
+      "continueToStripe": "Stripe पर जारी रखें",
       "decreaseAria": "अतिरिक्त समवर्ती मात्रा कम करें",
+      "dueNow": "अभी देय",
       "emptyDescription": "इस वर्कस्पेस के लिए अतिरिक्त समवर्ती रन खरीदें।",
       "emptyTitle": "कोई समवर्ती सदस्यता नहीं",
       "increaseAria": "अतिरिक्त समवर्ती मात्रा बढ़ाएँ",
+      "monthlyTotal": "मासिक कुल",
+      "newQuantity": "स्लॉट की नई कुल संख्या",
+      "orderSummary": "ऑर्डर सारांश",
+      "quantityRange": "{{minimum}} से {{maximum}} तक की संख्या दर्ज करें। अभी आपके पास {{current}} स्लॉट हैं।",
       "restoreDescription": "यह इस समवर्ती सदस्यता के लिए नवीनीकरण फिर से शुरू करता है।",
       "restoreSubscription": "सदस्यता बहाल करें",
       "restoreTitle": "समवर्ती सदस्यता पुनर्स्थापित करें?",
+      "reviewChange": "बदलाव की समीक्षा करें",
+      "reviewDescription": "अभी देय राशि और अपनी अपडेट की गई मासिक सदस्यता की समीक्षा करें।",
+      "reviewTitle": "समवर्ती बदलाव की समीक्षा करें",
+      "scheduledChange": "{{date}} को {{quantity}} में बदलाव",
+      "scheduledReviewDescription": "आपके मौजूदा स्लॉट इस बिलिंग अवधि के अंत तक सक्रिय रहेंगे। कम संख्या नवीनीकरण पर लागू होगी, बिना रिफंड या अकाउंट क्रेडिट के।",
       "slot_one": "{{value}} स्लॉट",
       "slot_other": "{{value}} स्लॉट",
       "slots": "स्लॉट्स",
@@ -840,6 +846,9 @@
       "exchangeRate": "क्रेडिट कभी समाप्त नहीं होते. 1 USD = {{credits}} क्रेडिट।",
       "quickBuy": "जल्दी खरीदो",
       "quickBuyAmount": "जल्दी से {{amount}} खरीदें",
+      "reviewDescription": "अपने सहेजे गए भुगतान तरीके से इस एकमुश्त शुल्क की पुष्टि करें।",
+      "reviewError": "यह क्रेडिट खरीद पूरी नहीं हो सकी। अपनी बिलिंग जानकारी जांचें और फिर कोशिश करें।",
+      "reviewTitle": "क्रेडिट खरीद की समीक्षा करें",
       "title": "क्रेडिट खरीदें"
     },
     "downgrade": {
@@ -869,15 +878,30 @@
       "selectMonth": "महीना चुनिए",
       "to": "को"
     },
-    "manage": {
-      "description": "स्ट्राइप में सदस्यता, भुगतान विधि और चालान।",
-      "title": "बिलिंग प्रबंधित करें"
+    "paymentMethods": {
+      "description": "Stripe में बिलिंग के लिए उपयोग की जाने वाली भुगतान विधियों को प्रबंधित करें।",
+      "title": "भुगतान विधियाँ"
     },
     "plans": {
       "cancellationNotice": "आपकी {{plan}} योजना रद्द कर दी गई है और {{date}} पर समाप्त होगी।",
       "changeAnytime": "किसी भी समय अपग्रेड या डाउनग्रेड करें।",
       "compare": "योजनाओं की तुलना करें",
       "compareAll": "सभी योजनाओं की तुलना करें",
+      "comparison": {
+        "addOnConcurrency": "अतिरिक्त समवर्तिता",
+        "available": "उपलब्ध",
+        "concurrentRuns": "समवर्ती रन",
+        "included": "हाँ",
+        "ownLlmKeys": "अपनी LLM कुंजियाँ",
+        "privateAgents": "निजी एजेंट",
+        "sharedAgents": "साझा एजेंट",
+        "support": "सहायता",
+        "supportEmail": "ईमेल",
+        "supportPriority": "प्राथमिकता",
+        "unlimited": "असीमित",
+        "voiceInput": "वॉइस इनपुट",
+        "voiceInputValue": "{{requests}}/दिन · {{minutes}} मिनट"
+      },
       "currentPlan": "वर्तमान योजना",
       "custom": {
         "name": "रिवाज़"
@@ -895,20 +919,21 @@
         "communitySupport": "समुदाय का समर्थन",
         "emailSupport": "ई - मेल समर्थन",
         "existingCredits": "केवल मौजूदा निःशुल्क क्रेडिट",
-        "monthlyCredits": "{{value}} क्रेडिट/माह",
         "oneConcurrentRun": "1 समवर्ती रन",
-        "payAsYouGo": "उसके बाद जाते ही भुगतान करें",
         "prioritySupport": "प्रायोरिटी सपोर्ट",
+        "sharedAndPrivateAgents": "7 साझा एजेंट, असीमित निजी एजेंट",
         "tenConcurrentRuns": "10 समवर्ती रन",
         "twoConcurrentRuns": "2 समवर्ती रन",
         "unlimitedAgents": "असीमित कुल एजेंट",
-        "voiceInput": "ध्वनि इनपुट",
-        "voiceInputLifetime": "वॉयस इनपुट (प्रति सदस्य 10 लाइफटाइम उपयोग)"
+        "voiceInputFree": "वॉइस इनपुट (कुल 10 अनुरोध · प्रति सदस्य 10 मिनट/दिन)",
+        "voiceInputPro": "वॉइस इनपुट (प्रति सदस्य 300 अनुरोध/दिन · 200 मिनट/दिन)",
+        "voiceInputTeam": "वॉइस इनपुट (प्रति सदस्य 500 अनुरोध/दिन · 500 मिनट/दिन)"
       },
       "free": {
         "description": "मौजूदा वर्कस्पेस के लिए विरासती निःशुल्क पहुंच।",
         "name": "फ्री"
       },
+      "legacy": "पुराना",
       "limitedFree": {
         "name": "लिमिटेड फ्री"
       },
@@ -924,7 +949,7 @@
       "popular": "लोकप्रिय",
       "pricePerMonth": "{{price}}/माह",
       "pro": {
-        "description": "आपकी टीम के लिए अधिक शक्ति और निर्बाध सहयोग।",
+        "description": "हर दिन AI एजेंट चलाने वाली टीमों के लिए अधिक क्रेडिट और समवर्ती रन।",
         "name": "प्रो"
       },
       "renews": "{{date}} को नवीनीकृत होगा",
@@ -932,11 +957,72 @@
       "sectionTitle": "योजना",
       "selectedPlan": "चयनित योजना",
       "team": {
-        "description": "शून्य घर्षण और पूर्ण लचीलेपन के साथ तेजी से स्केल करें।",
+        "description": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
         "name": "टीम"
       },
       "upgrade": "अपग्रेड",
-      "upgradeTo": "{{plan}} में अपग्रेड करें"
+      "upgradeTo": "{{plan}} में अपग्रेड करें",
+      "usagePacks": {
+        "bonusCredits": "बोनस क्रेडिट",
+        "bonusIncluded": "{{credits}} बोनस शामिल",
+        "choosePlan": "प्लान चुनें",
+        "concurrentSlots": "समवर्ती स्लॉट",
+        "configurePackages": "सदस्य पैकेज कॉन्फ़िगर करें",
+        "credits": "क्रेडिट",
+        "currentMember": "मौजूदा सदस्य",
+        "existingPackagesUnchanged": "सदस्यों के मौजूदा पैकेज अपरिवर्तित रहेंगे।",
+        "management": {
+          "comparison": "वर्तमान और नई सदस्यता की तुलना",
+          "current": "वर्तमान",
+          "downgradeDescription": "कम पैकेज अगली बिलिंग तारीख से शुरू होगा। मौजूदा क्रेडिट अपनी समाप्ति तक उपलब्ध रहेंगे।",
+          "downgradesToDate": "{{date}} को {{package}} पर डाउनग्रेड होगा।",
+          "downgradesToPeriod": "अगली बिलिंग तारीख पर {{package}} पर डाउनग्रेड होगा।",
+          "everyMonth": "हर महीने",
+          "immediateAmount": "अभी देय",
+          "immediateAmountNote": "इस बिलिंग अवधि के शेष समय के लिए",
+          "immediateCredits": "भुगतान के बाद जोड़े गए क्रेडिट",
+          "new": "नया",
+          "processing": "बदलाव संसाधित हो रहा है",
+          "reviewDescription": "पुष्टि करने पर आपकी सहेजी गई भुगतान विधि से राशि ली जाएगी।",
+          "reviewTitle": "पैकेज बदलाव की समीक्षा करें",
+          "scheduledFor": "{{date}} के लिए निर्धारित",
+          "today": "आज"
+        },
+        "memberExclusive": "हर पैकेज एक सदस्य का होता है और साझा नहीं किया जा सकता। पैकेज समाप्त होने पर उपयोग पे-एज़-यू-गो क्रेडिट पर वापस चला जाता है। आप बाद में नए पैकेज में अपग्रेड कर सकते हैं।",
+        "memberPackages": "सदस्य पैकेज",
+        "memberUsage": "सदस्य उपयोग",
+        "migration": {
+          "action": "प्लान कन्वर्ट करें",
+          "confirmDescription": "आपका वर्तमान प्लान और अधिकार इस बिलिंग अवधि के अंत तक सक्रिय रहते हैं। नया प्लान शुरू होने पर Stripe नया आवर्ती कुल शुल्क लेता है।",
+          "convertPlan": "प्लान कन्वर्ट करें",
+          "description": "अपने पुराने {{plan}} वर्कस्पेस को हर सदस्य के लिए अलग मासिक उपयोग पैकेज वाले नए प्लान में कन्वर्ट करें।",
+          "error": "इस सदस्यता को माइग्रेट नहीं किया जा सका। पेज रीफ़्रेश करके फिर से कोशिश करें।",
+          "invoice": "इनवॉइस देखें",
+          "processing": "Stripe के साथ कन्वर्ज़न शेड्यूल किया जा रहा है।",
+          "ready": "हर सदस्य और लंबित आमंत्रण के लिए एक आवश्यक मासिक पैकेज चुनें।",
+          "review": "कन्वर्ज़न की समीक्षा करें",
+          "reviewDescription": "कन्वर्ज़न शेड्यूल करने से पहले वर्तमान पुराने प्लान की नए आवर्ती प्लान से तुलना करें।",
+          "reviewTitle": "प्लान कन्वर्ज़न की समीक्षा करें",
+          "scheduled": "कन्वर्ज़न {{date}} के लिए शेड्यूल है। तब तक आपका वर्तमान प्लान और अधिकार सक्रिय रहेंगे।",
+          "switchesOn": "{{date}} को {{plan}} प्लान पर स्विच होगा",
+          "title": "पुराना प्लान कन्वर्ट करें"
+        },
+        "monthlyTotal": "मासिक कुल",
+        "orderSummary": "ऑर्डर सारांश",
+        "packagePerMemberNote": "हर सदस्य को एक पैकेज चाहिए। अगले चरण में हर सदस्य का पैकेज चुनें।",
+        "packCredits": "{{credits}} क्रेडिट",
+        "packCreditsDiscount": "{{credits}} क्रेडिट · {{discount}}% छूट",
+        "packOption": "{{price}} · {{credits}} क्रेडिट · {{discount}}% की छूट",
+        "planChangeError": "सदस्यता परिवर्तन तैयार नहीं किया जा सका। फिर से कोशिश करें।",
+        "planPlusPackages": "प्लान {{plan}} · प्रति सदस्य पैकेज {{lowest}}–{{highest}}",
+        "planStep": "प्लान",
+        "priceFrom": "से",
+        "purchasedCredits": "खरीदे गए क्रेडिट",
+        "selectPlan": "{{plan}} के साथ शुरू करें",
+        "selectUsage": "{{name}} के लिए उपयोग",
+        "stepOfTotal": "चरण {{current}} / {{total}}",
+        "totalCreditsWithBonus": "{{credits}} क्रेडिट · {{bonus}} बोनस"
+      }
     },
     "restore": {
       "cancellationDescription": "यह आपके {{plan}} योजना के लिए निर्धारित रद्दीकरण पूर्ववत कर देगा।",
@@ -957,20 +1043,25 @@
       "concurrencyAdded": "समवर्ती जोड़ा गया. स्ट्राइप द्वारा सदस्यता की पुष्टि करने के बाद आपके नए स्लॉट उपलब्ध हो जाएंगे।",
       "concurrencyCanceled": "समवर्ती सदस्यता रद्द कर दी गई.",
       "concurrencyCanceledDate": "समवर्ती सदस्यता रद्द कर दी गई. स्लॉट {{date}} तक सक्रिय रहते हैं।",
+      "concurrencyChanged": "समवर्ती बदलाव की पुष्टि हो गई है। Stripe द्वारा बदलाव संसाधित करने के बाद स्लॉट संख्या अपडेट होगी।",
+      "concurrencyReduced": "समवर्ती स्लॉट में कटौती अगली बिलिंग तारीख के लिए निर्धारित है।",
       "concurrencyRestored": "समवर्ती सदस्यता बहाल हो गई.",
+      "creditPurchaseConfirmed": "भुगतान की पुष्टि हो गई। Stripe द्वारा इनवॉइस संसाधित करने के बाद क्रेडिट दिखाई देंगे।",
       "creditsAdded": "क्रेडिट जोड़ा गया. आप Zero के साथ चैट करना जारी रख सकते हैं।",
       "downgradeScheduledDate": "डाउनग्रेड शेड्यूल किया गया. आपकी वर्तमान योजना {{date}} तक सक्रिय रहती है।",
       "downgradeScheduledPeriod": "डाउनग्रेड शेड्यूल किया गया. आपकी वर्तमान योजना बिलिंग अवधि समाप्त होने तक सक्रिय रहती है।",
       "planRestored": "योजना बहाल। आपकी सदस्यता सामान्य रूप से नवीनीकृत हो जाएगी।",
       "preparingReceiptDownload": "रसीद डाउनलोड तैयार की जा रही है...",
       "receiptDownloadFailed": "रसीदें डाउनलोड करने में विफल।",
-      "receiptsDownloaded": "रसीदें डाउनलोड की गईं।"
+      "receiptsDownloaded": "रसीदें डाउनलोड की गईं।",
+      "subscriptionChangeConfirmed": "सदस्यता में बदलाव की पुष्टि हो गई है।"
     },
     "usage": {
       "added": "{{date}} जोड़ा गया",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} शेष",
         "minute": "{{value}}m",
         "remaining": "{{remaining}} / {{total}} क्रेडिट",
         "remainingAria": "उपयोग भत्ता {{label}} शेष है",
@@ -979,6 +1070,7 @@
         "title": "उपयोग भत्ता",
         "week": "{{value}}w"
       },
+      "autoRechargeOn": "ऑटो-रिचार्ज चालू",
       "breakdown": {
         "currentPlanDescription": "मासिक योजना क्रेडिट, प्रत्येक बिलिंग चक्र को रीसेट करता है",
         "freeDescription": "स्टार्टर क्रेडिट, समाप्त होने तक उपयोग करें",
@@ -995,12 +1087,33 @@
       "creditsRemaining_one": "{{value}} क्रेडिट शेष",
       "creditsRemaining_other": "{{value}} क्रेडिट शेष",
       "expires": "{{date}} समाप्त हो रहा है",
+      "grantsTable": {
+        "added": "जोड़ा गया",
+        "amount": "राशि",
+        "expires": "समाप्ति",
+        "left": "शेष",
+        "source": "स्रोत"
+      },
       "left": "{{value}} शेष",
       "member": "सदस्य",
       "neverExpires": "कभी समाप्त नहीं होता",
+      "orgCredits": "संगठन क्रेडिट",
+      "seeUsageRecords": "देखें ये क्रेडिट कहाँ खर्च हुए",
       "unavailable": "क्रेडिट शेष अनुपलब्ध.",
       "upgradeDescription": "प्रो में मासिक क्रेडिट शामिल है और अतिरिक्त क्रेडिट विकल्प अनलॉक करता है।",
       "upgradeTitle": "अधिक क्रेडिट प्राप्त करने के लिए प्रो में अपग्रेड करें",
+      "usagePack": {
+        "bonus": "बोनस",
+        "members": "सदस्य",
+        "membersDescription": "हर सदस्य के बचे हुए उपयोग पैक क्रेडिट और क्रेडिट जोड़ देखें।",
+        "membersTitle": "सदस्यों के उपयोग पैक क्रेडिट",
+        "nextExpiry": "अगली समाप्ति",
+        "purchased": "खरीदे गए",
+        "remaining": "शेष",
+        "title": "उपयोग पैक क्रेडिट",
+        "totalRemaining": "कुल शेष",
+        "viewMembers": "सदस्य बैलेंस देखें"
+      },
       "used": "इस्तेमाल किया गया"
     }
   },
@@ -1008,9 +1121,10 @@
     "cardTitle": "क्लाउड ब्राउज़र",
     "close": "लाइव ब्राउज़र बंद करें",
     "documentTitle": "लाइव ब्राउज़र",
+    "fitAction": "फ़िट करें",
     "fitWindow": "ब्राउज़र को विंडो में फ़िट करें",
     "iframeTitle": "लाइव ब्राउज़र: {{name}}",
-    "invalidLink": "अमान्य ब्राउज़र लिंक",
+    "notFound": "ब्राउज़र नहीं मिला",
     "open": "{{name}} ब्राउज़र खोलें",
     "openAction": "खुला",
     "openNewPage": "इस ब्राउज़र को एक नए पेज में खोलें",
@@ -1027,7 +1141,6 @@
       "starting": "प्रारंभ",
       "stopped": "रुक गया"
     },
-    "stop": "ब्राउज़र रोकें",
     "title": "लाइव ब्राउज़र",
     "unavailable": {
       "description": "यह ब्राउज़र इस चैट से संबंधित नहीं है या हटा दिया गया है.",
@@ -1038,7 +1151,6 @@
     "actions": {
       "authorize": "अधिकृत करें",
       "cancel": "रद्द करें",
-      "configure": "कॉन्फ़िगर करें",
       "confirm": "पुष्टि करें",
       "continue": "जारी रखें",
       "copied": "नकल की गई!",
@@ -1087,24 +1199,14 @@
       "viewAgentProfile": "एजेंट प्रोफ़ाइल देखें"
     },
     "attachments": {
-      "addLink": "लिंक जोड़ें",
       "attach": "अटैच करें",
-      "file": "फ़ाइल {{filename}}",
       "fileTooLarge": "{{filename}} 1 GB सीमा से अधिक है",
       "imageUnavailable": "[छवि अनुपलब्ध: {{filename}}]",
-      "importing": "अनुलग्नक आयात किया जा रहा है",
-      "invalidLink": "एक वैध लिंक दर्ज करें",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "{{filename}} लोड हो रहा है",
       "previewFile": "पूर्वावलोकन {{filename}}",
-      "supportedTypes": "छवियाँ, दस्तावेज़, ऑडियो, वीडियो और पुरालेख",
       "title": "संलग्नक",
-      "unavailable": "अनुलग्नक अनुपलब्ध",
-      "upload": "अपलोड करें",
       "uploadFailed": "{{filename}} अपलोड करने में विफल",
       "uploadFailedRetry": "{{filename}} अपलोड करने में विफल. पुनः प्रयास करें।",
-      "uploadFromComputer": "कंप्यूटर से अपलोड करें",
-      "uploadFromLink": "लिंक से अपलोड करें",
       "uploadsFailed": "कुछ अनुलग्नक अपलोड करने में विफल रहे. पुनः प्रयास करें।"
     },
     "automations": {
@@ -1123,7 +1225,7 @@
       "events": {
         "githubDeploymentStatus": "GitHub परिनियोजन स्थिति बनाई गई",
         "githubIssueComment": "GitHub इश्यू पर टिप्पणी बनाई गई",
-        "githubLabelApplied": "GitHub लेबल लागू किया गया",
+        "githubPullRequest": "GitHub पुल रिक्वेस्ट",
         "githubReviewSubmitted": "GitHub पुल रिक्वेस्ट समीक्षा प्रस्तुत की गई",
         "githubWorkflowCompleted": "GitHub वर्कफ़्लो पूरा हुआ",
         "githubWorkflowJobCompleted": "GitHub वर्कफ़्लो कार्य पूरा हुआ",
@@ -1132,6 +1234,7 @@
         "googleCalendarCancelled": "Google Calendar इवेंट रद्द कर दिया गया",
         "googleCalendarCreated": "Google Calendar इवेंट बनाया गया",
         "googleCalendarUpdated": "Google Calendar इवेंट अपडेट किया गया",
+        "googleFormsResponseSubmitted": "Google Forms जवाब सबमिट हुआ",
         "googleMeetTranscript": "Google मीट ट्रांस्क्रिप्ट तैयार",
         "notionChildPage": "नया Notion चाइल्ड पेज",
         "notionDatabaseItem": "नया Notion डेटाबेस आइटम",
@@ -1232,6 +1335,10 @@
       "selectedModelUnavailable": "चयनित मॉडल उपलब्ध नहीं है. भेजने से पहले इसे कॉन्फ़िगर करें.",
       "selectedModelUnavailableToast": "चयनित मॉडल उपलब्ध नहीं है",
       "selectModel": "मॉडल चुनें",
+      "setAsDefault": "डिफ़ॉल्ट के रूप में सेट करें",
+      "temporaryFastModeDisabledNotice": "इस रन के लिए फ़ास्ट मोड अस्थायी रूप से बंद है",
+      "temporaryFastModeEnabledNotice": "इस रन के लिए फ़ास्ट मोड अस्थायी रूप से चालू है",
+      "temporaryModelNotice": "अस्थायी रूप से {{model}} पर स्विच किया गया",
       "threadSuggestions": "चैट थ्रेड",
       "visualAttachmentsUnsupported": "{{modelName}} छवियों या वीडियो को नहीं पहचान सकता। उन्हें संलग्न करने के लिए दृष्टि-सक्षम मॉडल पर स्विच करें।",
       "workflows": {
@@ -1248,8 +1355,8 @@
       "cloudBrowser": "क्लाउड ब्राउज़र",
       "connectHost": "{{hostName}} कनेक्ट करें",
       "connectMyComputer": "मेरा कंप्यूटर कनेक्ट करें",
-      "dialogDescription": "तो Zero आपके ब्राउज़र और ऐप्स में आपके लिए काम कर सकता है, यहां तक ​​कि LinkedIn या Reddit जैसे बिना कनेक्टर वाले ऐप्स में भी।",
-      "dialogTitle": "Zero को अपने कंप्यूटर का उपयोग करने दें",
+      "dialogDescription": "तो {{desktopProductName}} आपके ब्राउज़र और ऐप्स में आपके लिए काम कर सकता है, यहां तक ​​कि LinkedIn या Reddit जैसे बिना कनेक्टर वाले ऐप्स में भी।",
+      "dialogTitle": "{{desktopProductName}} को अपने कंप्यूटर का उपयोग करने दें",
       "disableCloudBrowser": "क्लाउड ब्राउज़र अक्षम करें",
       "disconnectHost": "{{hostName}} को डिस्कनेक्ट करें",
       "downloadMacos": "macOS के लिए डाउनलोड करें",
@@ -1270,7 +1377,6 @@
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "configurePermissions": "{{connectorName}} अनुमतियाँ कॉन्फ़िगर करें",
       "customAuthorizeDescription": "एजेंट के लिए इस कस्टम कनेक्टर की समीक्षा करें, कनेक्ट करें और अधिकृत करें।",
-      "customConnectDescription": "इस कस्टम कनेक्टर की समीक्षा करें और कनेक्ट करें.",
       "find": "कनेक्टर ढूंढें...",
       "remove": "{{connectorName}} हटाएँ",
       "title": "कनेक्टर्स"
@@ -1306,13 +1412,25 @@
       "partsHeading_one": "{{count}} पर प्रतिक्रिया आपके उत्तर का हिस्सा:",
       "partsHeading_other": "आपके उत्तर के {{count}} भागों पर प्रतिक्रिया:",
       "placeholder": "इसमें क्या बदलाव होना चाहिए?",
-      "provide": "प्रतिक्रिया दें",
+      "quote": "उद्धृत करें",
       "remove": "प्रतिक्रिया हटाएँ",
       "sentEmailDescription": "भेजा गया ईमेल (मेल ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", भेजा गया ID: {{sentId}}",
       "sourcePartHeading": "{{description}} के इस भाग पर प्रतिक्रिया:",
       "sourcePartsHeading_one": "{{description}} के {{count}} भाग पर प्रतिक्रिया:",
       "sourcePartsHeading_other": "{{description}} के {{count}} भागों पर प्रतिक्रिया:"
+    },
+    "forward": {
+      "action": "फ़ॉरवर्ड करें",
+      "agents": "एजेंट",
+      "back": "वापस",
+      "content": "सामग्री",
+      "description": "चुनी गई सामग्री को किसी एजेंट या चैट में फ़ॉरवर्ड करें।",
+      "noResults": "कोई एजेंट या चैट नहीं मिली",
+      "search": "एजेंट और चैट खोजें...",
+      "sent": "सफलतापूर्वक फ़ॉरवर्ड किया गया",
+      "threads": "चैट",
+      "title": "फ़ॉरवर्ड करें"
     },
     "mail": {
       "bcc": "गुप्त प्रतिलिपि",
@@ -1322,18 +1440,6 @@
       "deletedEmail": "हटाया गया ईमेल: {{subject}}",
       "details": "ईमेल विवरण",
       "email": "ईमेल",
-      "followUp": {
-        "action": "पालन ​​करें",
-        "active": "उत्तरों को ट्रैक करना",
-        "activeDescription": "उत्तरों को ट्रैक किया जाता है और इस चैट में रिपोर्ट किया जाएगा।",
-        "idleDescription": "उत्तरों को ट्रैक करें और इस चैट में सूचना प्राप्त करें।",
-        "paused": "ट्रैकिंग रोक दी गई",
-        "pausedDescription": "उत्तर ट्रैकिंग फिलहाल रोक दी गई है.",
-        "settingUp": "की स्थापना…",
-        "submitting": "की स्थापना…",
-        "submittingDescription": "उत्तर ट्रैकिंग सेट अप किया जा रहा है…",
-        "tracking": "उत्तरों को ट्रैक करना"
-      },
       "loadingDetails": "ईमेल विवरण लोड हो रहा है",
       "needReconnect": "पुनः कनेक्ट करने की आवश्यकता है",
       "noMessage": "(कोई संदेश नहीं)",
@@ -1463,13 +1569,20 @@
       "durationFor": "{{label}} के लिए {{duration}}",
       "expandGroupedHistory": "समूहीकृत रन इतिहास का विस्तार करें",
       "expandWorkHistory": "कार्य इतिहास का विस्तार करें",
+      "fastModelName": "{{model}} Fast",
+      "fastModeOff": "फ़ास्ट मोड बंद",
+      "fastModeOn": "फ़ास्ट मोड चालू",
+      "fastModeWillBeOff": "फ़ास्ट मोड बंद होगा",
+      "fastModeWillBeOn": "फ़ास्ट मोड चालू होगा",
       "goalFor": "{{label}} के लिए लक्ष्य",
       "groupedRunsFor_one": "{{count}} रन {{source}} के लिए",
       "groupedRunsFor_other": "{{count}} रन {{source}} के लिए",
       "justNow": "बस अब",
       "keepGoing": "जारी रखें",
       "keepGoingAt": "चलते रहें · {{timestamp}}",
+      "modelChangedTo": "मॉडल को {{model}} में बदल दिया गया है",
       "queueEllipsis": "कतार...",
+      "selectedModelAppliesAfterCurrentRun": "आपका चुना हुआ {{model}} मॉडल इस रन के बाद लागू होगा",
       "thinking": {
         "assembling": "टुकड़ों को जोड़ना...",
         "brewing": "एक प्रतिक्रिया तैयार की जा रही है...",
@@ -1487,6 +1600,22 @@
       "waitingIn": "प्रतीक्षा कर रहा है",
       "worked": "काम किया",
       "workedFor": "{{duration}} के लिए काम किया"
+    },
+    "sharing": {
+      "cancel": "रद्द करें",
+      "close": "बंद करें",
+      "copyFailed": "लिंक कॉपी नहीं हो सका",
+      "copyLink": "लिंक कॉपी करें",
+      "create": "शेयर करें",
+      "createFailed": "साझा बातचीत नहीं बनाई जा सकी। फिर से कोशिश करें।",
+      "deselectGroup": "संदेश समूह का चयन हटाएँ",
+      "linkCopied": "लिंक कॉपी हो गया",
+      "selectedCount_one": "{{count}} चुना गया",
+      "selectedCount_other": "{{count}} चुने गए",
+      "selectGroup": "संदेश समूह चुनें",
+      "shareLink": "साझा बातचीत का लिंक",
+      "start": "संदेश शेयर करें",
+      "tooLarge": "शेयर करने के लिए कम संदेश चुनें"
     },
     "shortcuts": {
       "number": "संख्या"
@@ -1521,7 +1650,6 @@
         "website": "वेबसाइट",
         "workflow": "वर्कफ़्लो"
       },
-      "messageTemplate": "संदेश टेम्पलेट {{title}}",
       "previewTemplate": "पूर्वावलोकन टेम्पलेट {{title}}",
       "previewVideo": "पूर्वावलोकन वीडियो टेम्पलेट {{title}}",
       "previewWebsite": "वेबसाइट टेम्पलेट {{title}} का पूर्वावलोकन करें",
@@ -1529,7 +1657,17 @@
       "removeTemplate": "टेम्प्लेट {{title}} हटाएँ",
       "removeVideo": "वीडियो टेम्प्लेट {{title}} हटाएं",
       "removeWebsite": "वेबसाइट टेम्पलेट {{title}} हटाएँ",
-      "removeWorkflow": "वर्कफ़्लो टेम्पलेट {{title}} हटाएँ"
+      "removeWorkflow": "वर्कफ़्लो टेम्पलेट {{title}} हटाएँ",
+      "videoModelLabel": "वीडियो मॉडल {{model}}",
+      "videoOptions": "वीडियो विकल्प",
+      "videoOptionsAudio": "ऑडियो बनाएँ",
+      "videoOptionsDuration": "अवधि",
+      "videoOptionsLabel": "वीडियो विकल्प {{spec}}",
+      "videoOptionsModel": "मॉडल",
+      "videoOptionsRatio": "अनुपात",
+      "videoOptionsResolution": "रिज़ॉल्यूशन",
+      "videoSpecAudioOff": "म्यूट",
+      "videoSpecAudioOn": "ऑडियो"
     },
     "thread": {
       "ariaLabel": "चैट थ्रेड",
@@ -1545,17 +1683,24 @@
         "waiting": "इंतज़ार में",
         "watching": "देख रहे"
       },
+      "emojiCategories": "इमोजी श्रेणियाँ",
       "empty": "बातचीत शुरू करने के लिए एक संदेश भेजें",
       "frequentlyUsed": "बहुधा प्रयुक्त",
       "icon": "चैट थ्रेड आइकन",
-      "loadingEarlier": "पहले के संदेश लोड हो रहे हैं",
+      "locator": {
+        "you": "आप"
+      },
       "noEmojiFound": "कोई इमोजी नहीं मिला",
+      "notFound": "चैट थ्रेड नहीं मिला",
       "openArtifacts": "आर्टिफ़ैक्ट खोलें",
       "openBrowser": "खुला ब्राउज़र",
       "openNamedAgent": "ओपन एजेंट {{name}}",
       "openNamedChat": "चैट {{title}} खोलें",
+      "pickEmoji": "एक इमोजी चुनें",
       "scrollToBottom": "नीचे स्क्रॉल करें",
-      "searchEmoji": "इमोजी खोजें"
+      "searchEmoji": "इमोजी खोजें",
+      "steerAcknowledgement_one": "रन के दौरान लिया गया — पिछला काम सुरक्षित है",
+      "steerAcknowledgement_other": "सभी {{count}} संदेश रन के दौरान लिए गए — पिछला काम सुरक्षित है"
     },
     "threadSidebar": {
       "resize": "साइडबार का आकार बदलें"
@@ -1568,6 +1713,10 @@
       "checkingLimit": "ध्वनि इनपुट सीमा की जाँच की जा रही है",
       "input": "ध्वनि इनपुट",
       "inputLimitReached": "ध्वनि इनपुट सीमा पूरी हो गई. उच्च सीमा के लिए प्रो या टीम में अपग्रेड करें।",
+      "inputLimitReachedMember": "ध्वनि इनपुट सीमा पूरी हो गई. उच्च सीमा के लिए किसी वर्कस्पेस व्यवस्थापक से अपग्रेड करने के लिए कहें।",
+      "inputLimitReachedPro": "ध्वनि इनपुट सीमा पूरी हो गई. उच्च सीमा के लिए टीम में अपग्रेड करें।",
+      "inputLimitReachedProMember": "ध्वनि इनपुट सीमा पूरी हो गई. उच्च सीमा के लिए किसी वर्कस्पेस व्यवस्थापक से टीम में अपग्रेड करने के लिए कहें।",
+      "inputLimitReachedReset": "ध्वनि इनपुट सीमा पूरी हो गई. कृपया अपनी सीमा रीसेट होने तक प्रतीक्षा करें।",
       "microphoneAccessDenied": "माइक्रोफ़ोन पहुंच अस्वीकृत कर दी गई थी. माइक्रोफ़ोन एक्सेस की अनुमति दें और पुनः प्रयास करें।",
       "openingMicrophone": "माइक्रोफ़ोन खुल रहा है...",
       "starting": "ध्वनि इनपुट प्रारंभ करना",
@@ -1614,7 +1763,6 @@
       "edit": "संपादन करना",
       "grant": "अनुदान",
       "reconnect": "रिकनेक्ट",
-      "rename": "नाम बदलें",
       "revoke": "रद्द करना",
       "save": "बचाना",
       "saving": "सहेजा जा रहा है...",
@@ -1718,6 +1866,7 @@
       },
       "categoriesAria": "कनेक्टर श्रेणियां",
       "description": "अपने एजेंटों के उपयोग के लिए तृतीय-पक्ष सेवाओं को कनेक्ट करें।",
+      "descriptionWithCount": "अपने एजेंटों के उपयोग के लिए {{value}} सेवाओं को कनेक्ट करें।",
       "empty": {
         "agent": "इस एजेंट के लिए कोई कनेक्टर नहीं",
         "connected": "कोई कनेक्टेड कनेक्टर नहीं",
@@ -1791,24 +1940,14 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "किसी एजेंट द्वारा उपयोग नहीं किया गया",
-        "usedBy": "{{agents}} द्वारा प्रयुक्त",
-        "usedByOverflow_one": "{{agents}} +{{value}} द्वारा प्रयुक्त",
-        "usedByOverflow_other": "{{agents}} +{{value}} द्वारा प्रयुक्त"
-      },
       "connect": {
-        "apiAuthentication": "API प्रमाणीकरण",
-        "apiDescription": "प्रोवाइडर द्वारा जारी API रहस्य दर्ज करें।",
-        "back": "पीछे",
+        "configured": "कॉन्फ़िगर किया गया",
         "connecting": "कनेक्ट हो रहा है...",
         "continue": "जारी रखना",
         "continueToProvider": "पहुंच को अधिकृत करने के लिए प्रोवाइडर के पास जाना जारी रखें।",
         "description": "आपका रहस्य आराम से एन्क्रिप्ट किया गया है और फ़ायरवॉल द्वारा आउटबाउंड अनुरोधों में इंजेक्ट किया गया है। यह कभी भी पर्यावरण चर के रूप में एजेंट के सामने उजागर नहीं होता है।",
-        "oauthDescription": "कनेक्टर के OAuth ऐप से पहुंच अधिकृत करें।",
         "save": "सहेजें",
         "saving": "सहेजा जा रहा है...",
-        "secret": "गुप्त",
         "title": "{{connector}} कनेक्ट करें"
       },
       "create": {
@@ -1822,13 +1961,18 @@
         "authorizationUrl": "प्राधिकरण URL",
         "clientId": "ग्राहक ID",
         "clientSecret": "ग्राहक रहस्य",
+        "connectorType": "कनेक्टर प्रकार",
         "displayName": "प्रदर्शित होने वाला नाम",
         "headerName": "शीर्षलेख नाम",
         "headerTemplate": "हेडर टेम्पलेट",
         "headerTemplateHint": "({{placeholder}} शामिल होना चाहिए)",
         "httpBasicAuthentication": "HTTP बुनियादी प्रमाणीकरण",
+        "httpType": "HTTP API",
         "keepClientSecret": "संग्रहीत मूल्य को बनाए रखने के लिए क्लाइंट सीक्रेट को खाली छोड़ दें।",
         "keepClientSecretPlaceholder": "चालू रखने के लिए खाली छोड़ें",
+        "mcpEndpoint": "MCP एंडपॉइंट",
+        "mcpEndpointHint": "(Streamable HTTP, केवल HTTPS)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "नए ग्राहक का रहस्य",
         "none": "कोई नहीं",
         "oauthChangesDisconnect": "OAuth सेटिंग्स या क्लाइंट क्रेडेंशियल बदलने से मौजूदा OAuth कनेक्शन डिस्कनेक्ट हो जाते हैं।",
@@ -1863,18 +2007,15 @@
       },
       "emptyAdmin": "अभी तक कोई कस्टम कनेक्टर नहीं. प्रत्येक सदस्य के उपयोग के लिए एक API पंजीकृत करने के लिए एक बनाएं।",
       "emptyMember": "आपके संगठन ने अभी तक कोई कस्टम कनेक्टर पंजीकृत नहीं किया है.",
+      "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "अधिक विकल्प",
-      "rename": {
-        "displayName": "प्रदर्शित होने वाला नाम",
-        "title": "कस्टम कनेक्टर का नाम बदलें"
-      },
       "statusConnected": "जुड़े हुए",
       "toasts": {
         "connected": "जुड़े हुए",
         "created": "\"{{connector}}\" बनाया गया",
         "deleted": "कस्टम कनेक्टर हटा दिया गया",
         "disconnected": "डिस्कनेक्ट किया गया",
-        "renamed": "\"{{connector}}\" का नाम बदला गया",
         "updated": "अपडेट किया गया \"{{connector}}\""
       },
       "updateConfirm": {
@@ -1882,19 +2023,6 @@
         "description": "ये OAuth परिवर्तन वर्तमान में OAuth से जुड़े प्रत्येक सदस्य को डिस्कनेक्ट कर देंगे। उन्हें इस कस्टम कनेक्टर को फिर से कनेक्ट करना होगा.",
         "title": "मौजूदा OAuth कनेक्शन डिस्कनेक्ट करें?"
       }
-    },
-    "customProposal": {
-      "configure": "{{connector}} कॉन्फ़िगर करें",
-      "descriptionAgent": "बचत आपके मूल्यों को जोड़ेगी और {{agent}} को अधिकृत करेगी।",
-      "descriptionUser": "सेव करने पर यह कस्टम कनेक्टर आपके खाते से कनेक्ट हो जाएगा.",
-      "documentTitle": "कस्टम कनेक्टर कॉन्फ़िगर करें",
-      "invalid": "यह कस्टम कनेक्टर प्रस्ताव लिंक अमान्य है या समाप्त हो गया है।",
-      "requestScope": "स्कोप का अनुरोध करें",
-      "returnToChat": "चैट पर लौटें और ACK उत्तर दें ताकि एजेंट कनेक्टर को सत्यापित कर सके।",
-      "saved": "सहेजा गया",
-      "savedToast": "{{connector}} सहेजा गया",
-      "targetFallback": "यह एजेंट",
-      "update": "{{connector}} अपडेट करें"
     },
     "directed": {
       "authorizeAgent": "{{agent}} को अधिकृत करें",
@@ -2211,19 +2339,14 @@
           "challengeQuestion": "Feishu \"चैलेंज कोड को प्रतिक्रिया नहीं मिली\" क्यों दिखाता है?",
           "title": "सेटअप FAQ"
         },
-        "guide": {
-          "next": "अगली Feishu गाइड छवि दिखाएँ",
-          "previous": "पिछली Feishu गाइड छवि दिखाएँ",
-          "show": "Feishu गाइड छवि {{number}} दिखाएँ"
-        },
         "loadError": "Feishu सेटिंग लोड नहीं हो सकी.",
         "manage": "प्रबंधित करना",
         "manageDialogTitle": "Feishu बॉट प्रबंधित करें",
         "moreOptions": "{{bot}} के लिए अधिक विकल्प",
         "pageDescription": "इस वर्कस्पेस के लिए बॉट रूटिंग प्रबंधित करें",
         "permissions": {
-          "description": "Feishu डेवलपर कंसोल में Permissions & Scopes खोलें, Batch Import/Export > Import चुनें और नीचे दिया गया JSON पेस्ट करें। इससे मैनेज्ड कनेक्टर के सभी स्कोप User identity के अंतर्गत इंपोर्ट हो जाते हैं।",
-          "hint": "इंपोर्ट की गई User identity अनुमतियों की पुष्टि करें, फिर नया ऐप संस्करण बनाएँ और प्रकाशित करें ताकि OAuth सहमति स्क्रीन उन्हें प्रदान कर सके।",
+          "description": "Feishu डेवलपर कंसोल में Permissions & Scopes खोलें, Batch Import/Export > Import चुनें और नीचे दिया गया JSON पेस्ट करें। इससे मैनेज्ड कनेक्टर के सभी स्कोप User identity के अंतर्गत इंपोर्ट हो जाते हैं। ये इंटीग्रेशन के काम करने के लिए ज़रूरी न्यूनतम अनुमतियाँ हैं।",
+          "hint": "इंपोर्ट की गई सभी User identity अनुमतियाँ बनाए रखें, फिर नया ऐप संस्करण बनाएँ और प्रकाशित करें ताकि OAuth सहमति स्क्रीन उन्हें प्रदान कर सके। किसी भी अनुमति को हटाने पर इंटीग्रेशन काम नहीं करेगा और Feishu एडमिन की मंज़ूरी की ज़रूरत पड़ सकती है।",
           "label": "यूज़र टोकन स्कोप JSON",
           "menuAlt": "Feishu Permissions & Scopes पेज, जिसमें Batch import/export scopes मेन्यू हाइलाइट किया गया है",
           "menuLabel": "Batch import/export scopes खोलें",
@@ -2449,95 +2572,21 @@
       "requestFailed": "अनुरोध विफल रहा"
     },
     "realtime": {
-      "degraded": "लाइव अपडेट में समस्या आई। कृपया पृष्ठ को ताज़ा करें."
+      "degraded": "लाइव अपडेट में समस्या आई। कृपया पृष्ठ को ताज़ा करें.",
+      "disconnected": "रीयल-टाइम कनेक्शन डिस्कनेक्ट है",
+      "reconnecting": "रीयल-टाइम कनेक्शन फिर से जुड़ रहा है"
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "अगले महीने",
-      "previousMonth": "पिछला महीना"
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "किसी अन्य खाते के लिए आमंत्रण स्वीकार किया गया"
     },
-    "cards": {
-      "agents": "एजेंटों",
-      "agentsRan_one": "{{agents}} ने {{runs}} चलाया",
-      "agentsRan_other": "{{agents}} ने {{runs}} चलाया",
-      "allowed": "अनुमत",
-      "allowedSummary_one": "{{permissions}} के भीतर बनाए गए {{calls}} को अनुमति दी गई",
-      "allowedSummary_other": "{{permissions}} के भीतर बने {{calls}} को अनुमति दी गई",
-      "automations": "ऑटोमेशन",
-      "automationsUsed_one": "{{automations}} ने {{credits}} का उपयोग किया",
-      "automationsUsed_other": "{{automations}} ने {{credits}} का उपयोग किया",
-      "balance": "संतुलन",
-      "byAgent": "{{agent}} द्वारा",
-      "chats": "चैट",
-      "chatsUsed_one": "{{chats}} ने {{credits}} का उपयोग किया",
-      "chatsUsed_other": "{{chats}} ने {{credits}} का उपयोग किया",
-      "clickToOpen": "खोलने के लिए क्लिक करें",
-      "consumedToday": "आज सेवन किया गया",
-      "moreAutomations_one": "+{{value}} अधिक ऑटोमेशन",
-      "moreAutomations_other": "+{{value}} अधिक ऑटोमेशन",
-      "moreChats_one": "+{{value}} अधिक चैट",
-      "moreChats_other": "+{{value}} अधिक चैट",
-      "protected": "संरक्षित",
-      "protectedSummary_one": "{{calls}} {{permissions}} अनुमति से सुरक्षित है",
-      "protectedSummary_other": "{{calls}}, {{permissions}} अनुमतियों से सुरक्षित है",
-      "rejected_one": "{{value}} अस्वीकृत",
-      "rejected_other": "{{value}} अस्वीकृत",
-      "rejectedOf": "{{total}} में से {{denied}} अस्वीकृत",
-      "services": "सेवाएं",
-      "servicesReceived_one": "{{services}} को {{calls}} प्राप्त हुआ",
-      "servicesReceived_other": "{{services}} को {{calls}} प्राप्त हुआ",
-      "team": "टीम",
-      "teamCreditUsage": "टीम क्रेडिट उपयोग",
-      "untitled": "(शीर्षक रहित)",
-      "yourCreditUsage": "आपका क्रेडिट उपयोग"
+    "actions": {
+      "switchAccount": "खाता बदलें",
+      "switchWorkspace": "वर्कस्पेस बदलें"
     },
-    "common": {
-      "loadMore": "और लोड करें",
-      "showLess": "कम दिखाओ"
-    },
-    "page": {
-      "description": "मॉनिटर करें कि आपके एजेंट क्या एक्सेस करते हैं, क्रेडिट कैसे खर्च किए जाते हैं, वे कौन सी अनुमतियों का उपयोग करते हैं, और कुछ भी असामान्य पकड़ें।",
-      "documentTitle": "अंतर्दृष्टि और उपयोग",
-      "empty": "यहां अंतर्दृष्टि देखने के लिए एक एजेंट चलाएँ।",
-      "emptyRange": "इस समय सीमा में कोई गतिविधि नहीं.",
-      "lastUpdated": "अंतिम अद्यतन - {{date}}",
-      "loadError": "नेटवर्क गतिविधि लोड नहीं हो सकी.",
-      "title": "इनसाइट्स"
-    },
-    "range": {
-      "custom": "कस्टम रेंज",
-      "last28Days": "पिछले 28 दिन",
-      "last30Days": "पिछले 30 दिन",
-      "last7Days": "पिछले 7 दिन",
-      "today": "आज",
-      "yesterday": "कल"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}} अनुरोध आपके अनुमति नियमों द्वारा अवरुद्ध कर दिया गया था। यह सुनिश्चित करने के लिए इसकी समीक्षा करें कि कोई भी महत्वपूर्ण चीज़ पीछे नहीं रह गई है।",
-      "blocked_other": "{{blocked}} अनुरोध आपके अनुमति नियमों द्वारा अवरुद्ध कर दिए गए थे। यह सुनिश्चित करने के लिए उनकी समीक्षा करें कि कोई भी महत्वपूर्ण चीज़ पीछे नहीं रह गई है।",
-      "blockedCaption": "{{calls}} · {{blocked}} अवरुद्ध",
-      "busy_one": "एक व्यस्त दिन - {{agentCount}} एजेंटों ने {{runs}} पूरा किया। आपका नेटवर्क कड़ी मेहनत कर रहा है.",
-      "busy_other": "एक व्यस्त दिन - {{agentCount}} एजेंटों ने {{runs}} पूरा किया। आपका नेटवर्क कड़ी मेहनत कर रहा है.",
-      "distributed_one": "{{agents}} सक्रिय, कुल {{credits}} का उपयोग कर रहा है। एक अच्छी तरह से वितरित कार्यभार.",
-      "distributed_other": "{{agents}} सक्रिय, कुल {{credits}} का उपयोग कर रहा है। एक अच्छी तरह से वितरित कार्यभार.",
-      "highTraffic_one": "{{callCount}} सेवा {{services}} पर कॉल करती है। उच्च यातायात दिवस.",
-      "highTraffic_other": "{{callCount}} सेवा {{services}} पर कॉल करती है। उच्च यातायात दिवस.",
-      "light_one": "हल्की गतिविधि - केवल {{runs}} और {{calls}}। एक शांत दिन.",
-      "light_other": "हल्की गतिविधि - केवल {{runs}} और {{calls}}। एक शांत दिन.",
-      "quietCaption": "{{runs}} · एक शांत दिन",
-      "smooth": "{{runs}} और {{callCount}} सेवा कॉल आज। सब कुछ सुचारू रूप से चल रहा है."
-    },
-    "units": {
-      "agent_one": "{{value}} एजेंट",
-      "agent_other": "{{value}} एजेंट",
-      "call_one": "{{value}} कॉल",
-      "call_other": "{{value}} कॉल",
-      "run_one": "{{value}} चलाएँ",
-      "run_other": "{{value}} चलता है",
-      "service_one": "{{value}} सेवा",
-      "service_other": "{{value}} सेवाएँ"
+    "success": {
+      "title": "{{workspace}} का आमंत्रण स्वीकार किया गया"
     }
   },
   "lifecycle": {
@@ -3898,6 +3947,7 @@
       "atLimit_other": "आप एक समय में केवल {{limit}} कार्य चला सकते हैं। नए रन एक कतार में तब तक प्रतीक्षा करेंगे जब तक कि कोई समाप्त न हो जाए।",
       "available_one": "{{count}} स्लॉट उपलब्ध है",
       "available_other": "{{count}} स्लॉट उपलब्ध हैं",
+      "availableNow": "अभी उपलब्ध",
       "inUse_one": "{{limit}} स्लॉट का {{active}} उपयोग में है",
       "inUse_other": "{{limit}} स्लॉट में से {{active}} उपयोग में है"
     },
@@ -3924,40 +3974,6 @@
       "recommended": "अनुशंसित",
       "teamDescription": "10 समानांतर रन और अधिक क्रेडिट के साथ अपनी टीम को स्केल करें।"
     }
-  },
-  "reportError": {
-    "description": "इस विफल रन के लिए डायग्नोस्टिक जानकारी डेवलपर टीम को भेजें। हम जल्द ही जांच करेंगे और फॉलो अप करेंगे।",
-    "disclosure": {
-      "agentConfiguration": "एजेंट विन्यास",
-      "agentTelemetry": "एजेंट टेलीमेट्री और रन लॉग",
-      "chatHistory": "चैट इतिहास और एजेंट घटनाएँ",
-      "connectedServices": "कनेक्टेड सेवाएँ (कोई प्रमाण-पत्र नहीं)",
-      "networkLogs": "नेटवर्क अनुरोध लॉग",
-      "runContext": "संदर्भ और वातावरण चलाएँ",
-      "title": "क्या भेजा जाएगा"
-    },
-    "documentTitle": "त्रुटि की रिपोर्ट करें",
-    "error": {
-      "loadFailed": "रन विवरण लोड करने में विफल",
-      "notFailed": "यह रन विफल नहीं हुआ और इसकी रिपोर्ट नहीं की जा सकती",
-      "title": "त्रुटि",
-      "tryAgain": "पुनः प्रयास करें"
-    },
-    "fields": {
-      "description": "विवरण",
-      "descriptionPlaceholder": "क्या हुआ? आपने क्या उम्मीद की थी?",
-      "title": "शीर्षक",
-      "titlePlaceholder": "मुद्दे का संक्षिप्त सारांश"
-    },
-    "loading": "रन विवरण लोड हो रहा है",
-    "send": "रिपोर्ट भेजें",
-    "sending": "भेजा जा रहा है...",
-    "success": {
-      "description": "आपकी त्रुटि रिपोर्ट डेवलपर टीम को भेज दी गई है। वे जांच करेंगे और कार्रवाई करेंगे.",
-      "reference": "संदर्भ: {{reference}}",
-      "title": "रिपोर्ट भेजी गई"
-    },
-    "title": "डेवलपर को त्रुटि रिपोर्ट करें"
   },
   "settings": {
     "accountMenu": {
@@ -4031,8 +4047,9 @@
           "title": "वरीयता"
         },
         "usage": {
-          "balanceDescription": "आपकी टीम का क्रेडिट संतुलन और उपयोग।",
+          "balanceDescription": "आपकी टीम के पास खर्च करने के लिए कितना बचा है।",
           "balanceTitle": "क्रेडिट शेष",
+          "balanceUsageDescription": "आपकी टीम का क्रेडिट बैलेंस और उपयोग।",
           "usageDescription": "चैट, ऑटोमेशन और चैनलों पर आपका क्रेडिट उपयोग।",
           "usageTitle": "क्रेडिट उपयोग"
         }
@@ -4190,12 +4207,18 @@
         "title": "प्रदाता कनेक्शन"
       },
       "personal": {
+        "accountFallback": "खाता {{number}}",
         "actionForProvider": "{{action}} {{provider}}",
+        "activeAccount": "सक्रिय",
+        "addAccount": "खाता जोड़ें",
         "claudeDescription": "Claude-समर्थित मॉडल मार्गों के लिए Claude Code लॉगिन से जुड़ें।",
         "claudeTitle": "Claude Code OAuth",
         "codexDescription": "Codex-समर्थित मॉडल मार्गों के लिए Codex डिवाइस लॉगिन से कनेक्ट करें।",
         "codexTitle": "ChatGPT (Codex)",
         "description": "केवल आपके रनों में, आपकी अपनी साख के साथ उपयोग किया जाता है।",
+        "noAccounts": "कोई खाता कनेक्ट नहीं है।",
+        "reconnectAccount": "फिर से कनेक्ट करें",
+        "removeAccount": "हटाएँ",
         "sectionTitle": "निजी",
         "status": {
           "connected": "जुड़े हुए",
@@ -4204,18 +4227,19 @@
           "left": "{{percent}} बायां",
           "stale": "ध्यान",
           "week": "सप्ताह"
-        }
+        },
+        "useAccount": "उपयोग करें"
       },
       "picker": {
-        "balancedUse": "संतुलित उपयोग",
         "builtInModel": "अंतर्निर्मित मॉडल",
         "byokHelp": "आपके कॉन्फ़िगर किए गए प्रोवाइडर का उपयोग करता है",
         "fast": "तेज़",
+        "fastImpact": "1.5× मॉडल गति · 2.5× क्रेडिट उपयोग",
         "inheritDefault": "ऑर्ग डिफॉल्ट से इनहेरिट करें",
         "loadError": "मॉडल लोड करने में असमर्थ.",
         "loading": "मॉडल लोड हो रहे हैं...",
+        "manageMoreModels": "और मॉडल प्रबंधित करें",
         "models": "मॉडल",
-        "moreCodexCredits": "अधिक Codex क्रेडिट का उपयोग करता है।",
         "noConfiguredModels": "कोई कॉन्फ़िगर मॉडल नहीं",
         "priceTiers": {
           "balanced": "संतुलित लागत और प्रदर्शन",
@@ -4223,15 +4247,14 @@
           "frontier": "फ्रंटियर फ्लैगशिप मॉडल",
           "premium": "सबसे कठिन कार्यों के लिए प्रीमियम फ्रंटियर मॉडल"
         },
-        "prioritizeSpeed": "गति को प्राथमिकता दें",
         "pro": "प्रो",
         "providerLabels": {
           "azureFoundryPortal": "एज़्योर फाउंड्री पोर्टल",
           "claudeCodeOauth": "Claude Code (OAuth टोकन)",
           "deepseek": "गहन खोज"
         },
-        "runSpeed": "भागने की गति",
-        "standard": "मानक"
+        "standard": "मानक",
+        "videoModels": "वीडियो मॉडल"
       },
       "policies": {
         "actionsFor": "{{model}} के लिए क्रियाएँ",
@@ -4287,6 +4310,8 @@
         "codexTitle": "ChatGPT सत्र को पुनः कनेक्ट करने की आवश्यकता है"
       },
       "toasts": {
+        "accountRemoved": "खाता हटा दिया गया",
+        "accountSwitched": "सक्रिय खाता बदल दिया गया",
         "disconnected": "{{provider}} डिस्कनेक्ट हो गया",
         "policiesUpdated": "मॉडल प्रोवाइडर सेटिंग अपडेट की गईं",
         "reset": "Codex उपयोग रीसेट",
@@ -4330,6 +4355,24 @@
           "enabled_one": "अगले {{count}} रन के लिए सक्षम",
           "enabled_other": "अगले {{count}} रन के लिए सक्षम",
           "title": "नेटवर्क बॉडीज़ को कैप्चर करें"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "सक्रिय प्रतीक्षाएँ",
+          "blurred": "फ़ोकस से बाहर",
+          "channel": "चैनल",
+          "clear": "साफ़ करें",
+          "connection": "कनेक्शन",
+          "copyJson": "JSON कॉपी करें",
+          "description": "ब्राउज़र जीवनचक्र, प्रमाणीकरण पुनर्प्राप्ति और Ably कनेक्शन संकेतों की जाँच करें।",
+          "empty": "कोई निदान इवेंट रिकॉर्ड नहीं किया गया।",
+          "events": "इवेंट",
+          "focused": "फ़ोकस में",
+          "log": "इवेंट लॉग",
+          "offline": "ऑफ़लाइन",
+          "online": "ऑनलाइन",
+          "recovery": "पुनर्प्राप्ति",
+          "title": "रीयल-टाइम कनेक्शन निदान",
+          "unavailable": "अनुपलब्ध"
         },
         "tab": "डिबग"
       },
@@ -4429,8 +4472,9 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "उपयोग पैक और ऐड-ऑन सहित सभी सक्रिय सब्सक्रिप्शन तुरंत रद्द कर दिए जाएँगे। पहले से भुगतान की गई बची हुई सब्सक्रिप्शन अवधि का आनुपातिक रिफ़ंड दिया जाएगा। एकमुश्त और अन्य गैर-सब्सक्रिप्शन खरीद का रिफ़ंड नहीं दिया जाएगा।",
           "button": "वर्कस्पेस हटाएँ",
-          "confirmDescription": "यह {{workspace}} और उसके सभी डेटा को स्थायी रूप से हटा देगा। इस एक्शन को वापस नहीं किया जा सकता। पुष्टि करने के लिए वर्कस्पेस का नाम टाइप करें।",
+          "confirmDescription": "यह इस वर्कस्पेस और इसके सभी डेटा को स्थायी रूप से हटा देगा। इस एक्शन को वापस नहीं किया जा सकता। जारी रखने के लिए confirm टाइप करें।",
           "description": "इस वर्कस्पेस और इसके सभी डेटा को स्थायी रूप से हटा दें। इस एक्शन को वापस नहीं किया जा सकता।",
           "progress": "हटाया जा रहा है...",
           "title": "वर्कस्पेस हटाएँ",
@@ -4456,9 +4500,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "कृपया एक मान्य ईमेल पता प्रविष्ट करें",
           "progress": "भेजा जा रहा है...",
+          "purchase": {
+            "description": "नीचे अनुपातिक शुल्क की समीक्षा करें। पुष्टि करने पर आपकी सहेजी गई भुगतान विधि से शुल्क लिया जाएगा और आमंत्रण भेजा जाएगा।",
+            "error": "यह सदस्य पैकेज खरीदा नहीं जा सका। अपनी बिलिंग जानकारी जांचें और फिर से प्रयास करें।",
+            "invitee": "आमंत्रित व्यक्ति",
+            "title": "आमंत्रण की समीक्षा करें"
+          },
           "roleLabel": "भूमिका",
           "send": "निमंत्रण भेजें",
-          "title": "सदस्य को आमंत्रित करें"
+          "title": "सदस्य को आमंत्रित करें",
+          "upgrade": {
+            "action": "Pro में अपग्रेड करें",
+            "description": "सदस्य आमंत्रण Pro प्लान पर उपलब्ध हैं। लोगों को आमंत्रित करने और उनकी भूमिकाएं प्रबंधित करने के लिए इस वर्कस्पेस को अपग्रेड करें।",
+            "title": "सदस्यों को आमंत्रित करने के लिए अपग्रेड करें"
+          }
         },
         "joined": "सम्मिलित हुए",
         "joinRequests": "अनुरोधों में शामिल हों",
@@ -4473,7 +4528,10 @@
           "action": "वर्कस्पेस से हटाएँ",
           "confirmDescription": "{{email}} को इस वर्कस्पेस से हटा दिया जाएगा और सभी संसाधनों तक पहुंच खो दी जाएगी।",
           "progress": "हटाया जा रहा है...",
-          "title": "सदस्य हटाएँ?"
+          "title": "सदस्य हटाएँ?",
+          "usagePackImpactDescription": "उनके उपयोग पैक के बचे हुए क्रेडिट तुरंत अनुपलब्ध हो जाएंगे। पैक मौजूदा बिलिंग अवधि के अंत में हटा दिया जाएगा। यदि इसके बाद वर्कस्पेस में कोई उपयोग पैक नहीं बचता, तो वर्कस्पेस प्लान भी बिलिंग अवधि के अंत में रद्द कर दिया जाएगा।",
+          "usagePackImpactTitle": "उपयोग पैक पर प्रभाव",
+          "usagePackRefundDescription": "रिफ़ंड: खरीदे गए लेकिन इस्तेमाल न हुए क्रेडिट का हिस्सा मूल भुगतान विधि पर वापस किया जाएगा। इस्तेमाल किए गए क्रेडिट और बोनस क्रेडिट वापस नहीं किए जाते।"
         },
         "revoke": {
           "action": "आमंत्रण रद्द करें",
@@ -4495,6 +4553,7 @@
           "progress": "स्विच किया जा रहा है...",
           "title": "सदस्य पर स्विच करें?"
         },
+        "usagePack": "उपयोग पैक",
         "user": "उपयोगकर्ता",
         "you": "आप"
       },
@@ -4556,40 +4615,21 @@
       "title": "पृष्ठ नहीं मिला"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "यह साझा बातचीत मौजूद नहीं है।",
+    "notFoundTitle": "साझा बातचीत नहीं मिली",
+    "tryOkou": "Okou आज़माएँ"
+  },
   "usage": {
-    "automations": {
-      "empty": "इस अवधि में किसी भी ऑटोमेशन का उपयोग नहीं किया गया",
-      "more_one": "+{{value}} अधिक ऑटोमेशन",
-      "more_other": "+{{value}} अधिक ऑटोमेशन",
-      "summary_one": "{{automations}} ने {{credits}} का उपयोग किया",
-      "summary_other": "{{automations}} ने {{credits}} का उपयोग किया",
-      "title": "ऑटोमेशन"
-    },
-    "chart": {
-      "ariaLabel": "कुल क्रेडिट",
-      "credits": "क्रेडिट",
-      "groupBy": {
-        "agent": "एजेंट",
-        "source": "स्रोत"
-      },
-      "noUsage": "कोई उपयोग नहीं",
-      "showDetails": "{{date}} के लिए उपयोग विवरण दिखाएँ"
-    },
-    "chats": {
-      "clickToOpen": "खोलने के लिए क्लिक करें",
-      "empty": "इस अवधि में कोई चैट नहीं",
-      "more_one": "+{{value}} अधिक चैट",
-      "more_other": "+{{value}} अधिक चैट",
-      "summary_one": "{{chats}} ने {{credits}} का उपयोग किया",
-      "summary_other": "{{chats}} ने {{credits}} का उपयोग किया",
-      "title": "चैट",
-      "untitled": "(शीर्षक रहित)"
-    },
     "displayNames": {
-      "auto": "ऑटो",
+      "avatar": "अवतार",
       "finance": "वित्त",
+      "imageRecognize": "छवि पहचान",
       "maps": "एमएपीएस",
       "peopleSearch": "लोग खोजें",
+      "seo": "SEO",
+      "translation": "अनुवाद",
       "usage": "उपयोग",
       "weather": "मौसम",
       "webFetch": "वेब फ़ेच",
@@ -4602,29 +4642,25 @@
       "other": "अन्य",
       "video": "वीडियो"
     },
-    "page": {
-      "description": "चैट, ऑटोमेशन और चैनलों पर आपकी क्रेडिट खपत।",
-      "loadError": "उपयोग संबंधी जानकारी लोड करने में विफल. कृपया बाद में पुन: प्रयास करें।",
-      "title": "उपयोग"
-    },
     "range": {
-      "ariaLabel": "तिथि सीमा",
       "billingPeriod": "बिलिंग अवधि",
       "last24Hours": "पिछले 24 घंटे",
-      "last28Days": "पिछले 28 दिन",
-      "last30Days": "पिछले 30 दिन",
       "last7Days": "पिछले 7 दिन",
-      "selectedDay": "चयनित दिन",
       "today": "आज",
       "yesterday": "कल"
     },
     "records": {
-      "emptyBillingPeriod": "इस बिलिंग अवधि में कोई उपयोग नहीं.",
-      "emptyRange": "इस समय सीमा में कोई उपयोग नहीं.",
+      "empty": {
+        "billingPeriodTitle": "इस बिलिंग अवधि में कोई उपयोग नहीं",
+        "description": "चैट, ऑटोमेशन और चैनल पर खर्च किए गए क्रेडिट यहाँ दिखते हैं.",
+        "noBillingPeriodDescription": "बिलिंग अवधि शुरू होने पर टीम का उपयोग यहाँ दिखेगा.",
+        "noBillingPeriodTitle": "कोई सक्रिय बिलिंग अवधि नहीं",
+        "rangeTitle": "इस समय सीमा में कोई उपयोग नहीं",
+        "teamDescription": "आपकी टीम द्वारा चैट, ऑटोमेशन और चैनल पर खर्च किए गए क्रेडिट यहाँ दिखते हैं."
+      },
       "loadError": "आपका उपयोग लोड नहीं किया जा सका.",
       "loadMore": "और लोड करें",
       "myUsage": "मेरा उपयोग",
-      "noActiveBillingPeriod": "कोई सक्रिय बिलिंग अवधि नहीं.",
       "teamLoadError": "टीम उपयोग लोड नहीं किया जा सका.",
       "teamUsage": "टीम का उपयोग",
       "untitled": "(शीर्षक रहित)"
@@ -4636,16 +4672,12 @@
       "email": "ईमेल",
       "github": "GitHub",
       "other": "अन्य",
-      "others": "अन्य",
       "phone": "फ़ोन",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "अज्ञात"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}} ऑटोमेशन",
-      "automation_other": "{{value}} ऑटोमेशन",
       "chat_one": "{{value}} चैट",
       "chat_other": "{{value}} चैट",
       "credit_one": "{{value}} क्रेडिट",
@@ -4726,17 +4758,21 @@
         "second_one": "{{count}} सेकंड",
         "second_other": "{{count}} सेकंड"
       },
+      "forms": {
+        "addAction": "Google Forms ऑटोमेशन जोड़ें",
+        "addAria": "Google Forms जवाब ऑटोमेशन जोड़ें",
+        "addDescription": "चुने गए Google Form को नया जवाब मिलने पर यह वर्कफ़्लो चलाएँ।",
+        "addTitle": "Google Forms ऑटोमेशन जोड़ें",
+        "formUrl": "फ़ॉर्म लिंक",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "किसी Google Form को नया जवाब मिलने पर चलाएँ।",
+        "responseSubmittedTitle": "Google Forms जवाब सबमिट हुआ",
+        "rule": "जब {{form}} को कोई जवाब मिले",
+        "summary": "फ़ॉर्म {{form}}"
+      },
       "github": {
-        "accountConnect": "GitHub कनेक्ट करें",
-        "accountRequired": "मेरा उपयोग करने के लिए अपना GitHub खाता कनेक्ट करें।",
-        "actorAnyone": "कोई भी",
-        "actorMe": "मुझे",
         "actors": "अभिनेताओं",
         "actorsPlaceholder": "ऑक्टोकैट, डिपेंडबॉट[बॉट]",
-        "addLabelAction": "लेबल ऑटोमेशन जोड़ें",
-        "addLabelAria": "GitHub लेबल ऑटोमेशन जोड़ें",
-        "addLabelDescription": "GitHub लेबल लागू होने पर इस वर्कफ़्लो को चलाएँ।",
-        "addLabelTitle": "GitHub लेबल ऑटोमेशन जोड़ें",
         "addWebhookAction": "ऑटोमेशन जोड़ें",
         "addWebhookAria": "{{title}} ऑटोमेशन जोड़ें",
         "addWebhookDescription": "मेल खाने वाला GitHub वेबहुक इवेंट आने पर इस वर्कफ़्लो को चलाएँ।",
@@ -4798,13 +4834,6 @@
         "jobs": "कार्य",
         "jobsPlaceholder": "परीक्षण, निर्माण",
         "jobsSummary": "नौकरियाँ {{values}}",
-        "labelAppliedDescription": "जब किसी इश्यू या पुल रिक्वेस्ट को लेबल मिलता है तो चलाएँ।",
-        "labelAppliedRule": "जब GitHub लेबल {{label}} लगाया जाता है",
-        "labelAppliedTitle": "GitHub लेबल लागू किया गया",
-        "labelName": "लेबल का नाम",
-        "labelOnlySummary": "लेबल {{label}}",
-        "labelPlaceholder": "ट्राइएज",
-        "labelSummary": "लेबल {{label}} · {{subject}} · अभिनेता {{actor}}",
         "loadError": "GitHub सेटिंग्स लोड नहीं की जा सकीं.",
         "nonProductionOnly": "केवल गैर-उत्पादन",
         "option": {
@@ -4829,12 +4858,36 @@
         },
         "productionEnvironment": "उत्पादन वातावरण",
         "productionOnly": "केवल उत्पादन",
+        "pullRequestAction": "एक्शन",
+        "pullRequestActionClosed": "बंद की गई",
+        "pullRequestActionConvertedToDraft": "ड्राफ़्ट में बदली गई",
+        "pullRequestActionDequeued": "मर्ज क़तार से हटाई गई",
+        "pullRequestActionEnqueued": "मर्ज क़तार में जोड़ी गई",
+        "pullRequestActionLabeled": "लेबल लगाया गया",
+        "pullRequestActionOpened": "खोली गई",
+        "pullRequestActionReadyForReview": "समीक्षा के लिए तैयार",
+        "pullRequestActionReopened": "फिर से खोली गई",
+        "pullRequestActionSynchronize": "नए कमिट पुश हुए",
+        "pullRequestActionUnlabeled": "लेबल हटाया गया",
+        "pullRequestAuthors": "लेखक",
+        "pullRequestClosedWithoutMergeOnly": "बिना मर्ज बंद",
+        "pullRequestDescription": "जब किसी रिपॉज़िटरी की पुल रिक्वेस्ट खोली, मर्ज, लेबल या स्थिति बदली जाती है तो चलता है।",
+        "pullRequestLabels": "लेबल",
+        "pullRequestLabelsPlaceholder": "ready-to-merge",
+        "pullRequestMerged": "मर्ज हुई",
+        "pullRequestMergedOnly": "केवल मर्ज हुई",
+        "pullRequestNumbers": "पुल रिक्वेस्ट नंबर",
+        "pullRequestNumbersPlaceholder": "42, 128",
+        "pullRequestRule": "{{repository}} में GitHub पुल रिक्वेस्ट {{action}}",
         "pullRequestsOnly": "केवल पुल रिक्वेस्ट",
+        "pullRequestTitle": "GitHub पुल रिक्वेस्ट",
         "refs": "रेफरी",
         "refsPlaceholder": "मुख्य, v1.0.0",
         "repositories": "डेटा संग्रह स्थान",
         "repositoriesPlaceholder": "vm0-ai/vm0, मालिक/अन्य-रेपो",
         "repositoriesSummary": "रिपोजिटरीज़ {{values}}",
+        "repository": "रिपॉज़िटरी",
+        "repositoryPlaceholder": "owner/name",
         "reviewDescription": "मिलान समीक्षा सबमिट होने पर चलाएँ।",
         "reviewRule": "जब एक मिलान GitHub पुल रिक्वेस्ट समीक्षा सबमिट की जाती है",
         "reviewStates": "राज्यों की समीक्षा करें",
@@ -4846,10 +4899,8 @@
         "saveFilters": "फ़िल्टर सहेजें",
         "selectNoneAny": "किसी भी मान से मेल खाने के लिए कोई नहीं चुनें.",
         "selectNoneConclusion": "किसी भी पूर्ण निष्कर्ष से मेल खाने के लिए कोई नहीं चुनें।",
-        "startedBy": "द्वारा प्रारंभ किया गया",
         "subject": "विषय",
         "trustedAuthors": "विश्वसनीय लेखक",
-        "updateLabelAria": "GitHub लेबल ऑटोमेशन को अद्यतन करें",
         "updateWebhookAria": "{{title}} ऑटोमेशन अपडेट करें",
         "updateWorkflowAria": "GitHub वर्कफ़्लो ऑटोमेशन को अद्यतन करें",
         "withConclusions": "{{values}} के साथ",
@@ -4967,6 +5018,7 @@
       "picker": {
         "calendar": "कैलेंडर",
         "email": "ईमेल",
+        "forms": "Google Forms",
         "integrations": "एकीकरण",
         "notion": "Notion",
         "schedule": "अनुसूची"
@@ -5043,14 +5095,53 @@
         "localeSummary": "स्थान {{locale}}",
         "rule": "जब एक मिलान Strapi प्रविष्टि प्रकाशित की जाती है"
       },
+      "stripe": {
+        "addAction": "Stripe ऑटोमेशन जोड़ें",
+        "addAria": "Stripe इनवॉइस भुगतान ऑटोमेशन जोड़ें",
+        "addDescription": "कनेक्ट किए गए Stripe Live खाते में मेल खाने वाला इनवॉइस भुगतान होने पर यह वर्कफ़्लो चलाएँ।",
+        "addTitle": "Stripe ऑटोमेशन जोड़ें",
+        "anyBillingReason": "कोई भी बिलिंग कारण",
+        "billingReason": {
+          "automaticPendingInvoiceItemInvoice": "स्वचालित लंबित इनवॉइस आइटम",
+          "manual": "मैन्युअल",
+          "quoteAccept": "कोट स्वीकार किया गया",
+          "subscription": "सब्सक्रिप्शन",
+          "subscriptionCreate": "सब्सक्रिप्शन बनाया गया",
+          "subscriptionCycle": "सब्सक्रिप्शन चक्र",
+          "subscriptionThreshold": "सब्सक्रिप्शन सीमा",
+          "subscriptionUpdate": "सब्सक्रिप्शन अपडेट किया गया",
+          "upcoming": "आगामी"
+        },
+        "billingReasons": "बिलिंग कारण",
+        "billingReasonsHint": "किसी भी बिलिंग कारण से मिलान करने के लिए कोई विकल्प न चुनें।",
+        "bindingSummary": "Stripe खाता {{accountId}} · Live मोड · {{billingReasons}}",
+        "delivery": "डिलीवरी",
+        "deliveryStatus": {
+          "delivered": "डिलीवर किया गया",
+          "failed": "विफल",
+          "pending": "लंबित",
+          "skipped": "छोड़ा गया"
+        },
+        "deliveryWarning": "नवीनतम अंतिम डिलीवरी विफल रही। दोबारा कोशिश करने से पहले वर्कफ़्लो गतिविधि जाँचें।",
+        "immutableHint": "Stripe खाता और बिलिंग कारण तय हैं। इन्हें बदलने के लिए यह ऑटोमेशन हटाकर फिर से बनाएँ।",
+        "invoicePaidDescription": "मेल खाने वाला Stripe इनवॉइस भुगतान होने पर चलाएँ।",
+        "invoicePaidTitle": "Stripe इनवॉइस का भुगतान हुआ",
+        "lastEvent": "पिछला इवेंट",
+        "manageConnection": "Stripe कनेक्शन प्रबंधित करें",
+        "noDeliveries": "अभी कोई डिलीवरी नहीं",
+        "noMatchingEvents": "अभी कोई मेल खाने वाला इवेंट नहीं",
+        "rule": "जब मेल खाने वाला Stripe इनवॉइस भुगतान किया जाता है"
+      },
       "types": {
         "chat": "चैट",
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google मिलें",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "वेबहुक"
       },
       "webhook": {
@@ -5291,6 +5382,12 @@
     "connectedWithDetail": "कनेक्टेड ({{detail}})",
     "documentTitle": "काम करता है",
     "feishuConnected": "Feishu सफलतापूर्वक कनेक्ट हुआ",
+    "github": {
+      "adminInstall": "किसी संगठन एडमिन से GitHub ऐप इंस्टॉल करने के लिए कहें",
+      "description": "GitHub इवेंट से वर्कफ़्लो ऑटोमेशन ट्रिगर करें",
+      "install": "GitHub ऐप इंस्टॉल करें",
+      "title": "GitHub"
+    },
     "header": {
       "description": "इन चैनलों के माध्यम से {{displayName}} से जुड़ें",
       "title": "जहां {{displayName}} काम करता है"

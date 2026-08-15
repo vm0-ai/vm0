@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.18.30](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.29...vsock-proto-v0.18.30) (2026-08-14)
+
+
+### Performance Improvements
+
+* **runner:** reduce guest dns readiness latency ([#27184](https://github.com/vm0-ai/vm0/issues/27184)) ([0752a72](https://github.com/vm0-ai/vm0/commit/0752a72e452aedcf40cca5bb8d177a3850592d1e))
+
+## [0.18.29](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.28...vsock-proto-v0.18.29) (2026-08-13)
+
+
+### Documentation
+
+* **rust:** document batch write result truncation ([#26901](https://github.com/vm0-ai/vm0/issues/26901)) ([f27b7f2](https://github.com/vm0-ai/vm0/commit/f27b7f22ef7e3bb51e4fe06d19473f2b76334558))
+
+## [0.18.28](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.27...vsock-proto-v0.18.28) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** attribute severe balloon retention ([#26038](https://github.com/vm0-ai/vm0/issues/26038)) ([d996ab7](https://github.com/vm0-ai/vm0/commit/d996ab715ff06c03dee96b82f683e577c7e52b89))
+
+## [0.18.27](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.26...vsock-proto-v0.18.27) (2026-08-10)
+
+
+### Documentation
+
+* **vsock-proto:** clarify message type invariants ([#26001](https://github.com/vm0-ai/vm0/issues/26001)) ([ecdb01a](https://github.com/vm0-ai/vm0/commit/ecdb01a6d8e8e9e7eac7bda3e96e76d5a4c6b21c))
+
+## [0.18.26](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.25...vsock-proto-v0.18.26) (2026-08-07)
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
 ## [0.18.25](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.24...vsock-proto-v0.18.25) (2026-08-03)
 
 

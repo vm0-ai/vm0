@@ -1,8 +1,12 @@
 import { act, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import { PRESENTATION_ONBOARDING_URL } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import type { SupportedLocale } from "../../../i18n/resources.ts";
 import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -13,7 +17,28 @@ import { getClerkLocalization } from "../clerk-localization.ts";
 const context = testContext();
 
 function setBrowserUrl(url: string): void {
-  window.location.href = url;
+  context.mocks.browser.url(url);
+}
+
+function okouBrandLink(): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === "Okou";
+  });
+  if (!link) {
+    throw new Error("Okou brand link not found");
+  }
+  return link;
+}
+
+function disableUrlCanParse(): void {
+  const urlWithoutCanParse = new Proxy(URL, {
+    get(target, property, receiver) {
+      return property === "canParse"
+        ? undefined
+        : Reflect.get(target, property, receiver);
+    },
+  });
+  vi.stubGlobal("URL", urlWithoutCanParse);
 }
 
 function useLocale(locale: SupportedLocale): void {
@@ -333,7 +358,7 @@ describe("app auth pages", () => {
   });
 
   it("renders the app-hosted sign-in route with an allowed redirect URL", async () => {
-    const redirectUrl = "https://app.vm0.ai/_/skeleton";
+    const redirectUrl = PRESENTATION_ONBOARDING_URL;
     const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
@@ -354,7 +379,7 @@ describe("app auth pages", () => {
   });
 
   it("allows sign-in redirects to okou.ai subdomains", async () => {
-    const redirectUrl = "https://console.okou.ai/_/skeleton";
+    const redirectUrl = "https://app.okou.ai/_/skeleton";
     const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
@@ -368,75 +393,125 @@ describe("app auth pages", () => {
       "data-clerk-force-redirect-url",
       redirectUrl,
     );
+    expect(document.title).toBe("Sign in | Okou");
+    expect(screen.queryByAltText("VM0")).not.toBeInTheDocument();
+    expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-in-force-redirect-url",
+      redirectUrl,
+    );
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-up-force-redirect-url",
+      redirectUrl,
+    );
+
+    expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+      "data-clerk-logo-placement",
+      "none",
+    );
+    expect(screen.getByTestId("clerk-sign-in")).not.toHaveAttribute(
+      "data-clerk-logo-image-url",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-start-title",
+      "Sign in to Okou",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-email-code-subtitle",
+      "to continue to Okou",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).not.toHaveAttribute(
+      "data-clerk-touch-session",
+    );
+  });
+
+  it("preserves Okou auth intent when Clerk moves the redirect into the hash", async () => {
+    const redirectUrl = "https://app.okou.ai/onboarding?source=auth-switch";
+    const hash = `#/?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai/sign-up${hash}`);
+
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("clerk-sign-up")).toHaveAttribute(
+      "data-clerk-force-redirect-url",
+      redirectUrl,
+    );
+    expect(document.title).toBe("Sign up | Okou");
+    expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+  });
+
+  it("does not let an untrusted redirect URL control the auth brand", async () => {
+    const redirectUrl = "https://app.okou.ai.evil.example/sign-in";
+    const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+      "data-clerk-force-redirect-url",
+      "https://app.vm0.ai",
+    );
+    expect(document.title).toBe("Sign in | VM0");
+    expect(screen.getByAltText("VM0")).toHaveAttribute(
+      "src",
+      platformVm0LogoDarkImg,
+    );
+    expect(screen.queryByText("Okou")).not.toBeInTheDocument();
   });
 
   it("renders the app-hosted sign-in route when URL.canParse is unavailable", async () => {
-    const originalCanParse = URL.canParse;
-    Object.defineProperty(URL, "canParse", {
-      configurable: true,
-      value: undefined,
+    disableUrlCanParse();
+
+    const redirectUrl = "https://app.vm0.ai/_/skeleton";
+    const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
     });
 
-    try {
-      const redirectUrl = "https://app.vm0.ai/_/skeleton";
-      const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
-      setBrowserUrl(`https://app.vm0.ai${path}`);
-
-      detachedSetupPage({ context, path });
-
-      await waitFor(() => {
-        expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
-      });
-
-      expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
-        "data-clerk-fallback-redirect-url",
-        redirectUrl,
-      );
-      expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
-        "data-clerk-force-redirect-url",
-        redirectUrl,
-      );
-    } finally {
-      Object.defineProperty(URL, "canParse", {
-        configurable: true,
-        value: originalCanParse,
-      });
-    }
+    expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+      "data-clerk-fallback-redirect-url",
+      redirectUrl,
+    );
+    expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+      "data-clerk-force-redirect-url",
+      redirectUrl,
+    );
   });
 
   it("ignores malformed sign-in redirect URLs when URL.canParse is unavailable", async () => {
-    const originalCanParse = URL.canParse;
-    Object.defineProperty(URL, "canParse", {
-      configurable: true,
-      value: undefined,
+    disableUrlCanParse();
+
+    const path = `/sign-in?redirect_url=${encodeURIComponent("https://[")}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
     });
 
-    try {
-      const path = `/sign-in?redirect_url=${encodeURIComponent("https://[")}`;
-      setBrowserUrl(`https://app.vm0.ai${path}`);
-
-      detachedSetupPage({ context, path });
-
-      await waitFor(() => {
-        expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
-      });
-
-      expect(
-        screen.getByTestId("clerk-sign-in").dataset.clerkFallbackRedirectUrl,
-      ).toBe("https://app.vm0.ai");
-      expect(
-        screen.getByTestId("clerk-sign-in").dataset.clerkForceRedirectUrl,
-      ).toBe("https://app.vm0.ai");
-    } finally {
-      Object.defineProperty(URL, "canParse", {
-        configurable: true,
-        value: originalCanParse,
-      });
-    }
+    expect(
+      screen.getByTestId("clerk-sign-in").dataset.clerkFallbackRedirectUrl,
+    ).toBe("https://app.vm0.ai");
+    expect(
+      screen.getByTestId("clerk-sign-in").dataset.clerkForceRedirectUrl,
+    ).toBe("https://app.vm0.ai");
   });
 
   it("renders the app-hosted sign-up route with an allowed redirect URL", async () => {
-    const redirectUrl = "https://app.vm0.ai/prompt";
+    const redirectUrl = PRESENTATION_ONBOARDING_URL;
     const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
@@ -479,7 +554,10 @@ describe("app auth pages", () => {
     expect(layout.className).not.toContain("var(--sat)");
     expect(layout.className).not.toContain("var(--sab)");
 
-    const logo = screen.getByAltText("VM0").closest("a");
+    const logoImage = screen.getByAltText("VM0");
+    expect(logoImage).toHaveAttribute("crossorigin", "anonymous");
+
+    const logo = logoImage.closest("a");
     expect(logo).toHaveClass("left-6");
     expect(logo).toHaveClass("top-6");
     expect(logo?.className).not.toContain("var(--sat)");
@@ -492,6 +570,26 @@ describe("app auth pages", () => {
   it("routes ad-attributed sign-up visits through onboarding", async () => {
     const path = "/sign-up?gclid=click-123&utm_campaign=summer";
     setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
+    });
+
+    const redirectUrl = new URL(
+      screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
+    );
+    expect(redirectUrl.origin).toBe("https://app.vm0.ai");
+    expect(redirectUrl.pathname).toBe("/onboarding");
+    expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
+    expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
+    expect(redirectUrl.searchParams.get("vm0_source")).toBe("homepage");
+  });
+
+  it("keeps sign-up attribution when the Clerk hash has no redirect", async () => {
+    const path = "/sign-up?gclid=click-123&utm_campaign=summer";
+    setBrowserUrl(`https://app.vm0.ai${path}#/verify?step=code`);
 
     detachedSetupPage({ context, path });
 

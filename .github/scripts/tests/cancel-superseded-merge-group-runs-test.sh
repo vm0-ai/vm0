@@ -77,13 +77,37 @@ JSON
 ]}]
 JSON
     ;;
-  repos/vm0-ai/vm0/actions/runs/*/cancel)
+  repos/vm0-ai/vm0/actions/runs/*/force-cancel)
     [ "$method" = "POST" ] || exit 1
-    run_id=${endpoint%/cancel}
+    run_id=${endpoint%/force-cancel}
     run_id=${run_id##*/}
     printf '%s\n' "$run_id" >>"$MOCK_CANCEL_LOG"
+    case " ${MOCK_WEDGED_RUN_IDS:-} " in
+      *" $run_id "*)
+        echo 'gh: Cannot cancel a workflow re-run that has not yet queued. (HTTP 409)' >&2
+        exit 1
+        ;;
+    esac
+    if [ "${MOCK_FORCE_CANCEL_COMPLETION:-0}" = "1" ]; then
+      touch "$MOCK_RUNS_RELEASED"
+    fi
+    ;;
+  repos/vm0-ai/vm0/actions/runs/*/jobs)
+    run_id=${endpoint%/jobs}
+    run_id=${run_id##*/}
+    case " ${MOCK_WEDGED_RUN_IDS:-} " in
+      *" $run_id "*) printf '%s\n' "${MOCK_WEDGED_JOB_COUNT:-0}" ;;
+      *) printf '0\n' ;;
+    esac
     ;;
   repos/vm0-ai/vm0/actions/runs/*)
+    run_id=${endpoint##*/}
+    case " ${MOCK_WEDGED_RUN_IDS:-} " in
+      *" $run_id "*)
+        printf 'queued\n'
+        exit 0
+        ;;
+    esac
     if [ "${MOCK_DELAY_COMPLETION:-0}" = "1" ] && [ ! -f "$MOCK_RUNS_RELEASED" ]; then
       printf 'in_progress\n'
     else
@@ -125,6 +149,26 @@ run_cancel() {
     bash "$script"
 }
 
+run_closed_pr_cleanup() {
+  env -i \
+    PATH="${fake_bin}:$PATH" \
+    HOME="${HOME:-/tmp}" \
+    GH_TOKEN=test-token \
+    GITHUB_REPOSITORY=vm0-ai/vm0 \
+    GITHUB_RUN_ID=400 \
+    PR_NUMBER=42 \
+    RUNNER_OWNER_SCOPE=closed-pr-cleanup \
+    MOCK_GH_LOG="${tmp_dir}/gh.log" \
+    MOCK_CANCEL_LOG="${tmp_dir}/cancel.log" \
+    MOCK_SLEEP_LOG="${tmp_dir}/sleep.log" \
+    MOCK_RUNS_RELEASED="${tmp_dir}/runs-released" \
+    MOCK_QUEUED_QUERY_COUNT="${tmp_dir}/queued-query-count" \
+    SUPERSEDED_RUN_POLL_SECONDS=0 \
+    SUPERSEDED_RUN_TIMEOUT_SECONDS=10 \
+    "$@" \
+    bash "$script"
+}
+
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"
 : >"${tmp_dir}/sleep.log"
@@ -136,6 +180,48 @@ cancelled_runs=$(cat "${tmp_dir}/cancel.log")
   fail "expected only older same-PR consumer runs to be cancelled, got: ${cancelled_runs}"
 [ ! -s "${tmp_dir}/sleep.log" ] ||
   fail "already-completed superseded runs must not poll"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+rm -f "${tmp_dir}/runs-released"
+output=$(run_closed_pr_cleanup MOCK_DELAY_COMPLETION=1)
+grep -q "All active runner-owner CI runs completed before closed-PR resource cleanup starts" <<<"$output" ||
+  fail "expected closed-PR cleanup to await every active runner owner"
+[ ! -s "${tmp_dir}/cancel.log" ] ||
+  fail "closed-PR cleanup must not cancel active required checks"
+grep -q "Waiting for active runner-owner CI runs" <<<"$output" ||
+  fail "closed-PR cleanup must retain an explicit terminal-state barrier"
+[ "$(wc -l <"${tmp_dir}/sleep.log")" -eq 1 ] ||
+  fail "closed-PR cleanup must wait for active owners to finish naturally"
+
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+if run_closed_pr_cleanup RUNNER_OWNER_ASSERT_IDLE=true \
+  >"${tmp_dir}/assert-idle.out" 2>"${tmp_dir}/assert-idle.err"; then
+  fail "locked cleanup must abort when a late owner appears"
+fi
+grep -q "appeared while closed-PR cleanup held the namespace lifecycle lock" \
+  "${tmp_dir}/assert-idle.err" ||
+  fail "locked cleanup must explain the late-owner handoff"
+[ ! -s "${tmp_dir}/cancel.log" ] ||
+  fail "locked cleanup must not cancel the late owner"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "locked cleanup must release its host lock instead of awaiting the late owner"
+
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+rm -f "${tmp_dir}/runs-released"
+if run_closed_pr_cleanup \
+  MOCK_DELAY_COMPLETION=1 \
+  SUPERSEDED_RUN_TIMEOUT_SECONDS=0 \
+  >"${tmp_dir}/closed-timeout.out" 2>"${tmp_dir}/closed-timeout.err"; then
+  fail "closed-PR cleanup must fail closed when an active owner outlives the barrier"
+fi
+[ ! -s "${tmp_dir}/cancel.log" ] ||
+  fail "timed-out closed-PR cleanup must not cancel the active owner"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "zero-timeout ownership barrier must fail before polling"
 
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"
@@ -159,6 +245,20 @@ grep -q "Waiting for superseded CI runs" <<<"$output" ||
 
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+rm -f "${tmp_dir}/runs-released"
+output=$(
+  run_cancel \
+    MOCK_DELAY_COMPLETION=1 \
+    MOCK_FORCE_CANCEL_COMPLETION=1
+)
+grep -q "All superseded CI runs completed" <<<"$output" ||
+  fail "expected force cancellation to terminate otherwise-active runs"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "force-cancelled runs must not need a completion poll"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
 output=$(run_cancel MOCK_NO_TARGETS=1)
 grep -q "No superseded CI runs found" <<<"$output" ||
   fail "expected empty active-run set to exit cleanly"
@@ -168,5 +268,33 @@ grep -q "No superseded CI runs found" <<<"$output" ||
 if run_cancel MERGE_GROUP_HEAD_REF=gh-readonly-queue/main/no-pr >/dev/null 2>&1; then
   fail "invalid merge-group ref must fail closed"
 fi
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+output=$(run_cancel MOCK_WEDGED_RUN_IDS=100 MOCK_WEDGED_JOB_COUNT=0)
+grep -q "skipping wedged superseded run 100" <<<"$output" ||
+  fail "expected an uncancellable run with no started job to be skipped"
+# The wedged run reports "queued" forever, so the barrier could only complete
+# if the run was excluded from it rather than merely skipped during cancel.
+grep -q "All superseded CI runs completed" <<<"$output" ||
+  fail "expected the barrier to still complete for the remaining runs"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "skipped wedged run must not be polled by the completion barrier"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+if run_cancel MOCK_WEDGED_RUN_IDS=100 MOCK_WEDGED_JOB_COUNT=3 >/dev/null 2>&1; then
+  fail "an uncancellable run that already started a job must fail closed"
+fi
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+output=$(run_cancel MOCK_WEDGED_RUN_IDS="100 110 120" MOCK_WEDGED_JOB_COUNT=0)
+grep -q "nothing to await" <<<"$output" ||
+  fail "expected an all-wedged target set to exit without a completion barrier"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "an all-wedged target set must not poll"
 
 echo "cancel-superseded-merge-group-runs tests passed"

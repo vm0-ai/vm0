@@ -1,8 +1,10 @@
 use crate::error::ProtocolError;
+use crate::frame::encode_into;
 use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
     expect_consumed, read_slice, read_str, read_u8, read_u16, read_u32,
 };
+use crate::wire::MSG_EXEC_CONTROL;
 
 /// Number of bytes in an exec-control nonce.
 pub const EXEC_CONTROL_NONCE_LEN: usize = 16;
@@ -110,6 +112,15 @@ struct ControlIdentity<'a> {
     message_id: &'a str,
 }
 
+struct EncodedExecControlPayload<'a> {
+    identity: ControlIdentity<'a>,
+    request_timeout_ms: u32,
+    message_id_len: u16,
+    payload_len: u32,
+    payload: &'a [u8],
+    encoded_len: usize,
+}
+
 #[derive(Clone, Copy)]
 struct ControlIdentityErrors {
     target_seq_zero: &'static str,
@@ -212,6 +223,45 @@ fn append_control_identity_tail(
     out.extend_from_slice(identity.message_id.as_bytes());
 }
 
+fn validate_exec_control_payload<'a>(
+    target_seq: u32,
+    control_nonce: ExecControlNonce,
+    message_id: &'a str,
+    payload: &'a [u8],
+    request_timeout_ms: u32,
+) -> Result<EncodedExecControlPayload<'a>, ProtocolError> {
+    let identity = ControlIdentity {
+        target_seq,
+        control_nonce,
+        message_id,
+    };
+    validate_control_identity(identity, EXEC_CONTROL_IDENTITY_ERRORS)?;
+    if payload.len() > EXEC_CONTROL_MAX_PAYLOAD_BYTES {
+        return Err(ProtocolError::PayloadTooLarge("payload", payload.len()));
+    }
+    let message_id_len = ensure_u16_len("message_id", identity.message_id.len())?;
+    let payload_len = ensure_u32_len("payload", payload.len())?;
+    let encoded_len = encoded_control_len(message_id.len(), payload.len())?;
+    ensure_payload_fits_message(encoded_len)?;
+
+    Ok(EncodedExecControlPayload {
+        identity,
+        request_timeout_ms,
+        message_id_len,
+        payload_len,
+        payload,
+        encoded_len,
+    })
+}
+
+fn append_exec_control_payload(out: &mut Vec<u8>, encoded: &EncodedExecControlPayload<'_>) {
+    out.extend_from_slice(&encoded.identity.target_seq.to_be_bytes());
+    out.extend_from_slice(&encoded.request_timeout_ms.to_be_bytes());
+    append_control_identity_tail(out, encoded.identity, encoded.message_id_len);
+    out.extend_from_slice(&encoded.payload_len.to_be_bytes());
+    out.extend_from_slice(encoded.payload);
+}
+
 fn read_non_zero_target_seq(
     payload: &[u8],
     offset: &mut usize,
@@ -300,27 +350,65 @@ pub fn encode_exec_control(
     payload: &[u8],
     request_timeout_ms: u32,
 ) -> Result<Vec<u8>, ProtocolError> {
-    let identity = ControlIdentity {
+    let encoded = validate_exec_control_payload(
         target_seq,
         control_nonce,
         message_id,
-    };
-    validate_control_identity(identity, EXEC_CONTROL_IDENTITY_ERRORS)?;
-    if payload.len() > EXEC_CONTROL_MAX_PAYLOAD_BYTES {
-        return Err(ProtocolError::PayloadTooLarge("payload", payload.len()));
-    }
-    let message_id_len = ensure_u16_len("message_id", identity.message_id.len())?;
-    let payload_len = ensure_u32_len("payload", payload.len())?;
-    let total_len = encoded_control_len(message_id.len(), payload.len())?;
-    ensure_payload_fits_message(total_len)?;
+        payload,
+        request_timeout_ms,
+    )?;
 
-    let mut out = Vec::with_capacity(total_len);
-    out.extend_from_slice(&identity.target_seq.to_be_bytes());
-    out.extend_from_slice(&request_timeout_ms.to_be_bytes());
-    append_control_identity_tail(&mut out, identity, message_id_len);
-    out.extend_from_slice(&payload_len.to_be_bytes());
-    out.extend_from_slice(payload);
+    let mut out = Vec::with_capacity(encoded.encoded_len);
+    append_exec_control_payload(&mut out, &encoded);
+    debug_assert_eq!(out.len(), encoded.encoded_len);
     Ok(out)
+}
+
+/// Validate an exec_control payload without encoding it.
+///
+/// This applies the same input constraints documented by [`encode_exec_control`].
+pub fn validate_exec_control(
+    target_seq: u32,
+    control_nonce: ExecControlNonce,
+    message_id: &str,
+    payload: &[u8],
+    request_timeout_ms: u32,
+) -> Result<(), ProtocolError> {
+    validate_exec_control_payload(
+        target_seq,
+        control_nonce,
+        message_id,
+        payload,
+        request_timeout_ms,
+    )
+    .map(|_| ())
+}
+
+/// Encode a full exec_control frame into `frame`.
+///
+/// The resulting frame uses the same bytes as
+/// `encode(MSG_EXEC_CONTROL, seq, &encode_exec_control(...))` without allocating
+/// a separate exec-control payload vector.
+pub fn encode_exec_control_frame_into(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    target_seq: u32,
+    control_nonce: ExecControlNonce,
+    message_id: &str,
+    payload: &[u8],
+    request_timeout_ms: u32,
+) -> Result<(), ProtocolError> {
+    frame.clear();
+    let encoded = validate_exec_control_payload(
+        target_seq,
+        control_nonce,
+        message_id,
+        payload,
+        request_timeout_ms,
+    )?;
+    encode_into(frame, MSG_EXEC_CONTROL, seq, encoded.encoded_len, |frame| {
+        append_exec_control_payload(frame, &encoded);
+    })
 }
 
 /// Encode an exec_control_result payload.

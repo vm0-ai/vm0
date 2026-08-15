@@ -111,7 +111,7 @@ async function doSubscribe(
 
   // Send subscription to the backend. fetch$ injects the auth token and
   // applies the api-target routing policy.
-  await fetchFn("/api/zero/push-subscriptions", {
+  await fetchFn("/api/okou/push-subscriptions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

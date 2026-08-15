@@ -1,24 +1,22 @@
-import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
+import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
+import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import {
   zeroBillingCheckoutContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import type {
   ModelProviderResponse,
   OrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
   type CreateModelProviderConnectionRequest,
   type ModelProviderConnectionResponse,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import { screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
@@ -26,16 +24,9 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-
-afterEach(async () => {
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
-});
 
 function staleCodexProvider(): ModelProviderResponse {
   return {
@@ -114,8 +105,8 @@ function builtInPolicy(
 function claudeOpusApiKeyPolicy(): OrgModelPolicy {
   return {
     id: "00000000-0000-4000-a000-000000000212",
-    model: "claude-opus-4-7",
-    modelLabel: "Claude Opus 4.7",
+    model: "claude-opus-4-8",
+    modelLabel: "Claude Opus 4.8",
     isDefault: false,
     defaultProviderType: "anthropic-api-key",
     credentialScope: "org",
@@ -127,17 +118,17 @@ function claudeOpusApiKeyPolicy(): OrgModelPolicy {
   };
 }
 
-function missingMoonshotPolicy(): OrgModelPolicy {
+function missingOpenAiPolicy(): OrgModelPolicy {
   return {
     id: "00000000-0000-4000-a000-000000000213",
-    model: "kimi-k2.7-code",
-    modelLabel: "Kimi K2.7 Code",
+    model: "gpt-5.5",
+    modelLabel: "GPT 5.5",
     isDefault: false,
-    defaultProviderType: "moonshot-api-key",
+    defaultProviderType: "openai-api-key",
     credentialScope: "org",
     modelProviderId: "00000000-0000-4000-a000-000000009999",
     routeStatus: "missing_provider",
-    routeStatusReason: "Workspace Moonshot API key was removed",
+    routeStatusReason: "Workspace OpenAI API key was removed",
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-01T00:00:00Z",
   };
@@ -146,7 +137,7 @@ function missingMoonshotPolicy(): OrgModelPolicy {
 function mockStaleProviderStory(): void {
   mockAdminOrg();
   context.mocks.data.orgModelProviders([staleCodexProvider()]);
-  context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+  context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
     return respond(200, {
       sessionToken: "mock-codex-device-session",
       type: "codex",
@@ -158,7 +149,7 @@ function mockStaleProviderStory(): void {
       interval: 1,
     });
   });
-  context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+  context.mocks.api(codexDeviceAuthContract.complete, ({ respond }) => {
     return respond(200, { status: "pending", errorMessage: null });
   });
 }
@@ -169,8 +160,8 @@ function mockApiKeyModelRouteStory(): void {
   context.mocks.data.orgModelPolicies([
     builtInPolicy(
       "00000000-0000-4000-a000-000000000211",
-      "deepseek-v4-pro",
-      "DeepSeek V4 Pro",
+      "deepseek-v4-flash",
+      "DeepSeek V4 Flash",
       true,
     ),
     claudeOpusApiKeyPolicy(),
@@ -180,7 +171,6 @@ function mockApiKeyModelRouteStory(): void {
 function mockAdminOrg(): void {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -227,7 +217,7 @@ function mockBillingCapabilities(modelCapabilities: {
 function mockProCheckout(): void {
   context.mocks.api(zeroBillingCheckoutContract.create, ({ body, respond }) => {
     return respond(200, {
-      url: `https://checkout.stripe.com/test-upgrade?tier=${body.tier}`,
+      url: "https://checkout.stripe.com/test-upgrade?tier=" + body.tier,
     });
   });
 }
@@ -263,6 +253,7 @@ function gatewayConnectionResponse(
 function mockGatewayConnectionLifecycle() {
   let connections: ModelProviderConnectionResponse[] = [];
   let createSecret: string | null = null;
+  let createSurfaces: CreateModelProviderConnectionRequest["surfaces"] = [];
   let updateSecret: string | undefined;
   let updateCount = 0;
   let deleteCount = 0;
@@ -277,6 +268,7 @@ function mockGatewayConnectionLifecycle() {
     zeroModelProviderConnectionsMainContract.create,
     ({ body, respond }) => {
       createSecret = body.secret;
+      createSurfaces = body.surfaces;
       const connection = gatewayConnectionResponse(body);
       connections = [connection];
       return respond(201, connection);
@@ -305,6 +297,9 @@ function mockGatewayConnectionLifecycle() {
     createSecret: () => {
       return createSecret;
     },
+    createSurfaces: () => {
+      return createSurfaces;
+    },
     deleteCount: () => {
       return deleteCount;
     },
@@ -317,13 +312,10 @@ function mockGatewayConnectionLifecycle() {
   };
 }
 
-async function openProvidersTab(customModelGateways = false): Promise<void> {
+async function openProvidersTab(): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=model",
-    featureSwitches: {
-      [FeatureSwitchKey.CustomModelGateways]: customModelGateways,
-    },
   });
   await waitFor(() => {
     expect(
@@ -361,7 +353,7 @@ async function openAddApiKeyModelDialog(): Promise<void> {
   await openProvidersTab();
 
   click(screen.getByText("Add model"));
-  await selectDialogModel("Claude Opus 4.7");
+  await selectDialogModel("Claude Opus 4.8");
   click(screen.getByRole("radio", { name: /API key/u }));
   await waitFor(() => {
     expect(
@@ -408,62 +400,16 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("hides provider connections when the feature switch is disabled", async () => {
-    mockAdminOrg();
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([]);
-
-    await openProvidersTab();
-
-    expect(
-      screen.queryByRole("heading", { name: "Provider connections" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("hides provider connections when the backend capability is absent", async () => {
-    mockAdminOrg();
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([]);
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: { [FeatureSwitchKey.CustomModelGateways]: true },
-        effectiveSwitches: {
-          [FeatureSwitchKey.CustomModelGateways]: true,
-        },
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/?settings=model",
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Models" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(
-      screen.queryByRole("heading", { name: "Provider connections" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("hides provider connections from non-admin members", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
 
-    await openProvidersTab(true);
+    await openProvidersTab();
 
     expect(
       screen.queryByRole("heading", { name: "Provider connections" }),
@@ -476,7 +422,7 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([]);
     mockGatewayConnectionLifecycle();
 
-    await openProvidersTab(true);
+    await openProvidersTab();
 
     const connectionsHeading = await screen.findByRole("heading", {
       name: "Provider connections",
@@ -546,7 +492,7 @@ describe("organization model providers settings", () => {
     ]);
     const lifecycle = mockGatewayConnectionLifecycle();
 
-    await openProvidersTab(true);
+    await openProvidersTab();
 
     const connectionsHeading = await screen.findByRole("heading", {
       name: "Provider connections",
@@ -578,6 +524,23 @@ describe("organization model providers settings", () => {
       within(connectionsSection).findByText("Vercel AI Gateway"),
     ).resolves.toBeInTheDocument();
     expect(lifecycle.createSecret()).toBe("vck-test");
+    const messagesSurface = lifecycle.createSurfaces().find((surface) => {
+      return surface.protocol === "anthropic-messages";
+    });
+    const responsesSurface = lifecycle.createSurfaces().find((surface) => {
+      return surface.protocol === "openai-responses";
+    });
+    expect(messagesSurface?.modelMappings).toMatchObject({
+      "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+      "claude-opus-4-8": "anthropic/claude-opus-4.8",
+    });
+    expect(messagesSurface?.modelMappings).not.toHaveProperty(
+      "claude-opus-4-7",
+    );
+    expect(responsesSurface?.modelMappings).toHaveProperty(
+      "gpt-5.5",
+      "openai/gpt-5.5",
+    );
 
     click(within(connectionsSection).getByLabelText("Gateway actions"));
     click(menuItemByText("Edit"));
@@ -650,14 +613,14 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000214",
-        "deepseek-v4-pro",
-        "DeepSeek V4 Pro",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
         true,
       ),
       builtInPolicy(
         "00000000-0000-4000-a000-000000000215",
-        "gpt-5.5",
-        "GPT 5.5",
+        "gpt-5.6-sol",
+        "GPT 5.6 Sol",
         false,
       ),
     ]);
@@ -675,20 +638,20 @@ describe("organization model providers settings", () => {
       screen.findByRole("heading", { name: "Modelos" }),
     ).resolves.toBeInTheDocument();
     const deepseekRow = await screen.findByTestId(
-      "org-model-policy-row-deepseek-v4-pro",
+      "org-model-policy-row-deepseek-v4-flash",
     );
     expect(within(deepseekRow).getByText("Integrado")).toBeInTheDocument();
 
     const defaultRow = screen.getByTestId("default-model-row");
     click(within(defaultRow).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "GPT 5.5" }));
+    click(await screen.findByRole("option", { name: "GPT 5.6 Sol" }));
 
     await expect(
       screen.findByText("Configurações dos provedores de modelo atualizadas"),
     ).resolves.toBeInTheDocument();
   });
 
-  it("only offers supported workspace models when adding a model", async () => {
+  it("only offers active workspace models when adding a model", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
@@ -699,56 +662,32 @@ describe("organization model providers settings", () => {
     click(within(dialog).getByRole("combobox"));
 
     await expect(
+      screen.findByRole("option", { name: "GPT 5.6 Sol" }),
+    ).resolves.toBeInTheDocument();
+    await expect(
       screen.findByRole("option", { name: "GPT 5.5" }),
     ).resolves.toBeInTheDocument();
     await expect(
-      screen.findByRole("option", { name: "Claude Opus 4.7" }),
+      screen.findByRole("option", { name: "Claude Sonnet 4.6" }),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Auto" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "GPT-5.4" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "GPT-5.4 Mini" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
-    ).not.toBeInTheDocument();
+    await expect(
+      screen.findByRole("option", { name: "Claude Opus 4.8" }),
+    ).resolves.toBeInTheDocument();
     await expect(
       screen.findByRole("option", { name: "DeepSeek V4 Flash" }),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("keeps existing non-target models while excluding them from additions", async () => {
-    mockAdminOrg();
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([
-      builtInPolicy(
-        "00000000-0000-4000-a000-000000000223",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
-        true,
-      ),
-    ]);
-    await openProvidersTab();
-
     await expect(
-      screen.findByTestId("org-model-policy-row-kimi-k2.7-code"),
+      screen.findByRole("option", { name: "DeepSeek V4 Pro" }),
     ).resolves.toBeInTheDocument();
-    click(buttonByText("Add model"));
-    const dialog = screen.getByRole("dialog", { name: "Add model" });
-    click(within(dialog).getByRole("combobox"));
     expect(
       screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Claude Opus 4.7" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("lets limited-free-1 workspaces add an allowed Anthropic model", async () => {
+  it("lets limited-free-1 workspaces add DeepSeek V4 Flash", async () => {
     mockAdminOrg();
     mockBillingCapabilities({
       supportByok: false,
@@ -766,17 +705,24 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     click(buttonByText("Add model"));
-    await selectDialogModel("Claude Sonnet 5");
-
     const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+    const deepSeekFlashOption = await screen.findByRole("option", {
+      name: "DeepSeek V4 Flash",
+    });
+    expect(
+      screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
+    ).not.toBeInTheDocument();
+    click(deepSeekFlashOption);
+
     expect(within(dialog).queryByText("Upgrade to Pro")).toBeNull();
     click(buttonByText("Add model", dialog));
 
-    const claudeModelRow = await screen.findByTestId(
-      "org-model-policy-row-claude-sonnet-5",
+    const deepseekRow = await screen.findByTestId(
+      "org-model-policy-row-deepseek-v4-flash",
     );
     expect(
-      within(claudeModelRow).getByText("Claude Sonnet 5"),
+      within(deepseekRow).getByText("DeepSeek V4 Flash"),
     ).toBeInTheDocument();
   });
 
@@ -806,9 +752,9 @@ describe("organization model providers settings", () => {
     click(buttonByText("Add model"));
 
     const row = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-7",
+      "org-model-policy-row-claude-opus-4-8",
     );
-    expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(within(row).getByText("Claude Opus 4.8")).toBeInTheDocument();
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
   });
 
@@ -817,12 +763,12 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     const row = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-7",
+      "org-model-policy-row-claude-opus-4-8",
     );
-    expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(within(row).getByText("Claude Opus 4.8")).toBeInTheDocument();
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
 
-    click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
+    click(within(row).getByLabelText("Actions for Claude Opus 4.8"));
     click(menuItemByText("Edit model"));
 
     await waitFor(() => {
@@ -849,10 +795,10 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     const row = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-7",
+      "org-model-policy-row-claude-opus-4-8",
     );
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
-    click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
+    click(within(row).getByLabelText("Actions for Claude Opus 4.8"));
     click(menuItemByText("Edit model"));
 
     await waitFor(() => {
@@ -867,12 +813,12 @@ describe("organization model providers settings", () => {
       expect(within(row).getByText("Built-in")).toBeInTheDocument();
     });
 
-    click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
+    click(within(row).getByLabelText("Actions for Claude Opus 4.8"));
     click(menuItemByText("Delete model"));
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId("org-model-policy-row-claude-opus-4-7"),
+        screen.queryByTestId("org-model-policy-row-claude-opus-4-8"),
       ).not.toBeInTheDocument();
     });
   });
@@ -883,14 +829,14 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     click(buttonByText("Add model"));
-    await selectDialogModel("Claude Opus 4.7");
+    await selectDialogModel("Claude Opus 4.8");
     click(screen.getByRole("radio", { name: /Claude subscription/u }));
     click(buttonByText("Add model"));
 
     const oauthRow = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-7",
+      "org-model-policy-row-claude-opus-4-8",
     );
-    expect(within(oauthRow).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(within(oauthRow).getByText("Claude Opus 4.8")).toBeInTheDocument();
     expect(
       within(oauthRow).getByText("Claude Code (OAuth token)"),
     ).toBeInTheDocument();
@@ -905,33 +851,35 @@ describe("organization model providers settings", () => {
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
     click(within(dialog).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "GPT 5.5" }));
+    click(await screen.findByRole("option", { name: "GPT 5.6 Sol" }));
     click(screen.getByRole("radio", { name: /Codex subscription/u }));
     click(buttonByText("Add model", dialog));
 
-    const codexRow = await screen.findByTestId("org-model-policy-row-gpt-5.5");
-    expect(within(codexRow).getByText("GPT 5.5")).toBeInTheDocument();
+    const codexRow = await screen.findByTestId(
+      "org-model-policy-row-gpt-5.6-sol",
+    );
+    expect(within(codexRow).getByText("GPT 5.6 Sol")).toBeInTheDocument();
     expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
     expect(
       within(screen.getByTestId("default-model-row")).getByRole("combobox"),
-    ).toHaveTextContent("GPT 5.5");
+    ).toHaveTextContent("GPT 5.6 Sol");
   });
 
-  it("opens compare plans when selecting a limited-free-1 default Pro model", async () => {
+  it("opens compare plans for a limited-free-1 default Pro model", async () => {
     mockAdminOrg();
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000221",
-        "claude-opus-4-8",
-        "Claude Opus 4.8",
+        "claude-fable-5",
+        "Claude Fable 5",
         false,
       ),
       builtInPolicy(
         "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
         true,
       ),
     ]);
@@ -939,23 +887,23 @@ describe("organization model providers settings", () => {
 
     const defaultRow = screen.getByTestId("default-model-row");
     click(within(defaultRow).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: /Claude Opus 4\.8 Pro/u }));
+    click(await screen.findByRole("option", { name: /Claude Fable 5.*Pro/u }));
 
     await expect(
       screen.findByRole("heading", { name: "Compare plans" }),
     ).resolves.toBeInTheDocument();
   });
 
-  it("starts pro checkout when adding a limited-free-1 Pro model", async () => {
+  it("starts Pro checkout when adding a limited-free-1 Pro model", async () => {
     mockAdminOrg();
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
     mockProCheckout();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
         true,
       ),
     ]);
@@ -966,9 +914,8 @@ describe("organization model providers settings", () => {
     click(within(dialog).getByRole("combobox"));
 
     const gptOption = await screen.findByRole("option", {
-      name: /GPT 5\.5\s+Pro/u,
+      name: /GPT 5\.6 Sol\s+Pro/u,
     });
-    expect(gptOption).toBeInTheDocument();
     click(gptOption);
 
     expect(screen.queryByRole("heading", { name: "Compare plans" })).toBeNull();
@@ -989,8 +936,8 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
         true,
       ),
     ]);
@@ -1018,8 +965,8 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
         true,
       ),
     ]);
@@ -1028,10 +975,10 @@ describe("organization model providers settings", () => {
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
     click(within(dialog).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: /GPT 5\.5\s+Pro/u }));
+    click(await screen.findByRole("option", { name: /GPT 5\.6 Sol\s+Pro/u }));
     expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
 
-    await selectDialogModel("Claude Sonnet 5");
+    await selectDialogModel("DeepSeek V4 Flash");
     expect(buttonByText("Add model", dialog)).toBeInTheDocument();
     click(screen.getByRole("radio", { name: /API key\s+Pro/u }));
 
@@ -1046,21 +993,21 @@ describe("organization model providers settings", () => {
 
     const defaultRow = screen.getByTestId("default-model-row");
     expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-      "DeepSeek V4 Pro",
+      "DeepSeek V4 Flash",
     );
 
     const deepseekRow = await screen.findByTestId(
-      "org-model-policy-row-deepseek-v4-pro",
+      "org-model-policy-row-deepseek-v4-flash",
     );
-    click(within(deepseekRow).getByLabelText("Actions for DeepSeek V4 Pro"));
+    click(within(deepseekRow).getByLabelText("Actions for DeepSeek V4 Flash"));
     click(menuItemByText("Delete model"));
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId("org-model-policy-row-deepseek-v4-pro"),
+        screen.queryByTestId("org-model-policy-row-deepseek-v4-flash"),
       ).not.toBeInTheDocument();
       expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-        "Claude Opus 4.7",
+        "Claude Opus 4.8",
       );
     });
   });
@@ -1071,36 +1018,36 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000211",
-        "deepseek-v4-pro",
-        "DeepSeek V4 Pro",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
         true,
       ),
       claudeOpusApiKeyPolicy(),
-      missingMoonshotPolicy(),
+      missingOpenAiPolicy(),
     ]);
     await openProvidersTab();
 
     const missingRow = await screen.findByTestId(
-      "org-model-policy-row-kimi-k2.7-code",
+      "org-model-policy-row-gpt-5.5",
     );
     expect(
       within(missingRow).getByText("Missing provider"),
     ).toBeInTheDocument();
     expect(
-      within(missingRow).getByText("Workspace Moonshot API key was removed"),
+      within(missingRow).getByText("Workspace OpenAI API key was removed"),
     ).toBeInTheDocument();
 
     const defaultRow = screen.getByTestId("default-model-row");
     expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-      "DeepSeek V4 Pro",
+      "DeepSeek V4 Flash",
     );
 
     click(within(defaultRow).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "Claude Opus 4.7" }));
+    click(await screen.findByRole("option", { name: "Claude Opus 4.8" }));
 
     await waitFor(() => {
       expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-        "Claude Opus 4.7",
+        "Claude Opus 4.8",
       );
     });
   });
@@ -1130,7 +1077,7 @@ describe("organization model providers settings", () => {
   it("reconnects a stale workspace Claude Code provider", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([staleClaudeCodeProvider()]);
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-workspace-claude-code-session",
         type: "claude-code",
@@ -1140,20 +1087,17 @@ describe("organization model providers settings", () => {
         expiresIn: 30,
       });
     });
-    context.mocks.api(
-      zeroClaudeCodeDeviceAuthContract.complete,
-      ({ respond }) => {
-        return respond(200, {
-          status: "complete",
-          provider: {
-            ...staleClaudeCodeProvider(),
-            needsReconnect: false,
-            lastRefreshErrorCode: null,
-          },
-          created: false,
-        });
-      },
-    );
+    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
+      return respond(200, {
+        status: "complete",
+        provider: {
+          ...staleClaudeCodeProvider(),
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+        },
+        created: false,
+      });
+    });
 
     await openProvidersTab();
 
@@ -1194,7 +1138,7 @@ describe("organization model providers settings", () => {
     mockStaleProviderStory();
     context.mocks.browser.open(context.mocks.browser.authWindow());
     context.mocks.browser.clipboardWriteText();
-    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+    context.mocks.api(codexDeviceAuthContract.complete, ({ respond }) => {
       return respond(200, {
         status: "complete",
         provider: {
@@ -1220,13 +1164,10 @@ describe("organization model providers settings", () => {
   it("cancels workspace Codex reconnect when the dialog closes", async () => {
     mockStaleProviderStory();
     let cancelledSessionToken: string | null = null;
-    context.mocks.api(
-      zeroCodexDeviceAuthContract.cancel,
-      ({ body, respond }) => {
-        cancelledSessionToken = body.sessionToken;
-        return respond(200, { status: "cancelled" });
-      },
-    );
+    context.mocks.api(codexDeviceAuthContract.cancel, ({ body, respond }) => {
+      cancelledSessionToken = body.sessionToken;
+      return respond(200, { status: "cancelled" });
+    });
     await openProvidersTab();
 
     const alert = await screen.findByRole("alert");

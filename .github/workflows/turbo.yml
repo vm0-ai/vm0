@@ -167,7 +167,6 @@ jobs:
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
-      e2b-changed: ${{ steps.detect.outputs.e2b-changed }}
       migration-changed: ${{ steps.detect.outputs.migration-changed }}
       crates-changed: ${{ steps.detect.outputs.crates-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
@@ -223,19 +222,11 @@ jobs:
             fi
           done
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -q "^turbo/scripts/e2b/"; then
-            echo "E2B template changes detected"
-            echo "e2b-changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No E2B template changes"
-            echo "e2b-changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
-            echo "Migration, schema, or JSONB contract changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE '^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/(migration-runner|test-migration-runner-timeouts)\.ts$)'; then
+            echo "Migration, schema, JSONB contract, or migration runner changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration, schema, or JSONB contract changes"
+            echo "No migration, schema, JSONB contract, or migration runner changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -435,14 +426,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
-      # The two heavy app type-checks (api, @vm0/app ≈ 57% of the former
+      # The two heavy app type-checks (api, @okouai/app ≈ 57% of the former
       # serial total) run in the separate lint-types-apps job below. Here we
       # check everything else. Dependency packages resolve via source
       # (exports point at src/*.ts, no build step), so the apps job can run
       # its tsc standalone without re-running these — no duplicated work.
       - name: Type Check (shared packages)
         working-directory: turbo
-        run: pnpm turbo run check-types --concurrency=1 --filter='!api' --filter='!@vm0/app'
+        run: pnpm turbo run check-types --concurrency=1 --filter='!api' --filter='!@okouai/app'
 
   lint-types-apps:
     needs: [detect-turbo-ts-checks]
@@ -503,9 +494,9 @@ jobs:
           ' "$result_file"
 
           exit "$status"
-      - name: Type Check (@vm0/app)
+      - name: Type Check (@okouai/app)
         working-directory: turbo
-        run: pnpm --filter @vm0/app run check-types
+        run: pnpm --filter @okouai/app run check-types
 
   lint-format:
     needs: [detect-turbo-ts-checks]
@@ -540,11 +531,11 @@ jobs:
     needs: [detect-turbo-ts-checks, prepare]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Run on perf branches, on PRs labeled `bench`, or on pushes to main (baseline).
+    # Run on every PR commit and on pushes to main (baseline). Skipped in the
+    # merge queue: benches only report numbers, they must not delay merges.
     if: |
       needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
-        startsWith(github.head_ref, 'perf/') ||
-        contains(github.event.pull_request.labels.*.name, 'bench') ||
+        github.event_name == 'pull_request' ||
         (github.event_name == 'push' && github.ref == 'refs/heads/main')
       )
     container:
@@ -567,7 +558,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter @vm0/db db:migrate
+        run: pnpm --filter @okouai/db db:migrate
       - name: Bench API
         working-directory: turbo
         env:
@@ -585,6 +576,39 @@ jobs:
           path: |
             turbo/apps/api/bench-results.json
             turbo/apps/api/bench-results-p90.json
+          if-no-files-found: warn
+
+  bench-app:
+    needs: [detect-turbo-ts-checks, prepare]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Run on every PR commit and on pushes to main (baseline). Skipped in the
+    # merge queue: benches only report numbers, they must not delay merges.
+    if: |
+      needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
+        github.event_name == 'pull_request' ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      )
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain-init
+      - name: Bench App
+        working-directory: turbo
+        run: pnpm -F @okouai/app exec vitest bench --run --outputJson bench-results.json
+      - name: Print bench summary
+        if: success() || failure()
+        working-directory: turbo/apps/platform
+        run: node scripts/print-bench-summary.mjs bench-results-p90.json
+      - name: Upload bench results
+        if: success() || failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-app-results
+          path: |
+            turbo/apps/platform/bench-results.json
+            turbo/apps/platform/bench-results-p90.json
           if-no-files-found: warn
 
   test-migrate:
@@ -706,7 +730,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/cli --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@okouai/cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -738,7 +762,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test App
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/app --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@okouai/app --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -783,13 +807,14 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter @vm0/db db:migrate
+        run: pnpm --filter @okouai/db db:migrate
       - name: Test API
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
           FAL_KEY: ${{ secrets.FAL_KEY }}
           BYTEPLUS_API_KEY: ${{ secrets.BYTEPLUS_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           BYTEPLUS_STT_API_KEY: ${{ secrets.BYTEPLUS_STT_API_KEY }}
         run: pnpm vitest run --project=api --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
@@ -820,10 +845,13 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@okouai/core --project=@okouai/ui --project=@okouai/api-contracts --project=@okouai/db --coverage.enabled --coverage.reporter=json
       - name: Test Connectors
         working-directory: turbo
-        run: pnpm -F @vm0/connectors exec vitest run --reporter=default
+        run: pnpm -F @okouai/connectors exec vitest run --reporter=default
+      - name: Test ESLint Config
+        working-directory: turbo
+        run: pnpm -F @okouai/eslint-config test
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -901,6 +929,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -963,7 +992,7 @@ jobs:
             if [ -z "$PARENT_DATABASE_URL" ]; then
               PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
             fi
-            (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @vm0/db db:migrate)
+            (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @okouai/db db:migrate)
           fi
 
           BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
@@ -987,7 +1016,7 @@ jobs:
           fi
 
           cd turbo
-          DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
+          DATABASE_URL="$DATABASE_URL" pnpm -F @okouai/db db:migrate
           ENV=preview DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
 
           echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
@@ -1004,6 +1033,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1157,102 +1187,16 @@ jobs:
           message: |
             API preview: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
 
-      # Step 6: Provision ephemeral E2E test accounts in Clerk
-      - name: Provision E2E test accounts
-        env:
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          # Delete existing users matching JOB_REF+clerk_test
-          users=$(curl -sS -X GET \
-            "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
-            -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
-          ids=$(echo "$users" | jq -r '.[].id' 2>/dev/null || true)
-          for uid in $ids; do
-            curl -sS -X DELETE "https://api.clerk.com/v1/users/${uid}" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null
-          done
-
-          # Create test users + orgs (browser is created via UI sign-up flow)
-          for variant in serial runner runner-real-codex runner-real-claude; do
-            email="${JOB_REF}+clerk_test+${variant}@vm0-e2e.ai"
-            encoded_email=$(jq -rn --arg email "$email" '$email|@uri')
-            existing_users=$(curl -sS -X GET \
-              "https://api.clerk.com/v1/users?email_address%5B%5D=${encoded_email}&limit=100" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
-            existing_ids=$(echo "$existing_users" | jq -r --arg email "$email" '.[] | select(.email_addresses[]?.email_address == $email) | .id' 2>/dev/null || true)
-            for uid in $existing_ids; do
-              curl -sS -X DELETE "https://api.clerk.com/v1/users/${uid}" \
-                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null
-            done
-
-            user=$(curl -sS -X POST "https://api.clerk.com/v1/users" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-              -H "Content-Type: application/json" \
-              -d "{\"email_address\":[\"${email}\"],\"skip_password_requirement\":true,\"legal_accepted_at\":\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"}")
-            user_id=$(echo "$user" | jq -r '.id')
-            if [[ "$user_id" == "null" || -z "$user_id" ]]; then
-              echo "Error: Failed to create user ${email}"
-              echo "Clerk response: ${user}"
-              exit 1
-            fi
-            echo "Created user ${email} -> ${user_id}"
-
-            org=$(curl -sS -X POST "https://api.clerk.com/v1/organizations" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-              -H "Content-Type: application/json" \
-              -d "{\"name\":\"e2e-${variant}-${JOB_REF}\",\"created_by\":\"${user_id}\"}")
-            org_id=$(echo "$org" | jq -r '.id')
-            if [[ "$org_id" == "null" || -z "$org_id" ]]; then
-              echo "Error: Failed to create org for user ${email}"
-              echo "Clerk response: ${org}"
-              exit 1
-            fi
-            echo "Created org -> ${org_id}"
-          done
-
-      # Step 7: Generate test tokens for E2E tests (one per test user)
-      - name: Generate E2E test tokens
-        run: |
-          e2e/scripts/generate-test-token.sh \
-            "${JOB_REF}+clerk_test+serial@vm0-e2e.ai" \
-            "/tmp/e2e-api-credentials-serial.json"
-          e2e/scripts/generate-test-token.sh \
-            "${JOB_REF}+clerk_test+runner@vm0-e2e.ai" \
-            "/tmp/e2e-api-credentials-runner.json"
-          e2e/scripts/generate-test-token.sh \
-            "${JOB_REF}+clerk_test+runner-real-codex@vm0-e2e.ai" \
-            "/tmp/e2e-api-credentials-runner-real-codex.json"
-          e2e/scripts/generate-test-token.sh \
-            "${JOB_REF}+clerk_test+runner-real-claude@vm0-e2e.ai" \
-            "/tmp/e2e-api-credentials-runner-real-claude.json"
-        env:
-          VM0_API_BACKEND_URL: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-
-      - name: Upload E2E test tokens
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-tokens
-          path: |
-            /tmp/e2e-api-credentials-serial.json
-            /tmp/e2e-api-credentials-runner.json
-            /tmp/e2e-api-credentials-runner-real-codex.json
-            /tmp/e2e-api-credentials-runner-real-claude.json
-          retention-days: 1
-
   # Build the canonical Cloudflare app artifact independently of Vercel, then
-  # deploy the verified R2 artifact to a Pages preview branch. Release PRs keep
-  # the provider preview but do not receive a custom preview domain.
+  # deploy the verified R2 artifact to a Pages preview branch. The shared
+  # gateway fronts that branch at the stable app preview URL.
   deploy-app:
-    needs: [detect-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      deployment-url: ${{ steps.pages-deploy.outputs.url }}
+      preview-url: ${{ steps.app-preview.outputs.url }}
     concurrency:
-      group: deploy-app-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      group: deploy-app-${{ github.sha }}
       cancel-in-progress: false
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -1272,7 +1216,6 @@ jobs:
       AWS_DEFAULT_REGION: auto
       CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
       CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
-      CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
       PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
@@ -1280,7 +1223,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Resolve Cloudflare Pages preview branch
         id: pages-branch
@@ -1295,43 +1238,13 @@ jobs:
             "$MERGE_GROUP_HEAD_REF")"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve Cloudflare Pages custom preview domain
-        id: pages-custom-domain
-        if: needs.detect-release.outputs.skip != 'true' || github.event_name == 'push'
+      - name: Resolve app preview gateway URL
+        id: app-preview
         env:
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
         run: |
           : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          echo "domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
           echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
-
-      - name: Begin Cloudflare Pages custom preview domain validation
-        id: pages-domain-validation
-        if: steps.pages-custom-domain.outputs.domain != ''
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
-        run: |
-          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          status="$(bash .github/scripts/manage-okou-pages-domain.sh \
-            begin \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_CUSTOM_DOMAIN" \
-            "$PAGES_BRANCH")"
-          case "$status" in
-            active|pending) ;;
-            *)
-              echo "Unexpected Pages domain status: ${status}" >&2
-              exit 1
-              ;;
-          esac
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          echo "Cloudflare Pages domain validation status: ${status}"
 
       - uses: ./.github/actions/toolchain-init
 
@@ -1408,8 +1321,8 @@ jobs:
           VITE_VAPID_PUBLIC_KEY_PROD: ${{ vars.VAPID_PUBLIC_KEY_PROD }}
         run: |
           cd turbo
-          pnpm --filter @vm0/app exec vite build --sourcemap
-          pnpm --filter @vm0/app exec sentry-cli sourcemaps inject dist
+          pnpm --filter @okouai/app exec vite build --sourcemap
+          pnpm --filter @okouai/app exec sentry-cli sourcemaps inject dist
 
       - name: Create artifact manifest
         if: steps.existing.outputs.exists != 'true'
@@ -1540,15 +1453,13 @@ jobs:
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
           WRANGLER_OUTPUT_FILE_PATH: /tmp/wrangler-pages-output.ndjson
-        working-directory: turbo
         run: |
           set -euo pipefail
-          : "${CLOUDFLARE_API_TOKEN:?CF_PAGES_DEPLOY_API_TOKEN secret is required}"
-          pnpm --filter @vm0/host-worker exec wrangler pages deploy "$PAGES_DIST" \
-            --project-name "$CF_PAGES_PROJECT_NAME" \
-            --branch "$PAGES_BRANCH" \
-            --commit-hash "$ARTIFACT_SHA" \
-            --commit-dirty=false
+          bash .github/scripts/deploy-okou-pages.sh \
+            "$PAGES_DIST" \
+            "$CF_PAGES_PROJECT_NAME" \
+            "$PAGES_BRANCH" \
+            "$ARTIFACT_SHA"
 
           deployment="$(
             jq --slurp --compact-output \
@@ -1580,28 +1491,7 @@ jobs:
 
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
 
-      - name: Finalize Cloudflare Pages custom preview domain
-        if: steps.pages-custom-domain.outputs.domain != ''
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
-          PAGES_DOMAIN_STATUS: ${{ steps.pages-domain-validation.outputs.status }}
-        run: |
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          if [[ "$PAGES_DOMAIN_STATUS" == "active" ]]; then
-            echo "Cloudflare Pages custom branch domain already active: https://${PAGES_CUSTOM_DOMAIN}"
-            exit 0
-          fi
-          bash .github/scripts/manage-okou-pages-domain.sh \
-            finish \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_CUSTOM_DOMAIN" \
-            "$PAGES_BRANCH"
-
-      - name: Wait for Cloudflare Pages preview assets
+      - name: Wait for Cloudflare Pages deployment readiness
         env:
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
           PAGES_URL: ${{ steps.pages-deploy.outputs.url }}
@@ -1663,7 +1553,13 @@ jobs:
           )
           echo "Checking ${#probe_files[@]} app and Clerk JavaScript assets"
 
-          probe_curl_args=()
+          document_body="$(mktemp)"
+          trap 'rm -f "$document_body"' EXIT
+          application_url="${PAGES_URL%/}/sign-up"
+          probe_curl_args=(
+            --output "$document_body"
+            --url "$application_url"
+          )
           for probe_file in "${probe_files[@]}"; do
             relative_path="${probe_file#"$PAGES_DIST"/}"
             probe_curl_args+=(
@@ -1672,26 +1568,48 @@ jobs:
             )
           done
 
+          expected_probe_result_count=$((${#probe_files[@]} + 1))
           ready_passes=0
           for attempt in {1..60}; do
-            probe_results="$(curl \
+            probe_succeeded=false
+            if probe_results="$(curl \
               --silent \
               --max-time 10 \
               --parallel \
               --parallel-immediate \
               --parallel-max 16 \
               --write-out $'%{http_code}|%{content_type}|%{url_effective}\n' \
-              "${probe_curl_args[@]}" 2>/dev/null || true)"
-            probe_result_count="$(grep -c '|' <<< "$probe_results")"
-            not_ready_files="$(
-              while IFS='|' read -r status content_type asset_url; do
-                if [[ "$status" != 2?? || "$content_type" != *javascript* ]]; then
-                  printf "%s\n" "${asset_url#"${PAGES_URL%/}/"}"
+              "${probe_curl_args[@]}" 2>/dev/null)"; then
+              probe_succeeded=true
+            fi
+            probe_result_count=0
+            not_ready_files=""
+            document_ready=false
+            while IFS= read -r probe_result; do
+              if [[ "$probe_result" != *"|"* ]]; then
+                continue
+              fi
+              ((probe_result_count += 1))
+              IFS='|' read -r status content_type resource_url <<< "$probe_result"
+              if [[ "$resource_url" == "$application_url" ]]; then
+                if [[ \
+                  "$status" == 2?? &&
+                  "$content_type" == *text/html* \
+                ]] && grep -Fq 'id="app-bootstrap-skeleton"' "$document_body"; then
+                  document_ready=true
                 fi
-              done <<< "$probe_results"
-            )"
-            if (( probe_result_count != ${#probe_files[@]} )); then
+              elif [[ "$status" != 2?? || "$content_type" != *javascript* ]]; then
+                not_ready_files+="${not_ready_files:+$'\n'}${resource_url#"${PAGES_URL%/}/"}"
+              fi
+            done <<< "$probe_results"
+            if (( probe_result_count != expected_probe_result_count )); then
               not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness response"
+            fi
+            if [[ "$probe_succeeded" != true ]]; then
+              not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness transfer"
+            fi
+            if [[ "$document_ready" != true ]]; then
+              not_ready_files+="${not_ready_files:+$'\n'}application document"
             fi
 
             if [[ -z "$not_ready_files" ]]; then
@@ -1700,29 +1618,52 @@ jobs:
               ready_passes=0
               first_not_ready="${not_ready_files%%$'\n'*}"
               not_ready_count="$(wc -l <<< "$not_ready_files")"
-              echo "::warning::${not_ready_count} preview assets are not ready (attempt ${attempt}/60); first: ${first_not_ready}"
+              echo "::warning::${not_ready_count} preview resources are not ready (attempt ${attempt}/60); first: ${first_not_ready}"
             fi
 
             if (( ready_passes >= 2 )); then
-              echo "Cloudflare Pages preview assets are ready"
+              echo "Cloudflare Pages deployment is ready"
               exit 0
             fi
             sleep 2
           done
 
-          echo "::error::Cloudflare Pages preview assets did not become ready"
+          echo "::error::Cloudflare Pages deployment did not become ready"
+          exit 1
+
+      - name: Smoke test app preview gateway
+        if: steps.app-preview.outputs.url != ''
+        env:
+          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          response_headers="$(mktemp)"
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error \
+              --dump-header "$response_headers" \
+              --output /dev/null \
+              "${APP_PREVIEW_URL}/" && \
+              grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
+                "$response_headers"; then
+              echo "App preview gateway is ready"
+              exit 0
+            fi
+            echo "::warning::App preview gateway is not ready (attempt ${attempt}/12)"
+            sleep 5
+          done
+          echo "::error::${APP_PREVIEW_URL} did not use vm0-preview-gateway"
           exit 1
 
       - name: Record Cloudflare Pages preview
         env:
+          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
           PAGES_DEPLOYMENT_URL: ${{ steps.pages-deploy.outputs.url }}
-          PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
           PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
         run: |
           echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
           echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n "$PAGES_CUSTOM_URL" ]]; then
-            echo "Cloudflare Pages custom preview: ${PAGES_CUSTOM_URL}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$APP_PREVIEW_URL" ]]; then
+            echo "App preview gateway: ${APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   deploy-stripe-listener:
@@ -1731,21 +1672,19 @@ jobs:
     concurrency:
       group: deploy-stripe-listener-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    # Runs in parallel with deploy-api: the forward URL is the deterministic
+    # Runs in parallel with deploy-api whenever a deployed E2E consumer may
+    # exercise a payment flow. The forward URL is the deterministic
     # prepare.outputs.api-preview-url (a stable alias, not a deploy-api output),
-    # and Stripe webhooks only fire during e2e payment tests, which run after
-    # deploy-api has succeeded — so the listener never forwards to a dead API.
+    # and Stripe webhooks only fire after deploy-api has succeeded — so the
+    # listener never forwards to a dead API.
     needs: [prepare]
     if: |
       always() &&
       github.event_name != 'push' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.api-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.platform-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
+        needs.prepare.outputs.turbo-runner-consumer-needed == 'true' ||
+        needs.prepare.outputs.playwright-runner-consumer-needed == 'true'
       )
     steps:
       - uses: actions/checkout@v7.0.1
@@ -1853,13 +1792,22 @@ jobs:
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.deployment-url }}
-          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.deployment-url }}/_/skeleton
+          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
           VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
+          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+${{ github.run_id }}-${{ github.run_attempt }}+browser@vm0-e2e.ai
+      - name: Cleanup browser E2E account
+        if: always()
+        shell: bash
+        run: |
+          source e2e/helpers/browser.bash
+          delete_e2e_account_if_exists
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+${{ github.run_id }}-${{ github.run_attempt }}+browser@vm0-e2e.ai
   cli-e2e-02-playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -1905,10 +1853,10 @@ jobs:
         run: cd e2e && pnpm install --frozen-lockfile
       - name: Check Playwright E2E types
         run: cd e2e && pnpm check-types
-      - name: Run Playwright fixture integration tests
-        run: cd e2e && pnpm test
       - name: Install Playwright browsers
         run: cd e2e && pnpm exec playwright install --with-deps chromium
+      - name: Run Playwright fixture integration tests
+        run: cd e2e && pnpm test
       - name: Start Stripe webhook forwarding
         # Staging receives webhooks from the Dashboard endpoint; PR previews use
         # the long-running listener from deploy-stripe-listener.
@@ -1959,12 +1907,20 @@ jobs:
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          ZERO_APP_URL: ${{ needs.deploy-app.outputs.deployment-url }}
+          OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          E2E_RUNNER_GROUP: ${{ github.event_name == 'push' && 'vm0/playwright-staging' || format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Cleanup Playwright E2E accounts
+        if: always()
+        run: >-
+          cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
+          cleanup-generation playwright,paid-onboarding
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
       - name: Print Stripe webhook forwarding log
         if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
@@ -1988,23 +1944,38 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  build-cli:
+  # Build one self-contained package archive per checked-out commit and upload
+  # it to the same canonical R2 bucket used by deploy-app. The ready marker is
+  # written last so PR, merge-group, main, and release runs can safely reuse it.
+  deploy-cli:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-cli-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      cancel-in-progress: false
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare]
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.api-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
-      )
+    if: >-
+      ${{
+        github.actor != 'dependabot[bot]' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      CLI_STATIC_BASE_URL: https://static.vm0.io
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+      R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - uses: pnpm/action-setup@v6
         with:
           version: 10.33.4
@@ -2013,56 +1984,186 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: turbo/pnpm-lock.yaml
+      - name: Initialize pnpm cache directory
+        run: mkdir -p "$(pnpm store path --silent)"
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install AWS CLI
+        run: |
+          architecture="$(dpkg --print-architecture)"
+          case "$architecture" in
+            amd64) aws_architecture="x86_64" ;;
+            arm64) aws_architecture="aarch64" ;;
+            *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+          esac
+
+          curl -fsSL --retry 3 \
+            "https://awscli.amazonaws.com/awscli-exe-linux-${aws_architecture}.zip" \
+            --output /tmp/awscliv2.zip
+          python3 -m zipfile -e /tmp/awscliv2.zip /tmp/awscli
+          chmod +x /tmp/awscli/aws/install /tmp/awscli/aws/dist/aws
+          /tmp/awscli/aws/install
+          aws --version
+
+      - name: Resolve artifact commit SHA
+        id: artifact
+        run: |
+          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+          prefix="okou-cli/$sha"
+          {
+            echo "sha=$sha"
+            echo "prefix=$prefix"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing artifact
+        id: existing
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_ACCESS_KEY_ID:?R2_STATIC_ACCESS_KEY_ID secret is required}"
+          : "${AWS_SECRET_ACCESS_KEY:?R2_STATIC_SECRET_ACCESS_KEY secret is required}"
+          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID variable is required}"
+          : "${R2_BUCKET_NAME:?R2_STATIC_BUCKET_NAME variable is required}"
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          ready_key="${ARTIFACT_PREFIX}/ready.json"
+          error_log="$(mktemp)"
+
+          set +e
+          aws s3api head-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "$ready_key" \
+            >/dev/null 2>"$error_log"
+          status=$?
+          set -e
+
+          if (( status == 0 )); then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Artifact already ready: s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/"
+          elif grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$error_log" >&2
+            exit "$status"
+          fi
+
       - name: Install CLI dependencies
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli...
+        if: steps.existing.outputs.exists != 'true'
+        run: cd turbo && pnpm install --frozen-lockfile --filter @okouai/cli...
       - name: Build CLI
-        run: cd turbo && pnpm --filter @vm0/cli build
-      - name: Verify CLI package contents
-        shell: bash
+        if: steps.existing.outputs.exists != 'true'
+        run: cd turbo && pnpm --filter @okouai/cli build
+        env:
+          DEFAULT_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLI }}
+
+      - name: Create canonical CLI artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+        run: |
+          mkdir -p /tmp/okou-cli-artifact
+          bash .github/scripts/build-okou-cli-artifact.sh \
+            "$ARTIFACT_SHA" \
+            /tmp/okou-cli-artifact
+
+      - name: Upload canonical CLI artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
         run: |
           set -euo pipefail
-          cd turbo/apps/cli/dist
-          # Ensure all imported chunks are present in the package
-          for f in zero.js; do
-            chunks=$(grep -oP './chunk-[A-Z0-9]+\.js' "$f" 2>/dev/null || true)
-            for chunk in $chunks; do
-              chunk_file="${chunk#./}"
-              if [ ! -f "$chunk_file" ]; then
-                echo "ERROR: $f imports $chunk but file is missing from dist/"
-                exit 1
-              fi
-            done
-          done
-          # Verify npm pack includes all JS files
-          npm pack --dry-run 2>&1 | tee /tmp/pack-list.txt
-          for js in *.js; do
-            if ! grep -q "$js" /tmp/pack-list.txt; then
-              echo "ERROR: $js exists in dist/ but would not be included in npm package"
-              exit 1
-            fi
-          done
-          echo "CLI package verification passed"
-      - name: Deploy CLI with production dependencies
-        run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted --config.ignore-scripts=true /tmp/cli-deploy
-      - name: Smoke test deployed CLI
-        shell: bash
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
+          cache_control="public, max-age=31536000, immutable"
+
+          aws s3 rm "$artifact_uri/" \
+            --endpoint-url "$r2_endpoint" \
+            --recursive
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/package.tgz" \
+            --body /tmp/okou-cli-artifact/package.tgz \
+            --content-type application/gzip \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/manifest.json" \
+            --body /tmp/okou-cli-artifact/manifest.json \
+            --content-type application/json \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/ready.json" \
+            --body /tmp/okou-cli-artifact/ready.json \
+            --content-type application/json \
+            --cache-control "$cache_control" \
+            --if-none-match "*"
+
+          echo "Artifact ready: ${artifact_uri}/"
+
+      - name: Download existing CLI artifact
+        if: steps.existing.outputs.exists == 'true'
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          mkdir -p /tmp/okou-cli-artifact
+          aws s3 cp \
+            "s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/" \
+            /tmp/okou-cli-artifact/ \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --recursive
+
+      - name: Verify and smoke test CLI artifact
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
         run: |
           set -euo pipefail
-          cd /tmp/cli-deploy
-          # Eager imports load the full dependency tree
-          # (@sentry/node → @prisma/instrumentation → @opentelemetry/*).
-          # Any broken transitive dep will fail here.
-          node dist/zero.js --help
+          bash .github/scripts/verify-okou-cli-artifact.sh \
+            /tmp/okou-cli-artifact \
+            "$ARTIFACT_SHA"
+          bash .github/scripts/smoke-okou-cli-artifact.sh \
+            /tmp/okou-cli-artifact/package.tgz
+
+      - name: Verify CLI artifact through CDN
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+          cdn_dir="$(mktemp -d)"
+          for filename in package.tgz manifest.json ready.json; do
+            curl -fsSL \
+              --retry 5 \
+              --retry-delay 2 \
+              --retry-all-errors \
+              "${CLI_STATIC_BASE_URL}/${ARTIFACT_PREFIX}/${filename}" \
+              --output "${cdn_dir}/${filename}"
+          done
+          bash .github/scripts/verify-okou-cli-artifact.sh \
+            "$cdn_dir" \
+            "$ARTIFACT_SHA"
+          bash .github/scripts/smoke-okou-cli-artifact.sh \
+            "$cdn_dir/package.tgz"
+
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: cli-dist
-          path: /tmp/cli-deploy
+          name: cli-package
+          path: /tmp/okou-cli-artifact/package.tgz
           retention-days: 1
 
-  # Run CLI E2E tests - Phase 1: Serial tests (org/provider CRUD)
+  # Smoke-test the deployed CLI package entry point.
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     concurrency:
@@ -2071,8 +2172,7 @@ jobs:
     needs:
       [
         prepare,
-        build-cli,
-        deploy-api,
+        deploy-cli,
         lint-eslint,
         lint-types,
         lint-format,
@@ -2101,63 +2201,28 @@ jobs:
       - name: Download CLI artifact
         uses: actions/download-artifact@v8.0.1
         with:
-          name: cli-dist
-          path: /tmp/cli-deploy
+          name: cli-package
+          path: /tmp/cli-package
       - name: Install CLI globally
         run: |
           set -euo pipefail
-          # Derive from `node` on PATH so sudo and user see the same prefix
-          # regardless of npmrc / env-var inheritance.
-          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
-          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
-          sudo rm -rf "$CLI_DIR"
-          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
-          sudo cp -a /tmp/cli-deploy "$CLI_DIR"
-          sudo chmod +x "$CLI_DIR/dist/zero.js"
-          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
-          zero --help
-      - name: Download E2E test tokens
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: e2e-tokens
-          path: /tmp
-      - name: Setup E2E API credentials
-        run: |
-          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-serial.json)
-          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-serial.json)
-          echo "::add-mask::$token"
-          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
-          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
-
-      - name: Start Cron Simulator
-        run: |
-          chmod +x ./e2e/scripts/cron-simulator.sh
-          ./e2e/scripts/cron-simulator.sh "$VM0_API_BACKEND_URL" 60 &
-          echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
-        env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
+          package_root="$(mktemp -d)"
+          tar -xzf /tmp/cli-package/package.tgz -C "$package_root"
+          node_prefix=$(dirname "$(dirname "$(command -v node)")")
+          cli_dir="$node_prefix/lib/node_modules/@okouai/cli"
+          sudo rm -rf "$cli_dir"
+          sudo mkdir -p "$node_prefix/lib/node_modules/@okouai"
+          sudo cp -a "$package_root/package" "$cli_dir"
+          sudo chmod +x "$cli_dir/okou.js"
+          sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/okou"
+          okou --help
+          okou __agent-loop --help
       - name: Run Serial E2E Tests
         run: |
           echo "=== Running Serial E2E Tests ==="
           mkdir -p e2e/results
           BATS_TEST_TIMEOUT=30 ./e2e/test/libs/bats/bin/bats -T --report-formatter junit --output e2e/results ./e2e/tests/01-serial/*.bats
           echo "✅ Serial tests passed"
-        env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          USE_MOCK_CLAUDE: "true"
-          USE_MOCK_CODEX: "true"
-          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
-          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
-          # Slack tests override BATS_TEST_TIMEOUT to 90s at file scope,
-          # so the polling budget can go up to ~60s and still leave
-          # margin for the state fetch + seed round-trips.
-          SLACK_POLL_TIMEOUT_S: 60
-          SLACK_POLL_INTERVAL_S: 3
 
       - name: Print E2E trace log
         if: always()
@@ -2184,14 +2249,6 @@ jobs:
           path: e2e/results/
           retention-days: 7
 
-      - name: Stop Cron Simulator
-        if: always()
-        run: |
-          if [ -n "$CRON_SIMULATOR_PID" ]; then
-            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
-            echo "Cron simulator stopped"
-          fi
-
   # Deploy runner prepare: wait for the shared runner-image workflow manifest.
   # The runner-image workflow owns cross-compilation and all-host image build.
   deploy-runner-prepare:
@@ -2214,8 +2271,7 @@ jobs:
     outputs:
       bin-dir: ${{ steps.manifest.outputs.bin-dir }}
       runner-dir: ${{ steps.manifest.outputs.runner-dir }}
-      runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
-      chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
+      runner-sha-map: ${{ steps.manifest.outputs.runner-sha-map }}
       rootfs-hash-map: ${{ steps.manifest.outputs.rootfs-hash-map }}
       snapshot-hash-map: ${{ steps.manifest.outputs.snapshot-hash-map }}
     steps:
@@ -2229,54 +2285,6 @@ jobs:
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Generate runner E2E test matrix
-        id: runner-matrix
-        shell: bash
-        run: |
-          # Split test files into chunks using weight-based bin-packing.
-          # Weight = number of @test cases per file.
-          # Greedy assignment: heaviest file goes to the lightest chunk,
-          # ensuring heavy tests are spread across chunks instead of clustering.
-          NUM_CHUNKS=12
-
-          # Compute weight per file: count @test declarations
-          declare -A WEIGHTS
-          for f in e2e/tests/03-runner/*.bats; do
-            count=$(grep -cE '^@test\b' "$f" || true)
-            WEIGHTS[$f]=$(( count > 0 ? count : 1 ))
-          done
-
-          # Sort files by weight descending (heaviest first)
-          mapfile -t FILES < <(
-            for f in "${!WEIGHTS[@]}"; do echo "${WEIGHTS[$f]} $f"; done | sort -rn | awk '{print $2}'
-          )
-          NUM_FILES=${#FILES[@]}
-          [ "$NUM_CHUNKS" -gt "$NUM_FILES" ] && NUM_CHUNKS=$NUM_FILES
-          echo "Runner E2E: $NUM_FILES files, $NUM_CHUNKS chunks"
-
-          # Greedy bin-packing: assign each file to the chunk with lowest total weight
-          declare -a CHUNK_FILES CHUNK_WEIGHTS
-          for ((i=0; i<NUM_CHUNKS; i++)); do CHUNK_FILES[i]=""; CHUNK_WEIGHTS[i]=0; done
-          for f in "${FILES[@]}"; do
-            # Find lightest chunk
-            min_idx=0
-            for ((i=1; i<NUM_CHUNKS; i++)); do
-              [ "${CHUNK_WEIGHTS[i]}" -lt "${CHUNK_WEIGHTS[min_idx]}" ] && min_idx=$i
-            done
-            CHUNK_FILES[min_idx]="${CHUNK_FILES[min_idx]:+${CHUNK_FILES[min_idx]} }$f"
-            CHUNK_WEIGHTS[min_idx]=$(( CHUNK_WEIGHTS[min_idx] + WEIGHTS[$f] ))
-          done
-
-          CHUNKS="["
-          for ((i=0; i<NUM_CHUNKS; i++)); do
-            [ "$i" -gt 0 ] && CHUNKS="$CHUNKS,"
-            file_count=$(echo "${CHUNK_FILES[$i]}" | wc -w)
-            CHUNKS="$CHUNKS{\"index\":$((i+1)),\"files\":\"${CHUNK_FILES[$i]}\"}"
-            echo "Chunk $((i+1)): ${file_count} files, weight ${CHUNK_WEIGHTS[$i]}"
-          done
-          echo "matrix=${CHUNKS}]" >> "$GITHUB_OUTPUT"
-          echo "chunk-count=${NUM_CHUNKS}" >> "$GITHUB_OUTPUT"
 
       - name: Wait for runner image manifest
         id: manifest
@@ -2296,12 +2304,13 @@ jobs:
   # Waits for both deploy-runner-prepare (binaries + image) and deploy-api (preview URL)
   deploy-runner-start:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     concurrency:
       group: deploy-runner-start-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs: [prepare, deploy-runner-prepare, deploy-api]
-    outputs:
-      total-capacity: ${{ steps.start.outputs.total-capacity }}
     # Normal starts should finish quickly; failures need enough room for the
     # bounded partial-start cleanup watchdog to run before GitHub kills the job.
     timeout-minutes: 8
@@ -2324,477 +2333,517 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
-      - name: Rebuild config and start runner service on all hosts
-        id: start
+      # The same host-local lock is used by closed-PR cleanup. It spans the
+      # manifest check, any validated recovery, and service readiness so a late
+      # approval cannot turn the cleanup handoff into a check-then-act race.
+      - name: Reconcile and start runner under lifecycle lock
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_DEFAULT_REGION: auto
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
+          CURRENT_EVENT: ${{ github.event_name }}
+          CURRENT_PR_HEAD_REF: ${{ github.head_ref || '' }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          JOB_REF: ${{ needs.prepare.outputs.runner-image-job-ref }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          RUNNER_SERVICE_REF: ${{ github.event_name == 'push' && 'playwright-staging' || needs.prepare.outputs.job-ref }}
-          RUNNER_GROUP: ${{ github.event_name == 'push' && 'vm0/playwright-staging' || format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
-          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
-          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          REPO: ${{ github.repository }}
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
-          SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
           RUNNER_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          RUNNER_GROUP: ${{ format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
+          RUNNER_SERVICE_REF: ${{ needs.prepare.outputs.job-ref }}
+          RUNNER_SHA_MAP: ${{ needs.deploy-runner-prepare.outputs.runner-sha-map }}
+          SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          set -euo pipefail
+          .github/scripts/with-runner-lifecycle-lock.sh \
+            .github/scripts/reconcile-and-start-runner-groups.sh
 
-          read_host_capacity() {
-            local HOST=$1
-            local RUNNER_NAME=$2
-            local REMOTE="${METAL_USER}@${HOST}"
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service wait-running --name ${RUNNER_NAME} --timeout-secs 120"
-          }
-
-          start_on_host() {
-            set -euo pipefail
-
-            local HOST=$1
-            local HOST_INDEX=$2
-            local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
-            local RUNNER_DIRNAME="${RUNNER_DIR##*/}"
-            local REMOTE="${METAL_USER}@${HOST}"
-            local MC
-            echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
-
-            # Look up per-host hashes
-            local ROOTFS_HASH SNAPSHOT_HASH
-            ROOTFS_HASH=$(echo "$ROOTFS_HASH_MAP" | jq -r --arg h "$HOST" '.[$h]')
-            SNAPSHOT_HASH=$(echo "$SNAPSHOT_HASH_MAP" | jq -r --arg h "$HOST" '.[$h]')
-            if [ -z "$ROOTFS_HASH" ] || [ "$ROOTFS_HASH" = "null" ] \
-                || [ -z "$SNAPSHOT_HASH" ] || [ "$SNAPSHOT_HASH" = "null" ]; then
-              echo "::error::No rootfs/snapshot hash found for ${HOST} in hash map"
-              return 1
-            fi
-
-            # Guard: ensure binary exists (fails fast on "Re-run failed jobs" without prepare)
-            # shellcheck disable=SC2029
-            if ! ssh "$REMOTE" "test -x ${BIN_DIR}/runner"; then
-              echo "::error::Runner binary not found on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
-              return 1
-            fi
-
-            # Generate runner.yaml with real preview URL (no build needed, uses cached hashes)
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
-              --profile vm0/default \
-              --rootfs-hash ${ROOTFS_HASH} \
-              --snapshot-hash ${SNAPSHOT_HASH} \
-              --name ${RUNNER_NAME} \
-              --group ${RUNNER_GROUP} \
-              --runner-dirname ${RUNNER_DIRNAME} \
-              --concurrency-factor 1.5 \
-              --api-url ${RUNNER_API_URL} \
-              --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
-
-            # Stop any existing service from a previous run (e.g., re-run after test failure).
-            # Use cleanup semantics so a stale or wedged unit cannot hang this start path.
-            # shellcheck disable=SC2029
-            timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start"
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
-
-            # Start as systemd transient service
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
-              --name ${RUNNER_NAME} \
-              --config ${RUNNER_DIR}/runner.yaml \
-              --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
-              --env USE_MOCK_CLAUDE=true \
-              --env USE_MOCK_CODEX=true"
-
-            # Wait for the runner to become job-admitting before health checks.
-            # systemd-run returns once the process starts, but startup
-            # readiness can keep status.json at mode=starting for longer.
-            if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
-              return 1
-            fi
-            echo "Runner ready on ${HOST}: max_concurrent=${MC}"
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
-            echo "=== Runner started on ${HOST} ==="
-          }
-
-          LOG_DIR=$(mktemp -d)
-          HOSTS=()
-          PIDS=()
-          PGIDS=()
-          RUNNER_START_SUCCEEDED=0
-          RUNNER_START_SIGNAL_EXIT=0
-          RUNNER_START_RECORDING=0
-
-          cleanup_logs() {
-            rm -rf "$LOG_DIR"
-          }
-
-          request_runner_start_exit() {
-            RUNNER_START_SIGNAL_EXIT=$1
-            if [ "$RUNNER_START_RECORDING" -ne 1 ]; then
-              exit "$RUNNER_START_SIGNAL_EXIT"
-            fi
-          }
-
-          check_runner_start_exit() {
-            if [ "$RUNNER_START_SIGNAL_EXIT" -ne 0 ]; then
-              exit "$RUNNER_START_SIGNAL_EXIT"
-            fi
-          }
-
-          process_group_for_pid() {
-            local PID=$1
-            ps -o pgid= -p "$PID" 2>/dev/null | tr -d ' '
-          }
-
-          stop_background_start_jobs() {
-            local JOB_PIDS=()
-            local START_PGIDS=()
-            local WAIT_PIDS=()
-            local CURRENT_PGID
-            CURRENT_PGID=$(process_group_for_pid "$$" || true)
-            for PGID in "${PGIDS[@]}"; do
-              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
-                START_PGIDS+=("$PGID")
-              fi
-            done
-            for PID in $(jobs -pr); do
-              JOB_PIDS+=("$PID")
-              WAIT_PIDS+=("$PID")
-            done
-            for PID in "${PIDS[@]}"; do
-              WAIT_PIDS+=("$PID")
-            done
-            for PID in "${JOB_PIDS[@]}"; do
-              local PGID
-              PGID=$(process_group_for_pid "$PID" || true)
-              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
-                START_PGIDS+=("$PGID")
-              else
-                kill -TERM "$PID" 2>/dev/null || true
-              fi
-            done
-            for PGID in "${START_PGIDS[@]}"; do
-              kill -TERM -- "-$PGID" 2>/dev/null || true
-            done
-            for PGID in "${START_PGIDS[@]}"; do
-              kill -KILL -- "-$PGID" 2>/dev/null || true
-            done
-            for PID in "${JOB_PIDS[@]}"; do
-              kill -KILL "$PID" 2>/dev/null || true
-            done
-            for PID in "${WAIT_PIDS[@]}"; do
-              wait "$PID" 2>/dev/null || true
-            done
-          }
-
-          stop_started_hosts() {
-            local STOP_PIDS=()
-            local HOST_INDEX=0
-            for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-              HOST_INDEX=$((HOST_INDEX + 1))
-              local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
-              local REMOTE="${METAL_USER}@${HOST}"
-              echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
-              (
-                # The runner cleanup command has per-action deadlines; keep the
-                # outer SSH watchdog longer than the combined worst-case budget.
-                # shellcheck disable=SC2029
-                timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start" >/dev/null || true
-              ) &
-              STOP_PIDS+=($!)
-            done
-            for PID in "${STOP_PIDS[@]}"; do
-              wait "$PID" 2>/dev/null || true
-            done
-          }
-
-          cleanup_runner_start() {
-            local EXIT_CODE=$?
-            trap - EXIT
-            trap '' INT TERM
-            if [ "$RUNNER_START_SUCCEEDED" -ne 1 ]; then
-              stop_background_start_jobs
-              stop_started_hosts
-            fi
-            cleanup_logs
-            exit "$EXIT_CODE"
-          }
-
-          trap cleanup_runner_start EXIT
-          trap 'request_runner_start_exit 130' INT
-          trap 'request_runner_start_exit 143' TERM
-          export -f read_host_capacity start_on_host
-          HOST_INDEX=0
-          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            HOST_INDEX=$((HOST_INDEX + 1))
-            HOSTS+=("$HOST")
-            RUNNER_START_RECORDING=1
-            setsid bash -c 'start_on_host "$@"' start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
-            PIDS+=($!)
-            PGIDS+=($!)
-            RUNNER_START_RECORDING=0
-            check_runner_start_exit
-          done
-
-          FAILED=0
-          for i in "${!PIDS[@]}"; do
-            if ! wait "${PIDS[$i]}"; then
-              check_runner_start_exit
-              FAILED=1
-              echo "::error::Runner start failed on ${HOSTS[$i]}"
-            fi
-            check_runner_start_exit
-            echo "=== ${HOSTS[$i]} ==="
-            cat "${LOG_DIR}/${HOSTS[$i]}.log"
-            check_runner_start_exit
-          done
-          rm -rf "$LOG_DIR"
-          if [ "$FAILED" -ne 0 ]; then
-            exit 1
-          fi
-
-          # Sum auto-detected max_concurrent from all hosts' status.json
-          TOTAL=0
-          HOST_INDEX=0
-          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            HOST_INDEX=$((HOST_INDEX + 1))
-            RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
-            if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
-              check_runner_start_exit
-              FAILED=1
-              break
-            fi
-            check_runner_start_exit
-            echo "Host ${HOST}: max_concurrent=${MC}"
-            TOTAL=$((TOTAL + MC))
-          done
-          if [ "$FAILED" -ne 0 ]; then
-            exit 1
-          fi
-          echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
-          echo "Total capacity across all hosts: ${TOTAL}"
-          RUNNER_START_SUCCEEDED=1
-
-  # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
-  # Bootstrap runner E2E test account (runs once, in parallel with deploy-runner-start)
-  e2e-runner-bootstrap:
+  # Prepare the runner identities and API credentials once, then fan runner
+  # coverage across no more than twelve non-empty file-balanced shards.
+  cli-e2e-03-runner-prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     concurrency:
-      group: e2e-runner-bootstrap-${{ needs.prepare.outputs.job-ref }}
+      group: cli-e2e-03-runner-prepare-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api]
+    needs: [prepare, deploy-api, deploy-app, deploy-stripe-listener]
     if: |
+      always() &&
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
-    timeout-minutes: 2
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
+      needs.deploy-api.result == 'success' &&
+      needs.deploy-app.result == 'success' &&
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
+    outputs:
+      runner-organization-id: ${{ steps.account.outputs.runner-organization-id }}
+      codex-organization-id: ${{ steps.account.outputs.codex-organization-id }}
+      claude-organization-id: ${{ steps.account.outputs.claude-organization-id }}
+      mock-claude-organization-id: ${{ steps.account.outputs.mock-claude-organization-id }}
+      runner-email: ${{ steps.account.outputs.runner-email }}
+      codex-email: ${{ steps.account.outputs.codex-email }}
+      claude-email: ${{ steps.account.outputs.claude-email }}
+      mock-claude-email: ${{ steps.account.outputs.mock-claude-email }}
+      runner-shard-matrix: ${{ steps.shards.outputs.matrix }}
     steps:
-      - name: Download E2E test tokens
-        uses: actions/download-artifact@v8.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Generate runner E2E shard matrix
+        id: shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner)"
+          jq -e '
+            .include | type == "array" and
+            length > 0 and length <= 12 and
+            all(.[]; (.files | type == "array" and length > 0))
+          ' <<<"$matrix" >/dev/null
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+      - name: Prepare runner E2E accounts
+        id: account
+        run: cd e2e && pnpm exec tsx playwright/runner-account.ts prepare
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+      - name: Install Playwright browsers
+        run: cd e2e && pnpm exec playwright install --with-deps chromium
+      - name: Generate runner E2E API tokens
+        run: cd e2e && pnpm exec tsx playwright/runner-token.ts /tmp
+        env:
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          E2E_RUNNER_ORGANIZATION_ID: ${{ steps.account.outputs.runner-organization-id }}
+          E2E_RUNNER_CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
+          E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
+          E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.mock-claude-organization-id }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Upload runner E2E Checkout diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: runner-e2e-checkout-diagnostics
+          path: /tmp/e2e-runner-checkout-diagnostics
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload runner E2E API tokens
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: e2e-tokens
+          path: |
+            /tmp/e2e-api-credentials-runner.json
+            /tmp/e2e-api-credentials-runner-real-codex.json
+            /tmp/e2e-api-credentials-runner-real-claude.json
+            /tmp/e2e-api-credentials-runner-mock-claude.json
+          retention-days: 1
+
+  cli-e2e-03-runner-bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    concurrency:
+      group: cli-e2e-03-runner-bootstrap-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs:
+      - prepare
+      - deploy-api
+      - cli-e2e-03-runner-prepare
+    if: |
+      always() &&
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
+      needs.deploy-api.result == 'success' &&
+      needs.cli-e2e-03-runner-prepare.result == 'success'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download runner E2E API tokens
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: e2e-tokens
           path: /tmp
-      - name: Setup E2E API credentials
+      - name: Setup runner E2E API credentials
+        shell: bash
         run: |
+          set -euo pipefail
           token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
           api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
           echo "::add-mask::$token"
           echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
           echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
-      - name: Reset model-first defaults
+      - name: Reset runner model defaults
+        shell: bash
         run: |
           set -euo pipefail
-          token="${E2E_API_TOKEN:-}"
-          if [ -z "$token" ]; then
-            echo "::error::Missing runner E2E token"
-            exit 1
-          fi
-
-          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
-          if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+          headers=(-H "Authorization: Bearer ${E2E_API_TOKEN}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
 
+          # Fresh Clerk organizations bootstrap onto limited-free-1, so the
+          # deterministic runner policy must stay within that plan's catalog.
           payload="$(jq -nc '{
             policies: [
-              {model: "claude-opus-4-7", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "claude-sonnet-4-6", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "deepseek-v4-pro", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "gpt-5.5", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
+              {model: "deepseek-v4-flash", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
+              {model: "gpt-5.6-luna", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
             ]
           }')"
 
-          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${VM0_API_BACKEND_URL}/api/zero/model-policies" >/dev/null
-          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null}' "${VM0_API_BACKEND_URL}/api/zero/user-model-preference" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/okou/model-policies" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/okou/user-model-preference" >/dev/null
         env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      - name: Bootstrap test account
+      - name: Bootstrap runner mock model provider
+        shell: bash
         run: |
-          curl -fsS \
-            -H "Authorization: Bearer ${E2E_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+          set -euo pipefail
+          headers=(-H "Authorization: Bearer ${E2E_API_TOKEN}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+          curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-            "${E2E_API_URL}/api/zero/model-providers" >/dev/null
+            "${E2E_API_URL}/api/okou/model-providers" >/dev/null
         env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap mock Claude account
+        shell: bash
+        run: cd e2e && bash playwright/runner-mock-claude-bootstrap.bash /tmp/e2e-api-credentials-runner-mock-claude.json
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap real Codex account
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-codex.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-codex.json)
+          echo "::add-mask::$token"
+
+          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          provider_payload=$(jq -nc \
+            --arg secret "$OPENAI_API_KEY" \
+            '{type: "openai-api-key", secret: $secret}')
+          provider_response=$(curl -fsS "${headers[@]}" \
+            -X POST \
+            -d "$provider_payload" \
+            "${api_url}/api/okou/model-providers")
+          provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
+            <<< "$provider_response")
+
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
+          policy_payload=$(jq -c --arg providerId "$provider_id" '
+            {
+              policies: (
+                [.policies[] |
+                  select(.model != "gpt-5.6-luna") |
+                  {
+                    model,
+                    isDefault,
+                    defaultProviderType,
+                    credentialScope,
+                    modelProviderId
+                  }
+                ] + [
+                  {
+                    model: "gpt-5.6-luna",
+                    isDefault: false,
+                    defaultProviderType: "openai-api-key",
+                    credentialScope: "org",
+                    modelProviderId: $providerId
+                  }
+                ]
+              )
+            }
+          ' <<< "$policies")
+          curl -fsS "${headers[@]}" \
+            -X PUT \
+            -d "$policy_payload" \
+            "${api_url}/api/okou/model-policies" \
+            >/dev/null
+
+          curl -fsS "${headers[@]}" \
+            -X POST \
+            -d '{"switches":{"realAgentInPreview":true}}' \
+            "${api_url}/api/okou/feature-switches" \
+            | jq -e '.effectiveSwitches.realAgentInPreview == true' \
+            >/dev/null
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap real Claude account
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
+          echo "::add-mask::$token"
+
+          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
+          policy_payload=$(jq -c '
+            {
+              policies: (
+                [.policies[] |
+                  select(.model != "claude-sonnet-4-6") |
+                  {
+                    model,
+                    isDefault,
+                    defaultProviderType,
+                    credentialScope,
+                    modelProviderId
+                  }
+                ] + [
+                  {
+                    model: "claude-sonnet-4-6",
+                    isDefault: false,
+                    defaultProviderType: "vm0",
+                    credentialScope: "org",
+                    modelProviderId: null
+                  }
+                ]
+              )
+            }
+          ' <<< "$policies")
+          curl -fsS "${headers[@]}" \
+            -X PUT \
+            -d "$policy_payload" \
+            "${api_url}/api/okou/model-policies" \
+            >/dev/null
+
+          curl -fsS "${headers[@]}" \
+            -X POST \
+            -d '{"switches":{"realAgentInPreview":true}}' \
+            "${api_url}/api/okou/feature-switches" \
+            | jq -e '.effectiveSwitches.realAgentInPreview == true' \
+            >/dev/null
+        env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-  # Skip on push to main - runner tests are only needed for PRs
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: cli-e2e-03-runner-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs:
-      [
-        prepare,
-        deploy-api,
-        deploy-runner-prepare,
-        deploy-runner-start,
-        e2e-runner-bootstrap,
-      ]
+      - prepare
+      - deploy-api
+      - deploy-cli
+      - deploy-runner-prepare
+      - deploy-runner-start
+      - cli-e2e-03-runner-prepare
+      - cli-e2e-03-runner-bootstrap
     if: |
+      always() &&
       needs.prepare.outputs.job-ref != '' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
+      needs.deploy-api.result == 'success' &&
+      needs.deploy-cli.result == 'success' &&
+      needs.deploy-runner-prepare.result == 'success' &&
+      needs.deploy-runner-start.result == 'success' &&
+      needs.cli-e2e-03-runner-prepare.result == 'success' &&
+      needs.cli-e2e-03-runner-bootstrap.result == 'success'
     strategy:
       fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.deploy-runner-prepare.outputs.runner-matrix) }}
-    timeout-minutes: 15
+      matrix: ${{ fromJSON(needs.cli-e2e-03-runner-prepare.outputs.runner-shard-matrix) }}
+    env:
+      E2E_CLERK_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-organization-id }}
+      E2E_RUNNER_CODEX_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-organization-id }}
+      E2E_RUNNER_CLAUDE_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-organization-id }}
+      E2E_RUNNER_MOCK_CLAUDE_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-organization-id }}
+      E2E_RUNNER_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-email }}
+      E2E_RUNNER_CODEX_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-email }}
+      E2E_RUNNER_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-email }}
+      E2E_RUNNER_MOCK_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-email }}
+      E2E_RUNNER_SHARD_INDEX: ${{ matrix.index }}
+      E2E_RUNNER_SHARD_TOTAL: ${{ strategy.job-total }}
+      E2E_RUNNER_TEST_FILES_JSON: ${{ toJSON(matrix.files) }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-      - name: Install GNU parallel for bats
-        run: sudo curl -fsSL --retry 5 --retry-delay 2 --retry-max-time 60 --retry-all-errors https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
-      - name: Download E2E test tokens
-        uses: actions/download-artifact@v8.0.1
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Download runner E2E API tokens
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: e2e-tokens
           path: /tmp
-      - name: Setup E2E API credentials
+      - name: Setup runner E2E API credentials
+        shell: bash
         run: |
-          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
-          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
+          set -euo pipefail
+          for credential_file in \
+            /tmp/e2e-api-credentials-runner.json \
+            /tmp/e2e-api-credentials-runner-real-codex.json \
+            /tmp/e2e-api-credentials-runner-real-claude.json \
+            /tmp/e2e-api-credentials-runner-mock-claude.json; do
+            jq -er '.token | select(type == "string" and length > 0)' "$credential_file" >/dev/null
+            jq -er '.apiUrl | select(type == "string" and length > 0)' "$credential_file" >/dev/null
+          done
+          token=$(jq -er '.token' /tmp/e2e-api-credentials-runner.json)
+          api_url=$(jq -er '.apiUrl' /tmp/e2e-api-credentials-runner.json)
           echo "::add-mask::$token"
           echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
           echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
-
-      - name: Start Cron Simulator
+      - name: Initialize runner E2E shard
+        shell: bash
         run: |
-          chmod +x ./e2e/scripts/cron-simulator.sh
-          ./e2e/scripts/cron-simulator.sh "$VM0_API_BACKEND_URL" 60 &
-          echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
-        env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
-      - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
+          set -euo pipefail
+          : "${E2E_CLERK_ORG_ID:?runner E2E organization is required}"
+          : "${E2E_RUNNER_CODEX_ORG_ID:?runner Codex E2E organization is required}"
+          : "${E2E_RUNNER_CLAUDE_ORG_ID:?runner Claude E2E organization is required}"
+          : "${E2E_RUNNER_MOCK_CLAUDE_ORG_ID:?runner mock Claude E2E organization is required}"
+          : "${E2E_RUNNER_EMAIL:?runner E2E account is required}"
+          : "${E2E_RUNNER_CODEX_EMAIL:?runner Codex E2E account is required}"
+          : "${E2E_RUNNER_CLAUDE_EMAIL:?runner Claude E2E account is required}"
+          : "${E2E_RUNNER_MOCK_CLAUDE_EMAIL:?runner mock Claude E2E account is required}"
+          : "${E2E_API_TOKEN:?runner E2E API token is required}"
+          : "${E2E_API_URL:?runner E2E API URL is required}"
+          jq -e '
+            type == "array" and length > 0 and
+            all(.[]; type == "string" and length > 0)
+          ' <<<"$E2E_RUNNER_TEST_FILES_JSON" >/dev/null
+          test_count="$(jq 'length' <<<"$E2E_RUNNER_TEST_FILES_JSON")"
+          echo "Runner E2E shard ${E2E_RUNNER_SHARD_INDEX}/${E2E_RUNNER_SHARD_TOTAL} has ${test_count} file(s)"
+      - name: Run runner E2E tests (shard ${{ matrix.index }})
+        shell: bash
         run: |
-          if [ -z "$RUNNER_CHUNK_COUNT" ] || [ "$RUNNER_CHUNK_COUNT" -eq 0 ]; then
-            echo "::error::RUNNER_CHUNK_COUNT is empty or zero"
+          set -euo pipefail
+          mapfile -t test_files < <(jq -er '.[]' <<<"$E2E_RUNNER_TEST_FILES_JSON")
+          if (( ${#test_files[@]} == 0 )); then
+            echo "::error::Runner E2E shard has no test files"
             exit 1
           fi
-          PARALLEL=$(( RUNNER_TOTAL_CAPACITY / RUNNER_CHUNK_COUNT ))
-          [ "$PARALLEL" -lt 1 ] && PARALLEL=1
-          echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel, total capacity ${RUNNER_TOTAL_CAPACITY}) ==="
-          echo "Files: ${{ matrix.files }}"
-          mkdir -p e2e/results
-          BATS_TEST_TIMEOUT=240 ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files --report-formatter junit --output e2e/results ${{ matrix.files }}
-          echo "✅ Chunk ${{ matrix.index }} tests passed"
-        env:
-          RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
-          RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          USE_MOCK_CLAUDE: "true"
-          USE_MOCK_CODEX: "true"
-          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          BYTEPLUS_API_KEY: ${{ secrets.BYTEPLUS_API_KEY }}
-          BYTEPLUS_STT_API_KEY: ${{ secrets.BYTEPLUS_STT_API_KEY }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          CI_GITHUB_TOKEN: ${{ github.token }}
-          E2E_RUNNER_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+runner@vm0-e2e.ai
-          # Slack round-trip test (t40-slack-roundtrip.bats) needs the
-          # preview's signing secret so bash can HMAC-sign webhook
-          # payloads that match what /api/zero/slack/{commands,events}
-          # validate. Also tunes the polling knobs for the full
-          # dispatch → runner → callback round-trip.
-          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
-          SLACK_POLL_TIMEOUT_S: 60
-          SLACK_POLL_INTERVAL_S: 3
 
-      - name: Print E2E trace log
+          cd e2e
+          for test_file in "${test_files[@]}"; do
+            if [[ ! -f "$test_file" ]]; then
+              echo "::error::Runner E2E test file does not exist: $test_file"
+              exit 1
+            fi
+          done
+
+          result_directory="results/runner-${E2E_RUNNER_SHARD_INDEX}"
+          mkdir -p "$result_directory"
+          BATS_TEST_TIMEOUT=240 ./test/libs/bats/bin/bats \
+            -T \
+            --report-formatter junit \
+            --output "$result_directory" \
+            "${test_files[@]}"
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Print runner E2E trace log
         if: always()
+        shell: bash
         run: |
-          if [ -f /tmp/e2e-trace.log ]; then
-            echo "=== E2E CLI Trace (Chunk ${{ matrix.index }}) ==="
+          if [[ -f /tmp/e2e-trace.log ]]; then
             cat /tmp/e2e-trace.log
           fi
-
-      - name: Upload test results to Codecov
+      - name: Upload runner E2E test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: e2e-runner
-          files: e2e/results/*.xml
+          files: e2e/results/runner-${{ matrix.index }}/*.xml
           report_type: test_results
-
-      - name: Upload JUnit XML artifact
+      - name: Upload runner E2E JUnit XML
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: e2e-runner-junit-xml-${{ matrix.index }}
-          path: e2e/results/
+          name: e2e-runner-junit-${{ matrix.index }}
+          path: e2e/results/runner-${{ matrix.index }}/
           retention-days: 7
 
-      - name: Stop Cron Simulator
-        if: always()
-        run: |
-          if [ -n "$CRON_SIMULATOR_PID" ]; then
-            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
-            echo "Cron simulator stopped"
-          fi
-
-  # Build E2B templates (development account)
-  # Uses repository-level E2B_API_KEY secret
-  build-e2b-template:
+  cli-e2e-03-runner-cleanup:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare]
-    # Build on PR or main push when E2B templates changed, skip release-please commits
+    timeout-minutes: 5
+    needs:
+      - prepare
+      - cli-e2e-03-runner-prepare
+      - cli-e2e-03-runner
     if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.e2b-changed == 'true'
+      always() &&
+      needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      needs.cli-e2e-03-runner-prepare.result != 'skipped'
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Build E2B templates
-        working-directory: turbo
+      - name: Determine runner E2E cleanup scope
+        id: cleanup-scope
+        shell: bash
         env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+          PREPARE_RESULT: ${{ needs.cli-e2e-03-runner-prepare.result }}
+          RUNNER_RESULT: ${{ needs.cli-e2e-03-runner.result }}
         run: |
-          pnpm e2b:cli:build
-
-      - name: Build summary
-        run: echo "✅ E2B templates built successfully (development account)"
+          set -euo pipefail
+          if [[ "$PREPARE_RESULT" != "success" ]]; then
+            scope="generation"
+          elif [[ "$RUNNER_RESULT" == "success" ]]; then
+            scope="run"
+          else
+            scope="retain"
+          fi
+          echo "Runner E2E cleanup scope: $scope"
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+      - name: Retain runner E2E accounts for failed-job rerun
+        if: steps.cleanup-scope.outputs.scope == 'retain'
+        run: echo "Retaining runner E2E accounts until a successful rerun or fallback cleanup"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.cleanup-scope.outputs.scope != 'retain'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: steps.cleanup-scope.outputs.scope != 'retain'
+        with:
+          node-version: 22
+      - name: Install pnpm
+        if: steps.cleanup-scope.outputs.scope != 'retain'
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        if: steps.cleanup-scope.outputs.scope != 'retain'
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Cleanup current runner E2E generation
+        if: steps.cleanup-scope.outputs.scope == 'generation'
+        run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup-generation
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+      - name: Cleanup runner E2E workflow run
+        if: steps.cleanup-scope.outputs.scope == 'run'
+        run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup-run
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
 
   lint-runtime-api-compat:
     runs-on: ubuntu-latest
@@ -2841,10 +2890,10 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/runtime-api-schema
 
-          pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out /tmp/runtime-api-schema/candidate.json
+          pnpm --filter @okouai/api-contracts run build:runtime-api-schema -- --out /tmp/runtime-api-schema/candidate.json
 
           if [ -f /tmp/runtime-api-schema/current.json ]; then
-            pnpm --filter @vm0/api-contracts run lint-runtime-api-compat -- \
+            pnpm --filter @okouai/api-contracts run lint-runtime-api-compat -- \
               --against /tmp/runtime-api-schema/current.json \
               --current /tmp/runtime-api-schema/candidate.json \
               --report-out /tmp/runtime-api-schema/report.json \
@@ -2890,15 +2939,16 @@ jobs:
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
-      - build-cli
-      - build-e2b-template
+      - deploy-cli
       - cli-e2e-02-browser
       - cli-e2e-02-playwright
       - cli-e2e-01-serial
+      - cli-e2e-03-runner-prepare
+      - cli-e2e-03-runner-bootstrap
+      - cli-e2e-03-runner
+      - cli-e2e-03-runner-cleanup
       - deploy-runner-prepare
       - deploy-runner-start
-      - e2e-runner-bootstrap
-      - cli-e2e-03-runner
     # Always run so the gate reports an explicit result (not "skipped").
     # Release-please PRs skip CI jobs — auto-pass the gate for them.
     if: always()
@@ -2908,11 +2958,21 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
           RELEASE_PRESENCE_RESULT: ${{ needs.validate-release-presence.result }}
+          RELEASE_DEPLOY_APP_RESULT: ${{ needs.deploy-app.result }}
+          RELEASE_DEPLOY_CLI_RESULT: ${{ needs.deploy-cli.result }}
         run: |
           # Auto-pass for release-please PRs, commits, and merge queue entries
           if [[ "$IS_RELEASE" == "true" ]]; then
             if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_PRESENCE_RESULT" != "success" ]]; then
               echo "::error::validate-release-presence: expected success, got $RELEASE_PRESENCE_RESULT"
+              exit 1
+            fi
+            if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_DEPLOY_APP_RESULT" != "success" ]]; then
+              echo "::error::deploy-app: expected success, got $RELEASE_DEPLOY_APP_RESULT"
+              exit 1
+            fi
+            if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_DEPLOY_CLI_RESULT" != "success" ]]; then
+              echo "::error::deploy-cli: expected success, got $RELEASE_DEPLOY_CLI_RESULT"
               exit 1
             fi
             echo "✅ Release-please — skipping CI gate"
@@ -2988,15 +3048,16 @@ jobs:
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
-          check_result "build-cli" "${{ needs.build-cli.result }}" "true"
-          check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
+          check_result "deploy-cli" "${{ needs.deploy-cli.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
+          check_result "cli-e2e-03-runner-prepare" "${{ needs.cli-e2e-03-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "cli-e2e-03-runner-bootstrap" "${{ needs.cli-e2e-03-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "cli-e2e-03-runner-cleanup" "${{ needs.cli-e2e-03-runner-cleanup.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
-          check_result "e2e-runner-bootstrap" "${{ needs.e2e-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
-          check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
 
           echo "::endgroup::"
           exit $FAILED

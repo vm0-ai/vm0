@@ -1,10 +1,11 @@
 import { fireEvent, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { command } from "ccstate";
 
 import type { TestContext } from "../signals/__tests__/test-helpers";
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   type MockedClientSession,
   type MockedInvitation,
   type MockedMembership,
@@ -21,13 +22,14 @@ import {
   setSearch,
 } from "../signals/location";
 import { vi } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
-import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch";
+import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch-state";
 import { localStorageSignals } from "../signals/external/local-storage";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
+import { SharedWorkerTestBootstrap } from "../shared-database/test-bridge.ts";
 
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
@@ -104,10 +106,16 @@ export async function setupPage(options: {
     pendingInvitations?: MockedInvitation[];
   };
   debugLoggers?: string[];
+  cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
   withoutRender?: boolean;
 }) {
   ensureTestLocalStorage();
+  // setupPage exercises the shared MSW fixture data even when a test does not
+  // customize a handler. Start the lazy mock lifecycle so abort resets any
+  // fixture mutations made by the application during this test.
+  void options.context.mocks;
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
@@ -126,19 +134,29 @@ export async function setupPage(options: {
   const defaultOrgId = "org_default";
   const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
   options.context.store.set(clearFeatureSwitchCacheForTest$);
-  const featureSwitchOverrides = {
-    ...options.featureSwitches,
-  };
+  const featureSwitchOverrides = { ...options.featureSwitches };
   if (options.featureSwitches) {
     setMockFeatureSwitches(featureSwitchOverrides);
   }
+  const cachedFeatureSwitchOverrides = {
+    ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
+  };
+  const cachedFeatureSwitches = getAllFeatureStates({
+    orgId: activeOrgId,
+    overrides: cachedFeatureSwitchOverrides,
+  });
   options.context.store.set(
     setFeatureSwitchCacheForTest$,
-    getAllFeatureStates({
-      orgId: activeOrgId,
-      overrides: featureSwitchOverrides,
-    }),
+    cachedFeatureSwitches,
   );
+  if (cachedFeatureSwitches[FeatureSwitchKey.SharedChatDatabase]) {
+    new SharedWorkerTestBootstrap(
+      options.context.store,
+      options.context.workerStore,
+      options.context.signal,
+      options.afterSharedDatabaseWorkerHeartbeat,
+    );
+  }
 
   mockUser(
     options.user !== undefined
@@ -163,9 +181,14 @@ export async function setupPage(options: {
       memberships: [{ id: defaultOrgId }],
     });
   }
-  options.context.signal.addEventListener("abort", () => {
-    clearMockedAuth();
-  });
+  clearMockedAuthOnAbort(options.context.signal);
+  options.context.signal.addEventListener(
+    "abort",
+    () => {
+      toast.dismiss();
+    },
+    { once: true },
+  );
 
   // Not wrapped in act() — background polling loops would cause act() to
   // hang indefinitely waiting for them to settle. React "not wrapped in
@@ -203,30 +226,62 @@ export function detachedSetupPage(options: Parameters<typeof setupPage>[0]) {
   detach(setupPage(options), Reason.Entrance, "test");
 }
 
-// Helper to create a pushState mock that updates mockLocation
+// Helper to create a browser history mock that updates mockLocation.
 function createPushStateMock(signal: AbortSignal) {
-  const updateLocation = (url?: string | URL | null) => {
-    if (typeof url === "string") {
-      const urlObj = new URL(url, "http://localhost");
-      setPathname(urlObj.pathname);
-      setSearch(urlObj.search);
-    }
+  interface HistoryEntry {
+    readonly data: unknown;
+    readonly url: URL;
+  }
+
+  const entries: HistoryEntry[] = [];
+  let currentEntryIndex = -1;
+
+  const resolveUrl = (url?: string | URL | null) => {
+    return new URL(url?.toString() ?? "/", "http://localhost");
   };
 
-  const fn = vi.fn(
-    (_data: unknown, _unused: string, url?: string | URL | null) => {
-      updateLocation(url);
+  const updateLocation = (entry: HistoryEntry) => {
+    setPathname(entry.url.pathname, signal);
+    setSearch(entry.url.search, signal);
+  };
+
+  const fn = vi.fn<typeof window.history.pushState>(
+    (data: unknown, _unused: string, url?: string | URL | null) => {
+      const entry = { data, url: resolveUrl(url) };
+      entries.splice(currentEntryIndex + 1);
+      entries.push(entry);
+      currentEntryIndex = entries.length - 1;
+      updateLocation(entry);
     },
   );
-  mockPushState(fn as unknown as typeof window.history.pushState, signal);
+  mockPushState(fn, signal);
 
-  const replaceFn = vi.fn(
-    (_data: unknown, _unused: string, url?: string | URL | null) => {
-      updateLocation(url);
+  const replaceFn = vi.fn<typeof window.history.replaceState>(
+    (data: unknown, _unused: string, url?: string | URL | null) => {
+      const entry = { data, url: resolveUrl(url) };
+      if (currentEntryIndex === -1) {
+        entries.push(entry);
+        currentEntryIndex = 0;
+      } else {
+        entries[currentEntryIndex] = entry;
+      }
+      updateLocation(entry);
     },
-  ) as unknown as typeof window.history.replaceState;
+  );
   mockReplaceState(replaceFn, signal);
 
+  vi.spyOn(window.history, "back").mockImplementation(() => {
+    if (currentEntryIndex <= 0) {
+      return;
+    }
+    currentEntryIndex -= 1;
+    const entry = entries[currentEntryIndex];
+    if (!entry) {
+      return;
+    }
+    updateLocation(entry);
+    window.dispatchEvent(new PopStateEvent("popstate", { state: entry.data }));
+  });
   return fn;
 }
 
@@ -247,7 +302,7 @@ export async function fill(element: Element, value: string): Promise<void> {
 }
 
 /**
- * Fire a click on `element` that works for both regular buttons and Radix
+ * Fire a click on `element` that works for both regular buttons and headless UI
  * triggers (Dropdown/Select/Popover open on `pointerdown`, not `click`).
  *
  * Roughly 3x faster than `userEvent.click(el)` in happy-dom because it skips
@@ -257,6 +312,25 @@ export async function fill(element: Element, value: string): Promise<void> {
 export function click(element: Element): void {
   fireEvent.pointerDown(element, { button: 0 });
   fireEvent.click(element);
+}
+
+/**
+ * Keep a rendered element's CSS animation pending until the returned callback
+ * runs. happy-dom does not implement Web Animations, so Base UI otherwise
+ * completes exit transitions immediately instead of retaining visible content.
+ */
+export function holdElementAnimations(element: Element): () => void {
+  let finish = () => {};
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  Object.defineProperty(element, "getAnimations", {
+    configurable: true,
+    value: () => {
+      return [{ finished }];
+    },
+  });
+  return finish;
 }
 
 /**
@@ -272,6 +346,7 @@ type TextContentRole =
   | "menuitem"
   | "menuitemcheckbox"
   | "menuitemradio"
+  | "radio"
   | "tab"
   | "cell"
   | "columnheader"
@@ -284,6 +359,10 @@ const ROLE_SELECTORS: Record<TextContentRole, string> = {
   menuitem: '[role="menuitem"]',
   menuitemcheckbox: '[role="menuitemcheckbox"]',
   menuitemradio: '[role="menuitemradio"]',
+  // Base UI's Radio puts the role on the visible element and renders a
+  // separate 1x1 input for form submission, so the role selector alone is
+  // the visible control.
+  radio: '[role="radio"]',
   tab: '[role="tab"]',
   cell: 'td, [role="cell"]',
   // Plain <th> inside <thead> has implicit role="columnheader"; a <th
@@ -298,7 +377,7 @@ const ROLE_SELECTORS: Record<TextContentRole, string> = {
  * Element is hidden from the accessibility tree — used to match the default
  * `getAllByRole(role, { hidden: false })` behaviour from
  * `@testing-library/dom`, which excludes ancestors flagged with
- * `aria-hidden="true"`, the `hidden` attribute, or `inert`. Radix overlays
+ * `aria-hidden="true"`, the `hidden` attribute, or `inert`. Modal overlays
  * commonly leave background portals mounted with `aria-hidden`; matching
  * those would inflate counts vs. the original role queries.
  */

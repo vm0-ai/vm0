@@ -1,17 +1,15 @@
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentphoneChatThreadRoutes } from "@vm0/db/schema/agentphone-chat-thread-route";
-import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentphoneChatThreadRoutes } from "@okouai/db/schema/agentphone-chat-thread-route";
+import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { and, eq, isNotNull } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
 import { sendAgentPhoneMessage } from "../external/agentphone-client";
 import type { Db } from "../external/db";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import {
   agentphoneChatCallbackPayloadSchema,
@@ -25,7 +23,8 @@ import {
   storeOutboundAgentPhoneMessage,
 } from "./agentphone-shared.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 
 const L = logger("InternalCallbacksAgentPhoneChat");
 type AgentPhoneSendResult = Awaited<ReturnType<typeof sendAgentPhoneMessage>>;
@@ -98,12 +97,14 @@ async function claimAgentPhoneChatDelivery(
   return callback;
 }
 
-async function loadAgentPhoneRouteBinding(args: {
-  readonly db: Db;
-  readonly target: AgentPhoneDeliveryTarget;
-  readonly run: AgentPhoneChatRunContext;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+async function loadAgentPhoneRouteBinding(
+  args: {
+    readonly db: Db;
+    readonly target: AgentPhoneDeliveryTarget;
+    readonly run: AgentPhoneChatRunContext;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const [route] = await args.db
     .select({ id: agentphoneChatThreadRoutes.id })
     .from(agentphoneChatThreadRoutes)
@@ -127,15 +128,17 @@ async function loadAgentPhoneRouteBinding(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return route !== undefined;
 }
 
-async function loadAgentPhoneChatDeliveryContext(args: {
-  readonly db: Db;
-  readonly callback: ClaimedAgentPhoneChatDelivery;
-  readonly signal: AbortSignal;
-}) {
+async function loadAgentPhoneChatDeliveryContext(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedAgentPhoneChatDelivery;
+  },
+  signal: AbortSignal,
+) {
   const payload = agentphoneChatCallbackPayloadSchema.parse(
     args.callback.payload,
   );
@@ -143,20 +146,19 @@ async function loadAgentPhoneChatDeliveryContext(args: {
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       agentId: chatThreads.agentComposeId,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
-        eq(zeroRuns.triggerSource, "agentphone"),
+        eq(agentRuns.triggerSource, "agentphone"),
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!run?.chatThreadId) {
     throw new Error("AgentPhone chat delivery run context is unavailable");
   }
@@ -168,7 +170,7 @@ async function loadAgentPhoneChatDeliveryContext(args: {
   };
 
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
@@ -181,21 +183,23 @@ async function loadAgentPhoneChatDeliveryContext(args: {
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!event?.content) {
     throw new Error("AgentPhone chat delivery message is unavailable");
   }
 
-  const binding = await loadAgentPhoneRouteBinding({
-    db: args.db,
-    target: payload,
-    run: runContext,
-    signal: args.signal,
-  });
+  const binding = await loadAgentPhoneRouteBinding(
+    {
+      db: args.db,
+      target: payload,
+      run: runContext,
+    },
+    signal,
+  );
   return {
     payload,
     run: runContext,
@@ -220,11 +224,13 @@ function buildAgentPhoneResponseText(args: {
     .join("\n\n");
 }
 
-async function sendAgentPhoneReply(args: {
-  readonly target: AgentPhoneDeliveryTarget;
-  readonly body: string;
-  readonly signal: AbortSignal;
-}): Promise<AgentPhoneSendResult> {
+async function sendAgentPhoneReply(
+  args: {
+    readonly target: AgentPhoneDeliveryTarget;
+    readonly body: string;
+  },
+  signal: AbortSignal,
+): Promise<AgentPhoneSendResult> {
   const result = await sendAgentPhoneMessage(
     {
       agentphoneAgentId: args.target.agentphoneAgentId,
@@ -236,18 +242,20 @@ async function sendAgentPhoneReply(args: {
         : { toNumber: args.target.phoneHandle }),
       body: args.body,
     },
-    args.signal,
+    signal,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return result;
 }
 
-async function resolveAgentPhonePresentation(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly run: AgentPhoneChatRunContext;
-  readonly signal: AbortSignal;
-}): Promise<{
+async function resolveAgentPhonePresentation(
+  args: {
+    readonly db: Db;
+    readonly runId: string;
+    readonly run: AgentPhoneChatRunContext;
+  },
+  signal: AbortSignal,
+): Promise<{
   readonly logsUrl: string | undefined;
   readonly footerText: string | undefined;
 }> {
@@ -256,24 +264,26 @@ async function resolveAgentPhonePresentation(args: {
     args.run.orgId,
     args.run.userId,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const [logsUrl, footerText] = await Promise.all([
-    resolveAgentPhoneAuditLogsUrl({
-      orgId: args.run.orgId,
-      userId: args.run.userId,
-      runId: args.runId,
-      getFeatureOverrides: () => {
-        return Promise.resolve(featureContext.overrides ?? {});
+    resolveAgentPhoneAuditLogsUrl(
+      {
+        orgId: args.run.orgId,
+        userId: args.run.userId,
+        runId: args.runId,
+        getFeatureOverrides: () => {
+          return Promise.resolve(featureContext.overrides ?? {});
+        },
       },
-      signal: args.signal,
-    }),
+      signal,
+    ),
     resolveAgentPhoneReplyFooterText({
       db: args.db,
       orgId: args.run.orgId,
       composeId: args.run.agentId,
     }),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { logsUrl, footerText };
 }
 
@@ -297,34 +307,40 @@ async function recordAgentPhoneChatDelivery(args: {
   });
 }
 
-async function deliverClaimedAgentPhoneChatCallback(args: {
-  readonly db: Db;
-  readonly callback: ClaimedAgentPhoneChatDelivery;
-  readonly status: "completed" | "failed";
-  readonly signal: AbortSignal;
-}): Promise<"delivered" | "skipped_revoked"> {
+async function deliverClaimedAgentPhoneChatCallback(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedAgentPhoneChatDelivery;
+    readonly status: "completed" | "failed";
+  },
+  signal: AbortSignal,
+): Promise<"delivered" | "skipped_revoked"> {
   const { payload, run, messageContent, binding } =
-    await loadAgentPhoneChatDeliveryContext(args);
+    await loadAgentPhoneChatDeliveryContext(args, signal);
   if (!binding) {
     return "skipped_revoked";
   }
 
-  const presentation = await resolveAgentPhonePresentation({
-    db: args.db,
-    runId: args.callback.runId,
-    run,
-    signal: args.signal,
-  });
+  const presentation = await resolveAgentPhonePresentation(
+    {
+      db: args.db,
+      runId: args.callback.runId,
+      run,
+    },
+    signal,
+  );
   const body = buildAgentPhoneResponseText({
     mainText: messageContent,
     logsUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });
-  const sent = await sendAgentPhoneReply({
-    target: payload,
-    body,
-    signal: args.signal,
-  });
+  const sent = await sendAgentPhoneReply(
+    {
+      target: payload,
+      body,
+    },
+    signal,
+  );
   await recordAgentPhoneChatDelivery({
     db: args.db,
     target: payload,
@@ -348,12 +364,14 @@ export async function dispatchAgentPhoneChatDeliveryOnce(
   }
 
   const delivery = await settleIncludingAbort(
-    deliverClaimedAgentPhoneChatCallback({
-      db,
-      callback,
-      status,
+    deliverClaimedAgentPhoneChatCallback(
+      {
+        db,
+        callback,
+        status,
+      },
       signal,
-    }),
+    ),
   );
   if (!delivery.ok) {
     const message =
@@ -392,50 +410,54 @@ interface AgentPhoneChatAdmissionFailureArgs {
   readonly agentId: string;
   readonly target: AgentPhoneDeliveryTarget;
   readonly chatEventId: string;
-  readonly signal: AbortSignal;
 }
 
 export async function deliverAgentPhoneChatAdmissionFailure(
   args: AgentPhoneChatAdmissionFailureArgs,
+  signal: AbortSignal,
 ): Promise<void> {
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.id, args.chatEventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         chatEventTypeIn(["output.error"]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!event?.content) {
     return;
   }
 
-  const binding = await loadAgentPhoneRouteBinding({
-    db: args.db,
-    target: args.target,
-    run: {
-      userId: args.userId,
-      orgId: args.orgId,
-      chatThreadId: args.chatThreadId,
-      agentId: args.agentId,
+  const binding = await loadAgentPhoneRouteBinding(
+    {
+      db: args.db,
+      target: args.target,
+      run: {
+        userId: args.userId,
+        orgId: args.orgId,
+        chatThreadId: args.chatThreadId,
+        agentId: args.agentId,
+      },
     },
-    signal: args.signal,
-  });
+    signal,
+  );
   if (!binding) {
     return;
   }
 
   const body = markdownToImessagePlain(event.content);
-  const sent = await sendAgentPhoneReply({
-    target: args.target,
-    body,
-    signal: args.signal,
-  });
+  const sent = await sendAgentPhoneReply(
+    {
+      target: args.target,
+      body,
+    },
+    signal,
+  );
   await storeOutboundAgentPhoneMessage(args.db, {
     agentphoneMessageId: sent.id,
     conversationId: args.target.conversationId,

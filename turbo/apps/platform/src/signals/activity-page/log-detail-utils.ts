@@ -724,12 +724,14 @@ function parseAssistantContent(
       if (typeof content.text === "string" && content.text) {
         textParts.push(content.text);
       }
-    } else if (content.type === "tool_use") {
+    } else if (content.type === "tool_use" || content.type === "toolCall") {
       if (typeof content.name !== "string" || !content.name) {
         continue;
       }
       foundToolUse = true;
-      const input = isRecord(content.input) ? content.input : {};
+      const rawInput =
+        content.type === "toolCall" ? content.arguments : content.input;
+      const input = isRecord(rawInput) ? rawInput : {};
       const toolUseId =
         typeof content.id === "string" && content.id.length > 0
           ? content.id

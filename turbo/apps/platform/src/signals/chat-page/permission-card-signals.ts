@@ -1,5 +1,5 @@
 import type { Computed } from "ccstate";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
+import type { ZeroAgentResponse } from "@okouai/api-contracts/contracts/zero-agents";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,
@@ -12,8 +12,8 @@ import {
   type PermissionActionDescriptor,
 } from "./permission-action-block.ts";
 import {
-  getOrCreateCardSignals,
-  registeredCardSignals,
+  createCardSignalsRegistry,
+  type CardSignalsRegistry,
 } from "./card-signal-map.ts";
 
 /**
@@ -30,10 +30,10 @@ export interface PermissionSignals extends PermissionActionDescriptor {
   >;
 }
 
-export interface PermissionCardSignalsRegistry {
-  register(descriptor: PermissionActionDescriptor): PermissionSignals;
-  resolve(resourceKey: string): PermissionSignals;
-}
+type PermissionCardSignalsRegistry = CardSignalsRegistry<
+  PermissionActionDescriptor,
+  PermissionSignals
+>;
 
 function createPermissionSignals(
   descriptor: PermissionActionDescriptor,
@@ -50,19 +50,8 @@ function createPermissionSignals(
 }
 
 export function createPermissionCardSignalsRegistry(): PermissionCardSignalsRegistry {
-  const signalsByResourceKey = new Map<string, PermissionSignals>();
-  return {
-    register(descriptor) {
-      return getOrCreateCardSignals(
-        signalsByResourceKey,
-        permissionActionResourceKey(descriptor),
-        () => {
-          return createPermissionSignals(descriptor);
-        },
-      );
-    },
-    resolve(resourceKey) {
-      return registeredCardSignals(signalsByResourceKey, resourceKey);
-    },
-  };
+  return createCardSignalsRegistry(
+    permissionActionResourceKey,
+    createPermissionSignals,
+  );
 }

@@ -4,16 +4,16 @@ import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth";
+} from "@okouai/api-contracts/contracts/cli-auth";
 import {
   type ComposeListItem,
   type ComposeResponse,
   agentComposeApiContentSchema,
-} from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/composes";
 import type {
   OrgResponse,
   UpdateOrgRequest,
-} from "@vm0/api-contracts/contracts/orgs";
+} from "@okouai/api-contracts/contracts/orgs";
 import type {
   InviteOrgMemberRequest,
   MembershipRequestAction,
@@ -21,71 +21,54 @@ import type {
   OrgMessageResponse,
   RemoveOrgMemberRequest,
   UpdateOrgMemberRoleRequest,
-} from "@vm0/api-contracts/contracts/org-members";
+} from "@okouai/api-contracts/contracts/org-members";
 import {
   onboardingCompleteContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
-} from "@vm0/api-contracts/contracts/onboarding";
-import { authContract } from "@vm0/api-contracts/contracts/auth";
+} from "@okouai/api-contracts/contracts/onboarding";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
 import {
   zeroAgentCustomConnectorsContract,
-  type AgentCustomConnectorEnabledIds,
-} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+  type AgentCustomConnectorGrants,
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
   type ZeroAgentMetadataRequest,
   type ZeroAgentRequest,
   type ZeroAgentResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroComposesListContract } from "@okouai/api-contracts/contracts/zero-composes";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorConnectionContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
-  type PatchCustomConnectorBody,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroOrgContract,
   zeroOrgDeleteContract,
   zeroOrgLeaveContract,
-} from "@vm0/api-contracts/contracts/zero-org";
-import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
-import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+} from "@okouai/api-contracts/contracts/zero-org";
+import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/api-contracts/contracts/zero-org-members";
+} from "@okouai/api-contracts/contracts/zero-org-members";
 import {
   zeroTeamContract,
   type TeamComposeItem,
-} from "@vm0/api-contracts/contracts/zero-team";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-team";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroSecretsByNameContract,
-  zeroSecretsContract,
-  zeroVariablesByNameContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
-import {
-  zeroUserPreferencesContract,
+  userPreferencesContract,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
-import type {
-  SecretListResponse,
-  SecretResponse,
-  SetSecretRequest,
-} from "@vm0/api-contracts/contracts/secrets";
-import type {
-  SetVariableRequest,
-  VariableListResponse,
-  VariableResponse,
-} from "@vm0/api-contracts/contracts/variables";
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 
@@ -107,20 +90,18 @@ import { zeroCustomConnectorsRoutes } from "../../zero-custom-connectors";
 import { zeroCustomConnectorsCreateRoutes } from "../../zero-custom-connectors-create";
 import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
-import { zeroCustomConnectorsPatchRoutes } from "../../zero-custom-connectors-patch";
-import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
-import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
-import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
-import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
+import { zeroCustomConnectorDisconnectRoutes } from "../../zero-custom-connectors-disconnect";
+import { zeroCustomConnectorsValuesSetRoutes } from "../../zero-custom-connectors-values-set";
+import { onboardingCompleteRoutes } from "../../onboarding-complete";
+import { onboardingStatusRoutes } from "../../onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
 import { zeroOrgInviteRoutes } from "../../zero-org-invite";
-import { zeroOrgLogoRoutes } from "../../zero-org-logo";
+import { orgLogoRoutes } from "../../org-logo";
 import { zeroOrgMembersRoutes } from "../../zero-org-members";
 import { zeroOrgMembershipRequestsRoutes } from "../../zero-org-membership-requests";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
-import { zeroSecretsRoutes } from "../../zero-secrets";
 import { zeroTeamRoutes } from "../../zero-team";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { userPreferencesRoutes } from "../../user-preferences";
 import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -180,7 +161,7 @@ interface BddMembershipRequest {
 }
 
 interface BddOrgState {
-  readonly slug?: string;
+  readonly slug?: string | null;
   readonly name?: string;
   readonly createdBy?: string;
   readonly createdAt?: number;
@@ -227,26 +208,24 @@ interface RawJsonResponse {
 const authOrgRoutes = [
   ...authMeRoutes,
   ...cliAuthRoutes,
-  ...zeroOnboardingStatusRoutes,
-  ...zeroOnboardingCompleteRoutes,
-  ...zeroSecretsRoutes,
-  ...zeroUserPreferencesRoutes,
+  ...onboardingStatusRoutes,
+  ...onboardingCompleteRoutes,
+  ...userPreferencesRoutes,
   ...zeroOrgReadRoutes,
   ...zeroOrgDeleteRoutes,
   ...zeroOrgMembersRoutes,
   ...zeroOrgInviteRoutes,
   ...zeroOrgMembershipRequestsRoutes,
-  ...zeroOrgLogoRoutes,
+  ...orgLogoRoutes,
   ...zeroTeamRoutes,
   ...zeroAgentsRoutes,
   ...zeroComposesRoutes,
   ...zeroCustomConnectorsRoutes,
   ...zeroCustomConnectorsCreateRoutes,
   ...zeroCustomConnectorsGetRoutes,
-  ...zeroCustomConnectorsPatchRoutes,
   ...zeroCustomConnectorsDeleteRoutes,
-  ...zeroCustomConnectorsSecretSetRoutes,
-  ...zeroCustomConnectorSecretDeleteRoutes,
+  ...zeroCustomConnectorsValuesSetRoutes,
+  ...zeroCustomConnectorDisconnectRoutes,
 ] as const;
 
 function isBearerActor(actor: LogoUploadActor): actor is BearerActor {
@@ -537,7 +516,10 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         throw new Error("Cannot mock an organization for a no-org actor");
       }
 
-      const slug = state.slug ?? `bdd-${actor.orgId.slice(-8).toLowerCase()}`;
+      const slug =
+        state.slug === undefined
+          ? `bdd-${actor.orgId.slice(-8).toLowerCase()}`
+          : state.slug;
       const name = state.name ?? "BDD Workspace";
       const createdBy = state.createdBy ?? actor.userId;
       const createdAt =
@@ -648,7 +630,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgLogoContract,
+        orgLogoContract,
       );
       return await accept(
         client.get({ headers: authenticate(actor) }),
@@ -812,95 +794,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async setSecret(
-      actor: ApiTestUser,
-      body: SetSecretRequest,
-    ): Promise<SecretResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroSecretsContract,
-      );
-      const response = await accept(
-        client.set({ headers: authenticate(actor), body }),
-        [200, 201],
-      );
-      return response.body;
-    },
-
-    async requestSetSecret(
-      actor: ApiTestUser | null,
-      body: SetSecretRequest,
-      statuses: readonly (200 | 201 | 400 | 401 | 500)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroSecretsContract,
-      );
-      return await accept(
-        client.set({ headers: authenticate(actor), body }),
-        statuses,
-      );
-    },
-
-    async listSecrets(actor: ApiTestUser): Promise<SecretListResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroSecretsContract,
-      );
-      const response = await accept(
-        client.list({ headers: authenticate(actor) }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async deleteSecret(actor: ApiTestUser, name: string): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroSecretsByNameContract,
-      );
-      await accept(
-        client.delete({ headers: authenticate(actor), params: { name } }),
-        [204],
-      );
-    },
-
-    async setVariable(
-      actor: ApiTestUser,
-      body: SetVariableRequest,
-    ): Promise<VariableResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroVariablesContract,
-      );
-      const response = await accept(
-        client.set({ headers: authenticate(actor), body }),
-        [200, 201],
-      );
-      return response.body;
-    },
-
-    async listVariables(actor: ApiTestUser): Promise<VariableListResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroVariablesContract,
-      );
-      const response = await accept(
-        client.list({ headers: authenticate(actor) }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async deleteVariable(actor: ApiTestUser, name: string): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroVariablesByNameContract,
-      );
-      await accept(
-        client.delete({ headers: authenticate(actor), params: { name } }),
-        [204],
-      );
-    },
-
     async readPreferences(
       actor: ApiTestUser,
     ): Promise<UserPreferencesResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroUserPreferencesContract,
+        userPreferencesContract,
       );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
@@ -914,7 +812,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: UpdateUserPreferencesRequest,
     ): Promise<UserPreferencesResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroUserPreferencesContract,
+        userPreferencesContract,
       );
       const response = await accept(
         client.update({ headers: authenticate(actor), body }),
@@ -964,7 +862,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestUpdateOrg(
       actor: ApiTestUser | null,
       body: UpdateOrgRequest,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgContract,
@@ -973,17 +871,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.update({ headers: authenticate(actor), body }),
         statuses,
       );
-    },
-
-    async listOrgs(actor: ApiTestUser) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgListContract,
-      );
-      const response = await accept(
-        client.list({ headers: authenticate(actor) }),
-        [200],
-      );
-      return response.body;
     },
 
     async listMembers(actor: ApiTestUser): Promise<OrgMembersResponse> {
@@ -1026,7 +913,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestUpdateOrgWithBearer(
       token: string,
       body: UpdateOrgRequest,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgContract,
@@ -1247,15 +1134,15 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async deleteOrg(
-      actor: ApiTestUser,
-      slug: string,
-    ): Promise<OrgMessageResponse> {
+    async deleteOrg(actor: ApiTestUser): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgDeleteContract,
       );
       const response = await accept(
-        client.delete({ headers: authenticate(actor), body: { slug } }),
+        client.delete({
+          headers: authenticate(actor),
+          body: { confirm: "confirm" },
+        }),
         [200],
       );
       return response.body;
@@ -1263,16 +1150,43 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
 
     async requestDeleteOrg(
       actor: ApiTestUser | null,
-      slug: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgDeleteContract,
       );
       return await accept(
-        client.delete({ headers: authenticate(actor), body: { slug } }),
+        client.delete({
+          headers: authenticate(actor),
+          body: { confirm: "confirm" },
+        }),
         statuses,
       );
+    },
+
+    async requestDeleteOrgWithBearer(
+      bearer: string,
+      statuses: readonly number[],
+    ): Promise<RawJsonResponse> {
+      const response = await testApp().request("/api/zero/org/delete", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${bearer}`,
+        },
+        body: JSON.stringify({ confirm: "confirm" }),
+      });
+      const responseBody: unknown = await response.json();
+      if (!statuses.includes(response.status)) {
+        throw new Error(
+          `Expected POST /api/zero/org/delete status to be one of ${statuses.join(
+            ", ",
+          )}, received ${response.status}. Body: ${JSON.stringify(
+            responseBody,
+          )}`,
+        );
+      }
+      return { status: response.status, body: responseBody };
     },
 
     async listTeam(actor: ApiTestUser): Promise<readonly TeamComposeItem[]> {
@@ -1621,52 +1535,33 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
-    async patchCustomConnector(
-      actor: ApiTestUser,
-      connectorId: string,
-      body: PatchCustomConnectorBody,
-    ): Promise<CustomConnectorResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorByIdContract,
-      );
-      const response = await accept(
-        client.patch({
-          headers: authenticate(actor),
-          params: { id: connectorId },
-          body,
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
     async setCustomConnectorSecret(
       actor: ApiTestUser,
       connectorId: string,
       value: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorSecretContract,
+        zeroCustomConnectorValuesContract,
       );
       await accept(
         client.set({
           headers: authenticate(actor),
           params: { id: connectorId },
-          body: { value },
+          body: { values: [{ key: "secret", kind: "secret", value }] },
         }),
-        [204],
+        [200],
       );
     },
 
-    async deleteCustomConnectorSecret(
+    async disconnectCustomConnector(
       actor: ApiTestUser,
       connectorId: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorSecretContract,
+        zeroCustomConnectorConnectionContract,
       );
       await accept(
-        client.delete({
+        client.disconnect({
           headers: authenticate(actor),
           params: { id: connectorId },
         }),
@@ -1693,7 +1588,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async readAgentCustomConnectors(
       actor: ApiTestUser,
       agentId: string,
-    ): Promise<AgentCustomConnectorEnabledIds> {
+    ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroAgentCustomConnectorsContract,
       );
@@ -1710,8 +1605,8 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async updateAgentCustomConnectors(
       actor: ApiTestUser,
       agentId: string,
-      enabledIds: readonly string[],
-    ): Promise<AgentCustomConnectorEnabledIds> {
+      connectorIds: readonly string[],
+    ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroAgentCustomConnectorsContract,
       );
@@ -1719,7 +1614,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.update({
           headers: authenticate(actor),
           params: { id: agentId },
-          body: { enabledIds: [...enabledIds] },
+          body: {
+            grants: connectorIds.map((customConnectorId) => {
+              return { customConnectorId, permissionNames: [] };
+            }),
+          },
         }),
         [200],
       );
@@ -1729,7 +1628,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestUpdateAgentCustomConnectors(
       actor: ApiTestUser | null,
       agentId: string,
-      enabledIds: readonly string[],
+      connectorIds: readonly string[],
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
@@ -1739,7 +1638,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.update({
           headers: authenticate(actor),
           params: { id: agentId },
-          body: { enabledIds: [...enabledIds] },
+          body: {
+            grants: connectorIds.map((customConnectorId) => {
+              return { customConnectorId, permissionNames: [] };
+            }),
+          },
         }),
         statuses,
       );

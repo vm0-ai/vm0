@@ -7,7 +7,7 @@ import { OFFLINE_COMPUTER_USE_HOST_STATE } from "./computer-use-types";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
 
 // Degraded mode runs when the main bundle fails to load, so this module must
-// stay loadable by the bootstrap entry: no workspace (`@vm0/*`) imports.
+// stay loadable by the bootstrap entry: no workspace (`@okouai/*`) imports.
 
 declare const __DESKTOP_VERSION__: string | undefined;
 declare const __DESKTOP_SENTRY_DSN__: string | undefined;
@@ -96,16 +96,17 @@ async function reportDesktopBootstrapFailure(error: unknown): Promise<void> {
 
 async function showDegradedStartupDialog(
   autoUpdatesInstalled: boolean,
+  displayName: string,
 ): Promise<void> {
   await dialog.showMessageBox({
     type: "error",
     buttons: ["OK"],
     defaultId: 0,
     title: "Startup Error",
-    message: "Zero Computer Use hit an error during startup.",
+    message: `${displayName} hit an error during startup.`,
     detail: autoUpdatesInstalled
       ? "Keep the app running: a fixed update will be downloaded and installed automatically as soon as it is available."
-      : "Please reinstall the latest version of Zero Computer Use.",
+      : `Please reinstall the latest version of ${displayName}.`,
   });
 }
 
@@ -129,6 +130,9 @@ export function enterDegradedDesktopMode(options: {
       prepareForQuitAndInstall: async () => {},
     });
     await reportDesktopBootstrapFailure(options.error);
-    await showDegradedStartupDialog(autoUpdatesInstalled);
+    await showDegradedStartupDialog(
+      autoUpdatesInstalled,
+      options.config.identity.displayName,
+    );
   });
 }

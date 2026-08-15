@@ -64,21 +64,16 @@ function setupWorkflowQueuePage({
       },
       {
         id: "msg-active-goal",
+        eventType: "goal.open",
         role: "assistant",
-        content: null,
+        content: "Keep customer follow-ups under four hours",
         runId: undefined,
-        goalEvent: {
-          type: "state",
-          status: "active",
-          objectiveBrief: "Keep customer follow-ups under four hours",
-        },
         createdAt: "2026-07-10T01:00:01Z",
       },
       {
         id: EVENT_ID_1,
         eventType: "input.automation",
         content: null,
-        triggerSource: "workflow-event",
         userMessage: {
           version: 1,
           parts: [{ type: "automation", workflowName: "customer-followup" }],
@@ -90,7 +85,6 @@ function setupWorkflowQueuePage({
         id: EVENT_ID_2,
         eventType: "input.automation",
         content: null,
-        triggerSource: "workflow-event",
         userMessage: {
           version: 1,
           parts: [
@@ -123,12 +117,13 @@ function setupWorkflowQueuePage({
 }
 
 describe("workflow queue panel", () => {
-  it("shows messages, automation events, and the active goal in one bottom queue", async () => {
+  it("renders active-run prompts inline while queueing automation events and the active goal", async () => {
     setupWorkflowQueuePage();
 
     await waitFor(() => {
+      expect(screen.getByText("2 events waiting")).toBeInTheDocument();
       expect(
-        screen.getByText("1 message and 2 events waiting"),
+        screen.getByText("Review the queued customer reply"),
       ).toBeInTheDocument();
       expect(screen.getByText("customer-followup")).toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
@@ -143,12 +138,11 @@ describe("workflow queue panel", () => {
         return row.getAttribute("aria-label");
       }),
     ).toStrictEqual([
-      "Queued message",
       "Pending automation event",
       "Pending automation event",
       "Active goal",
     ]);
-    expect(screen.getAllByLabelText("Queued message")).toHaveLength(1);
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Pause automation events"),
     ).not.toBeInTheDocument();

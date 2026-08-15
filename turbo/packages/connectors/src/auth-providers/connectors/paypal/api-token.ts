@@ -4,11 +4,13 @@ import { ProviderHttpError, ProviderResponseError } from "../../provider-error";
 
 const TOKEN_URL = "https://api-m.paypal.com/v1/oauth2/token";
 
-export async function fetchPayPalAccessToken(args: {
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly signal: AbortSignal;
-}) {
+export async function fetchPayPalAccessToken(
+  args: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+  },
+  signal: AbortSignal,
+) {
   const response = await fetch(TOKEN_URL, {
     method: "POST",
     headers: {
@@ -16,7 +18,7 @@ export async function fetchPayPalAccessToken(args: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({ grant_type: "client_credentials" }),
-    signal: args.signal,
+    signal,
   });
   if (!response.ok) {
     throw new ProviderHttpError(

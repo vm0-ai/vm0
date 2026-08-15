@@ -17,24 +17,30 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import http_local_responses
 import matching
 from auth_base_forwarder import (
-    MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     AuthBaseForwardingSaturatedError,
+    forward_request,
+    release_forward_request_admission_from_flow,
+    take_forward_request_admission_from_flow,
+)
+from auth_base_transport import (
+    MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     ForwardedRequestTooLargeError,
     InvalidAuthBaseRequestHeadersError,
     InvalidResolvedAuthHeaderError,
-    forward_request,
     forwarded_auth_base_client_header_pairs,
     header_pairs,
-    release_forward_request_admission_from_flow,
     resolved_auth_header_pairs,
-    take_forward_request_admission_from_flow,
 )
 from aws_sigv4 import (
+    AwsSigV4BodyHash,
     AwsSigV4Credentials,
+    AwsSigV4RequestInspection,
     AwsSigV4SigningError,
-    request_requires_body_for_signing,
+    hash_request_body,
+    inspect_request,
     sign_request,
 )
 from aws_sigv4_body_admission import MAX_AWS_SIGV4_REQUEST_BODY_BYTES
@@ -50,14 +56,15 @@ from firewall_auth_client import (
     FirewallAuthRequest,
     InsufficientCreditsError,
 )
-from firewall_auth_config import (
-    auth_config_injects_credentials,
-    auth_config_injects_ordinary_upstream_credentials,
-)
+from firewall_auth_config import auth_config_injects_credentials
 from logging_utils import log_proxy_entry
 from runtime_url_parsing import split_runtime_url
 from url_syntax import has_unsafe_runtime_url_syntax
-from url_utils import build_rewrite_url
+from url_utils import (
+    MAX_AUTH_BASE_QUERY_PAIRS,
+    AuthBaseQueryTooManyPairsError,
+    build_rewrite_url,
+)
 
 
 class FirewallAuthHandlingResult(Enum):
@@ -75,9 +82,22 @@ class FirewallHeaderPhaseAuthResult(Enum):
     FALLBACK = "fallback"
 
 
-type OrdinaryUpstreamCredentialsGuard = Callable[[], bool]
+class _FirewallAuthPlanFailure(Enum):
+    """Canonical pre-resolution policy failure for both hook phases."""
+
+    UNSAFE_METHOD = "unsafe_method"
+    INSECURE_TRANSPORT = "insecure_transport"
+    AUTH_UNAVAILABLE = "auth_unavailable"
 
 
+type CurrentFirewallAuthorizationGuard = Callable[[], bool]
+
+
+_HTTP_STATUS_INFORMATIONAL_MIN = 100
+_HTTP_STATUS_SUCCESS_MIN = 200
+_HTTP_STATUS_NO_CONTENT = 204
+_HTTP_STATUS_RESET_CONTENT = 205
+_HTTP_STATUS_NOT_MODIFIED = 304
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
 AUTH_BASE_FORWARDING_SATURATED_ERROR = "auth_base_forwarding_saturated"
@@ -85,8 +105,22 @@ FIREWALL_AUTH_FETCH_SATURATED_ERROR = "firewall_auth_fetch_saturated"
 AWS_SIGV4_REQUEST_BODY_ADMISSION_SATURATED_ERROR = "aws_sigv4_request_body_admission_saturated"
 AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR = "aws_sigv4_request_body_length_required"
 AWS_SIGV4_REQUEST_BODY_TOO_LARGE_ERROR = "aws_sigv4_request_body_too_large"
+# Auth-base uses a separately named request-target policy because its forwarding
+# behavior can evolve independently, while the shared 64 KiB scale remains well
+# above ordinary connector request targets.
+MAX_AUTH_BASE_REQUEST_TARGET_BYTES = 64 * 1024
+# Managed SigV4 request inspection uses the pinned HTTP/2 stack's 64 KiB
+# decompressed header-list policy. HPACK accounts for 32 bytes of overhead per
+# field; using the same formula also bounds HTTP/1 header count before decoding.
+MAX_AWS_SIGV4_REQUEST_TARGET_BYTES = 64 * 1024
+MAX_AWS_SIGV4_REQUEST_HEADER_LIST_BYTES = 64 * 1024
+AWS_SIGV4_REQUEST_HEADER_FIELD_OVERHEAD_BYTES = 32
+MAX_AWS_SIGV4_REQUEST_HEADER_FIELDS = (
+    MAX_AWS_SIGV4_REQUEST_HEADER_LIST_BYTES // AWS_SIGV4_REQUEST_HEADER_FIELD_OVERHEAD_BYTES
+)
 _FIREWALL_AUTH_IDENTITY_VERSION = 1
 _FIREWALL_AUTH_IDENTITY_CACHE_KEY = "_firewallAuthIdentityCache"
+_MISSING_AWS_SIGV4_ORIGINAL_URL = object()
 
 
 @dataclass(frozen=True)
@@ -107,6 +141,45 @@ class _FirewallAuthIdentityCache:
 
 
 @dataclass(frozen=True)
+class _AwsSigV4FlowRepresentationIdentity:
+    """Immutable raw objects that identify one flow request representation."""
+
+    original_url: object = field(repr=False)
+    raw_path: bytes = field(repr=False)
+    raw_header_fields: tuple[tuple[bytes, bytes], ...] = field(repr=False)
+
+    def is_current(self, other: "_AwsSigV4FlowRepresentationIdentity") -> bool:
+        return (
+            self.original_url is other.original_url
+            and self.raw_path is other.raw_path
+            and self.raw_header_fields is other.raw_header_fields
+        )
+
+
+@dataclass(frozen=True)
+class _AwsSigV4RequestInput:
+    """Bounded decoded input passed to the low-level SigV4 boundary."""
+
+    url: str = field(repr=False)
+    headers: tuple[tuple[str, str], ...] = field(repr=False)
+
+
+@dataclass(frozen=True)
+class _AwsSigV4FlowInspection:
+    """Flow-local inspection result for one immutable raw representation."""
+
+    identity: _AwsSigV4FlowRepresentationIdentity = field(repr=False)
+    request_input: _AwsSigV4RequestInput | None = field(repr=False)
+    inspection: AwsSigV4RequestInspection | None = field(repr=False)
+
+    @property
+    def requires_body(self) -> bool:
+        if self.inspection is None:
+            return True
+        return self.inspection.requires_body
+
+
+@dataclass(frozen=True)
 class _FirewallAuthContext:
     """Request-local firewall auth inputs for the hook orchestration path."""
 
@@ -117,9 +190,32 @@ class _FirewallAuthContext:
     auth_cache_key: FirewallAuthCacheKey
 
 
+@dataclass(frozen=True)
+class _FirewallAuthPlan:
+    """Pure firewall-auth policy shared by requestheaders and request hooks."""
+
+    injects_credentials: bool
+    needs_resolution: bool
+    uses_auth_base: bool
+    uses_aws_sigv4: bool
+    body_dependent: bool
+    failure: _FirewallAuthPlanFailure | None
+
+
+@dataclass(frozen=True)
+class _ResolvedFirewallAuth:
+    """Validated auth-service result consumed by either hook phase."""
+
+    token_meta: dict
+    headers: dict
+    query: dict | None
+    base: str | None
+    aws_sigv4: AwsSigV4Credentials | None
+
+
 def is_billable_firewall(firewall_name: str, vm_info: dict) -> bool:
     """Return whether this firewall should emit connector/model usage."""
-    return firewall_name in (vm_info.get("billableFirewalls") or [])
+    return firewall_name in vm_info["billableFirewalls"]
 
 
 def _prepare_firewall_metadata(
@@ -131,8 +227,6 @@ def _prepare_firewall_metadata(
     api_entry = allow.api_entry
     firewall_base = api_entry["base"]
     api_id = api_entry.get("id", firewall_base)
-    # billableFirewalls is optional in the TS schema; runner may omit the
-    # field entirely for non-vm0 / no-billable-connector runs.
     firewall_billable = is_billable_firewall(allow.name, vm_info)
 
     flow.metadata[metadata_keys.FIREWALL_BASE] = firewall_base
@@ -165,6 +259,28 @@ def _build_firewall_auth_context(
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
     api_id = flow.metadata[metadata_keys.FIREWALL_API_ID]
     run_id = flow_metadata.run_id(flow.metadata)
+    custom_connector_id = api_entry.get("customConnectorId")
+    connector_routing_variables = vm_info.get("connectorRoutingVariables", {})
+    matched_firewall: dict | None = None
+    if isinstance(custom_connector_id, str):
+        routing_variables = connector_routing_variables.get(f"custom:{custom_connector_id}")
+        if not isinstance(routing_variables, dict):
+            raise TypeError("custom connector routing variables are missing from proxy registry")
+        matched_firewall = {
+            "name": allow.name,
+            "apiId": api_id,
+            "customConnectorId": custom_connector_id,
+            "routingVariables": routing_variables,
+        }
+    else:
+        routing_variables = connector_routing_variables.get(f"builtin:{allow.name}")
+        if isinstance(routing_variables, dict):
+            matched_firewall = {
+                "name": allow.name,
+                "apiId": api_id,
+                "connectorSlug": allow.name,
+                "routingVariables": routing_variables,
+            }
     auth_request = FirewallAuthRequest(
         sandbox_token=vm_info.get("sandboxToken", ""),
         encrypted_secrets=vm_info.get("encryptedSecrets") or "",
@@ -176,6 +292,7 @@ def _build_firewall_auth_context(
         secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
         vars_map=vm_info.get("vars"),
         firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+        matched_firewall=matched_firewall,
     )
     auth_cache_key = FirewallAuthCacheKey(
         run_id=run_id,
@@ -246,25 +363,8 @@ def _cached_firewall_auth_identity(
     return auth_identity
 
 
-def _firewall_auth_context_injects_credentials(context: _FirewallAuthContext) -> bool:
-    return auth_config_injects_credentials(
-        {
-            "headers": context.auth_request.auth_headers,
-            "query": context.auth_request.auth_query,
-            "awsSigv4": context.auth_request.auth_aws_sigv4,
-            "base": context.auth_request.auth_base,
-        }
-    )
-
-
 def _request_method_forbids_managed_credentials(method: str) -> bool:
     return method.upper() in ("TRACE", "TRACK")
-
-
-def _firewall_auth_context_needs_resolution(context: _FirewallAuthContext) -> bool:
-    return context.auth_request.firewall_billable or _firewall_auth_context_injects_credentials(
-        context
-    )
 
 
 def _set_matched_firewall_failure_response(
@@ -296,10 +396,10 @@ def _set_matched_firewall_failure_response(
         body["connectors"] = connectors
     if failure_reason:
         body["failureReason"] = failure_reason
-    flow.response = http.Response.make(
+    flow.response = http_local_responses.make_local_json_response(
+        flow,
         status,
-        json.dumps(body).encode(),
-        {"Content-Type": "application/json"},
+        body,
     )
 
 
@@ -367,6 +467,99 @@ def _auth_config_uses_body_dependent_auth(
     )
 
 
+def _build_firewall_auth_plan(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    vm_info: dict,
+) -> _FirewallAuthPlan:
+    """Derive shared firewall-auth policy without mutating request state."""
+    auth_config = allow.api_entry.get("auth", {})
+    uses_auth_base = (
+        isinstance(auth_config, dict)
+        and isinstance(auth_config.get("base"), str)
+        and bool(auth_config["base"])
+    )
+    uses_aws_sigv4 = (
+        isinstance(auth_config, dict)
+        and isinstance(auth_config.get("awsSigv4"), dict)
+        and bool(auth_config["awsSigv4"])
+    )
+    injects_credentials = auth_config_injects_credentials(auth_config)
+    needs_resolution = injects_credentials or is_billable_firewall(allow.name, vm_info)
+
+    failure = None
+    if injects_credentials and _request_method_forbids_managed_credentials(flow.request.method):
+        failure = _FirewallAuthPlanFailure.UNSAFE_METHOD
+    elif injects_credentials and flow.request.scheme.lower() != "https":
+        failure = _FirewallAuthPlanFailure.INSECURE_TRANSPORT
+    elif needs_resolution and not vm_info.get("encryptedSecrets"):
+        failure = _FirewallAuthPlanFailure.AUTH_UNAVAILABLE
+
+    return _FirewallAuthPlan(
+        injects_credentials=injects_credentials,
+        needs_resolution=needs_resolution,
+        uses_auth_base=uses_auth_base,
+        uses_aws_sigv4=uses_aws_sigv4,
+        body_dependent=_auth_config_uses_body_dependent_auth(flow, auth_config),
+        failure=failure,
+    )
+
+
+async def _resolve_firewall_auth(
+    plan: _FirewallAuthPlan,
+    context: _FirewallAuthContext,
+) -> dict:
+    if not plan.needs_resolution:
+        return _empty_firewall_auth_metadata()
+    return await get_firewall_headers(
+        context.auth_cache_key,
+        context.auth_request,
+    )
+
+
+def _validate_resolved_firewall_auth(
+    plan: _FirewallAuthPlan,
+    token_meta: object,
+) -> _ResolvedFirewallAuth:
+    if not isinstance(token_meta, dict):
+        raise TypeError("resolved firewall auth metadata must be an object")
+
+    headers = token_meta.get("headers")
+    if not isinstance(headers, dict):
+        raise TypeError("resolved auth headers are missing")
+    query = token_meta.get("query")
+    if query is not None and not isinstance(query, dict):
+        raise TypeError("resolved auth query must be an object")
+
+    base_value = token_meta.get("base")
+    if plan.uses_auth_base:
+        if not isinstance(base_value, str) or not base_value:
+            raise ValueError("resolved auth base is missing")
+        base = base_value
+    else:
+        if base_value is not None:
+            raise ValueError("resolved auth base is unexpected")
+        base = None
+
+    aws_sigv4_value = token_meta.get("aws_sigv4")
+    if plan.uses_aws_sigv4:
+        if not isinstance(aws_sigv4_value, AwsSigV4Credentials):
+            raise ValueError("resolved AWS SigV4 credentials are missing")
+        aws_sigv4 = aws_sigv4_value
+    else:
+        if aws_sigv4_value is not None:
+            raise ValueError("resolved AWS SigV4 credentials are unexpected")
+        aws_sigv4 = None
+
+    return _ResolvedFirewallAuth(
+        token_meta=token_meta,
+        headers=headers,
+        query=query,
+        base=base,
+        aws_sigv4=aws_sigv4,
+    )
+
+
 def _restore_header_phase_probe_state(
     flow: http.HTTPFlow,
     *,
@@ -418,17 +611,91 @@ def _trusted_aws_sigv4_url(flow: http.HTTPFlow) -> str:
     )
 
 
+def _aws_sigv4_flow_representation_identity(
+    flow: http.HTTPFlow,
+) -> _AwsSigV4FlowRepresentationIdentity:
+    return _AwsSigV4FlowRepresentationIdentity(
+        original_url=flow.metadata.get(
+            metadata_keys.ORIGINAL_URL,
+            _MISSING_AWS_SIGV4_ORIGINAL_URL,
+        ),
+        raw_path=flow.request.data.path,
+        raw_header_fields=flow.request.headers.fields,
+    )
+
+
+def _bounded_aws_sigv4_request_input(flow: http.HTTPFlow) -> _AwsSigV4RequestInput:
+    raw_path = flow.request.data.path
+    if len(raw_path) > MAX_AWS_SIGV4_REQUEST_TARGET_BYTES:
+        raise AwsSigV4SigningError("AWS request target is too large")
+
+    raw_header_fields = flow.request.headers.fields
+    if len(raw_header_fields) > MAX_AWS_SIGV4_REQUEST_HEADER_FIELDS:
+        raise AwsSigV4SigningError("AWS request headers are too large")
+
+    header_list_size = 0
+    for name, value in raw_header_fields:
+        header_list_size += len(name) + len(value) + AWS_SIGV4_REQUEST_HEADER_FIELD_OVERHEAD_BYTES
+        if header_list_size > MAX_AWS_SIGV4_REQUEST_HEADER_LIST_BYTES:
+            raise AwsSigV4SigningError("AWS request headers are too large")
+
+    return _AwsSigV4RequestInput(
+        url=_trusted_aws_sigv4_url(flow),
+        headers=tuple(header_pairs(flow.request.headers)),
+    )
+
+
+def _inspect_aws_sigv4_flow(flow: http.HTTPFlow) -> _AwsSigV4FlowInspection:
+    identity = _aws_sigv4_flow_representation_identity(flow)
+    cached = flow.metadata.get(metadata_keys.AWS_SIGV4_REQUEST_INSPECTION)
+    if isinstance(cached, _AwsSigV4FlowInspection):
+        if cached.identity.is_current(identity):
+            return cached
+        # Restoration or reclassification may replace immutable containers with
+        # equal values. Value comparison is safe only after the cached input passed
+        # the target/header bounds; rebind once so later consumers use the O(1) path.
+        if cached.request_input is not None and cached.identity == identity:
+            rebound = _AwsSigV4FlowInspection(
+                identity=identity,
+                request_input=cached.request_input,
+                inspection=cached.inspection,
+            )
+            flow.metadata[metadata_keys.AWS_SIGV4_REQUEST_INSPECTION] = rebound
+            return rebound
+
+    try:
+        request_input = _bounded_aws_sigv4_request_input(flow)
+    except AwsSigV4SigningError:
+        result = _AwsSigV4FlowInspection(
+            identity=identity,
+            request_input=None,
+            inspection=None,
+        )
+    else:
+        try:
+            inspection = inspect_request(
+                url=request_input.url,
+                headers=list(request_input.headers),
+            )
+        except AwsSigV4SigningError:
+            inspection = None
+        result = _AwsSigV4FlowInspection(
+            identity=identity,
+            request_input=request_input,
+            inspection=inspection,
+        )
+    flow.metadata[metadata_keys.AWS_SIGV4_REQUEST_INSPECTION] = result
+    return result
+
+
+def release_aws_sigv4_request_inspection(flow: http.HTTPFlow) -> None:
+    """Release reusable SigV4 request state from one flow."""
+    flow.metadata.pop(metadata_keys.AWS_SIGV4_REQUEST_INSPECTION, None)
+
+
 def aws_sigv4_request_requires_body_for_signing(flow: http.HTTPFlow) -> bool:
     """Conservatively classify whether a configured SigV4 request needs its body."""
-    try:
-        return request_requires_body_for_signing(
-            url=_trusted_aws_sigv4_url(flow),
-            headers=header_pairs(flow.request.headers),
-        )
-    except AwsSigV4SigningError:
-        # Preserve the request-hook signing failure response for malformed or
-        # unsupported placeholders without allowing unbounded body streaming.
-        return True
+    return _inspect_aws_sigv4_flow(flow).requires_body
 
 
 def _request_path_query(flow: http.HTTPFlow) -> str:
@@ -440,18 +707,61 @@ def _request_path_query(flow: http.HTTPFlow) -> str:
 def _sign_flow_request_with_aws_sigv4(
     flow: http.HTTPFlow,
     credentials: AwsSigV4Credentials,
+    *,
+    precomputed_body_hash: AwsSigV4BodyHash | None = None,
 ) -> None:
-    signed_url, signed_headers = sign_request(
-        method=flow.request.method,
-        url=_trusted_aws_sigv4_url(flow),
-        headers=header_pairs(flow.request.headers),
-        body=flow.request.raw_content,
-        credentials=credentials,
+    state = _inspect_aws_sigv4_flow(flow)
+    try:
+        request_input = state.request_input or _bounded_aws_sigv4_request_input(flow)
+        signed_url, signed_headers = sign_request(
+            method=flow.request.method,
+            url=request_input.url,
+            headers=list(request_input.headers),
+            body=flow.request.raw_content,
+            credentials=credentials,
+            precomputed_body_hash=precomputed_body_hash,
+            inspection=state.inspection,
+        )
+        flow.request.url = signed_url
+        flow.request.headers = http.Headers(
+            [(name.encode(), value.encode()) for name, value in signed_headers]
+        )
+    finally:
+        release_aws_sigv4_request_inspection(flow)
+
+
+async def _precompute_aws_sigv4_body_hash(
+    flow: http.HTTPFlow,
+    *,
+    plan: _FirewallAuthPlan,
+    resolved_auth: _ResolvedFirewallAuth,
+) -> AwsSigV4BodyHash | None:
+    if plan.uses_auth_base or not plan.uses_aws_sigv4:
+        return None
+    if resolved_auth.aws_sigv4 is None:
+        return None
+    flow_inspection = _inspect_aws_sigv4_flow(flow)
+    if flow_inspection.inspection is None or not flow_inspection.requires_body:
+        return None
+
+    hash_future = asyncio.get_running_loop().run_in_executor(
+        None,
+        hash_request_body,
+        flow.request.raw_content,
     )
-    flow.request.url = signed_url
-    flow.request.headers = http.Headers(
-        [(name.encode(), value.encode()) for name, value in signed_headers]
-    )
+    try:
+        return await asyncio.shield(hash_future)
+    except asyncio.CancelledError:
+        while not hash_future.done():
+            try:
+                await asyncio.shield(hash_future)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
+        if not hash_future.cancelled():
+            hash_future.exception()
+        raise
 
 
 def _set_url_rewrite_forward_failed(
@@ -540,6 +850,58 @@ def mark_auth_base_forwarding_saturated(
 def _request_body_exceeds_auth_base_limit(flow: http.HTTPFlow) -> bool:
     body = flow.request.raw_content
     return body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES
+
+
+def _set_auth_base_request_target_too_large(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    request_target_size = len(flow.request.data.path)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "auth.base request target too large",
+        type="firewall",
+        firewall_base=firewall_base,
+        request_target_size_bytes=request_target_size,
+        request_target_limit_bytes=MAX_AUTH_BASE_REQUEST_TARGET_BYTES,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=414,
+        action="ALLOW",
+        error_code="auth_base_request_target_too_large",
+        message="auth.base request target is too large",
+        permission=allow.name,
+    )
+
+
+def _set_auth_base_query_too_many_pairs(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "auth.base rewritten query has too many pairs",
+        type="firewall",
+        firewall_base=firewall_base,
+        query_pair_limit=MAX_AUTH_BASE_QUERY_PAIRS,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=414,
+        action="ALLOW",
+        error_code="auth_base_query_too_many_pairs",
+        message="auth.base rewritten query has too many parameters",
+        permission=allow.name,
+    )
 
 
 def _log_auth_base_request_too_large(
@@ -749,9 +1111,19 @@ def mark_aws_sigv4_request_admission_saturated(
 def _preflight_firewall_auth(
     flow: http.HTTPFlow,
     context: _FirewallAuthContext,
+    plan: _FirewallAuthPlan,
 ) -> FirewallAuthHandlingResult | None:
     """Handle local firewall auth failures that must happen before auth resolution."""
-    if context.auth_request.auth_base and _request_body_exceeds_auth_base_limit(flow):
+    if plan.uses_auth_base and len(flow.request.data.path) > MAX_AUTH_BASE_REQUEST_TARGET_BYTES:
+        _set_auth_base_request_target_too_large(
+            flow,
+            allow=context.allow,
+            proxy_log_path=context.proxy_log_path,
+            firewall_base=context.firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    if plan.uses_auth_base and _request_body_exceeds_auth_base_limit(flow):
         _set_auth_base_request_too_large(
             flow,
             allow=context.allow,
@@ -762,7 +1134,7 @@ def _preflight_firewall_auth(
 
     body = flow.request.raw_content
     if (
-        context.auth_request.auth_aws_sigv4 is not None
+        plan.uses_aws_sigv4
         and aws_sigv4_request_requires_body_for_signing(flow)
         and body is not None
         and len(body) > MAX_AWS_SIGV4_REQUEST_BODY_BYTES
@@ -775,9 +1147,8 @@ def _preflight_firewall_auth(
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    injects_credentials = _firewall_auth_context_injects_credentials(context)
-    request_method = flow.request.method.upper()
-    if _request_method_forbids_managed_credentials(request_method) and injects_credentials:
+    if plan.failure is _FirewallAuthPlanFailure.UNSAFE_METHOD:
+        request_method = flow.request.method.upper()
         log_proxy_entry(
             context.proxy_log_path,
             "warn",
@@ -796,8 +1167,8 @@ def _preflight_firewall_auth(
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    request_scheme = flow.request.scheme.lower()
-    if request_scheme != "https" and injects_credentials:
+    if plan.failure is _FirewallAuthPlanFailure.INSECURE_TRANSPORT:
+        request_scheme = flow.request.scheme.lower()
         log_proxy_entry(
             context.proxy_log_path,
             "warn",
@@ -816,9 +1187,7 @@ def _preflight_firewall_auth(
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    if not context.auth_request.encrypted_secrets and _firewall_auth_context_needs_resolution(
-        context
-    ):
+    if plan.failure is _FirewallAuthPlanFailure.AUTH_UNAVAILABLE:
         log_proxy_entry(
             context.proxy_log_path,
             "error",
@@ -1009,6 +1378,14 @@ async def _apply_url_rewrite(
     try:
         orig_query = _request_path_query(flow)
         new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
+    except AuthBaseQueryTooManyPairsError:
+        _set_auth_base_query_too_many_pairs(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
     except ValueError as e:
         _set_url_rewrite_forward_failed(
             flow,
@@ -1033,6 +1410,20 @@ async def _apply_url_rewrite(
             req_body,
             admission=admission,
         )
+        is_head_representation = flow.request.method == "HEAD" and not (
+            _HTTP_STATUS_INFORMATIONAL_MIN <= status < _HTTP_STATUS_SUCCESS_MIN
+            or status in (_HTTP_STATUS_NO_CONTENT, _HTTP_STATUS_RESET_CONTENT)
+        )
+        preserves_representation_length = is_head_representation or (
+            flow.request.method == "GET" and status == _HTTP_STATUS_NOT_MODIFIED
+        )
+        representation_content_length: str | None = None
+        if preserves_representation_length:
+            content_lengths = resp_headers.get_all("Content-Length")
+            if len(content_lengths) == 1:
+                candidate = content_lengths[0].strip(" \t")
+                if candidate.isascii() and candidate.isdigit():
+                    representation_content_length = candidate
         content_encodings = [
             value
             for name, value in header_pairs(resp_headers)
@@ -1043,6 +1434,10 @@ async def _apply_url_rewrite(
         # The forwarder returns representation bytes, but Response.make expects
         # decoded content. Hide the codings while it normalizes response framing.
         flow.response = http.Response.make(status, resp_raw_content, resp_headers)
+        if preserves_representation_length:
+            del flow.response.headers["Content-Length"]
+            if representation_content_length is not None:
+                flow.response.headers["Content-Length"] = representation_content_length
         if content_encodings:
             flow.response.headers.set_all("Content-Encoding", content_encodings)
     except ForwardedRequestTooLargeError:
@@ -1086,22 +1481,13 @@ async def _apply_resolved_firewall_auth(
     flow: http.HTTPFlow,
     *,
     context: _FirewallAuthContext,
-    token_meta: dict,
+    resolved_auth: _ResolvedFirewallAuth,
     auth_base_client_headers: list[tuple[str, str]] | None,
+    aws_sigv4_body_hash: AwsSigV4BodyHash | None,
 ) -> FirewallAuthHandlingResult:
     """Apply resolved firewall auth and return request ownership outcome."""
-    headers = token_meta["headers"]
-    resolved_query = token_meta.get("query")
-
     try:
-        if context.auth_request.auth_base is not None:
-            resolved_base = token_meta.get("base")
-            if not isinstance(resolved_base, str) or not resolved_base:
-                return _set_firewall_auth_resolution_failure(
-                    flow,
-                    context,
-                    ValueError("resolved auth base is missing"),
-                )
+        if resolved_auth.base is not None:
             if auth_base_client_headers is None:
                 return _set_firewall_auth_resolution_failure(
                     flow,
@@ -1111,10 +1497,10 @@ async def _apply_resolved_firewall_auth(
             return await _apply_url_rewrite(
                 flow,
                 allow=context.allow,
-                resolved_base=resolved_base,
+                resolved_base=resolved_auth.base,
                 client_representation_headers=auth_base_client_headers,
-                headers=headers,
-                resolved_query=resolved_query,
+                headers=resolved_auth.headers,
+                resolved_query=resolved_auth.query,
                 firewall_base=context.firewall_base,
                 proxy_log_path=context.proxy_log_path,
             )
@@ -1122,8 +1508,8 @@ async def _apply_resolved_firewall_auth(
         release_forward_request_admission_from_flow(flow)
         _apply_header_query_injection(
             flow,
-            headers=headers,
-            resolved_query=resolved_query,
+            headers=resolved_auth.headers,
+            resolved_query=resolved_auth.query,
         )
     except InvalidResolvedAuthHeaderError as e:
         _set_invalid_resolved_auth_header_response(
@@ -1135,16 +1521,13 @@ async def _apply_resolved_firewall_auth(
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    if context.auth_request.auth_aws_sigv4 is not None:
-        aws_sigv4 = token_meta.get("aws_sigv4")
-        if not isinstance(aws_sigv4, AwsSigV4Credentials):
-            return _set_firewall_auth_resolution_failure(
-                flow,
-                context,
-                ValueError("resolved AWS SigV4 credentials are missing"),
-            )
+    if resolved_auth.aws_sigv4 is not None:
         try:
-            _sign_flow_request_with_aws_sigv4(flow, aws_sigv4)
+            _sign_flow_request_with_aws_sigv4(
+                flow,
+                resolved_auth.aws_sigv4,
+                precomputed_body_hash=aws_sigv4_body_hash,
+            )
         except AwsSigV4SigningError as e:
             _set_matched_firewall_failure_response(
                 flow,
@@ -1191,25 +1574,25 @@ async def handle_firewall_request(
     allow: matching.FirewallAllow,
     vm_info: dict,
     *,
-    revalidate_ordinary_upstream_credentials: OrdinaryUpstreamCredentialsGuard,
+    revalidate_current_firewall_authorization: CurrentFirewallAuthorizationGuard,
 ) -> FirewallAuthHandlingResult:
     """Handle firewall auth and return who owns the next response lifecycle.
 
-    The required guard runs after resolution and before ordinary upstream
-    credential mutation. A rejecting caller must first create its local
-    response; this function then returns ``LOCAL_RESPONSE`` without applying
-    resolved credentials.
+    The required guard runs after resolution and before managed credential
+    application. A rejecting caller must first create its local response; this
+    function then returns ``LOCAL_RESPONSE`` without applying resolved data.
     """
     try:
+        plan = _build_firewall_auth_plan(flow, allow, vm_info)
         _prepare_firewall_metadata(flow, allow, vm_info)
         context = _build_firewall_auth_context(flow, allow, vm_info)
 
-        preflight_result = _preflight_firewall_auth(flow, context)
+        preflight_result = _preflight_firewall_auth(flow, context, plan)
         if preflight_result is not None:
             return _finish_firewall_auth_result(flow, preflight_result)
 
         auth_base_client_headers: list[tuple[str, str]] | None = None
-        if context.auth_request.auth_base is not None:
+        if plan.uses_auth_base:
             try:
                 auth_base_client_headers = forwarded_auth_base_client_header_pairs(
                     flow.request.headers
@@ -1236,33 +1619,29 @@ async def handle_firewall_request(
                     FirewallAuthHandlingResult.LOCAL_RESPONSE,
                 )
 
-        if _firewall_auth_context_needs_resolution(context):
+        if plan.needs_resolution:
             probe_failure = flow.metadata.pop(metadata_keys.FIREWALL_AUTH_PROBE_FAILURE, None)
             if isinstance(probe_failure, Exception):
                 return _finish_firewall_auth_result(
                     flow,
                     _set_firewall_auth_resolution_failure(flow, context, probe_failure),
                 )
-            try:
-                token_meta = await get_firewall_headers(
-                    context.auth_cache_key,
-                    context.auth_request,
-                )
-            except Exception as exc:
-                return _finish_firewall_auth_result(
-                    flow,
-                    _set_firewall_auth_resolution_failure(flow, context, exc),
-                )
-        else:
-            token_meta = _empty_firewall_auth_metadata()
-
-        if (
-            context.auth_request.auth_base is None
-            and auth_config_injects_ordinary_upstream_credentials(
-                context.allow.api_entry.get("auth")
+        try:
+            token_meta = await _resolve_firewall_auth(plan, context)
+            resolved_auth = _validate_resolved_firewall_auth(plan, token_meta)
+        except Exception as exc:
+            return _finish_firewall_auth_result(
+                flow,
+                _set_firewall_auth_resolution_failure(flow, context, exc),
             )
-            and not revalidate_ordinary_upstream_credentials()
-        ):
+
+        aws_sigv4_body_hash = await _precompute_aws_sigv4_body_hash(
+            flow,
+            plan=plan,
+            resolved_auth=resolved_auth,
+        )
+
+        if plan.injects_credentials and not revalidate_current_firewall_authorization():
             return _finish_firewall_auth_result(
                 flow,
                 FirewallAuthHandlingResult.LOCAL_RESPONSE,
@@ -1271,13 +1650,14 @@ async def handle_firewall_request(
         auth_result = await _apply_resolved_firewall_auth(
             flow,
             context=context,
-            token_meta=token_meta,
+            resolved_auth=resolved_auth,
             auth_base_client_headers=auth_base_client_headers,
+            aws_sigv4_body_hash=aws_sigv4_body_hash,
         )
         if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
             return _finish_firewall_auth_result(flow, auth_result)
 
-        _finalize_firewall_auth_success(flow, context, token_meta)
+        _finalize_firewall_auth_success(flow, context, resolved_auth.token_meta)
         return auth_result
     except BaseException:
         release_forward_request_admission_from_flow(flow)
@@ -1289,71 +1669,56 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
     allow: matching.FirewallAllow,
     vm_info: dict,
     *,
-    revalidate_ordinary_upstream_credentials: OrdinaryUpstreamCredentialsGuard,
+    revalidate_current_firewall_authorization: CurrentFirewallAuthorizationGuard,
 ) -> FirewallHeaderPhaseAuthResult:
     """Apply successful header/query firewall auth before request streaming.
 
     This helper intentionally falls back instead of creating local responses.
     The request hook owns auth failure semantics; requestheaders() only keeps a
     success that is safe before mitmproxy sends upstream request headers. A
-    rejected ordinary-credential guard restores the probe snapshot and falls
+    rejected current-authorization guard restores the probe snapshot and falls
     back before mutation.
     """
-    auth_config = allow.api_entry.get("auth", {})
-    if _auth_config_uses_body_dependent_auth(flow, auth_config):
-        return FirewallHeaderPhaseAuthResult.FALLBACK
-
-    configured_aws_sigv4 = (
-        isinstance(auth_config, dict)
-        and isinstance(auth_config.get("awsSigv4"), dict)
-        and bool(auth_config["awsSigv4"])
-    )
-    injects_credentials = auth_config_injects_credentials(auth_config)
-    if injects_credentials and _request_method_forbids_managed_credentials(flow.request.method):
-        return FirewallHeaderPhaseAuthResult.FALLBACK
-
-    needs_auth_resolution = injects_credentials or is_billable_firewall(allow.name, vm_info)
-    request_scheme = flow.request.scheme.lower()
-    if request_scheme != "https" and injects_credentials:
-        return FirewallHeaderPhaseAuthResult.FALLBACK
-
-    if not vm_info.get("encryptedSecrets") and needs_auth_resolution:
-        return FirewallHeaderPhaseAuthResult.FALLBACK
-
     metadata_snapshot = dict(flow.metadata)
     request_headers_snapshot = http.Headers(flow.request.headers.fields)
     request_url_snapshot = flow.request.url
 
+    plan = _build_firewall_auth_plan(flow, allow, vm_info)
+    if plan.body_dependent or plan.failure is not None:
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_url_snapshot=request_url_snapshot,
+        )
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
     _prepare_firewall_metadata(flow, allow, vm_info)
     context = _build_firewall_auth_context(flow, allow, vm_info)
 
-    if needs_auth_resolution:
-        try:
-            token_meta = await get_firewall_headers(
-                context.auth_cache_key,
-                context.auth_request,
-            )
-        except asyncio.CancelledError:
-            _restore_header_phase_probe_state(
-                flow,
-                metadata_snapshot=metadata_snapshot,
-                request_headers_snapshot=request_headers_snapshot,
-                request_url_snapshot=request_url_snapshot,
-            )
-            raise
-        except Exception as exc:
-            _restore_header_phase_probe_state(
-                flow,
-                metadata_snapshot=metadata_snapshot,
-                request_headers_snapshot=request_headers_snapshot,
-                request_url_snapshot=request_url_snapshot,
-            )
-            flow.metadata[metadata_keys.FIREWALL_AUTH_PROBE_FAILURE] = exc
-            return FirewallHeaderPhaseAuthResult.FALLBACK
-    else:
-        token_meta = _empty_firewall_auth_metadata()
+    try:
+        token_meta = await _resolve_firewall_auth(plan, context)
+    except asyncio.CancelledError:
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_url_snapshot=request_url_snapshot,
+        )
+        raise
+    except Exception as exc:
+        _restore_header_phase_probe_state(
+            flow,
+            metadata_snapshot=metadata_snapshot,
+            request_headers_snapshot=request_headers_snapshot,
+            request_url_snapshot=request_url_snapshot,
+        )
+        flow.metadata[metadata_keys.FIREWALL_AUTH_PROBE_FAILURE] = exc
+        return FirewallHeaderPhaseAuthResult.FALLBACK
 
-    if not isinstance(token_meta, dict):
+    try:
+        resolved_auth = _validate_resolved_firewall_auth(plan, token_meta)
+    except (TypeError, ValueError):
         _restore_header_phase_probe_state(
             flow,
             metadata_snapshot=metadata_snapshot,
@@ -1362,26 +1727,7 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
-    resolved_aws_sigv4_value = token_meta.get("aws_sigv4")
-    resolved_aws_sigv4 = (
-        resolved_aws_sigv4_value
-        if isinstance(resolved_aws_sigv4_value, AwsSigV4Credentials)
-        else None
-    )
-    if (
-        token_meta.get("base")
-        or (resolved_aws_sigv4_value is not None and not configured_aws_sigv4)
-        or (configured_aws_sigv4 and resolved_aws_sigv4 is None)
-    ):
-        _restore_header_phase_probe_state(
-            flow,
-            metadata_snapshot=metadata_snapshot,
-            request_headers_snapshot=request_headers_snapshot,
-            request_url_snapshot=request_url_snapshot,
-        )
-        return FirewallHeaderPhaseAuthResult.FALLBACK
-
-    if injects_credentials and not revalidate_ordinary_upstream_credentials():
+    if plan.injects_credentials and not revalidate_current_firewall_authorization():
         _restore_header_phase_probe_state(
             flow,
             metadata_snapshot=metadata_snapshot,
@@ -1391,15 +1737,13 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
     try:
-        headers = token_meta["headers"]
-        resolved_query = token_meta.get("query")
         _apply_header_query_injection(
             flow,
-            headers=headers,
-            resolved_query=resolved_query,
+            headers=resolved_auth.headers,
+            resolved_query=resolved_auth.query,
         )
-        if resolved_aws_sigv4 is not None:
-            _sign_flow_request_with_aws_sigv4(flow, resolved_aws_sigv4)
+        if resolved_auth.aws_sigv4 is not None:
+            _sign_flow_request_with_aws_sigv4(flow, resolved_auth.aws_sigv4)
     except Exception:
         _restore_header_phase_probe_state(
             flow,
@@ -1409,5 +1753,5 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
-    _finalize_firewall_auth_success(flow, context, token_meta)
+    _finalize_firewall_auth_success(flow, context, resolved_auth.token_meta)
     return FirewallHeaderPhaseAuthResult.APPLIED

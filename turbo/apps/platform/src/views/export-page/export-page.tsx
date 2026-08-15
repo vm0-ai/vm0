@@ -1,16 +1,16 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
-  IconAlertCircle,
-  IconArrowLeft,
-  IconCircleCheck,
-  IconDatabaseExport,
-  IconDownload,
-  IconLoader2,
-  IconRefresh,
-} from "@tabler/icons-react";
-import type { UserExportStatusResponse } from "@vm0/api-contracts/contracts/user-export";
-import { Button } from "@vm0/ui";
+  AlertCircle,
+  ArrowLeft,
+  CircleCheck,
+  DatabaseBackup,
+  Download,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
+import type { UserExportStatusResponse } from "@okouai/api-contracts/contracts/user-export";
+import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
   platformVm0LogoDarkImg,
@@ -37,7 +37,7 @@ type ExportViewState =
   | "rate-limited";
 
 const PRIMARY_ACTION_BUTTON_CLASS =
-  "h-9 w-full gap-2 bg-foreground text-background hover:bg-foreground/90 active:bg-foreground/80";
+  "h-9 w-full gap-2 bg-foreground text-background hover:bg-foreground-hover active:bg-foreground-pressed";
 
 function formatDuration(dateStr: string, locale: string, soon: string): string {
   const diffMs = new Date(dateStr).getTime() - now();
@@ -120,15 +120,15 @@ function errorMessage(error: unknown, fallback: string): string {
 
 function StatusIcon({ viewState }: { readonly viewState: ExportViewState }) {
   if (viewState === "loading" || viewState === "in-progress") {
-    return <IconLoader2 size={22} className="animate-spin" stroke={1.8} />;
+    return <Loader2 size={22} className="animate-spin" />;
   }
   if (viewState === "download") {
-    return <IconCircleCheck size={22} stroke={1.8} />;
+    return <CircleCheck size={22} />;
   }
   if (viewState === "failed") {
-    return <IconAlertCircle size={22} stroke={1.8} />;
+    return <AlertCircle size={22} />;
   }
-  return <IconDatabaseExport size={22} stroke={1.8} />;
+  return <DatabaseBackup size={22} />;
 }
 
 function StatusCopy({
@@ -294,7 +294,7 @@ function ExportActions({
       <div className="flex w-full flex-col gap-2">
         <Button asChild className={PRIMARY_ACTION_BUTTON_CLASS}>
           <a href={downloadUrl} download>
-            <IconDownload size={16} stroke={1.8} />
+            <Download size={16} />
             {t(($) => {
               return $.settings.export.actions.download;
             })}
@@ -309,9 +309,9 @@ function ExportActions({
             onClick={onTrigger}
           >
             {triggering ? (
-              <IconLoader2 size={16} className="animate-spin" stroke={1.8} />
+              <Loader2 size={16} className="animate-spin" />
             ) : (
-              <IconRefresh size={16} stroke={1.8} />
+              <RefreshCw size={16} />
             )}
             {t(($) => {
               return $.settings.export.actions.again;
@@ -338,9 +338,9 @@ function ExportActions({
       onClick={onTrigger}
     >
       {triggering ? (
-        <IconLoader2 size={16} className="animate-spin" stroke={1.8} />
+        <Loader2 size={16} className="animate-spin" />
       ) : (
-        <IconDatabaseExport size={16} stroke={1.8} />
+        <DatabaseBackup size={16} />
       )}
       {triggering
         ? t(($) => {
@@ -442,7 +442,7 @@ export function ExportPage() {
               pathname="/"
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground no-underline transition-colors hover:text-foreground"
             >
-              <IconArrowLeft size={14} stroke={1.8} />
+              <ArrowLeft size={14} />
               {t(($) => {
                 return $.settings.export.backToZero;
               })}

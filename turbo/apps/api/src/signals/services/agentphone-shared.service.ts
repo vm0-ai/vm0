@@ -1,14 +1,14 @@
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
-import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentphoneMessages } from "@okouai/db/schema/agentphone-message";
+import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 
 export type AgentPhoneChannel = "imessage" | "sms" | "mms";
@@ -245,18 +245,20 @@ export async function resolveAgentPhoneReplyFooterText(args: {
   return label ? `Responded by ${label}` : undefined;
 }
 
-export async function resolveAgentPhoneAuditLogsUrl(args: {
-  readonly getFeatureOverrides: (
-    orgId: string,
-    userId: string,
-  ) => Promise<Record<string, boolean>>;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly runId: string;
-  readonly signal: AbortSignal;
-}): Promise<string | undefined> {
+export async function resolveAgentPhoneAuditLogsUrl(
+  args: {
+    readonly getFeatureOverrides: (
+      orgId: string,
+      userId: string,
+    ) => Promise<Record<string, boolean>>;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly runId: string;
+  },
+  signal: AbortSignal,
+): Promise<string | undefined> {
   const overrides = await args.getFeatureOverrides(args.orgId, args.userId);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
     userId: args.userId,
     orgId: args.orgId,

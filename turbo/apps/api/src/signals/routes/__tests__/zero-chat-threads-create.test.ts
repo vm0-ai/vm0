@@ -3,26 +3,34 @@ import { randomUUID } from "node:crypto";
 import {
   chatThreadMetadataContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import { seedRun$ } from "./helpers/zero-usage-insight";
+import { seedOrgMembership$ } from "./helpers/org-membership";
+import { seedRun$ } from "./helpers/usage-state";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
 
 const context = testContext();
 const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 
-const WORKSPACE_DEFAULT_MODEL = "claude-sonnet-4-6";
-const OTHER_WORKSPACE_MODEL = "claude-sonnet-5";
+const WORKSPACE_DEFAULT_MODEL = "claude-sonnet-5";
+const OTHER_WORKSPACE_MODEL = "claude-opus-4-8";
+const PRIORITY_MODEL = "gpt-5.6-sol";
+const EXPLICIT_VIDEO_MODEL = "fal-ai/veo3.1/fast";
+const INHERITED_VIDEO_MODEL = "MiniMax-H3";
 
 interface AgentFixture {
   readonly userId: string;
@@ -49,6 +57,13 @@ async function seedAgent(): Promise<AgentFixture> {
       defaultProviderType: "anthropic-api-key",
       credentialScope: "org",
       modelProviderId: providerId,
+    },
+    {
+      model: PRIORITY_MODEL,
+      isDefault: false,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+      modelProviderId: null,
     },
   ]);
   const agent = await bdd.createAgent(actor, {
@@ -95,11 +110,32 @@ function zeroToken(args: {
 }
 
 function threadsClient() {
-  return setupApp({ context })(chatThreadsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadsContract,
+  );
 }
 
 function metadataClient() {
-  return setupApp({ context })(chatThreadMetadataContract);
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
+}
+
+async function readCreatedThreadEvent(threadId: string, token: string) {
+  const response = await accept(
+    threadsClient().events({
+      headers: { authorization: `Bearer ${token}` },
+      query: {},
+    }),
+    [200],
+  );
+  const event = response.body.events.find((candidate) => {
+    return candidate.kind === "created" && candidate.chatThreadId === threadId;
+  });
+  if (!event) {
+    throw new Error(`Created event not found for thread ${threadId}`);
+  }
+  return event;
 }
 
 describe("POST /api/zero/chat-threads", () => {
@@ -118,6 +154,7 @@ describe("POST /api/zero/chat-threads", () => {
           agentId: fixture.agentId,
           title: "Deep dive on P2",
           model: OTHER_WORKSPACE_MODEL,
+          videoModel: EXPLICIT_VIDEO_MODEL,
         },
       }),
       [201],
@@ -125,6 +162,7 @@ describe("POST /api/zero/chat-threads", () => {
     expect(response.body).toMatchObject({
       title: "Deep dive on P2",
       selectedModel: OTHER_WORKSPACE_MODEL,
+      serviceTier: null,
     });
 
     const metadataResponse = await accept(
@@ -139,7 +177,11 @@ describe("POST /api/zero/chat-threads", () => {
       agentId: fixture.agentId,
       title: "Deep dive on P2",
       selectedModel: OTHER_WORKSPACE_MODEL,
+      serviceTier: null,
     });
+    await expect(
+      readCreatedThreadEvent(response.body.id, token),
+    ).resolves.toMatchObject({ selectedVideoModel: EXPLICIT_VIDEO_MODEL });
   });
 
   it("inherits the model of the run that owns the token when model is omitted", async () => {
@@ -179,6 +221,141 @@ describe("POST /api/zero/chat-threads", () => {
       [200],
     );
     expect(metadataResponse.body.selectedModel).toBe(OTHER_WORKSPACE_MODEL);
+    expect(metadataResponse.body.serviceTier).toBeNull();
+  });
+
+  it("inherits the video model from the run's chat thread when omitted", async () => {
+    const fixture = await seedAgent();
+    const sourceToken = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const source = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Video model source",
+          model: OTHER_WORKSPACE_MODEL,
+          videoModel: INHERITED_VIDEO_MODEL,
+        },
+      }),
+      [201],
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.agentId,
+        triggerSource: "web",
+        chatThreadId: source.body.id,
+        selectedModel: OTHER_WORKSPACE_MODEL,
+      },
+      context.signal,
+    );
+    const inheritedToken = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+      runId,
+    });
+
+    const inherited = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${inheritedToken}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Inherited video model",
+        },
+      }),
+      [201],
+    );
+
+    await expect(
+      readCreatedThreadEvent(inherited.body.id, inheritedToken),
+    ).resolves.toMatchObject({ selectedVideoModel: INHERITED_VIDEO_MODEL });
+  });
+
+  it("inherits priority from the run's chat thread and allows an explicit standard override", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
+    const sourceToken = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const source = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Priority source",
+          model: PRIORITY_MODEL,
+          serviceTier: "priority",
+        },
+      }),
+      [201],
+    );
+    expect(source.body.serviceTier).toBe("priority");
+
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.agentId,
+        triggerSource: "web",
+        chatThreadId: source.body.id,
+        selectedModel: PRIORITY_MODEL,
+      },
+      context.signal,
+    );
+    const inheritedToken = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+      runId,
+    });
+
+    const inherited = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${inheritedToken}` },
+        body: { agentId: fixture.agentId, title: "Inherited priority" },
+      }),
+      [201],
+    );
+    expect(inherited.body).toMatchObject({
+      selectedModel: PRIORITY_MODEL,
+      serviceTier: "priority",
+    });
+    const inheritedMetadata = await accept(
+      metadataClient().get({
+        headers: { authorization: `Bearer ${inheritedToken}` },
+        params: { id: inherited.body.id },
+      }),
+      [200],
+    );
+    expect(inheritedMetadata.body.serviceTier).toBe("priority");
+
+    const standard = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${inheritedToken}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Explicit standard",
+          serviceTier: null,
+        },
+      }),
+      [201],
+    );
+    expect(standard.body).toMatchObject({
+      selectedModel: PRIORITY_MODEL,
+      serviceTier: null,
+    });
   });
 
   it("rejects an omitted model when the token has no run model to inherit", async () => {

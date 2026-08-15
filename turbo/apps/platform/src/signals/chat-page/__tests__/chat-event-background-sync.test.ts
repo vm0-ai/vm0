@@ -1,25 +1,30 @@
 import { waitFor } from "@testing-library/react";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
-  chatEventResponse,
   chatThreadEventsContract,
-  type ChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { afterEach, describe, expect, it, vi } from "vitest";
+  chatThreadsContract,
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { describe, expect, it, vi } from "vitest";
 
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   mockOrganization,
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { zeroClient$ } from "../../api-client.ts";
-import { CHAT_MESSAGES_STORE } from "../../external/chat-idb-schema.ts";
+import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
-import { writeIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
+import { createChatEventSignals } from "../chat-event-signals.ts";
+import { writeIndexedDbChatEventRows$ } from "../chat-event-row-indexed-db.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
-import { listChatEvents } from "../chat-event-api.ts";
+import {
+  setCurrentLeftPane$,
+  setCurrentRightPane$,
+} from "../chat-thread-pane-state.ts";
+import { createChatPanelSignals } from "../create-chat-thread.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -28,47 +33,76 @@ vi.mock("idb", async () => {
 const context = testContext();
 const resetSubscriberSignal$ = resetSignal();
 
-const USER_ID = "background-sync-user";
-const ORG_ID = "background-sync-org";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000801";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
+const THIRD_THREAD_ID = "b0000000-0000-4000-a000-000000000809";
+const FIRST_TEN_UNREAD_THREAD_IDS = Array.from({ length: 10 }, (_, index) => {
+  return `c0000000-0000-4000-a000-${String(index + 1).padStart(12, "0")}`;
+});
+const OPEN_UNREAD_THREAD_ID = "c0000000-0000-4000-a000-000000000001";
+const ELEVENTH_UNREAD_THREAD_ID = "c0000000-0000-4000-a000-000000000011";
 const FIRST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_EVENT_ID = "00000000-0000-4000-8000-000000000804";
-const CREATED_AT = "2026-07-23T10:00:00.000Z";
 
-function assistantEvent(
+function userId(): string {
+  return `background-sync-user-${context.resourceId}`;
+}
+
+function orgId(): string {
+  return `background-sync-org-${context.resourceId}`;
+}
+
+async function openTestChatDb() {
+  const db = await context.store.get(chatIdb$);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      db.close();
+    },
+    { once: true },
+  );
+  return db;
+}
+
+function assistantRow(
   threadId: string,
   id: string,
   content: string,
   createdAt: string,
   seqId: number,
-): ChatEvent {
+): ChatEventRow {
   return {
     id,
-    threadId,
-    eventType: "output.message" as const,
-    content,
-    createdAt,
+    chatThreadId: threadId,
+    runId: null,
+    revokesEventId: null,
+    eventType: "output.message",
+    payload: { content },
+    contextType: null,
+    contextId: null,
+    runEventSequenceNumber: null,
+    runEventId: null,
     seqId,
+    createdAt,
   };
 }
 
-const firstCachedEvent = assistantEvent(
+const firstCachedRow = assistantRow(
   THREAD_ID,
   FIRST_CACHED_EVENT_ID,
   "First cached message",
   "2026-07-23T10:01:00.000Z",
   1,
 );
-const lastCachedEvent = assistantEvent(
+const lastCachedRow = assistantRow(
   THREAD_ID,
   LAST_CACHED_EVENT_ID,
   "Last cached message",
   "2026-07-23T10:02:00.000Z",
   2,
 );
-const newEvent = assistantEvent(
+const newRow = assistantRow(
   THREAD_ID,
   NEW_EVENT_ID,
   "New remote message",
@@ -77,50 +111,191 @@ const newEvent = assistantEvent(
 );
 
 function mockSignedInUser(): void {
+  clearMockedAuthOnAbort(context.signal);
   mockUser(
     {
-      id: USER_ID,
+      id: userId(),
       fullName: "Background Sync User",
       email: "background-sync@example.com",
     },
     { token: "test-token" },
   );
   mockOrganization({
-    activeOrg: { id: ORG_ID, name: "Background Sync Org" },
-    memberships: [{ id: ORG_ID }],
+    activeOrg: { id: orgId(), name: "Background Sync Org" },
+    memberships: [{ id: orgId() }],
+  });
+}
+
+async function setupAuthenticatedBackgroundSync(): Promise<void> {
+  await setupPage({
+    context,
+    path: "/error",
+    withoutRender: true,
+    user: {
+      id: userId(),
+      fullName: "Background Sync User",
+      email: "background-sync@example.com",
+    },
+    session: { token: "test-token" },
+    org: {
+      activeOrg: { id: orgId(), name: "Background Sync Org" },
+      memberships: [{ id: orgId() }],
+    },
+  });
+}
+
+function mockMissingSnapshots(): void {
+  context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+    return respond(404, {
+      error: {
+        message: "Chat event snapshot not found",
+        code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+      },
+    });
   });
 }
 
 describe("chat event background sync", () => {
-  afterEach(() => {
-    clearMockedAuth();
+  it("prefetches only the first 10 unread threads once", async () => {
+    const initialThreadIdsReady = context.mocks.deferred<void>();
+    const requestedThreadIds: string[] = [];
+    let indicatorRequests = 0;
+
+    context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
+      indicatorRequests += 1;
+      await initialThreadIdsReady.promise;
+      return respond(200, {
+        agents: {},
+        threads: Object.fromEntries([
+          ...FIRST_TEN_UNREAD_THREAD_IDS.map((threadId) => {
+            return [threadId, "unread" as const];
+          }),
+          [ELEVENTH_UNREAD_THREAD_ID, "unread" as const],
+          [OTHER_THREAD_ID, "active" as const],
+          [THIRD_THREAD_ID, "active" as const],
+        ]),
+      });
+    });
+    mockMissingSnapshots();
+    context.mocks.api(chatThreadEventsContract.rows, ({ params, respond }) => {
+      requestedThreadIds.push(params.threadId);
+      return respond(200, { rows: [] });
+    });
+
+    await setupAuthenticatedBackgroundSync();
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+
+    expect(requestedThreadIds).toStrictEqual([]);
+    initialThreadIdsReady.resolve();
+
+    await waitFor(() => {
+      expect(requestedThreadIds).toHaveLength(10);
+    });
+    expect(indicatorRequests).toBe(1);
+    expect(new Set(requestedThreadIds)).toStrictEqual(
+      new Set(FIRST_TEN_UNREAD_THREAD_IDS),
+    );
   });
 
-  it("fills only messages after the cached thread end", async () => {
+  it("catches up open threads plus 10 other unread threads after reconnect", async () => {
+    const requestedThreadIds: string[] = [];
+    let unreadThreadIds = [THREAD_ID];
+    let indicatorRequests = 0;
+
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      indicatorRequests += 1;
+      return respond(200, {
+        agents: {},
+        threads: Object.fromEntries([
+          ...unreadThreadIds.map((threadId) => {
+            return [threadId, "unread" as const];
+          }),
+          [OTHER_THREAD_ID, "active" as const],
+        ]),
+      });
+    });
+    mockMissingSnapshots();
+    context.mocks.api(chatThreadEventsContract.rows, ({ params, respond }) => {
+      requestedThreadIds.push(params.threadId);
+      return respond(200, { rows: [] });
+    });
+
+    await setupAuthenticatedBackgroundSync();
+
+    await waitFor(() => {
+      expect(requestedThreadIds).toStrictEqual([THREAD_ID]);
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    requestedThreadIds.length = 0;
+
+    const firstOpenChatEvents = createChatEventSignals(OPEN_UNREAD_THREAD_ID);
+    const secondOpenChatEvents = createChatEventSignals(OTHER_THREAD_ID);
+    context.store.set(setCurrentLeftPane$, {
+      kind: "thread",
+      thread: createChatPanelSignals(
+        firstOpenChatEvents,
+        "first-open-agent",
+        context.signal,
+      ),
+    });
+    context.store.set(setCurrentRightPane$, {
+      kind: "thread",
+      thread: createChatPanelSignals(
+        secondOpenChatEvents,
+        "second-open-agent",
+        context.signal,
+      ),
+    });
+    await Promise.all([
+      context.store.set(firstOpenChatEvents.setup$, context.signal),
+      context.store.set(secondOpenChatEvents.setup$, context.signal),
+    ]);
+    unreadThreadIds = [
+      ...FIRST_TEN_UNREAD_THREAD_IDS,
+      ELEVENTH_UNREAD_THREAD_ID,
+    ];
+
+    context.mocks.ably.triggerReconnect();
+
+    await waitFor(() => {
+      expect(indicatorRequests).toBe(2);
+      expect(requestedThreadIds).toHaveLength(12);
+    });
+    expect(new Set(requestedThreadIds)).toStrictEqual(
+      new Set([
+        ...FIRST_TEN_UNREAD_THREAD_IDS,
+        ELEVENTH_UNREAD_THREAD_ID,
+        OTHER_THREAD_ID,
+      ]),
+    );
+  });
+
+  it("fills only rows after the cached thread end", async () => {
     mockSignedInUser();
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openTestChatDb();
     await context.store.set(
-      writeIndexedDbChatEvents$,
-      THREAD_ID,
-      [firstCachedEvent, lastCachedEvent],
+      writeIndexedDbChatEventRows$,
+      {
+        threadId: THREAD_ID,
+        rows: [firstCachedRow, lastCachedRow],
+        cursor: {
+          lastEventId: lastCachedRow.id,
+          lastSeqId: lastCachedRow.seqId,
+        },
+      },
       context.signal,
     );
 
-    const requests: {
-      readonly sinceSeqId: number | undefined;
-      readonly beforeSeqId: number | undefined;
-    }[] = [];
-    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      requests.push({
-        sinceSeqId: query.sinceSeqId,
-        beforeSeqId: query.beforeSeqId,
-      });
-      if (query.sinceSeqId === lastCachedEvent.seqId) {
-        return respond(200, {
-          events: [chatEventResponse(newEvent)],
-        });
+    const cursors: number[] = [];
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      cursors.push(query.sinceSeqId);
+      if (query.sinceSeqId === lastCachedRow.seqId) {
+        return respond(200, { rows: [newRow] });
       }
-      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+      throw new Error(`Unexpected row cursor: ${JSON.stringify(query)}`);
     });
 
     await context.store.set(setupRealtime$, context.signal);
@@ -132,56 +307,53 @@ describe("chat event background sync", () => {
       setupChatEventBackgroundSync$,
       subscriberSignal,
     );
+    context.track(subscription);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+
+    context.mocks.ably.trigger("threadListChanged");
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`);
+
+    await waitFor(async () => {
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, NEW_EVENT_ID),
+      ).resolves.toMatchObject({
+        id: NEW_EVENT_ID,
+        chatThreadId: THREAD_ID,
       });
+    });
 
-      context.mocks.ably.trigger("threadListChanged");
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`);
-
-      await waitFor(async () => {
-        await expect(
-          appDb.get(CHAT_MESSAGES_STORE, NEW_EVENT_ID),
-        ).resolves.toMatchObject({
-          id: NEW_EVENT_ID,
-          threadId: THREAD_ID,
-        });
-      });
-
-      expect(requests).toStrictEqual([
-        { sinceSeqId: 2, beforeSeqId: undefined },
-      ]);
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-      appDb.close();
-    }
+    expect(cursors).toStrictEqual([2]);
   });
 
   it("skips a delayed created event whose sequence is already cached", async () => {
     mockSignedInUser();
-    const appDb = await context.store.get(chatIdb$);
     await context.store.set(
-      writeIndexedDbChatEvents$,
-      THREAD_ID,
-      [firstCachedEvent, lastCachedEvent],
+      writeIndexedDbChatEventRows$,
+      {
+        threadId: THREAD_ID,
+        rows: [firstCachedRow, lastCachedRow],
+        cursor: {
+          lastEventId: lastCachedRow.id,
+          lastSeqId: lastCachedRow.seqId,
+        },
+      },
       context.signal,
     );
 
     let cachedThreadRequests = 0;
     const otherThreadRequested = context.mocks.deferred<void>();
-    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
+    mockMissingSnapshots();
+    context.mocks.api(chatThreadEventsContract.rows, ({ params, respond }) => {
       if (params.threadId === THREAD_ID) {
         cachedThreadRequests += 1;
       }
       if (params.threadId === OTHER_THREAD_ID) {
         otherThreadRequested.resolve();
       }
-      return respond(200, {
-        events: [],
-      });
+      return respond(200, { rows: [] });
     });
 
     await context.store.set(setupRealtime$, context.signal);
@@ -193,83 +365,18 @@ describe("chat event background sync", () => {
       setupChatEventBackgroundSync$,
       subscriberSignal,
     );
+    context.track(subscription);
 
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
-
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`, {
-        syncThroughSeqId: lastCachedEvent.seqId,
-      });
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${OTHER_THREAD_ID}`);
-
-      await otherThreadRequested.promise;
-      expect(cachedThreadRequests).toBe(0);
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-      appDb.close();
-    }
-  });
-
-  it("returns canonical API response events unchanged", async () => {
-    mockSignedInUser();
-    const inputEventId = "00000000-0000-4000-8000-000000000806";
-    const outputEventId = "00000000-0000-4000-8000-000000000807";
-    const userMessage = {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: "Canonical input" }],
-    };
-    context.mocks.http.get("*/api/zero/chat-threads/:threadId/events", () => {
-      return Response.json({
-        events: [
-          {
-            id: inputEventId,
-            threadId: THREAD_ID,
-            eventType: "input.prompt",
-            content: null,
-            userMessage,
-            seqId: 1,
-            createdAt: CREATED_AT,
-          },
-          {
-            id: outputEventId,
-            threadId: THREAD_ID,
-            eventType: "output.message",
-            content: "Canonical output",
-            seqId: 2,
-            createdAt: CREATED_AT,
-          },
-        ],
-      });
+    await waitFor(() => {
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
     });
 
-    const events = await listChatEvents(
-      context.store.get(zeroClient$),
-      THREAD_ID,
-      {},
-      context.signal,
-    );
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`, {
+      syncThroughSeqId: lastCachedRow.seqId,
+    });
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${OTHER_THREAD_ID}`);
 
-    expect(events).toStrictEqual([
-      {
-        id: inputEventId,
-        threadId: THREAD_ID,
-        eventType: "input.prompt",
-        content: null,
-        userMessage,
-        seqId: 1,
-        createdAt: CREATED_AT,
-      },
-      {
-        id: outputEventId,
-        threadId: THREAD_ID,
-        eventType: "output.message",
-        content: "Canonical output",
-        seqId: 2,
-        createdAt: CREATED_AT,
-      },
-    ]);
+    await otherThreadRequested.promise;
+    expect(cachedThreadRequests).toBe(0);
   });
 });

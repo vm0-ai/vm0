@@ -3,7 +3,6 @@ use std::io::SeekFrom;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use sandbox_fc::DNS_DIAGNOSTIC_HOSTNAME;
 use sandbox_fc::DNS_READINESS_HOSTNAME;
 use tokio::io::{AsyncBufRead, AsyncReadExt, AsyncSeekExt};
 use tokio::sync::mpsc;
@@ -101,9 +100,6 @@ where
 
 async fn handle_dns_line(network_log_manager: &NetworkLogManager, line: &str) {
     if let Some(entry) = parse_dns_line(line) {
-        if entry.domain == DNS_DIAGNOSTIC_HOSTNAME {
-            return;
-        }
         // Capture the timestamp before handing the row to the manager so
         // it reflects DNS observation time, not delayed write time.
         let timestamp = Utc::now();
@@ -458,24 +454,6 @@ mod tests {
 
         assert!(observation.query_observed);
         assert!(observation.result_observed);
-        assert_eq!(observation.status, DnsReadinessLogScanStatus::Complete);
-    }
-
-    #[tokio::test]
-    async fn readiness_log_inspection_ignores_post_failure_diagnostic_hostname() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("network.jsonl");
-        let rows = [
-            readiness_log_row(DNS_DIAGNOSTIC_HOSTNAME, "query"),
-            readiness_log_row(DNS_DIAGNOSTIC_HOSTNAME, "config"),
-        ]
-        .join("\n");
-        tokio::fs::write(&path, format!("{rows}\n")).await.unwrap();
-
-        let observation = inspect_readiness_log_segment(&path, 0).await;
-
-        assert!(!observation.query_observed);
-        assert!(!observation.result_observed);
         assert_eq!(observation.status, DnsReadinessLogScanStatus::Complete);
     }
 
@@ -849,23 +827,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_failure_diagnostic_query_is_not_persisted_as_guest_traffic() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("diagnostic.jsonl");
-        let manager = NetworkLogManager::new();
-        let _session = manager.register_source_ip("10.0.0.1", path.clone()).await;
-
-        handle_dns_line(
-            &manager,
-            "dnsmasq[1234]: 42 10.0.0.1/54321 query[A] vm0-vethprobe.invalid from 10.0.0.1",
-        )
-        .await;
-        manager.flush_path(&path).await;
-
-        assert!(!path.exists());
-    }
-
-    #[tokio::test]
     async fn drain_barrier_processes_queued_dns_line_before_ack() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("dns.jsonl");
@@ -874,7 +835,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let (producer, drain_rx) = NetworkLogDrainProducer::channel("dns-test");
         let (mut writer, reader) = tokio::io::duplex(1024);
-        let task = tokio::spawn(tail_reader(
+        let mut task = tokio::spawn(tail_reader(
             tokio::io::BufReader::new(reader),
             manager.clone(),
             cancel.clone(),
@@ -906,10 +867,15 @@ mod tests {
         assert_eq!(parsed["dns_event"], "query");
 
         cancel.cancel();
-        assert!(matches!(
-            task.await.unwrap(),
-            DrainableLineReaderExit::Cancelled
-        ));
+        let exit = match tokio::time::timeout(std::time::Duration::from_secs(1), &mut task).await {
+            Ok(result) => result.unwrap(),
+            Err(_) => {
+                task.abort();
+                let _ = task.await;
+                panic!("timed out waiting for DNS tail reader cancellation");
+            }
+        };
+        assert!(matches!(exit, DrainableLineReaderExit::Cancelled));
         drop(writer);
     }
 }

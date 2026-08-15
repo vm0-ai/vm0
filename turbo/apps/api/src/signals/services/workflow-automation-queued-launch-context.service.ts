@@ -2,9 +2,8 @@ import {
   EVENT_POLICY,
   restoredWorkflowAutomationEventPayload,
   storedWorkflowAutomationContext,
-  workflowAutomationAppendSystemPrompt,
+  workflowAutomationAgentPrompt,
   workflowAutomationEventTypeSchema,
-  workflowAutomationPrompt,
   type WorkflowAutomationEventPayload,
 } from "./workflow-automation-context.service";
 import {
@@ -15,7 +14,7 @@ import {
 
 interface WorkflowAutomationQueuedLaunchMaterial {
   readonly prompt: string;
-  readonly appendSystemPrompt: string;
+  readonly appendSystemPrompt: string | undefined;
   readonly callbacks: ReturnType<typeof buildWorkflowAutomationCallbacks>;
   readonly activePreviousRunPolicy: "block" | "allow";
   readonly recordLastRunId: boolean;
@@ -51,8 +50,8 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
     eventPayload,
   });
   return {
-    prompt: workflowAutomationPrompt(context),
-    appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
+    prompt: workflowAutomationAgentPrompt(context),
+    appendSystemPrompt: undefined,
     callbacks:
       eventType === "schedule"
         ? buildWorkflowAutomationCallbacks(

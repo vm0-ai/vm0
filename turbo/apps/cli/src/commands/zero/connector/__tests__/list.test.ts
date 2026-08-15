@@ -1,5 +1,5 @@
 /**
- * Tests for zero connector list command
+ * Tests for okou connector list command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -81,7 +81,7 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
 }
 
 function stubAgent(id: string, displayName: string | null) {
-  return http.get(`http://localhost:3000/api/zero/agents/${id}`, () => {
+  return http.get(`http://localhost:3000/api/okou/agents/${id}`, () => {
     return HttpResponse.json({
       agentId: id,
       ownerId: "owner-1",
@@ -95,7 +95,7 @@ function stubAgent(id: string, displayName: string | null) {
 
 function stubUserConnectors(id: string, enabledConnectorSlugs: string[]) {
   return http.get(
-    `http://localhost:3000/api/zero/agents/${id}/user-connectors`,
+    `http://localhost:3000/api/okou/agents/${id}/user-connectors`,
     () => {
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,
@@ -115,7 +115,7 @@ function stubAvailableConnectors(connectorSlugs: string[]) {
   );
 }
 
-describe("zero connector list command", () => {
+describe("okou connector list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -127,7 +127,7 @@ describe("zero connector list command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     server.use(stubCustomConnectors([]), stubAgentCustomConnectors([]));
   });
 
@@ -186,7 +186,6 @@ describe("zero connector list command", () => {
             connected: true,
             missingRequiredFields: [],
             configuredFieldKeys: ["secret:apiKey"],
-            hasSecret: true,
           }),
           customConnector({
             id: "44444444-4444-4444-8444-444444444444",
@@ -230,7 +229,7 @@ describe("zero connector list command", () => {
         stubConnectors([connectedGithub]),
         stubAgent(AGENT_UUID, "maya"),
         http.get(
-          `http://localhost:3000/api/zero/agents/${AGENT_UUID}/user-connectors`,
+          `http://localhost:3000/api/okou/agents/${AGENT_UUID}/user-connectors`,
           () => {
             return HttpResponse.json({
               enabledConnectorSlugs: ["github"],
@@ -246,8 +245,8 @@ describe("zero connector list command", () => {
       expect(logCalls).toContain("✓");
     });
 
-    it("renders AUTHORIZED FOR column when $ZERO_AGENT_ID is set", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
+    it("renders AUTHORIZED FOR column when $OKOU_AGENT_ID is set", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
       server.use(
         stubConnectors([connectedGithub]),
         stubAgent(AGENT_UUID, "maya"),
@@ -261,14 +260,14 @@ describe("zero connector list command", () => {
       expect(logCalls).toContain("✓");
     });
 
-    it("--agent overrides $ZERO_AGENT_ID", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
+    it("--agent overrides $OKOU_AGENT_ID", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", ALT_AGENT_UUID);
       server.use(
         stubConnectors([connectedGithub]),
         stubAgent(AGENT_UUID, "maya"),
         stubUserConnectors(AGENT_UUID, ["github"]),
         http.get(
-          `http://localhost:3000/api/zero/agents/${ALT_AGENT_UUID}`,
+          `http://localhost:3000/api/okou/agents/${ALT_AGENT_UUID}`,
           () => {
             return HttpResponse.json(
               { error: { message: "should not be called", code: "ERR" } },
@@ -319,7 +318,9 @@ describe("zero connector list command", () => {
         stubCustomConnectors([connector]),
         stubAgent(AGENT_UUID, "maya"),
         stubUserConnectors(AGENT_UUID, []),
-        stubAgentCustomConnectors([connector.id]),
+        stubAgentCustomConnectors([
+          { customConnectorId: connector.id, permissionNames: [] },
+        ]),
       );
 
       await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
@@ -337,7 +338,7 @@ describe("zero connector list command", () => {
     it("should handle authentication error", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/connector-catalog/status",
+          "http://localhost:3000/api/okou/connector-catalog/status",
           () => {
             return HttpResponse.json(
               {

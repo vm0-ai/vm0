@@ -53,8 +53,9 @@ async fn sandbox_copy_file_replaces_existing_destination_with_private_file() {
     use std::io::Read;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-    let sandbox = MockSandbox::new("test-1");
-    sandbox.push_copy_file_result(Ok(b"new host log".to_vec()));
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let sandbox = MockSandbox::with_overrides("test-1", Arc::clone(&overrides));
+    overrides.push_copy_file_result(Ok(b"new host log".to_vec()));
     let (_host_dir, path) = temp_host_path("replace-existing.log");
     std::fs::write(&path, b"old host log").unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
@@ -278,6 +279,49 @@ async fn sandbox_copy_file_lifecycle_gate_blocks_until_released() {
         .unwrap();
     assert_eq!(result.bytes_copied, 10);
     assert_eq!(std::fs::read(path).unwrap(), b"guest log\n");
+}
+
+#[tokio::test]
+async fn shared_copy_file_gate_clear_only_affects_future_copies() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let gate = MockLifecycleGate::new();
+    overrides.set_copy_file_lifecycle_gate(gate.clone());
+    overrides.push_copy_file_result(Ok(b"first log\n".to_vec()));
+    overrides.push_copy_file_result(Ok(b"second log\n".to_vec()));
+    let sandbox = Arc::new(MockSandbox::with_overrides(
+        "test-1",
+        Arc::clone(&overrides),
+    ));
+    let (_host_dir, first_path) = temp_host_path("first-gated.log");
+    let second_path = first_path.with_file_name("second-ungated.log");
+
+    let first_copy = {
+        let sandbox = Arc::clone(&sandbox);
+        let first_path = first_path.clone();
+        tokio::spawn(async move {
+            sandbox
+                .copy_file("/tmp/first.log", &first_path, copy_file_options(false))
+                .await
+        })
+    };
+
+    assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+    assert_eq!(overrides.copy_file_calls().len(), 1);
+    assert!(!first_path.exists());
+    overrides.clear_copy_file_lifecycle_gate();
+
+    let second_result = sandbox
+        .copy_file("/tmp/second.log", &second_path, copy_file_options(false))
+        .await
+        .unwrap();
+    assert_eq!(second_result.bytes_copied, 11);
+    assert_eq!(std::fs::read(&second_path).unwrap(), b"second log\n");
+    assert!(!first_copy.is_finished());
+
+    gate.release_one();
+    let first_result = first_copy.await.unwrap().unwrap();
+    assert_eq!(first_result.bytes_copied, 10);
+    assert_eq!(std::fs::read(&first_path).unwrap(), b"first log\n");
 }
 
 #[tokio::test]
@@ -603,6 +647,49 @@ async fn sandbox_write_private_file_queued_error_and_records_calls() {
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].path, "/tmp/private.env");
     assert_eq!(calls[0].content, b"secret");
+}
+
+#[tokio::test]
+async fn shared_private_write_gate_blocks_before_recording_or_result_consumption() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let gate = MockLifecycleGate::new();
+    overrides.set_private_write_file_lifecycle_gate(gate.clone());
+    overrides.push_private_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "queued private write failed".into(),
+    }));
+    let sandbox = Arc::new(MockSandbox::with_overrides(
+        "test-1",
+        Arc::clone(&overrides),
+    ));
+
+    let blocked_write = {
+        let sandbox = Arc::clone(&sandbox);
+        tokio::spawn(async move {
+            sandbox
+                .write_private_file("/tmp/blocked-private.env", b"blocked")
+                .await
+        })
+    };
+    assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+    assert!(overrides.private_write_file_calls().is_empty());
+
+    blocked_write.abort();
+    assert!(blocked_write.await.unwrap_err().is_cancelled());
+    overrides.clear_private_write_file_lifecycle_gate();
+
+    let error = sandbox
+        .write_private_file("/tmp/next-private.env", b"next")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "queued private write failed",
+    );
+    assert_eq!(overrides.private_write_file_calls().len(), 1);
 }
 
 #[tokio::test]

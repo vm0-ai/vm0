@@ -1,15 +1,15 @@
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogDetail,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   getConnectorAuthProviderRegistrationCapabilities,
   type ConnectorAuthProviderRegistrationCapability,
-} from "@vm0/connectors/auth-providers";
+} from "@okouai/connectors/auth-providers";
 import {
   CONNECTOR_PLATFORM_SECRET_NAMES,
   type ConnectorAccessConfig,
@@ -25,11 +25,7 @@ import {
   type ConnectorRevokeInputBindings,
   type ConnectorSecretValueRef,
   type ConnectorVariableValueRef,
-} from "@vm0/connectors/connector-config";
-import {
-  connectorAuthMethodOwnedSecretNames,
-  connectorAuthMethodRuntimeMetadata,
-} from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-config";
 
 import { singleton } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";
@@ -635,50 +631,6 @@ export function getConnectorRuntimeMethod(args: {
     return undefined;
   }
   return method;
-}
-
-export function getConnectorRuntimeStoredSecretDisplayInfo(
-  snapshot: ConnectorRuntimeSnapshot,
-  secretName: string,
-): {
-  readonly label: string;
-  readonly environmentNames: readonly string[];
-} | null {
-  for (const connector of snapshot.connectors.values()) {
-    const methods = [...connector.methods.values()];
-    if (
-      !methods.some((runtimeMethod) => {
-        return connectorAuthMethodOwnedSecretNames(
-          runtimeMethod.method,
-        ).includes(secretName);
-      })
-    ) {
-      continue;
-    }
-    const environmentNames = [
-      ...new Set(
-        methods.flatMap((runtimeMethod) => {
-          return connectorAuthMethodRuntimeMetadata(runtimeMethod.method)
-            .runtimeBindings.filter((binding) => {
-              return (
-                binding.source.kind === "connector-secret" &&
-                binding.source.name === secretName
-              );
-            })
-            .map((binding) => {
-              return binding.envName;
-            });
-        }),
-      ),
-    ];
-    if (environmentNames.length > 0) {
-      return {
-        label: connector.catalogConnector.label,
-        environmentNames,
-      };
-    }
-  }
-  return null;
 }
 
 export function listConnectorRuntimeVisibleSlugs(args: {

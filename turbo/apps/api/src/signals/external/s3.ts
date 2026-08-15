@@ -18,15 +18,20 @@ import {
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
   type SessionHistoryDownloadSource,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 
 import { env } from "../../lib/env";
 import { detach, Mechanism, settle } from "../utils";
 
-interface S3Object {
+export interface S3Object {
   readonly key: string;
   readonly size: number;
   readonly lastModified: Date;
+}
+
+interface S3ObjectPage {
+  readonly objects: readonly S3Object[];
+  readonly isTruncated: boolean;
 }
 
 interface S3FileEntry {
@@ -55,7 +60,6 @@ interface S3Credentials {
 
 interface DownloadS3BufferOptions {
   readonly maxBytes?: number;
-  readonly signal?: AbortSignal;
 }
 
 export type ConditionalS3BufferDownload =
@@ -219,6 +223,44 @@ export function listS3Objects(
   });
 }
 
+/**
+ * One bounded, lexicographically ordered object page. Callers that perform
+ * maintenance must supply their own durable or deterministic partitioning;
+ * this helper never follows continuation tokens implicitly.
+ */
+export function listS3ObjectsPage(
+  bucket: string,
+  prefix: string,
+  maxKeys: number,
+): Computed<Promise<S3ObjectPage>> {
+  if (!Number.isInteger(maxKeys) || maxKeys <= 0 || maxKeys > 1000) {
+    throw new Error("S3 list page size must be an integer between 1 and 1000");
+  }
+  return computed(async (get): Promise<S3ObjectPage> => {
+    const client = get(s3ClientForBucket(bucket));
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        MaxKeys: maxKeys,
+      }),
+    );
+    const objects = (response.Contents ?? []).flatMap((item) => {
+      if (!item.Key || item.Size === undefined || !item.LastModified) {
+        return [];
+      }
+      return [
+        {
+          key: item.Key,
+          size: item.Size,
+          lastModified: item.LastModified,
+        },
+      ];
+    });
+    return { objects, isTruncated: response.IsTruncated === true };
+  });
+}
+
 export function listS3ObjectsUnderPrefix(
   bucket: string,
   prefix: string,
@@ -236,7 +278,7 @@ export function deleteS3Objects(
       return;
     }
     const client = get(s3ClientForBucket(bucket));
-    await client.send(
+    const response = await client.send(
       new DeleteObjectsCommand({
         Bucket: bucket,
         Delete: {
@@ -246,6 +288,11 @@ export function deleteS3Objects(
         },
       }),
     );
+    if ((response.Errors?.length ?? 0) > 0) {
+      throw new Error(
+        `S3 object deletion failed for ${response.Errors?.length.toString() ?? "0"} object(s)`,
+      );
+    }
   });
 }
 
@@ -262,10 +309,15 @@ export function downloadS3BufferWithMaxBytes(
   maxBytes: number,
   signal?: AbortSignal,
 ): Computed<Promise<Buffer>> {
-  return downloadS3BufferWithClient(s3ClientForBucket(bucket), bucket, key, {
-    maxBytes,
+  return downloadS3BufferWithClient(
+    s3ClientForBucket(bucket),
+    bucket,
+    key,
+    {
+      maxBytes,
+    },
     signal,
-  });
+  );
 }
 
 export function downloadS3BufferWithMaxBytesIfChanged(
@@ -296,7 +348,7 @@ export function downloadS3BufferWithMaxBytesIfChanged(
     const response: GetObjectCommandOutput = downloaded.value;
     return {
       kind: "downloaded",
-      buffer: await readS3ObjectBody(response, key, { maxBytes, signal }),
+      buffer: await readS3ObjectBody(response, key, { maxBytes }, signal),
       etag: response.ETag ?? null,
     };
   });
@@ -364,14 +416,15 @@ function downloadS3BufferWithClient(
   bucket: string,
   key: string,
   options: DownloadS3BufferOptions = {},
+  signal?: AbortSignal,
 ): Computed<Promise<Buffer>> {
   return computed(async (get): Promise<Buffer> => {
     const client = get(client$);
     const response = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
-      { abortSignal: options.signal },
+      { abortSignal: signal },
     );
-    return await readS3ObjectBody(response, key, options);
+    return await readS3ObjectBody(response, key, options, signal);
   });
 }
 
@@ -383,6 +436,7 @@ async function readS3ObjectBody(
   },
   key: string,
   options: DownloadS3BufferOptions,
+  signal?: AbortSignal,
 ): Promise<Buffer> {
   if (!response.Body) {
     throw new Error("S3 object body is empty");
@@ -391,9 +445,9 @@ async function readS3ObjectBody(
     closeS3Body(response.Body);
     throw new Error("S3 object body is not an async byte stream");
   }
-  if (options.signal?.aborted) {
+  if (signal?.aborted) {
     closeS3Body(response.Body);
-    options.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
   if (
     options.maxBytes !== undefined &&
@@ -411,9 +465,9 @@ async function readS3ObjectBody(
   const chunks: Uint8Array[] = [];
   let totalLength = 0;
   for await (const chunk of response.Body) {
-    if (options.signal?.aborted) {
+    if (signal?.aborted) {
       closeS3Body(response.Body);
-      options.signal.throwIfAborted();
+      signal.throwIfAborted();
     }
     if (!(chunk instanceof Uint8Array)) {
       closeS3Body(response.Body);
@@ -716,14 +770,17 @@ export function putS3Object(
       },
 ): Computed<Promise<void>> {
   const writeOptions = isAbortSignal(options) ? { signal: options } : options;
-  return putS3ObjectWithClient(s3ClientForBucket(bucket), {
-    bucket,
-    key,
-    body,
-    contentType,
-    signal: writeOptions?.signal,
-    metadata: writeOptions?.metadata,
-  });
+  return putS3ObjectWithClient(
+    s3ClientForBucket(bucket),
+    {
+      bucket,
+      key,
+      body,
+      contentType,
+      metadata: writeOptions?.metadata,
+    },
+    writeOptions?.signal,
+  );
 }
 
 interface PutS3ObjectArgs {
@@ -731,7 +788,6 @@ interface PutS3ObjectArgs {
   readonly key: string;
   readonly body: string | Buffer;
   readonly contentType: string;
-  readonly signal?: AbortSignal;
   readonly metadata?: Readonly<Record<string, string>>;
 }
 
@@ -747,6 +803,7 @@ function isAbortSignal(value: unknown): value is AbortSignal {
 function putS3ObjectWithClient(
   client$: Computed<S3Client>,
   args: PutS3ObjectArgs,
+  signal?: AbortSignal,
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const client = get(client$);
@@ -758,7 +815,7 @@ function putS3ObjectWithClient(
         ContentType: args.contentType,
         Metadata: args.metadata,
       }),
-      args.signal ? { abortSignal: args.signal } : undefined,
+      signal ? { abortSignal: signal } : undefined,
     );
   });
 }
@@ -790,6 +847,7 @@ export function putImmutableS3Object(
     | {
         readonly signal?: AbortSignal;
         readonly metadata?: Readonly<Record<string, string>>;
+        readonly contentEncoding?: string;
       },
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
@@ -802,6 +860,7 @@ export function putImmutableS3Object(
           Key: key,
           Body: body,
           ContentType: contentType,
+          ContentEncoding: writeOptions?.contentEncoding,
           Metadata: writeOptions?.metadata,
           CacheControl: IMMUTABLE_CACHE_CONTROL,
           IfNoneMatch: "*",

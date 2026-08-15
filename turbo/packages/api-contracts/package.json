@@ -1,6 +1,6 @@
 {
-  "name": "@vm0/api-contracts",
-  "version": "1.266.0",
+  "name": "@okouai/api-contracts",
+  "version": "1.333.3",
   "private": true,
   "type": "module",
   "exports": {
@@ -19,22 +19,23 @@
   },
   "scripts": {
     "build:runtime-api-schema": "tsx src/runtime-api-schema/cli.ts build",
+    "generate:python": "tsx src/python-bindings/generate.ts",
     "generate:rust": "tsx src/rust-bindings/generate.ts",
     "lint-runtime-api-compat": "tsx src/runtime-api-schema/cli.ts lint",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "check-types": "tsc -p tsconfig.contracts.json --noEmit && tsc -p tsconfig.rust-bindings.json --noEmit && tsc -p tsconfig.runtime-api-schema.json --noEmit"
+    "check-types": "tsc -p tsconfig.contracts.json --noEmit && tsc -p tsconfig.python-bindings.json --noEmit && tsc -p tsconfig.rust-bindings.json --noEmit && tsc -p tsconfig.runtime-api-schema.json --noEmit"
   },
   "dependencies": {
     "@trpc/server": "11.18.0",
-    "@vm0/connectors": "workspace:*",
+    "@okouai/connectors": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "@vm0/eslint-config": "workspace:*",
-    "@vm0/typescript-config": "workspace:*",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "7.0.2001",

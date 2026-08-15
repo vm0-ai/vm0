@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { zeroIntroCommand } from "../intro";
 
-describe("zero intro", () => {
+describe("okou intro", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -19,7 +19,7 @@ describe("zero intro", () => {
 
     expect(logSpy).toHaveBeenCalledOnce();
     const output = logSpy.mock.calls[0]?.[0] as string;
-    expect(output).toContain("# Zero Intro");
+    expect(output).toContain("# Okou Intro");
     expect(output).toContain("cloud computers");
     expect(output).toContain("24/7");
     expect(output).toContain("Deep Research");

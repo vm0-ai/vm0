@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 
 const c = initContract();
 

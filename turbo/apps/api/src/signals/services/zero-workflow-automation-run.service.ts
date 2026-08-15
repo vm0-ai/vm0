@@ -8,23 +8,17 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
-import { persistedWorkflowAutomationEventPayload } from "./workflow-automation-context.service";
+import {
+  persistedWorkflowAutomationEventPayload,
+  workflowAutomationDisplayMessage,
+} from "./workflow-automation-context.service";
 import type {
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
 
-export {
-  scheduleTriggerContext,
-  type AutomationRow,
-  type DueWorkflowAutomation,
-  type RunFailure,
-  type RunWorkflowAutomationNowArgs,
-  type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-launch.service";
-
 /**
- * Durable workflow-event ingress. Every event enters the chat thread queue
+ * Durable automation-event ingress. Every event enters the chat thread queue
  * before the shared scheduler prepares a run; the run persistence transaction
  * later owns the authoritative queue claim.
  */
@@ -53,13 +47,17 @@ export const runWorkflowAutomationNow$ = command(
         return await admitWorkflowAutomationEvent(db, {
           automation,
           workflowName: args.automationContext.workflowName,
+          displayPrompt: workflowAutomationDisplayMessage(
+            args.automationContext,
+          ),
+          agentRunSource: args.agentRunSource,
           workflowAutomationEventType: args.automationContext.eventType,
           workflowAutomationEventPayload:
             persistedWorkflowAutomationEventPayload(
               args.automationContext.event,
             ),
           chatThreadId,
-          triggerSource: args.triggerSource ?? "workflow-schedule",
+          triggerSource: args.triggerSource ?? "automation-schedule",
           triggerBrief: args.triggerBrief,
           coalescePendingScheduleRun: args.coalescePendingScheduleRun !== false,
           persistSourceTransition: args.persistSourceTransition,
@@ -83,7 +81,7 @@ export const runWorkflowAutomationNow$ = command(
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         ...(admission.kind === "inserted"
           ? {
-              workflowEventLaunch: {
+              automationEventLaunch: {
                 eventId: admission.eventId,
                 apiStartTime: args.apiStartTime,
                 timing,

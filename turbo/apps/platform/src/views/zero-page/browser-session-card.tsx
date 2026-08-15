@@ -1,23 +1,44 @@
-import { IconBrowser } from "@tabler/icons-react";
-import { cn } from "@vm0/ui";
+import { AppWindow } from "lucide-react";
+import { cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import {
   activeSidebarBrowserThreadId$,
   openThreadBrowserSession$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface BrowserSessionCardProps {
   readonly signals: BrowserSessionSignals;
 }
 
+const BROWSER_SESSION_CARD_SHELL_CLASS =
+  "inline-flex w-[min(100%,400px)] align-top";
 const BROWSER_SESSION_CARD_CLASS =
-  "inline-flex w-[min(100%,400px)] flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground shadow-sm transition-all duration-200";
+  "flex w-full flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background text-left text-foreground transition-all duration-200";
 const BROWSER_SESSION_CARD_HOVER_CLASS =
-  "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+  "hover:scale-[1.015] hover:border-foreground/20";
+
+function BrowserSessionCardShell({
+  children,
+}: {
+  readonly children: ReactNode;
+}) {
+  return (
+    <div
+      data-testid="browser-session-card-shell"
+      className={BROWSER_SESSION_CARD_SHELL_CLASS}
+    >
+      {children}
+    </div>
+  );
+}
 
 function BrowserSessionStatus({ live }: { readonly live: boolean }) {
   const { t } = useTranslation();
@@ -50,17 +71,24 @@ function BrowserSessionStatus({ live }: { readonly live: boolean }) {
 function BrowserSessionPreviewPlaceholder() {
   return (
     <span className="absolute inset-0 flex items-center justify-center bg-muted/30 text-muted-foreground/60">
-      <IconBrowser size={30} stroke={1.5} />
+      <AppWindow size={30} />
     </span>
   );
 }
 
-function BrowserSessionPreview({ screenshotUrl }: { screenshotUrl?: string }) {
+function BrowserSessionPreview({
+  screenshotUrl,
+  load,
+}: {
+  screenshotUrl?: string;
+  load?: ImageLoadSignals;
+}) {
   return (
     <span className="relative block aspect-[16/10] w-full overflow-hidden bg-muted/30">
-      {screenshotUrl ? (
+      {screenshotUrl && load ? (
         <ArtifactThumbnailImage
           src={screenshotUrl}
+          load={load}
           testId="browser-session-thumbnail"
           className="absolute inset-0 h-full w-full object-cover object-top"
           fallback={<BrowserSessionPreviewPlaceholder />}
@@ -75,6 +103,7 @@ function BrowserSessionPreview({ screenshotUrl }: { screenshotUrl?: string }) {
 function BrowserSessionCardSkeleton() {
   return (
     <div
+      data-testid="browser-session-card-loading"
       className={cn(
         BROWSER_SESSION_CARD_CLASS,
         "animate-pulse border-border/70",
@@ -141,52 +170,72 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
   const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.session$);
   const selectedBrowserThreadId = useGet(activeSidebarBrowserThreadId$);
+  const pageSignal = useGet(pageSignal$);
   const openSidebar = useSet(openThreadBrowserSession$);
+  const start = useSet(signals.start$);
 
   if (sessionLoadable.state === "loading") {
-    return <BrowserSessionCardSkeleton />;
+    return (
+      <BrowserSessionCardShell>
+        <BrowserSessionCardSkeleton />
+      </BrowserSessionCardShell>
+    );
   }
   if (sessionLoadable.state === "hasError") {
-    return <BrowserSessionUnavailable />;
+    return (
+      <BrowserSessionCardShell>
+        <BrowserSessionUnavailable />
+      </BrowserSessionCardShell>
+    );
   }
   if (sessionLoadable.data === null) {
-    return <BrowserSessionUnavailable signals={signals} />;
+    return (
+      <BrowserSessionCardShell>
+        <BrowserSessionUnavailable signals={signals} />
+      </BrowserSessionCardShell>
+    );
   }
 
   const session = sessionLoadable.data;
   const selected = selectedBrowserThreadId === signals.threadId;
   const live = session.status === "active";
   return (
-    <button
-      type="button"
-      data-browser-session-card
-      data-browser-session-status={session.status}
-      aria-label={t(
-        ($) => {
-          return $.browserSession.open;
-        },
-        { name: session.name },
-      )}
-      onClick={() => {
-        openSidebar(signals.threadId);
-      }}
-      className={cn(
-        BROWSER_SESSION_CARD_CLASS,
-        BROWSER_SESSION_CARD_HOVER_CLASS,
-        selected && "border-ring/60 bg-muted/20",
-      )}
-    >
-      <span className="flex min-h-10 w-full items-center gap-2 border-b border-border/60 bg-background/95 px-3 py-2">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {t(($) => {
-            return $.browserSession.cardTitle;
-          })}
+    <BrowserSessionCardShell>
+      <button
+        type="button"
+        data-browser-session-card
+        data-browser-session-status={session.status}
+        aria-label={t(
+          ($) => {
+            return $.browserSession.open;
+          },
+          { name: session.name },
+        )}
+        onClick={() => {
+          if (live && !selected) {
+            detach(start(pageSignal), Reason.DomCallback);
+          }
+          openSidebar(signals.threadId);
+        }}
+        className={cn(
+          BROWSER_SESSION_CARD_CLASS,
+          BROWSER_SESSION_CARD_HOVER_CLASS,
+          selected && "border-ring/60 bg-muted/20",
+        )}
+      >
+        <span className="flex min-h-10 w-full items-center gap-2 border-b border-border/60 bg-background/95 px-3 py-2">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            {t(($) => {
+              return $.browserSession.cardTitle;
+            })}
+          </span>
+          <BrowserSessionStatus live={live} />
         </span>
-        <BrowserSessionStatus live={live} />
-      </span>
-      <BrowserSessionPreview
-        screenshotUrl={session.screenshotUrl ?? undefined}
-      />
-    </button>
+        <BrowserSessionPreview
+          screenshotUrl={session.screenshotUrl ?? undefined}
+          load={signals.screenshotImageLoad}
+        />
+      </button>
+    </BrowserSessionCardShell>
   );
 }

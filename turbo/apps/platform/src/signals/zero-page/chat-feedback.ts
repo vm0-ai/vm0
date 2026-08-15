@@ -7,8 +7,17 @@ export interface FeedbackSource {
   readonly sentId?: string;
 }
 
+export interface FeedbackRange {
+  /** UTF-16 code-unit offset, compatible with JavaScript String.slice. */
+  readonly start: number;
+  /** Exclusive UTF-16 code-unit offset. */
+  readonly end: number;
+}
+
 export interface FeedbackInput {
   readonly quote: string;
+  readonly eventId?: string;
+  readonly range?: FeedbackRange;
   readonly source?: FeedbackSource;
 }
 
@@ -19,10 +28,14 @@ export interface FeedbackItem {
   readonly id: number;
   readonly quote: string;
   readonly note: string;
+  readonly eventId?: string;
+  readonly range?: FeedbackRange;
   readonly source?: FeedbackSource;
 }
 
 export interface ComposerFeedbackSignals {
+  readonly items$: Computed<readonly FeedbackItem[]>;
+  readonly active$: Computed<boolean>;
   readonly add$: Command<number, [FeedbackInput]>;
   readonly remove$: Command<void, [number]>;
 }
@@ -72,6 +85,9 @@ export function createComposerFeedbackModel(): ComposerFeedbackModel {
       id,
       quote: input.quote,
       note: "",
+      ...(input.eventId !== undefined && input.range !== undefined
+        ? { eventId: input.eventId, range: input.range }
+        : {}),
       ...(input.source ? { source: input.source } : {}),
     };
     set(nextIdState$, id + 1);
@@ -92,7 +108,7 @@ export function createComposerFeedbackModel(): ComposerFeedbackModel {
   });
 
   return {
-    signals: { add$, remove$ },
+    signals: { items$, active$, add$, remove$ },
     items$,
     active$,
     replaceFromEditor$,

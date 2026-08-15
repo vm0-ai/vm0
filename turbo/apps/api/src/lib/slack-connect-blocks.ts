@@ -1,4 +1,8 @@
-import type { Block, KnownBlock, View } from "@slack/web-api";
+import type {
+  SlackAnyBlock,
+  SlackKnownBlock,
+  SlackView,
+} from "../signals/external/slack-block-kit";
 
 interface AppHomeViewOptions {
   readonly appUrl: string;
@@ -11,7 +15,7 @@ interface AppHomeViewOptions {
   readonly loginUrl?: string;
 }
 
-function appHomeIntroBlocks(): (Block | KnownBlock)[] {
+function appHomeIntroBlocks(): SlackAnyBlock[] {
   return [
     {
       type: "header",
@@ -33,8 +37,8 @@ function appHomeIntroBlocks(): (Block | KnownBlock)[] {
 
 function disconnectedAppHomeBlocks(
   loginUrl: string | undefined,
-): (Block | KnownBlock)[] {
-  const blocks: (Block | KnownBlock)[] = [
+): SlackAnyBlock[] {
+  const blocks: SlackAnyBlock[] = [
     {
       type: "section",
       text: {
@@ -63,7 +67,7 @@ function disconnectedAppHomeBlocks(
   return blocks;
 }
 
-function connectedStatusBlock(options: AppHomeViewOptions): KnownBlock {
+function connectedStatusBlock(options: AppHomeViewOptions): SlackKnownBlock {
   return {
     type: "section",
     text: {
@@ -73,13 +77,11 @@ function connectedStatusBlock(options: AppHomeViewOptions): KnownBlock {
   };
 }
 
-function appHomeAgentBlocks(
-  options: AppHomeViewOptions,
-): (Block | KnownBlock)[] {
+function appHomeAgentBlocks(options: AppHomeViewOptions): SlackAnyBlock[] {
   const agentHeading = options.isOverrideActive
     ? ":robot_face: *Your Agent*"
     : ":robot_face: *Workspace Agent*";
-  const blocks: (Block | KnownBlock)[] = [
+  const blocks: SlackAnyBlock[] = [
     {
       type: "section",
       text: {
@@ -108,7 +110,7 @@ function appHomeAgentBlocks(
     url: `${options.appUrl}/works`,
     action_id: "home_environment_setup",
   };
-  const agentBlock: KnownBlock = {
+  const agentBlock: SlackKnownBlock = {
     type: "section",
     text: {
       type: "mrkdwn",
@@ -134,7 +136,7 @@ function appHomeAgentBlocks(
   return blocks;
 }
 
-function appHomeHelpBlocks(): (Block | KnownBlock)[] {
+function appHomeHelpBlocks(): SlackAnyBlock[] {
   return [
     {
       type: "section",
@@ -160,7 +162,7 @@ function appHomeHelpBlocks(): (Block | KnownBlock)[] {
   ];
 }
 
-function disconnectAccountBlock(): KnownBlock {
+function disconnectAccountBlock(): SlackKnownBlock {
   return {
     type: "section",
     text: {
@@ -188,7 +190,7 @@ function disconnectAccountBlock(): KnownBlock {
   };
 }
 
-export function buildAppHomeView(options: AppHomeViewOptions): View {
+export function buildAppHomeView(options: AppHomeViewOptions): SlackView {
   const blocks = appHomeIntroBlocks();
 
   if (!options.isLinked) {
@@ -214,10 +216,8 @@ export function buildAppHomeView(options: AppHomeViewOptions): View {
   };
 }
 
-export function buildWelcomeMessage(
-  agentName?: string,
-): (Block | KnownBlock)[] {
-  const blocks: (Block | KnownBlock)[] = [
+export function buildWelcomeMessage(agentName?: string): SlackAnyBlock[] {
+  const blocks: SlackAnyBlock[] = [
     {
       type: "section",
       text: {
@@ -260,7 +260,7 @@ export function buildWelcomeMessage(
   return blocks;
 }
 
-export function buildSuccessMessage(message: string): (Block | KnownBlock)[] {
+export function buildSuccessMessage(message: string): SlackAnyBlock[] {
   return [
     {
       type: "section",

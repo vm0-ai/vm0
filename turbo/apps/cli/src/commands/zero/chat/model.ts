@@ -1,20 +1,20 @@
 import chalk from "chalk";
 import { Command } from "commander";
-import type { ChatThreadMetadata } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadMetadata } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
   OrgModelPoliciesResponse,
   OrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
-
+} from "@okouai/api-contracts/contracts/model-providers";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   getZeroChatThread,
-  listZeroModelPolicies,
   updateZeroChatThreadModelSelection,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-chat";
+import { listZeroModelPolicies } from "../../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatModelProviderRoute } from "../../../lib/domain/model-policy-display";
 import { isUuid } from "../../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../../lib/okou-env";
 
 interface ModelOptions {
   readonly help?: boolean;
@@ -22,7 +22,7 @@ interface ModelOptions {
 }
 
 function getCurrentChatThreadId(): string | undefined {
-  return process.env.ZERO_CHAT_THREAD_ID?.trim() || undefined;
+  return getOkouChatThreadId()?.trim() || undefined;
 }
 
 function printUsageError(message: string, hint: string): never {
@@ -87,7 +87,7 @@ async function printModelHelp(command: Command): Promise<void> {
   printSwitchableModels(result.policies);
   console.log();
   console.log("Use the model id in parentheses:");
-  console.log(chalk.cyan("  zero chat model [--thread <thread-id>] <model>"));
+  console.log(chalk.cyan("  okou chat model [--thread <thread-id>] <model>"));
 }
 
 async function printCurrentModelAndChoices(threadId: string): Promise<void> {
@@ -102,7 +102,7 @@ async function printCurrentModelAndChoices(threadId: string): Promise<void> {
   printSwitchableModels(result.policies);
   console.log();
   console.log("Switch models:");
-  console.log(chalk.cyan(`  zero chat model --thread ${threadId} <model>`));
+  console.log(chalk.cyan(`  okou chat model --thread ${threadId} <model>`));
 }
 
 async function switchModel(threadId: string, model: string): Promise<void> {
@@ -112,7 +112,7 @@ async function switchModel(threadId: string, model: string): Promise<void> {
   });
 
   if (!policy) {
-    printUsageError(`Unknown model: ${model}`, "Run: zero chat model --help");
+    printUsageError(`Unknown model: ${model}`, "Run: okou chat model --help");
   }
 
   if (policy.routeStatus !== "valid") {
@@ -121,7 +121,7 @@ async function switchModel(threadId: string, model: string): Promise<void> {
       : "";
     printUsageError(
       `Model is not switchable: ${model}${reason}`,
-      "Run: zero chat model --help",
+      "Run: okou chat model --help",
     );
   }
 
@@ -140,20 +140,20 @@ export const modelCommand = new Command()
   .description("Show or switch the current web chat thread model")
   .argument("[model]", "Model id to use for this chat thread")
   .helpOption(false)
-  .option("--thread <id>", "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)")
+  .option("--thread <id>", "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)")
   .option("-h, --help", "Show help with switchable models")
   .addHelpText(
     "after",
     `
 Examples:
-  Show this chat model:     zero chat model
-  Show another chat model:  zero chat model --thread <thread-id>
-  Switch this model:        zero chat model claude-sonnet-5
-  Switch another model:     zero chat model --thread <thread-id> claude-sonnet-5
+  Show this chat model:     okou chat model
+  Show another chat model:  okou chat model --thread <thread-id>
+  Switch this model:        okou chat model claude-sonnet-5
+  Switch another model:     okou chat model --thread <thread-id> claude-sonnet-5
 
 Notes:
-  - Defaults --thread to ZERO_CHAT_THREAD_ID
-  - Authenticates via ZERO_TOKEN (requires chat-thread:write capability to switch)`,
+  - Defaults --thread to OKOU_CHAT_THREAD_ID
+  - Authenticates via OKOU_TOKEN (requires chat-thread:write capability to switch)`,
   )
   .action(
     withErrorHandler(
@@ -166,8 +166,8 @@ Notes:
         const threadId = options.thread?.trim() || getCurrentChatThreadId();
         if (!threadId) {
           printUsageError(
-            "ZERO_CHAT_THREAD_ID is not set",
-            "Pass --thread <thread-id> or run inside a Zero web chat thread.",
+            "OKOU_CHAT_THREAD_ID is not set",
+            "Pass --thread <thread-id> or run inside a web chat thread.",
           );
         }
         if (!isUuid(threadId)) {

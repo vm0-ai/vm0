@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { printConnectorGuidance } from "./lib/connector-guidance";
 import { runLister, type GenerationType } from "./lib/lister";
 
@@ -15,7 +15,7 @@ interface ListerOnlyConfig {
 }
 
 /**
- * Build a generate subcommand for a type that has no vm0 built-in pipeline.
+ * Build a generate subcommand for a type that has no Okou built-in pipeline.
  * The command lists available connector providers and prints skill-invocation
  * guidance when a --provider is named, but cannot execute on its own.
  */
@@ -32,7 +32,7 @@ export function createListerOnlyCommand(config: ListerOnlyConfig): Command {
       "after",
       `
 Notes:
-  - vm0 does not provide a built-in ${config.generationType} pipeline.
+  - Okou does not provide a built-in ${config.generationType} pipeline.
   - Use --provider <connector-name> to get skill-invocation guidance for a
     specific connector, or run with no flags to see every available provider.`,
     )
@@ -45,11 +45,11 @@ Notes:
         }
         if (provider === "built-in") {
           console.log(
-            `vm0 has no built-in ${config.generationType} generation pipeline.`,
+            `Okou has no built-in ${config.generationType} generation pipeline.`,
           );
           console.log("");
           console.log(
-            `Run "zero generate ${config.generationType}" to see every connector-backed provider.`,
+            `Run "okou generate ${config.generationType}" to see every connector-backed provider.`,
           );
           return;
         }

@@ -2,15 +2,9 @@ import type { ReactNode } from "react";
 import { useGet, useLastLoadable } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import {
-  IconCheck,
-  IconGift,
-  IconLoader2,
-  IconLock,
-  IconX,
-} from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
-import type { RedeemResponse } from "@vm0/api-contracts/contracts/zero-billing";
+import { Check, Gift, Loader2, Lock, X } from "lucide-react";
+import { Button } from "@okouai/ui";
+import type { RedeemResponse } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   redeemResponse$,
   redeemStripeSuccess$,
@@ -150,23 +144,19 @@ function resolveCard(
 function CardIcon({ kind }: { kind: CardKind }): ReactNode {
   switch (kind) {
     case "ready": {
-      return <IconGift size={40} className="text-foreground opacity-80" />;
+      return <Gift size={40} className="opacity-80" />;
     }
     case "granted": {
-      return <IconCheck size={40} className="text-green-600 opacity-80" />;
+      return <Check size={40} className="text-green-600 opacity-80" />;
     }
     case "processing": {
-      return (
-        <IconLoader2 size={40} className="animate-spin text-muted-foreground" />
-      );
+      return <Loader2 size={40} className="animate-spin" />;
     }
     case "auth": {
-      return (
-        <IconLock size={40} className="text-muted-foreground opacity-70" />
-      );
+      return <Lock size={40} className="opacity-70" />;
     }
     case "broken": {
-      return <IconX size={40} className="text-destructive opacity-70" />;
+      return <X size={40} className="text-destructive opacity-70" />;
     }
   }
 }

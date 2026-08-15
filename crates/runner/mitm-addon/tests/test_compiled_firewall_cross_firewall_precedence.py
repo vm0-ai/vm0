@@ -3,6 +3,7 @@
 import pytest
 
 import connector_intent
+import connector_runtime_metadata
 import matching
 from tests.firewall_helpers import (
     compile_firewalls_or_fail,
@@ -59,6 +60,160 @@ def _auditor_firewall():
             auth_label="auditor",
         ),
     )
+
+
+def _runtime_firewall(
+    kind: connector_runtime_metadata.ConnectorRuntimeKind,
+    name: str,
+    base: str,
+    *,
+    auth_label: str,
+) -> dict:
+    firewall = firewall_entry(
+        name,
+        firewall_api(base, [], auth_label=auth_label),
+    )
+    connector_runtime_metadata.mark_connector_runtime_kind(firewall, kind)
+    return firewall
+
+
+@pytest.mark.parametrize(
+    ("builtin_base", "custom_base"),
+    [
+        ("https://api.example.com/v1/", "https://api.example.com/v1/"),
+        ("https://api.example.com/v1/", "https://api.example.com/"),
+        ("https://api.example.com/", "https://api.example.com/v1/"),
+    ],
+)
+def test_registered_custom_candidate_wins_equal_broader_and_narrower_bases(
+    builtin_base: str,
+    custom_base: str,
+) -> None:
+    firewalls = [
+        _runtime_firewall(
+            "builtin",
+            "builtin-service",
+            builtin_base,
+            auth_label="builtin",
+        ),
+        _runtime_firewall(
+            "custom",
+            "custom-service",
+            custom_base,
+            auth_label="custom",
+        ),
+    ]
+    policies = {
+        "builtin-service": network_policy(unknown_policy="allow"),
+        "custom-service": network_policy(unknown_policy="allow"),
+    }
+
+    result = match_compiled_firewalls(
+        "https://api.example.com/v1/items/123",
+        firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.name == "custom-service"
+    assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer custom"
+
+
+def test_denied_registered_custom_candidate_does_not_fall_back_to_builtin() -> None:
+    builtin = _runtime_firewall(
+        "builtin",
+        "builtin-service",
+        ITEMS_BASE,
+        auth_label="builtin",
+    )
+    custom = firewall_entry(
+        "custom-service",
+        firewall_api(
+            ITEMS_BASE,
+            [firewall_permission(ITEMS_READ_PERMISSION, ITEMS_RULE)],
+            auth_label="custom",
+        ),
+    )
+    connector_runtime_metadata.mark_connector_runtime_kind(custom, "custom")
+
+    result = match_compiled_firewalls(
+        ITEMS_URL,
+        [builtin, custom],
+        {
+            "builtin-service": network_policy(unknown_policy="allow"),
+            "custom-service": network_policy(deny=[ITEMS_READ_PERMISSION]),
+        },
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.name == "custom-service"
+    assert result.reason == "permission_denied"
+
+
+def test_malformed_registered_custom_candidate_does_not_fall_back_to_builtin() -> None:
+    builtin = _runtime_firewall(
+        "builtin",
+        "builtin-service",
+        ITEMS_BASE,
+        auth_label="builtin",
+    )
+    custom = firewall_entry(
+        "custom-service",
+        firewall_api(ITEMS_BASE, [], auth={"headers": None}),
+    )
+    connector_runtime_metadata.mark_connector_runtime_kind(custom, "custom")
+
+    result = match_compiled_firewalls(
+        ITEMS_URL,
+        [builtin, custom],
+        {
+            "builtin-service": network_policy(unknown_policy="allow"),
+            "custom-service": network_policy(unknown_policy="allow"),
+        },
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.name == "custom-service"
+    assert result.reason == "malformed_firewall_config"
+
+
+def test_registered_custom_precedence_keeps_same_tier_and_neutral_ambiguity() -> None:
+    first_custom = _runtime_firewall(
+        "custom",
+        "first-custom",
+        ITEMS_BASE,
+        auth_label="first",
+    )
+    second_custom = _runtime_firewall(
+        "custom",
+        "second-custom",
+        ITEMS_BASE,
+        auth_label="second",
+    )
+    neutral = firewall_entry(
+        "neutral",
+        firewall_api(ITEMS_BASE, [], auth_label="neutral"),
+    )
+    policies = {
+        name: network_policy(unknown_policy="allow")
+        for name in ("first-custom", "second-custom", "neutral")
+    }
+
+    same_tier = match_compiled_firewalls(
+        ITEMS_URL,
+        [first_custom, second_custom],
+        policies,
+    )
+    neutral_overlap = match_compiled_firewalls(
+        ITEMS_URL,
+        [first_custom, neutral],
+        policies,
+    )
+
+    assert isinstance(same_tier, matching.FirewallAmbiguous)
+    assert same_tier.candidates == ("first-custom", "second-custom")
+    assert isinstance(neutral_overlap, matching.FirewallAmbiguous)
+    assert neutral_overlap.candidates == ("first-custom", "neutral")
 
 
 def test_compiled_matches_ask_permission_block():

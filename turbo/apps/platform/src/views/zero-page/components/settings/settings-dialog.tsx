@@ -13,24 +13,24 @@ import {
   SelectTrigger,
   SelectValue,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
-  IconAdjustmentsHorizontal,
-  IconBug,
-  IconBuilding,
-  IconCoins,
-  IconCpu,
-  IconCreditCard,
-  IconFileInvoice,
-  IconUsers,
-} from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+  SlidersHorizontal,
+  Bug,
+  Building,
+  Coins,
+  Cpu,
+  CreditCard,
+  History,
+  ReceiptText,
+  Users,
+} from "lucide-react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import {
   isAdminOnlySettingsSection,
-  setSettingsClerkProfilePortalContainer$,
   settingsActiveSection$,
   setSettingsActiveSection$,
   type SettingsSection,
@@ -42,6 +42,7 @@ import { GeneralSection } from "./sections/general-section.tsx";
 import { PeopleSection } from "./sections/people-section.tsx";
 import { BillingSection } from "./sections/billing-section.tsx";
 import { CreditBalanceSection } from "./sections/credit-balance-section.tsx";
+import { UsageRecordsSection } from "./sections/usage-records-section.tsx";
 import { InvoicesSection } from "./sections/invoices-section.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
@@ -58,7 +59,7 @@ interface SidebarItem {
 }
 
 interface SidebarGroup {
-  label: string | null;
+  label: string;
   items: readonly SidebarItem[];
 }
 
@@ -84,6 +85,9 @@ const SECTION_COMPONENTS = {
   usage: () => {
     return <CreditBalanceSection />;
   },
+  "usage-records": () => {
+    return <UsageRecordsSection />;
+  },
   invoices: () => {
     return <InvoicesSection />;
   },
@@ -98,14 +102,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation();
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
-  const setClerkProfilePortalContainer = useSet(
-    setSettingsClerkProfilePortalContainer$,
-  );
   const features = useGet(featureSwitch$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.ZeroDebug] ?? false;
+  const usagePackPlansEnabled =
+    features[FeatureSwitchKey.UsagePackPlans] ?? false;
+  const showUsage = isAdmin || usagePackPlansEnabled;
   const sectionMeta = {
     preference: {
       title: t(($) => {
@@ -163,6 +167,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         return $.settings.dialog.sections.usage.balanceDescription;
       }),
     },
+    "usage-records": {
+      title: t(($) => {
+        return $.settings.dialog.sections.usage.usageTitle;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.usage.usageDescription;
+      }),
+    },
     invoices: {
       title: t(($) => {
         return $.settings.dialog.sections.invoices.title;
@@ -176,9 +188,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     {
       id: "preference",
       label: sectionMeta.preference.title,
-      icon: IconAdjustmentsHorizontal,
+      icon: SlidersHorizontal,
     },
-    { id: "debug", label: sectionMeta.debug.title, icon: IconBug },
+    { id: "debug", label: sectionMeta.debug.title, icon: Bug },
   ];
   const personalGroup: SidebarGroup = {
     label: t(($) => {
@@ -196,42 +208,51 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       {
         id: "general",
         label: sectionMeta.general.title,
-        icon: IconBuilding,
+        icon: Building,
       },
-      { id: "people", label: sectionMeta.people.title, icon: IconUsers },
+      { id: "people", label: sectionMeta.people.title, icon: Users },
     ],
   };
   const modelsGroup: SidebarGroup = {
     label: t(($) => {
       return $.settings.dialog.groups.models;
     }),
-    items: [{ id: "model", label: sectionMeta.model.title, icon: IconCpu }],
+    items: [{ id: "model", label: sectionMeta.model.title, icon: Cpu }],
   };
   const billingGroup: SidebarGroup = {
     label: t(($) => {
       return $.settings.dialog.groups.billing;
     }),
     items: [
-      {
-        id: "usage",
-        label: isAdmin
-          ? sectionMeta.usage.title
-          : t(($) => {
-              return $.settings.dialog.sections.usage.usageTitle;
-            }),
-        icon: IconCoins,
-      },
+      ...(showUsage
+        ? [
+            {
+              id: "usage" as const,
+              label: sectionMeta.usage.title,
+              icon: Coins,
+            },
+          ]
+        : []),
+      ...(usagePackPlansEnabled
+        ? [
+            {
+              id: "usage-records" as const,
+              label: sectionMeta["usage-records"].title,
+              icon: History,
+            },
+          ]
+        : []),
       ...(isAdmin
         ? [
             {
               id: "billing" as const,
               label: sectionMeta.billing.title,
-              icon: IconCreditCard,
+              icon: CreditCard,
             },
             {
               id: "invoices" as const,
               label: sectionMeta.invoices.title,
-              icon: IconFileInvoice,
+              icon: ReceiptText,
             },
           ]
         : []),
@@ -241,23 +262,23 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     personalGroup,
     ...(isAdmin ? [workspaceGroup] : []),
     modelsGroup,
-    billingGroup,
+    ...(billingGroup.items.length > 0 ? [billingGroup] : []),
   ];
 
   // If the user lost admin while the dialog is open, fall back to a safe section
   const resolvedSection: SettingsSection =
     (!showDebug && activeSection === "debug") ||
+    (!showUsage && activeSection === "usage") ||
+    (!usagePackPlansEnabled && activeSection === "usage-records") ||
     (!isAdmin && isAdminOnlySettingsSection(activeSection))
       ? "preference"
       : activeSection;
   const meta =
-    resolvedSection === "usage" && !isAdmin
+    resolvedSection === "usage" && !usagePackPlansEnabled
       ? {
-          title: t(($) => {
-            return $.settings.dialog.sections.usage.usageTitle;
-          }),
+          title: sectionMeta.usage.title,
           description: t(($) => {
-            return $.settings.dialog.sections.usage.usageDescription;
+            return $.settings.dialog.sections.usage.balanceUsageDescription;
           }),
         }
       : sectionMeta[resolvedSection];
@@ -269,7 +290,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        ref={setClerkProfilePortalContainer}
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
@@ -315,17 +335,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {/* Desktop: sidebar nav */}
           <nav className="hidden sm:flex sm:flex-col w-52 shrink-0 p-3 pt-3 pb-4 gap-4 overflow-y-auto zero-border-r bg-[hsl(var(--gray-0))]">
             {sidebarGroups.map((group) => {
-              const groupKey =
-                group.label ?? `__personal_${group.items[0]?.id ?? ""}`;
               return (
-                <div key={groupKey} className="shrink-0">
-                  {group.label !== null && (
-                    <div className="h-7 flex items-center pl-2">
-                      <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
-                        {group.label}
-                      </span>
-                    </div>
-                  )}
+                <div key={group.label} className="shrink-0">
+                  <div className="h-7 flex items-center pl-2">
+                    <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
+                      {group.label}
+                    </span>
+                  </div>
                   <div className="flex flex-col gap-1">
                     {group.items.map((item) => {
                       const Icon = item.icon;
@@ -338,10 +354,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             handleSectionChange(item.id);
                           }}
                           className={cn(
-                            "flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 focus-visible:bg-sidebar-accent focus-visible:outline-none",
+                            "flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 focus-visible:bg-state-hover focus-visible:outline-none",
                             isActive
-                              ? "bg-gray-200 text-gray-900 font-medium"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent",
+                              ? "bg-state-selected text-foreground font-medium"
+                              : "text-sidebar-foreground hover:bg-state-hover",
                           )}
                         >
                           <Icon

@@ -31,7 +31,7 @@ unsafe fn setup_api_env(
             .and_then(Path::file_name)
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "execute-cli-api-mode-test".to_string());
-        std::env::set_var("VM0_RUN_ID", &run_id);
+        std::env::set_var(guest_contracts::env::RUN_ID_ENV, &run_id);
         let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(workdir, &run_id)
             .map_err(|error| format!("resolve runtime dir: {error}"))?;
         common::set_run_payload_file_env_for_test(
@@ -76,15 +76,14 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
     let expected_run_id = runtime.config.run_id.clone();
     unsafe {
-        std::env::set_var("VM0_RUN_ID", "stale-run-id-after-runtime-construction");
+        std::env::set_var(
+            guest_contracts::env::RUN_ID_ENV,
+            "stale-run-id-after-runtime-construction",
+        );
     }
 
     let masker = SecretMasker::from_raw("");
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
-        &runtime.config.run_id,
-        true,
-        &runtime.config.prompt,
-    );
+    let active_input = common::active_input_runtime(&runtime)?;
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
         guest_agent::cli::execute_cli_with_active_input_for_config(

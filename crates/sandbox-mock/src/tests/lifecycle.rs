@@ -1,12 +1,113 @@
 use super::*;
 use std::sync::Arc;
 
+#[derive(Default)]
+struct RecordingFinalExecParkObserver {
+    records: Vec<(SandboxFinalExecParkStage, bool)>,
+}
+
+impl SandboxFinalExecParkObserver for RecordingFinalExecParkObserver {
+    fn record_stage(
+        &mut self,
+        stage: SandboxFinalExecParkStage,
+        _duration: Duration,
+        success: bool,
+    ) {
+        self.records.push((stage, success));
+    }
+}
+
+fn severe_memory_retention() -> SandboxParkNonReusableReason {
+    SandboxParkNonReusableReason::SevereMemoryRetention(Box::new(
+        SevereMemoryRetentionDiagnostics {
+            requested_target_mib: 0,
+            first_observed_target_mib: None,
+            observed_target_mib: None,
+            target_observed: false,
+            first_actual_mib: None,
+            actual_mib: None,
+            max_actual_mib: None,
+            deficit_mib: None,
+            actual_delta_mib: None,
+            elapsed_ms: 0,
+            sample_count: 0,
+            reported_free_memory_bytes: None,
+            reported_available_memory_bytes: None,
+            reported_total_memory_bytes: None,
+            reported_swap_in_bytes: None,
+            reported_swap_out_bytes: None,
+            reported_major_faults: None,
+            reported_minor_faults: None,
+            reported_disk_caches_bytes: None,
+            guest_memory_snapshot: None,
+        },
+    ))
+}
+
 #[tokio::test]
 async fn sandbox_lifecycle() {
     let mut sandbox = MockSandbox::new("test-1");
     sandbox.start().await.unwrap();
     sandbox.stop().await.unwrap();
     sandbox.kill().await.unwrap();
+}
+
+#[tokio::test]
+async fn operation_overrides_preserve_unrelated_sandbox_behavior() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.set_start_process_lifecycle_gate(MockLifecycleGate::new());
+    overrides.set_copy_file_lifecycle_gate(MockLifecycleGate::new());
+    overrides.set_private_write_file_lifecycle_gate(MockLifecycleGate::new());
+    let mut sandbox = MockSandbox::with_overrides("test-1", Arc::clone(&overrides));
+
+    sandbox.bind_run_control("run-1").unwrap();
+    sandbox
+        .write_files(&[
+            WriteFileEntry {
+                path: "/tmp/a.txt",
+                content: b"a",
+            },
+            WriteFileEntry {
+                path: "/tmp/b.txt",
+                content: b"b",
+            },
+        ])
+        .await
+        .unwrap();
+
+    let mut observer = RecordingFinalExecParkObserver::default();
+    let outcome = sandbox
+        .final_exec_and_park_with_observer(
+            &ExecRequest {
+                cmd: "true",
+                timeout: test_timeout(),
+                env: &[],
+                sudo: false,
+                expected_exit_codes: &[],
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
+            },
+            "test",
+            &mut observer,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        outcome.park_outcome,
+        SandboxParkOutcome::Reusable,
+        "operation overrides must not replace lifecycle behavior"
+    );
+    assert_eq!(overrides.run_control_bind_calls(), vec!["run-1"]);
+    assert_eq!(overrides.write_files_calls().len(), 1);
+    assert_eq!(overrides.write_file_calls().len(), 2);
+    assert_eq!(
+        observer.records,
+        vec![
+            (SandboxFinalExecParkStage::ReusePreparation, true),
+            (SandboxFinalExecParkStage::PhysicalPark, true),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -32,7 +133,7 @@ async fn overrides_count_park_and_unpark_calls_across_factory_sandboxes() {
 async fn park_outcomes_are_consumed_fifo_and_default_to_reusable() {
     let overrides = Arc::new(MockSandboxOverrides::new());
     overrides.push_park_result(Ok(SandboxParkOutcome::NonReusable(
-        SandboxParkNonReusableReason::SevereMemoryRetention,
+        severe_memory_retention(),
     )));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut first = factory.create(test_sandbox_config()).await.unwrap();
@@ -40,7 +141,7 @@ async fn park_outcomes_are_consumed_fifo_and_default_to_reusable() {
 
     assert_eq!(
         first.park().await.unwrap(),
-        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+        SandboxParkOutcome::NonReusable(severe_memory_retention())
     );
     assert_eq!(second.park().await.unwrap(), SandboxParkOutcome::Reusable);
     assert_eq!(overrides.park_call_count(), 2);

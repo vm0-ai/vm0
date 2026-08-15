@@ -6,6 +6,7 @@ from mitmproxy import connection
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import platform_api
 import request_classification
 import upstream_admission
 import upstream_destination_binding
@@ -63,6 +64,106 @@ async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
     assert binding.host == "api.vm0.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_streamed_api_allow_injects_runner_preview_bypass_before_body(
+    tmp_path, real_flow, mitm_ctx, headers, monkeypatch
+):
+    reg_path = _write_api_registry(tmp_path, capture_network_bodies=True)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="preview-api.vm6.ai",
+        method="POST",
+        path="/api/zero/chat/events",
+        request_headers=headers(
+            ("Host", "preview-api.vm6.ai"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(reg_path),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        mitm_addon.requestheaders(flow)
+
+    assert callable(flow.request.stream)
+    assert flow.request.headers["x-vercel-protection-bypass"] == "preview-secret"
+
+
+async def test_streamed_wrong_scheme_does_not_receive_runner_preview_bypass(
+    tmp_path, real_flow, mitm_ctx, headers, monkeypatch
+):
+    reg_path = _write_api_registry(tmp_path, capture_network_bodies=True)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="preview-api.vm6.ai",
+        scheme="http",
+        port=443,
+        method="POST",
+        path="/api/zero/chat/events",
+        request_headers=headers(
+            ("Host", "preview-api.vm6.ai:443"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(reg_path),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        mitm_addon.requestheaders(flow)
+
+        assert callable(flow.request.stream)
+        assert "x-vercel-protection-bypass" not in flow.request.headers
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert "x-vercel-protection-bypass" not in flow.request.headers
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+async def test_cached_api_allow_revalidates_scheme_before_final_bypass_injection(
+    tmp_path, real_flow, mitm_ctx, headers, monkeypatch
+):
+    reg_path = _write_api_registry(tmp_path, capture_network_bodies=True)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="preview-api.vm6.ai",
+        method="POST",
+        path="/api/zero/chat/events",
+        request_headers=headers(
+            ("Host", "preview-api.vm6.ai"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "")
+
+    with mitm_ctx(
+        registry_path=str(reg_path),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        mitm_addon.requestheaders(flow)
+
+        assert callable(flow.request.stream)
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
+        assert "x-vercel-protection-bypass" not in flow.request.headers
+
+        flow.request.scheme = "http"
+        monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert "x-vercel-protection-bypass" not in flow.request.headers
 
 
 async def test_capture_enabled_api_allow_blocks_connected_unbound_edge_upstream(

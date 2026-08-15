@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate image command
+ * Tests for okou generate image command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -14,9 +14,9 @@ import { server } from "../../../../mocks/server";
 import { generateCommand } from "../index";
 import { imageCommand } from "../image";
 
-const IMAGE_URL = "http://localhost:3000/api/zero/image-io/generate";
+const IMAGE_URL = "http://localhost:3000/api/okou/image-io/generate";
 const IMAGE_GENERATION_ID = "00000000-0000-4000-8000-000000000001";
-const IMAGE_STATUS_URL = `http://localhost:3000/api/zero/built-in-generations/${IMAGE_GENERATION_ID}`;
+const IMAGE_STATUS_URL = `http://localhost:3000/api/okou/built-in-generations/${IMAGE_GENERATION_ID}`;
 const IMAGE_RESULT = {
   id: "image-file-id",
   filename: "image-image-fi.png",
@@ -33,7 +33,7 @@ const IMAGE_RESULT = {
   moderation: "auto",
 };
 
-describe("zero generate image command", () => {
+describe("okou generate image command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -45,7 +45,7 @@ describe("zero generate image command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -114,6 +114,48 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("Credits charged: 65");
     expect(stdout).toContain("Model: gpt-image-1");
     expect(stdout).toContain("Provider: fal");
+  });
+
+  it("should surface the CDN embed URL when it differs from the file URL", async () => {
+    const embedUrl =
+      "https://cdn.vm7.io/cdn-cgi/image/fit=scale-down,format=auto,quality=85,metadata=none/artifacts/abc.png";
+    server.use(
+      http.post(IMAGE_URL, () => {
+        return HttpResponse.json({ ...IMAGE_RESULT, embedUrl });
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--raw-prompt",
+      "A watercolor fox",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(`Image generated: ${IMAGE_RESULT.url}`);
+    expect(stdout).toContain(`Embed this URL in HTML: ${embedUrl}`);
+  });
+
+  it("should omit the embed line when the API does not return one", async () => {
+    server.use(
+      http.post(IMAGE_URL, () => {
+        return HttpResponse.json(IMAGE_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--raw-prompt",
+      "A watercolor fox",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(`Image generated: ${IMAGE_RESULT.url}`);
+    expect(stdout).not.toContain("Embed this URL in HTML");
   });
 
   it("should print the complete image result as one JSON object", async () => {
@@ -341,7 +383,7 @@ describe("zero generate image command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "# Zero generate image prompt compile image-style:ink-storefront",
+      "# Okou generate image prompt compile image-style:ink-storefront",
     );
     expect(stdout).toContain("image prompt-compilation packet");
     expect(stdout).toContain("## Selected Image Style");
@@ -393,7 +435,7 @@ describe("zero generate image command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("Registry resource: `image-style:ink-storefront`");
     expect(stdout).toContain(
-      "zero resource pull image-style:ink-storefront --dir ./generated/resources",
+      "okou resource pull image-style:ink-storefront --dir ./generated/resources",
     );
     expect(stdout).toContain(
       "./generated/resources/illustration-template/ink-storefront",
@@ -564,6 +606,7 @@ describe("zero generate image command", () => {
     expect(helpOutput).not.toContain("--styled ");
     expect(helpOutput).toContain("provider");
     expect(helpOutput).toContain("default");
+    expect(helpOutput).toContain("Provider: 'built-in' to run Okou's pipeline");
     expect(helpOutput).toContain("not support transparent");
     expect(helpOutput).toContain("backgrounds");
     expect(helpOutput).toContain("Image-to-image");

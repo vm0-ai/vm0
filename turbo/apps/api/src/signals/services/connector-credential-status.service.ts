@@ -1,9 +1,9 @@
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
-import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
+import type { ConnectorReconnectReason } from "@okouai/api-contracts/contracts/connector-schemas";
 
 export type ConnectorCredentialStatus = "available" | "reconnect-required";
 
-function connectorCredentialStatusForAccess(args: {
+export function connectorCredentialStatusForAccess(args: {
   readonly storedNeedsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
   readonly now: Date;

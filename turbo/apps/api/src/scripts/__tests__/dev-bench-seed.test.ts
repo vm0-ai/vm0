@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
+import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
+import { resolveChatEventRecommendedFollowups } from "@okouai/api-contracts/contracts/chat-threads";
 
-import { buildProfileRows, DEV_BENCH_THREAD_PROFILES } from "../dev-bench-seed";
+import {
+  buildProfileRows,
+  DEV_BENCH_THREAD_PROFILES,
+  type BuiltProfileRows,
+} from "../dev-bench-seed";
 
 const EXPECTED_PROFILE_SHAPES = {
   "feature-switch-digest": {
@@ -41,6 +46,28 @@ function countWhere<T>(
   return rows.filter(predicate).length;
 }
 
+type ProfileRunMetadataRow = BuiltProfileRows["runRows"][number];
+
+function runMetadata(row: ProfileRunMetadataRow) {
+  return {
+    triggerSource: row.triggerSource,
+    autonomyBudget: row.autonomyBudget,
+    workflowAutomationId: row.workflowAutomationId,
+    goalId: row.goalId,
+    modelProvider: row.modelProvider,
+    modelProviderId: row.modelProviderId,
+    modelProviderCredentialScope: row.modelProviderCredentialScope,
+    selectedModel: row.selectedModel,
+    codexServiceTier: row.codexServiceTier,
+    selectedVideoModel: row.selectedVideoModel,
+    chatThreadId: row.chatThreadId,
+    apiStartedAt: row.apiStartedAt,
+    firstAssistantEventAcknowledgedAt: row.firstAssistantEventAcknowledgedAt,
+    summary: row.summary,
+    triggerBrief: row.triggerBrief,
+  };
+}
+
 describe("dev bench seed profile rows", () => {
   it("preserves the production-shaped profile invariants", () => {
     for (const profile of DEV_BENCH_THREAD_PROFILES) {
@@ -61,7 +88,14 @@ describe("dev bench seed profile rows", () => {
       });
 
       expect(rows.runRows).toHaveLength(expected.runs);
-      expect(rows.zeroRunRows).toHaveLength(expected.runs);
+      for (const runRow of rows.runRows) {
+        expect(runMetadata(runRow)).toStrictEqual(
+          expect.objectContaining({
+            triggerSource: expect.any(String),
+            autonomyBudget: 10,
+          }),
+        );
+      }
       expect(rows.eventRows).toHaveLength(expected.events);
       expect(
         rows.eventRows.some((row) => {
@@ -101,23 +135,26 @@ describe("dev bench seed profile rows", () => {
       expect(
         countWhere(rows.eventRows, (row) => {
           return (
-            row.recommendedFollowups !== null &&
-            row.recommendedFollowups !== undefined
+            row.eventType === "output.followups" &&
+            typeof row.payload?.content === "string" &&
+            resolveChatEventRecommendedFollowups({
+              content: row.payload.content,
+            }).length > 0
           );
         }),
       ).toBe(expected.recommendedFollowupEvents);
       expect(
         countWhere(rows.eventRows, (row) => {
-          return row.usagePayload !== null && row.usagePayload !== undefined;
+          return row.payload?.usage !== undefined;
         }),
       ).toBe(expected.usageEvents);
       expect(
-        countWhere(rows.zeroRunRows, (row) => {
-          return row.triggerSource === "workflow-schedule";
+        countWhere(rows.runRows, (row) => {
+          return row.triggerSource === "automation-schedule";
         }),
       ).toBe(expected.workflowScheduleRuns);
       expect(
-        countWhere(rows.zeroRunRows, (row) => {
+        countWhere(rows.runRows, (row) => {
           return row.triggerBrief !== null && row.triggerBrief !== undefined;
         }),
       ).toBe(expected.triggerBriefRuns);

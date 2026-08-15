@@ -1,10 +1,11 @@
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   feishuChatIngress,
   type FeishuChatIngressStatus,
-} from "@vm0/db/schema/feishu-chat-ingress";
-import { feishuChatThreadRoutes } from "@vm0/db/schema/feishu-chat-thread-route";
-import { feishuOrgEvents } from "@vm0/db/schema/feishu-org-event";
+} from "@okouai/db/schema/feishu-chat-ingress";
+import { feishuChatThreadRoutes } from "@okouai/db/schema/feishu-chat-thread-route";
+import { feishuOrgEvents } from "@okouai/db/schema/feishu-org-event";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -56,6 +57,7 @@ export async function ensureFeishuChatThreadRoute(
     readonly orgId: string;
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
+    readonly serviceTier: ChatThreadServiceTier | null;
     readonly currentTime: Date;
   },
 ): Promise<FeishuChatThreadRouteBinding> {
@@ -71,6 +73,7 @@ export async function ensureFeishuChatThreadRoute(
         userId: args.userId,
         agentComposeId: args.agentComposeId,
         selectedModel: args.selectedModel,
+        codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
         title: null,
         lastReadAt: args.currentTime,
         lastMessageAt: args.currentTime,
@@ -128,6 +131,7 @@ export async function ensureFeishuChatThreadRoute(
       agentComposeId: args.agentComposeId,
       title: null,
       selectedModel: args.selectedModel,
+      serviceTier: args.serviceTier,
       createdAt: thread.createdAt,
     });
     return route;

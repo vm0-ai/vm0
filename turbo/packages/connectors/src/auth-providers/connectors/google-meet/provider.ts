@@ -50,7 +50,7 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
     },
     access: {
       kind: "refresh-token",
-      refresh: async (args) => {
+      refresh: async (args, signal: AbortSignal) => {
         const { clientId, clientSecret } = args.authClient;
         const refreshToken = args.inputs.refreshToken;
         return oauthRefreshResultToProviderResult(
@@ -59,7 +59,7 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
             clientId,
             clientSecret,
             refreshToken,
-            args.signal,
+            signal,
           ),
         );
       },

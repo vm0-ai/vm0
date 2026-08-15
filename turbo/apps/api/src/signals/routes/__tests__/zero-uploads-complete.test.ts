@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { deleteAgentRunFixture } from "../../../test-fixtures/chat-events";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createBddApi,
   expectApiError,
@@ -18,10 +18,6 @@ import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -81,7 +77,9 @@ function zeroBearer(
   })}`;
 }
 
-async function createRunUploadFixture(): Promise<RunUploadFixture> {
+async function createRunUploadFixture(
+  options: { readonly chatThread?: boolean } = {},
+): Promise<RunUploadFixture> {
   const actor = bdd.user();
   const orgId = requireOrgId(actor);
   const objectStore = chatCallbacks.acceptChatObjectStorage();
@@ -97,21 +95,38 @@ async function createRunUploadFixture(): Promise<RunUploadFixture> {
     visibility: "private",
   });
 
-  const run = await runsApi.createRun(actor, {
-    agentId: agent.agentId,
-    prompt: "produce an uploaded artifact",
-    modelProvider: "anthropic-api-key",
-  });
+  let runId: string;
+  if (options.chatThread) {
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "produce a thread-linked uploaded artifact",
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected chat send to create a thread-linked run");
+    }
+    runId = sent.body.runId;
+  } else {
+    const run = await runsApi.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "produce an uploaded artifact",
+      modelProvider: "anthropic-api-key",
+    });
+    runId = run.runId;
+  }
   const orgActor = { ...actor, orgId };
   mockClerkMembership(context, orgActor, "org:admin");
 
   return {
     actor: orgActor,
-    runId: run.runId,
+    runId,
     bearer: `Bearer ${zeroToken({
       userId: actor.userId,
       orgId,
-      runId: run.runId,
+      runId,
       capabilities: ["file:write"],
     })}`,
     objectStore,
@@ -151,6 +166,35 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
+  it("keeps a completed upload successful when realtime invalidation fails", async () => {
+    const fixture = await createRunUploadFixture({ chatThread: true });
+    const fileId = randomUUID();
+    addUploadObject(fixture, fileId, "realtime-independent.pdf");
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("realtime publication failed"),
+    );
+
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: fileId },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(response.body).toMatchObject({
+      id: fileId,
+      filename: "realtime-independent.pdf",
+      contentType: "application/pdf",
+      size: 1234,
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      expect.stringMatching(/^chatThreadArtifactsChanged:/u),
+      null,
+    );
+  });
+
   it("completes an ordinary session upload without a run artifact association", async () => {
     const actor = bdd.user();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
@@ -171,16 +215,12 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
-  it("recovers a v2 original filename after the org switch is disabled", async () => {
+  it("recovers a v2 original filename from object metadata", async () => {
     const fixture = await createRunUploadFixture();
-    await updateFeatureSwitchesForUser(context, fixture.actor, {
-      [FeatureSwitchKey.ArtifactKeyV2]: true,
-    });
     const prepared = await chat.prepareUpload(fixture.actor, {
       filename: "财务 报告.pdf",
       contentType: "application/pdf",
       size: 17,
-      supportsUploadHeaders: true,
     });
     const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
     fixture.objectStore.addObject({
@@ -194,8 +234,6 @@ describe("POST /api/zero/uploads/complete", () => {
         "user-id": encodeURIComponent(fixture.actor.userId),
       },
     });
-    await deleteFeatureSwitchesForUser(context, fixture.actor);
-
     const response = await chat.completeUploadWithBearer(
       fixture.bearer,
       { id: prepared.id },
@@ -211,7 +249,7 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
-  it("uses the validated complete content type when provided", async () => {
+  it("uses a recognized complete content type when provided", async () => {
     const fixture = await createRunUploadFixture();
     const fileId = randomUUID();
     addUploadObject(fixture, fileId, "data.bin", 9);
@@ -357,21 +395,27 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
-  it("returns 400 for unsupported content types", async () => {
-    const response = await chat.completeUploadWithBearer(
-      zeroBearer(),
-      {
-        id: randomUUID(),
-        contentType: "application/x-msdownload",
-      },
-      [400],
+  it("falls back to a generic complete content type for unrecognized MIME values", async () => {
+    const actor = bdd.user();
+    const objectStore = chatCallbacks.acceptChatObjectStorage();
+    const fileId = randomUUID();
+    addUploadObject(
+      { actor: { ...actor, orgId: requireOrgId(actor) }, objectStore },
+      fileId,
+      "capture.custom",
+      10,
     );
 
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Unsupported file type: application/x-msdownload",
-        code: "BAD_REQUEST",
-      },
+    const response = await chat.completeUpload(actor, {
+      id: fileId,
+      contentType: "application/x-custom",
+    });
+
+    expect(response).toMatchObject({
+      id: fileId,
+      filename: "capture.custom",
+      contentType: "application/octet-stream",
+      size: 10,
     });
   });
 });

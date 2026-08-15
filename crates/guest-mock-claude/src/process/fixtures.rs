@@ -4,6 +4,7 @@ use crate::transcript::{
     tool_use_event,
 };
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
+use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -20,8 +21,6 @@ const POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_re
 const POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_survived";
 const POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
 const POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
-// Integration contract with guest-agent's ordinary stdout framing policy.
-const ORDINARY_STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 
 pub(super) fn run_fail_no_newline(msg: &str) -> ExitCode {
@@ -160,7 +159,7 @@ fn hang_until_reaped() {
 
 fn write_stdout_limit(stdout: &mut impl Write, byte: u8) -> std::io::Result<()> {
     let chunk = [byte; STDOUT_STREAM_CHUNK_BYTES];
-    for _ in 0..ORDINARY_STDOUT_MAX_LINE_BYTES / STDOUT_STREAM_CHUNK_BYTES {
+    for _ in 0..ORDINARY_CLI_STDOUT_MAX_LINE_BYTES / STDOUT_STREAM_CHUNK_BYTES {
         stdout.write_all(&chunk)?;
     }
     Ok(())

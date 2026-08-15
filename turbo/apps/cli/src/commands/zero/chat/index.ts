@@ -4,8 +4,8 @@ import { cancelCommand } from "./cancel";
 import { createCommand } from "./create";
 import { getCommand } from "./get";
 import { listCommand } from "./list";
+import { messagesCommand } from "./messages";
 import { modelCommand } from "./model";
-import { queuedCommand } from "./queued";
 import { renameCommand } from "./rename";
 import { sendCommand } from "./send";
 
@@ -14,9 +14,9 @@ export const zeroChatCommand = new Command()
   .description("Manage web chat threads")
   .addCommand(createCommand)
   .addCommand(sendCommand)
-  .addCommand(queuedCommand)
   .addCommand(cancelCommand)
   .addCommand(getCommand)
+  .addCommand(messagesCommand)
   .addCommand(listCommand)
   .addCommand(modelCommand)
   .addCommand(renameCommand)
@@ -24,14 +24,15 @@ export const zeroChatCommand = new Command()
     "after",
     `
 Examples:
-  Create a chat:     zero chat create "Launch plan"
-  Send a message:    zero chat send --text "Continue"
-  Show queued:       zero chat queued --thread-id <thread-id>
-  Cancel a run:      zero chat cancel --thread-id <thread-id> --run-id <run-id>
-  List agent chats:  zero chat list
-  Show this chat:    zero chat get
-  Switch model:      zero chat model claude-sonnet-5
-  Switch another:    zero chat model --thread <thread-id> claude-sonnet-5
-  Rename this chat:  zero chat rename "Launch plan"
-  Rename another:    zero chat rename --thread <thread-id> "Launch plan"`,
+  Create a chat:     okou chat create "Launch plan"
+  Send a message:    okou chat send --text "Continue"
+  Cancel a run:      okou chat cancel --thread-id <thread-id> --run-id <run-id>
+  List agent chats:  okou chat list
+  Show this chat:    okou chat get
+  Show another:      okou chat get --thread-id <thread-id>
+  Read messages:     okou chat messages --thread-id <thread-id>
+  Switch model:      okou chat model claude-sonnet-5
+  Switch another:    okou chat model --thread <thread-id> claude-sonnet-5
+  Rename this chat:  okou chat rename "Launch plan"
+  Rename another:    okou chat rename --thread <thread-id> "Launch plan"`,
   );

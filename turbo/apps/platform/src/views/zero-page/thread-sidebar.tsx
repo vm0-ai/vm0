@@ -1,13 +1,8 @@
 import type { UIEvent as ReactUIEvent } from "react";
 import { createPortal } from "react-dom";
-import {
-  IconArrowLeft,
-  IconMaximize,
-  IconMinimize,
-  IconX,
-} from "@tabler/icons-react";
+import { ArrowLeft, ExternalLink, Maximize, Minimize, X } from "lucide-react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -16,7 +11,7 @@ import {
   artifactRefFromUrl,
   openThreadArtifacts$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import type {
   ThreadSidebarArtifactSource,
   ThreadSidebarTarget,
@@ -30,6 +25,7 @@ import {
 } from "../artifacts-page/artifact-catalog-page.tsx";
 import { BrowserSessionSidebar } from "./browser-session-sidebar.tsx";
 import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
+import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 
 // ---------------------------------------------------------------------------
@@ -46,21 +42,15 @@ const THREAD_SIDEBAR_FULLSCREEN_CLASSNAME =
   "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
 
 /**
- * Open the thread's artifacts list and start its sidebar session (background
- * first-page refresh plus realtime catalog updates). Entry buttons and the
- * detail's Back action share this hook so the session always starts.
+ * Open the thread's artifacts list and refresh its first page. Entry buttons
+ * and the detail's Back action share this hook so the list is current on open.
  */
-export function useOpenThreadArtifacts(thread: ChatThreadSignals): () => void {
+export function useOpenThreadArtifacts(thread: ChatPanelSignals): () => void {
   const open = useSet(openThreadArtifacts$);
-  const setupSession = useSet(thread.sidebar.setupArtifactsSession$);
-  const pageSignal = useGet(pageSignal$);
+  const reloadArtifacts = useSet(thread.sidebar.artifactCatalog.reload$);
   return () => {
     open(thread);
-    detach(
-      setupSession(pageSignal),
-      Reason.DomCallback,
-      "thread artifacts sidebar session",
-    );
+    reloadArtifacts();
   };
 }
 
@@ -81,22 +71,23 @@ function ThreadSidebarHeader({
   return (
     <div className="flex min-h-14 shrink-0 items-center gap-1 border-b border-border/60 px-4">
       {onBack ? (
-        <button
+        <Button
           type="button"
           onClick={onBack}
           aria-label={t(($) => {
             return $.artifacts.actions.backToArtifacts;
           })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
-          <IconArrowLeft size={16} />
-        </button>
+          <ArrowLeft size={16} />
+        </Button>
       ) : null}
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
         {title}
       </span>
       {onToggleFullscreen ? (
-        <button
+        <Button
           type="button"
           onClick={onToggleFullscreen}
           aria-label={
@@ -109,12 +100,14 @@ function ThreadSidebarHeader({
                 })
           }
           data-testid="thread-sidebar-fullscreen-toggle"
-          className="hidden xl:inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
+          className="hidden xl:inline-flex"
         >
-          {fullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
-        </button>
+          {fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+        </Button>
       ) : null}
-      <button
+      <Button
         type="button"
         onClick={onClose}
         aria-label={t(
@@ -127,15 +120,16 @@ function ThreadSidebarHeader({
             ),
           },
         )}
-        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        variant="quiet"
+        size="icon-sm"
       >
-        <IconX size={16} />
-      </button>
+        <X size={16} />
+      </Button>
     </div>
   );
 }
 
-function ThreadArtifactsPanel({ thread }: { thread: ChatThreadSignals }) {
+function ThreadArtifactsPanel({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const sidebar = thread.sidebar;
   const catalogLoadable = useLastLoadable(sidebar.artifactCatalog.catalog$);
@@ -218,16 +212,19 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatThreadSignals }) {
       </div>
     </aside>
   );
-  return fullscreen && typeof document !== "undefined"
-    ? createPortal(panel, document.body)
-    : panel;
+  // This is an app-local fullscreen surface, not a modal. Keep it inside the
+  // isolated app stack so body-level Base UI portals remain above it by
+  // structure rather than by competing z-index values.
+  const appRoot =
+    typeof document === "undefined" ? null : document.getElementById("root");
+  return fullscreen && appRoot ? createPortal(panel, appRoot) : panel;
 }
 
 function ThreadArtifactUnavailable({
   thread,
   showBack,
 }: {
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
   readonly showBack: boolean;
 }) {
   const { t } = useTranslation();
@@ -261,7 +258,7 @@ function ThreadArtifactDetail({
   thread,
   source,
 }: {
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
   readonly source: ThreadSidebarArtifactSource;
 }) {
   const { t } = useTranslation();
@@ -328,6 +325,31 @@ function ThreadArtifactDetail({
     return <ThreadArtifactUnavailable thread={thread} showBack />;
   }
 
+  if (detail.kind === "shared-thread") {
+    return (
+      <aside className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0">
+        <ThreadSidebarHeader
+          title={detail.title}
+          onBack={backToArtifacts}
+          onClose={close}
+        />
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <a
+            href={`/share/threads/${encodeURIComponent(detail.sharedThread.id)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+          >
+            <ExternalLink size={16} />
+            {t(($) => {
+              return $.artifacts.sidebar.openSharedConversation;
+            })}
+          </a>
+        </div>
+      </aside>
+    );
+  }
+
   const preview = artifactDetailPreview(detail);
   return (
     <ArtifactSidebar
@@ -338,6 +360,7 @@ function ThreadArtifactDetail({
       }}
       thread={thread}
       text$={sidebar.selectedArtifactText$}
+      markdownTree$={sidebar.selectedArtifactMarkdownTree$}
       fullscreenState={fullscreenState}
       onBack={backToArtifacts}
       onClose={close}
@@ -348,23 +371,19 @@ function ThreadArtifactDetail({
 
 function ThreadMailDraftPanel({
   thread,
-  mailDraftId,
+  signals,
 }: {
-  readonly thread: ChatThreadSignals;
-  readonly mailDraftId: string;
+  readonly thread: ChatPanelSignals;
+  readonly signals: MailDraftSignals;
 }) {
   const close = useSet(thread.sidebar.close$);
-  const signals = useGet(thread.mailDraftCardSignalsById$).get(mailDraftId);
-  if (!signals) {
-    return null;
-  }
   return <MailDraftSidebar signals={signals} onClose={close} />;
 }
 
 function ThreadBrowserSessionPanel({
   thread,
 }: {
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
 }) {
   const close = useSet(thread.sidebar.close$);
   return (
@@ -379,12 +398,12 @@ export function ThreadSidebarSlot({
   thread,
   target,
 }: {
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
   readonly target: ThreadSidebarTarget;
 }) {
   switch (target.type) {
     case "artifacts": {
-      return <ThreadArtifactsPanel key={thread.threadId} thread={thread} />;
+      return <ThreadArtifactsPanel thread={thread} />;
     }
     case "artifact": {
       return <ThreadArtifactDetail thread={thread} source={target.source} />;
@@ -395,12 +414,7 @@ export function ThreadSidebarSlot({
       return null;
     }
     case "email-draft": {
-      return (
-        <ThreadMailDraftPanel
-          thread={thread}
-          mailDraftId={target.mailDraftId}
-        />
-      );
+      return <ThreadMailDraftPanel thread={thread} signals={target.signals} />;
     }
     case "browser": {
       return <ThreadBrowserSessionPanel thread={thread} />;

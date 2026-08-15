@@ -1,32 +1,33 @@
 import { command, computed, state } from "ccstate";
-import { setAblyLoop$ } from "./realtime.ts";
+import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "./realtime.ts";
 
-const internalReloadChatUnreadState$ = state(0);
-const internalReloadChatActiveRunIds$ = state(0);
+const internalReloadChatIndicators$ = state(0);
 
-export const reloadChatUnreadStateCounter$ = computed((get) => {
-  return get(internalReloadChatUnreadState$);
+export const reloadChatIndicatorsCounter$ = computed((get) => {
+  return get(internalReloadChatIndicators$);
 });
 
-export const reloadChatActiveRunIdsCounter$ = computed((get) => {
-  return get(internalReloadChatActiveRunIds$);
-});
-
-export const reloadChatUnreadState$ = command(({ set }) => {
-  set(internalReloadChatUnreadState$, (n) => {
+export const reloadChatIndicators$ = command(({ set }) => {
+  set(internalReloadChatIndicators$, (n) => {
     return n + 1;
   });
 });
 
-const reloadChatActiveRunIds$ = command(({ set }) => {
-  set(internalReloadChatActiveRunIds$, (n) => {
-    return n + 1;
-  });
+const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
+  set(reloadChatIndicators$);
+  return false;
 });
+
+const reloadChatIndicatorsOnForeground$ = command(
+  ({ set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    set(reloadChatIndicators$);
+  },
+);
 
 /**
- * Subscribe to the user-level `threadListChanged` topic and invalidate active
- * run and unread snapshots. Event-sourced thread data has its own incremental
+ * Subscribe to the user-level `threadListChanged` topic and invalidate the
+ * indicator snapshot. Event-sourced thread data has its own incremental
  * subscription.
  *
  * Loop command returns false so it keeps listening until the signal aborts.
@@ -35,14 +36,13 @@ const reloadChatActiveRunIds$ = command(({ set }) => {
  */
 export const subscribeThreadListChanged$ = command(
   async ({ set }, signal: AbortSignal) => {
-    const onChanged$ = command(({ set }) => {
-      set(reloadChatActiveRunIds$);
-      set(reloadChatUnreadState$);
-      return false;
-    });
     await set(
       setAblyLoop$,
-      { topic: "threadListChanged", loopCommand$: onChanged$ },
+      {
+        topic: "threadListChanged",
+        loopCommand$: reloadChatIndicatorsFromRealtime$,
+        options: { runOnForegroundCatchUp: false },
+      },
       signal,
     );
   },
@@ -50,13 +50,23 @@ export const subscribeThreadListChanged$ = command(
 
 export const subscribeChatThreadReadCursorUpdated$ = command(
   async ({ set }, signal: AbortSignal) => {
-    const onChanged$ = command(({ set }) => {
-      set(reloadChatUnreadState$);
-      return false;
-    });
     await set(
       setAblyLoop$,
-      { topic: "chatThreadReadCursorUpdated", loopCommand$: onChanged$ },
+      {
+        topic: "chatThreadReadCursorUpdated",
+        loopCommand$: reloadChatIndicatorsFromRealtime$,
+        options: { runOnForegroundCatchUp: false },
+      },
+      signal,
+    );
+  },
+);
+
+export const setupChatIndicatorForegroundCatchUp$ = command(
+  ({ set }, signal: AbortSignal) => {
+    set(
+      subscribeRealtimeReadyCatchUp$,
+      reloadChatIndicatorsOnForeground$,
       signal,
     );
   },

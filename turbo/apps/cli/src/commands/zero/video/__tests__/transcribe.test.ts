@@ -1,5 +1,5 @@
 /**
- * Tests for zero video transcribe command.
+ * Tests for okou video transcribe command.
  *
  * Mocks only external boundaries: the curl/ffmpeg binaries (via child_process,
  * not available in CI) and HTTP (via MSW). The fake binaries write real bytes
@@ -13,8 +13,8 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { transcribeCommand } from "../transcribe";
 
-const STT_URL = "http://localhost:3000/api/zero/voice-io/stt";
-const DOWNLOAD_URL = "http://localhost:3000/api/zero/web/download-file";
+const STT_URL = "http://localhost:3000/api/okou/voice-io/stt";
+const DOWNLOAD_URL = "http://localhost:3000/api/okou/web/download-file";
 
 vi.mock("child_process", async () => {
   const { writeFileSync } = await vi.importActual<typeof import("fs")>("fs");
@@ -52,10 +52,10 @@ function readStdout(): string {
     .join("");
 }
 
-describe("zero video transcribe command", () => {
+describe("okou video transcribe command", () => {
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     mockStdoutWrite.mockClear();
   });
 

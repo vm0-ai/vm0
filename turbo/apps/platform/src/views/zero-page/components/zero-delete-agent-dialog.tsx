@@ -17,8 +17,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui";
-import { IconAlertTriangle, IconTrash } from "@tabler/icons-react";
+} from "@okouai/ui";
+import { AlertTriangle, Trash } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
@@ -50,11 +50,7 @@ function DeleteDangerHeader({ agentName }: { agentName: string }) {
     <>
       <DialogHeader className="space-y-0 text-left">
         <div className="flex items-center gap-2">
-          <IconAlertTriangle
-            size={20}
-            stroke={1.5}
-            className="shrink-0 text-destructive"
-          />
+          <AlertTriangle size={20} className="shrink-0 text-destructive" />
           <DialogTitle>
             {t(
               ($) => {
@@ -360,7 +356,7 @@ export function AgentDeleteDialog({
                   size="sm"
                   className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
-                  <IconTrash size={14} stroke={1.5} />
+                  <Trash size={14} />
                   {t(($) => {
                     return $.actions.delete;
                   })}

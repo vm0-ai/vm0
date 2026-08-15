@@ -1,17 +1,12 @@
 import { resetApiTestMocks } from "./mocks";
-import {
-  DecryptCommand,
-  type DecryptCommandOutput,
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-} from "@aws-sdk/client-kms";
-import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
+import { afterAll, afterEach, aroundEach, beforeAll, beforeEach } from "vitest";
 
 import { clearMockedEnv, mockEnv } from "../lib/env";
 import {
-  resetSecretKmsClientForTests,
-  setSecretKmsClientForTests,
   type SecretKmsClient,
+  type SecretKmsDataKey,
+  type SecretKmsGenerateDataKeyRequest,
+  withSecretKmsClientForTest,
 } from "../lib/secret-kms-client";
 import { clearMockNow } from "../lib/time";
 import { server } from "../mocks/server";
@@ -21,34 +16,31 @@ import {
   mockApiTestConnectorProviderConfiguration,
 } from "../test-fixtures/connector-catalog";
 
-type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;
-type MockKmsResponse = GenerateDataKeyCommandOutput | DecryptCommandOutput;
-
 const testDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 function createApiTestKmsClient(): SecretKmsClient {
-  function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  function send(command: MockKmsCommand): Promise<MockKmsResponse> {
-    if (command instanceof GenerateDataKeyCommand) {
+  return {
+    generateDataKey(
+      request: SecretKmsGenerateDataKeyRequest,
+    ): Promise<SecretKmsDataKey> {
       return Promise.resolve({
-        $metadata: {},
-        KeyId: command.input.KeyId,
-        CiphertextBlob: Buffer.from(
-          `encrypted-data-key:${command.input.KeyId}`,
+        keyId: request.keyId,
+        plaintext: testDataKey,
+        encryptedDataKey: Buffer.from(
+          `encrypted-data-key:${request.keyId}`,
           "utf8",
         ),
-        Plaintext: testDataKey,
       });
-    }
-
-    return Promise.resolve({ $metadata: {}, Plaintext: testDataKey });
-  }
-
-  return { send };
+    },
+    decrypt(): Promise<Uint8Array> {
+      return Promise.resolve(testDataKey);
+    },
+  };
 }
+
+aroundEach(async (runTest) => {
+  await withSecretKmsClientForTest(createApiTestKmsClient(), runTest);
+});
 
 beforeAll(async () => {
   mockApiTestConnectorProviderConfiguration();
@@ -59,13 +51,11 @@ beforeAll(async () => {
 beforeEach(() => {
   mockApiTestConnectorProviderConfiguration();
   mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
-  setSecretKmsClientForTests(createApiTestKmsClient());
 });
 
 afterEach(async () => {
   await clearAllDetached();
   clearMockNow();
-  resetSecretKmsClientForTests();
   clearMockedEnv();
   resetApiTestMocks();
   server.resetHandlers();

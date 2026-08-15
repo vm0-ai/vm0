@@ -8,12 +8,12 @@ import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";
 
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/github/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/github/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/github/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/github/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/github-upload";
 
-describe("zero github upload-file command", () => {
+describe("okou github upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -28,7 +28,7 @@ describe("zero github upload-file command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     tmpDir = join(tmpdir(), `github-upload-file-test-${Date.now()}`);
     mkdirSync(tmpDir, { recursive: true });
@@ -40,6 +40,20 @@ describe("zero github upload-file command", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("uses Okou branding in upload help while preserving repository examples", () => {
+    let helpOutput = "";
+    uploadFileCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    uploadFileCommand.outputHelp();
+
+    expect(helpOutput).toContain("Uploads through Okou storage first");
+    expect(helpOutput).toContain("vm0-ai/vm0");
   });
 
   it("uploads a file to R2 and posts a GitHub file comment", async () => {
@@ -54,7 +68,6 @@ describe("zero github upload-file command", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           length: 18,
-          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           uploadId: "00000000-0000-4000-8000-000000000101",

@@ -1,16 +1,18 @@
-import { computed } from "ccstate";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { command, computed } from "ccstate";
 import {
   chatSearchContract,
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadEventsContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
+import { request$, setResHeader$ } from "../context/hono";
 import { db$ } from "../external/db";
 import { notFound } from "../../lib/error";
 import {
@@ -18,16 +20,18 @@ import {
   googleDriveArtifactStatusLookup,
 } from "../services/google-drive-artifact-sync.service";
 import {
-  zeroChatSearch,
-  zeroChatThreadActiveRunThreadIds,
+  zeroChatIndicators,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
-  zeroChatThreadEventById,
-  zeroChatThreadEventsPage,
   zeroChatThreadDraftIds,
-  zeroChatThreadUnreadAgentIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
+import { zeroChatSearch } from "../services/zero-chat-search.service";
+import {
+  zeroChatThreadEventRows,
+  zeroChatThreadEventSnapshot,
+} from "../services/zero-chat-event-snapshot.service";
+import { resolveChatEventSchemaVersion } from "../services/chat-event-schema-version.service";
 import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
@@ -42,6 +46,7 @@ import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
 import { zeroChatThreadMarkAgentReadRoutes } from "./zero-chat-threads-mark-agent-read";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
 import { zeroChatThreadModelSelectionRoutes } from "./zero-chat-threads-model-selection";
+import { zeroChatThreadVideoModelRoutes } from "./zero-chat-threads-video-model";
 import { zeroChatThreadPatchRoutes } from "./zero-chat-threads-patch";
 import { zeroChatThreadPinRoutes } from "./zero-chat-threads-pin";
 import { zeroChatThreadRenameRoutes } from "./zero-chat-threads-rename";
@@ -101,7 +106,6 @@ const listChatThreadLifecycleEventsInner$ = computed(async (get) => {
     userId: auth.userId,
     orgId: auth.orgId,
     sinceSeqId: query.sinceSeqId,
-    sinceEventId: query.sinceEventId,
   });
 
   if (result.kind === "expired") {
@@ -125,61 +129,116 @@ const listChatThreadLifecycleEventsInner$ = computed(async (get) => {
   };
 });
 
-const listChatThreadActiveIdsInner$ = computed(async (get) => {
+const listZeroIndicatorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const threadIds = await get(
-    zeroChatThreadActiveRunThreadIds({
+  const indicators = await get(
+    zeroChatIndicators({
       userId: auth.userId,
       orgId: auth.orgId,
     }),
   );
 
-  return { status: 200 as const, body: { threadIds: [...threadIds] } };
+  return { status: 200 as const, body: indicators };
 });
 
-const listChatEventsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadEventsContract.list));
-  const query = get(queryOf(chatThreadEventsContract.list));
+const getChatEventSnapshotInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const params = get(pathParamsOf(chatThreadEventsContract.snapshot));
+    const version = resolveChatEventSchemaVersion(
+      get(request$).header(CHAT_EVENT_SCHEMA_VERSION_HEADER),
+    );
+    if (version.kind === "error") {
+      return version.response;
+    }
+    set(
+      setResHeader$,
+      CHAT_EVENT_SCHEMA_VERSION_HEADER,
+      version.version.toString(),
+    );
+    const snapshot = await set(
+      zeroChatThreadEventSnapshot({
+        threadId: params.threadId,
+        userId: auth.userId,
+        schemaVersion: version.version,
+      }),
+      signal,
+    );
+    if (snapshot.kind === "thread-not-found") {
+      return chatThreadNotFound();
+    }
+    if (snapshot.kind === "snapshot-not-found") {
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: "Chat event snapshot not found",
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          },
+        },
+      };
+    }
 
-  const events = await get(
-    zeroChatThreadEventsPage({
-      threadId: params.threadId,
-      userId: auth.userId,
-      sinceSeqId: query.sinceSeqId,
-      beforeSeqId: query.beforeSeqId,
-      sinceId: query.sinceId,
-      beforeId: query.beforeId,
-      limit: query.limit,
-    }),
-  );
-  if (!events) {
-    return chatThreadNotFound();
-  }
+    return {
+      status: 200 as const,
+      body: {
+        url: snapshot.url,
+        expiresInSeconds: snapshot.expiresInSeconds,
+        lastEventId: snapshot.lastEventId,
+        lastSeqId: snapshot.lastSeqId,
+      },
+    };
+  },
+);
 
-  return {
-    status: 200 as const,
-    body: { events: [...events] },
-  };
-});
+const listChatEventRowsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const params = get(pathParamsOf(chatThreadEventsContract.rows));
+    const query = get(queryOf(chatThreadEventsContract.rows));
+    const version = resolveChatEventSchemaVersion(
+      get(request$).header(CHAT_EVENT_SCHEMA_VERSION_HEADER),
+    );
+    if (version.kind === "error") {
+      return version.response;
+    }
+    set(
+      setResHeader$,
+      CHAT_EVENT_SCHEMA_VERSION_HEADER,
+      version.version.toString(),
+    );
+    const page = await get(
+      zeroChatThreadEventRows({
+        threadId: params.threadId,
+        userId: auth.userId,
+        schemaVersion: version.version,
+        sinceSeqId: query.sinceSeqId,
+        sinceEventId: query.sinceEventId,
+        limit: query.limit,
+      }),
+    );
+    signal.throwIfAborted();
+    if (page.kind === "thread-not-found") {
+      return chatThreadNotFound();
+    }
+    if (page.kind === "expired") {
+      return {
+        status: 410 as const,
+        body: {
+          error: {
+            message: "Chat events cursor has expired",
+            code: "CHAT_EVENTS_EXPIRED",
+          },
+        },
+      };
+    }
 
-const getChatThreadEventInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadEventsContract.get));
-
-  const event = await get(
-    zeroChatThreadEventById({
-      threadId: params.threadId,
-      userId: auth.userId,
-      eventId: params.eventId,
-    }),
-  );
-  if (!event) {
-    return chatThreadNotFound();
-  }
-
-  return { status: 200 as const, body: event };
-});
+    return {
+      status: 200 as const,
+      body: { rows: [...page.rows] },
+    };
+  },
+);
 
 const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
@@ -208,18 +267,6 @@ const listChatThreadUnreadsInner$ = computed(async (get) => {
   );
 
   return { status: 200 as const, body: { unreads: [...unreads] } };
-});
-
-const listChatThreadUnreadAgentsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const agentIds = await get(
-    zeroChatThreadUnreadAgentIds({
-      userId: auth.userId,
-      orgId: auth.orgId,
-    }),
-  );
-
-  return { status: 200 as const, body: { agentIds: [...agentIds] } };
 });
 
 const listChatThreadArtifactsInner$ = computed(async (get) => {
@@ -274,6 +321,13 @@ const searchChatInner$ = computed(async (get) => {
 
 export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
+    route: chatThreadsContract.indicators,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listZeroIndicatorsInner$,
+    ),
+  },
+  {
     route: chatThreadsContract.snapshot,
     handler: authRoute(
       {
@@ -296,26 +350,12 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: chatThreadsContract.activeIds,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadActiveIdsInner$,
-    ),
-  },
-  {
     route: chatThreadsContract.drafts,
     handler: authRoute({}, listChatThreadDraftsInner$),
   },
   {
     route: chatThreadsContract.unreads,
     handler: authRoute({}, listChatThreadUnreadsInner$),
-  },
-  {
-    route: chatThreadsContract.unreadAgents,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadUnreadAgentsInner$,
-    ),
   },
   {
     route: chatThreadByIdContract.get,
@@ -326,15 +366,18 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute({}, listChatThreadArtifactsInner$),
   },
   {
-    route: chatThreadEventsContract.list,
+    route: chatThreadEventsContract.snapshot,
     handler: authRoute(
       { requiredCapability: "chat-event:read" },
-      listChatEventsInner$,
+      getChatEventSnapshotInner$,
     ),
   },
   {
-    route: chatThreadEventsContract.get,
-    handler: authRoute({}, getChatThreadEventInner$),
+    route: chatThreadEventsContract.rows,
+    handler: authRoute(
+      { requiredCapability: "chat-event:read" },
+      listChatEventRowsInner$,
+    ),
   },
   {
     route: chatSearchContract.search,
@@ -360,4 +403,5 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   ...zeroChatThreadPinRoutes,
   ...zeroChatThreadRenameRoutes,
   ...zeroChatThreadUnpinRoutes,
+  ...zeroChatThreadVideoModelRoutes,
 ];

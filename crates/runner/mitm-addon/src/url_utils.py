@@ -40,13 +40,23 @@ _PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
 _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
 _VALID_AUTH_BASE_SCHEME = "https"
+_DEFAULT_HTTPS_PORT = 443
+
+# This matches the runner's existing managed-query work scale while retaining
+# ample room for ordinary connector URLs. Count every segment that auth.base
+# materializes, including empty segments separated by either ``&`` or ``;``.
+MAX_AUTH_BASE_QUERY_PAIRS = 8 * 1024
+
+
+class AuthBaseQueryTooManyPairsError(ValueError):
+    """The aggregate auth.base rewrite query exceeds its pair work budget."""
 
 
 @dataclass(frozen=True)
 class TrustedAuthority:
     """Authority components trusted by firewall/auth decisions.
 
-    For HTTPS, ``host`` is the normalized TLS SNI after Host/``:authority``
+    For HTTPS, ``host`` is the normalized TLS SNI after HTTP request authority
     validation. For non-HTTPS traffic, ``host`` is the transparent destination
     because there is no SNI binding. ``url`` is the reconstructed URL used by
     firewall matching and credential injection.
@@ -77,10 +87,12 @@ class AuthorityValidationError(Exception):
     - ``missing_sni``: the HTTPS request had no TLS SNI.
     - ``invalid_sni``: the TLS SNI failed hostname normalization.
     - ``missing_authority``: the HTTPS request had no Host/``:authority``.
-    - ``invalid_authority``: Host/``:authority`` was ambiguous or failed
+    - ``invalid_authority``: an asserted HTTP authority was ambiguous or failed
       parsing or normalization.
-    - ``authority_mismatch``: the Host hostname did not match TLS SNI.
-    - ``authority_port_mismatch``: the Host port did not match destination port.
+    - ``authority_mismatch``: an asserted authority hostname did not match TLS
+      SNI.
+    - ``authority_port_mismatch``: an asserted authority port did not match the
+      destination port.
     """
 
     def __init__(
@@ -182,11 +194,11 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
 
     In transparent mode, mitmproxy's request host is the ``SO_ORIGINAL_DST``
     destination. For HTTPS, the TLS SNI is the domain authority used for
-    upstream TLS, while Host/``:authority`` values are only client assertions.
-    Require every HTTP authority to agree with SNI before using the URL for
-    firewall matching or credential injection. For non-HTTPS traffic there is
-    no SNI binding, so use the transparent destination host and do not trust
-    Host.
+    upstream TLS, while Host, HTTP/1 request-target authority, and HTTP/2/3
+    ``:authority`` values are only client assertions. Require every HTTP
+    authority to agree with SNI before using the URL for firewall matching or
+    credential injection. For non-HTTPS traffic there is no SNI binding, so use
+    the transparent destination host and do not trust Host.
 
     HTTPS validation failures raise ``AuthorityValidationError`` with one of
     the documented ``AuthorityValidationReason`` values.
@@ -255,18 +267,20 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
             fallback_url=trusted_url,
         )
 
-    authorities = [host_header]
-    if (
-        (flow.request.is_http2 or flow.request.is_http3)
-        and flow.request.authority
-        and raw_host_headers
-    ):
-        authorities.append(raw_host_headers[0])
+    authority_assertions: list[tuple[str, int | None]] = [(host_header, None)]
+    if flow.request.authority:
+        if flow.request.is_http2 or flow.request.is_http3:
+            if raw_host_headers:
+                authority_assertions.append((raw_host_headers[0], None))
+        else:
+            # Unlike a Host field, an absolute HTTPS URI with no explicit port
+            # identifies the default 443 origin.
+            authority_assertions.append((flow.request.authority, _DEFAULT_HTTPS_PORT))
 
-    for authority in authorities:
+    for authority, implicit_port in authority_assertions:
         try:
-            header_host, header_port = _parse_host_authority(authority)
-            normalized_header_host = _normalize_hostname(header_host)
+            parsed_host, explicit_port = _parse_host_authority(authority)
+            normalized_authority_host = _normalize_hostname(parsed_host)
         except (UnicodeError, ValueError):
             raise _authority_validation_error(
                 "invalid_authority",
@@ -274,14 +288,15 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
                 fallback_url=trusted_url,
             ) from None
 
-        if normalized_header_host != normalized_sni:
+        if normalized_authority_host != normalized_sni:
             raise _authority_validation_error(
                 "authority_mismatch",
                 message="Request blocked: Host authority does not match TLS SNI",
                 fallback_url=trusted_url,
             )
 
-        if header_port is not None and header_port != port:
+        effective_port = explicit_port if explicit_port is not None else implicit_port
+        if effective_port is not None and effective_port != port:
             raise _authority_validation_error(
                 "authority_port_mismatch",
                 message="Request blocked: Host authority port does not match destination port",
@@ -374,6 +389,34 @@ def _encode_query_pairs(query: dict[str, str] | None) -> list[_QueryPair]:
     return _split_query_pairs(urllib.parse.urlencode(query))
 
 
+def _consume_query_pair_budget(query: str, remaining_pairs: int) -> int:
+    if not query:
+        return remaining_pairs
+
+    remaining_pairs -= 1
+    if remaining_pairs < 0:
+        raise AuthBaseQueryTooManyPairsError("auth.base rewritten query has too many pairs")
+    for char in query:
+        if char in ("&", ";"):
+            remaining_pairs -= 1
+            if remaining_pairs < 0:
+                raise AuthBaseQueryTooManyPairsError("auth.base rewritten query has too many pairs")
+    return remaining_pairs
+
+
+def _validate_rewrite_query_pair_count(
+    base_query: str,
+    orig_query: str,
+    resolved_query: dict[str, str] | None,
+) -> None:
+    remaining_pairs = MAX_AUTH_BASE_QUERY_PAIRS - len(resolved_query or {})
+    if remaining_pairs < 0:
+        raise AuthBaseQueryTooManyPairsError("auth.base rewritten query has too many pairs")
+
+    remaining_pairs = _consume_query_pair_budget(orig_query, remaining_pairs)
+    _consume_query_pair_budget(base_query, remaining_pairs)
+
+
 def _merge_rewrite_query(
     base_query: str,
     orig_query: str,
@@ -382,6 +425,7 @@ def _merge_rewrite_query(
     if not base_query and not resolved_query:
         return orig_query
 
+    _validate_rewrite_query_pair_count(base_query, orig_query, resolved_query)
     base_pairs = _split_query_pairs(base_query)
     orig_pairs = _split_query_pairs(orig_query)
     auth_keys = set(resolved_query or {})
@@ -471,9 +515,31 @@ def build_rewrite_url(
     path from the firewall match, and query strings from trusted auth data
     and the original request. ``orig_query`` is the raw query string of the
     incoming request (no leading ``?``). Query key precedence is
-    ``resolved_query`` > resolved base query > original request query. Unsafe
-    path syntax in ``rel_path`` is rejected as an invariant; firewall matching
-    should already have blocked it before auth is applied.
+    ``resolved_query`` > resolved base query > original request query.
+
+    ``resolved_base`` must be an absolute HTTPS URL with a valid authority and
+    safe path; userinfo and fragments are not allowed. Backslashes, whitespace
+    or unsafe code points, invalid ports, unsafe path syntax, malformed Unicode,
+    and unsafe or invalid percent-encoded host syntax are rejected. Accepted
+    hosts are normalized for forwarding: Unicode and safely percent-encoded
+    Unicode names use canonical IDNA form, IPv4 literals must be canonical dotted
+    quads after safe percent-decoding, IPv6 literals are compressed and bracketed,
+    and explicit valid ports are preserved.
+
+    Unsafe path syntax in ``rel_path`` is rejected as an invariant; firewall
+    matching should already have blocked it before auth is applied.
+
+    Trusted-query rewrites accept at most ``MAX_AUTH_BASE_QUERY_PAIRS``
+    aggregate query segments across the resolved base, original request, and
+    resolved auth data. Query-free trusted sources retain the original query
+    without segment inspection.
+
+    Raises:
+        AuthBaseQueryTooManyPairsError: If a trusted-query rewrite exceeds the
+            aggregate query pair work budget.
+        ValueError: If ``resolved_base`` is not a safe absolute HTTPS URL,
+            ``rel_path`` has unsafe path syntax, or a URL component contains
+            Unicode that cannot be safely encoded.
     """
     if has_unsafe_path(rel_path):
         raise ValueError("Unsafe rewrite path: unsafe path syntax is not allowed")

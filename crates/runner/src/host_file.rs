@@ -26,6 +26,8 @@ pub(crate) enum DirMode {
     TrustedParent,
     /// Create missing directories as shared/trusted, but only validate existing ones.
     SharedTrustedParent,
+    /// Create missing directories as shared/trusted and normalize the owned final directory.
+    SharedTrusted,
 }
 
 struct DirWalk<'a> {
@@ -77,6 +79,75 @@ pub(crate) fn validate_private_file_destination(path: &Path, context: &str) -> i
         }
     };
     secure_regular_private_file(&file, path, context)
+}
+
+/// Publish a private file through same-directory atomic replacement on Unix.
+///
+/// The caller remains responsible for parent-directory trust. This operation
+/// does not fsync the file or parent directory, serialize writers, or define
+/// concurrent-writer ordering. Staging-file cleanup after an error is best
+/// effort. Non-Unix builds use a direct platform write instead.
+#[cfg(unix)]
+pub(crate) async fn write_private_atomic(
+    path: &Path,
+    content: &[u8],
+    context: &str,
+) -> io::Result<()> {
+    use std::ffi::OsString;
+    use tokio::io::AsyncWriteExt;
+
+    let file_name = path.file_name().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "{} does not have a file name; refusing to write {context}",
+                path.display()
+            ),
+        )
+    })?;
+    let mut tmp_name = OsString::from(".");
+    tmp_name.push(file_name);
+    tmp_name.push(format!(".{}.tmp", uuid::Uuid::new_v4()));
+    let tmp = path.with_file_name(tmp_name);
+
+    let result = async {
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create_new(true).mode(PRIVATE_FILE_MODE);
+        let mut file = options
+            .open(&tmp)
+            .await
+            .map_err(|e| wrap_io(e, format!("open {context} tmp {}", tmp.display())))?;
+        chmod_private_file_fd(&file, &tmp, context)?;
+        file.write_all(content)
+            .await
+            .map_err(|e| wrap_io(e, format!("write {context} tmp {}", tmp.display())))?;
+        file.flush()
+            .await
+            .map_err(|e| wrap_io(e, format!("flush {context} tmp {}", tmp.display())))?;
+        drop(file);
+
+        tokio::fs::rename(&tmp, path)
+            .await
+            .map_err(|e| wrap_io(e, format!("rename {context} {}", path.display())))?;
+        Ok(())
+    }
+    .await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+    }
+    result
+}
+
+#[cfg(not(unix))]
+pub(crate) async fn write_private_atomic(
+    path: &Path,
+    content: &[u8],
+    context: &str,
+) -> io::Result<()> {
+    tokio::fs::write(path, content)
+        .await
+        .map_err(|e| wrap_io(e, format!("write {context} {}", path.display())))
 }
 
 pub(crate) fn secure_regular_private_file<Fd: AsRawFd>(
@@ -310,7 +381,7 @@ fn create_and_open_dir_component(
 fn create_dir_mode(mode: DirMode) -> u32 {
     match mode {
         DirMode::Private | DirMode::TrustedParent => PRIVATE_DIR_MODE,
-        DirMode::SharedTrustedParent => SHARED_TRUSTED_DIR_MODE,
+        DirMode::SharedTrustedParent | DirMode::SharedTrusted => SHARED_TRUSTED_DIR_MODE,
     }
 }
 
@@ -439,16 +510,13 @@ fn secure_dir_component(
                 )));
             }
         }
-        DirMode::SharedTrustedParent => {
+        DirMode::SharedTrustedParent | DirMode::SharedTrusted => {
             validate_trusted_component_owner(
                 stat.st_uid,
                 walk.expected_uid,
                 walk.context,
                 component_path,
             )?;
-            if created && stat.st_uid == walk.expected_uid {
-                chmod_dir_fd(fd, component_path, SHARED_TRUSTED_DIR_MODE, walk.context)?;
-            }
             let component_mode = (stat.st_mode as u32) & 0o7777;
             if is_final {
                 if component_mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
@@ -466,6 +534,13 @@ fn secure_dir_component(
                     walk.context,
                     component_path.display()
                 )));
+            }
+            let normalize_final = matches!(walk.mode, DirMode::SharedTrusted) && is_final;
+            if (created || normalize_final)
+                && stat.st_uid == walk.expected_uid
+                && component_mode != SHARED_TRUSTED_DIR_MODE
+            {
+                chmod_dir_fd(fd, component_path, SHARED_TRUSTED_DIR_MODE, walk.context)?;
             }
         }
         _ => {
@@ -616,6 +691,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_private_atomic_publishes_private_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+
+        write_private_atomic(&path, b"new content", "test file")
+            .await
+            .unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new content");
+        assert_eq!(mode(&path), PRIVATE_FILE_MODE);
+    }
+
+    #[tokio::test]
+    async fn write_private_atomic_replaces_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        std::fs::write(&path, b"old content").unwrap();
+
+        write_private_atomic(&path, b"new content", "test file")
+            .await
+            .unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new content");
+    }
+
+    #[tokio::test]
+    async fn write_private_atomic_removes_staging_file_after_rename_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        std::fs::create_dir(&path).unwrap();
+
+        let error = write_private_atomic(&path, b"content", "test file")
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("rename test file"),
+            "unexpected error: {error}"
+        );
+        let leftover_staging_files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                name.starts_with(".state.json.") && name.ends_with(".tmp")
+            })
+            .collect();
+        assert!(
+            leftover_staging_files.is_empty(),
+            "private file staging sibling should be removed after rename failure"
+        );
+        assert!(path.is_dir());
+    }
+
+    #[tokio::test]
     async fn ensure_dir_handles_restrictive_umask() {
         run_ignored_child_test(
             "host_file::tests::ensure_dir_handles_restrictive_umask_child",
@@ -634,13 +765,19 @@ mod tests {
         }
 
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("base").join("child");
         let _umask = UmaskGuard::set(Mode::from_bits_truncate(0o777));
-        let result = ensure_dir(&path, DirMode::SharedTrustedParent, "test directory");
+        for (name, dir_mode) in [
+            ("shared-parent", DirMode::SharedTrustedParent),
+            ("shared", DirMode::SharedTrusted),
+        ] {
+            let base = dir.path().join(name);
+            let path = base.join("child");
 
-        result.unwrap();
-        assert_eq!(mode(&dir.path().join("base")), SHARED_TRUSTED_DIR_MODE);
-        assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
+            ensure_dir(&path, dir_mode, "test directory").unwrap();
+
+            assert_eq!(mode(&base), SHARED_TRUSTED_DIR_MODE);
+            assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
+        }
     }
 
     struct UmaskGuard {
@@ -753,6 +890,64 @@ mod tests {
         ensure_dir(&path, DirMode::SharedTrustedParent, "test directory").unwrap();
 
         assert_eq!(mode(&path), PRIVATE_DIR_MODE);
+    }
+
+    #[test]
+    fn ensure_dir_normalizes_existing_shared_trusted_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shared");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(PRIVATE_DIR_MODE)).unwrap();
+
+        ensure_dir(&path, DirMode::SharedTrusted, "test directory").unwrap();
+
+        assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
+    }
+
+    #[test]
+    fn ensure_dir_rejects_writable_shared_trusted_final_before_normalizing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shared");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o777)).unwrap();
+
+        let error = ensure_dir(&path, DirMode::SharedTrusted, "test directory").unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(mode(&path), 0o777);
+    }
+
+    #[test]
+    fn create_dir_component_keeps_eexist_intermediate_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let component = dir.path().join("existing");
+        std::fs::create_dir(&component).unwrap();
+        std::fs::set_permissions(
+            &component,
+            std::fs::Permissions::from_mode(PRIVATE_DIR_MODE),
+        )
+        .unwrap();
+        let parent = open(dir.path(), dir_open_flags(), Mode::empty()).unwrap();
+        let full_path = component.join("child");
+        let walk = DirWalk {
+            full_path: &full_path,
+            mode: DirMode::SharedTrusted,
+            context: "test directory",
+            expected_uid: nix::unistd::geteuid().as_raw(),
+            create_missing: true,
+        };
+
+        let component_fd = create_and_open_dir_component(
+            &parent,
+            Path::new("existing").as_os_str(),
+            dir.path(),
+            &walk,
+            false,
+        )
+        .unwrap();
+
+        drop(component_fd);
+        assert_eq!(mode(&component), PRIVATE_DIR_MODE);
     }
 
     #[test]

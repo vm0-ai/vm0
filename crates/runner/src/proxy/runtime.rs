@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use nix::fcntl::Flock;
 use nix::sys::signal::Signal;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::process::{ProcessStat, ProcessStatRead, process_stat_is_live};
@@ -393,17 +393,9 @@ fn is_launch_path(root: &Path, path: &Path) -> bool {
 }
 
 fn log_process_snapshot(target: &Path, snapshot: &ProcessSnapshot) {
-    let elapsed_ms = snapshot.elapsed.as_millis();
-    let matched = snapshot.processes.len();
-    debug!(
-        target = %target.display(),
-        elapsed_ms,
-        examined = snapshot.examined,
-        same_uid = snapshot.same_uid,
-        matched,
-        "scanned for mitmdump runtime owners"
-    );
     if snapshot.elapsed >= PROCESS_EXIT_TIMEOUT {
+        let elapsed_ms = snapshot.elapsed.as_millis();
+        let matched = snapshot.processes.len();
         warn!(
             target = %target.display(),
             elapsed_ms,

@@ -3,8 +3,8 @@ import {
   zeroFeishuConnectContract,
   type FeishuConnectStatus,
   type FeishuInstallationStatus,
-} from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { toast } from "@okouai/ui/components/ui/sonner";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -17,7 +17,6 @@ const internalDialogExisting$ = state(false);
 const internalDialogInstallationId$ = state<string | null>(null);
 const internalUninstallInstallationId$ = state<string | null>(null);
 const internalSetupStep$ = state<FeishuSetupStep>("create");
-const internalGuideImageIndex$ = state(0);
 const internalSetupForm$ = state<FeishuSetupInput>({
   appId: "",
   appSecret: "",
@@ -150,10 +149,6 @@ export const feishuSetupStep$ = computed((get) => {
   return get(internalSetupStep$);
 });
 
-export const feishuGuideImageIndex$ = computed((get) => {
-  return get(internalGuideImageIndex$);
-});
-
 export const feishuDialogExisting$ = computed((get) => {
   return get(internalDialogExisting$);
 });
@@ -179,26 +174,27 @@ export const openFeishuDialog$ = command(
     },
   ) => {
     const { step, installationId, ...formDefaults } = initial;
-    set(internalDialogOpen$, true);
     set(internalDialogExisting$, installationId !== undefined);
     set(internalDialogInstallationId$, installationId ?? null);
     set(internalSetupStep$, step);
-    set(internalGuideImageIndex$, 0);
     set(internalSetupForm$, {
       ...formDefaults,
       appSecret: "",
       verificationToken: "",
       encryptKey: "",
     });
+    set(internalDialogOpen$, true);
   },
 );
 
 export const closeFeishuDialog$ = command(({ set }) => {
   set(internalDialogOpen$, false);
-  set(internalDialogExisting$, false);
-  set(internalDialogInstallationId$, null);
-  set(internalSetupStep$, "create");
-  set(internalGuideImageIndex$, 0);
+});
+
+export const completeFeishuDialogClose$ = command(({ get, set }) => {
+  if (get(internalDialogOpen$)) {
+    return;
+  }
   set(internalSetupForm$, (previous) => {
     return {
       ...previous,
@@ -214,7 +210,6 @@ export const advanceFeishuSetupStep$ = command(({ set }) => {
     const index = FEISHU_SETUP_STEP_ORDER.indexOf(step);
     return FEISHU_SETUP_STEP_ORDER[index + 1] ?? step;
   });
-  set(internalGuideImageIndex$, 0);
 });
 
 export const goBackFeishuSetupStep$ = command(({ set }) => {
@@ -222,22 +217,7 @@ export const goBackFeishuSetupStep$ = command(({ set }) => {
     const index = FEISHU_SETUP_STEP_ORDER.indexOf(step);
     return index > 0 ? (FEISHU_SETUP_STEP_ORDER[index - 1] ?? step) : step;
   });
-  set(internalGuideImageIndex$, 0);
 });
-
-export const setFeishuGuideImageIndex$ = command(
-  ({ set }, imageIndex: number) => {
-    set(internalGuideImageIndex$, imageIndex);
-  },
-);
-
-export const moveFeishuGuideImage$ = command(
-  ({ set }, offset: number, imageCount: number) => {
-    set(internalGuideImageIndex$, (imageIndex) => {
-      return (imageIndex + offset + imageCount) % imageCount;
-    });
-  },
-);
 
 export const updateFeishuSetupForm$ = command(
   ({ set }, update: Partial<FeishuSetupInput>) => {

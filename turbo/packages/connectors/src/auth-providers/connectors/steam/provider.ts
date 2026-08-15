@@ -13,13 +13,15 @@ export const steamProvider: OpenIdAuthConnectorAuthProvider<"steam"> = {
         realm: args.realm,
       });
     },
-    verifyCallback: async (args) => {
-      const result = await verifySteamOpenIdCallback({
-        callbackParams: args.callbackParams,
-        expectedReturnTo: args.expectedReturnTo,
-        expectedRealm: args.expectedRealm,
-        signal: args.signal,
-      });
+    verifyCallback: async (args, signal: AbortSignal) => {
+      const result = await verifySteamOpenIdCallback(
+        {
+          callbackParams: args.callbackParams,
+          expectedReturnTo: args.expectedReturnTo,
+          expectedRealm: args.expectedRealm,
+        },
+        signal,
+      );
       return {
         outputs: {
           steamId: result.steamId,

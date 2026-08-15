@@ -1,12 +1,12 @@
 import { useEffect } from "react";
 import {
-  IconAlertCircle,
-  IconBuilding,
-  IconCheck,
-  IconExternalLink,
-  IconLogout,
-  IconShieldCheck,
-} from "@tabler/icons-react";
+  AlertCircle,
+  Building,
+  Check,
+  ExternalLink,
+  LogOut,
+  ShieldCheck,
+} from "lucide-react";
 import { useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { DesktopAuthState } from "../../desktop-bridge";
@@ -33,6 +33,7 @@ import {
   signOutDesktop$,
 } from "../computer-use-state";
 import { IconButton, ZeroFace } from "../components";
+import { currentDesktopIdentity } from "../desktop-identity";
 
 const AUTOMATION_PERMISSION_STATUS_LABELS = {
   unknown: "Not tested",
@@ -58,7 +59,7 @@ function StepIndex({
 }) {
   return (
     <span className={`step-index step-index-${tone}`}>
-      {tone === "ready" ? <IconCheck size={14} /> : step}
+      {tone === "ready" ? <Check size={14} /> : step}
     </span>
   );
 }
@@ -70,6 +71,7 @@ export function AuthStepCard({
   readonly authLoading: boolean;
   readonly authState: DesktopAuthState | null;
 }) {
+  const identity = currentDesktopIdentity();
   const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
   const [orgSelectionLoadable, selectOrg] = useLoadableSet(
     openDesktopOrgSelection$,
@@ -96,7 +98,7 @@ export function AuthStepCard({
         </div>
         <div className="row-actions">
           <IconButton
-            icon={<IconBuilding size={15} />}
+            icon={<Building size={15} />}
             onClick={() => {
               void selectOrg();
             }}
@@ -106,7 +108,7 @@ export function AuthStepCard({
           </IconButton>
           <IconButton
             tone="danger"
-            icon={<IconLogout size={15} />}
+            icon={<LogOut size={15} />}
             onClick={() => {
               void signOut();
             }}
@@ -125,10 +127,10 @@ export function AuthStepCard({
       ? "Select a workspace"
       : signingIn
         ? "Finish signing in"
-        : "Sign in to Zero";
+        : `Sign in to ${identity.brandName}`;
   const description = signedInAuth
     ? "Choose the workspace that should receive this Mac as a Computer Use runtime."
-    : "Connect this Mac to a Zero account before Computer Use can register a runtime.";
+    : `Connect this Mac to a ${identity.brandName} account before Computer Use can register a runtime.`;
 
   return (
     <section className="step-card step-card-expanded">
@@ -146,7 +148,7 @@ export function AuthStepCard({
             <>
               <IconButton
                 tone="primary"
-                icon={<IconBuilding size={15} />}
+                icon={<Building size={15} />}
                 onClick={() => {
                   void selectOrg();
                 }}
@@ -156,7 +158,7 @@ export function AuthStepCard({
               </IconButton>
               <IconButton
                 tone="danger"
-                icon={<IconLogout size={15} />}
+                icon={<LogOut size={15} />}
                 onClick={() => {
                   void signOut();
                 }}
@@ -168,7 +170,7 @@ export function AuthStepCard({
           ) : (
             <IconButton
               tone="primary"
-              icon={<IconExternalLink size={15} />}
+              icon={<ExternalLink size={15} />}
               onClick={() => {
                 void signIn();
               }}
@@ -207,22 +209,19 @@ function PermissionSetupRow({
       <div className="row-actions">
         {granted ? (
           <span className="check-pill">
-            <IconCheck size={14} />
+            <Check size={14} />
             Ready
           </span>
         ) : (
           <IconButton
-            icon={<IconShieldCheck size={15} />}
+            icon={<ShieldCheck size={15} />}
             onClick={onRequest}
             disabled={requestLoading}
           >
             Request
           </IconButton>
         )}
-        <IconButton
-          icon={<IconExternalLink size={15} />}
-          onClick={onOpenSettings}
-        >
+        <IconButton icon={<ExternalLink size={15} />} onClick={onOpenSettings}>
           Settings
         </IconButton>
       </div>
@@ -258,6 +257,7 @@ function formatBrowserAutomationTargets(labels: readonly string[]): string {
 function browserAutomationMeta(
   automation: ReturnType<typeof computerUseAutomationPermissionState>,
 ): string {
+  const identity = currentDesktopIdentity();
   const readyLabels = browserAutomationReadyLabels(automation);
   if (readyLabels.length > 0) {
     return `${formatBrowserAutomationTargets(
@@ -265,7 +265,7 @@ function browserAutomationMeta(
     )} ready. Other browsers can be approved later.`;
   }
   if (browserAutomationHasDeniedTarget(automation)) {
-    return "Allow Zero to control the browser you use in System Settings";
+    return `Allow ${identity.brandName} to control the browser you use in System Settings`;
   }
   return "Optional for browser control. Test only the browser you use.";
 }
@@ -298,7 +298,7 @@ function BrowserAutomationSetupRow({
       </div>
       <div className="row-actions">
         <span className={`automation-pill automation-pill-${pillStatus}`}>
-          {ready ? <IconCheck size={14} /> : <IconAlertCircle size={14} />}
+          {ready ? <Check size={14} /> : <AlertCircle size={14} />}
           {AUTOMATION_PERMISSION_STATUS_LABELS[pillStatus]}
         </span>
         {!ready &&
@@ -306,7 +306,7 @@ function BrowserAutomationSetupRow({
             return (
               <IconButton
                 key={target}
-                icon={<IconShieldCheck size={15} />}
+                icon={<ShieldCheck size={15} />}
                 disabled={disabled}
                 onClick={() => {
                   void probeAutomation(target);
@@ -318,7 +318,7 @@ function BrowserAutomationSetupRow({
           })}
         {needsApproval && (
           <IconButton
-            icon={<IconExternalLink size={15} />}
+            icon={<ExternalLink size={15} />}
             onClick={() => {
               void openAutomationSettings();
             }}
@@ -338,6 +338,7 @@ export function PermissionsStepCard({
   readonly authReady: boolean;
   readonly state: DesktopComputerUseState;
 }) {
+  const identity = currentDesktopIdentity();
   const [requestLoadable, requestPermission] = useLoadableSet(
     requestAccessibilityPermission$,
   );
@@ -382,8 +383,11 @@ export function PermissionsStepCard({
         <div className="step-heading">
           <h2>Allow Computer Use permissions</h2>
           <p>
-            Zero needs macOS permission to inspect the screen and control UI
-            elements on this Mac.
+            {identity.brandName} needs macOS permission to inspect the screen
+            and control UI elements on this Mac.
+            {identity.product === "okou"
+              ? " Okou is a separate app from Zero, so these permissions must be granted again."
+              : ""}
           </p>
         </div>
         <div className="permission-list">

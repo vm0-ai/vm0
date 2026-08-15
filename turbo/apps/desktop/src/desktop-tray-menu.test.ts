@@ -30,7 +30,6 @@ const signedInAuth: DesktopAuthState = {
   organization: {
     id: "org_1",
     name: "Max & Zoe",
-    slug: "max-zoe",
   },
 };
 
@@ -155,6 +154,24 @@ describe("desktop tray menu", () => {
     vi.restoreAllMocks();
   });
 
+  it("uses Okou copy for the Okou product", () => {
+    const menu = buildDesktopTrayMenuItems(
+      {
+        brandName: "Okou",
+        computerUse: computerUseState(),
+        auth: { status: "signed_out", user: null, organization: null },
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    expect(findItem(menu, "Open Okou")).toBeDefined();
+    expect(findItem(menu, "Sign in to Okou")).toBeDefined();
+    expect(
+      findItem(submenu(findItem(menu, "Sign in to Okou")), "Sign in to Okou"),
+    ).toBeDefined();
+  });
+
   it("shows the main window, status submenus, recent commands, and quit", () => {
     const menu = buildDesktopTrayMenuItems(
       {
@@ -166,14 +183,14 @@ describe("desktop tray menu", () => {
     );
 
     expect(menu.map((item) => item.label).filter((label) => label)).toEqual([
-      "Open Computer Use",
+      "Open Zero",
       "Workspace: Max & Zoe",
       "Computer Use: Online",
       "Keep Mac Awake",
       "No Recent Commands",
       "Quit",
     ]);
-    expect(findItem(menu, "Open Computer Use")).toBeDefined();
+    expect(findItem(menu, "Open Zero")).toBeDefined();
     expect(findItem(menu, "Keep Mac Awake")).toStrictEqual({
       label: "Keep Mac Awake",
       type: "checkbox",

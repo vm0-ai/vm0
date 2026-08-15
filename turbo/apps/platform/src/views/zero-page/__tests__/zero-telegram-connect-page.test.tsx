@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import type { TelegramBotStatus } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+import type { TelegramBotStatus } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { describe, expect, it } from "vitest";
 
 import {

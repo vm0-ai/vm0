@@ -1,8 +1,9 @@
 import chalk from "chalk";
-import type { GmailNewMessageEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
-import type { ZeroWorkflowAutomationSummary } from "../../../../lib/api";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { GmailNewMessageEventConfig } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { ZeroWorkflowAutomationSummary } from "../../../../lib/api/domains/zero-workflows";
 import { formatRelativeTime } from "../../../../lib/domain/relative-time";
-import { formatDurationSeconds } from "../../shared/duration";
+import { formatDurationSeconds } from "../../../shared/duration";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
@@ -11,12 +12,17 @@ type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 export interface WorkflowAutomationThreadModel {
   readonly id: string;
   readonly label: string;
+  readonly serviceTier: ChatThreadServiceTier | null;
 }
 
 interface WorkflowAutomationDetailsOptions {
   readonly workflowRef?: string;
   readonly workflowId?: string;
   readonly threadModel?: WorkflowAutomationThreadModel;
+}
+
+interface WorkflowAutomationsTableOptions {
+  readonly showStripeDetails?: boolean;
 }
 
 const GMAIL_TEXT_FIELDS: readonly GmailTextField[] = [
@@ -64,6 +70,17 @@ function chatRunFinishedKindLabel(eventConfig: {
 type WorkflowStrapiAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "strapi-entry-published" }
+>;
+type WorkflowStripeInvoicePaidAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  { readonly kind: "event"; readonly eventType: "stripe-invoice-paid" }
+>;
+type WorkflowGoogleFormsAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  {
+    readonly kind: "event";
+    readonly eventType: "google-forms-response-submitted";
+  }
 >;
 
 function isWebhookAutomation(
@@ -128,6 +145,85 @@ function isGoogleCalendarAutomation(
       automation.eventType === "google-calendar-event-updated" ||
       automation.eventType === "google-calendar-event-cancelled")
   );
+}
+
+function isGoogleFormsAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): automation is WorkflowGoogleFormsAutomationSummary {
+  return (
+    automation.kind === "event" &&
+    automation.eventType === "google-forms-response-submitted"
+  );
+}
+
+function isStripeInvoicePaidAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): automation is WorkflowStripeInvoicePaidAutomationSummary {
+  return (
+    automation.kind === "event" &&
+    automation.eventType === "stripe-invoice-paid"
+  );
+}
+
+function stripeBillingReasons(
+  automation: WorkflowStripeInvoicePaidAutomationSummary,
+): string {
+  const billingReasons = automation.eventConfig.billingReasons;
+  return billingReasons && billingReasons.length > 0
+    ? billingReasons.join(", ")
+    : "any";
+}
+
+const STRIPE_DELIVERY_FAILURE_WARNING =
+  "The latest Stripe workflow delivery failed.";
+
+function formatStripeInvoicePaidAutomationEntry(
+  automation: WorkflowStripeInvoicePaidAutomationSummary,
+): string {
+  const billingReasons = stripeBillingReasons(automation);
+  const billingReasonSummary =
+    billingReasons === "any"
+      ? "any billing reason"
+      : `billing reasons: ${billingReasons}`;
+  return [
+    `Stripe invoice paid: ${automation.eventConfig.stripeAccountId} (${automation.eventConfig.mode})`,
+    billingReasonSummary,
+    `last matched: ${formatRelativeTime(automation.health.lastMatchingEventReceivedAt)}`,
+    `delivery: ${automation.health.lastDeliveryStatus ?? "-"} at ${formatRelativeTime(automation.health.lastDeliveryStatusAt)}`,
+  ].join("; ");
+}
+
+function printStripeDeliveryWarning(
+  automation: WorkflowStripeInvoicePaidAutomationSummary,
+): void {
+  if (automation.health.warning === "delivery_failed") {
+    console.warn(chalk.yellow(STRIPE_DELIVERY_FAILURE_WARNING));
+  }
+}
+
+function printStripeInvoicePaidAutomationDetails(
+  automation: ZeroWorkflowAutomationSummary,
+): void {
+  if (!isStripeInvoicePaidAutomation(automation)) {
+    return;
+  }
+  console.log(
+    `${"Stripe account ID:".padEnd(20)}${automation.eventConfig.stripeAccountId}`,
+  );
+  console.log(`${"Mode:".padEnd(20)}${automation.eventConfig.mode}`);
+  console.log(
+    `${"Billing reasons:".padEnd(20)}${stripeBillingReasons(automation)}`,
+  );
+  console.log(
+    `${"Last matched:".padEnd(20)}${formatRunTime(automation.health.lastMatchingEventReceivedAt)}`,
+  );
+  console.log(
+    `${"Delivery:".padEnd(20)}${automation.health.lastDeliveryStatus ?? chalk.dim("-")}`,
+  );
+  console.log(
+    `${"Delivery at:".padEnd(20)}${formatRunTime(automation.health.lastDeliveryStatusAt)}`,
+  );
+  printStripeDeliveryWarning(automation);
 }
 
 function quote(value: string): string {
@@ -225,8 +321,31 @@ function formatNotionContentUpdatedScopeUrl(
     : automation.eventConfig.scope.dataSource.url;
 }
 
+function formatGoogleAutomationEntry(
+  automation: ZeroWorkflowAutomationSummary,
+): string | null {
+  if (automation.kind !== "event") {
+    return null;
+  }
+  switch (automation.eventType) {
+    case "google-calendar-event-created":
+      return `Google Calendar event created: ${automation.eventConfig.calendarId}`;
+    case "google-calendar-event-updated":
+      return `Google Calendar event updated: ${automation.eventConfig.calendarId}`;
+    case "google-calendar-event-cancelled":
+      return `Google Calendar event cancelled: ${automation.eventConfig.calendarId}`;
+    case "google-forms-response-submitted":
+      return `Google Forms response submitted: ${automation.eventConfig.form.title}`;
+    case "google-meet-transcript-generated":
+      return "Google Meet transcript ready: meetings you organize";
+    default:
+      return null;
+  }
+}
+
 function formatWorkflowAutomationEntry(
   automation: ZeroWorkflowAutomationSummary,
+  options: WorkflowAutomationsTableOptions = {},
 ): string {
   if (
     automation.kind === "event" &&
@@ -242,38 +361,22 @@ function formatWorkflowAutomationEntry(
   }
   if (
     automation.kind === "event" &&
-    automation.eventType === "github-label-applied"
+    automation.eventType === "github-pull-request"
   ) {
-    return `GitHub label applied: ${quote(automation.eventConfig.labelName)} (${formatGithubSubject(
-      automation.eventConfig.filters.subject,
-    )}, actor ${automation.eventConfig.filters.actor.type})`;
+    const { action, merged, repository } = automation.eventConfig;
+    const mergedSuffix =
+      merged === undefined ? "" : merged ? ", merged" : ", not merged";
+    return `GitHub pull request ${action}: ${repository}${mergedSuffix}`;
   }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-calendar-event-created"
-  ) {
-    return `Google Calendar event created: ${automation.eventConfig.calendarId}`;
-  }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-calendar-event-updated"
-  ) {
-    return `Google Calendar event updated: ${automation.eventConfig.calendarId}`;
-  }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-calendar-event-cancelled"
-  ) {
-    return `Google Calendar event cancelled: ${automation.eventConfig.calendarId}`;
-  }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-meet-transcript-generated"
-  ) {
-    return "Google Meet transcript ready: meetings you organize";
+  const googleEntry = formatGoogleAutomationEntry(automation);
+  if (googleEntry !== null) {
+    return googleEntry;
   }
   if (isWebhookAutomation(automation)) {
     return formatWebhookAutomationEntry(automation);
+  }
+  if (options.showStripeDetails && isStripeInvoicePaidAutomation(automation)) {
+    return formatStripeInvoicePaidAutomationEntry(automation);
   }
 
   if (automation.kind !== "schedule") {
@@ -301,6 +404,10 @@ function workflowAutomationKindLabel(
   if (automation.kind !== "event") {
     return formatWorkflowAutomationEntry(automation);
   }
+  const googleLabel = googleAutomationKindLabel(automation);
+  if (googleLabel !== null) {
+    return googleLabel;
+  }
   switch (automation.eventType) {
     case "chat-run-finished":
       return chatRunFinishedKindLabel(automation.eventConfig);
@@ -308,8 +415,8 @@ function workflowAutomationKindLabel(
       return "Gmail new message";
     case "gmail-label-applied":
       return "Gmail label applied";
-    case "github-label-applied":
-      return "GitHub label applied";
+    case "github-pull-request":
+      return "GitHub pull request";
     case "github-deployment-status-created":
       return "GitHub deployment status created";
     case "github-issue-comment-created":
@@ -320,14 +427,6 @@ function workflowAutomationKindLabel(
       return "GitHub workflow job completed";
     case "github-workflow-run-completed":
       return "GitHub workflow completed";
-    case "google-calendar-event-created":
-      return "Google Calendar event created";
-    case "google-calendar-event-updated":
-      return "Google Calendar event updated";
-    case "google-calendar-event-cancelled":
-      return "Google Calendar event cancelled";
-    case "google-meet-transcript-generated":
-      return "Google Meet transcript ready";
     case "notion-child-page-created":
       return `New Notion child page: ${formatNotionParentPage(automation)}`;
     case "notion-database-item-created":
@@ -336,8 +435,30 @@ function workflowAutomationKindLabel(
       return `Notion page content updated: ${formatNotionContentUpdatedScope(automation)}`;
     case "strapi-entry-published":
       return formatStrapiAutomation(automation);
+    case "stripe-invoice-paid":
+      return "Stripe invoice paid";
     case "webhook-received":
       return "Webhook";
+  }
+  throw new Error("Unsupported workflow automation event");
+}
+
+function googleAutomationKindLabel(
+  automation: Extract<ZeroWorkflowAutomationSummary, { kind: "event" }>,
+): string | null {
+  switch (automation.eventType) {
+    case "google-calendar-event-created":
+      return "Google Calendar event created";
+    case "google-calendar-event-updated":
+      return "Google Calendar event updated";
+    case "google-calendar-event-cancelled":
+      return "Google Calendar event cancelled";
+    case "google-forms-response-submitted":
+      return `Google Forms response submitted: ${automation.eventConfig.form.title}`;
+    case "google-meet-transcript-generated":
+      return "Google Meet transcript ready";
+    default:
+      return null;
   }
 }
 
@@ -360,6 +481,7 @@ function signedCurlExample(
 
 export function printWorkflowAutomationsTable(
   automations: readonly ZeroWorkflowAutomationSummary[],
+  options: WorkflowAutomationsTableOptions = {},
 ): void {
   const idWidth = Math.max(
     2,
@@ -370,7 +492,7 @@ export function printWorkflowAutomationsTable(
   const scheduleWidth = Math.max(
     7,
     ...automations.map((automation) => {
-      return formatWorkflowAutomationEntry(automation).length;
+      return formatWorkflowAutomationEntry(automation, options).length;
     }),
   );
 
@@ -393,10 +515,27 @@ export function printWorkflowAutomationsTable(
       [
         automation.id.padEnd(idWidth),
         status.padEnd(8 + (automation.enabled ? 0 : 2)),
-        formatWorkflowAutomationEntry(automation).padEnd(scheduleWidth),
+        formatWorkflowAutomationEntry(automation, options).padEnd(
+          scheduleWidth,
+        ),
         formatRunTime(automation.nextRunAt),
       ].join("  "),
     );
+  }
+  if (!options.showStripeDetails) {
+    return;
+  }
+  for (const automation of automations) {
+    if (
+      isStripeInvoicePaidAutomation(automation) &&
+      automation.health.warning === "delivery_failed"
+    ) {
+      console.warn(
+        chalk.yellow(
+          `Warning for automation ${automation.id}: ${STRIPE_DELIVERY_FAILURE_WARNING}`,
+        ),
+      );
+    }
   }
 }
 
@@ -411,6 +550,14 @@ function printGithubFilters(automation: ZeroWorkflowAutomationSummary): void {
     console.log(`${`${label}:`.padEnd(14)}${values?.join(", ") ?? "any"}`);
   };
   switch (automation.eventType) {
+    case "github-pull-request": {
+      const { filters } = automation.eventConfig;
+      printFilter("Base branches", filters.baseBranches);
+      printFilter("Authors", filters.authors);
+      printFilter("PR numbers", filters.pullRequestNumbers);
+      printFilter("Labels", filters.labels);
+      return;
+    }
     case "github-workflow-run-completed": {
       const { filters } = automation.eventConfig;
       printFilter("Repositories", filters.repositories);
@@ -480,14 +627,38 @@ function printCommand(lines: readonly string[]): void {
   }
 }
 
-function automationUpdateGuidance(automation: ZeroWorkflowAutomationSummary): {
+function stripeRecreateCommand(
+  automation: WorkflowStripeInvoicePaidAutomationSummary,
+  workflowId: string,
+): string {
+  const billingReasons = automation.eventConfig.billingReasons;
+  const billingReasonOption =
+    billingReasons && billingReasons.length > 0
+      ? ` --billing-reason ${billingReasons.join(",")}`
+      : "";
+  return `okou workflow automation add ${workflowId} stripe-invoice-paid${billingReasonOption}`;
+}
+
+function automationUpdateGuidance(
+  automation: ZeroWorkflowAutomationSummary,
+  workflowId: string,
+): {
   readonly label: string;
   readonly command: readonly string[];
 } {
+  if (isStripeInvoicePaidAutomation(automation)) {
+    return {
+      label: "Change billing reasons (delete and recreate)",
+      command: [
+        `okou workflow automation rm ${automation.id}`,
+        stripeRecreateCommand(automation, workflowId),
+      ],
+    };
+  }
   if (automation.kind !== "schedule") {
     return {
       label: "Edit automation",
-      command: ["zero workflow automation update --help"],
+      command: ["okou workflow automation update --help"],
     };
   }
 
@@ -496,7 +667,7 @@ function automationUpdateGuidance(automation: ZeroWorkflowAutomationSummary): {
       return {
         label: "Change schedule",
         command: [
-          "zero workflow automation update \\",
+          "okou workflow automation update \\",
           `  ${automation.id} \\`,
           '  --expr "<cron-expression>" -z <timezone>',
         ],
@@ -505,7 +676,7 @@ function automationUpdateGuidance(automation: ZeroWorkflowAutomationSummary): {
       return {
         label: "Change interval",
         command: [
-          "zero workflow automation update \\",
+          "okou workflow automation update \\",
           `  ${automation.id} \\`,
           "  --every <duration>",
         ],
@@ -514,7 +685,7 @@ function automationUpdateGuidance(automation: ZeroWorkflowAutomationSummary): {
       return {
         label: "Change run time",
         command: [
-          "zero workflow automation update \\",
+          "okou workflow automation update \\",
           `  ${automation.id} \\`,
           '  --at "<iso-time>" -z <timezone>',
         ],
@@ -530,7 +701,7 @@ function printManagementCommands(
     return;
   }
 
-  const update = automationUpdateGuidance(automation);
+  const update = automationUpdateGuidance(automation, options.workflowId);
   const statusAction = automation.enabled
     ? {
         label: "Pause automation",
@@ -542,10 +713,10 @@ function printManagementCommands(
       };
 
   console.log("");
-  console.log(chalk.bold("Manage with Zero CLI:"));
+  console.log(chalk.bold("Manage with Okou CLI:"));
   console.log("  Edit workflow:");
   printCommand([
-    `zero workflow edit ${options.workflowId} \\`,
+    `okou workflow edit ${options.workflowId} \\`,
     "  --instruction-file <path>",
   ]);
   console.log("");
@@ -554,12 +725,12 @@ function printManagementCommands(
   console.log("");
   console.log(`  ${statusAction.label}:`);
   printCommand([
-    `zero workflow automation ${statusAction.command} \\`,
+    `okou workflow automation ${statusAction.command} \\`,
     `  ${automation.id}`,
   ]);
   console.log("");
   console.log("  More automation options:");
-  printCommand(["zero workflow automation --help"]);
+  printCommand(["okou workflow automation --help"]);
 
   if (!automation.chatThreadId || !options.threadModel) {
     return;
@@ -580,17 +751,17 @@ function printManagementCommands(
   console.log("");
   console.log(chalk.bold("Model commands:"));
   console.log("  Show:");
-  printCommand(["zero chat model \\", `  --thread ${automation.chatThreadId}`]);
+  printCommand(["okou chat model \\", `  --thread ${automation.chatThreadId}`]);
   console.log("");
   console.log("  Change:");
   printCommand([
-    "zero chat model \\",
+    "okou chat model \\",
     `  --thread ${automation.chatThreadId} \\`,
     "  <model-id>",
   ]);
   console.log("");
   console.log("  Options:");
-  printCommand(["zero model list"]);
+  printCommand(["okou model list"]);
 }
 
 export function printWorkflowAutomationThreadModel(
@@ -601,6 +772,46 @@ export function printWorkflowAutomationThreadModel(
   }
   console.log(
     `${"Thread model:".padEnd(14)}${model.label} ${chalk.dim(`(${model.id})`)}`,
+  );
+  const priority = model.serviceTier === "priority" ? "enabled" : "disabled";
+  console.log(`${"Thread priority:".padEnd(18)}${priority}`);
+}
+
+function printGoogleFormsAutomationDetails(
+  automation: ZeroWorkflowAutomationSummary,
+): void {
+  if (!isGoogleFormsAutomation(automation)) {
+    return;
+  }
+  console.log(`${"Form:".padEnd(14)}${automation.eventConfig.form.title}`);
+  console.log(`${"Form ID:".padEnd(14)}${automation.eventConfig.form.id}`);
+  console.log(`${"Form URL:".padEnd(14)}${automation.eventConfig.form.url}`);
+  if (automation.warning) {
+    console.warn(`${"Warning:".padEnd(14)}${chalk.yellow(automation.warning)}`);
+  }
+}
+
+function printGithubPullRequestDetails(
+  automation: ZeroWorkflowAutomationSummary,
+): void {
+  if (
+    automation.kind !== "event" ||
+    automation.eventType !== "github-pull-request"
+  ) {
+    return;
+  }
+  console.log(
+    `${"Repository:".padEnd(14)}${automation.eventConfig.repository}`,
+  );
+  console.log(`${"Action:".padEnd(14)}${automation.eventConfig.action}`);
+  console.log(
+    `${"Merged:".padEnd(14)}${
+      automation.eventConfig.merged === undefined
+        ? "any"
+        : automation.eventConfig.merged
+          ? "yes"
+          : "no"
+    }`,
   );
 }
 
@@ -635,26 +846,14 @@ export function printWorkflowAutomationDetails(
   ) {
     console.log(`${"Label:".padEnd(14)}${automation.eventConfig.labelName}`);
   }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "github-label-applied"
-  ) {
-    console.log(`${"Label:".padEnd(14)}${automation.eventConfig.labelName}`);
-    console.log(
-      `${"Subject:".padEnd(14)}${formatGithubSubject(
-        automation.eventConfig.filters.subject,
-      )}`,
-    );
-    console.log(
-      `${"Actor:".padEnd(14)}${automation.eventConfig.filters.actor.type}`,
-    );
-  }
+  printGithubPullRequestDetails(automation);
   printGithubFilters(automation);
   if (isGoogleCalendarAutomation(automation)) {
     console.log(
       `${"Calendar:".padEnd(14)}${automation.eventConfig.calendarId}`,
     );
   }
+  printGoogleFormsAutomationDetails(automation);
   if (isNotionChildPageAutomation(automation)) {
     console.log(
       `${"Parent page:".padEnd(14)}${formatNotionParentPage(automation)}`,
@@ -701,6 +900,7 @@ export function printWorkflowAutomationDetails(
       console.log(signedCurlExample(automation));
     }
   }
+  printStripeInvoicePaidAutomationDetails(automation);
   console.log(`${"Owner:".padEnd(14)}${automation.ownerUserId}`);
   console.log(
     `${"Chat thread:".padEnd(14)}${automation.chatThreadId ?? chalk.dim("-")}`,

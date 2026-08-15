@@ -234,6 +234,16 @@ describe("hosted site worker", () => {
     expect(response.headers.get("Vary")).toBe("Origin");
   });
 
+  it("marks hosted site responses as noindex", async () => {
+    const response = await worker.fetch(
+      new Request("https://demo.sites.vm0.io/"),
+      env(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex");
+  });
+
   it("serves default robots.txt when the active deployment omits it", async () => {
     const response = await worker.fetch(
       new Request("https://demo.sites.vm0.io/robots.txt"),

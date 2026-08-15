@@ -1,5 +1,5 @@
 import "./instrument";
-import { createApp } from "./app-factory";
+import { createProductionApp } from "./production-bootstrap";
 
 // Vercel function entry point built by `@hono/vite-build/vercel` (see
 // `vite.config.ts`). Distinct from `./server.ts`, which is the long-lived
@@ -18,7 +18,7 @@ const app = (() => {
     instanceAbortController.abort(error);
   });
 
-  return createApp({ signal: instanceAbortController.signal });
+  return createProductionApp(instanceAbortController.signal);
 })();
 
 export default app;

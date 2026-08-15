@@ -1,10 +1,10 @@
 import { z } from "zod";
-import type { ZeroGoalEvent } from "./zero-goals";
 
 export const CHAT_EVENT_TYPES = [
   "input.prompt",
   "input.automation",
   "input.goal",
+  "input.budget",
   "input.rejected",
   "output.message",
   "output.error",
@@ -17,9 +17,10 @@ export const CHAT_EVENT_TYPES = [
   "run.cancelled",
   "control.interrupt",
   "control.revoke",
-  "browser.started",
-  "browser.stopped",
-  "goal.changed",
+  "browser.open",
+  "browser.close",
+  "goal.open",
+  "goal.close",
   "usage.recorded",
 ] as const;
 
@@ -30,6 +31,25 @@ export type ChatEventCompatibilityRole = "user" | "assistant";
 export type ChatEventRunLifecycle = "completed" | "failed" | "cancelled";
 export type ChatRunFoldState = "queued" | "dequeued" | ChatEventRunLifecycle;
 
+export const CHAT_EVENT_USER_MESSAGE_TEXT_TYPES = [
+  "input.prompt",
+  "input.rejected",
+] as const satisfies readonly ChatEventType[];
+
+export const CHAT_EVENT_CONTENT_TEXT_TYPES = [
+  "output.message",
+  "output.error",
+  "run.queued",
+  "run.completed",
+  "run.failed",
+  "run.cancelled",
+] as const satisfies readonly ChatEventType[];
+
+export const CHAT_GOAL_MARKER_EVENT_TYPES = [
+  "goal.open",
+  "goal.close",
+] as const satisfies readonly ChatEventType[];
+
 const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
   "input.prompt": [
     "input.prompt",
@@ -39,6 +59,7 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
   ],
   "input.automation": [],
   "input.goal": [],
+  "input.budget": ["input.budget"],
   "input.rejected": [
     "input.prompt",
     "input.automation",
@@ -59,11 +80,13 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
     "input.prompt",
     "input.automation",
     "input.goal",
+    "input.budget",
     "input.rejected",
   ],
-  "browser.started": [],
-  "browser.stopped": [],
-  "goal.changed": [],
+  "browser.open": [],
+  "browser.close": [],
+  "goal.open": [],
+  "goal.close": [],
   "usage.recorded": [],
 } satisfies Record<ChatEventType, readonly ChatEventType[]>;
 
@@ -71,6 +94,7 @@ const CHAT_RUN_FOLD_STATES = {
   "input.prompt": null,
   "input.automation": null,
   "input.goal": null,
+  "input.budget": null,
   "input.rejected": null,
   "output.message": null,
   "output.error": null,
@@ -83,9 +107,10 @@ const CHAT_RUN_FOLD_STATES = {
   "run.cancelled": "cancelled",
   "control.interrupt": null,
   "control.revoke": null,
-  "browser.started": null,
-  "browser.stopped": null,
-  "goal.changed": null,
+  "browser.open": null,
+  "browser.close": null,
+  "goal.open": null,
+  "goal.close": null,
   "usage.recorded": null,
 } satisfies Record<ChatEventType, ChatRunFoldState | null>;
 
@@ -95,7 +120,8 @@ interface ChatEventFoldInput {
   readonly runId?: string | null;
   readonly interruptsRunId?: string;
   readonly revokesEventId?: string | null;
-  readonly goalEvent?: ZeroGoalEvent;
+  readonly seqId?: number;
+  readonly content?: string | null;
 }
 
 export interface ChatQueueFoldInput extends ChatEventFoldInput {
@@ -109,32 +135,34 @@ interface ChatUsageFoldInput extends ChatEventFoldInput {
   };
 }
 
+const CHAT_EVENT_COMPATIBILITY_ROLES = {
+  "input.prompt": "user",
+  "input.automation": "user",
+  "input.goal": "user",
+  "input.budget": "user",
+  "input.rejected": "user",
+  "output.message": "assistant",
+  "output.error": "assistant",
+  "output.thinking": "assistant",
+  "output.followups": "assistant",
+  "run.queued": "assistant",
+  "run.dequeued": "assistant",
+  "run.completed": "assistant",
+  "run.failed": "assistant",
+  "run.cancelled": "assistant",
+  "control.interrupt": "user",
+  "control.revoke": "user",
+  "browser.open": "assistant",
+  "browser.close": "assistant",
+  "goal.open": "assistant",
+  "goal.close": "assistant",
+  "usage.recorded": "assistant",
+} satisfies Record<ChatEventType, ChatEventCompatibilityRole>;
+
 export function chatEventCompatibilityRole(
   eventType: ChatEventType,
 ): ChatEventCompatibilityRole {
-  switch (eventType) {
-    case "input.prompt":
-    case "input.automation":
-    case "input.goal":
-    case "input.rejected":
-    case "control.interrupt":
-    case "control.revoke":
-      return "user";
-    case "output.message":
-    case "output.error":
-    case "output.thinking":
-    case "output.followups":
-    case "run.queued":
-    case "run.dequeued":
-    case "run.completed":
-    case "run.failed":
-    case "run.cancelled":
-    case "browser.started":
-    case "browser.stopped":
-    case "goal.changed":
-    case "usage.recorded":
-      return "assistant";
-  }
+  return CHAT_EVENT_COMPATIBILITY_ROLES[eventType];
 }
 
 export function isChatRunTerminalEventType(
@@ -153,19 +181,25 @@ export function isChatInputEventType(
   | "input.prompt"
   | "input.automation"
   | "input.goal"
+  | "input.budget"
   | "input.rejected" {
   return (
     eventType === "input.prompt" ||
     eventType === "input.automation" ||
     eventType === "input.goal" ||
+    eventType === "input.budget" ||
     eventType === "input.rejected"
   );
 }
 
 export function isChatUserMessageEventType(
   eventType: ChatEventType,
-): eventType is "input.prompt" | "input.rejected" {
-  return eventType === "input.prompt" || eventType === "input.rejected";
+): eventType is "input.prompt" | "input.budget" | "input.rejected" {
+  return (
+    eventType === "input.prompt" ||
+    eventType === "input.budget" ||
+    eventType === "input.rejected"
+  );
 }
 
 export function isChatOutputEventType(
@@ -180,8 +214,32 @@ export function isChatOutputEventType(
 
 export function isBrowserLifecycleEventType(
   eventType: ChatEventType,
-): eventType is "browser.started" | "browser.stopped" {
-  return eventType === "browser.started" || eventType === "browser.stopped";
+): eventType is "browser.open" | "browser.close" {
+  return eventType === "browser.open" || eventType === "browser.close";
+}
+
+export function isChatEventUserMessageTextType(
+  eventType: ChatEventType,
+): eventType is (typeof CHAT_EVENT_USER_MESSAGE_TEXT_TYPES)[number] {
+  return (
+    CHAT_EVENT_USER_MESSAGE_TEXT_TYPES as readonly ChatEventType[]
+  ).includes(eventType);
+}
+
+export function isChatEventContentTextType(
+  eventType: ChatEventType,
+): eventType is (typeof CHAT_EVENT_CONTENT_TEXT_TYPES)[number] {
+  return (CHAT_EVENT_CONTENT_TEXT_TYPES as readonly ChatEventType[]).includes(
+    eventType,
+  );
+}
+
+export function isChatGoalMarkerEventType(
+  eventType: ChatEventType,
+): eventType is (typeof CHAT_GOAL_MARKER_EVENT_TYPES)[number] {
+  return (CHAT_GOAL_MARKER_EVENT_TYPES as readonly ChatEventType[]).includes(
+    eventType,
+  );
 }
 
 export function isValidChatEventRevocation(
@@ -264,7 +322,7 @@ function compareChatQueueEvents(
     if (eventType === "input.prompt") {
       return 0;
     }
-    if (eventType === "input.automation") {
+    if (eventType === "input.goal") {
       return 1;
     }
     return 2;
@@ -300,19 +358,33 @@ export function foldRunnableChatQueueEvents<TEvent extends ChatQueueFoldInput>(
   return foldPendingChatQueueEvents(events);
 }
 
+/** Narrow a fold input to the persisted shape that always carries `seq_id`. */
+function hasChatEventSeqId<TEvent extends ChatEventFoldInput>(
+  event: TEvent,
+): event is TEvent & { readonly seqId: number } {
+  return event.seqId !== undefined;
+}
+
 export function foldActiveChatGoalObjective(
   events: readonly ChatEventFoldInput[],
 ): string | null {
   let objective: string | null = null;
-  for (const event of events) {
-    if (event.eventType !== "goal.changed" || event.goalEvent === undefined) {
+
+  const goalMarkers = events.filter((event) => {
+    return isChatGoalMarkerEventType(event.eventType);
+  });
+  const orderedEvents = goalMarkers.every(hasChatEventSeqId)
+    ? [...goalMarkers].sort((left, right) => {
+        return left.seqId - right.seqId;
+      })
+    : goalMarkers;
+
+  for (const event of orderedEvents) {
+    if (event.eventType === "goal.open") {
+      objective = event.content?.trim() || null;
       continue;
     }
-    if (event.goalEvent.type === "cleared") {
-      objective = null;
-    } else if (event.goalEvent.status === "active") {
-      objective = event.goalEvent.objectiveBrief;
-    } else {
+    if (event.eventType === "goal.close") {
       objective = null;
     }
   }

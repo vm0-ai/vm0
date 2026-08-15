@@ -9,17 +9,20 @@ import {
   boolean,
   check,
   varchar,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
 import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
   ChatThreadDraftUserMessage,
-  ChatThreadGenerationTemplate,
-} from "@vm0/db/jsonb-contracts/chat-thread";
-import { agentRuns, agentSessions } from "./agent-run-session-conversation";
+} from "@okouai/db/jsonb-contracts/chat-thread";
+import {
+  resolveAgentRunId,
+  resolveAgentSessionId,
+} from "./agent-run-reference";
 
 /**
  * Chat Threads table
@@ -44,9 +47,9 @@ export const chatThreads = pgTable(
     /**
      * ID of the scheduled agent run this thread was started from, if any.
      * When set, the first run created in this thread is seeded with a system
-     * prompt that instructs the agent to fetch the original run's telemetry
-     * via `zero logs <id>` in its sandbox. Subsequent runs reuse the resulting
-     * session context, so the prompt is only applied once.
+     * prompt that points the agent at the local Claude Code and Codex session
+     * files for direct analysis. Subsequent runs reuse the resulting session
+     * context, so the prompt is only applied once.
      */
     sourceScheduleRunId: uuid("source_schedule_run_id"),
     /**
@@ -54,8 +57,8 @@ export const chatThreads = pgTable(
      * Every thread-bound run source resolves continuation through this binding.
      */
     agentSessionId: uuid("agent_session_id").references(
-      () => {
-        return agentSessions.id;
+      (): AnyPgColumn => {
+        return resolveAgentSessionId();
       },
       { onDelete: "set null" },
     ),
@@ -64,8 +67,8 @@ export const chatThreads = pgTable(
      * Provides route provenance for session rotation and binding snapshots.
      */
     agentSessionRunId: uuid("agent_session_run_id").references(
-      () => {
-        return agentRuns.id;
+      (): AnyPgColumn => {
+        return resolveAgentRunId();
       },
       { onDelete: "set null" },
     ),
@@ -100,13 +103,12 @@ export const chatThreads = pgTable(
       length: 20,
     }).$type<CodexServiceTier>(),
     /**
-     * Legacy generation template column retained for schema compatibility.
-     * Current prompt injection reads the generation template attached to the
-     * current input event only.
+     * Per-thread built-in video generation model pin. Null falls through to the
+     * member default and then to the system default. Generation parameters such
+     * as aspect ratio and resolution stay per generation and are never pinned
+     * here, so one thread can still produce more than one format.
      */
-    generationTemplate: jsonb(
-      "generation_template",
-    ).$type<ChatThreadGenerationTemplate>(),
+    selectedVideoModel: varchar("selected_video_model", { length: 255 }),
     computerUseHostId: uuid("computer_use_host_id").references(
       () => {
         return computerUseHosts.id;
@@ -142,7 +144,7 @@ export const chatThreads = pgTable(
      * thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
-    /** Last seq_id allocated to an event in this thread. */
+    /** Last seq_id reserved in this thread; reservations may remain unused. */
     lastChatEventSeqId: bigint("last_chat_event_seq_id", {
       mode: "number",
     })

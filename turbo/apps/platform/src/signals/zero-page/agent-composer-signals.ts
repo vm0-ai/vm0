@@ -1,13 +1,29 @@
-import { command, computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import { command, computed, state } from "ccstate";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import { currentChatAgent$, currentChatAgentId$ } from "../agent-chat.ts";
-import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
-import { updateUserModelPreference$ } from "../external/user-model-preference.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
-import { queueCurrentAgentDraftSync$ } from "./agent-draft.ts";
-import { talkDraft$ } from "./chat-draft.ts";
+import { currentAgentId$ } from "../agent.ts";
+import {
+  sendNewThread$,
+  sendNewThreadWithoutNavigation$,
+} from "../chat-page/optimistic-chat-thread-page.ts";
+import type { ChatForwardContext } from "../chat-page/chat-forward.ts";
+import {
+  featureSwitch$,
+  videoModelSelectionEnabled$,
+} from "../external/feature-switch.ts";
+import {
+  updateUserModelPreference$,
+  userModelPreference$,
+} from "../external/user-model-preference.ts";
+import {
+  createAgentDraftSignals,
+  type EnsuredAgentDraft,
+} from "./agent-draft.ts";
 import {
   computerUseHosts$,
   selectedComputerUseHostId,
@@ -20,27 +36,19 @@ import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
   chatPageModelSelection$,
   chatPageSelectedModelOauthAvailable$,
+  chatPageVideoModelSelection$,
   configureChatPageSelectedModel$,
   resetChatPageModelSelection$,
+  resetChatPageVideoModelSelection$,
   setChatPageModelSelection$,
-  updateCodexFastModeDefaultForSelection$,
+  setChatPageVideoModelSelection$,
 } from "./zero-chat-page.ts";
 import {
   newThreadComputerAccess$,
-  newThreadGenerationTemplate$,
   resetNewThreadComputerAccess$,
   setNewThreadCloudBrowserEnabled$,
   setNewThreadComputerUseHostId$,
-  setNewThreadGenerationTemplate$,
 } from "./zero-chat-composer.ts";
-
-const agent$ = computed(async (get) => {
-  const agent = await get(currentChatAgent$);
-  if (!agent) {
-    throw new Error("Chat composer requires an active agent");
-  }
-  return agent;
-});
 
 const idle$ = computed((): Promise<boolean> => {
   return Promise.resolve(false);
@@ -51,16 +59,49 @@ const chatEvents$ = computed((): ChatEvent[] => {
 
 const setModelSelection$ = command(
   async (
-    { set },
+    { get, set },
     selection: ModelProviderSelection | null,
     signal: AbortSignal,
   ): Promise<void> => {
     set(setChatPageModelSelection$, selection);
     const selectedModel = selection?.selectedModel;
-    if (isSupportedRunModel(selectedModel)) {
-      await set(updateUserModelPreference$, { selectedModel }, signal);
+    const explicitDefaultActionEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
+    if (!explicitDefaultActionEnabled && isSupportedRunModel(selectedModel)) {
+      await set(
+        updateUserModelPreference$,
+        {
+          selectedModel,
+          serviceTier:
+            selection?.codexServiceTier === "fast" ? "priority" : null,
+        },
+        signal,
+      );
     }
-    await set(updateCodexFastModeDefaultForSelection$, selection, signal);
+  },
+);
+
+const setVideoModel$ = command(
+  async (
+    { get, set },
+    videoModel: VideoModel | null,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!get(videoModelSelectionEnabled$)) {
+      return;
+    }
+    set(setChatPageVideoModelSelection$, videoModel);
+    const userPreference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    await set(
+      updateUserModelPreference$,
+      {
+        selectedModel: userPreference.selectedModel,
+        serviceTier: userPreference.serviceTier,
+        selectedVideoModel: videoModel,
+      },
+      signal,
+    );
   },
 );
 
@@ -86,101 +127,156 @@ const setCloudBrowserEnabled$ = command(
   },
 );
 
-const submitMessage$ = command(
-  async (
-    { get: read, set },
-    action: "send" | "queue",
-    submission: ComposerSubmission,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    if (action !== "send") {
-      throw new Error("The new-thread composer does not support queueing");
-    }
-    const agentId = await read(currentChatAgentId$);
-    signal.throwIfAborted();
-    if (!agentId) {
-      return false;
-    }
-    const access = read(newThreadComputerAccess$);
-    const hosts = await read(computerUseHosts$);
-    signal.throwIfAborted();
-    const hostId =
-      access.kind === "computerUse"
-        ? selectedComputerUseHostId(hosts, access.hostId)
-        : null;
-    const sent = await set(
-      sendNewThread$,
-      {
-        agentId,
-        prompt: submission.prompt,
-        generationTemplate: submission.generationTemplate,
-        editorDocument: submission.editorDocument,
-        ...(access.kind === "computerUse" ? { computerUseHostId: hostId } : {}),
-        ...(access.kind === "cloudBrowser"
-          ? { cloudBrowserEnabled: true }
-          : {}),
-      },
-      signal,
-    );
-    if (sent) {
-      set(setNewThreadGenerationTemplate$, undefined);
-      set(resetNewThreadComputerAccess$);
-      set(resetChatPageModelSelection$);
-    }
-    return sent;
-  },
-);
-
-const unsupportedAction$ = command(
-  (_context, signal: AbortSignal): Promise<void> => {
-    signal.throwIfAborted();
-    return Promise.reject(
-      new Error("This composer action is unavailable for a new thread"),
-    );
-  },
-);
-const unsupportedEventAction$ = command(
+const noOpAction$ = command((_context, signal: AbortSignal): Promise<void> => {
+  signal.throwIfAborted();
+  return Promise.resolve();
+});
+const noOpEventAction$ = command(
   (_context, _eventId: string, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
-    return Promise.reject(
-      new Error("This composer event action is unavailable for a new thread"),
-    );
+    return Promise.resolve();
   },
 );
-const openActiveGoal$ = command((): void => {
-  throw new Error("Active goals are unavailable for a new thread");
-});
+const noOp$ = command((): void => {});
 
-export const agentChatComposerSignals$ = computed((get) => {
-  const draft = get(talkDraft$);
-  const features = get(featureSwitch$);
+function createAgentComposerSignalsWithDraft(
+  agentId: string,
+  agentDraft: EnsuredAgentDraft,
+  options: {
+    readonly forward?: ChatForwardContext;
+    readonly onOptimisticSend?: () => void;
+  } = {},
+) {
+  const submitMessage$ = command(
+    async (
+      { get, set },
+      action: "send" | "queue",
+      submission: ComposerSubmission,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      if (action !== "send") {
+        return false;
+      }
+      const access = get(newThreadComputerAccess$);
+      const [hosts, videoModelSelection] = await Promise.all([
+        get(computerUseHosts$),
+        get(chatPageVideoModelSelection$),
+      ]);
+      signal.throwIfAborted();
+      const hostId =
+        access.kind === "computerUse"
+          ? selectedComputerUseHostId(hosts, access.hostId)
+          : null;
+      const send = options.forward
+        ? sendNewThreadWithoutNavigation$
+        : sendNewThread$;
+      const sent = await set(
+        send,
+        {
+          agentId,
+          draft: agentDraft.draft,
+          prompt: submission.prompt,
+          generationTemplate: submission.generationTemplate,
+          editorDocument: submission.editorDocument,
+          videoModel: videoModelSelection ?? DEFAULT_VIDEO_MODEL,
+          ...(access.kind === "computerUse"
+            ? { computerUseHostId: hostId }
+            : {}),
+          ...(access.kind === "cloudBrowser"
+            ? { cloudBrowserEnabled: true }
+            : {}),
+          ...(options.forward ? { forward: options.forward } : {}),
+          ...(options.onOptimisticSend
+            ? { onOptimisticSend: options.onOptimisticSend }
+            : {}),
+        },
+        signal,
+      );
+      if (sent) {
+        set(resetNewThreadComputerAccess$);
+        set(resetChatPageModelSelection$);
+        set(resetChatPageVideoModelSelection$);
+      }
+      return sent;
+    },
+  );
 
   return createComposerSignals({
-    agent$,
+    agentId,
     draft: {
-      signals: draft,
-      save$: queueCurrentAgentDraftSync$,
+      signals: agentDraft.draft,
+      save$: options.forward ? noOpAction$ : agentDraft.queueDraftSync$,
     },
     chatEvents$,
-    inlineTemplatesEnabled:
-      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false,
-    generationTemplate$: newThreadGenerationTemplate$,
-    setGenerationTemplate$: setNewThreadGenerationTemplate$,
     singleLineOnMobile: false,
     modelSelection$: chatPageModelSelection$,
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
     setModelSelection$,
     configureSelectedModel$: configureChatPageSelectedModel$,
+    videoModel: {
+      selectedVideoModel$: chatPageVideoModelSelection$,
+      setVideoModel$,
+    },
     computerUseHostId$,
     cloudBrowserEnabled$,
     setComputerUseHostId$,
     setCloudBrowserEnabled$,
     submitMessage$,
-    cancelRun$: unsupportedAction$,
+    cancelRun$: noOpAction$,
     cancellationRecoveryPending$: idle$,
-    removeQueuedMessage$: unsupportedEventAction$,
-    removeWorkflowEvent$: unsupportedEventAction$,
-    cancelActiveGoal$: unsupportedAction$,
-    openActiveGoal$,
+    removeQueuedMessage$: noOpEventAction$,
+    removeAutomationEvent$: noOpEventAction$,
+    cancelActiveGoal$: noOpAction$,
+    openActiveGoal$: noOp$,
   });
+}
+
+/**
+ * Creates the public composer signals for an agent chat.
+ *
+ * @public
+ */
+export function createAgentComposerSignals(agentId: string) {
+  return createAgentComposerSignalsWithDraft(
+    agentId,
+    createAgentDraftSignals(agentId),
+  );
+}
+
+export function createForwardAgentComposerSignals(
+  agentId: string,
+  forward: ChatForwardContext,
+  onOptimisticSend: () => void,
+) {
+  return createAgentComposerSignalsWithDraft(
+    agentId,
+    createAgentDraftSignals(agentId),
+    { forward, onOptimisticSend },
+  );
+}
+
+interface AgentComposerContext {
+  readonly agentId: string;
+  readonly agentDraft: EnsuredAgentDraft;
+}
+
+const internalAgentComposerContext$ = state<AgentComposerContext | null>(null);
+
+export const setAgentComposerContext$ = command(
+  ({ set }, context: AgentComposerContext): void => {
+    set(internalAgentComposerContext$, context);
+  },
+);
+
+export const agentChatComposerSignals$ = computed((get) => {
+  // Recreate the editor when delayed feature-switch bootstrap changes its semantics.
+  get(featureSwitch$);
+  const agentId = get(currentAgentId$);
+  if (!agentId) {
+    throw new Error("Chat composer requires an active agent");
+  }
+  const context = get(internalAgentComposerContext$);
+  return context?.agentId === agentId
+    ? createAgentComposerSignalsWithDraft(agentId, context.agentDraft)
+    : createAgentComposerSignals(agentId);
 });

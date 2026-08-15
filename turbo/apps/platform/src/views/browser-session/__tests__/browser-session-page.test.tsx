@@ -1,24 +1,18 @@
 import { screen, waitFor } from "@testing-library/react";
+import { chatThreadByIdContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroBrowserContract,
   type ZeroBrowserSession,
-} from "@vm0/api-contracts/contracts/zero-browser";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { afterEach, describe, expect, it } from "vitest";
+} from "@okouai/api-contracts/contracts/zero-browser";
+import { describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
-
-afterEach(async () => {
-  await i18n.changeLanguage("en-US");
-  document.documentElement.lang = "en-US";
-});
 
 const threadId = "c0000000-0000-4000-a000-000000000091";
 const liveUrl = "https://live.browser-use.com/?wss=test-browser-page-token";
@@ -32,6 +26,7 @@ function browserSession(
     status: "active",
     viewerUrl: `https://app.vm0.ai/browsers/${threadId}`,
     liveUrl,
+    screenshotUrl: null,
     proxyCountryCode: null,
     timeoutMinutes: 240,
     idleExpiresAt: "2026-07-24T10:10:00.000Z",
@@ -74,9 +69,6 @@ describe("browser session page", () => {
       detachedSetupPage({
         context,
         path: `/browsers/${threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ZeroBrowser]: true,
-        },
       });
 
       await expect(screen.findByText(title)).resolves.toBeInTheDocument();
@@ -86,6 +78,76 @@ describe("browser session page", () => {
       expect(startButton).toBeDefined();
     },
   );
+
+  it("shows browser not found for an invalid thread ID", async () => {
+    detachedSetupPage({
+      context,
+      path: "/browsers/not-a-thread-id",
+    });
+
+    await expect(
+      screen.findByText("Browser not found"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Browser not live")).not.toBeInTheDocument();
+  });
+
+  it("shows browser not found for a missing or inaccessible thread", async () => {
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Managed browser not found",
+        },
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      expect(params.id).toBe(threadId);
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Chat thread not found" },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/browsers/${threadId}`,
+    });
+
+    await expect(
+      screen.findByText("Browser not found"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Browser not live")).not.toBeInTheDocument();
+  });
+
+  it("shows the stopped state when an accessible thread has no browser", async () => {
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Managed browser not found",
+        },
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      expect(params.id).toBe(threadId);
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: false,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/browsers/${threadId}`,
+    });
+
+    await expect(
+      screen.findByText("Browser not live"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      document.querySelector("[data-browser-session-start]"),
+    ).not.toBeNull();
+    expect(screen.queryByText("Browser not found")).not.toBeInTheDocument();
+  });
 
   it("loads the authenticated live viewer and keeps the browser leased while it is open", async () => {
     let leaseRequests = 0;
@@ -105,12 +167,13 @@ describe("browser session page", () => {
     detachedSetupPage({
       context,
       path: `/browsers/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const frame = await screen.findByTitle("Live browser: booking");
     expect(frame).toHaveAttribute("src", liveUrl);
     expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+    const panel = frame.closest("[data-browser-session-panel]");
+    expect(panel?.parentElement).toBe(document.querySelector("main"));
     await waitFor(() => {
       expect(leaseRequests).toBeGreaterThan(0);
     });
@@ -131,18 +194,15 @@ describe("browser session page", () => {
       });
     });
     let startRequests = 0;
-    context.mocks.api(
-      zeroBrowserContract.start,
-      ({ body, params, respond }) => {
-        expect(params.threadId).toBe(threadId);
-        expect(body.eventId).toBeTypeOf("string");
-        startRequests += 1;
-        return respond(200, {
-          browser: browserSession(),
-          lifecycleEventId: body.eventId,
-        });
-      },
-    );
+    context.mocks.api(zeroBrowserContract.open, ({ body, params, respond }) => {
+      expect(params.threadId).toBe(threadId);
+      expect(body.eventId).toBeTypeOf("string");
+      startRequests += 1;
+      return respond(200, {
+        browser: browserSession(),
+        lifecycleEventId: body.eventId,
+      });
+    });
     context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession() });
     });
@@ -150,7 +210,6 @@ describe("browser session page", () => {
     detachedSetupPage({
       context,
       path: `/browsers/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const start = await waitFor(() => {

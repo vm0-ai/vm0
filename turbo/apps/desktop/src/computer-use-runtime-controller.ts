@@ -13,6 +13,7 @@ const DEFAULT_QUIT_STOP_TIMEOUT_MS = 1_000;
 interface ComputerUseRuntimeLike {
   start(): Promise<void>;
   stop(): Promise<void>;
+  drainAndStop(): Promise<void>;
   getState(): ComputerUseHostRuntimeState;
 }
 
@@ -117,6 +118,14 @@ export class ComputerUseRuntimeController {
     this.manualStopRequested = true;
     this.setHostRuntimeOnline(false);
     await this.runtime?.stop();
+    this.onChange();
+  }
+
+  /** Stops admitting work, lets the active command finish, then stops. */
+  async drainAndStop(): Promise<void> {
+    this.manualStopRequested = true;
+    await this.runtime?.drainAndStop();
+    this.setHostRuntimeOnline(false);
     this.onChange();
   }
 

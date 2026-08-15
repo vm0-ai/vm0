@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { firewallsSchema } from "@vm0/connectors/firewall-types";
+import { firewallsSchema } from "@okouai/connectors/firewall-types";
 import { CANONICAL_WORKING_DIR } from "./runners";
 
 export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
@@ -17,8 +17,8 @@ export function expandMountPath(mountPath: string | undefined): string {
 export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
 
 /**
- * Capabilities for the zero-layer capability system (ZERO_TOKEN).
- * These protect /api/zero/* routes only.
+ * Capabilities for the Okou protocol capability system.
+ * These protect both /api/okou/* and the compatible /api/zero/* routes.
  */
 export const ZERO_CAPABILITIES = [
   "agent:read",
@@ -52,7 +52,9 @@ export const ZERO_CAPABILITIES = [
   "people-search:read",
   "web-search:read",
   "image-recognition:write",
+  "translation:write",
   "finance:read",
+  "seo:read",
   "computer-use:write",
   "browser:read",
   "browser:write",
@@ -175,9 +177,17 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       group: "Image Recognition",
       label: "Recognize uploaded images",
     },
+    "translation:write": {
+      group: "Translation",
+      label: "Translate text",
+    },
     "finance:read": {
       group: "Finance",
       label: "Use managed finance services",
+    },
+    "seo:read": {
+      group: "SEO",
+      label: "Use managed SEO services",
     },
     "computer-use:write": {
       group: "Computer Use",
@@ -295,8 +305,7 @@ const agentDefinitionSchema = z.object({
    */
   skills: z.array(z.string()).optional(),
   /**
-   * Route this agent to a self-hosted runner instead of E2B.
-   * When specified, runs will be queued for the specified runner group.
+   * Route this agent to the specified runner group instead of the default.
    */
   experimental_runner: z
     .object({

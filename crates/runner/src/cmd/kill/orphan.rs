@@ -4,7 +4,8 @@ use std::time::Duration;
 use tracing::info;
 
 use crate::process::{
-    self, DiscoveredProcesses, FirecrackerProcessIdentity, ProcessStat, ProcessStatRead,
+    self, DiscoveredProcesses, FirecrackerProcessIdentity, ProcessDiscovery, ProcessStat,
+    ProcessStatRead,
 };
 
 use super::target::KillTarget;
@@ -25,10 +26,21 @@ pub(super) enum Outcome {
 }
 
 pub(super) async fn terminate(target: &KillTarget) -> Outcome {
+    terminate_with_discovery(target, process::discover_all_with_status).await
+}
+
+async fn terminate_with_discovery<Discover, DiscoverFuture>(
+    target: &KillTarget,
+    discover: Discover,
+) -> Outcome
+where
+    Discover: FnOnce() -> DiscoverFuture,
+    DiscoverFuture: std::future::Future<Output = ProcessDiscovery>,
+{
     let identity = match validate_orphan_target(target).await {
         OrphanTargetValidation::Valid { identity } => identity,
         OrphanTargetValidation::AlreadyGone => {
-            return already_gone_orphan_outcome(target).await;
+            return already_gone_orphan_outcome_with_discovery(target, discover).await;
         }
         OrphanTargetValidation::Changed => {
             return Outcome::AlreadyExitedOrChanged(target.clone());
@@ -43,7 +55,9 @@ pub(super) async fn terminate(target: &KillTarget) -> Outcome {
                 failure,
             },
         },
-        ProcessGroupSignalResult::AlreadyGone => already_gone_orphan_outcome(target).await,
+        ProcessGroupSignalResult::AlreadyGone => {
+            already_gone_orphan_outcome_with_discovery(target, discover).await
+        }
         ProcessGroupSignalResult::Failed => Outcome::SignalFailed(target.clone()),
     }
 }
@@ -52,7 +66,24 @@ pub(super) async fn confirmed_disappeared_outcome(
     target: &KillTarget,
     was_orphan: bool,
 ) -> Option<Outcome> {
-    let discovered = process::discover_all_with_status().await;
+    confirmed_disappeared_outcome_with_discovery(
+        target,
+        was_orphan,
+        process::discover_all_with_status,
+    )
+    .await
+}
+
+async fn confirmed_disappeared_outcome_with_discovery<Discover, DiscoverFuture>(
+    target: &KillTarget,
+    was_orphan: bool,
+    discover: Discover,
+) -> Option<Outcome>
+where
+    Discover: FnOnce() -> DiscoverFuture,
+    DiscoverFuture: std::future::Future<Output = ProcessDiscovery>,
+{
+    let discovered = discover().await;
     if should_cleanup_disappeared_initial_orphan(
         target,
         was_orphan,
@@ -66,8 +97,15 @@ pub(super) async fn confirmed_disappeared_outcome(
     }
 }
 
-async fn already_gone_orphan_outcome(target: &KillTarget) -> Outcome {
-    confirmed_disappeared_outcome(target, true)
+async fn already_gone_orphan_outcome_with_discovery<Discover, DiscoverFuture>(
+    target: &KillTarget,
+    discover: Discover,
+) -> Outcome
+where
+    Discover: FnOnce() -> DiscoverFuture,
+    DiscoverFuture: std::future::Future<Output = ProcessDiscovery>,
+{
+    confirmed_disappeared_outcome_with_discovery(target, true, discover)
         .await
         .unwrap_or_else(|| Outcome::AlreadyExitedOrChanged(target.clone()))
 }
@@ -497,7 +535,7 @@ mod tests {
 
     use super::super::test_support::{discovered_with_firecrackers, make_fc, make_target};
     use super::*;
-    use crate::process::FirecrackerProcessInfo;
+    use crate::process::{FirecrackerProcessInfo, ProcessDiscovery};
     use crate::test_fixtures::ignored_child::{
         ignored_child_test_env_guard_enabled, run_ignored_child_test,
     };
@@ -515,6 +553,34 @@ mod tests {
             ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime,
+        }
+    }
+
+    fn process_discovery(
+        firecrackers: Vec<FirecrackerProcessInfo>,
+        proc_scan_complete: bool,
+    ) -> ProcessDiscovery {
+        ProcessDiscovery {
+            processes: discovered_with_firecrackers(firecrackers),
+            proc_scan_complete,
+        }
+    }
+
+    fn missing_orphan_target() -> KillTarget {
+        // Linux /proc PID entries cannot reach u32::MAX, so this target is deterministically absent.
+        KillTarget {
+            pid: u32::MAX,
+            ppid: None,
+            run_id: None,
+            sandbox_id: "sbox-missing".into(),
+            base_dir: Some(PathBuf::from("/data/r1")),
+            identity: Some(FirecrackerProcessIdentity {
+                pid: u32::MAX,
+                pgid: 1234,
+                starttime: 123456,
+                sandbox_id: "sbox-missing".into(),
+                base_dir: Some(PathBuf::from("/data/r1")),
+            }),
         }
     }
 
@@ -960,7 +1026,7 @@ mod tests {
         let firecracker = base_dir.path().join("firecracker");
         std::os::unix::fs::symlink("/bin/sh", &firecracker).unwrap();
 
-        let mut child = tokio::process::Command::new(&firecracker)
+        let mut leader = tokio::process::Command::new(&firecracker)
             .arg("-c")
             .arg("printf '%s\\n' \"$1\"; IFS= read -r _")
             .arg("vm0-orphan-kill-test")
@@ -973,7 +1039,7 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        let stdout = child.stdout.take().unwrap();
+        let stdout = leader.stdout.take().unwrap();
         let mut stdout_lines = BufReader::new(stdout).lines();
         let ready_line = tokio::time::timeout(Duration::from_secs(5), stdout_lines.next_line())
             .await
@@ -982,33 +1048,103 @@ mod tests {
             .expect("fake firecracker exited before readiness");
         assert_eq!(ready_line, ORPHAN_KILL_READY_LINE);
 
-        let pid = child.id().unwrap();
-        let ProcessStatRead::Found(stat) = process::read_process_stat_checked(pid).await else {
-            panic!("spawned process stat should be readable");
+        let leader_pid = leader.id().unwrap();
+        let ProcessStatRead::Found(leader_stat) =
+            process::read_process_stat_checked(leader_pid).await
+        else {
+            panic!("spawned group leader stat should be readable");
+        };
+        let mut member = tokio::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg("IFS= read -r _")
+            .process_group(i32::try_from(leader_stat.pgid).unwrap())
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let member_pid = member.id().unwrap();
+        let ProcessStatRead::Found(member_stat) =
+            process::read_process_stat_checked(member_pid).await
+        else {
+            panic!("spawned group member stat should be readable");
+        };
+        let leader_identity = FirecrackerProcessIdentity {
+            pid: leader_pid,
+            pgid: leader_stat.pgid,
+            starttime: leader_stat.starttime,
+            sandbox_id: sandbox_id.into(),
+            base_dir: Some(base_dir.path().to_path_buf()),
+        };
+        let member_identity = FirecrackerProcessIdentity {
+            pid: member_pid,
+            pgid: member_stat.pgid,
+            starttime: member_stat.starttime,
+            sandbox_id: sandbox_id.into(),
+            base_dir: Some(base_dir.path().to_path_buf()),
         };
         let target = KillTarget {
-            pid,
+            pid: leader_pid,
             ppid: None,
             run_id: None,
             sandbox_id: sandbox_id.into(),
             base_dir: Some(base_dir.path().to_path_buf()),
-            identity: Some(FirecrackerProcessIdentity {
-                pid,
-                pgid: stat.pgid,
-                starttime: stat.starttime,
-                sandbox_id: sandbox_id.into(),
-                base_dir: Some(base_dir.path().to_path_buf()),
-            }),
+            identity: Some(leader_identity.clone()),
         };
 
-        let outcome = terminate(&target).await;
+        let fixture_error = if leader_pid == member_pid {
+            Some(format!(
+                "group leader and member unexpectedly share PID {leader_pid}"
+            ))
+        } else if leader_stat.pgid != leader_pid {
+            Some(format!(
+                "group leader PID {leader_pid} does not match its PGID {}",
+                leader_stat.pgid
+            ))
+        } else if leader_stat.pgid != member_stat.pgid {
+            Some(format!(
+                "group member PGID {} does not match leader PGID {}",
+                member_stat.pgid, leader_stat.pgid
+            ))
+        } else if !process::process_stat_is_live(&leader_stat) {
+            Some(format!(
+                "group leader {leader_pid} was not live before termination"
+            ))
+        } else if !process::process_stat_is_live(&member_stat) {
+            Some(format!(
+                "group member {member_pid} was not live before termination"
+            ))
+        } else {
+            None
+        };
+        let observations = if fixture_error.is_none() {
+            let outcome = terminate(&target).await;
+            let (leader_exit, member_exit) = tokio::join!(
+                wait_for_orphan_exit(&leader_identity),
+                wait_for_orphan_exit(&member_identity),
+            );
+            Some((outcome, leader_exit, member_exit))
+        } else {
+            None
+        };
+
+        let _ = leader.start_kill();
+        let _ = member.start_kill();
+        let (leader_status, member_status) = tokio::join!(leader.wait(), member.wait());
+
+        if let Some(error) = fixture_error {
+            panic!("invalid process-group fixture: {error}");
+        }
+        let (outcome, leader_exit, member_exit) = observations.unwrap();
         assert!(
             matches!(&outcome, Outcome::Killed(killed) if killed == &target),
             "unexpected orphan kill outcome: {outcome:?}"
         );
-
-        let status = child.wait().await.unwrap();
-        assert!(!status.success());
+        assert_eq!(leader_exit, Ok(()), "group leader remained live");
+        assert_eq!(member_exit, Ok(()), "group member remained live");
+        assert!(!leader_status.unwrap().success());
+        assert!(!member_status.unwrap().success());
     }
 
     #[test]
@@ -1048,26 +1184,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn orphan_kill_nonexistent_pid_reports_gone_when_cleanup_is_safe() {
-        // u32::MAX exceeds any valid PID — /proc/{pid}/stat won't exist
-        let target = KillTarget {
-            pid: u32::MAX,
-            ppid: None,
-            run_id: None,
-            sandbox_id: "sbox-missing".into(),
-            base_dir: Some(PathBuf::from("/data/r1")),
-            identity: Some(FirecrackerProcessIdentity {
-                pid: u32::MAX,
-                pgid: 1234,
-                starttime: 123456,
-                sandbox_id: "sbox-missing".into(),
-                base_dir: Some(PathBuf::from("/data/r1")),
-            }),
-        };
+    async fn orphan_kill_nonexistent_pid_reports_gone_with_complete_discovery() {
+        let target = missing_orphan_target();
 
-        assert!(matches!(
-            terminate(&target).await,
-            Outcome::AlreadyExited(_)
-        ));
+        let outcome = terminate_with_discovery(&target, || {
+            std::future::ready(process_discovery(vec![], true))
+        })
+        .await;
+
+        assert!(
+            matches!(
+                &outcome,
+                Outcome::AlreadyExited(exited) if exited == &target
+            ),
+            "unexpected orphan kill outcome: {outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn orphan_kill_nonexistent_pid_refuses_incomplete_discovery() {
+        let target = missing_orphan_target();
+
+        let outcome = terminate_with_discovery(&target, || {
+            std::future::ready(process_discovery(vec![], false))
+        })
+        .await;
+
+        assert!(
+            matches!(
+                &outcome,
+                Outcome::AlreadyExitedOrChanged(refused) if refused == &target
+            ),
+            "unexpected orphan kill outcome: {outcome:?}"
+        );
     }
 }

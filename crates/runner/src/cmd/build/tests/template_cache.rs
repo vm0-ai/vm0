@@ -101,6 +101,42 @@ async fn full_image_download_request_failure_falls_back_to_local_build() {
 }
 
 #[tokio::test]
+async fn full_image_body_read_failure_uses_deduplicated_fallback() {
+    use aws_sdk_s3::Client;
+    use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+    let dir = tempfile::tempdir().unwrap();
+    let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+    let rootfs = RootfsPaths::new(&home, "r2-body-read-fallback-rootfs");
+    let archive = template_archive_bytes(b"downloaded-template").await;
+    let get = template_get_body_error_rule(archive[..archive.len() / 2].to_vec());
+    let head = mock!(Client::head_object).then_output(|| HeadObjectOutput::builder().build());
+    let cache = mock_r2_cache(&[&get, &head]);
+    let input = template_input(&home, TemplateCache::BestEffort(&cache));
+    let (_scripts, work_dir) = fake_rootfs_scripts().await;
+    let attempt_dir = rootfs.dir().join("attempt.tmp");
+    let staging = rootfs.rootfs_staging();
+
+    materialize_template_from_r2_or_build(
+        &input,
+        &attempt_dir,
+        &work_dir,
+        TemplateMaterializationTarget::RootfsStaging(&staging),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(tokio::fs::read(&staging).await.unwrap(), b"built-template");
+    assert!(work_dir.join("build-template-called").exists());
+    assert_eq!(get.num_calls(), 1);
+    assert_eq!(
+        head.num_calls(),
+        1,
+        "request failure must use deduplicated upload instead of force-overwriting R2"
+    );
+}
+
+#[tokio::test]
 async fn full_image_upload_failure_is_nonfatal_after_cache_miss() {
     use aws_sdk_s3::Client;
 

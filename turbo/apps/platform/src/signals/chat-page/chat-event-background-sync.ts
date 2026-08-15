@@ -1,22 +1,37 @@
 import { command } from "ccstate";
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
+import { foregroundReady$ } from "../auth-retry.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
-  loadIndexedDbChatEventBounds$,
-  writeIndexedDbChatEvents$,
-} from "./chat-event-indexed-db.ts";
+  clearIndexedDbChatEventRows$,
+  loadIndexedDbChatEventCursor$,
+  writeIndexedDbChatEventRows$,
+} from "./chat-event-row-indexed-db.ts";
 import {
-  CHAT_EVENTS_PAGE_LIMIT,
-  listEventsAfter$,
-} from "./remote-chat-event-data-source.ts";
+  CHAT_EVENT_ROWS_PAGE_LIMIT,
+  fetchChatEventSnapshotRows$,
+  listRowsAfter$,
+} from "./remote-chat-event-row-data-source.ts";
+import { receiveActiveChatEvents$ } from "./chat-event-signal-registry.ts";
+import { allUnreadThreadIds$ } from "./chat-thread-indicators.ts";
 import {
-  activeChatEventThreadIds$,
-  receiveActiveChatEvents$,
-} from "./chat-event-signal-registry.ts";
+  currentLeftThread$,
+  currentRightThread$,
+} from "./chat-thread-pane-state.ts";
+import {
+  chatEventDebugSummaries,
+  chatEventTraceTime,
+} from "./chat-event-debug.ts";
+import { authenticatedIdentity$ } from "../auth.ts";
+import { queryChatEventSharedDatabase$ } from "../shared-database.ts";
 
 const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
+const BACKGROUND_UNREAD_THREAD_LIMIT = 10;
+const THREAD_START_SEQ_ID = 0;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -53,7 +68,55 @@ function createdMessageSyncThroughSeqId(message: unknown): number | null {
   return message.data.syncThroughSeqId;
 }
 
-const syncChatThreadEventsToIndexedDb$ = command(
+const coldStartChatThreadRows$ = command(
+  async (
+    { set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<{
+    readonly events: readonly ChatEvent[];
+    readonly cursor: {
+      readonly lastEventId: string | null;
+      readonly lastSeqId: number;
+    };
+  }> => {
+    const snapshot = await set(fetchChatEventSnapshotRows$, threadId, signal);
+    if (snapshot === null) {
+      return {
+        events: [],
+        cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },
+      };
+    }
+    await set(
+      writeIndexedDbChatEventRows$,
+      {
+        threadId,
+        rows: snapshot.rows,
+        cursor: {
+          lastEventId: snapshot.lastEventId,
+          lastSeqId: snapshot.lastSeqId,
+        },
+      },
+      signal,
+    );
+    return {
+      events: snapshot.rows.map((row) => {
+        return chatEventFromRow(row);
+      }),
+      cursor: {
+        lastEventId: snapshot.lastEventId,
+        lastSeqId: snapshot.lastSeqId,
+      },
+    };
+  },
+);
+
+/**
+ * Canonical-row background sync: cold-starts an empty raw-row cache from the
+ * archive, then tails it through the raw-row endpoint. An expired cursor
+ * rebuilds the cache in the same pass.
+ */
+const syncChatThreadRowsToIndexedDb$ = command(
   async (
     { set },
     {
@@ -65,15 +128,18 @@ const syncChatThreadEventsToIndexedDb$ = command(
     },
     signal: AbortSignal,
   ): Promise<ChatEvent[]> => {
-    const bounds = await set(loadIndexedDbChatEventBounds$, threadId, signal);
+    const cachedCursor = await set(
+      loadIndexedDbChatEventCursor$,
+      threadId,
+      signal,
+    );
     signal.throwIfAborted();
-
     if (
+      cachedCursor !== null &&
       syncThroughSeqId !== null &&
-      bounds.last !== null &&
-      bounds.last.seqId >= syncThroughSeqId
+      cachedCursor.lastSeqId >= syncThroughSeqId
     ) {
-      L.debug("skipped background sync: seq watermark already cached", {
+      L.debug("skipped background row sync: seq watermark already cached", {
         threadId,
         syncThroughSeqId,
       });
@@ -81,37 +147,54 @@ const syncChatThreadEventsToIndexedDb$ = command(
     }
 
     const syncedEvents: ChatEvent[] = [];
-    let sinceSeqId = bounds.last?.seqId;
-
-    async function syncEventsAfter(): Promise<void> {
-      const requestedSinceSeqId = sinceSeqId;
-      const events = await set(
-        listEventsAfter$,
-        { threadId, sinceSeqId: requestedSinceSeqId },
-        signal,
-      );
-      signal.throwIfAborted();
-
-      if (events.length === 0) {
-        return;
-      }
-
-      await set(writeIndexedDbChatEvents$, threadId, events, signal);
-      signal.throwIfAborted();
-      syncedEvents.push(...events);
-      sinceSeqId = events[events.length - 1]!.seqId;
-      if (
-        requestedSinceSeqId !== undefined &&
-        events.length < CHAT_EVENTS_PAGE_LIMIT
-      ) {
-        return;
-      }
-      await syncEventsAfter();
+    let cursorFromServer = false;
+    let cursor: ChatEventCursor;
+    if (cachedCursor === null) {
+      const coldStart = await set(coldStartChatThreadRows$, threadId, signal);
+      syncedEvents.push(...coldStart.events);
+      cursor = coldStart.cursor;
+      cursorFromServer = true;
+    } else {
+      cursor = cachedCursor;
     }
 
-    await syncEventsAfter();
-    signal.throwIfAborted();
-    L.debug("synced chat events to IndexedDB", { threadId });
+    let shouldLoadNextPage = true;
+    while (shouldLoadNextPage) {
+      const page = await set(listRowsAfter$, { threadId, cursor }, signal);
+      signal.throwIfAborted();
+      if (page.kind === "expired") {
+        if (cursorFromServer) {
+          throw new Error(
+            "chat event rows cursor expired right after a background cold start",
+          );
+        }
+        await set(clearIndexedDbChatEventRows$, threadId, signal);
+        const coldStart = await set(coldStartChatThreadRows$, threadId, signal);
+        syncedEvents.push(...coldStart.events);
+        cursor = coldStart.cursor;
+        cursorFromServer = true;
+        continue;
+      }
+      if (page.rows.length === 0) {
+        return syncedEvents;
+      }
+      const lastRow = page.rows.at(-1);
+      if (lastRow === undefined) {
+        return syncedEvents;
+      }
+      cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
+      await set(
+        writeIndexedDbChatEventRows$,
+        { threadId, rows: page.rows, cursor },
+        signal,
+      );
+      syncedEvents.push(
+        ...page.rows.map((row) => {
+          return chatEventFromRow(row);
+        }),
+      );
+      shouldLoadNextPage = page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
+    }
     return syncedEvents;
   },
 );
@@ -124,29 +207,57 @@ const handleUserChannelMessage$ = command(
     }
 
     const syncThroughSeqId = createdMessageSyncThroughSeqId(message);
+    L.debug("chat event notification received", {
+      traceTime: chatEventTraceTime(),
+      threadId,
+      syncThroughSeqId,
+    });
     const events = await set(
-      syncChatThreadEventsToIndexedDb$,
+      syncChatThreadRowsToIndexedDb$,
       { threadId, syncThroughSeqId },
       signal,
     );
     signal.throwIfAborted();
+    L.debug("chat event notification synced", {
+      traceTime: chatEventTraceTime(),
+      threadId,
+      syncThroughSeqId,
+      count: events.length,
+      events: chatEventDebugSummaries(events),
+    });
     await set(receiveActiveChatEvents$, threadId, events, signal);
     signal.throwIfAborted();
     return false;
   },
 );
 
-const catchUpVisibleChatThreadEvents$ = command(
+const catchUpOpenAndUnreadChatThreadEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const foregroundReady = get(foregroundReady$);
+    await foregroundReady.promise;
+    signal.throwIfAborted();
+
+    const allUnreadThreadIds = await get(allUnreadThreadIds$);
+    signal.throwIfAborted();
+    const openThreadIds = new Set<string>();
+    for (const thread of [get(currentLeftThread$), get(currentRightThread$)]) {
+      if (thread !== null) {
+        openThreadIds.add(thread.threadId);
+      }
+    }
+    const unreadThreadIds = Array.from(allUnreadThreadIds)
+      .filter((threadId) => {
+        return !openThreadIds.has(threadId);
+      })
+      .slice(0, BACKGROUND_UNREAD_THREAD_LIMIT);
+    const threadIds = [...openThreadIds, ...unreadThreadIds];
     await Promise.all(
-      get(activeChatEventThreadIds$).map(async (threadId) => {
-        const events = await set(
-          syncChatThreadEventsToIndexedDb$,
-          { threadId, syncThroughSeqId: null },
+      threadIds.map((threadId) => {
+        return set(
+          handleUserChannelMessage$,
+          { name: `${CHAT_THREAD_MESSAGE_CREATED_PREFIX}${threadId}` },
           signal,
         );
-        signal.throwIfAborted();
-        await set(receiveActiveChatEvents$, threadId, events, signal);
       }),
     );
     signal.throwIfAborted();
@@ -160,15 +271,69 @@ const subscribeChatEventBackgroundSync$ = command(
       setAblyMessageLoop$,
       {
         loopCommand$: handleUserChannelMessage$,
-        catchUpCommand$: catchUpVisibleChatThreadEvents$,
+        catchUpCommand$: catchUpOpenAndUnreadChatThreadEvents$,
       },
       signal,
     );
   },
 );
 
+const syncInitialUnreadChatThreadEvents$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const unreadThreadIds = await get(allUnreadThreadIds$);
+    signal.throwIfAborted();
+
+    const threadIds = Array.from(unreadThreadIds).slice(
+      0,
+      BACKGROUND_UNREAD_THREAD_LIMIT,
+    );
+    await Promise.all(
+      threadIds.map((threadId) => {
+        return set(
+          handleUserChannelMessage$,
+          { name: `${CHAT_THREAD_MESSAGE_CREATED_PREFIX}${threadId}` },
+          signal,
+        );
+      }),
+    );
+  },
+);
+
 export const setupChatEventBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
-    await set(subscribeChatEventBackgroundSync$, signal);
+    await Promise.all([
+      set(subscribeChatEventBackgroundSync$, signal),
+      set(syncInitialUnreadChatThreadEvents$, signal),
+    ]);
+  },
+);
+
+export const prewarmSharedUnreadChatEvents$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const [{ userId, orgId }, unreadThreadIds] = await Promise.all([
+      get(authenticatedIdentity$),
+      get(allUnreadThreadIds$),
+    ]);
+    signal.throwIfAborted();
+    await Promise.all(
+      Array.from(unreadThreadIds)
+        .slice(0, BACKGROUND_UNREAD_THREAD_LIMIT)
+        .map((threadId) => {
+          return set(
+            queryChatEventSharedDatabase$,
+            {
+              dataKey: {
+                kind: "chat-event",
+                userId,
+                orgId,
+                threadId,
+              },
+              afterSeqId: null,
+              consistency: "catch-up",
+            },
+            signal,
+          );
+        }),
+    );
   },
 );

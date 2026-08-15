@@ -72,6 +72,20 @@ class TestMatchBaseUrl:
         assert rel_path == "/projects/123"
         assert params == {"org": "acme"}
 
+    def test_mixed_parameterized_path(self):
+        result = matching.match_base_url(
+            "https://github.com/octocat/hello.git/info/refs",
+            "https://github.com/{owner}/{repo}.git",
+        )
+        assert result == ("/info/refs", {"owner": "octocat", "repo": "hello"})
+
+    def test_mixed_parameterized_host(self):
+        result = matching.match_base_url(
+            "https://API-US.example.com/data",
+            "https://api-{region}.example.com",
+        )
+        assert result == ("/data", {"region": "us"})
+
     def test_parameterized_path_treats_encoded_slash_as_segment_content(self):
         result = matching.match_base_url(
             "https://api.example.com/v1/acme%2Fteam/projects/123",

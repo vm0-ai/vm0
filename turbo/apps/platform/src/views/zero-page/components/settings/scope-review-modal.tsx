@@ -1,17 +1,16 @@
 import { useLastResolved, useLoadable } from "ccstate-react";
+import { Button } from "@okouai/ui";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/ui/components/ui/dialog";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import {
-  allConnectorCatalogItems$,
-  scopeDiff$,
-} from "../../../../signals/zero-page/settings/connectors.ts";
+import { scopeDiff$ } from "../../../../signals/zero-page/settings/connectors.ts";
+import { connectorCatalogStatus$ } from "../../../../signals/external/connectors.ts";
 
 interface ScopeReviewModalProps {
   connectorSlug: ConnectorSlug | null;
@@ -92,26 +91,22 @@ function ScopeDiffContent({
       )}
 
       <div className="flex gap-2 pt-2">
-        <button
+        <Button
           type="button"
           onClick={() => {
             return onReconnect(connectorSlug);
           }}
-          className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="flex-1"
         >
           {t(($) => {
             return $.connectors.actions.reconnect;
           })}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
-        >
+        </Button>
+        <Button type="button" variant="outline" onClick={onClose}>
           {t(($) => {
             return $.connectors.actions.close;
           })}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -124,7 +119,7 @@ export function ScopeReviewModal({
 }: ScopeReviewModalProps) {
   const { t } = useTranslation();
   const scopeDiffLoadable = useLoadable(scopeDiff$);
-  const connectorCatalogItems = useLastResolved(allConnectorCatalogItems$);
+  const connectorCatalog = useLastResolved(connectorCatalogStatus$);
   const loading = scopeDiffLoadable.state === "loading";
   const scopeDiff =
     scopeDiffLoadable.state === "hasData" ? scopeDiffLoadable.data : null;
@@ -133,7 +128,7 @@ export function ScopeReviewModal({
     return null;
   }
 
-  const connector = connectorCatalogItems?.find((candidate) => {
+  const connector = connectorCatalog?.connectors.find((candidate) => {
     return candidate.slug === connectorSlug;
   });
   const connectorLabel = connector?.label ?? connectorSlug;

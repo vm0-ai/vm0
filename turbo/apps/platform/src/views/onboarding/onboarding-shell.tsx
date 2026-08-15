@@ -1,14 +1,15 @@
 import type { ReactNode } from "react";
+import { Button } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
-import { IconLoader2 } from "@tabler/icons-react";
+import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import { AccountDropdown } from "../zero-page/zero-sidebar.tsx";
+} from "@okouai/ui/components/ui/dialog";
+import { AccountDropdown } from "../zero-page/zero-sidebar-account";
 import {
   ZeroOrgSwitcher,
   ZeroOrgSwitcherCompact,
@@ -19,6 +20,15 @@ import {
   closeSettingsModal$,
   settingsDialogOpen$,
 } from "../../signals/zero-page/settings/settings-dialog.ts";
+
+/**
+ * Onboarding uses a softer, larger surface than the rest of the app: a wider
+ * radius, the plain border token, and a looser focus ring. Every onboarding
+ * `Textarea` opts into it through this one constant so the deviation from the
+ * shared field style stays a single deliberate decision.
+ */
+export const ONBOARDING_TEXTAREA_CLASS =
+  "rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/15";
 
 function OnboardingAccount({ collapsed }: { readonly collapsed: boolean }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
@@ -97,18 +107,20 @@ export function OnboardingFooter({
       ) : (
         <span />
       )}
-      <button
+      <Button
         type="button"
         onClick={onPrimary}
         disabled={primaryDisabled || busy}
         aria-busy={busy}
-        className="inline-flex h-10 min-w-[100px] items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-white hover:bg-[hsl(var(--primary-800))] disabled:cursor-not-allowed disabled:bg-[hsl(var(--primary-500))]"
+        variant="default"
+        size="lg"
+        className="min-w-[100px] gap-2 disabled:bg-[hsl(var(--primary-500))]"
       >
         {busy ? (
-          <IconLoader2 size={16} className="animate-spin" aria-hidden="true" />
+          <Loader2 size={16} className="animate-spin" aria-hidden="true" />
         ) : null}
         {primaryLabel}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -137,10 +149,7 @@ export function OnboardingDialog({
         }
       }}
     >
-      <DialogContent
-        overlayClassName="bg-black/45 backdrop-blur-sm dark:bg-black/45"
-        className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-4xl flex-col gap-0 overflow-hidden rounded-lg border-border bg-background p-5 sm:p-6"
-      >
+      <DialogContent className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-4xl flex-col gap-0 overflow-hidden rounded-lg border-border bg-background p-5 sm:p-6">
         <header className="shrink-0 pr-9">
           <div className="min-w-0">
             <DialogTitle className="text-lg font-semibold leading-6">

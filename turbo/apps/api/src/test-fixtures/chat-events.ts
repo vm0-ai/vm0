@@ -1,47 +1,60 @@
 import { randomUUID } from "node:crypto";
 
-import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
+import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
+import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
 import type {
   ChatSlackMentionDisplayNames,
+  ChatSlackMessageAssets,
   ChatSlackMessageFiles,
-} from "@vm0/db/jsonb-contracts/chat-slack-context";
-import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
-import type { JsonObject } from "@vm0/db/jsonb-contracts/shared";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
-import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
-import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
-import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
-import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
-import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
-import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
+} from "@okouai/db/jsonb-contracts/chat-slack-context";
+import type { ChatTeamsMessageFiles } from "@okouai/db/jsonb-contracts/chat-teams-context";
+import type { JsonObject } from "@okouai/db/jsonb-contracts/shared";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
+import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
+import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
+import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
+import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
+import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
+import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
+import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { and, count, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
+import type { Tx } from "../lib/db-types";
 import { nowDate } from "../lib/time";
 import {
   insertChatEvent,
+  insertChatEvents,
   replaceChatEvent,
-} from "../signals/services/zero-chat-event.service";
+} from "../signals/services/chat-event.service";
+import { canonicalChatEventUserMessage } from "../signals/services/canonical-chat-event-read.service";
+import {
+  chatInputPromptDispatchCondition,
+  runOwnedChatEventForRunCondition,
+} from "../signals/services/chat-event-type.service";
+import {
+  acquireVm0ManagedModelKeyFixture,
+  releaseVm0ManagedModelKeyFixture,
+} from "../signals/services/test-vm0-managed-model-key-fixture.service";
+import { visibleChatEventCondition } from "../signals/services/zero-chat-event-shared.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
-import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
+import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
- * BDD-scoped vm0 managed key prefixes. Fixture writes below only ever touch
- * rows whose api_key carries one of these prefixes, so concurrent test files
- * cannot clobber real seed data or each other's non-bdd rows.
+ * BDD-scoped vm0 managed key prefixes. Fixture acquisition below only accepts
+ * keys carrying one of these prefixes.
  */
 const VM0_BDD_API_KEY_PREFIXES = [
   "vm0-key-bdd-fake-",
@@ -62,13 +75,15 @@ interface ChatEventContextFixture {
   readonly automationId: string | null;
   readonly triggerBrief: string | null;
   readonly workflowName: string | null;
-  readonly workflowEventType: string | null;
-  readonly workflowEventPayload: JsonObject | null;
+  readonly automationEventType: string | null;
+  readonly automationEventPayload: JsonObject | null;
   readonly slackChannelId: string | null;
   readonly slackMessageTs: string | null;
+  readonly slackBotUserId: string | null;
   readonly slackConversationContext: string | null;
   readonly slackMessageText: string | null;
   readonly slackMessageFiles: ChatSlackMessageFiles | null;
+  readonly slackMessageAssets: ChatSlackMessageAssets | null;
   readonly slackMentionDisplayNames: ChatSlackMentionDisplayNames | null;
   readonly slackSenderDisplayName: string | null;
   readonly slackSenderUserId: string | null;
@@ -101,8 +116,6 @@ interface ChatEventContextFixture {
   readonly teamsThreadId: string | null;
   readonly teamsServiceUrl: string | null;
   readonly teamsAppId: string | null;
-  readonly teamsBotId: string | null;
-  readonly teamsBotName: string | null;
   readonly teamsSenderUserId: string | null;
   readonly teamsSenderDisplayName: string | null;
   readonly teamsSenderPrincipalName: string | null;
@@ -122,7 +135,6 @@ interface ChatEventContextFixture {
   readonly agentphoneAgentId: string | null;
   readonly telegramChatId: string | null;
   readonly telegramMessageId: string | null;
-  readonly telegramIsDm: boolean | null;
   readonly telegramMessageThreadId: number | null;
   readonly telegramMessageText: string | null;
   readonly telegramThreadContext: string | null;
@@ -146,7 +158,6 @@ interface ChatEventContextFixture {
   readonly morningBriefDeliveryId: string | null;
   readonly morningBriefTimezone: string | null;
   readonly morningBriefTriggeredAt: Date | null;
-  readonly goalObjectiveBrief: string | null;
 }
 
 export async function readChatEventContextFixture(
@@ -162,13 +173,15 @@ export async function readChatEventContextFixture(
       automationId: chatAutomationContext.automationId,
       triggerBrief: chatAutomationContext.triggerBrief,
       workflowName: chatAutomationContext.workflowName,
-      workflowEventType: chatAutomationContext.eventType,
-      workflowEventPayload: chatAutomationContext.eventPayload,
+      automationEventType: chatAutomationContext.eventType,
+      automationEventPayload: chatAutomationContext.eventPayload,
       slackChannelId: chatSlackContext.channelId,
       slackMessageTs: chatSlackContext.messageTs,
+      slackBotUserId: chatSlackContext.botUserId,
       slackConversationContext: chatSlackContext.conversationContext,
       slackMessageText: chatSlackContext.messageText,
       slackMessageFiles: chatSlackContext.messageFiles,
+      slackMessageAssets: chatSlackContext.messageAssets,
       slackMentionDisplayNames: chatSlackContext.mentionDisplayNames,
       slackSenderDisplayName: chatSlackContext.senderDisplayName,
       slackSenderUserId: chatSlackContext.senderUserId,
@@ -201,8 +214,6 @@ export async function readChatEventContextFixture(
       teamsThreadId: chatTeamsContext.threadId,
       teamsServiceUrl: chatTeamsContext.serviceUrl,
       teamsAppId: chatTeamsContext.teamsAppId,
-      teamsBotId: chatTeamsContext.botId,
-      teamsBotName: chatTeamsContext.botName,
       teamsSenderUserId: chatTeamsContext.senderUserId,
       teamsSenderDisplayName: chatTeamsContext.senderDisplayName,
       teamsSenderPrincipalName: chatTeamsContext.senderPrincipalName,
@@ -222,7 +233,6 @@ export async function readChatEventContextFixture(
       agentphoneAgentId: chatAgentphoneContext.agentphoneAgentId,
       telegramChatId: chatTelegramContext.chatId,
       telegramMessageId: chatTelegramContext.messageId,
-      telegramIsDm: chatTelegramContext.isDm,
       telegramMessageThreadId: chatTelegramContext.messageThreadId,
       telegramMessageText: chatTelegramContext.messageText,
       telegramThreadContext: chatTelegramContext.threadContext,
@@ -246,7 +256,6 @@ export async function readChatEventContextFixture(
       morningBriefDeliveryId: chatMorningBriefContext.deliveryId,
       morningBriefTimezone: chatMorningBriefContext.timezone,
       morningBriefTriggeredAt: chatMorningBriefContext.triggeredAt,
-      goalObjectiveBrief: chatGoalContext.objectiveBrief,
     })
     .from(chatEvents)
     .leftJoin(chatAutomationContext, eq(chatAutomationContext.id, contextId))
@@ -260,7 +269,6 @@ export async function readChatEventContextFixture(
       chatMorningBriefContext,
       eq(chatMorningBriefContext.id, contextId),
     )
-    .leftJoin(chatGoalContext, eq(chatGoalContext.id, contextId))
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;
@@ -269,15 +277,16 @@ export async function readChatEventContextFixture(
 const annotationProjectionInputs = [
   {
     text: "slack linked",
-    triggerSource: "slack",
     messagePermalink: "https://vm0.slack.com/archives/C123/p1753257600000100",
     context: {
       slackContext: {
         channelId: "C123",
         messageTs: "1753257600.000100",
+        botUserId: "U_BOT123",
         conversationContext: "",
         messageText: "slack linked",
         messageFiles: [],
+        messageAssets: [],
         mentionDisplayNames: {},
         senderDisplayName: "Slack User",
         senderUserId: "U123",
@@ -289,7 +298,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "feishu linked",
-    triggerSource: "feishu",
     context: {
       feishuContext: {
         conversationHistory: "",
@@ -309,7 +317,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "teams channel linked",
-    triggerSource: "teams",
     context: {
       teamsContext: {
         tenantId: "tenant-1",
@@ -326,8 +333,6 @@ const annotationProjectionInputs = [
         threadId: "activity-1",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-1",
-        botId: "28:bot-1",
-        botName: "Okou",
         senderUserId: "29:user-1",
         senderDisplayName: "Ada Lovelace",
         senderPrincipalName: "ada@example.com",
@@ -337,7 +342,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "teams personal unlinked",
-    triggerSource: "teams",
     context: {
       teamsContext: {
         tenantId: "tenant-1",
@@ -354,8 +358,6 @@ const annotationProjectionInputs = [
         threadId: "direct-message:agent-1:default",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-1",
-        botId: null,
-        botName: null,
         senderUserId: "29:user-1",
         senderDisplayName: null,
         senderPrincipalName: null,
@@ -365,12 +367,10 @@ const annotationProjectionInputs = [
   },
   {
     text: "telegram supergroup linked",
-    triggerSource: "telegram",
     context: {
       telegramContext: {
         chatId: "-1001234567890",
         messageId: "42",
-        isDm: false,
         messageThreadId: 7,
         messageText: "telegram supergroup linked",
         threadContext: "",
@@ -388,12 +388,10 @@ const annotationProjectionInputs = [
   },
   {
     text: "telegram dm unlinked",
-    triggerSource: "telegram",
     context: {
       telegramContext: {
         chatId: "123456789",
         messageId: "43",
-        isDm: true,
         messageThreadId: null,
         messageText: "telegram dm unlinked",
         threadContext: "",
@@ -411,12 +409,10 @@ const annotationProjectionInputs = [
   },
   {
     text: "telegram group unlinked",
-    triggerSource: "telegram",
     context: {
       telegramContext: {
         chatId: "-123456789",
         messageId: "44",
-        isDm: false,
         messageThreadId: null,
         messageText: "telegram group unlinked",
         threadContext: "",
@@ -434,7 +430,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "github issue comment linked",
-    triggerSource: "github",
     context: {
       githubContext: {
         repo: "vm0-ai/vm0",
@@ -450,7 +445,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "github pull request linked",
-    triggerSource: "github",
     context: {
       githubContext: {
         repo: "vm0-ai/vm0",
@@ -494,7 +488,7 @@ function annotationProjectionSourcePart(
       kind: "telegram",
       chatId: input.context.telegramContext.chatId,
       messageId: input.context.telegramContext.messageId,
-      isDm: input.context.telegramContext.isDm,
+      isDm: input.context.telegramContext.chatType === "private",
     });
   }
   return createChatEventSourcePart({
@@ -524,7 +518,6 @@ export async function seedChatEventAnnotationProjectionFixture(
           nonContentPart: annotationProjectionSourcePart(input),
         }),
         runId: null,
-        triggerSource: input.triggerSource,
         ...input.context,
       });
     }
@@ -544,7 +537,6 @@ export async function seedChatEventAnnotationProjectionFixture(
         }),
       }),
       runId: null,
-      triggerSource: "github",
       githubContext: {
         repo: "vm0-ai/vm0",
         subjectNumber: 24_218,
@@ -570,7 +562,6 @@ export async function seedChatEventAnnotationProjectionFixture(
         }),
       }),
       runId: randomUUID(),
-      triggerSource: "github",
     });
 
     await insertChatEvent(tx, {
@@ -587,7 +578,6 @@ export async function seedChatEventAnnotationProjectionFixture(
         }),
       }),
       runId: null,
-      triggerSource: "teams",
       teamsContext: {
         tenantId: "tenant-2",
         teamId: "team-2",
@@ -623,7 +613,6 @@ export async function seedChatEventAnnotationProjectionFixture(
       }),
       runId: null,
       error: "rejected for annotation coverage",
-      triggerSource: "teams",
     });
   });
   return { claimedPendingId, rejectedPendingId };
@@ -646,7 +635,6 @@ async function pendingTelegramEventContext(eventId: string) {
       and(
         eq(chatEvents.id, eventId),
         eq(chatEvents.contextType, "telegram"),
-        eq(chatEvents.triggerSource, "telegram"),
         isNull(chatEvents.runId),
       ),
     )
@@ -668,23 +656,6 @@ export async function setTelegramThinkingMessageIdFixture(
     .where(eq(chatTelegramContext.id, event.contextId));
 }
 
-export async function clearGitHubTriggerCommentBodyFixture(
-  eventId: string,
-): Promise<void> {
-  const [event] = await db()
-    .select({ contextId: chatEvents.contextId })
-    .from(chatEvents)
-    .where(eq(chatEvents.id, eventId))
-    .limit(1);
-  if (!event?.contextId) {
-    throw new Error("Expected pending GitHub event context");
-  }
-  await db()
-    .update(chatGithubContext)
-    .set({ triggerCommentBody: null })
-    .where(eq(chatGithubContext.id, event.contextId));
-}
-
 interface AgentphoneChatEventByPromptFixture {
   readonly eventId: string;
 }
@@ -693,68 +664,69 @@ interface TelegramChatEventByPromptFixture {
   readonly eventId: string;
 }
 
-export async function findTelegramChatEventByPromptFixture(
-  prompt: string,
-): Promise<TelegramChatEventByPromptFixture | null> {
+/**
+ * Chat events live in a database shared by every parallel test worker, so a
+ * prompt lookup must be scoped to the caller's own user. Matching on prompt
+ * text alone reads whichever worker's row happens to be there.
+ */
+async function findOwnedChatEventByPrompt(args: {
+  readonly userId: string;
+  readonly prompt: string;
+  readonly filter: SQL | undefined;
+}): Promise<{ readonly eventId: string } | null> {
   const rows = await db()
     .select({
       eventId: chatEvents.id,
-      userMessage: chatEvents.userMessage,
+      userMessage: canonicalChatEventUserMessage(),
     })
     .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.eventType, "input.prompt"),
-        eq(chatEvents.triggerSource, "telegram"),
-      ),
-    );
+    .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+    .where(and(eq(chatThreads.userId, args.userId), args.filter));
   const row = rows.find((candidate) => {
     return candidate.userMessage?.parts.some((part) => {
-      return part.type === "text" && part.text === prompt;
+      return part.type === "text" && part.text === args.prompt;
     });
   });
   return row ?? null;
 }
 
-export async function findAgentphoneChatEventByPromptFixture(
-  prompt: string,
-): Promise<AgentphoneChatEventByPromptFixture | null> {
-  const rows = await db()
-    .select({
-      eventId: chatEvents.id,
-      userMessage: chatEvents.userMessage,
-    })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.eventType, "input.prompt"),
-        eq(chatEvents.triggerSource, "agentphone"),
-      ),
-    );
-  const row = rows.find((candidate) => {
-    return candidate.userMessage?.parts.some((part) => {
-      return part.type === "text" && part.text === prompt;
-    });
+export async function findTelegramChatEventByPromptFixture(args: {
+  readonly userId: string;
+  readonly prompt: string;
+}): Promise<TelegramChatEventByPromptFixture | null> {
+  return await findOwnedChatEventByPrompt({
+    userId: args.userId,
+    prompt: args.prompt,
+    filter: and(
+      eq(chatEvents.eventType, "input.prompt"),
+      eq(chatEvents.contextType, "telegram"),
+    ),
   });
-  return row ?? null;
 }
 
-export async function findPendingChatEventByPromptFixture(
-  prompt: string,
-): Promise<{ readonly eventId: string } | null> {
-  const rows = await db()
-    .select({
-      eventId: chatEvents.id,
-      userMessage: chatEvents.userMessage,
-    })
-    .from(chatEvents)
-    .where(isNull(chatEvents.runId));
-  const row = rows.find((candidate) => {
-    return candidate.userMessage?.parts.some((part) => {
-      return part.type === "text" && part.text === prompt;
-    });
+export async function findAgentphoneChatEventByPromptFixture(args: {
+  readonly userId: string;
+  readonly prompt: string;
+}): Promise<AgentphoneChatEventByPromptFixture | null> {
+  return await findOwnedChatEventByPrompt({
+    userId: args.userId,
+    prompt: args.prompt,
+    filter: and(
+      eq(chatEvents.eventType, "input.prompt"),
+      eq(chatEvents.contextType, "agentphone"),
+    ),
   });
-  return row ?? null;
+}
+
+export async function findPendingChatEventByPromptFixture(args: {
+  readonly userId: string;
+  readonly prompt: string;
+}): Promise<{ readonly eventId: string } | null> {
+  return await findOwnedChatEventByPrompt({
+    userId: args.userId,
+    prompt: args.prompt,
+    filter: isNull(chatEvents.runId),
+  });
 }
 
 /** Inserts a pending Slack event, then removes the context its claim requires. */
@@ -768,13 +740,14 @@ export async function insertQueuedSlackMissingContextFixture(args: {
       eventType: "input.prompt",
       userMessage: createUserMessageDocument({ text: args.content }),
       runId: null,
-      triggerSource: "slack",
       slackContext: {
         channelId: "C_MONITOR_FAILURE",
         messageTs: "1.000001",
+        botUserId: "U_MONITOR_FAILURE_BOT",
         conversationContext: "",
         messageText: args.content,
         messageFiles: [],
+        messageAssets: [],
         mentionDisplayNames: {},
         senderDisplayName: "Queue Monitor Fixture",
         senderUserId: "U_MONITOR_FAILURE",
@@ -799,10 +772,7 @@ export async function replayPendingChatInputQueueEventFixture(args: {
     const [event] = await tx
       .select({
         chatThreadId: chatEvents.chatThreadId,
-        userMessage: chatEvents.userMessage,
-        attachFiles: chatEvents.attachFiles,
-        generationTemplate: chatEvents.generationTemplate,
-        triggerSource: chatEvents.triggerSource,
+        userMessage: canonicalChatEventUserMessage(),
       })
       .from(chatEvents)
       .where(
@@ -822,9 +792,6 @@ export async function replayPendingChatInputQueueEventFixture(args: {
       eventType: "input.prompt",
       userMessage: event.userMessage,
       runId: null,
-      attachFiles: event.attachFiles ? [...event.attachFiles] : null,
-      generationTemplate: event.generationTemplate,
-      ...(event.triggerSource ? { triggerSource: event.triggerSource } : {}),
     });
     if (!replacement) {
       throw new Error("Expected the pending queue event replay to insert");
@@ -833,7 +800,7 @@ export async function replayPendingChatInputQueueEventFixture(args: {
 }
 
 /**
- * Move one exact workflow event into historical state without waiting for real
+ * Move one exact automation event into historical state without waiting for real
  * time to pass. A string preserves PostgreSQL precision beyond JavaScript
  * milliseconds. Product APIs cannot construct an already-stale queue item.
  */
@@ -909,6 +876,28 @@ export async function completeRunWithoutCallbacksFixture(args: {
 }
 
 /**
+ * Mark one claimed run timed out without completing its terminal side effects.
+ * This isolates the interval where cleanup has recorded uncertainty but the
+ * Runner has not yet reported process exit and teardown through `/complete`.
+ */
+export async function timeoutRunWithoutCallbacksFixture(args: {
+  readonly runId: string;
+}): Promise<void> {
+  const updated = await db()
+    .update(agentRuns)
+    .set({
+      status: "timeout",
+      completedAt: nowDate(),
+      error: "Run timed out (no heartbeat)",
+    })
+    .where(and(eq(agentRuns.id, args.runId), eq(agentRuns.status, "running")))
+    .returning({ id: agentRuns.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one running run to time out without callbacks");
+  }
+}
+
+/**
  * Holds checkpoint reads after `/complete` has loaded its run but before its
  * terminal compare-and-set. Product APIs cannot pause at this race boundary.
  */
@@ -953,6 +942,184 @@ export async function holdCheckpointReadsFixture(args: {
 }
 
 /**
+ * Holds chat-event reads so a route test can order one physical deletion
+ * between two database statements. Product APIs cannot pause at this boundary.
+ */
+export async function holdChatEventReadsFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat-event read lock holder pid");
+    }
+    await tx.execute(sql`LOCK TABLE ${chatEvents} IN ACCESS EXCLUSIVE MODE`);
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
+ * Queues one physical event deletion behind a held table read boundary. Once
+ * admitted, the exclusive lock makes the deletion run before later readers.
+ */
+export async function queueChatEventPhysicalDeletionFixture(args: {
+  readonly eventId: string;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly done: Promise<void> }> {
+  const started = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    started.resolve(undefined);
+    await tx.execute(sql`LOCK TABLE ${chatEvents} IN ACCESS EXCLUSIVE MODE`);
+    const deleted = await tx
+      .delete(chatEvents)
+      .where(eq(chatEvents.id, args.eventId))
+      .returning({ id: chatEvents.id });
+    if (deleted.length !== 1) {
+      throw new Error("Expected one chat event to be physically deleted");
+    }
+  });
+  await started.promise;
+  return { done };
+}
+
+/**
+ * Holds model-policy reads so a route test can pause after a queued goal
+ * captured its target but before model resolution returns. Product APIs cannot
+ * pause at this query boundary, and the fixture does not mutate policy rows.
+ */
+export async function holdModelPolicyReadsFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the model-policy lock holder pid");
+    }
+    await tx.execute(
+      sql`LOCK TABLE ${orgModelPolicies} IN ACCESS EXCLUSIVE MODE`,
+    );
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
+ * Holds the production per-thread goal lifecycle lock so a route test can
+ * order one user lifecycle change ahead of a concurrent queue settlement.
+ * The lock key is scoped to the test's unique thread id, so unrelated API
+ * tests cannot satisfy the waiter barrier.
+ */
+export async function holdGoalThreadLockFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly waiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(hashtext('goal:' || ${args.threadId}))
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the goal thread lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    waiterCount: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT ${count()}::int AS "waiterCount"
+          FROM pg_locks AS waiting
+          WHERE waiting.locktype = 'advisory'
+            AND NOT waiting.granted
+            AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
+              SELECT held.classid, held.objid, held.objsubid
+              FROM pg_locks AS held
+              WHERE held.locktype = 'advisory'
+                AND held.pid = ${holderPid}
+                AND held.granted
+            )
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
  * Reproduces a crash after the canonical chat callback was acknowledged but
  * before its detached terminal processing became durable. Product APIs cannot
  * delete append-only events, so this fixture removes only the exact cancelled
@@ -990,6 +1157,26 @@ export async function removeAcknowledgedCancellationLifecycleFixture(args: {
       throw new Error("Expected one cancelled lifecycle event");
     }
   });
+}
+
+/** Make the canonical chat callback fail validation before terminal processing. */
+export async function invalidateChatCallbackPayloadFixture(
+  runId: string,
+): Promise<void> {
+  const callbacks = await db()
+    .update(agentRunCallbacks)
+    .set({ payload: {} })
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+        eq(agentRunCallbacks.status, "pending"),
+      ),
+    )
+    .returning({ id: agentRunCallbacks.id });
+  if (callbacks.length !== 1) {
+    throw new Error("Expected one pending canonical chat callback");
+  }
 }
 
 async function transitiveBlockedWaiterCount(
@@ -1073,6 +1260,7 @@ export async function holdChatThreadRowLockFixture(args: {
 }): Promise<{
   readonly release: () => void;
   readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
   readonly firstBlockedStatementKind: () => Promise<ChatThreadBlockedStatementKind | null>;
 }> {
   const started = createDeferredPromise<number>(args.signal);
@@ -1110,6 +1298,9 @@ export async function holdChatThreadRowLockFixture(args: {
       }
     },
     done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
+    },
     firstBlockedStatementKind: async () => {
       return await firstDirectBlockedStatementKind(holderPid);
     },
@@ -1127,98 +1318,51 @@ async function pidIsBlocked(waiterPid: number): Promise<boolean> {
   return rows[0]?.blocked ?? false;
 }
 
-function bddVm0ApiKeyFilter(vendor: string, model: string) {
-  const [fakePrefix, devSeedPrefix] = VM0_BDD_API_KEY_PREFIXES;
-  return and(
-    eq(vm0ApiKeys.vendor, vendor),
-    eq(vm0ApiKeys.model, model),
-    or(
-      like(vm0ApiKeys.apiKey, `${fakePrefix}%`),
-      like(vm0ApiKeys.apiKey, `${devSeedPrefix}%`),
-    ),
-  );
-}
-
 /**
- * Replaces the bdd-scoped rows of the platform-managed vm0 API key pool for
- * one vendor/model.
+ * Acquires bdd-scoped ownership of the platform-managed vm0 API key pool for
+ * one vendor.
  *
  * Why product APIs cannot construct this state: vm0_api_keys is a
  * platform-operations table with no product write surface — keys are
  * provisioned out of band. Keys passed here must carry a
- * VM0_BDD_API_KEY_PREFIXES prefix so only bdd rows are touched.
+ * VM0_BDD_API_KEY_PREFIXES prefix. The shared fixture service atomically
+ * arbitrates the vendor-unique row and prevents one test owner from deleting
+ * another owner's key.
  */
-export async function replaceBddVm0ApiKeys(args: {
+export async function acquireBddVm0ApiKey(args: {
+  readonly fixtureId: string;
   readonly vendor: string;
-  readonly model: string;
-  readonly keys: readonly { readonly apiKey: string; readonly label: string }[];
-}): Promise<void> {
-  for (const key of args.keys) {
-    const scoped = VM0_BDD_API_KEY_PREFIXES.some((prefix) => {
-      return key.apiKey.length > prefix.length && key.apiKey.startsWith(prefix);
-    });
-    if (!scoped) {
-      throw new Error(
-        `replaceBddVm0ApiKeys: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
-      );
-    }
-  }
-  await db().transaction(async (tx) => {
-    await tx
-      .delete(vm0ApiKeys)
-      .where(bddVm0ApiKeyFilter(args.vendor, args.model));
-    if (args.keys.length > 0) {
-      await tx.insert(vm0ApiKeys).values(
-        args.keys.map((key) => {
-          return {
-            vendor: args.vendor,
-            model: args.model,
-            apiKey: key.apiKey,
-            label: key.label,
-          };
-        }),
-      );
-    }
-  });
-}
-
-/**
- * Deletes the bdd-scoped rows of the platform-managed vm0 API key pool for
- * one vendor/model. See replaceBddVm0ApiKeys for why no product API exists.
- */
-export async function deleteBddVm0ApiKeys(args: {
-  readonly vendor: string;
-  readonly model: string;
-}): Promise<void> {
-  await db()
-    .delete(vm0ApiKeys)
-    .where(bddVm0ApiKeyFilter(args.vendor, args.model));
-}
-
-/**
- * Checks the operator-managed label for a key returned through a public test
- * entry point. The key pool has no product read surface, and local dev seeds
- * may contain additional valid keys for the same vendor and model.
- */
-export async function hasVm0ApiKeyLabel(args: {
-  readonly vendor: string;
-  readonly model: string;
   readonly apiKey: string;
-  readonly label: string;
-}): Promise<boolean> {
-  const rows = await db()
-    .select({ id: vm0ApiKeys.id })
-    .from(vm0ApiKeys)
-    .where(
-      and(
-        eq(vm0ApiKeys.vendor, args.vendor),
-        eq(vm0ApiKeys.model, args.model),
-        eq(vm0ApiKeys.apiKey, args.apiKey),
-        eq(vm0ApiKeys.label, args.label),
-      ),
-    )
-    .limit(1);
-  return rows.length === 1;
+}): Promise<string> {
+  const scoped = VM0_BDD_API_KEY_PREFIXES.some((prefix) => {
+    return args.apiKey.length > prefix.length && args.apiKey.startsWith(prefix);
+  });
+  if (!scoped) {
+    throw new Error(
+      `acquireBddVm0ApiKey: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
+    );
+  }
+  const [acquired] = await acquireVm0ManagedModelKeyFixture(
+    db(),
+    args.fixtureId,
+    [
+      {
+        vendor: args.vendor,
+        apiKey: args.apiKey,
+      },
+    ],
+  );
+  if (!acquired) {
+    throw new Error(`Expected VM0 managed key for vendor: ${args.vendor}`);
+  }
+  return acquired.apiKey;
+}
+
+/** Releases only this bdd fixture's ownership of its vendor key. */
+export async function releaseBddVm0ApiKey(args: {
+  readonly fixtureId: string;
+}): Promise<void> {
+  await releaseVm0ManagedModelKeyFixture(db(), args.fixtureId);
 }
 
 /**
@@ -1765,66 +1909,6 @@ export async function holdChatEventQueueItemFixture(args: {
 }
 
 /**
- * Holds one existing ChatEvent row so thread deletion can pause after it
- * owns the parent thread lock. This timing-only boundary does not create or
- * mutate product data and cannot block messages outside the selected thread.
- */
-export async function holdChatEventFixture(args: {
-  readonly threadId: string;
-  readonly eventId: string;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly release: () => void;
-  readonly done: Promise<void>;
-  readonly blockedWaiterCount: () => Promise<number>;
-}> {
-  const started = createDeferredPromise<number>(args.signal);
-  const released = createDeferredPromise<void>(args.signal);
-  const done = db().transaction(async (tx) => {
-    const rows = await tx
-      .select({ id: chatEvents.id })
-      .from(chatEvents)
-      .where(
-        and(
-          eq(chatEvents.id, args.eventId),
-          eq(chatEvents.chatThreadId, args.threadId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!rows[0]) {
-      throw new Error("Expected the chat message row");
-    }
-    const pidRows = await executeRawRows(
-      tx,
-      sql`
-        SELECT pg_backend_pid() AS "pid"
-      `,
-      databasePidRowSchema,
-    );
-    const holderPid = pidRows[0]?.pid;
-    if (!holderPid) {
-      throw new Error("Expected the chat-message lock holder pid");
-    }
-    started.resolve(holderPid);
-    await released.promise;
-  });
-  const holderPid = await started.promise;
-
-  return {
-    release: () => {
-      if (!released.settled()) {
-        released.resolve(undefined);
-      }
-    },
-    done,
-    blockedWaiterCount: async () => {
-      return await transitiveBlockedWaiterCount(holderPid);
-    },
-  };
-}
-
-/**
  * Inserts one event through the production sequence writer, then holds its
  * transaction open. No product endpoint can pause between INSERT and COMMIT,
  * so this fixture is the narrow timing boundary for sequence serialization.
@@ -1947,4 +2031,356 @@ export async function insertOutputEventWithConflictingLegacyPayloadFixture(args:
     return inserted;
   });
   return event;
+}
+
+interface CanonicalChatEventStorageRow {
+  readonly id: string;
+  readonly eventType: string;
+  readonly payload: ChatEventPayload | null;
+  readonly runId: string | null;
+  readonly contextType: string | null;
+  readonly contextId: string | null;
+  readonly revokesEventId: string | null;
+}
+
+interface CanonicalChatEventWriteFixture {
+  readonly eventIds: readonly string[];
+  readonly single: {
+    readonly inputRejectedId: string;
+    readonly outputErrorId: string;
+    readonly interruptId: string;
+    readonly interruptTargetRunId: string;
+    readonly goalContextEventId: string;
+    readonly goalId: string;
+    readonly goalOpenId: string;
+  };
+  readonly batch: {
+    readonly thinkingId: string;
+    readonly runFailedId: string;
+    readonly browserCloseId: string;
+    readonly goalCloseId: string;
+    readonly usageId: string;
+  };
+  readonly replacement: {
+    readonly targetId: string;
+    readonly replacementId: string;
+  };
+}
+
+async function insertCanonicalSingleWrites(
+  tx: Tx,
+  threadId: string,
+  single: CanonicalChatEventWriteFixture["single"],
+): Promise<void> {
+  const inputUserMessage = createUserMessageDocument({
+    text: "rejected canonical input",
+  });
+  await insertChatEvent(tx, {
+    id: single.inputRejectedId,
+    chatThreadId: threadId,
+    eventType: "input.rejected",
+    userMessage: inputUserMessage,
+    runId: null,
+    error: "input rejected",
+  });
+  await insertChatEvent(tx, {
+    id: single.outputErrorId,
+    chatThreadId: threadId,
+    eventType: "output.error",
+    content: "output failed",
+    error: "output error",
+    runId: randomUUID(),
+  });
+  await insertChatEvent(tx, {
+    id: single.interruptId,
+    chatThreadId: threadId,
+    eventType: "control.interrupt",
+    interruptsRunId: single.interruptTargetRunId,
+  });
+  await insertChatEvent(tx, {
+    id: single.goalContextEventId,
+    chatThreadId: threadId,
+    eventType: "output.message",
+    content: "goal output",
+    runId: randomUUID(),
+    runGroupId: single.goalId,
+  });
+  await insertChatEvent(tx, {
+    id: single.goalOpenId,
+    chatThreadId: threadId,
+    eventType: "goal.open",
+    content: "goal opened",
+  });
+}
+
+async function insertCanonicalBatchWrites(
+  tx: Tx,
+  threadId: string,
+  batch: CanonicalChatEventWriteFixture["batch"],
+): Promise<void> {
+  await insertChatEvents(tx, [
+    {
+      id: batch.thinkingId,
+      chatThreadId: threadId,
+      eventType: "output.thinking",
+      thinking: "canonical thinking",
+      runId: randomUUID(),
+    },
+    {
+      id: batch.runFailedId,
+      chatThreadId: threadId,
+      eventType: "run.failed",
+      content: "run failed",
+      error: "runner error",
+      runId: randomUUID(),
+    },
+    {
+      id: batch.browserCloseId,
+      chatThreadId: threadId,
+      eventType: "browser.close",
+    },
+    {
+      id: batch.goalCloseId,
+      chatThreadId: threadId,
+      eventType: "goal.close",
+    },
+    {
+      id: batch.usageId,
+      chatThreadId: threadId,
+      eventType: "usage.recorded",
+      runId: randomUUID(),
+      usagePayload: {
+        version: 1,
+        totalCredits: 9,
+        settledAt: "2026-08-10T00:00:00.000Z",
+        breakdown: [
+          {
+            kind: "model",
+            credits: 9,
+            providers: [{ provider: "test", credits: 9 }],
+          },
+        ],
+      },
+    },
+  ]);
+}
+
+async function insertCanonicalReplacementWrite(
+  tx: Tx,
+  threadId: string,
+  replacement: CanonicalChatEventWriteFixture["replacement"],
+): Promise<void> {
+  const userMessage = createUserMessageDocument({
+    text: "replacement canonical input",
+  });
+  await insertChatEvent(tx, {
+    id: replacement.targetId,
+    chatThreadId: threadId,
+    eventType: "input.prompt",
+    contextType: "web",
+    userMessage,
+    runId: null,
+  });
+  await replaceChatEvent(tx, replacement.targetId, {
+    id: replacement.replacementId,
+    chatThreadId: threadId,
+    eventType: "input.rejected",
+    userMessage,
+    runId: null,
+    error: "replacement rejected",
+  });
+}
+
+/** Exercise the three production canonical persistence paths. */
+export async function insertCanonicalChatEventWritesFixture(args: {
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+}): Promise<CanonicalChatEventWriteFixture> {
+  const interruptTargetSessionId = randomUUID();
+  const single = {
+    inputRejectedId: randomUUID(),
+    outputErrorId: randomUUID(),
+    interruptId: randomUUID(),
+    interruptTargetRunId: randomUUID(),
+    goalContextEventId: randomUUID(),
+    goalId: randomUUID(),
+    goalOpenId: randomUUID(),
+  };
+  const batch = {
+    thinkingId: randomUUID(),
+    runFailedId: randomUUID(),
+    browserCloseId: randomUUID(),
+    goalCloseId: randomUUID(),
+    usageId: randomUUID(),
+  };
+  const replacement = {
+    targetId: randomUUID(),
+    replacementId: randomUUID(),
+  };
+  await db().transaction(async (tx) => {
+    await tx.insert(agentSessions).values({
+      id: interruptTargetSessionId,
+      userId: args.userId,
+      orgId: args.orgId,
+      agentComposeId: args.agentId,
+    });
+    await tx.insert(agentRuns).values({
+      id: single.interruptTargetRunId,
+      userId: args.userId,
+      orgId: args.orgId,
+      sessionId: interruptTargetSessionId,
+      status: "queued",
+      prompt: "canonical interrupt target",
+    });
+    await tx.insert(threadGoals).values({
+      id: single.goalId,
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      agentId: args.agentId,
+      chatThreadId: args.threadId,
+      status: "active",
+      objective: "canonical storage goal",
+      objectiveBrief: "canonical storage goal",
+    });
+    await insertCanonicalSingleWrites(tx, args.threadId, single);
+    await insertCanonicalBatchWrites(tx, args.threadId, batch);
+    await insertCanonicalReplacementWrite(tx, args.threadId, replacement);
+  });
+
+  return {
+    eventIds: [
+      single.inputRejectedId,
+      single.outputErrorId,
+      single.interruptId,
+      single.goalContextEventId,
+      single.goalOpenId,
+      batch.thinkingId,
+      batch.runFailedId,
+      batch.browserCloseId,
+      batch.goalCloseId,
+      batch.usageId,
+      replacement.targetId,
+      replacement.replacementId,
+    ],
+    single,
+    batch,
+    replacement,
+  };
+}
+
+export async function readCanonicalChatEventStorageFixture(
+  eventIds: readonly string[],
+): Promise<readonly CanonicalChatEventStorageRow[]> {
+  return await db()
+    .select({
+      id: chatEvents.id,
+      eventType: chatEvents.eventType,
+      payload: chatEvents.payload,
+      runId: chatEvents.runId,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
+      revokesEventId: chatEvents.revokesEventId,
+    })
+    .from(chatEvents)
+    .where(inArray(chatEvents.id, [...eventIds]));
+}
+
+export async function isVisibleChatEventFixture(
+  eventId: string,
+): Promise<boolean> {
+  const database = db();
+  const [event] = await database
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(and(eq(chatEvents.id, eventId), visibleChatEventCondition(database)))
+    .limit(1);
+  return event !== undefined;
+}
+
+/**
+ * Exercise the production predicates shared by artifact catalog/realtime,
+ * thread/Google Drive, and Feishu/AgentPhone/Teams/Telegram dispatch readers.
+ */
+export async function readCanonicalRunIdCollisionSafetyFixture(args: {
+  readonly chatThreadId: string;
+  readonly interruptEventId: string;
+  readonly runId: string;
+}): Promise<{
+  readonly artifactLookupMatchedInterrupt: boolean;
+  readonly feishuDispatchMatchedInterrupt: boolean;
+  readonly rawRunIdCollisionExists: boolean;
+  readonly threadScopedArtifactLookupMatchedInterrupt: boolean;
+  readonly threadScopedDispatchMatchedInterrupt: boolean;
+}> {
+  const database = db();
+  const [
+    rawRunIdCollision,
+    artifactLookup,
+    threadScopedArtifactLookup,
+    feishuDispatch,
+    threadScopedDispatch,
+  ] = await Promise.all([
+    database
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.id, args.interruptEventId),
+          eq(chatEvents.runId, args.runId),
+        ),
+      )
+      .limit(1),
+    database
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.id, args.interruptEventId),
+          runOwnedChatEventForRunCondition({ runId: args.runId }),
+        ),
+      )
+      .limit(1),
+    database
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.id, args.interruptEventId),
+          runOwnedChatEventForRunCondition({
+            runId: args.runId,
+            chatThreadId: args.chatThreadId,
+          }),
+        ),
+      )
+      .limit(1),
+    database
+      .select({ runId: agentRuns.id })
+      .from(chatEvents)
+      .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
+      .where(
+        chatInputPromptDispatchCondition({ eventId: args.interruptEventId }),
+      )
+      .limit(1),
+    database
+      .select({ runId: agentRuns.id })
+      .from(chatEvents)
+      .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
+      .where(
+        chatInputPromptDispatchCondition({
+          eventId: args.interruptEventId,
+          chatThreadId: args.chatThreadId,
+        }),
+      )
+      .limit(1),
+  ]);
+  return {
+    rawRunIdCollisionExists: rawRunIdCollision.length > 0,
+    artifactLookupMatchedInterrupt: artifactLookup.length > 0,
+    threadScopedArtifactLookupMatchedInterrupt:
+      threadScopedArtifactLookup.length > 0,
+    feishuDispatchMatchedInterrupt: feishuDispatch.length > 0,
+    threadScopedDispatchMatchedInterrupt: threadScopedDispatch.length > 0,
+  };
 }

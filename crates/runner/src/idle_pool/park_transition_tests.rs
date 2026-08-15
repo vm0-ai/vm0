@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use guest_contracts::reuse_preparation::ReusePreparationRequest;
 use guest_contracts::session_history_identity::{
@@ -64,6 +64,7 @@ async fn make_idle_park_request(
         storage_fingerprints: StorageFingerprints::default(),
         restored_session_identity: None,
         history_generation_run_id: None,
+        guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
         workspace_image_size_bytes: 0,
         workspace_promotion: None,
     })
@@ -233,6 +234,7 @@ async fn idle_park_request_success_preserves_reuse_metadata() {
         storage_fingerprints,
         restored_session_identity: Some(restored_session_identity.clone()),
         history_generation_run_id: Some(history_generation_run_id),
+        guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
         workspace_image_size_bytes: 0,
         workspace_promotion: None,
     });
@@ -291,6 +293,146 @@ async fn idle_park_request_success_preserves_reuse_metadata() {
     );
     assert_eq!(budget_lease.vcpu(), 2);
     assert_eq!(budget_lease.memory_mb(), 2048);
+}
+
+#[tokio::test]
+async fn speculative_repark_preserves_original_idle_age_and_metadata() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let reuse_key = "session-speculative-repark";
+    let profile_name = "vm0/speculative";
+    let device_rate_limits = sandbox::DeviceRateLimits {
+        block: sandbox::BlockRateLimits {
+            bandwidth_bytes_per_sec: 100 * 1024 * 1024,
+            ops_per_sec: 10_000,
+        },
+        network: sandbox::NetworkRateLimits {
+            rx_bytes_per_sec: 50 * 1024 * 1024,
+            tx_bytes_per_sec: 25 * 1024 * 1024,
+        },
+    };
+    let history_generation_run_id = RunId::new_v4();
+    let mut request = make_idle_park_request(
+        Arc::clone(&overrides),
+        reuse_key,
+        make_budget_lease(2, 2048),
+    )
+    .await;
+    request.parts.profile_name = profile_name.into();
+    request.parts.device_rate_limits = Some(device_rate_limits.clone());
+    request.parts.history_generation_run_id = Some(history_generation_run_id);
+    request.parts.guest_timezone_intent =
+        crate::guest_timezone::GuestTimezoneIntent::Configured("Asia/Shanghai".into());
+    let candidate = match request.park_for_idle().await {
+        Ok(outcome) => outcome.expect_reusable(),
+        Err(_) => panic!("initial park should succeed"),
+    };
+
+    let original_parked_at = Instant::now() - Duration::from_secs(120);
+    let original_timeout = Duration::from_secs(300);
+    let reservation = ReservedIdleSandbox {
+        entry: candidate.into_idle_entry(original_parked_at, original_timeout),
+    };
+    let SpeculativeIdleUnparkResult::Ready(speculative) = reservation
+        .try_unpark_for_speculation(RunId::new_v4())
+        .await
+    else {
+        panic!("speculative unpark should succeed");
+    };
+    let rollback_run_id = RunId::new_v4();
+    let SpeculativeReparkResult::Reparked(restored) = speculative
+        .repark_for_claim_rollback(rollback_run_id, 0)
+        .await
+    else {
+        panic!("speculative repark should succeed");
+    };
+
+    assert_eq!(restored.entry.parked_at, original_parked_at);
+    assert_eq!(restored.entry.idle_timeout, original_timeout);
+    assert_eq!(restored.entry.reuse_key(), reuse_key);
+    assert_eq!(restored.entry.profile_name(), profile_name);
+    assert_eq!(
+        restored.entry.device_rate_limits(),
+        &Some(device_rate_limits)
+    );
+    assert_eq!(restored.entry.budget_vcpu(), 2);
+    assert_eq!(restored.entry.budget_memory_mb(), 2048);
+    assert_eq!(
+        restored.entry.metadata.history_generation_run_id,
+        Some(history_generation_run_id)
+    );
+    assert_eq!(
+        restored.guest_timezone_intent(),
+        &crate::guest_timezone::GuestTimezoneIntent::Configured("Asia/Shanghai".into())
+    );
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.park_call_count(), 2);
+    let preparation_requests: Vec<ReusePreparationRequest> = overrides
+        .exec_calls()
+        .into_iter()
+        .filter(|call| call.cmd.contains("guest-agent prepare-for-reuse"))
+        .map(|call| {
+            serde_json::from_slice(
+                call.stdin_bytes
+                    .as_deref()
+                    .expect("reuse preparation request should use stdin"),
+            )
+            .expect("reuse preparation request should be valid")
+        })
+        .collect();
+    assert_eq!(preparation_requests.len(), 2);
+    assert_eq!(
+        preparation_requests[1].current_runtime_dir,
+        format!("/home/user/.vm0/guest-agent/runs/{history_generation_run_id}")
+    );
+    assert_ne!(
+        preparation_requests[1].current_runtime_dir,
+        format!("/home/user/.vm0/guest-agent/runs/{rollback_run_id}")
+    );
+}
+
+#[tokio::test]
+async fn speculative_repark_without_history_generation_returns_owned_destroy_job() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let request = make_idle_park_request(
+        Arc::clone(&overrides),
+        "session-speculative-missing-generation",
+        make_budget_lease(2, 2048),
+    )
+    .await;
+    let candidate = match request.park_for_idle().await {
+        Ok(outcome) => outcome.expect_reusable(),
+        Err(_) => panic!("initial park should succeed"),
+    };
+    let reservation = ReservedIdleSandbox {
+        entry: candidate.into_idle_entry(Instant::now(), Duration::from_secs(300)),
+    };
+    let SpeculativeIdleUnparkResult::Ready(speculative) = reservation
+        .try_unpark_for_speculation(RunId::new_v4())
+        .await
+    else {
+        panic!("speculative unpark should succeed");
+    };
+
+    let SpeculativeReparkResult::Destroy {
+        destroy_job,
+        reason,
+        error,
+    } = speculative
+        .repark_for_claim_rollback(RunId::new_v4(), 0)
+        .await
+    else {
+        panic!("missing generation should destroy speculative ownership");
+    };
+
+    assert_eq!(reason, "speculative_repark_missing_history_generation");
+    assert_eq!(
+        error,
+        "speculative exact-reuse entry is missing a history generation"
+    );
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.park_call_count(), 1);
+    destroy_job.run().await;
+    assert_eq!(overrides.destroy_call_count(), 1);
 }
 
 #[tokio::test]

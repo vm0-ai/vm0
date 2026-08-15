@@ -76,7 +76,7 @@ describe("chat localization", () => {
       const sentPrompts: string[] = [];
       const authoredMessage = `Keep this authored message in ${locale}`;
       context.mocks.data.userPreferences({ locale });
-      mockOrgModelRoutes("kimi-k2.7-code");
+      mockOrgModelRoutes("claude-fable-5");
       mockAgent();
       mockChatLifecycle(context, {
         onRunCreate: (body) => {
@@ -117,7 +117,7 @@ describe("chat localization", () => {
     const user = userEvent.setup({ delay: null });
     const authoredDraft = "Keep this draft while the language changes";
     context.mocks.data.userPreferences({ locale: "en-US" });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
 
@@ -159,7 +159,7 @@ describe("chat localization", () => {
     const user = userEvent.setup({ delay: null });
     const runId = "run-localized-cancellation";
     context.mocks.data.userPreferences({ locale: "pt-BR" });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockChatLifecycle(context, {
       threadId: THREAD_ID,

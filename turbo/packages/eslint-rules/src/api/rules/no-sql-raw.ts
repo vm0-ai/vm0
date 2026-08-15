@@ -1,30 +1,6 @@
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import { isDrizzleSymbol } from "../drizzle.ts";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { isDrizzleSqlTag, memberName, propertyName } from "../syntax.ts";
 import { createRule } from "../utils.ts";
-
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
-    return node.property.name;
-  }
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal) {
-    return typeof node.property.value === "string" ? node.property.value : null;
-  }
-  return null;
-}
-
-function propertyName(node: TSESTree.Property): string | null {
-  if (!node.computed && node.key.type === AST_NODE_TYPES.Identifier) {
-    return node.key.name;
-  }
-  if (node.key.type === AST_NODE_TYPES.Literal) {
-    return typeof node.key.value === "string" ? node.key.value : null;
-  }
-  return null;
-}
 
 export const noSqlRaw = createRule({
   name: "no-sql-raw",
@@ -35,7 +11,6 @@ export const noSqlRaw = createRule({
       description:
         "Disallow Drizzle sql.raw because it bypasses parameter binding",
       recommended: true,
-      requiresTypeChecking: true,
     },
     schema: [],
     messages: {
@@ -44,23 +19,10 @@ export const noSqlRaw = createRule({
     },
   },
   create(context) {
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
-
     function isDrizzleRawMember(node: TSESTree.MemberExpression): boolean {
-      if (memberName(node) !== "raw") {
-        return false;
-      }
-      const tsProperty = services.esTreeNodeToTSNodeMap.get(node.property);
-      const directSymbol = checker.getSymbolAtLocation(tsProperty);
-      if (isDrizzleSymbol(checker, directSymbol)) {
-        return true;
-      }
-      const tsObject = services.esTreeNodeToTSNodeMap.get(node.object);
-      const objectType = checker.getTypeAtLocation(tsObject);
-      return isDrizzleSymbol(
-        checker,
-        checker.getPropertyOfType(objectType, "raw"),
+      return (
+        memberName(node) === "raw" &&
+        isDrizzleSqlTag(context.sourceCode, node.object)
       );
     }
 
@@ -71,11 +33,12 @@ export const noSqlRaw = createRule({
       ) {
         return false;
       }
-      const tsPattern = services.esTreeNodeToTSNodeMap.get(node.parent);
-      const patternType = checker.getTypeAtLocation(tsPattern);
-      return isDrizzleSymbol(
-        checker,
-        checker.getPropertyOfType(patternType, "raw"),
+      const declarator = node.parent.parent;
+      return (
+        declarator.type === AST_NODE_TYPES.VariableDeclarator &&
+        declarator.id === node.parent &&
+        declarator.init !== null &&
+        isDrizzleSqlTag(context.sourceCode, declarator.init)
       );
     }
 

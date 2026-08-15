@@ -1,23 +1,21 @@
 import { command, computed, state } from "ccstate";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
 } from "../external/feature-switch.ts";
-import { connectorCatalogStatusBySlug$ } from "../external/connectors.ts";
+import { relatedCatalogItems$ } from "./settings/connectors.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
-  applyCodexFastModeDefault,
   isCodexFastModeAvailableForSelection,
   resolveModelFirstUserDefaultSelection,
 } from "./model-default-selection.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import {
-  codexFastModeLocalDefault$,
-  setCodexFastModeLocalDefault$,
-} from "./codex-fast-local-default.ts";
 import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
@@ -42,10 +40,14 @@ export const unfilteredSuggestedPrompts$ = computed((get) => {
 
 export const suggestedPrompts$ = computed(async (get) => {
   const features = await get(featureSwitch$);
-  const connectorStatusBySlug = await get(connectorCatalogStatusBySlug$);
+  const relatedCatalogItems = await get(relatedCatalogItems$);
   return getRandomPrompts(2, {
     features,
-    visibleConnectorSlugs: new Set(connectorStatusBySlug.keys()),
+    visibleConnectorSlugs: new Set(
+      relatedCatalogItems.map((connector) => {
+        return connector.slug;
+      }),
+    ),
   });
 });
 
@@ -57,6 +59,10 @@ export const suggestedPrompts$ = computed(async (get) => {
 // current model-first default while "user explicitly picked inherit" stays null.
 const internalChatPageUserOverride$ = state<
   { kind: "unset" } | { kind: "set"; value: ModelProviderSelection | null }
+>({ kind: "unset" });
+
+const internalChatPageVideoModelOverride$ = state<
+  { kind: "unset" } | { kind: "set"; value: VideoModel | null }
 >({ kind: "unset" });
 
 export const chatPageModelSelection$ = computed(
@@ -77,17 +83,10 @@ export const chatPageModelSelection$ = computed(
     }
     const policies = await get(orgModelPolicies$);
     const userPreference = await get(userModelPreference$);
-    const codexFastModeDefault = await get(codexFastModeLocalDefault$);
-    const featureSwitches = get(featureSwitch$);
-    return applyCodexFastModeDefault({
-      selection: resolveModelFirstUserDefaultSelection({
-        userPreference,
-        policies,
-      }),
+    return resolveModelFirstUserDefaultSelection({
+      userPreference,
       policies,
-      codexFastModeEnabled:
-        featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
-      codexFastModeDefault,
+      codexFastModeEnabled: get(codexFastModeEnabled$),
     });
   },
 );
@@ -130,31 +129,31 @@ export const setChatPageModelSelection$ = command(
   },
 );
 
-export const updateCodexFastModeDefaultForSelection$ = command(
-  async (
-    { get, set },
-    selection: ModelProviderSelection | null,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const policies = await get(orgModelPolicies$);
-    signal.throwIfAborted();
-    if (
-      !isCodexFastModeAvailableForSelection({
-        policies,
-        selectedModel: selection?.selectedModel,
-        codexFastModeEnabled: get(codexFastModeEnabled$),
-      })
-    ) {
-      return;
+export const chatPageVideoModelSelection$ = computed(
+  async (get): Promise<VideoModel | null> => {
+    const user = get(internalChatPageVideoModelOverride$);
+    if (user.kind === "set") {
+      return user.value;
     }
-    await set(
-      setCodexFastModeLocalDefault$,
-      selection?.codexServiceTier === "fast",
-      signal,
-    );
+    const userPreference = await get(userModelPreference$);
+    return userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
   },
 );
 
-export const resetChatPageModelSelection$ = command(({ set }) => {
-  set(internalChatPageUserOverride$, { kind: "unset" });
+export const setChatPageVideoModelSelection$ = command(
+  ({ set }, value: VideoModel | null) => {
+    set(internalChatPageVideoModelOverride$, { kind: "set", value });
+  },
+);
+
+export const resetChatPageModelSelection$ = command(({ get, set }) => {
+  if (get(internalChatPageUserOverride$).kind === "set") {
+    set(internalChatPageUserOverride$, { kind: "unset" });
+  }
+});
+
+export const resetChatPageVideoModelSelection$ = command(({ get, set }) => {
+  if (get(internalChatPageVideoModelOverride$).kind === "set") {
+    set(internalChatPageVideoModelOverride$, { kind: "unset" });
+  }
 });

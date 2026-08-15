@@ -1,8 +1,8 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { IconBug } from "@tabler/icons-react";
-import { Switch } from "@vm0/ui/components/ui/switch";
+import { Bug } from "lucide-react";
+import { Switch } from "@okouai/ui/components/ui/switch";
 
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../../signals/utils.ts";
@@ -11,6 +11,7 @@ import {
   updateCaptureNetworkBodies$,
 } from "../../../../../signals/zero-page/settings/preferences-page.ts";
 import { BuildInfoBlock } from "../build-info-block.tsx";
+import { ConnectionDiagnosticsBlock } from "../connection-diagnostics-block.tsx";
 import { ConnectorCatalogDiagnosticsBlock } from "../connector-catalog-diagnostics-block.tsx";
 
 const CAPTURE_RUN_COUNT = 3;
@@ -39,7 +40,7 @@ function CaptureNetworkBodiesBlock() {
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
-            <IconBug size={22} stroke={1.5} className="text-muted-foreground" />
+            <Bug size={22} className="text-muted-foreground" />
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
@@ -77,6 +78,7 @@ export function DebugSection() {
   return (
     <div className="flex flex-col gap-6">
       <BuildInfoBlock />
+      <ConnectionDiagnosticsBlock />
       <ConnectorCatalogDiagnosticsBlock />
       <CaptureNetworkBodiesBlock />
     </div>

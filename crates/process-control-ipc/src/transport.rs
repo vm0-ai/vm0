@@ -1,12 +1,14 @@
 use std::io;
 use std::mem::{MaybeUninit, size_of};
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::{Duration, Instant};
 
 const ENDPOINT_PREFIX: &str = "vm0-process-control-";
 const MAX_U32_DECIMAL_DIGITS: usize = 10;
 const NONCE_HEX_LEN: usize = 16 * 2;
+const WORKLOAD_PLACEMENT_MARKER: u8 = 0x57;
+const ANCILLARY_BUFFER_WORDS: usize = 8;
 
 /// Build the abstract socket name for an operation-control endpoint.
 ///
@@ -85,11 +87,10 @@ pub fn bind_abstract_listener(name: &str) -> io::Result<UnixListener> {
     Ok(unsafe { UnixListener::from_raw_fd(fd.into_raw_fd()) })
 }
 
-/// Connect to a Linux abstract Unix operation-control endpoint.
+/// Connect to a Linux abstract Unix operation-local endpoint.
 ///
-/// `name` is an abstract socket name, not a filesystem path. A newly connected
-/// guest-agent side stream must send [`crate::write_hello`] before the server
-/// side treats the sink as connected.
+/// `name` is an abstract socket name, not a filesystem path. The caller must
+/// perform the handshake required by the endpoint's protocol after connecting.
 ///
 /// # Errors
 ///
@@ -113,6 +114,218 @@ pub fn connect_abstract(name: &str) -> io::Result<UnixStream> {
     }
     // SAFETY: fd is a valid connected stream and ownership is transferred.
     Ok(unsafe { UnixStream::from_raw_fd(fd.into_raw_fd()) })
+}
+
+/// Send one workload-placement descriptor over a connected control stream.
+///
+/// The descriptor is transferred with `SCM_RIGHTS` alongside a one-byte
+/// bootstrap marker. The sender retains ownership of its descriptor. This is
+/// used on a dedicated authenticated bootstrap connection so the root guest
+/// supervisor never has to make the capability inheritable across a
+/// sandbox-user transition.
+///
+/// # Errors
+///
+/// Socket errors are returned as standard [`io::Error`] values. A short send
+/// is reported as [`io::ErrorKind::WriteZero`].
+pub fn send_workload_placement(stream: &UnixStream, placement: BorrowedFd<'_>) -> io::Result<()> {
+    let marker = [WORKLOAD_PLACEMENT_MARKER];
+    let mut iov = libc::iovec {
+        iov_base: marker.as_ptr().cast_mut().cast(),
+        iov_len: marker.len(),
+    };
+    let mut ancillary = [0_usize; ANCILLARY_BUFFER_WORDS];
+    let control_len = cmsg_space_for_one_fd();
+    if control_len > std::mem::size_of_val(&ancillary) {
+        return Err(io::Error::other(
+            "workload placement ancillary buffer is too small",
+        ));
+    }
+    // SAFETY: a zeroed msghdr is initialized below before sendmsg reads it.
+    let mut message = unsafe { MaybeUninit::<libc::msghdr>::zeroed().assume_init() };
+    message.msg_iov = &mut iov;
+    message.msg_iovlen = 1;
+    message.msg_control = ancillary.as_mut_ptr().cast();
+    message.msg_controllen = ancillary_length(control_len)?;
+
+    // SAFETY: message owns a suitably aligned ancillary buffer large enough
+    // for one cmsghdr plus one RawFd payload.
+    let header = unsafe { libc::CMSG_FIRSTHDR(&message) };
+    if header.is_null() {
+        return Err(io::Error::other(
+            "workload placement ancillary header is unavailable",
+        ));
+    }
+    // SAFETY: header points into the initialized ancillary buffer and its data
+    // region is large enough for one RawFd.
+    unsafe {
+        (*header).cmsg_level = libc::SOL_SOCKET;
+        (*header).cmsg_type = libc::SCM_RIGHTS;
+        (*header).cmsg_len = ancillary_length(cmsg_len_for_one_fd())?;
+        std::ptr::write_unaligned(
+            libc::CMSG_DATA(header).cast::<libc::c_int>(),
+            placement.as_raw_fd(),
+        );
+    }
+
+    loop {
+        // SAFETY: message references live marker, iovec, and ancillary buffers
+        // for the duration of this call.
+        let sent = unsafe { libc::sendmsg(stream.as_raw_fd(), &message, libc::MSG_NOSIGNAL) };
+        if sent == 1 {
+            return Ok(());
+        }
+        if sent < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::WriteZero,
+            "workload placement bootstrap marker was not sent",
+        ));
+    }
+}
+
+/// Receive one workload-placement descriptor from a connected control stream.
+///
+/// The returned descriptor has close-on-exec set atomically by
+/// `MSG_CMSG_CLOEXEC`. Exactly one `SCM_RIGHTS` descriptor and the expected
+/// one-byte bootstrap marker are required; malformed ancillary data is rejected
+/// and any received descriptors are closed before returning an error.
+///
+/// # Errors
+///
+/// Socket errors are returned as standard [`io::Error`] values. Missing,
+/// truncated, or malformed descriptor bootstrap data returns
+/// [`io::ErrorKind::InvalidData`].
+pub fn receive_workload_placement(stream: &UnixStream) -> io::Result<OwnedFd> {
+    let mut marker = [0_u8; 1];
+    let mut iov = libc::iovec {
+        iov_base: marker.as_mut_ptr().cast(),
+        iov_len: marker.len(),
+    };
+    let mut ancillary = [0_usize; ANCILLARY_BUFFER_WORDS];
+    // SAFETY: a zeroed msghdr is initialized below before recvmsg writes it.
+    let mut message = unsafe { MaybeUninit::<libc::msghdr>::zeroed().assume_init() };
+    message.msg_iov = &mut iov;
+    message.msg_iovlen = 1;
+    message.msg_control = ancillary.as_mut_ptr().cast();
+    message.msg_controllen = ancillary_length(std::mem::size_of_val(&ancillary))?;
+
+    let received = loop {
+        // SAFETY: message references writable marker, iovec, and ancillary
+        // buffers for the duration of this call.
+        let received =
+            unsafe { libc::recvmsg(stream.as_raw_fd(), &mut message, libc::MSG_CMSG_CLOEXEC) };
+        if received >= 0 {
+            break received;
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    };
+
+    let descriptors = received_rights_descriptors(&message);
+    let valid = received == 1
+        && marker == [WORKLOAD_PLACEMENT_MARKER]
+        && message.msg_flags & (libc::MSG_CTRUNC | libc::MSG_TRUNC) == 0
+        && descriptors.len() == 1;
+    if !valid {
+        close_raw_descriptors(&descriptors);
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid workload placement descriptor bootstrap",
+        ));
+    }
+
+    let descriptor = descriptors.into_iter().next().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "workload placement descriptor bootstrap was empty",
+        )
+    })?;
+    // SAFETY: recvmsg installed this descriptor for the receiving process, it
+    // appears exactly once in the validated rights message, and ownership is
+    // transferred to the returned OwnedFd.
+    Ok(unsafe { OwnedFd::from_raw_fd(descriptor) })
+}
+
+fn cmsg_space_for_one_fd() -> usize {
+    // SAFETY: CMSG_SPACE performs only the platform alignment calculation.
+    unsafe { libc::CMSG_SPACE(std::mem::size_of::<libc::c_int>() as _) as usize }
+}
+
+fn cmsg_len_for_one_fd() -> usize {
+    // SAFETY: CMSG_LEN performs only the platform alignment calculation.
+    unsafe { libc::CMSG_LEN(std::mem::size_of::<libc::c_int>() as _) as usize }
+}
+
+fn received_rights_descriptors(message: &libc::msghdr) -> Vec<libc::c_int> {
+    let mut descriptors = Vec::new();
+    // SAFETY: message and its ancillary buffer were initialized by recvmsg;
+    // CMSG_FIRSTHDR/CMSG_NXTHDR stay within msg_controllen.
+    let mut header = unsafe { libc::CMSG_FIRSTHDR(message) };
+    while !header.is_null() {
+        // SAFETY: header is a valid ancillary header returned by the CMSG
+        // traversal helpers.
+        let current = unsafe { &*header };
+        let current_len = ancillary_length_usize(current.cmsg_len);
+        if current.cmsg_level == libc::SOL_SOCKET
+            && current.cmsg_type == libc::SCM_RIGHTS
+            && current_len >= cmsg_len_for_one_fd()
+        {
+            let payload_bytes = current_len
+                .saturating_sub(cmsg_len_for_one_fd() - std::mem::size_of::<libc::c_int>());
+            let count = payload_bytes / std::mem::size_of::<libc::c_int>();
+            // SAFETY: CMSG_DATA points at `count` complete RawFd values inside
+            // the current ancillary record.
+            let data = unsafe { libc::CMSG_DATA(header).cast::<libc::c_int>() };
+            for index in 0..count {
+                // SAFETY: index is bounded by the validated ancillary payload.
+                descriptors.push(unsafe { std::ptr::read_unaligned(data.add(index)) });
+            }
+        }
+        // SAFETY: header belongs to message's ancillary buffer.
+        header = unsafe { libc::CMSG_NXTHDR(message, header) };
+    }
+    descriptors
+}
+
+fn close_raw_descriptors(descriptors: &[libc::c_int]) {
+    for descriptor in descriptors {
+        // SAFETY: each descriptor was installed by recvmsg and is discarded on
+        // the malformed-bootstrap path.
+        unsafe { libc::close(*descriptor) };
+    }
+}
+
+#[cfg(target_env = "musl")]
+fn ancillary_length(length: usize) -> io::Result<libc::socklen_t> {
+    libc::socklen_t::try_from(length).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "workload placement ancillary length is out of range",
+        )
+    })
+}
+
+#[cfg(not(target_env = "musl"))]
+fn ancillary_length(length: usize) -> io::Result<usize> {
+    Ok(length)
+}
+
+#[cfg(target_env = "musl")]
+fn ancillary_length_usize(length: libc::socklen_t) -> usize {
+    length as usize
+}
+
+#[cfg(not(target_env = "musl"))]
+fn ancillary_length_usize(length: usize) -> usize {
+    length
 }
 
 /// Accept one stream from an operation-control listener before `timeout` elapses.
@@ -238,6 +451,8 @@ fn poll_fd(fd: libc::c_int, events: libc::c_short, deadline: Instant) -> io::Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::fd::AsFd;
+    use std::os::unix::fs::MetadataExt;
 
     fn bind_test_listener(case: &str) -> (String, UnixListener) {
         let name = format!("vm0-test-{case}-{}", std::process::id());
@@ -317,6 +532,39 @@ mod tests {
         let server = accept_with_timeout(&listener, Duration::from_secs(1)).unwrap();
         let _client = client.join().unwrap();
         drop(server);
+    }
+
+    #[test]
+    fn workload_placement_descriptor_round_trips_close_on_exec() {
+        let (sender, receiver) = UnixStream::pair().unwrap();
+        let placement = std::fs::File::open("/dev/null").unwrap();
+        let expected = placement.metadata().unwrap();
+        let send = std::thread::spawn(move || {
+            send_workload_placement(&sender, placement.as_fd()).unwrap();
+        });
+
+        let received = receive_workload_placement(&receiver).unwrap();
+        send.join().unwrap();
+        let received = std::fs::File::from(received);
+        let actual = received.metadata().unwrap();
+        assert_eq!(actual.dev(), expected.dev());
+        assert_eq!(actual.ino(), expected.ino());
+        // SAFETY: F_GETFD only inspects the valid received descriptor.
+        let flags = unsafe { libc::fcntl(received.as_raw_fd(), libc::F_GETFD) };
+        assert!(flags >= 0);
+        assert_ne!(flags & libc::FD_CLOEXEC, 0);
+    }
+
+    #[test]
+    fn workload_placement_descriptor_requires_ancillary_rights() {
+        let (mut sender, receiver) = UnixStream::pair().unwrap();
+        std::thread::spawn(move || {
+            use std::io::Write;
+            sender.write_all(&[WORKLOAD_PLACEMENT_MARKER]).unwrap();
+        });
+
+        let error = receive_workload_placement(&receiver).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]

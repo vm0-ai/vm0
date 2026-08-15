@@ -50,8 +50,10 @@ Current link-backed card patterns include:
 - `/?settings=billing&billingView=plans`
 - `/mail/drafts/:vm0DraftId`
 - `/browsers/:threadId`
-- platform artifact URLs such as `/f/...` and `/artifacts/...`, plus hosted
-  site URLs that support an inline preview
+- platform artifact URLs such as legacy `/f/...` and `/artifacts/.../.../...`
+  paths, plus hosted site URLs that support an inline preview. Flat V2 artifact
+  paths such as `/artifacts/97ngzkxdyn.mp4` require a complete URL with an
+  allowed VM0 origin.
 
 Recognized billing-plan links render as rich upgrade cards.
 
@@ -260,7 +262,7 @@ permission cards refresh without replacing their signals identities.
 A vm0 mail link matches `/mail/drafts/:vm0DraftId`. The vm0 UUID is the stable
 resource key; Gmail draft, thread, and message IDs remain provider metadata and
 are not inferred from Gmail Web URLs. The thread-scoped signals read the Gmail
-draft through one reloadable Zero Mail API computed. Repeated card occurrences
+draft through one reloadable Okou Mail API computed. Repeated card occurrences
 and the detail sidebar share that computed, while Send and Delete invalidate it
 after their mutations complete.
 
@@ -275,7 +277,7 @@ canonical resource key: each thread owns at most one logical browser, and every
 provider instance for that browser carries the same thread attribution. The card
 never accepts a Browser Use `liveUrl` or CDP URL from message content. Instead,
 its thread-scoped computed reads the browser through
-`/api/zero/chat-threads/:threadId/browser`. A copied card therefore cannot
+`/api/okou/chat-threads/:threadId/browser`. A copied card therefore cannot
 resolve a browser owned by a different thread.
 
 The message card follows the presentation and website preview treatment. It
@@ -291,34 +293,37 @@ would otherwise shift the transcript.
 A provider instance outlives the run that opened it. Every terminal run callback
 only extends the instance's idle lease, so the user can keep working in the same
 window and a later run in the same thread attaches to it with
-`zero browser use`. The reconciler reclaims an instance once its lease expires,
+`okou browser use`. The reconciler reclaims an instance once its lease expires,
 its hard timeout is reached, or the provider ends it. Deleting a chat thread
 also reclaims its browser. While the sidebar or full-page viewer is open
 and its page is visible, it refreshes the lease on a timer; the CLI can do the
-same with `zero browser lease`. Each lease is a fixed window from now and cannot
-be stacked. After each successful viewer lease heartbeat, the API
-asynchronously captures the foreground tab as a `640px`-wide WebP, preserves
-its aspect ratio, and replaces the thread's previous immutable preview object.
-Screenshot failure does not invalidate the lease.
+same with `okou browser lease`. Each lease is a fixed window from now and cannot
+be stacked. The once-per-minute reconciler captures the foreground tab of each
+healthy active browser as a `640px`-wide WebP, preserves its aspect ratio, and
+replaces the thread's previous immutable preview object. Viewer lease
+heartbeats do not capture screenshots, and screenshot failure does not affect
+the browser lease.
 
-Starting or resuming appends a payload-free `browser.started` chat event;
-stopping or automatic reclamation appends a payload-free `browser.stopped`
-event. The frontend supplies each mutation's event UUID so it can optimistically
+Starting or resuming appends a payload-free `browser.open` chat event; clicking
+the sidebar close button appends a payload-free `browser.close` event without
+stopping the provider instance. Automatic reclamation for an existing thread
+also appends `browser.close` without inspecting the current sidebar state. The
+frontend supplies each mutation's event UUID so it can optimistically
 project the same event without duplicating it when the server response or
 realtime delivery arrives. Folding these events in order yields the thread's
-browser activity state. Opening a thread waits for the authoritative initial
+browser sidebar state. Opening a thread waits for the authoritative initial
 event page before using that projection to auto-open the sidebar, so stale
-IndexedDB events cannot override a later server stop. A `browser.started`
+IndexedDB events cannot override a later server close. A `browser.open`
 projection opens the sidebar only when no other utility sidebar is already open;
-a terminal `browser.stopped` projection does not auto-open it. The browser icon
-in the thread header remains available in either state, and both a never-created
+a later `browser.close` projection does not auto-open it. The browser icon in
+the thread header remains available in either state, and both a never-created
 browser and a non-live browser keep the Start action. When a screenshot exists,
 the suspended sidebar reuses it at full width and top-aligns it beneath a
 half-transparent blurred mask, so the small preview fills the available surface
 without being presented as a live browser.
 
 Once an instance is reclaimed, the viewer keeps the stable
-`/browsers/:threadId` link. Its Start action, and `zero browser use` in a later
+`/browsers/:threadId` link. Its Start action, and `okou browser use` in a later
 run, create a new provider instance from the thread's saved profile: cookies and
 storage come back, and saved HTTP(S) tab URLs are reopened on a best-effort
 basis. Provider state changes publish a user-scoped realtime event carrying the
@@ -333,7 +338,7 @@ first profile creation so concurrent first use still creates one provider
 profile for that thread.
 
 The same universal link also has an authenticated full-page route. The browser
-provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and
+provider's CDP URL is reserved for the Okou CLI to connect `agent-browser` and
 is never returned by the card read, lease, or resume endpoints, nor printed in
 CLI output.
 

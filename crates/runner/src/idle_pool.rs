@@ -16,8 +16,10 @@ pub use entry::{
     IdleDestroyJob, IdleEntry, IdleUnparkResult, ParkedIdleCandidate, RejectedParkedIdleCandidate,
     ReservedIdleSandbox, RestoreReservedIdleResult, ReusableIdleSandbox, ReusableIdleSandboxParts,
 };
+pub(crate) use entry::{SpeculativeIdleSandbox, SpeculativeIdleUnparkResult};
 pub(crate) use park_transition::{
     IdleParkActiveParts, IdleParkFailureParts, IdleParkRequest, IdleParkRequestParts,
+    SpeculativeReparkResult,
 };
 pub(crate) use parking_gate::ParkingGate;
 #[cfg(test)]
@@ -63,9 +65,9 @@ pub struct IdlePoolSnapshot {
 
 /// Pool of idle sandboxes keyed by reuse key.
 ///
-/// After a job completes successfully, its sandbox can be parked here
-/// instead of being destroyed. A subsequent job for the same reuse key
-/// can reuse the parked sandbox, skipping VM creation and startup.
+/// After a job reaches a terminal state that is proven reusable, its sandbox
+/// can be parked here instead of being destroyed. A subsequent job for the same
+/// reuse key can reuse the parked sandbox, skipping VM creation and startup.
 pub struct IdlePool {
     entries: HashMap<String, IdleEntry>,
     config: IdlePoolConfig,

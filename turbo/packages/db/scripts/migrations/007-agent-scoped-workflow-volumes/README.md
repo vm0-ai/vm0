@@ -43,7 +43,7 @@ For each org that owns workflows (or a single `--org`), in order:
 2. **Backfill `instruction`** (post-`0480` mode only). For each workflow whose
    `instruction` is `null`,
    reads `SKILL.md` from the id-keyed volume's head version archive, runs
-   `extractInstructionFromSkillMd` (from `@vm0/core`), and writes the body back
+   `extractInstructionFromSkillMd` (from `@okouai/core`), and writes the body back
    to `zero_workflows.instruction`. Empty bodies / missing SKILL.md are left
    `null`.
 
@@ -168,7 +168,7 @@ After a `--migrate` run:
   duplicated workflow rows receive their own id-keyed copies.
 - **Excluded from CI**: like all `scripts/migrations/**`, this directory is
   excluded from the package `tsconfig.json` (`exclude`) and `eslint.config.mjs`
-  (`ignores`), so it does not participate in the `@vm0/db` build, type-check, or
+  (`ignores`), so it does not participate in the `@okouai/db` build, type-check, or
   lint.
 - **Permanent record**: per the database-development convention, this script
   must not be deleted even after the migration is complete.

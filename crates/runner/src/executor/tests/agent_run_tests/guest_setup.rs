@@ -18,6 +18,7 @@ async fn run_in_sandbox_folds_timezone_sync_into_restore_exec() {
         RunStart {
             restore_guest_state: true,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -82,6 +83,7 @@ async fn run_in_sandbox_runs_standalone_timezone_sync_without_restore_exec() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,

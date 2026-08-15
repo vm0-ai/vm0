@@ -1,11 +1,11 @@
 /**
- * Test-side override helper for the /api/zero/feature-switches GET handler.
+ * Test-side override helper for the /api/okou/feature-switches GET handler.
  *
  * Kept separate from `api-feature-switches.ts` so the default handler module
  * remains stateless and test-specific overrides stay in test code.
  */
 
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 
 import { mockApi } from "../msw-contract.ts";
 import { server } from "../server.ts";
@@ -24,10 +24,6 @@ export function setMockFeatureSwitches(
       return respond(200, {
         switches: sanitized,
         effectiveSwitches: sanitized,
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways: true,
-        supportsImageRecognition: true,
       });
     }),
   );

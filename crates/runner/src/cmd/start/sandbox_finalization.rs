@@ -6,22 +6,28 @@
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use chrono::SecondsFormat;
 use futures_util::FutureExt;
-use sandbox::{Sandbox, SandboxFactory, SandboxId};
+use sandbox::{
+    Sandbox, SandboxFactory, SandboxFinalExecParkObserver, SandboxFinalExecParkStage, SandboxId,
+};
 use tracing::{info, warn};
 
+use super::active_runs::ActiveRunReusePublisher;
 use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::{
     SharedIdlePool, destroy_idle_jobs_and_wait, destroy_idle_payload_and_wait,
 };
 use super::job_lifecycle::{
-    ActiveBudgetLease, BudgetOwnership, CompletionPayload, CompletionReady, RunCleanupState,
+    ActiveBudgetLease, BudgetOwnership, FinalizationReady, RunCleanupState,
 };
 use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
+use crate::executor::{SandboxReuseDisposition, SandboxReuseTerminal};
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_pool::{
     DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkFailureParts, IdleParkRequest,
     IdleParkRequestParts, ParkResult, ParkingGate,
@@ -29,33 +35,103 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
-#[cfg(test)]
-use crate::provider::CompletionAuth;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::RunCancellationHandle;
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
+use crate::telemetry::JobTelemetry;
 use crate::types::reuse_key_kind;
-use crate::types::{HeldWorkspaceState, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability};
+use crate::types::{
+    HeldWorkspaceState, SandboxReuseResult, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability,
+};
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionContext,
     WorkspaceImagePromotionRequest,
 };
 use crate::workspace_promotion::prepare_workspace_image_from_active_sandbox;
 
+struct FinalizationTelemetry<'a> {
+    telemetry: Option<&'a mut JobTelemetry>,
+    physical_park_completed_at: Option<Instant>,
+}
+
+impl<'a> FinalizationTelemetry<'a> {
+    fn new(telemetry: &'a mut JobTelemetry) -> Self {
+        Self {
+            telemetry: Some(telemetry),
+            physical_park_completed_at: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn disabled() -> Self {
+        Self {
+            telemetry: None,
+            physical_park_completed_at: None,
+        }
+    }
+
+    fn record_idle_publication(&mut self, success: bool, error: Option<&'static str>) {
+        let Some(started_at) = self.physical_park_completed_at else {
+            return;
+        };
+        if let Some(telemetry) = self.telemetry.as_deref_mut() {
+            telemetry.record(
+                "runner_host_idle_publication",
+                started_at.elapsed(),
+                success,
+                error,
+            );
+        }
+    }
+
+    fn record_outcome(&mut self, action_type: &'static str, error: &'static str) {
+        if let Some(telemetry) = self.telemetry.as_deref_mut() {
+            telemetry.record(action_type, Duration::ZERO, false, Some(error));
+        }
+    }
+}
+
+impl SandboxFinalExecParkObserver for FinalizationTelemetry<'_> {
+    fn record_stage(
+        &mut self,
+        stage: SandboxFinalExecParkStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        let completed_at = Instant::now();
+        let (action_type, error) = match stage {
+            SandboxFinalExecParkStage::ReusePreparation => (
+                "runner_host_reuse_preparation",
+                (!success).then_some("reuse preparation failed"),
+            ),
+            SandboxFinalExecParkStage::PhysicalPark => (
+                "runner_host_physical_park",
+                (!success).then_some("physical park failed"),
+            ),
+        };
+        if let Some(telemetry) = self.telemetry.as_deref_mut() {
+            telemetry.record(action_type, duration, success, error);
+        }
+        if stage == SandboxFinalExecParkStage::PhysicalPark && success {
+            self.physical_park_completed_at = Some(completed_at);
+        }
+    }
+}
+
 fn local_completed_at() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
 fn mark_reuse_state_refresh(
-    completion_ready: CompletionReady,
+    finalization_ready: FinalizationReady,
     reuse_state_changed: bool,
-) -> CompletionReady {
+) -> FinalizationReady {
     if reuse_state_changed {
-        completion_ready.with_reuse_state_changed()
+        finalization_ready.with_reuse_state_changed()
     } else {
-        completion_ready
+        finalization_ready
     }
 }
 
@@ -82,6 +158,8 @@ fn mark_workspace_cache_snapshot_promoted(
 pub(super) struct FinalizeContext {
     pub(super) run_id: RunId,
     pub(super) sandbox_id: SandboxId,
+    pub(super) runner_id: String,
+    pub(super) reuse_result: SandboxReuseResult,
     pub(super) profile_name: String,
     pub(super) reuse_key: Option<String>,
     pub(super) cli_agent_session_id: Option<String>,
@@ -93,14 +171,17 @@ pub(super) struct FinalizeContext {
     pub(super) workspace_image_size_bytes: u64,
     pub(super) storage_fingerprints: StorageFingerprints,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    pub(super) guest_timezone_intent: GuestTimezoneIntent,
     pub(super) factory: Arc<Box<dyn SandboxFactory>>,
     pub(super) idle_pool: SharedIdlePool,
     pub(super) status: Arc<StatusTracker>,
     pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
+    pub(super) active_run_reuse: ActiveRunReusePublisher,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) parking_gate: ParkingGate,
     pub(super) network_log_drain: NetworkLogDrainCoordinator,
     pub(super) exit_code: i32,
+    pub(super) sandbox_reuse_disposition: SandboxReuseDisposition,
     pub(super) cancel: RunCancellationHandle,
     pub(super) cleanup_state: RunCleanupState,
     #[cfg(test)]
@@ -112,23 +193,55 @@ pub(super) struct FinalizeContext {
 /// Finalizes ownership of a sandbox returned by the executor.
 ///
 /// `None` requires no sandbox lifecycle action. For `Some`, idle parking is
-/// considered only when the exit code is zero, cancellation is not active, the
-/// parking gate is open, and a reuse key is available. Otherwise, or if
-/// cancellation wins before ownership transfer or parking cannot complete, the
-/// sandbox is stopped and destroyed.
-pub(super) async fn finalize_sandbox_for_completion(
+/// considered only when execution supplied positive reuse evidence, hard
+/// cancellation is not active, the parking gate is open, and a reuse key is
+/// available. Otherwise, or if hard cancellation wins before ownership
+/// transfer or parking cannot complete, the sandbox is stopped and destroyed.
+pub(super) async fn finalize_sandbox_for_completion_with_telemetry(
     sandbox: Option<Box<dyn Sandbox>>,
     active_lease: ActiveBudgetLease,
-    completion_payload: CompletionPayload,
+    telemetry: &mut JobTelemetry,
     ctx: FinalizeContext,
-) -> CompletionReady {
+) -> FinalizationReady {
+    finalize_sandbox_for_completion_inner(
+        sandbox,
+        active_lease,
+        FinalizationTelemetry::new(telemetry),
+        ctx,
+    )
+    .await
+}
+
+#[cfg(test)]
+async fn finalize_sandbox_for_completion(
+    sandbox: Option<Box<dyn Sandbox>>,
+    active_lease: ActiveBudgetLease,
+    ctx: FinalizeContext,
+) -> FinalizationReady {
+    finalize_sandbox_for_completion_inner(
+        sandbox,
+        active_lease,
+        FinalizationTelemetry::disabled(),
+        ctx,
+    )
+    .await
+}
+
+async fn finalize_sandbox_for_completion_inner(
+    sandbox: Option<Box<dyn Sandbox>>,
+    active_lease: ActiveBudgetLease,
+    mut telemetry: FinalizationTelemetry<'_>,
+    ctx: FinalizeContext,
+) -> FinalizationReady {
     let Some(sandbox) = sandbox else {
-        return CompletionReady::new(completion_payload, BudgetOwnership::active(active_lease));
+        return FinalizationReady::new(BudgetOwnership::active(active_lease));
     };
 
     let FinalizeContext {
         run_id,
         sandbox_id,
+        runner_id,
+        reuse_result,
         profile_name,
         reuse_key,
         cli_agent_session_id,
@@ -140,14 +253,17 @@ pub(super) async fn finalize_sandbox_for_completion(
         workspace_image_size_bytes,
         storage_fingerprints,
         device_rate_limits,
+        guest_timezone_intent,
         factory,
         idle_pool,
         status,
         reuse_state_notify,
+        active_run_reuse,
         workspace_cache_snapshot,
         parking_gate,
         network_log_drain,
         exit_code,
+        sandbox_reuse_disposition,
         cancel,
         cleanup_state,
         #[cfg(test)]
@@ -164,16 +280,26 @@ pub(super) async fn finalize_sandbox_for_completion(
         outer_job_panic,
     };
     let cancelled = cancel.is_cancelled();
+    let hard_cancelled = cancel.is_hard_cancelled();
+    if hard_cancelled {
+        telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
+    }
     let terminal_status = workspace_terminal_status(exit_code, cancelled);
     let completed_at = local_completed_at();
     let resolved_cli_agent_session_id = cli_agent_session_id
         .as_deref()
         .or(discovered_cli_agent_session_id.as_deref());
-    let parkable_reuse_key = if exit_code == 0 && !cancelled && parking_gate.is_open() {
-        reuse_key.clone()
-    } else {
-        None
-    };
+    info!(
+        run_id = %run_id,
+        sandbox_reuse_disposition = sandbox_reuse_disposition.as_str(),
+        "evaluating terminal sandbox reuse"
+    );
+    let parkable_reuse_key =
+        if sandbox_reuse_disposition.is_eligible() && !hard_cancelled && parking_gate.is_open() {
+            reuse_key.clone()
+        } else {
+            None
+        };
     let workspace_promotion = workspace_image.and_then(|workspace_image| {
         workspace_image.into_promotion_context(WorkspaceImagePromotionRequest {
             run_id,
@@ -195,6 +321,16 @@ pub(super) async fn finalize_sandbox_for_completion(
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
+        let history_generation_run_id = match sandbox_reuse_disposition {
+            SandboxReuseDisposition::Eligible(SandboxReuseTerminal::Success) => Some(run_id),
+            SandboxReuseDisposition::Eligible(
+                SandboxReuseTerminal::NonzeroExit
+                | SandboxReuseTerminal::ExecutionTimeout
+                | SandboxReuseTerminal::CooperativeCancellation,
+            )
+            | SandboxReuseDisposition::Ineligible(_) => None,
+        };
+        let publishes_exact_sandbox = history_generation_run_id == Some(run_id);
         let park_request = IdleParkRequest::new(IdleParkRequestParts {
             run_id,
             sandbox,
@@ -207,11 +343,15 @@ pub(super) async fn finalize_sandbox_for_completion(
             source_ip,
             storage_fingerprints,
             restored_session_identity,
-            history_generation_run_id: Some(run_id),
+            history_generation_run_id,
+            guest_timezone_intent,
             workspace_image_size_bytes,
             workspace_promotion,
         });
-        let park_outcome = match park_request.park_for_idle().await {
+        let park_outcome = match park_request
+            .park_for_idle_with_observer(&mut telemetry)
+            .await
+        {
             Ok(outcome) => outcome,
             Err(failure) => match failure.into_parts() {
                 IdleParkFailureParts::Active {
@@ -219,6 +359,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     reason,
                     error,
                 } => {
+                    telemetry.record_idle_publication(false, Some(reason));
                     let IdleParkActiveParts {
                         sandbox,
                         factory: failure_factory,
@@ -257,12 +398,9 @@ pub(super) async fn finalize_sandbox_for_completion(
                     );
                     record_destroy_result(destroy_result.outcome, destroy_bookkeeping);
                     return mark_reuse_state_refresh(
-                        CompletionReady::new(
-                            completion_payload,
-                            BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(
-                                budget_lease,
-                            )),
-                        ),
+                        FinalizationReady::new(BudgetOwnership::active(
+                            ActiveBudgetLease::from_idle_park_lease(budget_lease),
+                        )),
                         workspace_cache_promoted,
                     );
                 }
@@ -271,6 +409,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     reason,
                     error,
                 } => {
+                    telemetry.record_idle_publication(false, Some(reason));
                     warn!(
                         run_id = %run_id,
                         reuse_key_fingerprint = %reuse_key_fingerprint,
@@ -301,26 +440,28 @@ pub(super) async fn finalize_sandbox_for_completion(
                         destroy_result.workspace_cache_promoted,
                     );
                     return mark_reuse_state_refresh(
-                        CompletionReady::new(completion_payload, destroy_result.budget),
+                        FinalizationReady::new(destroy_result.budget),
                         workspace_cache_promoted,
                     );
                 }
             },
         };
-        let (candidate, non_reusable_reason) = park_outcome.into_parts();
-        if cancel.is_cancelled() {
+        let (candidate, non_reusable) = park_outcome.into_parts();
+        if cancel.is_hard_cancelled() {
+            telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
+            telemetry.record_idle_publication(false, Some("cancelled"));
             let (payload, budget_lease) = candidate.into_active_destroy_parts();
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
                 reuse_key_fingerprint = %reuse_key_fingerprint,
                 reuse_key_kind = reuse_kind,
-                "job cancelled while parking, destroying VM"
+                "job hard-cancelled while parking, destroying VM"
             );
             let destroy_result = destroy_active_owned_idle_payload(
                 payload,
                 budget_lease,
-                "cancelled",
+                "hard_cancellation",
                 destroy_bookkeeping,
             )
             .await;
@@ -332,16 +473,83 @@ pub(super) async fn finalize_sandbox_for_completion(
                 destroy_result.workspace_cache_promoted,
             );
             destroy_result.budget
-        } else if let Some(reason) = non_reusable_reason {
+        } else if let Some(non_reusable) = non_reusable {
+            let reason = non_reusable.reason;
+            let preparation_report = non_reusable.preparation_report;
+            telemetry.record_idle_publication(false, Some("non_reusable"));
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
-            info!(
-                run_id = %run_id,
-                reuse_key_fingerprint = %reuse_key_fingerprint,
-                reuse_key_kind = reuse_kind,
-                reason = reason.as_str(),
-                admission_action = "reject_and_destroy",
-                "sandbox parked but is not reusable, destroying VM"
-            );
+            match &reason {
+                sandbox::SandboxParkNonReusableReason::SevereMemoryRetention(diagnostics) => {
+                    let guest = diagnostics.guest_memory_snapshot;
+                    warn!(
+                        run_id = %run_id,
+                        sandbox_id = %sandbox_id,
+                        runner_id = %runner_id,
+                        runner_version = env!("CARGO_PKG_VERSION"),
+                        profile_name = %profile_name,
+                        reuse_key_fingerprint = %reuse_key_fingerprint,
+                        reuse_key_kind = reuse_kind,
+                        sandbox_reuse_result = reuse_result.as_wire(),
+                        reuse_preparation_ready = true,
+                        containment_ready = true,
+                        reuse_preparation_removed_entries = preparation_report.removed_entries,
+                        reuse_preparation_before_available_bytes =
+                            preparation_report.before.available_bytes,
+                        reuse_preparation_before_available_inodes =
+                            preparation_report.before.available_inodes,
+                        reuse_preparation_after_available_bytes =
+                            preparation_report.after.available_bytes,
+                        reuse_preparation_after_available_inodes =
+                            preparation_report.after.available_inodes,
+                        requested_target_mib = diagnostics.requested_target_mib,
+                        first_observed_target_mib = diagnostics.first_observed_target_mib,
+                        observed_target_mib = diagnostics.observed_target_mib,
+                        target_observed = diagnostics.target_observed,
+                        first_actual_mib = diagnostics.first_actual_mib,
+                        actual_mib = diagnostics.actual_mib,
+                        max_actual_mib = diagnostics.max_actual_mib,
+                        deficit_mib = diagnostics.deficit_mib,
+                        actual_delta_mib = diagnostics.actual_delta_mib,
+                        elapsed_ms = diagnostics.elapsed_ms,
+                        sample_count = diagnostics.sample_count,
+                        reported_free_memory_bytes = diagnostics.reported_free_memory_bytes,
+                        reported_available_memory_bytes =
+                            diagnostics.reported_available_memory_bytes,
+                        reported_total_memory_bytes = diagnostics.reported_total_memory_bytes,
+                        reported_swap_in_bytes = diagnostics.reported_swap_in_bytes,
+                        reported_swap_out_bytes = diagnostics.reported_swap_out_bytes,
+                        reported_major_faults = diagnostics.reported_major_faults,
+                        reported_minor_faults = diagnostics.reported_minor_faults,
+                        reported_disk_caches_bytes = diagnostics.reported_disk_caches_bytes,
+                        guest_memory_snapshot_available = guest.is_some(),
+                        guest_mem_total_bytes = guest.map(|snapshot| snapshot.mem_total_bytes),
+                        guest_mem_free_bytes = guest.map(|snapshot| snapshot.mem_free_bytes),
+                        guest_mem_available_bytes =
+                            guest.map(|snapshot| snapshot.mem_available_bytes),
+                        guest_buffers_bytes = guest.map(|snapshot| snapshot.buffers_bytes),
+                        guest_cached_bytes = guest.map(|snapshot| snapshot.cached_bytes),
+                        guest_anon_pages_bytes = guest.map(|snapshot| snapshot.anon_pages_bytes),
+                        guest_mapped_bytes = guest.map(|snapshot| snapshot.mapped_bytes),
+                        guest_dirty_bytes = guest.map(|snapshot| snapshot.dirty_bytes),
+                        guest_writeback_bytes = guest.map(|snapshot| snapshot.writeback_bytes),
+                        guest_shmem_bytes = guest.map(|snapshot| snapshot.shmem_bytes),
+                        guest_slab_bytes = guest.map(|snapshot| snapshot.slab_bytes),
+                        guest_slab_reclaimable_bytes =
+                            guest.map(|snapshot| snapshot.slab_reclaimable_bytes),
+                        guest_slab_unreclaimable_bytes =
+                            guest.map(|snapshot| snapshot.slab_unreclaimable_bytes),
+                        guest_unevictable_bytes = guest.map(|snapshot| snapshot.unevictable_bytes),
+                        guest_kernel_stack_bytes =
+                            guest.map(|snapshot| snapshot.kernel_stack_bytes),
+                        guest_page_tables_bytes = guest.map(|snapshot| snapshot.page_tables_bytes),
+                        guest_swap_total_bytes = guest.map(|snapshot| snapshot.swap_total_bytes),
+                        guest_swap_free_bytes = guest.map(|snapshot| snapshot.swap_free_bytes),
+                        reason = reason.as_str(),
+                        admission_action = "reject_and_destroy",
+                        "sandbox parked with severe memory retention, destroying VM"
+                    );
+                }
+            }
             let (payload, budget_lease) = candidate.into_active_destroy_parts();
             let destroy_result = destroy_active_owned_idle_payload(
                 payload,
@@ -364,26 +572,28 @@ pub(super) async fn finalize_sandbox_for_completion(
             test_observer.notify_before_idle_pool_ownership_transfer(run_id);
             loop {
                 let mut pool = idle_pool.lock().await;
-                // Let cancellation win while finalization is still waiting for
-                // the pool lock. Once the pool lock is held, only enter the
+                // Let hard cancellation win while finalization is still waiting
+                // for the pool lock. Once the pool lock is held, only enter the
                 // final transfer boundary if the per-run gate is immediately
                 // available; otherwise release the pool lock before waiting.
                 let Some(transfer_guard) = cancel.try_transfer_guard() else {
                     drop(pool);
                     let transfer_guard = cancel.transfer_guard().await;
-                    if cancel.is_cancelled() {
+                    if cancel.is_hard_cancelled() {
+                        telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
+                        telemetry.record_idle_publication(false, Some("cancelled"));
                         info!(
                             run_id = %run_id,
                             reuse_key_fingerprint = %reuse_key_fingerprint,
                             reuse_key_kind = reuse_kind,
-                            "job cancelled before idle pool ownership transfer, destroying VM"
+                            "job hard-cancelled before idle pool ownership transfer, destroying VM"
                         );
                         drop(transfer_guard);
                         let (payload, budget_lease) = candidate.into_active_destroy_parts();
                         let destroy_result = destroy_active_owned_idle_payload(
                             payload,
                             budget_lease,
-                            "cancelled",
+                            "hard_cancellation",
                             destroy_bookkeeping,
                         )
                         .await;
@@ -395,19 +605,21 @@ pub(super) async fn finalize_sandbox_for_completion(
                             destroy_result.workspace_cache_promoted,
                         );
                         return mark_reuse_state_refresh(
-                            CompletionReady::new(completion_payload, destroy_result.budget),
+                            FinalizationReady::new(destroy_result.budget),
                             workspace_cache_promoted,
                         );
                     }
                     drop(transfer_guard);
                     continue;
                 };
-                if cancel.is_cancelled() {
+                if cancel.is_hard_cancelled() {
+                    telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
+                    telemetry.record_idle_publication(false, Some("cancelled"));
                     info!(
                         run_id = %run_id,
                         reuse_key_fingerprint = %reuse_key_fingerprint,
                         reuse_key_kind = reuse_kind,
-                        "job cancelled before idle pool ownership transfer, destroying VM"
+                        "job hard-cancelled before idle pool ownership transfer, destroying VM"
                     );
                     drop(transfer_guard);
                     drop(pool);
@@ -415,7 +627,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     let destroy_result = destroy_active_owned_idle_payload(
                         payload,
                         budget_lease,
-                        "cancelled",
+                        "hard_cancellation",
                         destroy_bookkeeping,
                     )
                     .await;
@@ -427,7 +639,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         destroy_result.workspace_cache_promoted,
                     );
                     return mark_reuse_state_refresh(
-                        CompletionReady::new(completion_payload, destroy_result.budget),
+                        FinalizationReady::new(destroy_result.budget),
                         workspace_cache_promoted,
                     );
                 }
@@ -459,11 +671,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                         let snapshot = pool.status_snapshot();
                         drop(transfer_guard);
                         drop(pool);
+                        if publishes_exact_sandbox {
+                            active_run_reuse.publish_exact_sandbox();
+                        }
                         let ownership = OwnershipTransitions::new(status.as_ref());
                         ownership
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
                         reuse_state_changed = true;
+                        telemetry.record_idle_publication(true, None);
                         reuse_state_notify.notify_one();
                         BudgetOwnership::idle_owned()
                     }
@@ -484,11 +700,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                         let snapshot = pool.status_snapshot();
                         drop(transfer_guard);
                         drop(pool);
+                        if publishes_exact_sandbox {
+                            active_run_reuse.publish_exact_sandbox();
+                        }
                         let ownership = OwnershipTransitions::new(status.as_ref());
                         ownership
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
                         reuse_state_changed = true;
+                        telemetry.record_idle_publication(true, None);
                         reuse_state_notify.notify_one();
                         // The replaced VM was park()ed when it entered the
                         // pool; destroying a parked sandbox is safe — Drop
@@ -500,6 +720,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         BudgetOwnership::idle_owned()
                     }
                     ParkResult::Rejected(rejected) => {
+                        telemetry.record_idle_publication(false, Some("idle_pool_rejected"));
                         info!(
                             run_id = %run_id,
                             reuse_key_fingerprint = %reuse_key_fingerprint,
@@ -534,7 +755,11 @@ pub(super) async fn finalize_sandbox_for_completion(
         }
     } else {
         // No parkable reuse key — stop + destroy.
-        let cleanup_reason = active_cleanup_reason(exit_code, cancelled, parking_gate.is_open());
+        let cleanup_reason = active_cleanup_reason(
+            sandbox_reuse_disposition,
+            hard_cancelled,
+            parking_gate.is_open(),
+        );
         let destroy_result = stop_and_destroy_sandbox(
             sandbox,
             &**factory,
@@ -561,10 +786,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         BudgetOwnership::active(active_lease)
     };
 
-    mark_reuse_state_refresh(
-        CompletionReady::new(completion_payload, budget),
-        reuse_state_changed,
-    )
+    mark_reuse_state_refresh(FinalizationReady::new(budget), reuse_state_changed)
 }
 
 #[derive(Clone, Copy)]
@@ -622,11 +844,18 @@ async fn close_network_log_session(
     }
 }
 
-fn active_cleanup_reason(exit_code: i32, cancelled: bool, parking_open: bool) -> &'static str {
-    if cancelled {
-        "cancelled"
-    } else if exit_code != 0 {
-        "nonzero_exit"
+fn active_cleanup_reason(
+    sandbox_reuse_disposition: SandboxReuseDisposition,
+    hard_cancelled: bool,
+    parking_open: bool,
+) -> &'static str {
+    if hard_cancelled {
+        "hard_cancellation"
+    } else if matches!(
+        sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(_)
+    ) {
+        sandbox_reuse_disposition.as_str()
     } else if !parking_open {
         "parking_closed"
     } else {
@@ -740,6 +969,7 @@ async fn stop_and_destroy_sandbox(
 mod tests {
     use super::*;
     use std::collections::{HashMap, HashSet};
+    use std::future::Future;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -752,11 +982,13 @@ mod tests {
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
     use sha2::{Digest, Sha256};
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
+    use super::super::active_runs::ActiveRuns;
     use super::super::idle_lifecycle::SharedIdlePool;
-    use super::super::job_lifecycle::{
-        ActiveBudgetLease, CompletionPayload, RunCleanupDisposition, RunCleanupState,
-    };
+    use super::super::job_lifecycle::{ActiveBudgetLease, RunCleanupDisposition, RunCleanupState};
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult, ParkingGate,
         RestoreReservedIdleResult, test_support::ParkedIdleCandidateBuilder,
@@ -782,6 +1014,10 @@ mod tests {
         WorkspaceSessionHistorySidecarRepresentation,
     };
 
+    fn test_active_runs() -> ActiveRuns {
+        ActiveRuns::new(Arc::new(tokio::sync::Notify::new()))
+    }
+
     async fn prepare_and_publish_workspace_image(
         sandbox: &dyn Sandbox,
         promotion: WorkspaceImagePromotionContext,
@@ -797,6 +1033,83 @@ mod tests {
         let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
         (budget, lease)
+    }
+
+    async fn capture_async_log_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+    }
+
+    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+        assert_eq!(
+            event.fields.get(field).map(String::as_str),
+            Some(expected),
+            "unexpected {field}; event={event:#?}"
+        );
+    }
+
+    fn severe_memory_retention_diagnostics() -> sandbox::SevereMemoryRetentionDiagnostics {
+        sandbox::SevereMemoryRetentionDiagnostics {
+            requested_target_mib: 3584,
+            first_observed_target_mib: Some(3584),
+            observed_target_mib: Some(3584),
+            target_observed: true,
+            first_actual_mib: Some(2074),
+            actual_mib: Some(2448),
+            max_actual_mib: Some(2448),
+            deficit_mib: Some(1136),
+            actual_delta_mib: Some(374),
+            elapsed_ms: 5001,
+            sample_count: 9,
+            reported_free_memory_bytes: Some(8 * 1024 * 1024),
+            reported_available_memory_bytes: Some(9 * 1024 * 1024),
+            reported_total_memory_bytes: Some(4_i64 * 1024 * 1024 * 1024),
+            reported_swap_in_bytes: Some(11),
+            reported_swap_out_bytes: Some(12),
+            reported_major_faults: Some(13),
+            reported_minor_faults: Some(14),
+            reported_disk_caches_bytes: Some(15),
+            guest_memory_snapshot: Some(sandbox::GuestMemorySnapshot {
+                mem_total_bytes: 101,
+                mem_free_bytes: 102,
+                mem_available_bytes: 103,
+                buffers_bytes: 104,
+                cached_bytes: 105,
+                anon_pages_bytes: 106,
+                mapped_bytes: 107,
+                dirty_bytes: 108,
+                writeback_bytes: 109,
+                shmem_bytes: 110,
+                slab_bytes: 111,
+                slab_reclaimable_bytes: 112,
+                slab_unreclaimable_bytes: 113,
+                unevictable_bytes: 114,
+                kernel_stack_bytes: 115,
+                page_tables_bytes: 116,
+                swap_total_bytes: 117,
+                swap_free_bytes: 118,
+            }),
+        }
     }
 
     struct FinalizeTestFixture {
@@ -858,6 +1171,8 @@ mod tests {
             FinalizeContext {
                 run_id,
                 sandbox_id,
+                runner_id: "runner-test".into(),
+                reuse_result: SandboxReuseResult::PoolMiss,
                 profile_name: "vm0/default".into(),
                 reuse_key: Some(session_id.into()),
                 cli_agent_session_id: Some(session_id.into()),
@@ -869,14 +1184,19 @@ mod tests {
                 workspace_image_size_bytes: 0,
                 storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
                 device_rate_limits: None,
+                guest_timezone_intent: GuestTimezoneIntent::Unknown,
                 factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
                 idle_pool: Arc::clone(&self.idle_pool),
                 status: Arc::clone(&self.status),
                 reuse_state_notify: Arc::new(tokio::sync::Notify::new()),
+                active_run_reuse: ActiveRunReusePublisher::detached(),
                 workspace_cache_snapshot: WorkspaceCacheStateSnapshot::new(),
                 parking_gate: self.parking_gate.clone(),
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
                 exit_code: 0,
+                sandbox_reuse_disposition: SandboxReuseDisposition::Eligible(
+                    SandboxReuseTerminal::Success,
+                ),
                 cancel,
                 cleanup_state: RunCleanupState::new(),
                 outer_job_panic: None,
@@ -941,6 +1261,13 @@ mod tests {
             RestoredSessionFramework::Codex => (
                 FinalSessionHistoryFramework::Codex,
                 format!("CODEX_SEARCH:26:/home/user/.codex/sessions:{session_id}"),
+            ),
+            RestoredSessionFramework::Pi => (
+                FinalSessionHistoryFramework::Pi,
+                format!(
+                    "{}/restored-{session_id}.jsonl",
+                    api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+                ),
             ),
         };
         let metadata = FinalSessionHistoryIdentity::new(
@@ -1074,27 +1401,21 @@ mod tests {
         let network_log_session = fixture.network_log_session().await;
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-network-log-park",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.guest_timezone_intent = GuestTimezoneIntent::Configured("Asia/Shanghai".into());
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "network-log-park",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            fixture.finalize_context(
-                run_id,
-                sandbox_id,
-                "sess-network-log-park",
-                network_log_session,
-                RunCancellationHandle::new(),
-            ),
+            context,
         )
         .await;
 
@@ -1103,6 +1424,10 @@ mod tests {
             let reservation = idle_pool
                 .reserve_reusable_generation("sess-network-log-park", "vm0/default", &None, run_id)
                 .expect("finalized sandbox should be reusable for its generation");
+            assert_eq!(
+                reservation.guest_timezone_intent(),
+                &GuestTimezoneIntent::Configured("Asia/Shanghai".into())
+            );
             assert!(matches!(
                 idle_pool.restore_reserved(reservation),
                 RestoreReservedIdleResult::Restored
@@ -1118,6 +1443,128 @@ mod tests {
                 .await,
             "parked sandbox must not retain the previous run's network-log attribution",
         );
+    }
+
+    #[tokio::test]
+    async fn finalizer_emits_joined_severe_memory_retention_warning() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let report = ReusePreparationReport {
+            before: RootFilesystemCapacity {
+                available_bytes: 256 * 1024 * 1024,
+                available_inodes: 2048,
+            },
+            after: RootFilesystemCapacity {
+                available_bytes: 384 * 1024 * 1024,
+                available_inodes: 4096,
+            },
+            removed_entries: 7,
+        };
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "prepare-for-reuse".into(),
+            exit_code: 0,
+            stdout: serde_json::to_vec(&report).unwrap(),
+            stderr: Vec::new(),
+        });
+        overrides.push_park_result(Ok(sandbox::SandboxParkOutcome::NonReusable(
+            sandbox::SandboxParkNonReusableReason::SevereMemoryRetention(Box::new(
+                severe_memory_retention_diagnostics(),
+            )),
+        )));
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "thread:severe-memory-warning",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.factory = factory;
+        context.runner_id = "runner-attribution-test".into();
+        context.reuse_result = SandboxReuseResult::Reused;
+
+        let (_finalization_ready, events) = capture_async_log_events(
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context),
+        )
+        .await;
+
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        let matching_events: Vec<_> = events
+            .iter()
+            .filter(|event| {
+                event.fields.get("message").is_some_and(|message| {
+                    message == "sandbox parked with severe memory retention, destroying VM"
+                })
+            })
+            .collect();
+        assert_eq!(matching_events.len(), 1, "captured={events:#?}");
+        let event = captured_event(
+            &events,
+            "sandbox parked with severe memory retention, destroying VM",
+        );
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(event, "run_id", &run_id.to_string());
+        assert_event_field(event, "sandbox_id", &sandbox_id.to_string());
+        assert_event_field(event, "runner_id", "runner-attribution-test");
+        assert_event_field(event, "runner_version", env!("CARGO_PKG_VERSION"));
+        assert_event_field(event, "profile_name", "vm0/default");
+        assert_event_field(event, "reuse_key_kind", "thread");
+        assert_event_field(event, "sandbox_reuse_result", "reused");
+        assert_event_field(event, "reuse_preparation_ready", "true");
+        assert_event_field(event, "containment_ready", "true");
+        assert_event_field(event, "reuse_preparation_removed_entries", "7");
+        assert_event_field(
+            event,
+            "reuse_preparation_before_available_bytes",
+            "268435456",
+        );
+        assert_event_field(
+            event,
+            "reuse_preparation_after_available_bytes",
+            "402653184",
+        );
+        assert_event_field(event, "requested_target_mib", "3584");
+        assert_event_field(event, "first_actual_mib", "2074");
+        assert_event_field(event, "actual_mib", "2448");
+        assert_event_field(event, "deficit_mib", "1136");
+        assert_event_field(event, "reported_swap_in_bytes", "11");
+        assert_event_field(event, "reported_disk_caches_bytes", "15");
+        assert_event_field(event, "guest_memory_snapshot_available", "true");
+        for (field, value) in [
+            ("guest_mem_total_bytes", 101),
+            ("guest_mem_free_bytes", 102),
+            ("guest_mem_available_bytes", 103),
+            ("guest_buffers_bytes", 104),
+            ("guest_cached_bytes", 105),
+            ("guest_anon_pages_bytes", 106),
+            ("guest_mapped_bytes", 107),
+            ("guest_dirty_bytes", 108),
+            ("guest_writeback_bytes", 109),
+            ("guest_shmem_bytes", 110),
+            ("guest_slab_bytes", 111),
+            ("guest_slab_reclaimable_bytes", 112),
+            ("guest_slab_unreclaimable_bytes", 113),
+            ("guest_unevictable_bytes", 114),
+            ("guest_kernel_stack_bytes", 115),
+            ("guest_page_tables_bytes", 116),
+            ("guest_swap_total_bytes", 117),
+            ("guest_swap_free_bytes", 118),
+        ] {
+            assert_event_field(event, field, &value.to_string());
+        }
+        assert_eq!(event.field_kinds.get("first_actual_mib"), Some(&"u64"));
+        assert_eq!(
+            event.field_kinds.get("reported_swap_in_bytes"),
+            Some(&"i64")
+        );
+        assert_eq!(event.field_kinds.get("guest_mem_total_bytes"), Some(&"u64"));
+        assert_event_field(event, "reason", "severe_memory_retention");
+        assert_event_field(event, "admission_action", "reject_and_destroy");
     }
 
     #[tokio::test]
@@ -1137,7 +1584,7 @@ mod tests {
             &cache,
             run_id,
             sandbox_id,
-            "sess-reuse-rejected",
+            "thread:reuse-rejected",
         )
         .await;
         let overrides = Arc::new(MockSandboxOverrides::new());
@@ -1162,7 +1609,7 @@ mod tests {
         let mut context = fixture.finalize_context(
             run_id,
             sandbox_id,
-            "sess-reuse-rejected",
+            "thread:reuse-rejected",
             network_log_session,
             RunCancellationHandle::new(),
         );
@@ -1171,29 +1618,17 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
 
-        let completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
-        assert_eq!(completion_ready.result_for_test(), (0, None));
         assert_eq!(overrides.park_call_count(), 1);
         assert_eq!(overrides.unpark_call_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
         let cache_states = cache.held_workspace_states().await;
         assert_eq!(cache_states.len(), 1);
-        assert_eq!(cache_states[0].reuse_key, "sess-reuse-rejected");
+        assert_eq!(cache_states[0].reuse_key, "thread:reuse-rejected");
         assert_eq!(
             cleanup_state.disposition(),
             RunCleanupDisposition::DestroyCompleted
@@ -1218,19 +1653,11 @@ mod tests {
         );
         context.test_observer = observer.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "finalizer-redaction",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -1259,19 +1686,11 @@ mod tests {
         );
         context.cleanup_state = cleanup_state.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "cancel-after-transfer",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -1580,19 +1999,11 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "guest-session-promotion",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -1650,20 +2061,9 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64 + 1;
 
-        let _completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
         assert_eq!(
             overrides.park_call_count(),
@@ -1710,8 +2110,10 @@ mod tests {
         )
         .await;
         let seeded_entry = cache.inspect().await.unwrap().entries.remove(0);
-        let entry_dir = paths.workspace_image_cache_entry_dir(&seeded_entry.cache_key);
-        let sidecar_metadata_path = entry_dir.join("session-history.metadata.json");
+        let sidecar_metadata_path = cache
+            .entry_paths(&seeded_entry.cache_key)
+            .session_history_sidecar_metadata()
+            .to_path_buf();
 
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -1755,7 +2157,10 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::rename(
-            paths.workspace_image_cache_current_image(&seeded_entry.cache_key),
+            cache
+                .entry_paths(&seeded_entry.cache_key)
+                .current_image()
+                .to_path_buf(),
             paths.active_workspace_image(&sandbox_id),
         )
         .await
@@ -1779,23 +2184,20 @@ mod tests {
         context.discovered_cli_agent_session_id = None;
         context.restored_session_identity = None;
         context.exit_code = 1;
+        context.sandbox_reuse_disposition = if cancelled {
+            SandboxReuseDisposition::Eligible(SandboxReuseTerminal::CooperativeCancellation)
+        } else {
+            SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit)
+        };
+        if !cancelled {
+            assert!(context.parking_gate.soft_drain());
+        }
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
 
-        let _completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                1,
-                Some("rotation failed before session discovery".into()),
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
         assert_eq!(overrides.park_call_count(), 0);
         assert_eq!(overrides.destroy_call_count(), 1);
@@ -1803,9 +2205,14 @@ mod tests {
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].reuse_key, reuse_key);
         let workspace_metadata: serde_json::Value = serde_json::from_slice(
-            &tokio::fs::read(paths.workspace_image_cache_metadata(&seeded_entry.cache_key))
-                .await
-                .unwrap(),
+            &tokio::fs::read(
+                cache
+                    .entry_paths(&seeded_entry.cache_key)
+                    .metadata()
+                    .to_path_buf(),
+            )
+            .await
+            .unwrap(),
         )
         .unwrap();
         assert!(workspace_metadata.get("cliAgentSessionId").is_none());
@@ -1889,7 +2296,10 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::rename(
-            paths.workspace_image_cache_current_image(&seeded_entry.cache_key),
+            cache
+                .entry_paths(&seeded_entry.cache_key)
+                .current_image()
+                .to_path_buf(),
             paths.active_workspace_image(&sandbox_id),
         )
         .await
@@ -1929,17 +2339,9 @@ mod tests {
         context.workspace_image_size_bytes = b"image".len() as u64;
         context.parking_gate.close();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(sandbox)),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -2016,21 +2418,16 @@ mod tests {
         context.cli_agent_session_id = None;
         context.discovered_cli_agent_session_id = None;
         context.exit_code = 1;
+        context.sandbox_reuse_disposition =
+            SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit);
+        assert!(context.parking_gate.soft_drain());
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
         let workspace_cache_snapshot = context.workspace_cache_snapshot.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("reuse-key-promotion"))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                1,
-                Some("invalid resume session".into()),
-                sandbox_id,
-                SandboxReuseResult::Reused,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -2039,9 +2436,9 @@ mod tests {
         let cache_states = cache.held_workspace_states().await;
         assert_eq!(cache_states.len(), 1);
         assert_eq!(cache_states[0].reuse_key, reuse_key);
-        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        let active_runs = test_active_runs();
         let snapshot_states =
-            workspace_cache_snapshot.current_held_workspace_states(&active_reuse_keys, None);
+            workspace_cache_snapshot.current_held_workspace_states(&active_runs, None);
         assert_eq!(snapshot_states.len(), 1);
         assert_eq!(snapshot_states[0].reuse_key, reuse_key);
         assert_eq!(snapshot_states[0].workspace_caches.len(), 1);
@@ -2100,24 +2497,16 @@ mod tests {
         context.cli_agent_session_id = None;
         context.discovered_cli_agent_session_id = None;
         context.exit_code = 1;
+        context.sandbox_reuse_disposition =
+            SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit);
+        assert!(context.parking_gate.soft_drain());
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
         let workspace_cache_snapshot = context.workspace_cache_snapshot.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                1,
-                Some("simulated agent failure".into()),
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
         assert_eq!(overrides.park_call_count(), 0);
         assert_eq!(overrides.destroy_call_count(), 1);
@@ -2133,16 +2522,19 @@ mod tests {
         );
         let metadata: serde_json::Value = serde_json::from_slice(
             &tokio::fs::read(
-                paths.workspace_image_cache_metadata(&inspection.entries[0].cache_key),
+                cache
+                    .entry_paths(&inspection.entries[0].cache_key)
+                    .metadata()
+                    .to_path_buf(),
             )
             .await
             .unwrap(),
         )
         .unwrap();
         assert!(metadata.get("cliAgentSessionId").is_none());
-        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        let active_runs = test_active_runs();
         let snapshot_states =
-            workspace_cache_snapshot.current_held_workspace_states(&active_reuse_keys, None);
+            workspace_cache_snapshot.current_held_workspace_states(&active_runs, None);
         assert_eq!(snapshot_states.len(), 1);
         assert_eq!(snapshot_states[0].reuse_key, reuse_key);
         assert_eq!(snapshot_states[0].workspace_caches.len(), 1);
@@ -2177,24 +2569,16 @@ mod tests {
         );
         context.factory = factory;
         context.exit_code = 1;
+        context.sandbox_reuse_disposition =
+            SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit);
+        assert!(context.parking_gate.soft_drain());
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
         let workspace_cache_snapshot = context.workspace_cache_snapshot.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                1,
-                Some("simulated failure".into()),
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
         let exec_calls = overrides.exec_calls();
         assert_eq!(exec_calls.len(), 1);
@@ -2202,10 +2586,10 @@ mod tests {
         assert_eq!(overrides.destroy_call_count(), 1);
         assert!(cache.held_workspace_states().await.is_empty());
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
-        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        let active_runs = test_active_runs();
         assert!(
             workspace_cache_snapshot
-                .current_held_workspace_states(&active_reuse_keys, None)
+                .current_held_workspace_states(&active_runs, None)
                 .is_empty(),
             "failed post-freeze stop must not advertise reusable state"
         );
@@ -2261,19 +2645,11 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "rejected-workspace-promotion",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -2287,7 +2663,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalizer_notifies_after_replaced_idle_workspace_cache_promotion() {
+    async fn finalizer_notifies_after_replaced_idle_promotion_despite_destroy_panic() {
         let fixture = FinalizeTestFixture::new().await;
         let session_id = "sess-replaced-cache";
         let dir = tempfile::tempdir().unwrap();
@@ -2316,6 +2692,7 @@ mod tests {
         let existing_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
         add_healthy_reuse_preparation_matcher(&existing_overrides);
         existing_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        existing_overrides.push_destroy_panic("simulated replaced idle destroy panic");
         let existing_factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
             MockSandboxFactory::with_overrides(Arc::clone(&existing_overrides)),
         ));
@@ -2345,6 +2722,7 @@ mod tests {
             storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
             restored_session_identity: None,
             history_generation_run_id: None,
+            guest_timezone_intent: GuestTimezoneIntent::Unknown,
             workspace_image_size_bytes: b"image".len() as u64,
             workspace_promotion: Some(old_promotion),
         })
@@ -2380,14 +2758,6 @@ mod tests {
                 "replacement-sandbox",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                new_run_id,
-                0,
-                None,
-                new_sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         ));
 
@@ -2401,7 +2771,7 @@ mod tests {
         );
 
         destroy_gate.release_one();
-        let _completion_ready = finalize_task.await.expect("finalizer task should join");
+        let _finalization_ready = finalize_task.await.expect("finalizer task should join");
         assert!(
             reuse_state_notify.notified().now_or_never().is_some(),
             "replaced idle workspace cache promotion should notify after destroy"
@@ -2426,17 +2796,9 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("network-log-cancel"))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             fixture.finalize_context(
                 run_id,
                 sandbox_id,
@@ -2458,6 +2820,57 @@ mod tests {
                 .await,
             "cancelled destroyed sandbox must not retain network-log attribution",
         );
+    }
+
+    #[tokio::test]
+    async fn finalizer_preserves_verified_success_metadata_after_late_cooperative_cancel() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-late-cooperative-cancel";
+        let cancel = RunCancellationHandle::new();
+        cancel.request_cooperative_user_cancellation().await;
+        let cleanup_state = RunCleanupState::new();
+        let identity = RestoredSessionIdentity::claude_code_for_test("verified-history");
+        let mut context =
+            fixture.finalize_context(run_id, sandbox_id, session_id, network_log_session, cancel);
+        context.exit_code = 137;
+        context.restored_session_identity = Some(identity.clone());
+        context.cleanup_state = cleanup_state.clone();
+
+        let _finalization_ready = finalize_sandbox_for_completion(
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "late-cooperative-cancel",
+            ))),
+            ActiveBudgetLease::new(lease),
+            context,
+        )
+        .await;
+
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::IdlePoolOwned,
+        );
+        let held = fixture.idle_pool.lock().await.held_sandbox_states();
+        assert_eq!(held.len(), 1);
+        assert_eq!(
+            held[0].reusable_sandbox.history_generation_run_id,
+            Some(run_id),
+        );
+        let entry = fixture
+            .idle_pool
+            .lock()
+            .await
+            .take(session_id)
+            .expect("late-cancelled successful sandbox should be parked");
+        let crate::idle_pool::IdleUnparkResult::Reused { sandbox, .. } =
+            entry.try_unpark_for_run(RunId::new_v4()).await
+        else {
+            panic!("late-cancelled successful sandbox should unpark");
+        };
+        assert_eq!(sandbox.restored_session_identity(), Some(&identity));
     }
 
     #[tokio::test]
@@ -2489,14 +2902,6 @@ mod tests {
         let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
             Some(sandbox),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         ));
 
@@ -2529,7 +2934,7 @@ mod tests {
         );
 
         destroy_gate.release_one();
-        let _completion_ready = finalize_task.await.expect("finalizer task should join");
+        let _finalization_ready = finalize_task.await.expect("finalizer task should join");
         assert_eq!(overrides.park_call_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(
@@ -2571,14 +2976,6 @@ mod tests {
         let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
             Some(sandbox),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         ));
 
@@ -2606,7 +3003,7 @@ mod tests {
         );
 
         destroy_gate.release_one();
-        let _completion_ready = finalize_task.await.expect("finalizer task should join");
+        let _finalization_ready = finalize_task.await.expect("finalizer task should join");
         assert_eq!(overrides.park_call_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(

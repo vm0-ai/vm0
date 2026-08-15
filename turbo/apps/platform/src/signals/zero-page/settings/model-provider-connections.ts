@@ -4,19 +4,16 @@ import {
   getProviderRuntimeModel,
   isModelSupportedByProvider,
   type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import type {
   ModelProviderConnectionResponse,
   ModelProviderSurfaceProtocol,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 
 import {
   createModelProviderConnection$,
-  modelProviderConnections$,
   updateModelProviderConnection$,
 } from "../../external/model-provider-connections.ts";
-import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { jsonParseOr, resetSignal } from "../../utils.ts";
 
 export type ModelProviderConnectionTemplate =
@@ -24,13 +21,6 @@ export type ModelProviderConnectionTemplate =
   | "vercel"
   | "openrouter"
   | "fireworks";
-
-export const availableModelProviderConnections$ = computed(async (get) => {
-  if (!get(featureSwitch$)[FeatureSwitchKey.CustomModelGateways]) {
-    return [];
-  }
-  return await get(modelProviderConnections$);
-});
 
 interface SurfaceDraft {
   readonly enabled: boolean;
@@ -241,6 +231,15 @@ export const openEditModelProviderConnection$ = command(
 );
 
 export const closeModelProviderConnection$ = command(({ set }) => {
+  set(internalConnectionDraft$, (draft) => {
+    return { ...draft, open: false };
+  });
+});
+
+export const completeModelProviderConnectionClose$ = command(({ get, set }) => {
+  if (get(internalConnectionDraft$).open) {
+    return;
+  }
   set(resetConnectionDialogSignal$);
 });
 

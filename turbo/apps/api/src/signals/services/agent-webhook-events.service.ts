@@ -10,7 +10,6 @@ import { logger } from "../../lib/log";
 import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { now } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
-import { publishRunChangedForUserSafely } from "../external/realtime";
 import { refreshAgentPhoneTypingEvents$ } from "./agent-event-consumer-agentphone-typing.service";
 import { ingestAxiomEvents } from "./agent-event-consumer-axiom.service";
 import {
@@ -43,13 +42,6 @@ interface ReceiveAgentEventsParams {
 interface DispatchableConsumer {
   readonly name: string;
   readonly command$: ConsumerCommand;
-  readonly eventTypes?: readonly string[];
-}
-
-interface PreparedConsumer {
-  readonly name: string;
-  readonly command$: ConsumerCommand;
-  readonly events: readonly AgentEvent[];
 }
 
 interface AcceptedAgentEvents {
@@ -96,19 +88,13 @@ const runOptionalEventConsumer$ = command(
   async (
     { set },
     params: {
-      readonly consumer: PreparedConsumer;
+      readonly consumer: DispatchableConsumer;
       readonly payload: EventConsumerPayload;
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const range = eventRange(params.consumer.events);
-    set(
-      eventConsumerPayloadState$,
-      Object.freeze({
-        ...params.payload,
-        events: Object.freeze([...params.consumer.events]),
-      }),
-    );
+    const range = eventRange(params.payload.events);
+    set(eventConsumerPayloadState$, params.payload);
     const result = await tapError(
       Promise.resolve(set(params.consumer.command$, signal)),
       (error) => {
@@ -165,37 +151,11 @@ export const dispatchOptionalAgentEventConsumers$ = command(
       signal.throwIfAborted();
     }
 
-    const consumers = OPTIONAL_EVENT_CONSUMERS.map(
-      (consumer): PreparedConsumer | null => {
-        const matchingEvents = consumer.eventTypes
-          ? payload.events.filter((event) => {
-              return consumer.eventTypes?.includes(event.type) ?? false;
-            })
-          : payload.events;
-
-        return matchingEvents.length === 0
-          ? null
-          : {
-              name: consumer.name,
-              command$: consumer.command$,
-              events: matchingEvents,
-            };
-      },
-    ).filter((consumer): consumer is PreparedConsumer => {
-      return consumer !== null;
-    });
-
-    for (const consumer of consumers) {
+    for (const consumer of OPTIONAL_EVENT_CONSUMERS) {
       await set(runOptionalEventConsumer$, { consumer, payload }, signal);
     }
 
     const range = eventRange(payload.events);
-    await publishRunChangedForUserSafely(
-      payload.context.userId,
-      payload.runId,
-      range,
-    );
-    signal.throwIfAborted();
     await axiomTrace;
     signal.throwIfAborted();
     L.debug(

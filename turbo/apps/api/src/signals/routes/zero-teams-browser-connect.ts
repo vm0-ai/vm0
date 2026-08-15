@@ -1,6 +1,6 @@
 import { command } from "ccstate";
-import { zeroTeamsBrowserConnectContract } from "@vm0/api-contracts/contracts/zero-teams-browser-connect";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
+import { zeroTeamsBrowserConnectContract } from "@okouai/api-contracts/contracts/zero-teams-browser-connect";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -135,7 +135,7 @@ function connectSuccess(
 }
 
 function signInRedirect(requestUrl: string): Response {
-  const signInUrl = new URL("/sign-in", requestUrl);
+  const signInUrl = new URL("/sign-in", env("APP_URL"));
   signInUrl.searchParams.set("redirect_url", requestUrl);
   return redirectResponse(signInUrl.toString());
 }

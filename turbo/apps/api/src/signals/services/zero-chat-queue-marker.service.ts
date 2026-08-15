@@ -1,13 +1,14 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import { and, eq, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import type { Db } from "../external/db";
-import { revokeChatEvent, insertChatEvent } from "./zero-chat-event.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { revokeChatEvent, insertChatEvent } from "./chat-event.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
+import type { Tx } from "../../lib/db-types";
+import { canonicalChatEventGoalId } from "./canonical-chat-event-read.service";
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
 
@@ -87,7 +88,7 @@ export async function revokeQueuedRunAssistantMarkers(
     .select({
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
-      runGroupId: chatEvents.runGroupId,
+      runGroupId: canonicalChatEventGoalId(),
     })
     .from(chatEvents)
     .where(

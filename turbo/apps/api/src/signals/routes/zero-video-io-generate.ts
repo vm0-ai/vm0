@@ -1,33 +1,41 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { zeroVideoIoGenerateContract } from "@vm0/api-contracts/contracts/zero-video-io-generate";
-import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
+import { zeroVideoIoGenerateContract } from "@okouai/api-contracts/contracts/zero-video-io-generate";
+import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  isVideoModelId,
+  type VideoModelId,
+} from "@okouai/api-contracts/contracts/video-models";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { env } from "../../lib/env";
-import { db$ } from "../external/db";
+import { db$, type ReadonlyDb } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import {
   bytePlusBuiltInGenerationWebhookUrl,
   falBuiltInGenerationWebhookUrl,
+  miniMaxBuiltInGenerationWebhookUrl,
 } from "../services/built-in-generation-provider-webhooks.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
   checkVideoCredits$,
+  getMissingVideoPricing,
   parseVideoOptions,
   submitBytePlusVideoGeneration,
   submitFalVideoGeneration,
+  submitMiniMaxVideoGeneration,
   type VideoOptions,
-  type VideoPricingRow,
   videoProviderForModel,
   videoInsufficientCredits,
   videoPricing$,
-  videoPricingCategoryForOptions,
-  videoPricingKey,
   videoRequiresPaidPlan,
   videoServiceUnavailable,
 } from "../services/zero-video-io-generate.service";
@@ -37,15 +45,65 @@ import {
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
   mergeBuiltInGenerationJobInternal$,
-} from "../services/zero-built-in-generation.service";
+} from "../services/built-in-generation.service";
 import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
-  type RunBuiltInAdmission,
-} from "../services/zero-run-built-in-admission.service";
+} from "../services/run-built-in-admission.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 
 const videoBody$ = bodyResultOf(zeroVideoIoGenerateContract.post);
+
+async function loadRunVideoModel(
+  db: ReadonlyDb,
+  runId: string,
+): Promise<VideoModelId | null> {
+  const [run] = await db
+    .select({ selectedVideoModel: agentRuns.selectedVideoModel })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
+    .limit(1);
+  if (!run) {
+    throw new Error("Expected a Zero run row for video model enforcement");
+  }
+  if (run.selectedVideoModel === null) {
+    return null;
+  }
+  if (!isVideoModelId(run.selectedVideoModel)) {
+    throw new Error("Run has an unsupported video model snapshot");
+  }
+  return run.selectedVideoModel;
+}
+
+async function loadEnforcedRunVideoModel(
+  db: ReadonlyDb,
+  orgId: string,
+  userId: string,
+  runId: string | undefined,
+  signal: AbortSignal,
+): Promise<VideoModelId | null> {
+  if (!runId) {
+    return null;
+  }
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    orgId,
+    userId,
+  );
+  signal.throwIfAborted();
+  if (
+    !isFeatureEnabled(
+      FeatureSwitchKey.VideoModelSelection,
+      featureSwitchContext,
+    )
+  ) {
+    return null;
+  }
+  const runVideoModel = await loadRunVideoModel(db, runId);
+  signal.throwIfAborted();
+  return runVideoModel;
+}
 
 interface GenerationError {
   readonly message: string;
@@ -61,12 +119,7 @@ interface GenerationErrorResponse {
 
 interface VideoJobArgs {
   readonly generationId: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly runId: string | undefined;
-  readonly admission: RunBuiltInAdmission | null;
   readonly options: VideoOptions;
-  readonly pricing: VideoPricingRow;
 }
 
 function isGenerationError(value: unknown): value is GenerationError {
@@ -125,7 +178,7 @@ function videoRequestRecord(options: VideoOptions): Record<string, unknown> {
 
 function acceptedVideoResponse(
   generationId: string,
-  realtime: ZeroBuiltInGenerationRealtimeSubscription,
+  realtime: BuiltInGenerationRealtimeSubscription,
 ) {
   return {
     status: 202 as const,
@@ -137,6 +190,58 @@ function acceptedVideoResponse(
     },
   };
 }
+
+const submitMiniMaxVideoProviderJob$ = command(
+  async (
+    { set },
+    args: VideoJobArgs,
+    signal: AbortSignal,
+  ): Promise<GenerationErrorResponse | null> => {
+    const apiKey = env("MINIMAX_API_KEY");
+    if (!apiKey) {
+      const response = videoServiceUnavailable(
+        "MiniMax H3 video generation is not configured",
+        "NOT_CONFIGURED",
+      );
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: response.body.error },
+        signal,
+      );
+      return response;
+    }
+    const handle = await submitMiniMaxVideoGeneration(
+      args.options,
+      apiKey,
+      signal,
+      miniMaxBuiltInGenerationWebhookUrl({
+        generationId: args.generationId,
+      }),
+    );
+    signal.throwIfAborted();
+    if (isErrorResponse(handle)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: handle.body.error },
+        signal,
+      );
+      return handle;
+    }
+    await set(
+      mergeBuiltInGenerationJobInternal$,
+      {
+        generationId: args.generationId,
+        internal: {
+          provider: "minimax",
+          providerJobId: handle.taskId,
+          providerTask: "video",
+        },
+      },
+      signal,
+    );
+    return null;
+  },
+);
 
 const submitVideoProviderWebhookJob$ = command(
   async (
@@ -192,6 +297,10 @@ const submitVideoProviderWebhookJob$ = command(
         signal,
       );
       return null;
+    }
+
+    if (provider === "minimax") {
+      return await set(submitMiniMaxVideoProviderJob$, args, signal);
     }
 
     const apiKey = env("BYTEPLUS_API_KEY");
@@ -255,14 +364,29 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  const options = parseVideoOptions(bodyResult.data);
+  const runId =
+    auth.tokenType === "zero" || auth.tokenType === "sandbox"
+      ? auth.runId
+      : undefined;
+  const runVideoModel = await loadEnforcedRunVideoModel(
+    db,
+    auth.orgId,
+    auth.userId,
+    runId,
+    signal,
+  );
+  const options = parseVideoOptions(
+    runVideoModel === null
+      ? bodyResult.data
+      : { ...bodyResult.data, model: runVideoModel },
+  );
   if ("status" in options) {
     return options;
   }
 
   const hasCredits = await set(
     checkVideoCredits$,
-    { orgId: auth.orgId },
+    { orgId: auth.orgId, userId: auth.userId },
     signal,
   );
   if (!hasCredits) {
@@ -271,11 +395,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const pricing = await get(videoPricing$);
   signal.throwIfAborted();
-  const pricingCategory = videoPricingCategoryForOptions(options);
-  const pricingRow = pricing.get(
-    videoPricingKey(options.model, pricingCategory),
-  );
-  if (!pricingRow) {
+  if (getMissingVideoPricing(pricing, options).length > 0) {
     return videoServiceUnavailable(
       "Video generation pricing is not configured",
       "NOT_CONFIGURED",
@@ -295,6 +415,12 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       "NOT_CONFIGURED",
     );
   }
+  if (provider === "minimax" && !env("MINIMAX_API_KEY")) {
+    return videoServiceUnavailable(
+      "MiniMax H3 video generation is not configured",
+      "NOT_CONFIGURED",
+    );
+  }
 
   const generationId = randomUUID();
   const realtime = await createBuiltInGenerationRealtimeSubscription(
@@ -302,10 +428,6 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     generationId,
   );
   signal.throwIfAborted();
-  const runId =
-    auth.tokenType === "zero" || auth.tokenType === "sandbox"
-      ? auth.runId
-      : undefined;
   const admission = await set(
     startRunBuiltInAdmission$,
     { runId, kind: "video" },
@@ -336,12 +458,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     submitVideoProviderWebhookJob$,
     {
       generationId,
-      orgId: auth.orgId,
-      userId: auth.userId,
-      runId,
-      admission,
       options,
-      pricing: pricingRow,
     },
     signal,
   );

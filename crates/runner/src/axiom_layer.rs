@@ -24,7 +24,7 @@ use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
 /// Bounded-channel capacity between tracing callers and the dispatcher task.
-/// WARN+ events are rare, so 1024 absorbs realistic bursts; overflow is
+/// WARN+ events are low-volume, so 1024 absorbs realistic bursts; overflow is
 /// counted + surfaced via stderr rather than blocking the tracing hot path.
 const CHANNEL_CAP: usize = 1024;
 /// Max events per ingest POST. Axiom accepts thousands per batch, but a small
@@ -168,9 +168,6 @@ pub(crate) struct AxiomLayer {
 }
 
 fn should_ingest(metadata: &Metadata<'_>) -> bool {
-    // Fixed WARN+ threshold. Errors and warnings only; INFO/DEBUG stay out
-    // of Axiom to keep ingest volume predictable. INTERNAL_TARGET is for
-    // this layer's own diagnostics, which should remain local-only.
     *metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET
 }
 

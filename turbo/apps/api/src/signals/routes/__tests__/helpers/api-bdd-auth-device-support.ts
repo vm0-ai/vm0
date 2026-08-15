@@ -1,13 +1,14 @@
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { zeroConnectorsBySlugContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { zeroConnectorsBySlugContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+  zeroPersonalModelProviderAccountsByIdContract,
+} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -15,9 +16,10 @@ import type { RouteEntry } from "../../../route-entry";
 import { zeroConnectorsRoutes } from "../../zero-connectors";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroMeModelProvidersDeleteRoutes } from "../../zero-me-model-providers-delete";
+import { zeroMeModelProviderAccountRoutes } from "../../zero-me-model-provider-accounts";
 import { zeroMeModelProvidersListRoutes } from "../../zero-me-model-providers-list";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { userPreferencesRoutes } from "../../user-preferences";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -28,10 +30,11 @@ interface AuthHeaders {
 const authDeviceSupportRoutes: readonly RouteEntry[] = [
   ...zeroConnectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
+  ...zeroMeModelProviderAccountRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
   ...zeroMeModelProvidersListRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroUserPreferencesRoutes,
+  ...userPreferencesRoutes,
 ];
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
@@ -68,7 +71,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
   return {
     async readPreferences(actor: ApiTestUser) {
       return await accept(
-        authDeviceSupportApp(context)(zeroUserPreferencesContract).get({
+        authDeviceSupportApp(context)(userPreferencesContract).get({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -111,6 +114,34 @@ export function createAuthDeviceSupportApi(context: TestContext) {
           params: { type },
         }),
         statuses,
+      );
+    },
+
+    async activatePersonalModelProviderAccount(actor: ApiTestUser, id: string) {
+      return await accept(
+        authDeviceSupportApp(context)(
+          zeroPersonalModelProviderAccountsByIdContract,
+        ).activate({
+          headers: authenticate(context, actor),
+          params: { id },
+          body: {},
+        }),
+        [200],
+      );
+    },
+
+    async deletePersonalModelProviderAccount(
+      actor: ApiTestUser,
+      id: string,
+    ): Promise<void> {
+      await accept(
+        authDeviceSupportApp(context)(
+          zeroPersonalModelProviderAccountsByIdContract,
+        ).delete({
+          headers: authenticate(context, actor),
+          params: { id },
+        }),
+        [204],
       );
     },
 

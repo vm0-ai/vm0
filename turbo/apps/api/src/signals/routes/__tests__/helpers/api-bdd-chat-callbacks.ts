@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import { z } from "zod";
 
 import { mockOptionalEnv } from "../../../../lib/env";
@@ -11,7 +11,7 @@ import { server } from "../../../../mocks/server";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
-import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
+import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -220,7 +220,7 @@ export function createChatCallbacksApi(context: TestContext) {
   function pushSubscriptionsClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroPushSubscriptionsRoutes,
+      routes: pushSubscriptionsRoutes,
     })(pushSubscriptionsContract);
   }
 
@@ -318,8 +318,8 @@ export function createChatCallbacksApi(context: TestContext) {
     },
 
     /**
-     * Stages output for the current /events DB projection. Run-context queries
-     * replay the snapshot the API itself ingested at run creation.
+     * Stages output for the canonical chat_events DB projection. Run-context
+     * queries replay the snapshot the API itself ingested at run creation.
      */
     mockChatOutputEvents(events: readonly Record<string, unknown>[]): void {
       stagedOutputEvents = events.map(webhookEventFromAxiomFixture);

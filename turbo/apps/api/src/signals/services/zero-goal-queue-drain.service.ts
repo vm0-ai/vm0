@@ -3,7 +3,7 @@ import { command } from "ccstate";
 import { logger } from "../../lib/log";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import {
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
@@ -15,21 +15,20 @@ import {
 import {
   loadGoalQueueTarget,
   loadNextGoalQueueEvent,
-  rejectGoalQueueEvent,
+  revokeGoalQueueEvent,
+  settleFailedGoalQueueEvent,
   type GoalQueueTarget,
   type PendingGoalQueueEvent,
 } from "./chat-goal-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
-import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
-import { pauseActiveGoalForThread } from "./zero-goal.service";
+import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 
 const log = logger("api:zero-goal-queue-drain");
 const MAX_DRAIN_ATTEMPTS = 5;
-const GOAL_INVALIDATED_REASON =
-  "Goal continuation no longer matches the active goal";
+const GOAL_CONTINUATION_PROMPT = "Continue the active thread goal.";
 
 type GoalDrainAttempt = "initial" | "retry";
 type GoalDrainTimingRole = "waiting" | "phase" | "aggregate";
@@ -82,9 +81,10 @@ type ModelContext =
       readonly failure: Extract<RunGoalResult, { readonly kind: "run_error" }>;
     };
 
-function buildGoalContinuationPrompt(goal: {
+function buildGoalAppendSystemPrompt(goal: {
   readonly objective: string;
   readonly objectiveBrief: string;
+  readonly autonomyBudget: number;
 }): string {
   const lines = [
     "# Current context",
@@ -98,15 +98,16 @@ function buildGoalContinuationPrompt(goal: {
   if (goal.objectiveBrief !== goal.objective) {
     lines.push("", "# User-visible objective brief", "", goal.objectiveBrief);
   }
+  lines.push("", `Autonomy budget: ${goal.autonomyBudget}`);
   lines.push(
     "",
     "# How to operate",
     "",
     "- Make concrete progress this turn, then end the turn. The goal automatically continues on the next idle.",
     "- Persist all progress to durable external state (commits, PRs, uploaded artifacts, connectors).",
-    "- When the objective is verifiably done, audit it requirement-by-requirement against the current external state; only then run `zero goal complete`.",
-    "- If the same blocker stops you for 3 consecutive turns, run `zero goal block` and explain why.",
-    "- Inspect goal state anytime with `zero goal get`.",
+    "- When the objective is verifiably done, audit it requirement-by-requirement against the current external state; only then run `okou goal complete`.",
+    "- If the same blocker stops you for 3 consecutive turns, run `okou goal block` and explain why.",
+    "- Inspect goal state anytime with `okou goal get`.",
     "- Do not create, edit, pause, resume, or clear goals from an autonomous goal continuation run.",
     "- Do not stop to ask the user and wait; act on the best available information.",
   );
@@ -123,7 +124,6 @@ function buildGoalChatCallbacks(args: {
       payload: {
         threadId: args.threadId,
         agentId: args.agentId,
-        isGoalRun: true,
       },
     },
   ];
@@ -144,7 +144,8 @@ function buildQueueFirstGoalRunInput(args: {
       objectiveBrief: args.goal.objectiveBrief,
     }),
   };
-  const prompt = buildGoalContinuationPrompt(normalizedGoal);
+  const prompt = GOAL_CONTINUATION_PROMPT;
+  const appendSystemPrompt = buildGoalAppendSystemPrompt(normalizedGoal);
   const { modelPin, effectiveModelProvider, cliAgentType, codexServiceTier } =
     args.modelContext;
   return {
@@ -162,7 +163,8 @@ function buildQueueFirstGoalRunInput(args: {
         : {}),
     },
     apiStartTime: args.apiStartTime,
-    triggerSource: "workflow-event",
+    triggerSource: "goal",
+    appendSystemPrompt,
     chatThreadId: normalizedGoal.threadId,
     modelProviderId: modelPin.modelProviderId ?? undefined,
     modelProviderCredentialScope:
@@ -181,13 +183,16 @@ function buildQueueFirstGoalRunInput(args: {
     }),
     zeroRunMetadata: {
       goalId: normalizedGoal.goalId,
+      autonomyBudget: normalizedGoal.autonomyBudget,
     },
     queueFirstAssociation: {
-      kind: "goal_event",
+      kind: "goal_input",
       threadId: normalizedGoal.threadId,
       eventId: args.event.id,
       prompt,
       goalId: normalizedGoal.goalId,
+      goalObjectiveBrief: normalizedGoal.objectiveBrief,
+      goalStateRevision: normalizedGoal.stateRevision,
       orgId: normalizedGoal.orgId,
       userId: normalizedGoal.userId,
     },
@@ -202,18 +207,20 @@ function buildQueueFirstGoalRunInput(args: {
   };
 }
 
-async function resolveModelContext(args: {
-  readonly db: Db;
-  readonly goal: GoalQueueTarget;
-  readonly signal: AbortSignal;
-}): Promise<ModelContext> {
+async function resolveModelContext(
+  args: {
+    readonly db: Db;
+    readonly goal: GoalQueueTarget;
+  },
+  signal: AbortSignal,
+): Promise<ModelContext> {
   const threadModelContext = await resolveRunChatThreadModelContext({
     db: args.db,
     orgId: args.goal.orgId,
     userId: args.goal.userId,
     threadId: args.goal.threadId,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if ("status" in threadModelContext) {
     return {
       ok: false,
@@ -228,7 +235,7 @@ async function resolveModelContext(args: {
   }
 
   const { pin, providerAdmission, runCodexServiceTier } = threadModelContext;
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (providerAdmission.error) {
     return {
       ok: false,
@@ -253,24 +260,20 @@ async function publishGoalQueueChanged(
   signal.throwIfAborted();
 }
 
-async function rejectGoalEvent(
+async function revokeGoalEvent(
   db: Db,
   event: PendingGoalQueueEvent,
-  reason: string,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const rejected = await rejectGoalQueueEvent(db, {
+  const revoked = await revokeGoalQueueEvent(db, {
     chatThreadId: event.chatThreadId,
     eventId: event.id,
-    orgId: event.orgId,
-    userId: event.userId,
-    reason,
   });
   signal.throwIfAborted();
-  if (rejected) {
+  if (revoked) {
     await publishGoalQueueChanged(event, signal);
   }
-  return rejected;
+  return revoked;
 }
 
 const launchQueuedGoal$ = command(
@@ -295,11 +298,13 @@ const launchQueuedGoal$ = command(
       "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
       "nested",
       async () => {
-        return await resolveModelContext({
-          db,
-          goal: args.goal,
+        return await resolveModelContext(
+          {
+            db,
+            goal: args.goal,
+          },
           signal,
-        });
+        );
       },
       phaseDimensions,
     );
@@ -341,31 +346,85 @@ const launchQueuedGoal$ = command(
       phaseDimensions,
     );
     const result = await set(createQueueFirstZeroRun$, runInput, signal);
-    signal.throwIfAborted();
 
     if (isQueueFirstRunClaimLost(result)) {
+      signal.throwIfAborted();
       return { kind: "enqueued" };
     }
     if (result.status !== 201) {
+      signal.throwIfAborted();
       return { kind: "run_error", response: result };
     }
-    return { kind: "ok", runId: result.body.runId };
+    signal.throwIfAborted();
+    return {
+      kind: "ok",
+      runId: result.body.runId,
+    };
   },
 );
+
+async function handleGoalLaunchResult(
+  args: {
+    readonly db: Db;
+    readonly event: PendingGoalQueueEvent;
+    readonly goal: GoalQueueTarget;
+    readonly result: RunGoalResult;
+  },
+  signal: AbortSignal,
+): Promise<"continue" | "done"> {
+  if (args.result.kind === "ok") {
+    await publishGoalQueueChanged(args.event, signal);
+    return "done";
+  }
+  if (args.result.kind === "enqueued") {
+    const stillValid = await loadGoalQueueTarget(args.db, args.event);
+    signal.throwIfAborted();
+    if (!stillValid) {
+      await revokeGoalEvent(args.db, args.event, signal);
+      return "done";
+    }
+    return stillValid.stateRevision === args.goal.stateRevision
+      ? "done"
+      : "continue";
+  }
+
+  const settlement = await settleFailedGoalQueueEvent(args.db, {
+    event: args.event,
+    expectedGoalStateRevision: args.goal.stateRevision,
+    reason: args.result.response.body.error.message,
+  });
+  signal.throwIfAborted();
+  if (settlement.kind === "stale") {
+    return "continue";
+  }
+  if (settlement.kind !== "not_pending") {
+    await publishGoalQueueChanged(args.event, signal);
+  }
+  log.warn("Goal queue event failed to create a run", {
+    eventId: args.event.id,
+    goalId:
+      settlement.kind === "rejected" ? settlement.goalId : args.event.goalId,
+    code: args.result.response.body.error.code,
+    rejected: settlement.kind === "rejected",
+    pauseResult: settlement.kind === "rejected" ? "ok" : "not_paused",
+    settlement: settlement.kind,
+  });
+  return "done";
+}
 
 export const drainGoalQueueForThread$ = command(
   async (
     { set },
     args: {
       readonly chatThreadId: string;
-      readonly apiStartTime?: number;
+      readonly apiStartTime: number;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
       readonly queueItemCreatedBefore?: Date;
     },
     signal: AbortSignal,
   ): Promise<void> => {
     const drainStartedAt = now();
-    const apiStartTime = args.apiStartTime ?? drainStartedAt;
+    const apiStartTime = args.apiStartTime;
     const timing = new ApiDispatchTimingCollector();
     timing.recordElapsed(
       "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
@@ -420,15 +479,10 @@ export const drainGoalQueueForThread$ = command(
       signal.throwIfAborted();
       if (!goal) {
         await timing.measure(
-          "api_dispatch_pre_create_zero_goal_drain_reject_invalid_event",
+          "api_dispatch_pre_create_zero_goal_drain_revoke_invalid_event",
           "nested",
           async () => {
-            return await rejectGoalEvent(
-              db,
-              event,
-              GOAL_INVALIDATED_REASON,
-              signal,
-            );
+            return await revokeGoalEvent(db, event, signal);
           },
           phaseDimensions,
         );
@@ -449,40 +503,18 @@ export const drainGoalQueueForThread$ = command(
         signal,
       );
       signal.throwIfAborted();
-      if (result.kind === "ok") {
-        await publishGoalQueueChanged(event, signal);
-        return;
-      }
-      if (result.kind === "enqueued") {
-        const stillValid = await loadGoalQueueTarget(db, event);
-        signal.throwIfAborted();
-        if (!stillValid) {
-          await rejectGoalEvent(db, event, GOAL_INVALIDATED_REASON, signal);
-        }
-        return;
-      }
-
-      const rejected = await rejectGoalEvent(
-        db,
-        event,
-        result.response.body.error.message,
+      const disposition = await handleGoalLaunchResult(
+        {
+          db,
+          event,
+          goal,
+          result,
+        },
         signal,
       );
-      const paused = rejected
-        ? await pauseActiveGoalForThread(db, {
-            orgId: goal.orgId,
-            userId: goal.userId,
-            threadId: goal.threadId,
-          })
-        : null;
-      signal.throwIfAborted();
-      log.warn("Goal queue event failed to create a run", {
-        eventId: event.id,
-        goalId: goal.goalId,
-        code: result.response.body.error.code,
-        rejected,
-        pauseResult: paused?.kind ?? "not_paused",
-      });
+      if (disposition === "continue") {
+        continue;
+      }
       return;
     }
   },

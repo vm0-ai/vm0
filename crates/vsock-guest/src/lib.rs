@@ -12,8 +12,10 @@ mod error;
 mod exec_control;
 mod exec_operation;
 mod file_write_worker;
+mod guest_dns_readiness;
 mod handlers;
 mod log;
+mod memory_snapshot;
 mod process;
 mod process_containment;
 mod quiesce;
@@ -26,6 +28,7 @@ mod user;
 mod wait;
 mod writer;
 
+pub use connection::handle_connection_with_test_dns_readiness_program;
 pub use connection::{
     connect_unix, connect_vsock, handle_connection,
     handle_connection_with_test_process_containment,

@@ -1,5 +1,5 @@
 /**
- * Tests for zero teams upload-file command.
+ * Tests for okou teams upload-file command.
  */
 
 import { mkdirSync, rmSync, writeFileSync } from "fs";
@@ -11,12 +11,12 @@ import { server } from "../../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/teams/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/teams/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/teams/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/teams/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/teams-upload";
 
-describe("zero teams upload-file command", () => {
+describe("okou teams upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -32,7 +32,7 @@ describe("zero teams upload-file command", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     tmpDir = join(tmpdir(), `teams-upload-file-test-${Date.now()}`);
     mkdirSync(tmpDir, { recursive: true });
@@ -42,6 +42,19 @@ describe("zero teams upload-file command", () => {
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("uses Okou branding in upload help", () => {
+    let helpOutput = "";
+    uploadFileCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    uploadFileCommand.outputHelp();
+
+    expect(helpOutput).toContain("Uploads through Okou storage first");
   });
 
   it("uploads a file to R2 and completes Teams delivery", async () => {
@@ -56,7 +69,6 @@ describe("zero teams upload-file command", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           length: 17,
-          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           uploadId: "00000000-0000-4000-8000-000000000001",

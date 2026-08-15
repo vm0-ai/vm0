@@ -22,7 +22,7 @@ use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use guest_contracts::diagnostics::{
     AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationReason, EventDeliveryDiagnostic, FailureClass,
-    FailureDiagnostic, FailureReason,
+    FailureDiagnostic, FailureReason, WorkloadResourceLimitDiagnostic,
 };
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
@@ -41,12 +41,11 @@ fn checkpoint_failure_reason(error: &AgentError) -> Option<FailureReason> {
         .then_some(FailureReason::SessionHistoryLimit)
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     if let Some(exit_code) = helper_exit_code_from_args() {
         std::process::exit(exit_code);
     }
-    let runtime = match GuestRuntime::from_process_env() {
+    let runtime = match initialize_guest_runtime() {
         Ok(runtime) => runtime,
         Err(e) => {
             log_error!(LOG_TAG, "Fatal: {e}");
@@ -54,8 +53,41 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    let exit_code = run(runtime).await;
+    let async_runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            log_error!(
+                LOG_TAG,
+                "Fatal: failed to initialize async runtime: {error}"
+            );
+            std::process::exit(1);
+        }
+    };
+    let exit_code = async_runtime.block_on(run(runtime));
     std::process::exit(exit_code);
+}
+
+fn initialize_guest_runtime() -> Result<GuestRuntime, String> {
+    #[cfg(target_os = "linux")]
+    deny_unprivileged_process_inspection()?;
+    GuestRuntime::from_process_env()
+}
+
+#[cfg(target_os = "linux")]
+fn deny_unprivileged_process_inspection() -> Result<(), String> {
+    // SAFETY: PR_SET_DUMPABLE only changes the calling process's inspection
+    // policy. It must run before the credential-bearing runtime is captured.
+    let result = unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) };
+    if result == 0 {
+        return Ok(());
+    }
+    Err(format!(
+        "protect guest-agent from unprivileged process inspection: {}",
+        std::io::Error::last_os_error()
+    ))
 }
 
 fn helper_exit_code_from_args() -> Option<i32> {
@@ -104,7 +136,7 @@ fn helper_exit_code_from_args() -> Option<i32> {
                         }
                         Err(_) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
                     },
-                    Err(error) => session_history_identity_helper_exit_code(&error),
+                    Err(error) => session_history_sidecar_export_helper_exit_code(&error),
                 },
             )
         }
@@ -142,6 +174,22 @@ fn session_history_identity_helper_exit_code(
         SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE
     } else {
         exit_code
+    }
+}
+
+fn session_history_sidecar_export_helper_exit_code(
+    error: &session_history_identity::FinalSessionHistorySidecarExportError,
+) -> i32 {
+    let exit_code = error.helper_exit_code();
+    let Some(failure) = error.output_failure() else {
+        return exit_code;
+    };
+    match serde_json::to_string(&failure) {
+        Ok(json) => {
+            println!("{json}");
+            exit_code
+        }
+        Err(_) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
     }
 }
 
@@ -218,19 +266,40 @@ async fn run(runtime: GuestRuntime) -> i32 {
     let masker = Arc::new(masker::SecretMasker::from_config(&runtime.config));
     let shutdown = CancellationToken::new();
     let cli_cancellation = CancellationToken::new();
-    let framework_supports_active_input = framework_supports_active_input(
-        runtime.config.framework,
-        runtime.config.use_codex_app_server_backend,
-    );
+    let framework_supports_active_input = framework_supports_active_input(runtime.config.framework);
     let has_process_control_endpoint = matches!(
         std::env::var(process_control_ipc::BOOTSTRAP_ENV),
         Ok(endpoint) if !endpoint.is_empty()
     );
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
-        &runtime.config.run_id,
-        framework_supports_active_input && has_process_control_endpoint,
-        &runtime.config.prompt,
-    );
+    let active_input_enabled = framework_supports_active_input && has_process_control_endpoint;
+    let active_input = if active_input_enabled {
+        let receipt_journal_path =
+            guest_contracts::runtime_paths::active_input_receipt_journal_file(
+                runtime.paths.runtime_dir(),
+            );
+        match guest_agent::active_input::ActiveInputRuntime::new_with_receipts(
+            &runtime.config.run_id,
+            &runtime.config.prompt,
+            receipt_journal_path,
+            http.clone(),
+        ) {
+            Ok(active_input) => active_input,
+            Err(error) => {
+                let message = format!("Active-input receipt initialization failed: {error}");
+                log_error!(LOG_TAG, "{message}");
+                failure_diagnostics::write_guest_error_file(
+                    runtime.paths.checkpoint_error_file(),
+                    &message,
+                );
+                return 1;
+            }
+        }
+    } else {
+        guest_agent::active_input::ActiveInputRuntime::new_disabled(
+            &runtime.config.run_id,
+            &runtime.config.prompt,
+        )
+    };
     let control_handle = control::ControlHandle::spawn(
         shutdown.clone(),
         active_input.controller(),
@@ -282,8 +351,10 @@ async fn run(runtime: GuestRuntime) -> i32 {
         start,
         Some(heartbeat_status_rx),
         &telemetry,
-        active_input.into_writer(),
-        cli_cancellation,
+        ExecutionControls {
+            active_input: active_input.into_writer(),
+            cli_cancellation,
+        },
         &runtime,
     )
     .await;
@@ -306,12 +377,16 @@ async fn run(runtime: GuestRuntime) -> i32 {
     exit_code
 }
 
-fn framework_supports_active_input(
-    framework: env::Framework,
-    use_codex_app_server_backend: bool,
-) -> bool {
-    matches!(framework, env::Framework::ClaudeCode)
-        || (matches!(framework, env::Framework::Codex) && use_codex_app_server_backend)
+fn framework_supports_active_input(framework: env::Framework) -> bool {
+    matches!(
+        framework,
+        env::Framework::ClaudeCode | env::Framework::Codex | env::Framework::Pi
+    )
+}
+
+struct ExecutionControls {
+    active_input: guest_agent::active_input::ActiveInputWriter,
+    cli_cancellation: CancellationToken,
 }
 
 /// Main execution logic: working dir, CLI, checkpoint/recovery, and `/complete`.
@@ -323,24 +398,29 @@ async fn execute(
     start: Instant,
     heartbeat_monitor: cli::HeartbeatMonitor,
     telemetry: &Telemetry,
-    active_input: guest_agent::active_input::ActiveInputWriter,
-    cli_cancellation: CancellationToken,
+    controls: ExecutionControls,
     runtime: &GuestRuntime,
 ) -> i32 {
+    let ExecutionControls {
+        active_input,
+        cli_cancellation,
+    } = controls;
     let config = &runtime.config;
     let runtime_paths = &runtime.paths;
     let http = runtime.http.clone();
-
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
     // time the CLI spawns and makes its first HTTPS request.
     let dns_target = match config.framework {
-        env::Framework::ClaudeCode => "api.anthropic.com:443",
-        env::Framework::Codex => "api.openai.com:443",
+        env::Framework::ClaudeCode => Some("api.anthropic.com:443"),
+        env::Framework::Codex => Some("api.openai.com:443"),
+        env::Framework::Pi => None,
     };
-    tokio::spawn(async move {
-        let _ = tokio::net::lookup_host(dns_target).await;
-    });
+    if let Some(dns_target) = dns_target {
+        tokio::spawn(async move {
+            let _ = tokio::net::lookup_host(dns_target).await;
+        });
+    }
 
     // Working directory setup
     let wd_start = Instant::now();
@@ -360,12 +440,18 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
+    let codex_startup =
+        matches!(config.framework, env::Framework::Codex).then(cli::CodexStartupTiming::start);
+
     // Codex setup must complete before the CLI starts. On reused sandboxes,
     // continuing after a setup failure can inherit stale auth or runtime state
     // from an earlier run.
     if matches!(config.framework, env::Framework::Codex)
         && let Err(e) = cli::setup_codex_for_config(masker, config).await
     {
+        if let Some(codex_startup) = codex_startup.as_ref() {
+            codex_startup.record_failure();
+        }
         let msg = format!("Codex setup failed: {}", masker.mask_string(&e.to_string()));
         log_error!(LOG_TAG, "{msg}");
         failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
@@ -394,7 +480,22 @@ async fn execute(
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
     let mut last_event_sequence = None;
+    let mut active_input_delivery_ids = Vec::new();
     let mut event_delivery_failure = None;
+    let cli_result = cli::execute_cli_with_controls_for_config_started_at(
+        masker,
+        heartbeat_monitor,
+        http.clone(),
+        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref())
+            .with_workload_containment(runtime.workload_containment.as_ref()),
+        config,
+        runtime_paths,
+        start,
+    )
+    .await;
+    if let Some(codex_startup) = codex_startup.as_ref() {
+        codex_startup.record_failure();
+    }
     let (
         cli_exit_code,
         mut exit_code,
@@ -402,19 +503,10 @@ async fn execute(
         skip_recovery_checkpoint_for_no_history,
         mut failure_diagnostic,
         cli_execution_succeeded,
-    ) = match cli::execute_cli_with_controls_for_config_started_at(
-        masker,
-        heartbeat_monitor,
-        http.clone(),
-        cli::CliExecutionControls::new(active_input, cli_cancellation),
-        config,
-        runtime_paths,
-        start,
-    )
-    .await
-    {
+    ) = match cli_result {
         Ok(cli_result) => {
             last_event_sequence = cli_result.last_event_sequence;
+            active_input_delivery_ids = cli_result.active_input_delivery_ids.clone();
             if let Some(event_delivery) = cli_result.event_delivery.clone() {
                 let diagnostic = failure_diagnostics::event_delivery_failure_for_config(
                     config,
@@ -518,6 +610,30 @@ async fn execute(
             )
         }
     };
+    if let Some(workload_containment) = runtime.workload_containment.as_ref() {
+        match workload_containment.resource_diagnostics() {
+            Ok(diagnostics) => {
+                if let Some(pressure) = diagnostics.pressure {
+                    log_info!(LOG_TAG, "{pressure}");
+                }
+                if let Some(hard_limit) = diagnostics.hard_limit {
+                    let message = apply_workload_resource_limit(
+                        exit_code,
+                        &mut error_message,
+                        &mut failure_diagnostic,
+                        hard_limit,
+                    );
+                    log_warn!(LOG_TAG, "{message}");
+                }
+            }
+            Err(error) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Failed to read workload resource diagnostics: {error}"
+                );
+            }
+        }
+    }
     let cli_elapsed = cli_start.elapsed();
     record_sandbox_op(
         "cli_execution",
@@ -553,11 +669,45 @@ async fn execute(
             failure_message: (exit_code != 0).then_some(error_message.as_str()),
             failure_diagnostic,
             skip_recovery_checkpoint_for_no_history,
+            active_input_delivery_ids: &active_input_delivery_ids,
         },
         telemetry,
         runtime,
     )
     .await
+}
+
+fn apply_workload_resource_limit(
+    exit_code: i32,
+    error_message: &mut String,
+    failure_diagnostic: &mut Option<FailureDiagnostic>,
+    hard_limit: WorkloadResourceLimitDiagnostic,
+) -> String {
+    let message = format!(
+        "workload resource limit reached (memory_max={}, memory_oom={}, memory_oom_kill={}, memory_oom_group_kill={}, pids_max={})",
+        hard_limit.memory_max_events,
+        hard_limit.memory_oom_events,
+        hard_limit.memory_oom_kill_events,
+        hard_limit.memory_oom_group_kill_events,
+        hard_limit.pids_max_events,
+    );
+    if exit_code == 0 {
+        return message;
+    }
+
+    let has_classified_failure = failure_diagnostic
+        .as_ref()
+        .is_some_and(|diagnostic| diagnostic.failure_reason.is_some());
+    if error_message.is_empty() {
+        error_message.clone_from(&message);
+    } else if !has_classified_failure {
+        error_message.push_str("; ");
+        error_message.push_str(&message);
+    }
+    if let Some(diagnostic) = failure_diagnostic.take() {
+        *failure_diagnostic = Some(diagnostic.with_workload_resource_limit(hard_limit));
+    }
+    message
 }
 
 fn event_delivery_failure_message(diagnostic: &EventDeliveryDiagnostic) -> String {
@@ -622,11 +772,60 @@ fn preserves_successful_post_result_cleanup(
             })
 }
 
+struct PersistenceFailure<'a> {
+    /// Human-facing name of the failed step, used for the guest error file the
+    /// host surfaces as the run error.
+    label: &'a str,
+    error: &'a AgentError,
+    elapsed: Duration,
+    cli_exit_code: i32,
+    wrote_failure_diagnostic: bool,
+}
+
+/// Record a failed run-settling persistence step so the runner's fallback
+/// `/complete` marks the run failed.
+///
+/// Both the checkpoint and the Pi artifact snapshot must fail the run: settling
+/// as successful would silently discard the writeback Storage mutations the
+/// sandbox just made.
+fn record_persistence_failure(failure: PersistenceFailure<'_>, runtime: &GuestRuntime) {
+    let config = &runtime.config;
+    let runtime_paths = &runtime.paths;
+    let msg = format!("{} failed: {}", failure.label, failure.error);
+    log_error!(LOG_TAG, "{msg}");
+    log_info!(
+        LOG_TAG,
+        "✗ {} failed ({}s)",
+        failure.label,
+        failure.elapsed.as_secs()
+    );
+    failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
+    if failure.wrote_failure_diagnostic {
+        return;
+    }
+    let mut diagnostic = failure_diagnostics::base_failure_diagnostic_for_config(
+        config,
+        FailureClass::CheckpointFailed,
+    )
+    .with_cli_exit_code(failure.cli_exit_code);
+    if let Some(reason) = checkpoint_failure_reason(failure.error) {
+        diagnostic = diagnostic.with_failure_reason(reason);
+    }
+    let diagnostic = diagnostic.with_session_history_status(
+        failure_diagnostics::diagnostic_session_history_status_for_config(config, runtime_paths),
+    );
+    failure_diagnostics::write_guest_failure_diagnostic(
+        runtime_paths.failure_diagnostic_file(),
+        &diagnostic,
+    );
+}
+
 struct CompletionState<'a> {
     last_event_sequence: Option<u32>,
     failure_message: Option<&'a str>,
     failure_diagnostic: Option<FailureDiagnostic>,
     skip_recovery_checkpoint_for_no_history: bool,
+    active_input_delivery_ids: &'a [String],
 }
 
 async fn complete_execution(
@@ -700,42 +899,23 @@ async fn complete_execution(
                     &config.run_id,
                     &config.sandbox_id,
                     &config.sandbox_reuse_result,
+                    &config.workspace_reuse_result,
                     state.last_event_sequence,
+                    state.active_input_delivery_ids,
                 )
                 .await;
             }
             Err(e) => {
-                let msg = format!("Checkpoint failed: {e}");
-                log_error!(LOG_TAG, "{msg}");
-                log_info!(
-                    LOG_TAG,
-                    "✗ Checkpoint failed ({}s)",
-                    cp_start.elapsed().as_secs()
+                record_persistence_failure(
+                    PersistenceFailure {
+                        label: "Checkpoint",
+                        error: &e,
+                        elapsed: cp_start.elapsed(),
+                        cli_exit_code,
+                        wrote_failure_diagnostic,
+                    },
+                    runtime,
                 );
-                failure_diagnostics::write_guest_error_file(
-                    runtime_paths.checkpoint_error_file(),
-                    &msg,
-                );
-                if !wrote_failure_diagnostic {
-                    let mut diagnostic = failure_diagnostics::base_failure_diagnostic_for_config(
-                        config,
-                        FailureClass::CheckpointFailed,
-                    )
-                    .with_cli_exit_code(cli_exit_code);
-                    if let Some(reason) = checkpoint_failure_reason(&e) {
-                        diagnostic = diagnostic.with_failure_reason(reason);
-                    }
-                    let diagnostic = diagnostic.with_session_history_status(
-                        failure_diagnostics::diagnostic_session_history_status_for_config(
-                            config,
-                            runtime_paths,
-                        ),
-                    );
-                    failure_diagnostics::write_guest_failure_diagnostic(
-                        runtime_paths.failure_diagnostic_file(),
-                        &diagnostic,
-                    );
-                }
                 exit_code = 1;
 
                 // Failure path: don't call /complete from guest. The runner's
@@ -788,7 +968,9 @@ async fn complete_execution(
             &config.run_id,
             &config.sandbox_id,
             &config.sandbox_reuse_result,
+            &config.workspace_reuse_result,
             state.last_event_sequence,
+            state.active_input_delivery_ids,
         )
         .await;
     }
@@ -877,7 +1059,7 @@ mod tests {
     use super::*;
     use guest_contracts::diagnostics::{
         AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationSignal,
-        PromptMetadata, SessionHistoryStatus,
+        FailureDetailSource, PromptMetadata, SessionHistoryStatus,
     };
     use httpmock::prelude::*;
     use serde_json::json;
@@ -904,6 +1086,7 @@ mod tests {
             None
         );
     }
+
     static COMPLETE_EXECUTION_MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(MockServer::start);
     static MAIN_TEST_RUNTIME_ROOT: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
         let timestamp_nanos = std::time::SystemTime::now()
@@ -952,6 +1135,7 @@ mod tests {
             config,
             paths: paths::GuestPaths::from_runtime_dir(test_runtime_dir()),
             http,
+            workload_containment: None,
         }
     }
 
@@ -1006,20 +1190,10 @@ mod tests {
     }
 
     #[test]
-    fn framework_supports_active_input_for_claude_and_codex_app_server_only() {
-        assert!(framework_supports_active_input(
-            env::Framework::ClaudeCode,
-            false
-        ));
-        assert!(framework_supports_active_input(
-            env::Framework::ClaudeCode,
-            true
-        ));
-        assert!(!framework_supports_active_input(
-            env::Framework::Codex,
-            false
-        ));
-        assert!(framework_supports_active_input(env::Framework::Codex, true));
+    fn framework_supports_active_input_for_all_cli_frameworks() {
+        assert!(framework_supports_active_input(env::Framework::ClaudeCode));
+        assert!(framework_supports_active_input(env::Framework::Codex));
+        assert!(framework_supports_active_input(env::Framework::Pi));
     }
 
     struct TestEnvGuard;
@@ -1036,7 +1210,7 @@ mod tests {
             clear_test_env();
             std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var(guest_contracts::env::RUN_ID_ENV, "main-recovery-checkpoint");
             std::env::set_var(
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 test_runtime_dir(),
@@ -1056,6 +1230,7 @@ mod tests {
             guest_contracts::env::API_TOKEN_ENV,
             guest_contracts::env::SANDBOX_ID_ENV,
             guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
             guest_contracts::env::PROMPT_ENV,
             guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
@@ -1076,12 +1251,11 @@ mod tests {
             guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::USE_MOCK_CLAUDE_ENV,
             guest_contracts::env::USE_MOCK_CODEX_ENV,
-            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
             guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
             guest_contracts::env::MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::BOOTSTRAP_ENV,
-            "MOCK_CODEX_FIXTURE",
+            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {
@@ -1136,6 +1310,7 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
+            active_input_delivery_ids: Vec::new(),
         };
         let one_turn = cli::CliExecutionResult {
             exit_code: 0,
@@ -1151,6 +1326,7 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
+            active_input_delivery_ids: Vec::new(),
         };
         let failed_zero_turn = cli::CliExecutionResult {
             exit_code: 1,
@@ -1166,6 +1342,7 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
+            active_input_delivery_ids: Vec::new(),
         };
         let unknown_zero_turn = cli::CliExecutionResult {
             exit_code: 0,
@@ -1181,6 +1358,7 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
+            active_input_delivery_ids: Vec::new(),
         };
 
         assert!(is_claude_zero_turn_result(
@@ -1228,6 +1406,7 @@ mod tests {
                 failure_diagnostic: None,
                 control_error: None,
                 cli_termination: Some(termination),
+                active_input_delivery_ids: Vec::new(),
             }
         };
         let successful_cleanup = make_result(
@@ -1422,14 +1601,20 @@ mod tests {
                 let telemetry =
                     Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http);
 
-                stop_background_and_flush_final_telemetry(
-                    shutdown,
-                    None,
-                    metrics_handle,
-                    heartbeat_handle,
-                    telemetry,
+                tokio::time::timeout(
+                    Duration::from_secs(5),
+                    stop_background_and_flush_final_telemetry(
+                        shutdown,
+                        None,
+                        metrics_handle,
+                        heartbeat_handle,
+                        telemetry,
+                    ),
                 )
-                .await;
+                .await
+                .expect(
+                    "final telemetry producer shutdown and final upload completion should finish within 5 seconds",
+                );
 
                 telemetry_mock.assert_calls_async(1).await;
                 telemetry_mock.delete_async().await;
@@ -1485,6 +1670,153 @@ mod tests {
             .block_on(complete_execution_writes_checkpoint_failure_diagnostic_inner());
     }
 
+    #[test]
+    fn complete_execution_preserves_workload_resource_failure_semantics() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_preserves_workload_resource_failure_semantics_inner());
+    }
+
+    async fn complete_execution_preserves_workload_resource_failure_semantics_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
+        let _runtime_root_guard = TestEnvGuard;
+        let hard_limit = WorkloadResourceLimitDiagnostic {
+            memory_max_events: 1_882_956,
+            memory_oom_events: 3,
+            memory_oom_kill_events: 3,
+            memory_oom_group_kill_events: 0,
+            pids_max_events: 0,
+        };
+        let provider_message = "Selected model is at capacity. Please try a different model.";
+        let provider_diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::CodexJsonl)
+        .with_failure_reason(FailureReason::ProviderOverloaded);
+
+        let (exit_code, error, diagnostic) = complete_after_workload_resource_limit(
+            server,
+            1,
+            provider_message,
+            Some(provider_diagnostic),
+            hard_limit,
+        )
+        .await;
+
+        assert_eq!(exit_code, 1);
+        assert_eq!(error.as_deref(), Some(provider_message));
+        let diagnostic = diagnostic.expect("expected classified failure diagnostic");
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderOverloaded)
+        );
+        assert_eq!(diagnostic.workload_resource_limit, Some(hard_limit));
+
+        let generic_message = "Agent exited with code 137";
+        let generic_diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(137)
+        .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL))
+        .with_failure_detail_source(FailureDetailSource::FallbackExitCode);
+
+        let (exit_code, error, diagnostic) = complete_after_workload_resource_limit(
+            server,
+            137,
+            generic_message,
+            Some(generic_diagnostic),
+            hard_limit,
+        )
+        .await;
+
+        assert_eq!(exit_code, 137);
+        assert_eq!(
+            error.as_deref(),
+            Some(
+                "Agent exited with code 137; workload resource limit reached (memory_max=1882956, memory_oom=3, memory_oom_kill=3, memory_oom_group_kill=0, pids_max=0)"
+            )
+        );
+        let diagnostic = diagnostic.expect("expected generic failure diagnostic");
+        assert_eq!(diagnostic.failure_reason, None);
+        assert_eq!(diagnostic.workload_resource_limit, Some(hard_limit));
+
+        let (exit_code, error, diagnostic) =
+            complete_after_workload_resource_limit(server, 0, "", None, hard_limit).await;
+
+        assert_eq!(exit_code, 0);
+        assert_eq!(error, None);
+        assert_eq!(diagnostic, None);
+    }
+
+    async fn complete_after_workload_resource_limit(
+        server: &MockServer,
+        cli_exit_code: i32,
+        initial_error_message: &str,
+        mut failure_diagnostic: Option<FailureDiagnostic>,
+        hard_limit: WorkloadResourceLimitDiagnostic,
+    ) -> (i32, Option<String>, Option<FailureDiagnostic>) {
+        let guest_paths = test_guest_paths();
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let mut config = test_guest_config(server, Some("plain prompt"));
+        config.framework = env::Framework::Codex;
+        config.cli_agent_type = "codex".to_string();
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = HttpClient::new().unwrap();
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
+        let runtime = test_guest_runtime(config, http);
+        let mut error_message = initial_error_message.to_string();
+        apply_workload_resource_limit(
+            cli_exit_code,
+            &mut error_message,
+            &mut failure_diagnostic,
+            hard_limit,
+        );
+        let exit_code = complete_execution(
+            cli_exit_code,
+            cli_exit_code,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: (cli_exit_code != 0).then_some(error_message.as_str()),
+                failure_diagnostic,
+                skip_recovery_checkpoint_for_no_history: false,
+                active_input_delivery_ids: &[],
+            },
+            &telemetry,
+            &runtime,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        let error_path = std::path::Path::new(guest_paths.checkpoint_error_file());
+        let written_error = error_path
+            .exists()
+            .then(|| std::fs::read_to_string(error_path).unwrap());
+        let diagnostic_path = std::path::Path::new(guest_paths.failure_diagnostic_file());
+        let written_diagnostic = diagnostic_path
+            .exists()
+            .then(|| serde_json::from_slice(&std::fs::read(diagnostic_path).unwrap()).unwrap());
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+        (exit_code, written_error, written_diagnostic)
+    }
+
     async fn complete_execution_writes_checkpoint_failure_diagnostic_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
@@ -1518,6 +1850,7 @@ mod tests {
                 failure_message: None,
                 failure_diagnostic: None,
                 skip_recovery_checkpoint_for_no_history: false,
+                active_input_delivery_ids: &[],
             },
             &telemetry,
             &runtime,
@@ -1593,6 +1926,7 @@ mod tests {
                 failure_message: Some(failure_message),
                 failure_diagnostic: Some(failure_diagnostic.clone()),
                 skip_recovery_checkpoint_for_no_history: true,
+                active_input_delivery_ids: &[],
             },
             &telemetry,
             &runtime,
@@ -1694,6 +2028,7 @@ mod tests {
                 failure_message: Some(failure_message),
                 failure_diagnostic: Some(failure_diagnostic.clone()),
                 skip_recovery_checkpoint_for_no_history: false,
+                active_input_delivery_ids: &[],
             },
             &telemetry,
             &runtime,

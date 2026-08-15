@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   generateZeroToken,
@@ -12,19 +12,23 @@ import {
   verifySandboxToken,
   verifyZeroToken,
 } from "../tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { safeJsonParse } from "../../utils";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function decodeZeroTokenPayloadForTest(token: string): unknown {
+function decodeZeroTokenPayloadForTest(token: string): Record<string, unknown> {
   const payload = token.slice("vm0_sandbox_".length).split(".")[1];
   if (!payload) {
     throw new Error("Expected a signed Zero token payload");
   }
-  return safeJsonParse(Buffer.from(payload, "base64url").toString());
+  const parsed = safeJsonParse(Buffer.from(payload, "base64url").toString());
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("Expected a signed Zero token object payload");
+  }
+  return Object.fromEntries(Object.entries(parsed));
 }
 
 describe("auth tokens", () => {
@@ -47,7 +51,7 @@ describe("auth tokens", () => {
     });
   });
 
-  it("verifies sandbox and zero tokens behind the sandbox prefix", () => {
+  it("verifies sandbox, zero, and okou tokens behind the sandbox prefix", () => {
     const nowSeconds = currentSecond();
     const sandboxToken = signSandboxJwtForTests({
       scope: "sandbox",
@@ -67,6 +71,15 @@ describe("auth tokens", () => {
       iat: nowSeconds,
       exp: nowSeconds + 60,
     });
+    const okouToken = signSandboxJwtForTests({
+      scope: "okou",
+      userId: "user_okou",
+      orgId: "org_okou",
+      runId: "run_okou",
+      capabilities: ["file:write"],
+      iat: nowSeconds,
+      exp: nowSeconds + 60,
+    });
 
     expect(isSandboxToken(sandboxToken)).toBeTruthy();
     expect(verifySandboxToken(sandboxToken)).toStrictEqual({
@@ -79,6 +92,80 @@ describe("auth tokens", () => {
       orgId: "org_zero",
       runId: "run_zero",
       capabilities: ["file:read"],
+    });
+    expect(verifyZeroToken(okouToken)).toStrictEqual({
+      userId: "user_okou",
+      orgId: "org_okou",
+      runId: "run_okou",
+      capabilities: ["file:write"],
+    });
+  });
+
+  it("generates either run token scope without changing the prefix", () => {
+    const zeroToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const okouToken = generateZeroToken(
+      "user_okou",
+      "run_okou",
+      "org_okou",
+      undefined,
+      { scope: "okou" },
+    );
+
+    expect(zeroToken).toMatch(/^vm0_sandbox_/u);
+    expect(okouToken).toMatch(/^vm0_sandbox_/u);
+    expect(decodeZeroTokenPayloadForTest(zeroToken)).toMatchObject({
+      scope: "zero",
+    });
+    expect(decodeZeroTokenPayloadForTest(okouToken)).toMatchObject({
+      scope: "okou",
+    });
+    expect(verifyZeroToken(okouToken)).toMatchObject({
+      userId: "user_okou",
+      runId: "run_okou",
+      orgId: "org_okou",
+    });
+  });
+
+  it("generates one Okou-scoped run token with the complete run claims", () => {
+    const computerUseHostId = "00000000-0000-4000-8000-000000000001";
+    const okouToken = generateZeroToken(
+      "user_shared",
+      "run_shared",
+      "org_shared",
+      { [FeatureSwitchKey.Banking]: true },
+      {
+        scope: "okou",
+        computerUseHostId,
+        cloudBrowserEnabled: true,
+        imageRecognitionAvailable: true,
+      },
+    );
+
+    const okouPayload = decodeZeroTokenPayloadForTest(okouToken);
+    expect(okouPayload).toMatchObject({
+      scope: "okou",
+      userId: "user_shared",
+      runId: "run_shared",
+      orgId: "org_shared",
+      computerUseHostId,
+      cloudBrowserEnabled: true,
+      capabilities: expect.arrayContaining([
+        "banking:read",
+        "browser:read",
+        "browser:write",
+        "computer-use:write",
+        "image-recognition:write",
+      ]),
+      iat: expect.any(Number),
+      exp: expect.any(Number),
+    });
+    expect(okouPayload.exp).toBe(Number(okouPayload.iat) + 2 * 60 * 60);
+    expect(verifyZeroToken(okouToken)).toMatchObject({
+      userId: "user_shared",
+      runId: "run_shared",
+      orgId: "org_shared",
+      computerUseHostId,
+      cloudBrowserEnabled: true,
     });
   });
 
@@ -122,6 +209,7 @@ describe("auth tokens", () => {
 
     expect(verifyCliToken(expiredToken)).toBeNull();
     expect(verifySandboxToken(composeJobToken)).toBeNull();
+    expect(verifyZeroToken(composeJobToken)).toBeNull();
     expect(verifyComposeJobToken(composeJobToken)).toStrictEqual({
       userId: "user_compose",
       jobId: "job_compose",
@@ -147,10 +235,8 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
   });
 
-  it("grants chat event read and write independently of prompt discovery", () => {
-    const token = generateZeroToken("user_zero", "run_zero", "org_zero", {
-      [FeatureSwitchKey.ZeroChatMessaging]: false,
-    });
+  it("includes chat event read and write capabilities in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
     expect(decodeZeroTokenPayloadForTest(token)).toMatchObject({
       capabilities: expect.arrayContaining([
@@ -179,21 +265,10 @@ describe("auth tokens", () => {
     );
   });
 
-  it("grants custom connector writes by default and honors a disabled override", () => {
-    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.CustomConnectorCliCreate]: false },
-    );
+  it("grants custom connector writes by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
-      "connector:write",
-    );
-    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
-      "connector:write",
-    );
+    expect(verifyZeroToken(token)?.capabilities).toContain("connector:write");
   });
 
   it("grants scrape capability by default", () => {
@@ -214,6 +289,12 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("finance:read");
   });
 
+  it("grants SEO capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("seo:read");
+  });
+
   it("includes people-search capability in zero-scoped tokens", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
@@ -222,7 +303,13 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates image recognition on both the rollout and run eligibility", () => {
+  it("grants translation capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("translation:write");
+  });
+
+  it("gates image recognition on run eligibility", () => {
     const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
     const ineligibleToken = generateZeroToken(
       "user_zero",
@@ -236,65 +323,33 @@ describe("auth tokens", () => {
       undefined,
       { imageRecognitionAvailable: true },
     );
-    const rolloutDisabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      staffOrgId,
-      { [FeatureSwitchKey.ZeroImageRecognition]: false },
-      { imageRecognitionAvailable: true },
-    );
-
     expect(verifyZeroToken(ineligibleToken)?.capabilities).not.toContain(
       "image-recognition:write",
     );
     expect(verifyZeroToken(eligibleToken)?.capabilities).toContain(
       "image-recognition:write",
     );
-    expect(verifyZeroToken(rolloutDisabledToken)?.capabilities).not.toContain(
-      "image-recognition:write",
-    );
   });
 
-  it("gates browser capabilities on both the rollout and thread access", () => {
-    const defaultToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    );
+  it("gates browser capabilities on thread access", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const enabledToken = generateZeroToken(
       "user_zero",
       "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      "org_zero",
       undefined,
       { cloudBrowserEnabled: true },
     );
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      { [FeatureSwitchKey.ZeroBrowser]: false },
-      { cloudBrowserEnabled: true },
-    );
 
-    for (const token of [defaultToken, disabledToken]) {
-      expect(verifyZeroToken(token)?.capabilities).not.toContain(
-        "browser:read",
-      );
-      expect(verifyZeroToken(token)?.capabilities).not.toContain(
-        "browser:write",
-      );
-    }
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "browser:read",
+    );
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "browser:write",
+    );
     expect(verifyZeroToken(enabledToken)).toMatchObject({
       cloudBrowserEnabled: true,
       capabilities: expect.arrayContaining(["browser:read", "browser:write"]),
-    });
-    expect(decodeZeroTokenPayloadForTest(disabledToken)).not.toHaveProperty(
-      "cloudBrowserEnabled",
-    );
-    expect(decodeZeroTokenPayloadForTest(disabledToken)).toMatchObject({
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: false,
-      },
     });
   });
 

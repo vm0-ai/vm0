@@ -1,83 +1,95 @@
-import { useGet, useSet } from "ccstate-react";
+import { CopyButton } from "@okouai/ui";
+import { useLoadable, useSet } from "ccstate-react";
+import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-  mermaidDiagramKey,
-  mermaidDiagramRef$,
-  mermaidDiagramResultByKey$,
-  type MermaidDiagramResult,
-} from "../../signals/mermaid-diagram.ts";
-import { theme$ } from "../../signals/theme.ts";
+
+import type { MermaidDiagramSignals } from "../../signals/mermaid-diagram.ts";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 
 /**
- * Renders a ```mermaid fenced block as a diagram.
+ * Renders a ```mermaid fenced block as a diagram from its signals.
  *
- * The canvas element is keyed by theme and source so a theme switch remounts
- * it, which re-runs the render command (and aborts the previous render). The
- * canvas keeps its position in the tree across statuses so the ref is not
- * re-attached when the render finishes.
+ * A fence has exactly two presentations: a diagram when the mermaid parser
+ * accepts the source, and an ordinary code block when it does not — the same
+ * markup any other fence renders as, copy button included. While the diagram
+ * is rendering, a box whose size is reserved up front holds its place, so the
+ * render cannot move the thread under a reader. The SVG is letterboxed inside
+ * that box and opens at full size in the lightbox.
  */
-export function MermaidDiagram({ code }: { code: string }) {
+export function MermaidDiagramView({
+  signals,
+}: {
+  signals: MermaidDiagramSignals;
+}) {
   const { t } = useTranslation();
-  const theme = useGet(theme$);
-  const diagramRef = useSet(mermaidDiagramRef$);
   const openImageLightbox = useSet(openImageLightbox$);
-  const resultByKey = useGet(mermaidDiagramResultByKey$);
-  const result: MermaidDiagramResult = resultByKey[
-    mermaidDiagramKey(code, theme)
-  ] ?? { status: "rendering" };
+  const loadable = useLoadable(signals.diagram$);
+  const image = loadable.state === "hasData" ? loadable.data : null;
+
+  if (loadable.state !== "loading" && image === null) {
+    return (
+      <pre>
+        <code className="language-mermaid">{signals.code}</code>
+        <CopyButton
+          type="button"
+          text={signals.code}
+          showTooltip={false}
+          className="copied"
+          data-code={signals.code}
+        />
+      </pre>
+    );
+  }
 
   return (
-    <div className="mermaid-block" data-mermaid-status={result.status}>
+    <div
+      className="mermaid-block"
+      data-mermaid-status={image ? "rendered" : "rendering"}
+    >
       <button
         type="button"
         className="mermaid-diagram-expand"
-        disabled={result.status !== "rendered"}
+        disabled={image === null}
         aria-label={t(($) => {
           return $.shared.mermaid.expand;
         })}
         onClick={() => {
-          if (result.status !== "rendered") {
+          if (image === null) {
             return;
           }
-          // A rendered diagram is an inline data URL, not a stored artifact,
-          // so it stays in the lightbox instead of moving to the sidebar.
+          // File metadata lets each preview surface present the diagram as
+          // diagram.svg with download support.
           openImageLightbox({
-            url: result.url,
-            filename: "diagram.svg",
-            splitViewAvailable: false,
+            url: image.url,
+            file: image.file,
+            shareAvailable: false,
           });
         }}
       >
-        <div
-          key={`${theme}:${code}`}
-          ref={diagramRef}
-          data-mermaid-code={code}
-          data-mermaid-theme={theme}
-          data-testid="mermaid-diagram-canvas"
-          className="mermaid-diagram-canvas"
-          role="img"
-          aria-label={t(($) => {
-            return $.shared.mermaid.diagramLabel;
-          })}
-        />
-      </button>
-      {result.status === "error" ? (
-        <pre data-testid="mermaid-diagram-fallback">
-          <code>{code}</code>
-        </pre>
-      ) : (
-        <details className="mermaid-diagram-source">
-          <summary>
-            {t(($) => {
-              return $.shared.mermaid.viewSource;
+        {image ? (
+          <img
+            src={image.url}
+            alt={t(($) => {
+              return $.shared.mermaid.diagramLabel;
             })}
-          </summary>
-          <pre>
-            <code>{code}</code>
-          </pre>
-        </details>
-      )}
+            className="mermaid-diagram-image"
+          />
+        ) : (
+          <span className="mermaid-diagram-pending" aria-hidden="true">
+            <Loader2 size={18} className="animate-spin" />
+          </span>
+        )}
+      </button>
+      <details className="mermaid-diagram-source">
+        <summary>
+          {t(($) => {
+            return $.shared.mermaid.viewSource;
+          })}
+        </summary>
+        <pre>
+          <code>{signals.code}</code>
+        </pre>
+      </details>
     </div>
   );
 }

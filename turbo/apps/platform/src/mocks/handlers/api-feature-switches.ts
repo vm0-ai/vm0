@@ -1,7 +1,7 @@
 /**
  * Feature Switches API Handlers
  *
- * Mock handlers for /api/zero/feature-switches endpoint.
+ * Mock handlers for /api/okou/feature-switches endpoint.
  *
  * Stateless: defaults return empty switches. Tests override the GET response
  * via `setMockFeatureSwitches` from `./api-feature-switches.helpers.ts` —
@@ -9,8 +9,7 @@
  * default handlers stay free of test override side effects.
  */
 
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_SWITCH_OVERRIDES = {};
@@ -20,7 +19,6 @@ export const apiFeatureSwitchesHandlers = [
     return respond(200, {
       switches: DEFAULT_SWITCH_OVERRIDES,
       effectiveSwitches: DEFAULT_SWITCH_OVERRIDES,
-      supportsCustomConnectorOAuth2: true,
     });
   }),
 
@@ -28,7 +26,6 @@ export const apiFeatureSwitchesHandlers = [
     return respond(200, {
       switches: body.switches,
       effectiveSwitches: body.switches,
-      supportsCustomConnectorOAuth2: true,
     });
   }),
 

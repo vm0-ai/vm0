@@ -1,5 +1,5 @@
 /**
- * Tests for zero slack upload-file command
+ * Tests for okou slack upload-file command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -17,15 +17,15 @@ import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";
 
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/slack/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/slack/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/slack/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/slack/upload-file/complete";
 const UPLOAD_MATERIALIZE_URL =
-  "http://localhost:3000/api/zero/integrations/slack/upload-file/materialize";
+  "http://localhost:3000/api/okou/integrations/slack/upload-file/materialize";
 const SLACK_PRESIGNED_URL = "https://files.slack.com/upload/v1/test-presigned";
 const CANONICAL_PRESIGNED_URL = "https://r2.example.com/upload/canonical-asset";
 
-describe("zero slack upload-file command", () => {
+describe("okou slack upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -43,7 +43,7 @@ describe("zero slack upload-file command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     // Create temp file for tests
     tmpDir = join(tmpdir(), `upload-file-test-${Date.now()}`);
@@ -57,6 +57,21 @@ describe("zero slack upload-file command", () => {
     mockConsoleError.mockClear();
     mockConsoleWarn.mockClear();
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("uses Okou branding in upload help", () => {
+    let helpOutput = "";
+    uploadFileCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    uploadFileCommand.outputHelp();
+
+    expect(helpOutput).toContain(
+      "Run-scoped calls publish to Okou storage before Slack delivery",
+    );
   });
 
   describe("successful upload", () => {
@@ -274,7 +289,6 @@ describe("zero slack upload-file command", () => {
       ]);
       expect(capturedInitBody).toMatchObject({
         filename: "test-report.pdf",
-        supportsUploadHeaders: true,
         canonical: {
           operationId,
           contentType: "application/pdf",

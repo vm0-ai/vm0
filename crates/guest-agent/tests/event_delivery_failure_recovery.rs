@@ -9,8 +9,6 @@ use guest_contracts::diagnostics::{
 use httpmock::prelude::*;
 use serde_json::json;
 use std::io;
-use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 use std::time::Duration;
 use tokio::process::Command;
 
@@ -52,17 +50,17 @@ async fn successful_cli_with_exhausted_event_delivery_uses_recovery_checkpoint()
 #[tokio::test]
 async fn nonzero_cli_remains_primary_when_event_delivery_also_fails()
 -> Result<(), Box<dyn std::error::Error>> {
-    let run = run_event_failure_case("event-delivery-secondary-failure", 7).await?;
+    let run = run_event_failure_case("event-delivery-secondary-failure", 1).await?;
 
     assert_eq!(
         run.process_exit_code,
-        Some(7),
+        Some(1),
         "guest-agent stderr:\n{}",
         run.stderr
     );
     assert!(run.stderr.contains("mock codex primary failure"));
     assert_eq!(run.diagnostic.failure_class, FailureClass::CliNonzero);
-    assert_eq!(run.diagnostic.cli_exit_code, Some(7));
+    assert_eq!(run.diagnostic.cli_exit_code, Some(1));
     assert_confirmed_event_delivery(&run.diagnostic)?;
 
     Ok(())
@@ -78,11 +76,12 @@ async fn run_event_failure_case(
     let home = tmp.path().join("home");
     let runtime_dir = tmp.path().join("runtime");
     std::fs::create_dir_all(&home)?;
-    let history = format!(
-        "{{\"type\":\"thread.started\",\"thread_id\":\"{THREAD_ID}\"}}\n\
-         {{\"type\":\"turn.started\"}}\n"
-    );
-    let mock_codex = write_codex(tmp.path(), &history, cli_exit_code)?;
+    let mock_codex = common::build_and_locate_mock_codex()?;
+    let mock_scenario = if cli_exit_code == 0 {
+        "runtime-turn-complete"
+    } else {
+        "runtime-turn-failed"
+    };
     let run_payload_file = common::write_run_payload_file_for_test(
         &runtime_dir,
         &guest_contracts::env::RunPayload {
@@ -121,8 +120,7 @@ async fn run_event_failure_case(
     let upload = server.mock(|when, then| {
         when.method(PUT)
             .path("/test/event-delivery-recovery-history")
-            .header("Content-Type", "application/octet-stream")
-            .body(history.as_str());
+            .header("Content-Type", "application/octet-stream");
         then.status(200);
     });
     let checkpoint = server.mock(|when, then| {
@@ -156,6 +154,8 @@ async fn run_event_failure_case(
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
             .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
+            .env(guest_contracts::env::RESUME_SESSION_ID_ENV, THREAD_ID)
+            .env("MOCK_CODEX_APP_SERVER_SCENARIO", mock_scenario)
             .env(
                 guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
                 &run_payload_file,
@@ -210,33 +210,4 @@ fn assert_confirmed_event_delivery(
         EventDeliveryAcceptanceOutcome::ConfirmedRejection
     );
     Ok(())
-}
-
-fn write_codex(
-    root: &Path,
-    history: &str,
-    cli_exit_code: i32,
-) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
-    let path = root.join("mock-codex");
-    let exit_script = if cli_exit_code == 0 {
-        String::new()
-    } else {
-        format!("printf '%s\\n' 'mock codex primary failure' >&2\nexit {cli_exit_code}\n")
-    };
-    let script = format!(
-        "#!/bin/sh\n\
-         set -eu\n\
-         history_dir=\"$HOME/.codex/sessions/2026/07/30\"\n\
-         mkdir -p \"$history_dir\"\n\
-         printf '%s' '{}' > \"$history_dir/{THREAD_ID}.jsonl\"\n\
-         printf '%s\\n' '{{\"type\":\"thread.started\",\"thread_id\":\"{THREAD_ID}\"}}'\n\
-         printf '%s\\n' '{{\"type\":\"turn.completed\"}}'\n\
-         {exit_script}",
-        history.replace('\'', "'\\''"),
-    );
-    std::fs::write(&path, script)?;
-    let mut permissions = std::fs::metadata(&path)?.permissions();
-    permissions.set_mode(0o700);
-    std::fs::set_permissions(&path, permissions)?;
-    Ok(path)
 }

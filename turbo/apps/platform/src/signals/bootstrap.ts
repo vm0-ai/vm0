@@ -1,10 +1,9 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
-import { i18n } from "../i18n/index.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
@@ -30,7 +29,6 @@ import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.t
 import { setupFeishuSettingsPage$ } from "./zero-page/feishu-settings-page.ts";
 import { setupStrapiSettingsPage$ } from "./zero-page/strapi-settings-page.ts";
 import { setupFeishuOAuthCallbackPage$ } from "./zero-page/feishu-oauth-callback-page.ts";
-import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
@@ -57,7 +55,6 @@ import {
 } from "./onboarding/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
-import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-connector-proposal-page-setup.ts";
 import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
 import { setupBrowserAuthorizationPage$ } from "./browser-authorization/browser-authorization-page-setup.ts";
 import { setupBrowserSessionPage$ } from "./browser-session/browser-session-page-setup.ts";
@@ -70,10 +67,7 @@ import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
 import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
-import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
-import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
-import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
@@ -85,11 +79,19 @@ import {
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
+import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
-import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
-import { reloadBillingStatus$ } from "./zero-page/billing.ts";
+import {
+  featureSwitch$,
+  reloadFeatureSwitch$,
+} from "./external/feature-switch.ts";
+import {
+  setupConnectionDiagnostics$,
+  writeConnectionDiagnostic$,
+} from "./connection-diagnostics.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
+import { captureInvitationRedirect$ } from "./invitation-redirect.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(NotFoundPage));
@@ -141,6 +143,11 @@ function setupAuthSidebarPageWrapper(
 
 const ROUTE_CONFIG = [
   {
+    path: ROUTES.sharedThread,
+    setup: setupSharedThreadPage$,
+    analytics: false,
+  },
+  {
     path: ROUTES.signIn,
     setup: setupSignInPage$,
   },
@@ -159,10 +166,6 @@ const ROUTE_CONFIG = [
 
   // --- New routes ---
   {
-    path: ROUTES.insights,
-    setup: setupAuthSidebarPageWrapper(setupNetworkInsightsPage$),
-  },
-  {
     path: ROUTES.chat,
     setup: setupAuthSidebarPageWrapper(setupChatPage$),
   },
@@ -177,10 +180,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.ideas,
     setup: setupAuthSidebarPageWrapper(setupIdeationPage$),
-  },
-  {
-    path: ROUTES.customConnectorProposal,
-    setup: setupAuthPageWrapper(setupCustomConnectorProposalPage$),
   },
   {
     path: ROUTES.computerUseAuthorize,
@@ -233,10 +232,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.agentPermissions,
     setup: setupAuthPageWrapper(setupPermissionAllowPage$),
-  },
-  {
-    path: ROUTES.reportError,
-    setup: setupAuthPageWrapper(setupReportErrorPage$),
   },
   {
     path: ROUTES.workflowDetail,
@@ -311,10 +306,6 @@ const ROUTE_CONFIG = [
     setup: setupAuthSidebarPageWrapper(setupActivityDetailPage$),
   },
   {
-    path: ROUTES.activities,
-    setup: setupAuthSidebarPageWrapper(setupActivityPage$),
-  },
-  {
     path: ROUTES.works,
     setup: setupAuthSidebarPageWrapper(setupWorksPage$),
   },
@@ -325,10 +316,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.lab,
     setup: setupAuthSidebarPageWrapper(setupLabPage$),
-  },
-  {
-    path: ROUTES.usage,
-    setup: setupAuthSidebarPageWrapper(setupUsagePage$),
   },
   {
     path: ROUTES.exportData,
@@ -408,7 +395,6 @@ const ROUTE_CONFIG = [
     path: "/firewall-allow/:id",
     setup: redirectWithId(ROUTES.agentPermissions, "agentId"),
   },
-  { path: "/activity", setup: redirectTo(ROUTES.activities) },
   {
     path: "/activity/:id",
     setup: redirectWithId(ROUTES.activityDetail, "activityRunId"),
@@ -440,76 +426,6 @@ const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
   await set(syncLocalePreference$, signal);
 });
 
-function showSuccessToastAfterMount(message: string): void {
-  const showToast = () => {
-    window.setTimeout(() => {
-      toast.success(message);
-    }, 0);
-  };
-
-  if (document.readyState === "complete") {
-    showToast();
-    return;
-  }
-
-  window.addEventListener("load", showToast, { once: true });
-}
-
-const handleBillingRedirect$ = command(({ set }) => {
-  const url = new URL(window.location.href);
-  const billing = url.searchParams.get("billing");
-  const credits = url.searchParams.get("credits");
-  const concurrency = url.searchParams.get("concurrency");
-  if (!billing && !credits && !concurrency) {
-    return;
-  }
-
-  url.searchParams.delete("billing");
-  url.searchParams.delete("billing_session_id");
-  url.searchParams.delete("credits");
-  url.searchParams.delete("credit_checkout_session_id");
-  url.searchParams.delete("concurrency");
-  window.history.replaceState(null, "", url.toString());
-
-  if (billing === "pro" || billing === "team") {
-    const label =
-      billing === "pro"
-        ? i18n.t(($) => {
-            return $.billing.plans.pro.name;
-          })
-        : i18n.t(($) => {
-            return $.billing.plans.team.name;
-          });
-    showSuccessToastAfterMount(
-      i18n.t(
-        ($) => {
-          return $.billing.toasts.checkoutCompleted;
-        },
-        { plan: label },
-      ),
-    );
-    set(reloadBillingStatus$);
-  }
-
-  if (credits === "purchased") {
-    showSuccessToastAfterMount(
-      i18n.t(($) => {
-        return $.billing.toasts.creditsAdded;
-      }),
-    );
-    set(reloadBillingStatus$);
-  }
-
-  if (concurrency === "purchased") {
-    showSuccessToastAfterMount(
-      i18n.t(($) => {
-        return $.billing.toasts.concurrencyAdded;
-      }),
-    );
-    set(reloadBillingStatus$);
-  }
-});
-
 const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
   navigator.serviceWorker?.addEventListener(
     "message",
@@ -530,7 +446,8 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 });
 
 export const bootstrap$ = command(
-  async ({ set }, render: () => void, signal: AbortSignal) => {
+  async ({ get, set }, render: () => void, signal: AbortSignal) => {
+    set(captureInvitationRedirect$);
     await set(initLocale$, signal);
     signal.throwIfAborted();
     set(initTheme$);
@@ -539,9 +456,18 @@ export const bootstrap$ = command(
 
     set(setupLoggers$);
 
+    // The cached effective switches already drive the first rendered frame.
+    // Install capture from that same snapshot before setupRouter starts the
+    // authenticated daemons, so their initial Clerk and Ably waits are kept
+    // even while remote feature-switch hydration is still pending.
+    set(setupConnectionDiagnostics$, signal);
+    set(writeConnectionDiagnostic$, {
+      action: "set-enabled",
+      enabled: get(featureSwitch$)[FeatureSwitchKey.ZeroDebug] ?? false,
+    });
+
     render();
 
-    set(handleBillingRedirect$);
     set(handleSlackRedirect$);
 
     await Promise.all([

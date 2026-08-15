@@ -7,12 +7,14 @@ function createLarkAccessProvider(): RefreshTokenAccessProvider<
 > {
   return {
     kind: "refresh-token",
-    refresh: async (args) => {
-      const token = await fetchLarkTenantAccessToken({
-        appId: args.inputs.appId,
-        appSecret: args.inputs.appSecret,
-        signal: args.signal,
-      });
+    refresh: async (args, signal: AbortSignal) => {
+      const token = await fetchLarkTenantAccessToken(
+        {
+          appId: args.inputs.appId,
+          appSecret: args.inputs.appSecret,
+        },
+        signal,
+      );
       return {
         outputs: {
           accessToken: token.accessToken,

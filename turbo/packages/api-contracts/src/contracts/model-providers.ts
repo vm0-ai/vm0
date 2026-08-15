@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-import { DEEPSEEK_CODEX_MODEL_CATALOG } from "./deepseek-codex-model-catalog";
+import DEEPSEEK_V4_FLASH_MODEL_CATALOG from "./deepseek-model-catalog.json" with { type: "json" };
 import {
+  MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   type SupportedRunModel,
@@ -14,6 +15,7 @@ import {
 } from "./model-provider-types";
 export {
   getModelProviderFirewall,
+  getModelProviderPiChatCompletionsUrl,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "./model-provider-firewalls";
@@ -22,7 +24,25 @@ export type {
   ModelProviderType,
 } from "./model-provider-types";
 
+const deepseekV4FlashCatalogModel = DEEPSEEK_V4_FLASH_MODEL_CATALOG.models[0];
+if (!deepseekV4FlashCatalogModel) {
+  throw new Error("DeepSeek V4 Flash model catalog entry is required");
+}
+
+const DEEPSEEK_MODEL_CATALOG = {
+  ...DEEPSEEK_V4_FLASH_MODEL_CATALOG,
+  models: [
+    deepseekV4FlashCatalogModel,
+    {
+      ...deepseekV4FlashCatalogModel,
+      slug: "deepseek-v4-pro",
+      display_name: "DeepSeek-V4-Pro",
+    },
+  ],
+};
+
 export {
+  MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   type SupportedRunModel,
@@ -87,85 +107,32 @@ export type ModelProviderCodexRuntimeConfig = z.infer<
 const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
   Record<ModelProviderType, ModelProviderCodexRuntimeConfig>
 > = {
-  "deepseek-codex": {
-    providerId: "vm0-model",
+  deepseek: {
+    providerId: "deepseek",
     name: "DeepSeek",
-    baseUrl: "https://api.deepseek.com",
+    baseUrl: "https://api.deepseek.com/",
     envKey: "OPENAI_API_KEY",
     requiresOpenaiAuth: false,
     wireApi: "responses",
     supportsWebsockets: false,
-    modelCatalog: DEEPSEEK_CODEX_MODEL_CATALOG,
+    modelCatalog: DEEPSEEK_MODEL_CATALOG,
   },
 };
 
-/**
- * The org slug authorized to use the VM0 managed provider.
- */
-export const VM0_ORG_SLUG = "vm0";
-
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5",
-  "claude-opus-5",
-  "claude-sonnet-5",
   "gpt-5.6-sol",
-  "gpt-5.6-terra",
   "gpt-5.6-luna",
+  "deepseek-v4-flash",
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "gpt-5.6-luna" as const satisfies SupportedRunModel;
+  "deepseek-v4-flash" as const satisfies SupportedRunModel;
 
 export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
-  "gpt-5.6-luna" as const satisfies SupportedRunModel;
+  "deepseek-v4-flash" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
-
-// Browser clients loaded before a model retirement can keep submitting these
-// ids during rollout. Remove an entry only after those clients have aged out.
-const RETIRED_RUN_MODELS = ["vm0-model", "gpt-5.4", "gpt-5.4-mini"] as const;
-
-type RetiredRunModel = (typeof RETIRED_RUN_MODELS)[number];
-
-const retiredRunModelSchema = z.enum(RETIRED_RUN_MODELS);
-const RETIRED_RUN_MODEL_SET: ReadonlySet<string> = new Set(RETIRED_RUN_MODELS);
-const RETIRED_RUN_MODEL_REPLACEMENTS: Readonly<
-  Record<RetiredRunModel, SupportedRunModel>
-> = {
-  "vm0-model": DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  "gpt-5.4": DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  "gpt-5.4-mini": DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-};
-
-function isRetiredRunModel(model: string): model is RetiredRunModel {
-  return RETIRED_RUN_MODEL_SET.has(model);
-}
-
-function normalizeRequestedRunModel(model: string): SupportedRunModel | null {
-  if (isSupportedRunModel(model)) {
-    return model;
-  }
-  return isRetiredRunModel(model)
-    ? RETIRED_RUN_MODEL_REPLACEMENTS[model]
-    : null;
-}
-
-export const requestedRunModelSchema = z
-  .string()
-  .min(1)
-  .superRefine((model, ctx) => {
-    if (normalizeRequestedRunModel(model) === null) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Invalid model selection",
-      });
-    }
-  })
-  .transform((model): SupportedRunModel => {
-    return (
-      normalizeRequestedRunModel(model) ?? supportedRunModelSchema.parse(model)
-    );
-  });
 
 export const modelProviderCredentialScopeSchema = z.enum(["org", "member"]);
 
@@ -185,19 +152,10 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-5": "Claude Opus 5",
   "claude-opus-4-8": "Claude Opus 4.8",
-  "claude-opus-4-7": "Claude Opus 4.7",
-  "claude-opus-4-6": "Claude Opus 4.6",
   "claude-sonnet-5": "Claude Sonnet 5",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
-  "deepseek-v4-pro": "DeepSeek V4 Pro",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
-  "kimi-k3": "Kimi K3",
-  "kimi-k2.7-code": "Kimi K2.7 Code",
-  "MiniMax-M3": "MiniMax M3",
-  "glm-5.2": "GLM-5.2",
-  "glm-5.1": "GLM-5.1",
-  "mimo-v2.5": "MiMo-V2.5",
-  "hy3-preview": "Hy3 Preview",
+  "deepseek-v4-pro": "DeepSeek V4 Pro",
   "gpt-5.6-sol": "GPT 5.6 Sol",
   "gpt-5.6-terra": "GPT 5.6 Terra",
   "gpt-5.6-luna": "GPT 5.6 Luna",
@@ -214,9 +172,8 @@ export function isSupportedRunModel(
   return typeof model === "string" && SUPPORTED_RUN_MODEL_SET.has(model);
 }
 
-/** Models supported by the ChatGPT Codex Fast service tier. */
+/** Models supported by the Codex Fast service tier. */
 export const CODEX_FAST_MODE_MODELS = [
-  "gpt-5.5",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
@@ -273,8 +230,7 @@ interface Vm0ModelConfig {
   vendor: string;
   // Overrides the display-name when substituting `$model` in the concrete
   // provider's env bindings. Needed when the upstream API expects a
-  // different identifier than what we show to users (e.g. OpenRouter uses
-  // "z-ai/glm-5.1" while our UI shows "glm-5.1").
+  // different identifier than what we show to users.
   apiModel?: string;
 }
 
@@ -294,14 +250,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
-  "claude-opus-4-7": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
-  },
-  "claude-opus-4-6": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
-  },
   "claude-sonnet-5": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -310,42 +258,12 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
-  "glm-5.2": {
-    concreteType: "zai-api-key",
-    vendor: "zai",
-  },
-  "glm-5.1": {
-    concreteType: "zai-api-key",
-    vendor: "zai",
-  },
-  "mimo-v2.5": {
-    concreteType: "openrouter-api-key",
-    vendor: "openrouter",
-    apiModel: "xiaomi/mimo-v2.5",
-  },
-  "hy3-preview": {
-    concreteType: "openrouter-api-key",
-    vendor: "openrouter",
-    apiModel: "tencent/hy3-preview",
-  },
-  "kimi-k3": {
-    concreteType: "moonshot-api-key",
-    vendor: "moonshot",
-  },
-  "kimi-k2.7-code": {
-    concreteType: "moonshot-api-key",
-    vendor: "moonshot",
-  },
-  "MiniMax-M3": {
-    concreteType: "minimax-api-key",
-    vendor: "minimax",
-  },
-  "deepseek-v4-pro": {
-    concreteType: "deepseek-api-key",
+  "deepseek-v4-flash": {
+    concreteType: "deepseek",
     vendor: "deepseek",
   },
-  "deepseek-v4-flash": {
-    concreteType: "deepseek-codex",
+  "deepseek-v4-pro": {
+    concreteType: "deepseek",
     vendor: "deepseek",
   },
   "gpt-5.6-sol": {
@@ -370,24 +288,16 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-fable-5": "claude-fable-5",
   "anthropic/claude-opus-5": "claude-opus-5",
   "anthropic/claude-opus-4.8": "claude-opus-4-8",
-  "anthropic/claude-opus-4.7": "claude-opus-4-7",
-  "anthropic/claude-opus-4.6": "claude-opus-4-6",
   "anthropic/claude-sonnet-5": "claude-sonnet-5",
   "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
-  "z-ai/glm-5.2": "glm-5.2",
-  "z-ai/glm-5.1": "glm-5.1",
-  "xiaomi/mimo-v2.5": "mimo-v2.5",
-  "tencent/hy3-preview": "hy3-preview",
-  "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
 } as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
 
 const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   VM0_MODEL_ALIAS_TO_MODEL;
 
 const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
-  "claude-sonnet-5",
-  "gpt-5.6-terra",
   "gpt-5.6-luna",
+  "deepseek-v4-flash",
 ]);
 
 export function normalizeVm0ModelId(model: string): string {
@@ -401,23 +311,15 @@ export function isLimitedFree1RestrictedRunModel(
     return false;
   }
   const normalized = model.trim().toLowerCase();
-  const canonicalModel = normalizeVm0ModelId(normalized);
-  const unprefixedModel = canonicalModel.replace(/^(anthropic|openai)\//, "");
-  if (LIMITED_FREE1_ALLOWED_RUN_MODELS.has(unprefixedModel)) {
+  if (!normalized) {
     return false;
   }
-  const vendor = VM0_MODEL_TO_PROVIDER[canonicalModel]?.vendor;
-
-  return (
-    vendor === "anthropic" ||
-    vendor === "openai" ||
-    normalized.startsWith("anthropic/") ||
-    normalized.startsWith("openai/") ||
-    normalized.startsWith("claude-") ||
-    normalized.startsWith("gpt-") ||
-    normalized === "fable" ||
-    normalized === "anthropic/fable"
+  const canonicalModel = normalizeVm0ModelId(normalized);
+  const unprefixedModel = canonicalModel.replace(
+    /^(anthropic|deepseek|openai)\//,
+    "",
   );
+  return !LIMITED_FREE1_ALLOWED_RUN_MODELS.has(unprefixedModel);
 }
 
 export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
@@ -426,41 +328,20 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "claude-fable-5",
   "claude-opus-5",
   "claude-opus-4-8",
-  "claude-opus-4-7",
-  "claude-opus-4-6",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
   "anthropic/claude-fable-5",
   "anthropic/claude-opus-5",
   "anthropic/claude-opus-4.8",
-  "anthropic/claude-opus-4.7",
-  "anthropic/claude-opus-4.6",
   "anthropic/claude-sonnet-5",
   "anthropic/claude-opus-4.5",
   "anthropic/claude-sonnet-4.6",
   "anthropic/claude-sonnet-4.5",
-  "kimi-k3",
-  "kimi-k2.7-code",
-  "MiniMax-M3",
-  "mimo-v2.5",
-  "xiaomi/mimo-v2.5",
 ]);
 
 const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
-  "glm-5.2",
-  "glm-5.1",
-  "glm-5",
-  "glm-4.7",
-  "glm-4.5-air",
-  "z-ai/glm-5.2",
-  "z-ai/glm-5.1",
-  "zai/glm-5-turbo",
-  "hy3-preview",
-  "tencent/hy3-preview",
-  "deepseek-v4-pro",
   "deepseek-v4-flash",
-  "deepseek/deepseek-v4-pro",
-  "MiniMax-M2.1",
+  "deepseek-v4-pro",
   "minimax/minimax-m2.5",
 ]);
 
@@ -496,7 +377,7 @@ export function modelSupportsImageInput(
  * Return the VM0 managed models visible to callers.
  */
 export function getVm0VisibleModels(): string[] {
-  return Object.keys(VM0_MODEL_TO_PROVIDER);
+  return [...SUPPORTED_RUN_MODELS];
 }
 
 /**
@@ -531,10 +412,8 @@ export const MODEL_PROVIDER_TYPES = {
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
-      "claude-opus-4-7",
-      "claude-opus-4-6",
     ] as string[],
-    defaultModel: "claude-sonnet-4-6",
+    defaultModel: "claude-sonnet-5",
   },
   "anthropic-api-key": {
     framework: "claude-code" as const,
@@ -553,10 +432,8 @@ export const MODEL_PROVIDER_TYPES = {
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
-      "claude-opus-4-7",
-      "claude-opus-4-6",
     ] as string[],
-    defaultModel: "claude-sonnet-4-6",
+    defaultModel: "claude-sonnet-5",
   },
   "openrouter-api-key": {
     framework: "claude-code" as const,
@@ -578,96 +455,14 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
-      "anthropic/claude-opus-4.7",
       "anthropic/claude-sonnet-5",
       "anthropic/claude-sonnet-4.6",
-      "anthropic/claude-opus-4.6",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-sonnet-4.5",
-      "z-ai/glm-5.2",
-      "z-ai/glm-5.1",
-      "xiaomi/mimo-v2.5",
-      "tencent/hy3-preview",
-      "deepseek/deepseek-v4-pro",
     ] as string[],
     defaultModel: "",
   },
-  "moonshot-api-key": {
-    framework: "claude-code" as const,
-    secretName: "MOONSHOT_API_KEY",
-    label: "Moonshot (Kimi)",
-    secretLabel: "API key",
-    helpText:
-      "Get your API key at: https://platform.moonshot.ai/console/api-keys",
-    envBindings: {
-      ANTHROPIC_AUTH_TOKEN: "$secret",
-      ANTHROPIC_BASE_URL: "https://api.moonshot.ai/anthropic",
-      ANTHROPIC_MODEL: "$model",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
-      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-      // Moonshot rejects Anthropic document blocks; keep attachments as text.
-      CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
-    } satisfies ModelProviderEnvBindings,
-    models: [
-      "kimi-k3",
-      "kimi-k2.7-code",
-      "kimi-k2-thinking-turbo",
-      "kimi-k2-thinking",
-    ] as string[],
-    defaultModel: "kimi-k2.7-code",
-  },
-  "minimax-api-key": {
-    framework: "claude-code" as const,
-    secretName: "MINIMAX_API_KEY",
-    label: "MiniMax",
-    secretLabel: "API key",
-    helpText:
-      "Get your API key at: https://platform.minimax.io/user-center/basic-information/interface-key",
-    envBindings: {
-      ANTHROPIC_AUTH_TOKEN: "$secret",
-      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
-      ANTHROPIC_MODEL: "$model",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
-      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-      API_TIMEOUT_MS: "3000000",
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-      // MiniMax does not document support for Anthropic document blocks.
-      CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
-    } satisfies ModelProviderEnvBindings,
-    models: ["MiniMax-M3", "MiniMax-M2.1"] as string[],
-    defaultModel: "MiniMax-M3",
-  },
-  "deepseek-api-key": {
-    framework: "claude-code" as const,
-    secretName: "DEEPSEEK_API_KEY",
-    label: "DeepSeek",
-    secretLabel: "API key",
-    helpText: "Get your API key at: https://platform.deepseek.com/api_keys",
-    envBindings: {
-      ANTHROPIC_AUTH_TOKEN: "$secret",
-      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
-      ANTHROPIC_MODEL: "$model",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
-      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-      API_TIMEOUT_MS: "600000",
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-      // DeepSeek explicitly rejects Anthropic document blocks.
-      CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
-    } satisfies ModelProviderEnvBindings,
-    models: ["deepseek-v4-pro"] as string[],
-    defaultModel: "deepseek-v4-pro",
-  },
-  // Codex-framework twin of deepseek-api-key. It shares the same DeepSeek
-  // credential while using the native Responses API required by Codex.
-  // Future DeepSeek Responses models can be added without changing runtime
-  // configuration.
-  "deepseek-codex": {
+  deepseek: {
     framework: "codex" as const,
     secretName: "DEEPSEEK_API_KEY",
     label: "DeepSeek",
@@ -675,36 +470,11 @@ export const MODEL_PROVIDER_TYPES = {
     helpText: "Get your API key at: https://platform.deepseek.com/api_keys",
     envBindings: {
       OPENAI_API_KEY: "$secret",
-      OPENAI_BASE_URL: "https://api.deepseek.com",
+      OPENAI_BASE_URL: "https://api.deepseek.com/",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["deepseek-v4-flash"] as string[],
+    models: ["deepseek-v4-flash", "deepseek-v4-pro"] as string[],
     defaultModel: "deepseek-v4-flash",
-  },
-  "zai-api-key": {
-    framework: "claude-code" as const,
-    secretName: "ZAI_API_KEY",
-    label: "Z.AI (GLM)",
-    secretLabel: "API key",
-    helpText: "Get your API key at: https://z.ai/model-api",
-    envBindings: {
-      ANTHROPIC_AUTH_TOKEN: "$secret",
-      ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
-      ANTHROPIC_MODEL: "$model",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
-      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-      API_TIMEOUT_MS: "3000000",
-    } satisfies ModelProviderEnvBindings,
-    models: [
-      "glm-5.2",
-      "glm-5.1",
-      "glm-5",
-      "glm-4.7",
-      "glm-4.5-air",
-    ] as string[],
-    defaultModel: "glm-5.2",
   },
   "vercel-ai-gateway": {
     framework: "claude-code" as const,
@@ -726,16 +496,13 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
-      "anthropic/claude-opus-4.7",
-      "anthropic/claude-opus-4.6",
       "anthropic/claude-sonnet-5",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-sonnet-4.5",
       "minimax/minimax-m2.5",
-      "zai/glm-5-turbo",
     ] as string[],
-    defaultModel: "anthropic/claude-sonnet-4.6",
+    defaultModel: "anthropic/claude-sonnet-5",
   },
   // Codex-framework twin of openrouter-api-key. Same upstream gateway (OpenRouter)
   // and same API key (shared secretName), but routes through OpenRouter's
@@ -802,7 +569,7 @@ export const MODEL_PROVIDER_TYPES = {
       "gpt-5.6-luna",
       "gpt-5.5",
     ] as string[],
-    defaultModel: "gpt-5.5",
+    defaultModel: "gpt-5.6-sol",
   },
   "codex-oauth-token": {
     framework: "codex" as const,
@@ -876,7 +643,7 @@ export const MODEL_PROVIDER_TYPES = {
       "gpt-5.6-luna",
       "gpt-5.5",
     ] as string[],
-    defaultModel: "gpt-5.5",
+    defaultModel: "gpt-5.6-sol",
   },
   "azure-foundry": {
     framework: "claude-code" as const,
@@ -1010,20 +777,6 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
-  "claude-opus-4-7": [
-    "vm0",
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "openrouter-api-key",
-    "vercel-ai-gateway",
-  ],
-  "claude-opus-4-6": [
-    "vm0",
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "openrouter-api-key",
-    "vercel-ai-gateway",
-  ],
   "claude-sonnet-5": [
     "vm0",
     "claude-code-oauth-token",
@@ -1066,15 +819,8 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
-  "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
-  "deepseek-v4-flash": ["vm0", "deepseek-codex"],
-  "kimi-k3": ["vm0", "moonshot-api-key"],
-  "kimi-k2.7-code": ["vm0", "moonshot-api-key"],
-  "MiniMax-M3": ["vm0", "minimax-api-key"],
-  "glm-5.2": ["vm0", "zai-api-key", "openrouter-api-key"],
-  "glm-5.1": ["vm0", "zai-api-key", "openrouter-api-key"],
-  "mimo-v2.5": ["vm0", "openrouter-api-key"],
-  "hy3-preview": ["vm0", "openrouter-api-key"],
+  "deepseek-v4-flash": ["vm0", "deepseek"],
+  "deepseek-v4-pro": ["vm0", "deepseek"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
 
 const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
@@ -1084,22 +830,13 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
-    "claude-opus-4-7": "anthropic/claude-opus-4.7",
-    "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-5": "anthropic/claude-sonnet-5",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
-    "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
-    "glm-5.2": "z-ai/glm-5.2",
-    "glm-5.1": "z-ai/glm-5.1",
-    "mimo-v2.5": "xiaomi/mimo-v2.5",
-    "hy3-preview": "tencent/hy3-preview",
   },
   "vercel-ai-gateway": {
     "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
-    "claude-opus-4-7": "anthropic/claude-opus-4.7",
-    "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-5": "anthropic/claude-sonnet-5",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   },
@@ -1122,15 +859,8 @@ const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
     "anthropic/claude-fable-5": "claude-fable-5",
     "anthropic/claude-opus-5": "claude-opus-5",
     "anthropic/claude-opus-4.8": "claude-opus-4-8",
-    "anthropic/claude-opus-4.7": "claude-opus-4-7",
-    "anthropic/claude-opus-4.6": "claude-opus-4-6",
     "anthropic/claude-sonnet-5": "claude-sonnet-5",
     "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
-    "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
-    "z-ai/glm-5.2": "glm-5.2",
-    "z-ai/glm-5.1": "glm-5.1",
-    "xiaomi/mimo-v2.5": "mimo-v2.5",
-    "tencent/hy3-preview": "hy3-preview",
   };
 
 export function normalizeRunModelId(model: string): string {
@@ -1444,6 +1174,11 @@ export const modelProviderSubscriptionUsageSchema = z.object({
  */
 export const modelProviderResponseSchema = z.object({
   id: z.uuid(),
+  // Present for concrete personal subscription accounts. `id` is the exact
+  // credential identity pinned to a run, while `modelProviderId` is the
+  // logical model route retained for compatibility with existing settings.
+  modelProviderId: z.uuid().optional(),
+  isActive: z.boolean().optional(),
   type: modelProviderTypeSchema,
   framework: modelProviderFrameworkSchema,
   secretName: z.string().nullable(), // Legacy single-secret (deprecated for multi-auth)
@@ -1560,10 +1295,6 @@ export const updateOrgModelPolicySchema = z.object({
 
 export type UpdateOrgModelPolicy = z.infer<typeof updateOrgModelPolicySchema>;
 
-const requestedOrgModelPolicySchema = updateOrgModelPolicySchema.extend({
-  model: z.union([supportedRunModelSchema, retiredRunModelSchema]),
-});
-
 export const orgModelPoliciesResponseSchema = z.object({
   policies: z.array(orgModelPolicySchema),
   workspaceDefaultModel: supportedRunModelSchema.nullable(),
@@ -1574,85 +1305,9 @@ export type OrgModelPoliciesResponse = z.infer<
   typeof orgModelPoliciesResponseSchema
 >;
 
-export const updateOrgModelPoliciesRequestSchema = z
-  .object({
-    policies: z.array(requestedOrgModelPolicySchema),
-  })
-  .transform(({ policies }) => {
-    const retiredPolicies = policies.filter((policy) => {
-      return isRetiredRunModel(policy.model);
-    });
-    const activePolicies = policies.flatMap(
-      (policy): UpdateOrgModelPolicy[] => {
-        if (isRetiredRunModel(policy.model)) {
-          return [];
-        }
-        return [
-          {
-            model: policy.model,
-            isDefault: policy.isDefault,
-            defaultProviderType: policy.defaultProviderType,
-            credentialScope: policy.credentialScope,
-            modelProviderId: policy.modelProviderId,
-            ...(policy.modelProviderSurfaceId === undefined
-              ? {}
-              : { modelProviderSurfaceId: policy.modelProviderSurfaceId }),
-          },
-        ];
-      },
-    );
-    if (retiredPolicies.length === 0) {
-      return { policies: activePolicies };
-    }
-
-    const retiredDefault = retiredPolicies.find((policy) => {
-      return policy.isDefault;
-    });
-    const replacementRouteSource = retiredDefault ?? retiredPolicies[0]!;
-    const replacementRoute = isModelSupportedByProvider(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      replacementRouteSource.defaultProviderType,
-    )
-      ? {
-          defaultProviderType: replacementRouteSource.defaultProviderType,
-          credentialScope: replacementRouteSource.credentialScope,
-          modelProviderId: replacementRouteSource.modelProviderId,
-          modelProviderSurfaceId:
-            replacementRouteSource.modelProviderSurfaceId ?? null,
-        }
-      : {
-          defaultProviderType: "vm0" as const,
-          credentialScope: "org" as const,
-          modelProviderId: null,
-          modelProviderSurfaceId: null,
-        };
-    const replacementExists = activePolicies.some((policy) => {
-      return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
-    });
-    const normalizedPolicies = activePolicies.map(
-      (policy): UpdateOrgModelPolicy => {
-        if (policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL) {
-          return {
-            ...policy,
-            ...(retiredDefault ? replacementRoute : {}),
-            isDefault: retiredDefault ? true : policy.isDefault,
-          };
-        }
-        return {
-          ...policy,
-          isDefault: retiredDefault ? false : policy.isDefault,
-        };
-      },
-    );
-    if (!replacementExists) {
-      normalizedPolicies.push({
-        model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-        isDefault: retiredDefault !== undefined,
-        ...replacementRoute,
-      });
-    }
-    return { policies: normalizedPolicies };
-  });
+export const updateOrgModelPoliciesRequestSchema = z.object({
+  policies: z.array(updateOrgModelPolicySchema),
+});
 
 export type UpdateOrgModelPoliciesRequest = z.infer<
   typeof updateOrgModelPoliciesRequestSchema

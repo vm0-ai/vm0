@@ -7,9 +7,7 @@ import { publicConnectorCatalogIconSchema } from "./zero-connector-catalog";
 const c = initContract();
 
 export const zeroWorkflowVisibilitySchema = z.enum(["public", "private"]);
-export type ZeroWorkflowVisibility = z.infer<
-  typeof zeroWorkflowVisibilitySchema
->;
+export type WorkflowVisibility = z.infer<typeof zeroWorkflowVisibilitySchema>;
 
 /**
  * Workflow name (slug) validation regex.
@@ -91,36 +89,40 @@ export const workflowInstructionSchema = z
   .max(WORKFLOW_FILES_MAX_BYTES);
 
 export const zeroWorkflowScheduleTypeSchema = z.enum(["cron", "loop", "once"]);
-export type ZeroWorkflowScheduleType = z.infer<
+export type WorkflowScheduleType = z.infer<
   typeof zeroWorkflowScheduleTypeSchema
 >;
 
 export const zeroWorkflowAutomationKindSchema = z.enum(["schedule", "event"]);
-export type ZeroWorkflowAutomationKind = z.infer<
+export type WorkflowAutomationKind = z.infer<
   typeof zeroWorkflowAutomationKindSchema
 >;
 
-export const zeroWorkflowEventTypeSchema = z.enum([
+export const zeroAutomationEventTypeSchema = z.enum([
   "chat-run-finished",
   "gmail-new-message",
   "gmail-label-applied",
-  "github-label-applied",
   "github-deployment-status-created",
   "github-issue-comment-created",
+  "github-pull-request",
   "github-pull-request-review-submitted",
   "github-workflow-job-completed",
   "github-workflow-run-completed",
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
+  "google-forms-response-submitted",
   "google-meet-transcript-generated",
   "notion-child-page-created",
   "notion-database-item-created",
   "notion-page-content-updated",
   "strapi-entry-published",
+  "stripe-invoice-paid",
   "webhook-received",
 ]);
-export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
+export type WorkflowAutomationEventType = z.infer<
+  typeof zeroAutomationEventTypeSchema
+>;
 
 export const chatRunFinishedRunStatusSchema = z.enum([
   "completed",
@@ -205,12 +207,12 @@ export type GmailLabelAppliedEventConfig = z.infer<
   typeof gmailLabelAppliedEventConfigSchema
 >;
 
-export const gmailWorkflowEventConfigSchema = z.discriminatedUnion("event", [
+export const gmailAutomationEventConfigSchema = z.discriminatedUnion("event", [
   gmailNewMessageEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
 ]);
-export type GmailWorkflowEventConfig = z.infer<
-  typeof gmailWorkflowEventConfigSchema
+export type GmailAutomationEventConfig = z.infer<
+  typeof gmailAutomationEventConfigSchema
 >;
 
 export const webhookReceivedEventConfigSchema = z
@@ -226,42 +228,6 @@ export const webhookReceivedEventConfigSchema = z
   .strict();
 export type WebhookReceivedEventConfig = z.infer<
   typeof webhookReceivedEventConfigSchema
->;
-
-export const githubLabelAppliedSubjectFilterSchema = z.enum([
-  "both",
-  "issues",
-  "pull_requests",
-]);
-export type GithubLabelAppliedSubjectFilter = z.infer<
-  typeof githubLabelAppliedSubjectFilterSchema
->;
-
-export const githubLabelAppliedActorFilterSchema = z
-  .object({
-    type: z.enum(["me", "anyone"]),
-  })
-  .strict();
-export type GithubLabelAppliedActorFilter = z.infer<
-  typeof githubLabelAppliedActorFilterSchema
->;
-
-export const githubLabelAppliedEventConfigSchema = z
-  .object({
-    provider: z.literal("github"),
-    event: z.literal("label_applied"),
-    labelName: z.string().trim().min(1).max(255),
-    filters: z
-      .object({
-        subject: githubLabelAppliedSubjectFilterSchema.default("both"),
-        actor: githubLabelAppliedActorFilterSchema.default({ type: "me" }),
-      })
-      .strict()
-      .default({ subject: "both", actor: { type: "me" } }),
-  })
-  .strict();
-export type GithubLabelAppliedEventConfig = z.infer<
-  typeof githubLabelAppliedEventConfigSchema
 >;
 
 export const githubWorkflowRunConclusionSchema = z.enum([
@@ -438,16 +404,68 @@ export type GithubIssueCommentCreatedEventConfig = z.infer<
   typeof githubIssueCommentCreatedEventConfigSchema
 >;
 
-export const githubWorkflowEventConfigSchema = z.discriminatedUnion("event", [
-  githubLabelAppliedEventConfigSchema,
+export const githubPullRequestActionSchema = z.enum([
+  "opened",
+  "reopened",
+  "closed",
+  "ready_for_review",
+  "converted_to_draft",
+  "synchronize",
+  "enqueued",
+  "dequeued",
+  "labeled",
+  "unlabeled",
+]);
+export type GithubPullRequestAction = z.infer<
+  typeof githubPullRequestActionSchema
+>;
+
+/**
+ * Fires on one native `pull_request` webhook action in one repository.
+ *
+ * `merged` narrows the `closed` action: `true` fires only for merged pull
+ * requests, `false` only for ones closed without merging, unset for both.
+ * `filters.labels` matches the added/removed label for the `labeled` and
+ * `unlabeled` actions and any current pull request label otherwise.
+ */
+export const githubPullRequestEventConfigSchema = z
+  .object({
+    provider: z.literal("github"),
+    event: z.literal("pull_request"),
+    repository: z.string().trim().min(1).max(255),
+    action: githubPullRequestActionSchema,
+    merged: z.boolean().optional(),
+    filters: z
+      .object({
+        baseBranches: githubFilterValuesSchema.optional(),
+        authors: githubFilterValuesSchema.optional(),
+        pullRequestNumbers: githubFilterValuesSchema.optional(),
+        labels: githubFilterValuesSchema.optional(),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict()
+  .refine(
+    (value) => {
+      return value.merged === undefined || value.action === "closed";
+    },
+    { message: "merged only applies to the closed action" },
+  );
+export type GithubPullRequestEventConfig = z.infer<
+  typeof githubPullRequestEventConfigSchema
+>;
+
+export const githubAutomationEventConfigSchema = z.discriminatedUnion("event", [
   githubDeploymentStatusCreatedEventConfigSchema,
   githubIssueCommentCreatedEventConfigSchema,
+  githubPullRequestEventConfigSchema,
   githubPullRequestReviewSubmittedEventConfigSchema,
   githubWorkflowJobCompletedEventConfigSchema,
   githubWorkflowRunCompletedEventConfigSchema,
 ]);
-export type GithubWorkflowEventConfig = z.infer<
-  typeof githubWorkflowEventConfigSchema
+export type GithubAutomationEventConfig = z.infer<
+  typeof githubAutomationEventConfigSchema
 >;
 
 export const googleCalendarEventCreatedEventConfigSchema = z
@@ -483,7 +501,7 @@ export type GoogleCalendarEventCancelledEventConfig = z.infer<
   typeof googleCalendarEventCancelledEventConfigSchema
 >;
 
-export type GoogleCalendarWorkflowEventConfig =
+export type GoogleCalendarAutomationEventConfig =
   | GoogleCalendarEventCreatedEventConfig
   | GoogleCalendarEventUpdatedEventConfig
   | GoogleCalendarEventCancelledEventConfig;
@@ -503,8 +521,45 @@ export const googleMeetTranscriptGeneratedEventConfigSchema = z
 export type GoogleMeetTranscriptGeneratedEventConfig = z.infer<
   typeof googleMeetTranscriptGeneratedEventConfigSchema
 >;
-export type GoogleMeetWorkflowEventConfig =
+export type GoogleMeetAutomationEventConfig =
   GoogleMeetTranscriptGeneratedEventConfig;
+
+export const googleFormsFormReferenceSchema = z
+  .object({
+    id: z.string().trim().min(1).max(255),
+    title: z.string().trim().min(1).max(512),
+    url: z.url(),
+  })
+  .strict();
+export type GoogleFormsFormReference = z.infer<
+  typeof googleFormsFormReferenceSchema
+>;
+
+export const googleFormsResponseSubmittedEventConfigSchema = z
+  .object({
+    provider: z.literal("google-forms"),
+    event: z.literal("response_submitted"),
+    connectorId: z.string().uuid(),
+    form: googleFormsFormReferenceSchema,
+  })
+  .strict();
+export type GoogleFormsResponseSubmittedEventConfig = z.infer<
+  typeof googleFormsResponseSubmittedEventConfigSchema
+>;
+
+export const googleFormsResponseSubmittedEventCreateConfigSchema = z
+  .object({
+    provider: z.literal("google-forms"),
+    event: z.literal("response_submitted"),
+    formUrl: z.string().trim().min(1).max(2048),
+  })
+  .strict();
+export type GoogleFormsResponseSubmittedEventCreateConfig = z.infer<
+  typeof googleFormsResponseSubmittedEventCreateConfigSchema
+>;
+
+export type GoogleFormsAutomationEventConfig =
+  GoogleFormsResponseSubmittedEventConfig;
 
 export const notionPageReferenceSchema = z
   .object({
@@ -627,10 +682,50 @@ export type NotionPageContentUpdatedEventCreateConfig = z.infer<
   typeof notionPageContentUpdatedEventCreateConfigSchema
 >;
 
-export type NotionWorkflowEventConfig =
+export type NotionAutomationEventConfig =
   | NotionChildPageCreatedEventConfig
   | NotionDatabaseItemCreatedEventConfig
   | NotionPageContentUpdatedEventConfig;
+
+export const stripeInvoiceBillingReasonSchema = z.enum([
+  "automatic_pending_invoice_item_invoice",
+  "manual",
+  "quote_accept",
+  "subscription",
+  "subscription_create",
+  "subscription_cycle",
+  "subscription_threshold",
+  "subscription_update",
+  "upcoming",
+]);
+export type StripeInvoiceBillingReason = z.infer<
+  typeof stripeInvoiceBillingReasonSchema
+>;
+
+export const stripeInvoicePaidEventCreateConfigSchema = z
+  .object({
+    provider: z.literal("stripe"),
+    event: z.literal("invoice_paid"),
+    billingReasons: z.array(stripeInvoiceBillingReasonSchema).optional(),
+  })
+  .strict();
+export type StripeInvoicePaidEventCreateConfig = z.infer<
+  typeof stripeInvoicePaidEventCreateConfigSchema
+>;
+
+export const stripeInvoicePaidEventConfigSchema = z
+  .object({
+    provider: z.literal("stripe"),
+    event: z.literal("invoice_paid"),
+    billingReasons: z.array(stripeInvoiceBillingReasonSchema).optional(),
+    connectorId: z.string().uuid(),
+    stripeAccountId: z.string().min(1).max(255),
+    mode: z.literal("live"),
+  })
+  .strict();
+export type StripeInvoicePaidEventConfig = z.infer<
+  typeof stripeInvoicePaidEventConfigSchema
+>;
 
 export const strapiEntryPublishedEventConfigSchema = z
   .object({
@@ -718,11 +813,11 @@ export const zeroWorkflowGmailLabelAppliedAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowGithubLabelAppliedAutomationSummarySchema =
+export const zeroWorkflowGithubPullRequestAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
-    eventType: z.literal("github-label-applied"),
-    eventConfig: githubLabelAppliedEventConfigSchema,
+    eventType: z.literal("github-pull-request"),
+    eventConfig: githubPullRequestEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
   });
@@ -799,6 +894,16 @@ export const zeroWorkflowGoogleCalendarEventCancelledAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowGoogleFormsResponseSubmittedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-forms-response-submitted"),
+    eventConfig: googleFormsResponseSubmittedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+    warning: z.string().optional(),
+  });
+
 export const zeroWorkflowGoogleMeetTranscriptGeneratedAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -844,6 +949,28 @@ export const zeroWorkflowStrapiEntryPublishedAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const stripeWorkflowAutomationHealthSchema = z.object({
+  lastMatchingEventReceivedAt: z.string().datetime().nullable(),
+  lastDeliveryStatus: z
+    .enum(["pending", "delivered", "skipped", "failed"])
+    .nullable(),
+  lastDeliveryStatusAt: z.string().datetime().nullable(),
+  warning: z.literal("delivery_failed").nullable(),
+});
+export type StripeWorkflowAutomationHealth = z.infer<
+  typeof stripeWorkflowAutomationHealthSchema
+>;
+
+export const zeroWorkflowStripeInvoicePaidAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("stripe-invoice-paid"),
+    eventConfig: stripeInvoicePaidEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+    health: stripeWorkflowAutomationHealthSchema,
+  });
+
 export const zeroWorkflowWebhookReceivedAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -858,33 +985,35 @@ export const zeroWorkflowWebhookReceivedAutomationSummarySchema =
     webhookSecret: z.string().min(1).optional(),
   });
 
-export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
+export const zeroEventAutomationSummarySchema = z.discriminatedUnion(
   "eventType",
   [
     zeroWorkflowChatRunFinishedAutomationSummarySchema,
     zeroWorkflowGmailNewMessageAutomationSummarySchema,
     zeroWorkflowGmailLabelAppliedAutomationSummarySchema,
-    zeroWorkflowGithubLabelAppliedAutomationSummarySchema,
     zeroWorkflowGithubDeploymentStatusCreatedAutomationSummarySchema,
     zeroWorkflowGithubIssueCommentCreatedAutomationSummarySchema,
+    zeroWorkflowGithubPullRequestAutomationSummarySchema,
     zeroWorkflowGithubPullRequestReviewSubmittedAutomationSummarySchema,
     zeroWorkflowGithubWorkflowJobCompletedAutomationSummarySchema,
     zeroWorkflowGithubWorkflowRunCompletedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventCreatedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventUpdatedAutomationSummarySchema,
     zeroWorkflowGoogleCalendarEventCancelledAutomationSummarySchema,
+    zeroWorkflowGoogleFormsResponseSubmittedAutomationSummarySchema,
     zeroWorkflowGoogleMeetTranscriptGeneratedAutomationSummarySchema,
     zeroWorkflowNotionChildPageCreatedAutomationSummarySchema,
     zeroWorkflowNotionDatabaseItemCreatedAutomationSummarySchema,
     zeroWorkflowNotionPageContentUpdatedAutomationSummarySchema,
     zeroWorkflowStrapiEntryPublishedAutomationSummarySchema,
+    zeroWorkflowStripeInvoicePaidAutomationSummarySchema,
     zeroWorkflowWebhookReceivedAutomationSummarySchema,
   ],
 );
 
 export const zeroWorkflowAutomationSummarySchema = z.union([
   zeroWorkflowScheduleAutomationSummarySchema,
-  zeroWorkflowEventAutomationSummarySchema,
+  zeroEventAutomationSummarySchema,
 ]);
 export type ZeroWorkflowAutomationSummary = z.infer<
   typeof zeroWorkflowAutomationSummarySchema
@@ -939,11 +1068,11 @@ export const chatThreadWorkflowGmailLabelAppliedAutomationSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowGithubLabelAppliedAutomationSchema =
+export const chatThreadWorkflowGithubPullRequestAutomationSchema =
   chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
-    eventType: z.literal("github-label-applied"),
-    eventConfig: githubLabelAppliedEventConfigSchema,
+    eventType: z.literal("github-pull-request"),
+    eventConfig: githubPullRequestEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
   });
@@ -1020,6 +1149,15 @@ export const chatThreadWorkflowGoogleCalendarEventCancelledAutomationSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowGoogleFormsResponseSubmittedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-forms-response-submitted"),
+    eventConfig: googleFormsResponseSubmittedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowGoogleMeetTranscriptGeneratedAutomationSchema =
   chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
@@ -1065,6 +1203,16 @@ export const chatThreadWorkflowStrapiEntryPublishedAutomationSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowStripeInvoicePaidAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("stripe-invoice-paid"),
+    eventConfig: stripeInvoicePaidEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+    health: stripeWorkflowAutomationHealthSchema,
+  });
+
 export const chatThreadWorkflowWebhookReceivedAutomationSchema =
   zeroWorkflowWebhookReceivedAutomationSummarySchema.extend({
     id: z.string().uuid(),
@@ -1077,20 +1225,22 @@ export const chatThreadWorkflowAutomationSchema = z.union([
   chatThreadWorkflowChatRunFinishedAutomationSchema,
   chatThreadWorkflowGmailNewMessageAutomationSchema,
   chatThreadWorkflowGmailLabelAppliedAutomationSchema,
-  chatThreadWorkflowGithubLabelAppliedAutomationSchema,
   chatThreadWorkflowGithubDeploymentStatusCreatedAutomationSchema,
   chatThreadWorkflowGithubIssueCommentCreatedAutomationSchema,
+  chatThreadWorkflowGithubPullRequestAutomationSchema,
   chatThreadWorkflowGithubPullRequestReviewSubmittedAutomationSchema,
   chatThreadWorkflowGithubWorkflowJobCompletedAutomationSchema,
   chatThreadWorkflowGithubWorkflowRunCompletedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventCreatedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventUpdatedAutomationSchema,
   chatThreadWorkflowGoogleCalendarEventCancelledAutomationSchema,
+  chatThreadWorkflowGoogleFormsResponseSubmittedAutomationSchema,
   chatThreadWorkflowGoogleMeetTranscriptGeneratedAutomationSchema,
   chatThreadWorkflowNotionChildPageCreatedAutomationSchema,
   chatThreadWorkflowNotionDatabaseItemCreatedAutomationSchema,
   chatThreadWorkflowNotionPageContentUpdatedAutomationSchema,
   chatThreadWorkflowStrapiEntryPublishedAutomationSchema,
+  chatThreadWorkflowStripeInvoicePaidAutomationSchema,
   chatThreadWorkflowWebhookReceivedAutomationSchema,
 ]);
 export type ChatThreadWorkflowAutomation = z.infer<
@@ -1127,11 +1277,11 @@ export const zeroWorkflowGmailLabelAppliedAutomationCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema =
+export const zeroWorkflowGithubPullRequestAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
-    eventType: z.literal("github-label-applied"),
-    eventConfig: githubLabelAppliedEventConfigSchema,
+    eventType: z.literal("github-pull-request"),
+    eventConfig: githubPullRequestEventConfigSchema,
     enabled: z.boolean().optional(),
   });
 
@@ -1217,6 +1367,14 @@ export const zeroWorkflowGoogleCalendarEventCancelledAutomationCreateRequestSche
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowGoogleFormsResponseSubmittedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("google-forms-response-submitted"),
+    eventConfig: googleFormsResponseSubmittedEventCreateConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowGoogleMeetTranscriptGeneratedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
@@ -1263,6 +1421,14 @@ export const zeroWorkflowStrapiEntryPublishedAutomationCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowStripeInvoicePaidAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("stripe-invoice-paid"),
+    eventConfig: stripeInvoicePaidEventCreateConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowWebhookReceivedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
@@ -1276,20 +1442,22 @@ export const zeroWorkflowAutomationCreateRequestSchema = z.union([
   zeroWorkflowChatRunFinishedAutomationCreateRequestSchema,
   zeroWorkflowGmailNewMessageAutomationCreateRequestSchema,
   zeroWorkflowGmailLabelAppliedAutomationCreateRequestSchema,
-  zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema,
   zeroWorkflowGithubDeploymentStatusCreatedAutomationCreateRequestSchema,
   zeroWorkflowGithubIssueCommentCreatedAutomationCreateRequestSchema,
+  zeroWorkflowGithubPullRequestAutomationCreateRequestSchema,
   zeroWorkflowGithubPullRequestReviewSubmittedAutomationCreateRequestSchema,
   zeroWorkflowGithubWorkflowJobCompletedAutomationCreateRequestSchema,
   zeroWorkflowGithubWorkflowRunCompletedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventCreatedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventUpdatedAutomationCreateRequestSchema,
   zeroWorkflowGoogleCalendarEventCancelledAutomationCreateRequestSchema,
+  zeroWorkflowGoogleFormsResponseSubmittedAutomationCreateRequestSchema,
   zeroWorkflowGoogleMeetTranscriptGeneratedAutomationCreateRequestSchema,
   zeroWorkflowNotionChildPageCreatedAutomationCreateRequestSchema,
   zeroWorkflowNotionDatabaseItemCreatedAutomationCreateRequestSchema,
   zeroWorkflowNotionPageContentUpdatedAutomationCreateRequestSchema,
   zeroWorkflowStrapiEntryPublishedAutomationCreateRequestSchema,
+  zeroWorkflowStripeInvoicePaidAutomationCreateRequestSchema,
   zeroWorkflowWebhookReceivedAutomationCreateRequestSchema,
 ]);
 export type ZeroWorkflowAutomationCreateRequest = z.infer<
@@ -1301,11 +1469,11 @@ export const zeroWorkflowScheduleAutomationUpdateRequestSchema = z.object({
 });
 
 export const zeroWorkflowGmailEventAutomationUpdateRequestSchema = z.object({
-  eventConfig: gmailWorkflowEventConfigSchema,
+  eventConfig: gmailAutomationEventConfigSchema,
 });
 
 export const zeroWorkflowGithubEventAutomationUpdateRequestSchema = z.object({
-  eventConfig: githubWorkflowEventConfigSchema,
+  eventConfig: githubAutomationEventConfigSchema,
 });
 
 export const zeroWorkflowAutomationUpdateRequestSchema = z.union([
@@ -1455,7 +1623,7 @@ const workflowIdParams = z.object({ workflowId: z.string().uuid() });
 export const zeroWorkflowsCollectionContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/workflows",
+    path: "/api/okou/workflows",
     headers: authHeadersSchema,
     query: z.object({ agentId: z.string().uuid().optional() }),
     responses: {
@@ -1467,7 +1635,7 @@ export const zeroWorkflowsCollectionContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/zero/workflows",
+    path: "/api/okou/workflows",
     headers: authHeadersSchema,
     body: zeroWorkflowCreateRequestSchema,
     responses: {
@@ -1485,7 +1653,7 @@ export const zeroWorkflowsCollectionContract = c.router({
 export const zeroWorkflowsDetailContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/workflows/:workflowId",
+    path: "/api/okou/workflows/:workflowId",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     responses: {
@@ -1498,7 +1666,7 @@ export const zeroWorkflowsDetailContract = c.router({
   },
   update: {
     method: "PATCH",
-    path: "/api/zero/workflows/:workflowId",
+    path: "/api/okou/workflows/:workflowId",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: zeroWorkflowUpdateRequestSchema,
@@ -1514,7 +1682,7 @@ export const zeroWorkflowsDetailContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/workflows/:workflowId",
+    path: "/api/okou/workflows/:workflowId",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1528,7 +1696,7 @@ export const zeroWorkflowsDetailContract = c.router({
   },
   copy: {
     method: "POST",
-    path: "/api/zero/workflows/:workflowId/copy",
+    path: "/api/okou/workflows/:workflowId/copy",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: zeroWorkflowCopyRequestSchema,
@@ -1544,7 +1712,7 @@ export const zeroWorkflowsDetailContract = c.router({
   },
   chatThread: {
     method: "POST",
-    path: "/api/zero/workflows/:workflowId/chat-thread",
+    path: "/api/okou/workflows/:workflowId/chat-thread",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1558,7 +1726,7 @@ export const zeroWorkflowsDetailContract = c.router({
   },
   run: {
     method: "POST",
-    path: "/api/zero/workflows/:workflowId/run",
+    path: "/api/okou/workflows/:workflowId/run",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1576,7 +1744,7 @@ export const zeroWorkflowsDetailContract = c.router({
   },
   connectorReadiness: {
     method: "POST",
-    path: "/api/zero/workflows/:workflowId/connector-readiness",
+    path: "/api/okou/workflows/:workflowId/connector-readiness",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1598,7 +1766,7 @@ export const zeroWorkflowsDetailContract = c.router({
 export const zeroWorkflowVisibilityContract = c.router({
   publish: {
     method: "POST",
-    path: "/api/zero/workflows/:workflowId/publish",
+    path: "/api/okou/workflows/:workflowId/publish",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1614,7 +1782,7 @@ export const zeroWorkflowVisibilityContract = c.router({
   },
   demote: {
     method: "POST",
-    path: "/api/zero/workflows/:workflowId/demote",
+    path: "/api/okou/workflows/:workflowId/demote",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1645,7 +1813,7 @@ export type ZeroWorkflowWebhookSecretResponse = z.infer<
 export const zeroWorkflowAutomationsContract = c.router({
   listWorkspace: {
     method: "GET",
-    path: "/api/zero/workflow-automations",
+    path: "/api/okou/workflow-automations",
     headers: authHeadersSchema,
     responses: {
       200: zeroWorkflowAutomationsListResponseSchema,
@@ -1656,7 +1824,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   listForChatThread: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/workflow-automations",
+    path: "/api/okou/chat-threads/:threadId/workflow-automations",
     headers: authHeadersSchema,
     pathParams: chatThreadIdParams,
     responses: {
@@ -1669,7 +1837,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   list: {
     method: "GET",
-    path: "/api/zero/workflows/:workflowId/automations",
+    path: "/api/okou/workflows/:workflowId/automations",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     responses: {
@@ -1682,7 +1850,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/zero/workflows/:workflowId/automations",
+    path: "/api/okou/workflows/:workflowId/automations",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: zeroWorkflowAutomationCreateRequestSchema,
@@ -1699,7 +1867,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/workflow-automations/:id",
+    path: "/api/okou/workflow-automations/:id",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     responses: {
@@ -1712,7 +1880,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   update: {
     method: "PATCH",
-    path: "/api/zero/workflow-automations/:id",
+    path: "/api/okou/workflow-automations/:id",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: zeroWorkflowAutomationUpdateRequestSchema,
@@ -1728,7 +1896,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/workflow-automations/:id",
+    path: "/api/okou/workflow-automations/:id",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),
@@ -1742,7 +1910,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   enable: {
     method: "POST",
-    path: "/api/zero/workflow-automations/:id/enable",
+    path: "/api/okou/workflow-automations/:id/enable",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),
@@ -1759,7 +1927,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   disable: {
     method: "POST",
-    path: "/api/zero/workflow-automations/:id/disable",
+    path: "/api/okou/workflow-automations/:id/disable",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),
@@ -1773,7 +1941,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   run: {
     method: "POST",
-    path: "/api/zero/workflow-automations/:id/run",
+    path: "/api/okou/workflow-automations/:id/run",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),
@@ -1789,7 +1957,7 @@ export const zeroWorkflowAutomationsContract = c.router({
   },
   revealWebhookSecret: {
     method: "POST",
-    path: "/api/zero/workflow-automations/:id/webhook-secret",
+    path: "/api/okou/workflow-automations/:id/webhook-secret",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),

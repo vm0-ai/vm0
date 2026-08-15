@@ -6,19 +6,14 @@ import {
   useSet,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconCircleCheck,
-  IconCopy,
-  IconDotsVertical,
-  IconLoader2,
-} from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { CircleCheck, Copy, EllipsisVertical, Loader2 } from "lucide-react";
+import { Button } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
+} from "@okouai/ui/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -26,14 +21,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui/components/ui/tooltip";
-import { Input } from "@vm0/ui/components/ui/input";
+} from "@okouai/ui/components/ui/tooltip";
+import { Input } from "@okouai/ui/components/ui/input";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -45,8 +40,8 @@ import {
   agentPhonePhoneFormNormalized$,
   agentPhoneShowPhoneError$,
   agentPhoneVerificationPhone$,
+  completeAgentPhoneConnectDialogClose$,
   disconnectAgentPhone$,
-  resetAgentPhoneConnectUi$,
   setAgentPhoneConnectDialogOpen$,
   setAgentPhonePhoneForm$,
   setAgentPhoneShowPhoneError$,
@@ -110,7 +105,7 @@ function PhoneNumberCopyButton({
       }}
     >
       {formatted}
-      <IconCopy size={13} className="shrink-0 text-muted-foreground" />
+      <Copy size={13} className="shrink-0 text-muted-foreground" />
     </button>
   );
 }
@@ -134,9 +129,9 @@ function AgentPhoneVerificationStatus({
     >
       <span className="flex items-center gap-2">
         {connecting ? (
-          <IconLoader2 size={14} className="shrink-0 animate-spin" />
+          <Loader2 size={14} className="shrink-0 animate-spin" />
         ) : (
-          <IconCircleCheck size={14} className="shrink-0 text-green-600" />
+          <CircleCheck size={14} className="shrink-0 text-green-600" />
         )}
         <span>
           {t(
@@ -183,7 +178,7 @@ function AgentPhoneConnectActions({
         type="submit"
         disabled={!normalizedPhone || Boolean(phoneError) || busy}
       >
-        {busy ? <IconLoader2 size={14} className="animate-spin" /> : null}
+        {busy ? <Loader2 size={14} className="animate-spin" /> : null}
         {starting
           ? t(($) => {
               return $.connectors.providerSettings.agentphone.sending;
@@ -237,9 +232,9 @@ function AgentPhoneConnectDialog() {
   const showPhoneError = useLastResolved(agentPhoneShowPhoneError$) ?? false;
   const setPhoneForm = useSet(setAgentPhonePhoneForm$);
   const setOpen = useSet(setAgentPhoneConnectDialogOpen$);
+  const completeClose = useSet(completeAgentPhoneConnectDialogClose$);
   const setVerificationPhone = useSet(setAgentPhoneVerificationPhone$);
   const setShowPhoneError = useSet(setAgentPhoneShowPhoneError$);
-  const resetConnectUi = useSet(resetAgentPhoneConnectUi$);
   const pageSignal = useGet(pageSignal$);
   const [startLoadable, startLink] = useLoadableSet(startAgentPhoneLink$);
   const status = useLastResolved(agentPhoneLinkStatus$);
@@ -251,9 +246,6 @@ function AgentPhoneConnectDialog() {
   const close = (nextOpen: boolean) => {
     if (!nextOpen && starting) {
       return;
-    }
-    if (!nextOpen && !connecting) {
-      resetConnectUi();
     }
     setOpen(nextOpen);
   };
@@ -276,7 +268,15 @@ function AgentPhoneConnectDialog() {
   };
 
   return (
-    <Dialog open={open} onOpenChange={close}>
+    <Dialog
+      open={open}
+      onOpenChange={close}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
+        }
+      }}
+    >
       <DialogContent>
         <AgentPhoneConnectIntro />
         <form className="grid gap-3" onSubmit={submit}>
@@ -368,7 +368,7 @@ function AgentPhoneCardActions() {
                 data-testid="agentphone-connected-indicator"
                 className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
               >
-                <IconCircleCheck className="h-3 w-3 text-green-600" />
+                <CircleCheck className="h-3 w-3 text-green-600" />
                 <span className="min-w-0 truncate">
                   {connectedPhone ??
                     t(($) => {
@@ -407,15 +407,17 @@ function AgentPhoneCardActions() {
       {isConnected ? (
         <Popover>
           <PopoverTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              variant="quiet"
+              size="icon-xs"
+              className="shrink-0"
               aria-label={t(($) => {
                 return $.connectors.providerSettings.agentphone.options;
               })}
             >
-              <IconDotsVertical size={16} stroke={1.5} />
-            </button>
+              <EllipsisVertical size={16} />
+            </Button>
           </PopoverTrigger>
           <PopoverContent
             align="end"
@@ -427,7 +429,7 @@ function AgentPhoneCardActions() {
                 return $.connectors.actions.disconnect;
               })}
               disabled={disconnecting}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-state-hover hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
               onClick={() => {
                 return detach(disconnect(pageSignal), Reason.DomCallback);
               }}

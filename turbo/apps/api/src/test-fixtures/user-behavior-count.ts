@@ -10,7 +10,7 @@
  * upserts a counter to a given value. Assertions on counters stay on product
  * surfaces (quota responses and limit errors).
  */
-import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
+import { userBehaviorCount } from "@okouai/db/schema/user-behavior-count";
 import { createStore } from "ccstate";
 import { sql } from "drizzle-orm";
 

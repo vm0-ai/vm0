@@ -2,10 +2,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 import { Command } from "commander";
-import type { FeishuResourceType } from "@vm0/api-contracts/contracts/integrations";
+import type { FeishuResourceType } from "@okouai/api-contracts/contracts/integrations";
 
-import { downloadFeishuFile } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { downloadFeishuFile } from "../../../lib/api/domains/integrations-feishu";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 function defaultOutPath(fileKey: string): string {
   return join(tmpdir(), `feishu-${basename(fileKey).slice(0, 80)}`);
@@ -33,9 +33,9 @@ export const downloadFileCommand = new Command()
     "after",
     `
 Examples:
-  Download a file:   zero feishu download-file om_xxx file_xxx --type file
-  Download an image: zero feishu download-file om_xxx img_xxx --type image -o /tmp/image.png
-  Select an app:     zero feishu download-file om_xxx file_xxx --type file -i <installation-id>
+  Download a file:   okou feishu download-file om_xxx file_xxx --type file
+  Download an image: okou feishu download-file om_xxx img_xxx --type image -o /tmp/image.png
+  Select an app:     okou feishu download-file om_xxx file_xxx --type file -i <installation-id>
 
 Output:
   Prints a JSON object to stdout on success:

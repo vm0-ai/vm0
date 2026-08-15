@@ -1,15 +1,12 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import {
-  IconDownload,
-  IconEye,
-  IconFileMusic,
-  IconPlayerPlay,
-  IconVideo,
-} from "@tabler/icons-react";
+import { Download, Eye, FileMusic, Play, Video } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import { downloadAttachment$ } from "../../signals/attachment-download.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import {
   lightboxUrl$,
   openAudioLightbox$,
@@ -21,10 +18,7 @@ import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
 } from "./zero-file-preview-icon.tsx";
-import {
-  downloadAttachmentUrl,
-  publicAttachmentUrl,
-} from "./zero-attachment-chips.tsx";
+import { publicAttachmentUrl } from "./zero-attachment-url";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface ChatAttachmentDescriptor {
@@ -87,9 +81,9 @@ type TextPreviewProps = {
 };
 
 const MEDIA_PREVIEW_CARD_CLASS =
-  "inline-flex w-[min(100%,400px)] overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline shadow-sm transition-all duration-200";
+  "inline-flex w-[min(100%,400px)] overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline transition-all duration-200";
 const MEDIA_PREVIEW_CARD_HOVER_CLASS =
-  "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+  "hover:scale-[1.015] hover:border-foreground/20";
 
 function TextPreview({ filename, kind, text$, url }: TextPreviewProps) {
   return (
@@ -231,7 +225,7 @@ function AttachmentAnchorChip({
       className="group/doc-preview inline-flex w-fit self-start align-top text-left no-underline"
     >
       <AttachmentDocumentThumbnailArtwork
-        actionIcon={<IconEye size={10} />}
+        actionIcon={<Eye size={10} />}
         actionLabel={t(($) => {
           return $.artifacts.preview.badge;
         })}
@@ -270,11 +264,13 @@ function fallbackHtmlPreviewTitle(filename: string, url: string): string {
 
 function HtmlSitePreviewCard({
   filename,
+  previewImageLoad,
   previewImagePending,
   previewImageUrl,
   url,
 }: {
   filename: string;
+  previewImageLoad?: ImageLoadSignals;
   previewImagePending?: boolean;
   previewImageUrl?: string;
   url: string;
@@ -316,9 +312,10 @@ function HtmlSitePreviewCard({
         </span>
       </div>
       <div className="relative aspect-[16/10] overflow-hidden bg-muted/30">
-        {previewImageUrl ? (
+        {previewImageUrl && previewImageLoad ? (
           <ArtifactThumbnailImage
             src={previewImageUrl}
+            load={previewImageLoad}
             testId="attachment-preview-thumbnail"
             className="absolute inset-0 h-full w-full object-cover"
             fallback={
@@ -372,6 +369,7 @@ function HtmlSitePreviewViewport({
 function DocumentThumbnailPreview({
   filename,
   kind,
+  previewImageLoad,
   previewImagePending,
   previewImageUrl,
   text$,
@@ -379,6 +377,7 @@ function DocumentThumbnailPreview({
 }: {
   filename: string;
   kind: "markdown" | "csv" | "pdf" | "html";
+  previewImageLoad?: ImageLoadSignals;
   previewImagePending?: boolean;
   previewImageUrl?: string;
   text$?: TextPreviewComputed;
@@ -388,6 +387,7 @@ function DocumentThumbnailPreview({
     return (
       <HtmlSitePreviewCard
         filename={filename}
+        previewImageLoad={previewImageLoad}
         previewImagePending={previewImagePending}
         previewImageUrl={previewImageUrl}
         url={url}
@@ -416,16 +416,17 @@ function FileThumbnailPreview({
 }) {
   const { t } = useTranslation();
   const accentClass = getFilePreviewAccentClass(filename, contentType);
+  const downloadAttachment = useSet(downloadAttachment$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <button
       type="button"
       onClick={() => {
         detach(
-          downloadAttachmentUrl(
-            normalizePlatformFileUrl(url),
-            undefined,
-            filename,
+          downloadAttachment(
+            { filename, url: normalizePlatformFileUrl(url) },
+            pageSignal,
           ),
           Reason.DomCallback,
           "attachment download",
@@ -454,7 +455,7 @@ function FileThumbnailPreview({
           />
         </div>
         <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <IconDownload size={10} />
+          <Download size={10} />
           {t(($) => {
             return $.artifacts.actions.download;
           })}
@@ -522,7 +523,7 @@ function AudioPreview({
           />
         </div>
         <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <IconFileMusic size={10} />
+          <FileMusic size={10} />
           {t(($) => {
             return $.artifacts.preview.badge;
           })}
@@ -599,11 +600,11 @@ function VideoThumbnailPreview({
         <div className="absolute inset-0 z-20 bg-black/15 transition-colors group-hover/video-preview:bg-black/35" />
         <span className="absolute inset-0 z-30 flex items-center justify-center">
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
-            <IconPlayerPlay size={20} stroke={1.8} />
+            <Play size={20} />
           </span>
         </span>
         <div className="absolute right-2 top-2 z-30 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/video-preview:opacity-100">
-          <IconVideo size={10} />
+          <Video size={10} />
           {t(($) => {
             return $.artifacts.preview.badge;
           })}
@@ -620,9 +621,11 @@ function VideoThumbnailPreview({
 
 export function AttachmentPreview({
   attachment,
+  previewImageLoad,
   text$,
 }: {
   attachment: ChatAttachmentDescriptor;
+  previewImageLoad?: ImageLoadSignals;
   text$?: TextPreviewComputed;
 }) {
   const kind = classifyChatAttachment(attachment);
@@ -681,6 +684,7 @@ export function AttachmentPreview({
       return (
         <DocumentThumbnailPreview
           filename={attachment.filename}
+          previewImageLoad={previewImageLoad}
           previewImagePending={attachment.previewImagePending}
           previewImageUrl={attachment.previewImageUrl}
           url={attachment.url}

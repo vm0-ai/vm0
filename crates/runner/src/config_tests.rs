@@ -127,12 +127,7 @@ async fn test_home_with_artifacts(dir: &std::path::Path, hashes: &[(&str, &str)]
         if !snapshot_hash.is_empty() {
             let snapshot = rootfs.snapshot(snapshot_hash);
             tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-            for path in [
-                snapshot.snapshot_bin(),
-                snapshot.memory_bin(),
-                snapshot.cow_img(),
-                snapshot.cow_bitmap(),
-            ] {
+            for path in snapshot.required_artifacts() {
                 tokio::fs::write(&path, b"").await.unwrap();
             }
             tokio::fs::write(
@@ -194,11 +189,22 @@ fn normalize_api_base_url_accepts_http_https_and_preserves_path_prefix() {
         ("https://api.example.com", "https://api.example.com"),
         ("https://api.example.com/", "https://api.example.com"),
         ("http://localhost:3000/api/", "http://localhost:3000/api"),
+        ("https://faß.de/base", "https://xn--fa-hia.de/base"),
+        ("https://xn--fa-hia.de/base", "https://xn--fa-hia.de/base"),
+        (
+            "https://api。example.com.:8443/base/",
+            "https://api.example.com:8443/base",
+        ),
+        ("http://192.0.2.10:8080/base", "http://192.0.2.10:8080/base"),
         (
             "https://api.example.com/prefix/v1",
             "https://api.example.com/prefix/v1",
         ),
         ("http://[::1]:8080/base/", "http://[::1]:8080/base"),
+        (
+            "https://[2001:0db8:0:0:0:0:0:1]:8443/base",
+            "https://[2001:db8::1]:8443/base",
+        ),
     ];
 
     for (input, expected) in cases {
@@ -216,6 +222,11 @@ fn normalize_api_base_url_rejects_sensitive_or_non_base_components() {
         ("ftp://api.example.com", "http or https"),
         ("https://", "absolute http(s) URL"),
         ("api.example.com", "absolute http(s) URL"),
+        (
+            "https://ＦＯＯ.example.com",
+            "unsafe IDNA compatibility mappings",
+        ),
+        ("http://127.1", "canonical IPv4"),
     ];
 
     for (input, expected) in cases {
@@ -527,6 +538,64 @@ async fn load_rejects_zero_memory_mb_in_profile() {
 }
 
 #[tokio::test]
+async fn load_accepts_calibrated_minimum_profile() {
+    let fixture = ConfigFixture::new().await;
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            vcpu: 1,
+            memory_mb: 1024,
+            ..default_profile_config()
+        },
+        "",
+    );
+
+    let config = fixture.load_config(&yaml, true).await.unwrap();
+    assert_eq!(config.profiles["vm0/default"].vcpu, 1);
+    assert_eq!(config.profiles["vm0/default"].memory_mb, 1024);
+}
+
+#[tokio::test]
+async fn load_rejects_memory_below_calibrated_minimum() {
+    let fixture = ConfigFixture::without_image_artifacts().await;
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            memory_mb: 1023,
+            ..default_profile_config()
+        },
+        "",
+    );
+
+    let err = fixture.load_config(&yaml, true).await.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("below workload-containment minimum (1024)"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn load_rejects_arithmetic_only_memory_remainder() {
+    let fixture = ConfigFixture::without_image_artifacts().await;
+    let yaml = fixture.yaml_with_profile(
+        "vm0/default",
+        ProfileConfig {
+            memory_mb: 641,
+            ..default_profile_config()
+        },
+        "",
+    );
+
+    let err = fixture.load_config(&yaml, true).await.unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("below workload-containment minimum (1024)"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
 async fn load_rejects_zero_rootfs_disk_mb_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
     let yaml = fixture.yaml_with_profile(
@@ -683,12 +752,7 @@ async fn load_defers_malformed_complete_marker_check() {
     tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
     let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
     tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-    for path in [
-        snapshot.snapshot_bin(),
-        snapshot.memory_bin(),
-        snapshot.cow_img(),
-        snapshot.cow_bitmap(),
-    ] {
+    for path in snapshot.required_artifacts() {
         tokio::fs::write(&path, b"").await.unwrap();
     }
     tokio::fs::write(snapshot.complete_marker(), b"partial marker")
@@ -720,11 +784,7 @@ async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
     tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
     let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
     tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-    for path in [
-        snapshot.snapshot_bin(),
-        snapshot.memory_bin(),
-        snapshot.cow_img(),
-    ] {
+    for path in [snapshot.snapshot(), snapshot.memory(), snapshot.cow()] {
         tokio::fs::write(&path, b"").await.unwrap();
     }
     tokio::fs::write(
@@ -749,6 +809,64 @@ async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
         err.to_string().contains("cow.img.bitmap"),
         "expected missing cow bitmap error, got: {err}"
     );
+}
+
+#[tokio::test]
+async fn lock_and_validate_profile_image_artifacts_rejects_directory_snapshot_artifact() {
+    let dir = tempfile::tempdir().unwrap();
+    let home =
+        test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
+    let snapshot = RootfsPaths::new(&home, TEST_ROOTFS_HASH).snapshot(TEST_SNAPSHOT_HASH);
+    tokio::fs::remove_file(snapshot.snapshot()).await.unwrap();
+    tokio::fs::create_dir(snapshot.snapshot()).await.unwrap();
+
+    let err = match lock_and_validate_profile_image_artifacts(
+        "vm0/default",
+        &default_profile_config(),
+        &home,
+    )
+    .await
+    {
+        Ok(_) => panic!("expected directory snapshot artifact error"),
+        Err(err) => err,
+    };
+    let message = err.to_string();
+    assert!(
+        message.contains("profile vm0/default snapshot"),
+        "got: {err}"
+    );
+    assert!(message.contains("not a regular file"), "got: {err}");
+    assert!(message.contains("snapshot.bin"), "got: {err}");
+}
+
+#[tokio::test]
+async fn lock_and_validate_profile_image_artifacts_rejects_symlink_snapshot_artifact() {
+    let dir = tempfile::tempdir().unwrap();
+    let home =
+        test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
+    let snapshot = RootfsPaths::new(&home, TEST_ROOTFS_HASH).snapshot(TEST_SNAPSHOT_HASH);
+    let target = dir.path().join("snapshot-target.bin");
+    tokio::fs::write(&target, b"snapshot").await.unwrap();
+    tokio::fs::remove_file(snapshot.snapshot()).await.unwrap();
+    std::os::unix::fs::symlink(&target, snapshot.snapshot()).unwrap();
+
+    let err = match lock_and_validate_profile_image_artifacts(
+        "vm0/default",
+        &default_profile_config(),
+        &home,
+    )
+    .await
+    {
+        Ok(_) => panic!("expected symlink snapshot artifact error"),
+        Err(err) => err,
+    };
+    let message = err.to_string();
+    assert!(
+        message.contains("profile vm0/default snapshot"),
+        "got: {err}"
+    );
+    assert!(message.contains("not a regular file"), "got: {err}");
+    assert!(message.contains("snapshot.bin"), "got: {err}");
 }
 
 #[tokio::test]
@@ -902,12 +1020,7 @@ async fn load_rejects_snapshot_without_complete_marker() {
     tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
     let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
     tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-    for path in [
-        snapshot.snapshot_bin(),
-        snapshot.memory_bin(),
-        snapshot.cow_img(),
-        snapshot.cow_bitmap(),
-    ] {
+    for path in snapshot.required_artifacts() {
         tokio::fs::write(&path, b"").await.unwrap();
     }
 
@@ -933,12 +1046,7 @@ async fn load_rejects_snapshot_with_malformed_complete_marker() {
     tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
     let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
     tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-    for path in [
-        snapshot.snapshot_bin(),
-        snapshot.memory_bin(),
-        snapshot.cow_img(),
-        snapshot.cow_bitmap(),
-    ] {
+    for path in snapshot.required_artifacts() {
         tokio::fs::write(&path, b"").await.unwrap();
     }
     tokio::fs::write(snapshot.complete_marker(), b"partial marker")

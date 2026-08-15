@@ -1,20 +1,23 @@
 import { randomUUID } from "node:crypto";
-
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
-  type ModelProviderType,
+  SUPPORTED_RUN_MODELS,
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroModelProviderConnectionsMainContract } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
-
+  type ModelProviderType,
+} from "@okouai/api-contracts/contracts/model-providers";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroModelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
+import type { VideoModelId } from "@okouai/api-contracts/contracts/video-models";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { now } from "../../external/time";
+import { flushWaitUntilForTest } from "../../context/wait-until";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
@@ -22,6 +25,16 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { zeroModelPoliciesRoutes } from "../zero-model-policies";
+import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
+import { userModelPreferenceRoutes } from "../user-model-preference";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroModelPoliciesRoutes,
+  ...zeroModelProviderGatewayRoutes,
+  ...userModelPreferenceRoutes,
+]);
 
 type ModelPolicyFixture = ApiTestUser & { readonly orgId: string };
 
@@ -62,7 +75,9 @@ function makeVm0Policy(
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroModelPoliciesMainContract);
+  return setupApp({ context, routes: zeroModelPoliciesRoutes })(
+    zeroModelPoliciesMainContract,
+  );
 }
 
 function authHeaders() {
@@ -80,7 +95,7 @@ async function putRawModelPolicies(body: string): Promise<{
   readonly status: number;
   readonly body: unknown;
 }> {
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   const response = await app.request(MODEL_POLICIES_PATH, {
     method: "PUT",
     headers: {
@@ -245,6 +260,41 @@ describe("GET/PUT /api/zero/model-policies", () => {
     ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
   });
 
+  it("keeps an existing allowed default for limited-free-1 workspaces", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const listed = await accept(client.list({ headers: authHeaders() }), [200]);
+    const previousDefaultModel = "gpt-5.6-luna";
+    const updates = toUpdate(listed.body).map((policy) => {
+      return {
+        ...policy,
+        isDefault: policy.model === previousDefaultModel,
+      };
+    });
+    await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    await makeLimitedFreeWorkspace(fixture);
+    useSession(fixture);
+    const response = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.workspaceDefaultModel).toBe(previousDefaultModel);
+    expect(
+      response.body.policies.find((policy) => {
+        return policy.isDefault;
+      })?.model,
+    ).toBe(previousDefaultModel);
+  });
+
   it("allows members to read policy controls", async () => {
     const fixture = await seedFixture();
     useSession(fixture, "org:member");
@@ -348,85 +398,6 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
   });
 
-  it("normalizes retired Auto policy writes to Luna", async () => {
-    const fixture = await seedFixture();
-    useSession(fixture);
-
-    const response = await accept(
-      apiClient().update({
-        headers: authHeaders(),
-        body: {
-          policies: [
-            {
-              model: "vm0-model",
-              isDefault: true,
-              defaultProviderType: "vm0",
-              credentialScope: "org",
-              modelProviderId: null,
-            },
-          ],
-        },
-      }),
-      [200],
-    );
-
-    expect(response.body.workspaceDefaultModel).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    );
-    expect(response.body.policies).toHaveLength(1);
-    expect(response.body.policies[0]).toMatchObject({
-      model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      isDefault: true,
-      defaultProviderType: "vm0",
-    });
-  });
-
-  it("normalizes retired GPT policy writes to Luna", async () => {
-    const fixture = await seedFixture();
-    useSession(fixture);
-    const providerId = await createOrgProvider(fixture, "openrouter-codex");
-
-    const response = await accept(
-      apiClient().update({
-        headers: authHeaders(),
-        body: {
-          policies: [
-            {
-              model: "gpt-5.4",
-              isDefault: true,
-              defaultProviderType: "openrouter-codex",
-              credentialScope: "org",
-              modelProviderId: providerId,
-            },
-            {
-              model: "gpt-5.4-mini",
-              isDefault: false,
-              defaultProviderType: "vm0",
-              credentialScope: "org",
-              modelProviderId: null,
-            },
-            makeVm0Policy("gpt-5.5"),
-          ],
-        },
-      }),
-      [200],
-    );
-
-    expect(response.body.workspaceDefaultModel).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    );
-    expect(response.body.policies).toHaveLength(2);
-    expect(response.body.policies).toContainEqual(
-      expect.objectContaining({
-        model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-        isDefault: true,
-        defaultProviderType: "openrouter-codex",
-        credentialScope: "org",
-        modelProviderId: providerId,
-      }),
-    );
-  });
-
   it("removes supported models omitted from an update", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
@@ -473,9 +444,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const client = apiClient();
-    const preferenceClient = setupApp({ context })(
-      zeroUserModelPreferenceContract,
-    );
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
       [200],
@@ -489,7 +461,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     await accept(
       preferenceClient.update({
         headers: authHeaders(),
-        body: { selectedModel: removedModel },
+        body: { selectedModel: removedModel, serviceTier: null },
       }),
       [200],
     );
@@ -518,9 +490,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const client = apiClient();
-    const preferenceClient = setupApp({ context })(
-      zeroUserModelPreferenceContract,
-    );
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
       [200],
@@ -541,7 +514,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     await accept(
       preferenceClient.update({
         headers: authHeaders(),
-        body: { selectedModel: keptModel },
+        body: { selectedModel: keptModel, serviceTier: null },
       }),
       [200],
     );
@@ -564,7 +537,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     expect(preferenceResponse.body.selectedModel).toBe(keptModel);
   });
 
-  it("allows adding a supported model that was not seeded by default", async () => {
+  it("sorts configured models by canonical catalog order", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const client = apiClient();
@@ -574,8 +547,14 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-4-6"),
+      makeVm0Policy("claude-opus-5"),
+      makeVm0Policy("deepseek-v4-pro"),
     ];
+    const configuredModels = new Set(
+      updates.map((policy) => {
+        return policy.model;
+      }),
+    );
 
     const response = await accept(
       client.update({
@@ -589,15 +568,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
       response.body.policies.map((policy) => {
         return policy.model;
       }),
-    ).toStrictEqual([
-      "claude-fable-5",
-      "claude-opus-5",
-      "claude-sonnet-5",
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
-      "claude-opus-4-6",
-    ]);
+    ).toStrictEqual(
+      SUPPORTED_RUN_MODELS.filter((model) => {
+        return configuredModels.has(model);
+      }),
+    );
   });
 
   it("rejects restricted policy writes for limited-free-1 workspaces", async () => {
@@ -609,8 +584,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
       headers: authHeaders(),
       body: {
         policies: [
-          makeVm0Policy("kimi-k2.7-code", true),
-          makeVm0Policy("gpt-5.5"),
+          makeVm0Policy("deepseek-v4-flash", true),
+          makeVm0Policy("deepseek-v4-pro"),
         ],
       },
     });
@@ -652,23 +627,13 @@ describe("GET/PUT /api/zero/model-policies", () => {
       "openrouter-api-key",
     );
     const client = apiClient();
-    const listResponse = await accept(
-      client.list({ headers: authHeaders() }),
-      [200],
-    );
-    const allowedPolicy = toUpdate(listResponse.body).find((policy) => {
-      return policy.model === "claude-sonnet-5";
-    });
-    if (!allowedPolicy) {
-      throw new Error("Expected the Sonnet 5 policy to be available");
-    }
 
     const response = await client.update({
       headers: authHeaders(),
       body: {
         policies: [
           {
-            ...allowedPolicy,
+            ...makeVm0Policy("claude-sonnet-5"),
             isDefault: true,
             defaultProviderType: "openrouter-api-key",
             credentialScope: "org",
@@ -688,79 +653,35 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
-  it("allows compatible GLM 5.2 org provider routes", async () => {
+  it("keeps recently active GPT 5.5 and Claude Sonnet 4.6 selectable", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
-    const openRouterProviderId = await createOrgProvider(
-      fixture,
-      "openrouter-api-key",
-    );
-    const zaiProviderId = await createOrgProvider(fixture, "zai-api-key");
     const client = apiClient();
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      makeVm0Policy("glm-5.2"),
-    ].map((policy) => {
-      if (policy.model !== "glm-5.2") {
-        return policy;
-      }
-      return {
-        ...policy,
-        defaultProviderType: "openrouter-api-key" as const,
-        credentialScope: "org" as const,
-        modelProviderId: openRouterProviderId,
-      };
-    });
 
-    const openRouterResponse = await accept(
+    const response = await accept(
       client.update({
         headers: authHeaders(),
-        body: { policies: updates },
+        body: {
+          policies: [
+            ...toUpdate(listResponse.body),
+            makeVm0Policy("gpt-5.5"),
+            makeVm0Policy("claude-sonnet-4-6"),
+          ],
+        },
       }),
       [200],
     );
-    const openRouterGlm = openRouterResponse.body.policies.find((policy) => {
-      return policy.model === "glm-5.2";
-    });
 
-    expect(openRouterGlm).toMatchObject({
-      defaultProviderType: "openrouter-api-key",
-      credentialScope: "org",
-      modelProviderId: openRouterProviderId,
-      routeStatus: "valid",
-    });
-
-    const zaiUpdates = toUpdate(openRouterResponse.body).map((policy) => {
-      if (policy.model !== "glm-5.2") {
-        return policy;
-      }
-      return {
-        ...policy,
-        defaultProviderType: "zai-api-key" as const,
-        modelProviderId: zaiProviderId,
-      };
-    });
-    const zaiResponse = await accept(
-      client.update({
-        headers: authHeaders(),
-        body: { policies: zaiUpdates },
-      }),
-      [200],
+    expect(response.body.policies).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ model: "gpt-5.5" }),
+        expect.objectContaining({ model: "claude-sonnet-4-6" }),
+      ]),
     );
-    const zaiGlm = zaiResponse.body.policies.find((policy) => {
-      return policy.model === "glm-5.2";
-    });
-
-    expect(zaiGlm).toMatchObject({
-      defaultProviderType: "zai-api-key",
-      credentialScope: "org",
-      modelProviderId: zaiProviderId,
-      routeStatus: "valid",
-    });
   });
 
   it("allows compatible GPT 5.6 OpenAI org provider routes", async () => {
@@ -806,9 +727,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
   it("preserves an omitted custom gateway surface and clears an explicit null", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
-    const gatewayClient = setupApp({ context })(
-      zeroModelProviderConnectionsMainContract,
-    );
+    const gatewayClient = setupApp({
+      context,
+      routes: zeroModelProviderGatewayRoutes,
+    })(zeroModelProviderConnectionsMainContract);
     const created = await accept(
       gatewayClient.create({
         headers: authHeaders(),
@@ -837,7 +759,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
 
     const client = apiClient();
     const listed = await accept(client.list({ headers: authHeaders() }), [200]);
-    const updates = toUpdate(listed.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listed.body),
+      makeVm0Policy("claude-sonnet-5"),
+    ].map((policy) => {
       return policy.model === "claude-sonnet-5"
         ? {
             ...policy,
@@ -1009,6 +934,226 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
+  it("stores priority with a GPT 5.6 user model preference", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      return policy.model === "gpt-5.6-sol"
+        ? {
+            ...policy,
+            defaultProviderType: "vm0" as const,
+            credentialScope: "org" as const,
+            modelProviderId: null,
+          }
+        : policy;
+    });
+    await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    const switchOff = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: "gpt-5.6-sol", serviceTier: "priority" },
+      }),
+      [400],
+    );
+    expect(switchOff.body.error.message).toBe(
+      "Codex fast mode is not enabled for this workspace",
+    );
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
+    const priority = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: "gpt-5.6-sol", serviceTier: "priority" },
+      }),
+      [200],
+    );
+    expect(priority.body).toMatchObject({
+      selectedModel: "gpt-5.6-sol",
+      serviceTier: "priority",
+    });
+    expect(
+      (await accept(preferenceClient.get({ headers: authHeaders() }), [200]))
+        .body.serviceTier,
+    ).toBe("priority");
+  });
+
+  it("stores a member video default independent of the run model", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+
+    const stored = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+        },
+      }),
+      [200],
+    );
+    expect(stored.body).toMatchObject({
+      selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+    });
+
+    // Clearing the run model must not take the video default with it.
+    const cleared = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: null, serviceTier: null },
+      }),
+      [200],
+    );
+    expect(cleared.body).toMatchObject({
+      selectedModel: null,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+    });
+
+    const explicitlyCleared = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: null,
+          serviceTier: null,
+          selectedVideoModel: null,
+        },
+      }),
+      [200],
+    );
+    expect(explicitlyCleared.body.selectedVideoModel).toBeNull();
+  });
+
+  it("pushes the video-default kind only when the request carries the field", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+        },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "userPreferenceChanged",
+      { kinds: ["defaultModel", "defaultVideoModel"] },
+    );
+
+    // An older bundle sends only the run model, so the video kind stays out of
+    // the payload and sessions that never asked for it are left alone.
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+        },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "userPreferenceChanged",
+      { kinds: ["defaultModel"] },
+    );
+  });
+
+  it("keeps the stored video default when an older bundle omits it", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          selectedVideoModel: "MiniMax-H3",
+        },
+      }),
+      [200],
+    );
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+        },
+      }),
+      [200],
+    );
+
+    expect(
+      (await accept(preferenceClient.get({ headers: authHeaders() }), [200]))
+        .body.selectedVideoModel,
+    ).toBe("MiniMax-H3");
+  });
+
+  it("rejects a video default outside the catalog", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+
+    // A run model id is never a video model id; the cast is what a client
+    // sending a stale or hand-written id would produce at runtime.
+    const outsideCatalog =
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL as unknown as VideoModelId;
+
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          selectedVideoModel: outsideCatalog,
+        },
+      }),
+      [400],
+    );
+  });
+
   it("allows compatible member OAuth provider routes", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
@@ -1017,7 +1162,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeVm0Policy("claude-opus-5"),
+    ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;
       }
@@ -1060,7 +1208,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeVm0Policy("claude-opus-5"),
+    ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;
       }
@@ -1092,11 +1243,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      makeVm0Policy("glm-5.2"),
-    ].map((policy) => {
-      if (policy.model !== "glm-5.2") {
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "deepseek-v4-flash") {
         return policy;
       }
       return {
@@ -1128,14 +1276,14 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("glm-5.2"),
+      makeVm0Policy("claude-opus-5"),
     ].map((policy) => {
-      if (policy.model !== "glm-5.2") {
+      if (policy.model !== "claude-opus-5") {
         return policy;
       }
       return {
         ...policy,
-        defaultProviderType: "openrouter-api-key" as const,
+        defaultProviderType: "anthropic-api-key" as const,
         credentialScope: "org" as const,
         modelProviderId: null,
       };

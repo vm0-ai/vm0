@@ -1,7 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createScrollSignals } from "../auto-scroll.ts";
 import { testContext } from "./test-helpers.ts";
+
+const ctx = testContext();
 
 function setScrollMetrics(
   element: HTMLElement,
@@ -32,6 +34,13 @@ function createScrollContainer(): HTMLElement {
   });
   container.appendChild(content);
   document.body.appendChild(container);
+  ctx.signal.addEventListener(
+    "abort",
+    () => {
+      container.remove();
+    },
+    { once: true },
+  );
   return container;
 }
 
@@ -106,6 +115,7 @@ function mockResizeObserver(): {
     configurable: true,
     value: TestResizeObserver,
   });
+  ctx.signal.addEventListener("abort", restore, { once: true });
 
   return {
     restore,
@@ -123,17 +133,13 @@ function mockResizeObserver(): {
 }
 
 describe("auto-scroll", () => {
-  const ctx = testContext();
-  const resizeObserverCleanups: (() => void)[] = [];
-  const scrollRefCleanups: (() => void)[] = [];
-
   function bindScrollContainer(
     scroll: ReturnType<typeof createScrollSignals>,
     scrollContainer: HTMLElement,
   ): void {
     const cleanup = ctx.store.set(scroll.setScrollContainer$, scrollContainer);
     if (typeof cleanup === "function") {
-      scrollRefCleanups.push(cleanup);
+      ctx.signal.addEventListener("abort", cleanup, { once: true });
     }
   }
 
@@ -142,22 +148,11 @@ describe("auto-scroll", () => {
     triggerAll: () => void;
   } {
     const resizeObserver = mockResizeObserver();
-    resizeObserverCleanups.push(resizeObserver.restore);
     return {
       trigger: resizeObserver.trigger,
       triggerAll: resizeObserver.triggerAll,
     };
   }
-
-  afterEach(() => {
-    for (const cleanup of scrollRefCleanups.splice(0).reverse()) {
-      cleanup();
-    }
-    for (const cleanup of resizeObserverCleanups.splice(0).reverse()) {
-      cleanup();
-    }
-    document.body.textContent = "";
-  });
 
   it("keeps the viewport anchored when prepended content increases height", () => {
     const resizeObserver = installResizeObserver();

@@ -11,11 +11,67 @@ import response_streaming
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
 from tests.x_flow_helpers import (
-    json_body_that_exceeds_x_ndjson_work_limit,
+    json_body_that_exceeds_x_json_work_limit,
     make_x_response_flow,
 )
 
 _OVERSIZED_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
+
+
+class TestBodylessXResponseParserAdmission:
+    """Tests HTTP body semantics at the shared connector response parser gate."""
+
+    @pytest.mark.parametrize(
+        ("request_method", "response_status", "content_encoding", "path"),
+        [
+            pytest.param("GET", 204, "", "/2/tweets", id="no-content"),
+            pytest.param("GET", 205, "", "/2/tweets", id="reset-content"),
+            pytest.param("HEAD", 200, "", "/2/tweets", id="head"),
+            pytest.param("CONNECT", 200, "", "/2/tweets", id="successful-connect"),
+            pytest.param("GET", 204, "gzip", "/2/tweets", id="gzip"),
+            pytest.param("GET", 204, "deflate", "/2/tweets", id="deflate"),
+            pytest.param(
+                "GET",
+                204,
+                "",
+                "/2/tweets/search/stream",
+                id="ndjson-constructor-state",
+            ),
+        ],
+    )
+    def test_bodyless_response_skips_parser_and_keeps_byte_accounting(
+        self,
+        real_flow,
+        request_method: str,
+        response_status: int,
+        content_encoding: str,
+        path: str,
+    ) -> None:
+        flow = make_x_response_flow(
+            real_flow,
+            path=path,
+            response_status=response_status,
+            content_encoding=content_encoding,
+        )
+        flow.request.method = request_method
+
+        mitm_addon.responseheaders(flow)
+
+        assert "connector_response_finish" not in flow.metadata
+        assert "connector_response_report_on_interruption" not in flow.metadata
+        assert metadata_keys.X_JSON_STATE not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
+
+        unexpected_wire_bytes = b"bodyless-response-wire-bytes"
+        assert response_stream(flow)(unexpected_wire_bytes) == unexpected_wire_bytes
+        assert flow.metadata[metadata_keys.RESPONSE_STREAM_STATE]["total_bytes"] == len(
+            unexpected_wire_bytes
+        )
+
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert metadata_keys.X_JSON_STATE not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
 
 
 class TestNdjsonExtractor:
@@ -132,7 +188,7 @@ class TestNdjsonExtractor:
                 id="dense-array",
             ),
             pytest.param(
-                json_body_that_exceeds_x_ndjson_work_limit(),
+                json_body_that_exceeds_x_json_work_limit(),
                 id="dense-objects",
             ),
         ],
@@ -387,6 +443,83 @@ class TestXJsonFinalize:
 
         response_streaming.finalize_connector_response_state(flow)
         assert flow.metadata[metadata_keys.X_JSON_STATE] == state
+
+    def test_protocol_shaped_data_array_stays_within_work_limit(self, real_flow):
+        flow = self._billable_x_json_flow(real_flow)
+        data_item = b'{"id":"123456"}'
+        body = b'{"data":[' + b",".join([data_item] * 3_600) + b"]}"
+
+        mitm_addon.responseheaders(flow)
+        assert response_stream(flow)(body) == body
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 3_600,
+        }
+
+    @pytest.mark.parametrize(
+        "chunk_size",
+        [
+            pytest.param(2, id="two-byte"),
+            pytest.param(None, id="whole-body"),
+        ],
+    )
+    def test_escaped_discarded_strings_stay_within_work_limit_across_chunks(
+        self,
+        real_flow,
+        chunk_size,
+    ):
+        discarded_property = b',"' + b"k" * 26 + b'":"q\\"s\\\\"'
+        body = b'{"data":[{"id":"1"}]' + discarded_property * 13_104 + b"}   "
+        assert len(body) == 497_976
+        resolved_chunk_size = len(body) if chunk_size is None else chunk_size
+        flow = self._billable_x_json_flow(real_flow)
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        for offset in range(0, len(body), resolved_chunk_size):
+            chunk = body[offset : offset + resolved_chunk_size]
+            assert callback(chunk) == chunk
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 1,
+        }
+
+    def test_x_json_work_limit_discards_partial_state_and_next_flow_recovers(self, real_flow):
+        body = json_body_that_exceeds_x_json_work_limit()
+        flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        midpoint = len(body) // 2
+
+        assert callback(body[:midpoint]) == body[:midpoint]
+        assert callback(body[midpoint:]) == body[midpoint:]
+        response_streaming.finalize_connector_response_state(flow)
+
+        state = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "work limit exceeded",
+        }
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == state
+        response_streaming.finalize_connector_response_state(flow)
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == state
+
+        next_flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(next_flow)
+        response_stream(next_flow)(b'{"data":[{"id":"after"}]}')
+        response_streaming.finalize_connector_response_state(next_flow)
+
+        assert next_flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 1,
+        }
 
     def test_forensic_buffer_truncation_does_not_stop_x_json_parser(self, real_flow):
         flow = make_x_response_flow(

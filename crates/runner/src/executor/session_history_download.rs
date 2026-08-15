@@ -1336,9 +1336,18 @@ mod tests {
         session: &ResumeSession,
         framework: EffectiveCliFramework,
     ) -> SessionHistoryMaterializer {
+        let cpu = SessionHistoryCpuPool::with_capacity(1);
+        start_materializer_with_cpu(session, framework, &cpu)
+    }
+
+    fn start_materializer_with_cpu(
+        session: &ResumeSession,
+        framework: EffectiveCliFramework,
+        cpu: &SessionHistoryCpuPool,
+    ) -> SessionHistoryMaterializer {
         SessionHistoryMaterializer::start_cancellable(
             &http_client(),
-            &SessionHistoryCpuPool::with_capacity(1),
+            cpu,
             Some(session),
             framework,
             CancellationToken::new(),
@@ -2239,7 +2248,111 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn codex_zstd_attributes_prefix_inside_a_buffered_jsonl_line() {
+    async fn codex_zstd_timestamp_scan_recovers_after_an_oversized_record() {
+        const TIMESTAMP_RECORD_LIMIT: usize = 128;
+
+        let oversized_record = format!(
+            "{{\"type\":\"not_meta\",\"padding\":\"{}\"}}",
+            "x".repeat(TIMESTAMP_RECORD_LIMIT)
+        );
+        assert!(oversized_record.len() > TIMESTAMP_RECORD_LIMIT);
+        let metadata = r#"{"type":"session_meta","payload":{"timestamp":"2026-07-02T10:00:00Z"}}"#;
+        assert!(metadata.len() <= TIMESTAMP_RECORD_LIMIT);
+        let body = format!("{oversized_record}\r\n{metadata}\r\n");
+        let compressed = zstd_bytes(body.as_bytes());
+        let encoded_size = compressed.len() as u64;
+        let server = serve_once("200 OK", compressed.clone(), None).await;
+        let session = zstd_ref_session(
+            server.url(),
+            hex::encode(Sha256::digest(body.as_bytes())),
+            body.len() as u64,
+            encoded_size,
+        );
+        let cpu = SessionHistoryCpuPool::with_test_codex_timestamp_record_max_bytes(
+            1,
+            TIMESTAMP_RECORD_LIMIT,
+        );
+
+        let result = start_materializer_with_cpu(&session, EffectiveCliFramework::Codex, &cpu)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.history_bytes(), compressed);
+                assert_eq!(
+                    session
+                        .codex_timestamp()
+                        .map(|timestamp| timestamp.to_rfc3339())
+                        .as_deref(),
+                    Some("2026-07-02T10:00:00+00:00")
+                );
+                assert_phase_success(timings.decompression());
+                assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn codex_zstd_unterminated_record_preserves_the_declared_raw_size_boundary() {
+        const TIMESTAMP_RECORD_LIMIT: usize = 16;
+
+        let body = vec![b'x'; 65];
+        let compressed = zstd_bytes(&body);
+        for expected_raw_size in [body.len() as u64, body.len() as u64 - 1] {
+            let server = serve_once("200 OK", compressed.clone(), None).await;
+            let session = zstd_ref_session(
+                server.url(),
+                hex::encode(Sha256::digest(&body)),
+                expected_raw_size,
+                compressed.len() as u64,
+            );
+            let cpu = SessionHistoryCpuPool::with_test_codex_timestamp_record_max_bytes(
+                1,
+                TIMESTAMP_RECORD_LIMIT,
+            );
+
+            let result = start_materializer_with_cpu(&session, EffectiveCliFramework::Codex, &cpu)
+                .finish(&CancellationToken::new())
+                .await;
+
+            if expected_raw_size == body.len() as u64 {
+                match result {
+                    SessionHistoryMaterialization::Downloaded {
+                        session, timings, ..
+                    } => {
+                        assert_eq!(session.history_bytes(), compressed);
+                        assert!(session.codex_timestamp().is_none());
+                        assert_phase_success(timings.decompression());
+                        assert_phase_success(timings.hash_verification());
+                    }
+                    _ => panic!("expected downloaded session"),
+                }
+            } else {
+                match result {
+                    SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                        assert!(
+                            error
+                                .to_string()
+                                .contains("session history is too large after decompression: 65 bytes exceeds 64 bytes"),
+                            "unexpected error: {error}"
+                        );
+                        assert_phase_failure(timings.decompression());
+                        assert_no_phase(timings.hash_verification());
+                    }
+                    _ => panic!("expected failed materialization"),
+                }
+            }
+            server.assert_served().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_zstd_attributes_prefix_inside_fixed_decoded_chunks() {
         const PREFIX_BOUNDARY: usize = 8 * 1024 + 37;
 
         let padding = "x".repeat(PREFIX_BOUNDARY + 256);

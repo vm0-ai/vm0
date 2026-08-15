@@ -7,13 +7,13 @@ import { orgMessageResponseSchema } from "./org-members";
 const c = initContract();
 
 /**
- * Zero contract for /api/zero/org
+ * Zero contract for /api/okou/org
  * Proxies to /api/org
  */
 export const zeroOrgContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/org",
+    path: "/api/okou/org",
     headers: authHeadersSchema,
     responses: {
       200: orgResponseSchema,
@@ -25,7 +25,7 @@ export const zeroOrgContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/zero/org",
+    path: "/api/okou/org",
     headers: authHeadersSchema,
     body: updateOrgRequestSchema,
     responses: {
@@ -34,23 +34,22 @@ export const zeroOrgContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
-      409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Update org slug (zero proxy)",
+    summary: "Update org profile (zero proxy)",
   },
 });
 
 export type ZeroOrgContract = typeof zeroOrgContract;
 
 /**
- * Zero contract for POST /api/zero/org/leave
+ * Zero contract for POST /api/okou/org/leave
  * Proxies to POST /api/org/leave
  */
 export const zeroOrgLeaveContract = c.router({
   leave: {
     method: "POST",
-    path: "/api/zero/org/leave",
+    path: "/api/okou/org/leave",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {
@@ -67,14 +66,14 @@ export const zeroOrgLeaveContract = c.router({
 export type ZeroOrgLeaveContract = typeof zeroOrgLeaveContract;
 
 /**
- * Zero contract for DELETE /api/zero/org/delete
+ * Zero contract for DELETE /api/okou/org/delete
  */
 export const zeroOrgDeleteContract = c.router({
   delete: {
     method: "POST",
-    path: "/api/zero/org/delete",
+    path: "/api/okou/org/delete",
     headers: authHeadersSchema,
-    body: z.object({ slug: z.string() }),
+    body: z.object({ confirm: z.literal("confirm") }),
     responses: {
       200: orgMessageResponseSchema,
       400: apiErrorSchema,

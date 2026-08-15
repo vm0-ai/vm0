@@ -14,49 +14,55 @@ import threading
 import time
 import uuid
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from mitmproxy import ctx
+import runner_flush_request
+
+from .underbilling import log_usage_underbilling
 
 _counter_lock = threading.Lock()
 _pending_write_lock = threading.Lock()
-_in_flight_flows = 0
 _buffered_usage_events = 0
-_buffered_reports = 0
-_pending_reports = 0
 _pending_path = ""
 _usage_state_id = str(uuid.uuid4())
-_counter_underflow_logged: set[str] = set()
 # One-shot guard: sustained pending snapshot write failure makes the runner
 # hit the bounded usage-drain timeout without any local signal pointing at
 # filesystem trouble.  Emit one error signal per addon process on first failure —
 # enough to seed the operator investigation without spamming logs under
-# persistent FS pressure.  Deliberately goes through mitmproxy's own
-# stderr logger (not ``log_proxy_entry``) because the per-job proxy log
-# shares the same filesystem we just failed to write and is likely
-# affected by the same root cause.  The runner stderr bridge parses the
-# leading key=value fields and re-emits them as structured tracing fields.
+# persistent FS pressure.  Deliberately uses the canonical underbilling
+# helper's stderr fallback because the per-job proxy log shares the same
+# filesystem we just failed to write and is likely affected by the same root
+# cause.  The runner stderr bridge parses the leading key=value fields and
+# re-emits them as structured tracing fields.
 _pending_write_error_logged = False
 _FLUSH_REQUEST_FILE = "usage-flush-request"
-_COUNTER_BUFFERED_REPORTS = "buffered_reports"
-_COUNTER_FLOWS = "flows"
-_COUNTER_REPORTS = "reports"
+
+
+@dataclass
+class _PendingCounter:
+    name: str
+    value: int = 0
+    underflow_logged: bool = False
+
+
+_in_flight_flows = _PendingCounter("flows")
+_buffered_reports = _PendingCounter("buffered_reports")
+_pending_reports = _PendingCounter("reports")
 
 
 def reset_for_tests() -> None:
     """Reset mutable counter state between tests."""
-    global _in_flight_flows, _buffered_reports, _buffered_usage_events, _pending_reports
-    global _pending_path, _usage_state_id, _pending_write_error_logged
+    global _buffered_usage_events, _pending_path, _usage_state_id, _pending_write_error_logged
     with _counter_lock:
-        _in_flight_flows = 0
+        for counter in (_in_flight_flows, _buffered_reports, _pending_reports):
+            counter.value = 0
+            counter.underflow_logged = False
         _buffered_usage_events = 0
-        _buffered_reports = 0
-        _pending_reports = 0
         _pending_path = ""
         _usage_state_id = str(uuid.uuid4())
         _pending_write_error_logged = False
-        _counter_underflow_logged.clear()
 
 
 def set_pending_path(path: str, usage_state_id: str | None = None) -> None:
@@ -81,9 +87,9 @@ def _pending_snapshot_locked(flush_request_id: str | None = None) -> tuple[str, 
         "pid": os.getpid(),
         "usageStateId": _usage_state_id,
         "updatedAtMs": int(time.time() * 1000),
-        "flows": _in_flight_flows,
-        "buffered": _buffered_usage_events + _buffered_reports,
-        "reports": _pending_reports,
+        "flows": _in_flight_flows.value,
+        "buffered": _buffered_usage_events + _buffered_reports.value,
+        "reports": _pending_reports.value,
     }
     if flush_request_id:
         state["flushRequestId"] = flush_request_id
@@ -106,19 +112,13 @@ def read_usage_flush_request_id() -> str | None:
         return None
 
     marker_path = Path(pending_path).with_name(_FLUSH_REQUEST_FILE)
-    try:
-        marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    request = runner_flush_request.read_runner_flush_request(
+        marker_path,
+        get_usage_state_id=lambda: usage_state_id,
+    )
+    if request is None:
         return None
-
-    if not isinstance(marker, dict):
-        return None
-    if marker.get("usageStateId") != usage_state_id:
-        return None
-    flush_request_id = marker.get("flushRequestId")
-    if not isinstance(flush_request_id, str) or not flush_request_id:
-        return None
-    return flush_request_id
+    return request.flush_request_id
 
 
 def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:
@@ -141,13 +141,17 @@ def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:
             # runner's drain timeout and mitmdump stop timeout.
             if not _pending_write_error_logged:
                 _pending_write_error_logged = True
-                ctx.log.error(
-                    "type=usage_underbilling reason=pending_snapshot_write_failed "
-                    "underbilling_class=risk component=mitm_addon "
-                    "Failed to write pending count: "
-                    f"pending_path={pending_path!r} error={exc!r}.  "
-                    "Subsequent failures in this process will be silent; runner "
-                    "shutdown may hit the bounded proxy stop timeout."
+                log_usage_underbilling(
+                    "",
+                    (
+                        "Failed to write pending count. Subsequent failures in this process will "
+                        "be silent; runner shutdown may hit the bounded proxy stop timeout."
+                    ),
+                    "pending_snapshot_write_failed",
+                    "risk",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    pending_path=pending_path,
                 )
 
 
@@ -160,38 +164,24 @@ def increment_in_flight_flows() -> None:
     terminal hooks enqueue billing events and model-usage observations before
     the runner shutdown drain advances.
     """
-    global _in_flight_flows
-    with _counter_lock:
-        _in_flight_flows += 1
+    _increment_counter(_in_flight_flows)
 
 
 def decrement_in_flight_flows() -> None:
     """Mark a tracked in-flight flow as complete (call from response/error)."""
-    global _in_flight_flows
-    should_log = False
-    with _counter_lock:
-        if _in_flight_flows > 0:
-            _in_flight_flows -= 1
-        else:
-            should_log = _mark_counter_underflow_locked(_COUNTER_FLOWS)
-    if should_log:
-        _log_counter_underflow(_COUNTER_FLOWS)
+    _decrement_counter(_in_flight_flows)
 
 
-def increment_pending_reports() -> None:
-    global _pending_reports
-    with _counter_lock:
-        _pending_reports += 1
+class _CounterLease:
+    """Thread-safe one-shot ownership token for one pending counter unit."""
 
-
-class PendingReportLease:
-    """One-shot ownership token for an admitted pending webhook report."""
-
-    def __init__(self) -> None:
+    def __init__(self, counter: _PendingCounter) -> None:
+        self._counter = counter
         self._released = False
         self._lock = threading.Lock()
 
     def release(self) -> None:
+        """Decrement the owned counter once and report repeated release."""
         should_release = False
         should_log = False
         with self._lock:
@@ -202,72 +192,72 @@ class PendingReportLease:
                 should_release = True
 
         if should_release:
-            decrement_pending_reports()
-        if should_log and _mark_counter_underflow(_COUNTER_REPORTS):
-            _log_counter_underflow(_COUNTER_REPORTS)
+            _decrement_counter(self._counter)
+        if should_log and _mark_counter_underflow(self._counter):
+            _log_counter_underflow(self._counter.name)
+
+
+class PendingReportLease(_CounterLease):
+    """Own the runner-visible count for one admitted webhook report.
+
+    Release exactly once after delivery finishes or admission is rolled back.
+    Concurrent or repeated release preserves other reports' counts and emits
+    the process-wide ``reports`` underflow diagnostic.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(_pending_reports)
 
 
 def admit_pending_report() -> PendingReportLease:
-    increment_pending_reports()
+    _increment_counter(_pending_reports)
     return PendingReportLease()
 
 
-def decrement_pending_reports() -> None:
-    global _pending_reports
-    should_log = False
-    with _counter_lock:
-        if _pending_reports > 0:
-            _pending_reports -= 1
-        else:
-            should_log = _mark_counter_underflow_locked(_COUNTER_REPORTS)
-    if should_log:
-        _log_counter_underflow(_COUNTER_REPORTS)
+class BufferedReportLease(_CounterLease):
+    """Own the runner-visible count for one retained, unadmitted webhook report.
 
+    Keep the lease with its report while webhook-delivery admission remains
+    retryable, including when admission returns ``False``. Release it exactly
+    once after delivery admits the report or after deliberate terminal discard,
+    eviction, or reset.
 
-def _increment_buffered_reports() -> None:
-    global _buffered_reports
-    with _counter_lock:
-        _buffered_reports += 1
-
-
-class BufferedReportLease:
-    """One-shot ownership token for a retained, unadmitted webhook report."""
+    Premature release can let the runner shutdown drain advance before handoff.
+    Failing to release the lease can hold the drain pending until its bounded
+    timeout.
+    """
 
     def __init__(self) -> None:
-        self._released = False
-        self._lock = threading.Lock()
-
-    def release(self) -> None:
-        should_release = False
-        should_log = False
-        with self._lock:
-            if self._released:
-                should_log = True
-            else:
-                self._released = True
-                should_release = True
-
-        if should_release:
-            _decrement_buffered_reports()
-        if should_log and _mark_counter_underflow(_COUNTER_BUFFERED_REPORTS):
-            _log_counter_underflow(_COUNTER_BUFFERED_REPORTS)
+        super().__init__(_buffered_reports)
 
 
 def admit_buffered_report() -> BufferedReportLease:
-    _increment_buffered_reports()
+    """Count one retained report and return its terminal-release lease.
+
+    Calling this function immediately adds the report to the retained-report
+    contribution of the runner-facing aggregate ``buffered`` snapshot. The
+    caller must keep the returned lease with the report while webhook-delivery
+    admission returns ``False``, then release it according to the lease
+    contract. A report rejected before this function is called owns no lease.
+    """
+    _increment_counter(_buffered_reports)
     return BufferedReportLease()
 
 
-def _decrement_buffered_reports() -> None:
-    global _buffered_reports
+def _increment_counter(counter: _PendingCounter) -> None:
+    with _counter_lock:
+        counter.value += 1
+
+
+def _decrement_counter(counter: _PendingCounter) -> None:
     should_log = False
     with _counter_lock:
-        if _buffered_reports > 0:
-            _buffered_reports -= 1
+        if counter.value > 0:
+            counter.value -= 1
         else:
-            should_log = _mark_counter_underflow_locked(_COUNTER_BUFFERED_REPORTS)
+            should_log = _mark_counter_underflow_locked(counter)
     if should_log:
-        _log_counter_underflow(_COUNTER_BUFFERED_REPORTS)
+        _log_counter_underflow(counter.name)
 
 
 def set_buffered_usage_events(count: int) -> None:
@@ -276,22 +266,23 @@ def set_buffered_usage_events(count: int) -> None:
         _buffered_usage_events = max(0, count)
 
 
-def _mark_counter_underflow(counter: str) -> bool:
+def _mark_counter_underflow(counter: _PendingCounter) -> bool:
     with _counter_lock:
         return _mark_counter_underflow_locked(counter)
 
 
-def _mark_counter_underflow_locked(counter: str) -> bool:
-    if counter in _counter_underflow_logged:
+def _mark_counter_underflow_locked(counter: _PendingCounter) -> bool:
+    if counter.underflow_logged:
         return False
-    _counter_underflow_logged.add(counter)
+    counter.underflow_logged = True
     return True
 
 
 def _log_counter_underflow(counter: str) -> None:
-    ctx.log.error(
-        "type=usage_underbilling reason=usage_pending_counter_underflow "
-        "underbilling_class=risk component=mitm_addon "
-        f"counter={counter} Usage pending counter release had no matching admission; "
-        "keeping counter non-negative."
+    log_usage_underbilling(
+        "",
+        "Usage pending counter release had no matching admission; keeping counter non-negative.",
+        "usage_pending_counter_underflow",
+        "risk",
+        counter=counter,
     )

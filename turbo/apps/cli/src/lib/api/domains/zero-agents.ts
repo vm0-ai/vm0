@@ -1,4 +1,4 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   zeroAgentsMainContract,
   zeroAgentsByIdContract,
@@ -6,14 +6,17 @@ import {
   type ZeroAgentResponse,
   type ZeroAgentRequest,
   type ZeroAgentInstructionsResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/zero-agents";
 import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export type ZeroUserPermissionGrant = UserPermissionGrantResponse;
@@ -25,7 +28,7 @@ export async function createZeroAgent(
   const client = initClient(zeroAgentsMainContract, config);
   const result = await client.create({ body });
   if (result.status === 201) return result.body;
-  handleError(result, "Failed to create zero agent");
+  handleError(result, "Failed to create agent");
 }
 
 export async function listZeroAgents(): Promise<ZeroAgentResponse[]> {
@@ -33,7 +36,7 @@ export async function listZeroAgents(): Promise<ZeroAgentResponse[]> {
   const client = initClient(zeroAgentsMainContract, config);
   const result = await client.list({ headers: {} });
   if (result.status === 200) return result.body;
-  handleError(result, "Failed to list zero agents");
+  handleError(result, "Failed to list agents");
 }
 
 export async function getZeroAgent(id: string): Promise<ZeroAgentResponse> {
@@ -41,7 +44,7 @@ export async function getZeroAgent(id: string): Promise<ZeroAgentResponse> {
   const client = initClient(zeroAgentsByIdContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
-  handleError(result, `Zero agent "${id}" not found`);
+  handleError(result, `Agent "${id}" not found`);
 }
 
 export async function updateZeroAgent(
@@ -52,7 +55,7 @@ export async function updateZeroAgent(
   const client = initClient(zeroAgentsByIdContract, config);
   const result = await client.update({ params: { id }, body });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to update zero agent "${id}"`);
+  handleError(result, `Failed to update agent "${id}"`);
 }
 
 export async function deleteZeroAgent(id: string): Promise<void> {
@@ -60,7 +63,7 @@ export async function deleteZeroAgent(id: string): Promise<void> {
   const client = initClient(zeroAgentsByIdContract, config);
   const result = await client.delete({ params: { id } });
   if (result.status === 204) return;
-  handleError(result, `Zero agent "${id}" not found`);
+  handleError(result, `Agent "${id}" not found`);
 }
 
 export async function getZeroAgentInstructions(
@@ -70,7 +73,7 @@ export async function getZeroAgentInstructions(
   const client = initClient(zeroAgentInstructionsContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to get instructions for zero agent "${id}"`);
+  handleError(result, `Failed to get instructions for agent "${id}"`);
 }
 
 export async function getZeroAgentUserConnectors(
@@ -82,42 +85,19 @@ export async function getZeroAgentUserConnectors(
   if (result.status === 200) {
     return result.body.enabledConnectorSlugs;
   }
-  handleError(
-    result,
-    `Failed to get connector permissions for zero agent "${id}"`,
-  );
+  handleError(result, `Failed to get connector permissions for agent "${id}"`);
 }
 
-export async function getZeroAgentCustomConnectors(
+export async function getZeroAgentCustomConnectorGrants(
   id: string,
-): Promise<string[]> {
+): Promise<AgentCustomConnectorGrant[]> {
   const config = await getClientConfig();
   const client = initClient(zeroAgentCustomConnectorsContract, config);
   const result = await client.get({ params: { id } });
-  if (result.status === 200) return result.body.enabledIds;
+  if (result.status === 200) return result.body.grants;
   handleError(
     result,
-    `Failed to get custom connector permissions for zero agent "${id}"`,
-  );
-}
-
-export async function addZeroAgentCustomConnector(
-  id: string,
-  customConnectorId: string,
-): Promise<void> {
-  const config = await getClientConfig();
-  const client = initClient(zeroAgentCustomConnectorsContract, config);
-  const result = await client.update({
-    params: { id },
-    body: {
-      enabledIds: [customConnectorId],
-      operation: "add",
-    },
-  });
-  if (result.status === 200) return;
-  handleError(
-    result,
-    `Failed to authorize custom connector "${customConnectorId}" for zero agent "${id}"`,
+    `Failed to get custom connector permissions for agent "${id}"`,
   );
 }
 
@@ -130,10 +110,7 @@ export async function listZeroUserPermissionGrants(
   if (result.status === 200) {
     return result.body;
   }
-  handleError(
-    result,
-    `Failed to get permission grants for zero agent "${agentId}"`,
-  );
+  handleError(result, `Failed to get permission grants for agent "${agentId}"`);
 }
 
 export async function updateZeroAgentInstructions(
@@ -147,5 +124,5 @@ export async function updateZeroAgentInstructions(
     body: { content },
   });
   if (result.status === 200) return;
-  handleError(result, `Failed to update instructions for zero agent "${id}"`);
+  handleError(result, `Failed to update instructions for agent "${id}"`);
 }

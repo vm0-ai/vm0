@@ -13,7 +13,7 @@ interface DispatchOptions {
 }
 
 /**
- * Resolve the dispatch for `zero generate <type>`.
+ * Resolve the dispatch for `okou generate <type>`.
  *
  * Returns `"execute"` when the caller should run the built-in pipeline.
  * Otherwise prints the appropriate output (lister or connector guidance)

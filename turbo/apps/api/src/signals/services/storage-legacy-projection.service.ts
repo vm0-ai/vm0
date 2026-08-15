@@ -1,5 +1,5 @@
-import type { ContextArtifact, PersistedStorageMount } from "@vm0/db/types";
-import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
+import type { ContextArtifact, PersistedStorageMount } from "@okouai/db/types";
+import { SYSTEM_ORG_ID } from "@okouai/core/storage-names";
 
 interface LegacyVolumeVersionsSnapshot {
   readonly versions: Record<string, string>;

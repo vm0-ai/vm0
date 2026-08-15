@@ -3,11 +3,16 @@ import {
   SOURCE_TYPES,
   type AdAttributionMetadata,
   type SourceType,
-} from "@vm0/api-contracts/contracts/zero-attribution";
+} from "@okouai/api-contracts/contracts/acquisition-attribution";
+import { command } from "ccstate";
+import { registerPostHogAttribution } from "../../lib/posthog.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 
 const AD_ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
+const GOOGLE_ANALYTICS_CLIENT_ID_COOKIE = "_ga";
+const GOOGLE_ANALYTICS_CLIENT_ID_METADATA_PARAM = "ga_client_id";
 
 const AD_ATTRIBUTION_PARAMS = [
   "source_type",
@@ -21,6 +26,8 @@ const AD_ATTRIBUTION_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
+  "vm0_campaign_id",
+  "vm0_ad_group_id",
   "utm_content",
   "utm_term",
   "vm0_experiment",
@@ -36,6 +43,8 @@ const STRIPE_METADATA_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
+  "vm0_campaign_id",
+  "vm0_ad_group_id",
   "utm_content",
   "utm_term",
   "vm0_experiment",
@@ -49,13 +58,9 @@ const STRIPE_CLICK_ID_PRESENT_PARAMS = [
   ["wbraid", "wbraid_present"],
 ] as const;
 
-function getSessionStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.sessionStorage;
-}
+const storedAdAttributionStorage = sessionStorageSignals(
+  STORED_AD_ATTRIBUTION_KEY,
+);
 
 function collectAttributionParams(
   searchParams: URLSearchParams,
@@ -99,6 +104,23 @@ function readCookie(name: string, cookieString: string): string | null {
   return null;
 }
 
+function googleAnalyticsClientIdFromCookie(
+  cookieString: string,
+): string | undefined {
+  const value = readCookie(GOOGLE_ANALYTICS_CLIENT_ID_COOKIE, cookieString);
+  if (!value) {
+    return undefined;
+  }
+
+  const parts = value.split(".");
+  if (parts.length < 4 || !/^GA\d+$/.test(parts[0] ?? "")) {
+    return undefined;
+  }
+
+  const clientId = parts.slice(2).join(".");
+  return /^\d+\.\d+$/.test(clientId) ? clientId : undefined;
+}
+
 // First-touch attribution forwarded across the www.vm0.ai -> app.vm0.ai hop in
 // the shared .vm0.ai cookie. A satellite on another registrable domain cannot
 // read this cookie, so its URL params remain the handoff mechanism and are
@@ -112,46 +134,59 @@ function collectAttributionFromCookie(cookieString: string): string {
   return collectAttributionParams(new URLSearchParams(stored)).toString();
 }
 
-export function recordAdAttribution(
-  searchParams: URLSearchParams,
-  storage: Storage | null = getSessionStorage(),
-  cookieString: string = getCookieString(),
+function registerStoredAttribution(
+  storedAttribution: string,
+  cookieString: string,
 ): void {
-  if (!storage) {
+  const metadata = adAttributionMetadataFromStoredValue(
+    storedAttribution,
+    cookieString,
+  );
+  if (!metadata) {
     return;
   }
 
-  // First-touch: once captured this session, never overwrite.
-  if (storage.getItem(STORED_AD_ATTRIBUTION_KEY)) {
-    return;
+  const properties: Record<string, string> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (typeof value === "string" && value) {
+      properties[key] = value;
+    }
   }
-
-  // Prefer params on the current URL (an ad pointing straight at the app),
-  // otherwise fall back to the shared .vm0.ai cookie set by the marketing site.
-  const serializedAttribution =
-    collectAttributionParams(searchParams).toString() ||
-    collectAttributionFromCookie(cookieString);
-  if (!serializedAttribution) {
-    return;
-  }
-
-  storage.setItem(STORED_AD_ATTRIBUTION_KEY, serializedAttribution);
+  registerPostHogAttribution(properties);
 }
 
-export function applyStoredAdAttribution(
-  url: URL,
-  storage: Storage | null = getSessionStorage(),
-): void {
-  if (!storage) {
+export const recordAdAttribution$ = command(
+  ({ get, set }, searchParams: URLSearchParams): void => {
+    const cookieString = getCookieString();
+    const storedAttribution = get(storedAdAttributionStorage.get$);
+
+    // First-touch: once captured this session, never overwrite.
+    if (storedAttribution) {
+      registerStoredAttribution(storedAttribution, cookieString);
+      return;
+    }
+
+    // Prefer params on the current URL (an ad pointing straight at the app),
+    // otherwise fall back to the shared .vm0.ai cookie set by the marketing site.
+    const serializedAttribution =
+      collectAttributionParams(searchParams).toString() ||
+      collectAttributionFromCookie(cookieString);
+    if (!serializedAttribution) {
+      return;
+    }
+
+    set(storedAdAttributionStorage.set$, serializedAttribution);
+    registerStoredAttribution(serializedAttribution, cookieString);
+  },
+);
+
+export const applyStoredAdAttribution$ = command(({ get }, url: URL): void => {
+  const storedAttribution = get(storedAdAttributionStorage.get$);
+  if (!storedAttribution) {
     return;
   }
 
-  const stored = storage.getItem(STORED_AD_ATTRIBUTION_KEY);
-  if (!stored) {
-    return;
-  }
-
-  const attributionParams = new URLSearchParams(stored);
+  const attributionParams = new URLSearchParams(storedAttribution);
   for (const param of AD_ATTRIBUTION_PARAMS) {
     if (url.searchParams.has(param)) {
       continue;
@@ -161,21 +196,13 @@ export function applyStoredAdAttribution(
       url.searchParams.append(param, value);
     }
   }
-}
+});
 
-export function getStoredAdAttributionMetadata(
-  storage: Storage | null = getSessionStorage(),
+function adAttributionMetadataFromStoredValue(
+  storedAttribution: string | null,
+  cookieString: string,
 ): AdAttributionMetadata | undefined {
-  if (!storage) {
-    return undefined;
-  }
-
-  const stored = storage.getItem(STORED_AD_ATTRIBUTION_KEY);
-  if (!stored) {
-    return undefined;
-  }
-
-  const attributionParams = new URLSearchParams(stored);
+  const attributionParams = new URLSearchParams(storedAttribution ?? "");
   const metadata: AdAttributionMetadata = {};
 
   const sourceType = attributionParams.get("source_type");
@@ -198,5 +225,17 @@ export function getStoredAdAttributionMetadata(
     }
   }
 
+  const gaClientId = googleAnalyticsClientIdFromCookie(cookieString);
+  if (gaClientId) {
+    metadata[GOOGLE_ANALYTICS_CLIENT_ID_METADATA_PARAM] = gaClientId;
+  }
+
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
+
+export const readStoredAdAttributionMetadata$ = command(({ get }) => {
+  return adAttributionMetadataFromStoredValue(
+    get(storedAdAttributionStorage.get$),
+    getCookieString(),
+  );
+});

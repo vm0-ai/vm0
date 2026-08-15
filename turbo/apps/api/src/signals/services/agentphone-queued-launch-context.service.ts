@@ -1,6 +1,6 @@
-import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { and, eq } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
@@ -115,7 +115,6 @@ async function loadAgentPhoneLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "agentphone"),
-        eq(chatEvents.triggerSource, "agentphone"),
       ),
     )
     .limit(1);

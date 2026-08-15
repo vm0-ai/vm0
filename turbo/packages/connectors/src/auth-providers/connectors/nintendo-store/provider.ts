@@ -34,27 +34,33 @@ function createNintendoStoreExternalCodeGrantProvider(): ExternalCodeConnectorAu
         expiresIn: NINTENDO_STORE_EXTERNAL_CODE_EXPIRES_IN_SECONDS,
       };
     },
-    completeExternalCodeAuthorization: async (args) => {
+    completeExternalCodeAuthorization: async (args, signal: AbortSignal) => {
       const providerState = parseNintendoStoreProviderState(args.providerState);
       const sessionTokenCode = parseNintendoStoreSessionTokenCode({
         code: args.code,
         expectedState: providerState.state,
       });
-      const session = await exchangeNintendoStoreSessionTokenCode({
-        clientId: args.authClient.clientId,
-        sessionTokenCode,
-        codeVerifier: providerState.codeVerifier,
-        signal: args.signal,
-      });
-      const token = await exchangeNintendoStoreSessionToken({
-        clientId: args.authClient.clientId,
-        sessionToken: session.sessionToken,
-        signal: args.signal,
-      });
-      const locale = await fetchNintendoStoreLocale({
-        accessToken: token.accessToken,
-        signal: args.signal,
-      });
+      const session = await exchangeNintendoStoreSessionTokenCode(
+        {
+          clientId: args.authClient.clientId,
+          sessionTokenCode,
+          codeVerifier: providerState.codeVerifier,
+        },
+        signal,
+      );
+      const token = await exchangeNintendoStoreSessionToken(
+        {
+          clientId: args.authClient.clientId,
+          sessionToken: session.sessionToken,
+        },
+        signal,
+      );
+      const locale = await fetchNintendoStoreLocale(
+        {
+          accessToken: token.accessToken,
+        },
+        signal,
+      );
       return {
         outputs: {
           sessionToken: session.sessionToken,
@@ -80,16 +86,20 @@ function createNintendoStoreRefreshTokenAccessProvider(): RefreshTokenAccessProv
 > {
   return {
     kind: "refresh-token",
-    refresh: async (args) => {
-      const token = await exchangeNintendoStoreSessionToken({
-        clientId: args.authClient.clientId,
-        sessionToken: args.inputs.sessionToken,
-        signal: args.signal,
-      });
-      const locale = await fetchNintendoStoreLocale({
-        accessToken: token.accessToken,
-        signal: args.signal,
-      });
+    refresh: async (args, signal: AbortSignal) => {
+      const token = await exchangeNintendoStoreSessionToken(
+        {
+          clientId: args.authClient.clientId,
+          sessionToken: args.inputs.sessionToken,
+        },
+        signal,
+      );
+      const locale = await fetchNintendoStoreLocale(
+        {
+          accessToken: token.accessToken,
+        },
+        signal,
+      );
       return {
         outputs: {
           accessToken: token.accessToken,

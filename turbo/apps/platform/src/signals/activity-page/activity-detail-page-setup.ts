@@ -4,13 +4,18 @@ import { ZeroActivityDetailPage } from "../../views/zero-page/zero-activity-deta
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { setupActivityLogLoop$ } from "./activity-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { i18n } from "../../i18n/index.ts";
+import { currentRunId$, setupActivityEvents$ } from "./activity-signals.ts";
 
 export const setupActivityDetailPage$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroActivityDetailPage), "sidebar");
+  async ({ get, set }, signal: AbortSignal) => {
+    const runId = get(currentRunId$);
+    set(
+      updatePage$,
+      createElement(ZeroActivityDetailPage, { key: runId }),
+      "sidebar",
+    );
     set(
       updateDocumentTitle$,
       i18n.t(($) => {
@@ -23,7 +28,7 @@ export const setupActivityDetailPage$ = command(
       return;
     }
 
-    await set(setupActivityLogLoop$, signal);
+    await set(setupActivityEvents$, signal);
     signal.throwIfAborted();
   },
 );

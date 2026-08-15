@@ -16,10 +16,7 @@
     "connectorsLink": "Connectors",
     "connectorsSaved": "Connectors saved",
     "customConnectors": {
-      "authorize": "Authorize {{connectorName}} for this agent",
-      "description": "Custom connectors registered by your org. Only connectors you have supplied a secret for can be toggled on.",
-      "noSecret": "No secret set",
-      "noSecretSuffix": " — no secret set",
+      "description": "Custom connectors registered by your org.",
       "saved": "Custom connectors saved"
     },
     "description": "When running, the agent can securely use your connected services. You can manage or turn off access anytime.",
@@ -606,15 +603,12 @@
   },
   "sidebar": {
     "clearSearch": "Clear search",
-    "description": "Pick an agent to start a conversation.",
     "descriptionWithChats": "Pick an agent or jump to a chat.",
     "leadDescription": "Your lead assistant, always here for you",
     "markAllRead": "Mark all read",
     "more": "More",
     "new": "New",
-    "noAgents": "No agents found",
     "noResults": "No results found",
-    "noSubagents": "No sub-agents available yet.",
     "openConversation": "Open a conversation",
     "openMenu": "Open agent menu",
     "pin": "Pin to sidebar",
@@ -622,6 +616,7 @@
     "pinnedAgents": "Pinned agents",
     "searchAgents": "Search agents...",
     "searchAgentsAndChats": "Search agents and chats...",
+    "searching": "Searching...",
     "sections": {
       "chats": "Chats",
       "lead": "Lead",

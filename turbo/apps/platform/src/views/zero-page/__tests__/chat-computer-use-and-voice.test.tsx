@@ -1,10 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
-import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
-import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
+import { zeroComputerUseHostsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -26,6 +26,7 @@ import {
   queryLinkByText,
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
+import { billingStatus } from "./chat-composer-test-helpers.ts";
 
 function computerUseRow(switchName: string): HTMLElement {
   const row = screen
@@ -69,6 +70,7 @@ describe("chat lifecycle", () => {
         hosts: [
           {
             id: hostId,
+            product: "okou",
             displayName: "Studio Mac",
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
@@ -85,7 +87,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await waitFor(() => {
@@ -93,6 +94,7 @@ describe("chat lifecycle", () => {
     });
     await user.click(await screen.findByLabelText("Connectors"));
     expect(screen.getByText("Your computer")).toBeInTheDocument();
+    expect(screen.getByText("Okou")).toBeInTheDocument();
     expect(
       screen.getByRole("switch", { name: "Enable Cloud browser" }),
     ).toHaveAttribute("aria-checked", "false");
@@ -170,7 +172,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await waitFor(() => {
@@ -212,7 +213,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await screen.findByPlaceholderText(PLACEHOLDER);
@@ -252,7 +252,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -285,7 +284,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -301,38 +299,6 @@ describe("chat lifecycle", () => {
     await user.keyboard("{Escape}");
 
     await sendMessageInUI(user, textarea, "Keep the cloud browser closed");
-
-    await waitFor(() => {
-      expect(sentCloudBrowserEnabled).toBeUndefined();
-    });
-  });
-
-  it("hides Cloud browser from a new chat thread when the feature is disabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    let sentCloudBrowserEnabled: boolean | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
-      },
-    });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
-      return respond(200, { hosts: [] });
-    });
-
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
-
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(await screen.findByLabelText("Connectors"));
-    expect(screen.getByText("Your computer")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("switch", { name: "Disable Cloud browser" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("switch", { name: "Enable Cloud browser" }),
-    ).not.toBeInTheDocument();
-    await user.keyboard("{Escape}");
-
-    await sendMessageInUI(user, textarea, "No cloud browser here");
 
     await waitFor(() => {
       expect(sentCloudBrowserEnabled).toBeUndefined();
@@ -371,7 +337,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -497,7 +462,7 @@ describe("chat lifecycle", () => {
 
   it("opens the Computer Use download dialog from the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-download";
+    const threadId = "e2000000-0000-4000-a000-000000000001";
     mockChatLifecycle(context, { threadId });
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
@@ -532,7 +497,44 @@ describe("chat lifecycle", () => {
     expect(downloadLink).toHaveAttribute(
       "href",
       expect.stringContaining(
-        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+        "/api/okou/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
+  });
+
+  it("uses Okou copy on an Okou host", async () => {
+    context.mocks.browser.url("https://app.okou.ai/");
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000005";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await screen.findByText("Connect my computer"));
+
+    expect(screen.getByText("Let Okou use your computer")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "So Okou can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
+      ),
+    ).toBeInTheDocument();
+    const downloadLink = await waitFor(() => {
+      return linkByText("Download for macOS");
+    });
+    expect(downloadLink).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/okou/desktop/updates/stable/darwin/arm64/dmg",
       ),
     );
   });
@@ -540,7 +542,7 @@ describe("chat lifecycle", () => {
   it("blocks the Computer Use download dialog on Intel Macs", async () => {
     mockMacUserAgentData("x86");
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-download-intel";
+    const threadId = "e2000000-0000-4000-a000-000000000002";
     mockChatLifecycle(context, { threadId });
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
@@ -571,7 +573,7 @@ describe("chat lifecycle", () => {
 
   it("does not auto-select the only online Computer Use host", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-manual-selection";
+    const threadId = "e2000000-0000-4000-a000-000000000003";
     let sentComputerUseHostId: string | null | undefined;
     mockChatLifecycle(context, {
       threadId,
@@ -625,7 +627,7 @@ describe("chat lifecycle", () => {
 
   it("refreshes computers when the computer-use hosts Ably event arrives", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-refresh";
+    const threadId = "e2000000-0000-4000-a000-000000000004";
     let hostOnline = true;
     let requestCount = 0;
     mockChatLifecycle(context, { threadId });
@@ -891,7 +893,7 @@ describe("chat lifecycle", () => {
 
   it("shows a computer use empty state when host listing is unavailable", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "computer-use-forbidden";
+    const threadId = "e2000000-0000-4000-a000-000000000005";
     mockChatLifecycle(context, { threadId });
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(403, {
@@ -920,76 +922,203 @@ describe("chat lifecycle", () => {
 
   it("transcribes voice input into the composer", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000006";
     const draftPatches: unknown[] = [];
     const toastError = vi.spyOn(toast, "error");
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.patch(
-      "*/api/zero/chat-threads/:id",
+      "*/api/okou/chat-threads/:id",
       async ({ request }) => {
         draftPatches.push(await request.json());
         return new Response(null, { status: 200 });
       },
     );
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       return new Response(JSON.stringify({ text: "Summarize the standup" }), {
         headers: { "Content-Type": "application/json" },
       });
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      const textarea = await waitFor(() => {
-        return chatComposerTextarea();
+    const textarea = await waitFor(() => {
+      return chatComposerTextarea();
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Stop recording"));
+
+    await waitFor(() => {
+      expect(textarea).toHaveTextContent("Summarize the standup");
+    });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "Summarize the standup" }],
+        },
+        draftAttachments: null,
       });
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
+  });
 
-      await user.click(await screen.findByLabelText("Voice input"));
-
-      await waitFor(() => {
-        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+  it("waits for active voice input before sending", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000778";
+    const transcriptionRequested = context.mocks.deferred<void>();
+    const transcriptionReady = context.mocks.deferred<void>();
+    const submissionRequested = context.mocks.deferred<void>();
+    const sentPrompts: string[] = [];
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        if (body.prompt !== undefined) {
+          sentPrompts.push(body.prompt);
+        }
+        submissionRequested.resolve(undefined);
+      },
+    });
+    context.mocks.http.post("*/api/okou/voice-io/stt", async () => {
+      transcriptionRequested.resolve(undefined);
+      await transcriptionReady.promise;
+      return new Response(JSON.stringify({ text: "completed voice input" }), {
+        headers: { "Content-Type": "application/json" },
       });
+    });
 
-      await user.click(screen.getByLabelText("Stop recording"));
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await waitFor(() => {
-        expect(textarea).toHaveTextContent("Summarize the standup");
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await fill(composer, "Typed introduction");
+    const sendButton = screen.getByLabelText("Send");
+    await waitFor(() => {
+      expect(sendButton).toBeEnabled();
+    });
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    const firstRequest = Promise.race([
+      (async () => {
+        await transcriptionRequested.promise;
+        return "transcription" as const;
+      })(),
+      (async () => {
+        await submissionRequested.promise;
+        return "submission" as const;
+      })(),
+    ]);
+    await user.click(sendButton);
+
+    await expect(firstRequest).resolves.toBe("transcription");
+    expect(sentPrompts).toStrictEqual([]);
+
+    await user.click(screen.getByLabelText("Send"));
+    expect(submissionRequested.settled()).toBeFalsy();
+
+    transcriptionReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(sentPrompts).toHaveLength(1);
+    });
+    expect(sentPrompts[0]).toContain("Typed introduction");
+    expect(sentPrompts[0]).toContain("completed voice input");
+    expect(sentPrompts[0]?.match(/completed voice input/g)).toHaveLength(1);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+  });
+
+  it("waits for voice input to finish starting before sending", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000779";
+    const microphoneReady = context.mocks.deferred<void>();
+    const submissionRequested = context.mocks.deferred<void>();
+    const sentPrompts: string[] = [];
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: microphoneReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        if (body.prompt !== undefined) {
+          sentPrompts.push(body.prompt);
+        }
+        submissionRequested.resolve(undefined);
+      },
+    });
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: "startup voice input" }), {
+        headers: { "Content-Type": "application/json" },
       });
-      await waitFor(() => {
-        expect(draftPatches).toContainEqual({
-          draftUserMessage: {
-            version: 1,
-            parts: [{ type: "text", text: "Summarize the standup" }],
-          },
-          draftAttachments: null,
-        });
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
-    } finally {
-      toastError.mockRestore();
-    }
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await fill(composer, "Typed introduction");
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Starting voice input")).toBeDisabled();
+    });
+
+    await user.click(screen.getByLabelText("Send"));
+
+    expect(submissionRequested.settled()).toBeFalsy();
+    microphoneReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(sentPrompts).toHaveLength(1);
+    });
+    expect(sentPrompts[0]).toContain("Typed introduction");
+    expect(sentPrompts[0]).toContain("startup voice input");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
   });
 
   it("transcribes a voice input segment after silence while recording", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-segment-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000007";
     const draftPatches: unknown[] = [];
     const uploadedAudio: string[] = [];
     const transcriptionRequested = context.mocks.deferred<void>();
+    const recorderTransitions: ("start" | "stop")[] = [];
     let transcriptionCalls = 0;
-    context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
+    context.mocks.browser.voiceInput({
+      onRecorderStart: () => {
+        recorderTransitions.push("start");
+      },
+      onRecorderStop: () => {
+        recorderTransitions.push("stop");
+      },
+      rms: [0.1, 0.1, 0, 0, 0],
+    });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.patch(
-      "*/api/zero/chat-threads/:id",
+      "*/api/okou/chat-threads/:id",
       async ({ request }) => {
         draftPatches.push(await request.json());
         return new Response(null, { status: 200 });
       },
     );
-    context.mocks.http.post("*/api/zero/voice-io/stt", async ({ request }) => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", async ({ request }) => {
       transcriptionRequested.resolve(undefined);
       const form = await request.formData();
       const file = form.get("file");
@@ -1014,12 +1143,12 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     });
-    // The silence-triggered segment upload reaching the server proves the
-    // capture rotated recorders instead of ending the session; recording may
-    // legitimately auto-stop moments later, so check the label now rather
-    // than after the transcription response renders.
     await transcriptionRequested.promise;
-    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    expect(recorderTransitions.slice(0, 3)).toStrictEqual([
+      "start",
+      "stop",
+      "start",
+    ]);
     await waitFor(() => {
       expect(composer).toHaveTextContent("First sentence");
     });
@@ -1039,11 +1168,17 @@ describe("chat lifecycle", () => {
       expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
     });
     expect(transcriptionCalls).toBe(1);
+    expect(recorderTransitions).toStrictEqual([
+      "start",
+      "stop",
+      "start",
+      "stop",
+    ]);
   });
 
   it("uploads voice input segments one at a time", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-serialized-segments-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000008";
     const firstRequestStarted = context.mocks.deferred<void>();
     const releaseFirstRequest = context.mocks.deferred<void>();
     const speechResumed = context.mocks.deferred<void>();
@@ -1072,10 +1207,10 @@ describe("chat lifecycle", () => {
       },
     });
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: null });
     });
-    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", async () => {
       const requestIndex = requestCount;
       requestCount += 1;
       activeRequestCount += 1;
@@ -1126,14 +1261,14 @@ describe("chat lifecycle", () => {
 
   it("automatically stops voice input after extended silence", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-auto-stop-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000009";
     let transcriptionCalls = 0;
     context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: 10 });
     });
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       transcriptionCalls += 1;
       return new Response(JSON.stringify({ text: "Auto stopped note" }), {
         headers: { "Content-Type": "application/json" },
@@ -1160,12 +1295,12 @@ describe("chat lifecycle", () => {
 
   it("appends a delayed voice input segment to the current composer text", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-append-current-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000010";
     const transcriptionReady = context.mocks.deferred<void>();
     const transcriptionRequested = context.mocks.deferred<void>();
     context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
     mockChatLifecycle(context, { threadId });
-    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", async () => {
       transcriptionRequested.resolve(undefined);
       await transcriptionReady.promise;
       return new Response(JSON.stringify({ text: "voice segment" }), {
@@ -1198,7 +1333,7 @@ describe("chat lifecycle", () => {
 
   it("shows voice input starting state while the browser opens the microphone", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-starting-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000011";
     const micReady = context.mocks.deferred<void>();
     context.mocks.browser.voiceInput({
       getUserMediaReady: micReady.promise,
@@ -1228,7 +1363,7 @@ describe("chat lifecycle", () => {
 
   it("starts recording before the voice activity monitor is ready", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "voice-input-monitor-pending-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000012";
     const audioReady = context.mocks.deferred<void>();
     context.mocks.browser.voiceInput({
       audioContextReady: audioReady.promise,
@@ -1236,7 +1371,7 @@ describe("chat lifecycle", () => {
     });
     mockChatLifecycle(context, { threadId });
     let transcriptionCalled = false;
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       transcriptionCalled = true;
       return new Response(JSON.stringify({ text: "first words" }), {
         headers: { "Content-Type": "application/json" },
@@ -1269,11 +1404,11 @@ describe("chat lifecycle", () => {
 
   it("cancels silent voice input without calling transcription", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "silent-voice-input-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000013";
     context.mocks.browser.voiceInput({ rms: 0 });
     mockChatLifecycle(context, { threadId });
     let transcriptionCalled = false;
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       transcriptionCalled = true;
       return new Response(JSON.stringify({ text: "unexpected" }), {
         headers: { "Content-Type": "application/json" },
@@ -1304,10 +1439,10 @@ describe("chat lifecycle", () => {
   it("opens billing recovery when voice input quota is depleted", async () => {
     const user = userEvent.setup({ delay: null });
     const toastError = vi.spyOn(toast, "error");
-    const threadId = "voice-input-quota-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000014";
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       return new Response(
         JSON.stringify({
           error: {
@@ -1319,91 +1454,203 @@ describe("chat lifecycle", () => {
       );
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-      });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
 
-      await user.click(await screen.findByLabelText("Voice input"));
-      await waitFor(() => {
-        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-      });
-      await user.click(screen.getByLabelText("Stop recording"));
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Stop recording"));
 
-      await waitFor(() => {
-        expect(toastError).toHaveBeenCalledWith(
-          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
-          { id: "voice-input-quota-limit" },
-        );
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-        expect(
-          screen.getByRole("heading", { name: "Compare plans" }),
-        ).toBeInTheDocument();
-        expect(
-          screen.getByText("Upgrade or downgrade anytime."),
-        ).toBeInTheDocument();
-      });
-      await waitFor(() => {
-        expect(screen.queryByLabelText("Stop recording")).toBeNull();
-      });
-      expect(toastError).not.toHaveBeenCalledWith(
-        "Voice transcription failed. Try again.",
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+        { id: "voice-input-quota-limit" },
       );
-    } finally {
-      toastError.mockRestore();
-    }
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Compare plans" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Upgrade or downgrade anytime."),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Stop recording")).toBeNull();
+    });
+    expect(toastError).not.toHaveBeenCalledWith(
+      "Voice transcription failed. Try again.",
+    );
   });
 
   it("opens billing recovery before recording when voice input quota is already depleted", async () => {
     const user = userEvent.setup({ delay: null });
     const toastError = vi.spyOn(toast, "error");
-    const threadId = "voice-input-preflight-quota-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000015";
     let transcriptionCalls = 0;
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: false, count: 10, limit: 10 });
     });
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       transcriptionCalls += 1;
       return new Response(JSON.stringify({ text: "Should not upload" }), {
         headers: { "Content-Type": "application/json" },
       });
     });
 
-    try {
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const voiceInput = await screen.findByLabelText("Voice input");
+    expect(voiceInput).toBeEnabled();
+    await user.click(voiceInput);
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Compare plans" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Stop recording")).toBeNull();
+    expect(transcriptionCalls).toBe(0);
+  });
+
+  it("shows member guidance without opening billing when voice input is limited", async () => {
+    const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
+    const threadId = "e2000000-0000-4000-a000-000000000017";
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "member",
+    });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: false, count: 10, limit: 10 });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("opens billing with Team upgrade guidance for a Pro workspace admin", async () => {
+    const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
+    const threadId = "e2000000-0000-4000-a000-000000000018";
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus("pro"));
+    });
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: false, count: 10, limit: 10 });
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Upgrade to Team for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Compare plans" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows Team upgrade guidance without opening billing for a Pro workspace member", async () => {
+    const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
+    const threadId = "e2000000-0000-4000-a000-000000000019";
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus("pro"));
+    });
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: false, count: 10, limit: 10 });
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Ask a workspace admin to upgrade to Team for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it.each(["team", "custom"] as const)(
+    "shows reset guidance without opening billing for a %s workspace admin",
+    async (tier) => {
+      const user = userEvent.setup({ delay: null });
+      const toastError = vi.spyOn(toast, "error");
+      const threadId =
+        tier === "team"
+          ? "e2000000-0000-4000-a000-000000000020"
+          : "e2000000-0000-4000-a000-000000000021";
+      context.mocks.browser.voiceInput({ rms: 0.1 });
+      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+        return respond(200, billingStatus(tier));
+      });
+      context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
+        return respond(200, { allowed: false, count: 10, limit: 10 });
+      });
+      mockChatLifecycle(context, { threadId });
+
       detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      const voiceInput = await screen.findByLabelText("Voice input");
-      expect(voiceInput).toBeEnabled();
-      await user.click(voiceInput);
+      await user.click(await screen.findByLabelText("Voice input"));
 
       await waitFor(() => {
         expect(toastError).toHaveBeenCalledWith(
-          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+          "Voice input limit reached. Please wait for your limit to reset.",
           { id: "voice-input-quota-limit" },
         );
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-        expect(
-          screen.getByRole("heading", { name: "Compare plans" }),
-        ).toBeInTheDocument();
       });
-      expect(screen.queryByLabelText("Stop recording")).toBeNull();
-      expect(transcriptionCalls).toBe(0);
-    } finally {
-      toastError.mockRestore();
-    }
-  });
+      expect(screen.queryByRole("dialog")).toBeNull();
+    },
+  );
 
   it("opens billing recovery when voice input daily request limit is reached", async () => {
     const user = userEvent.setup({ delay: null });
     const toastError = vi.spyOn(toast, "error");
-    const threadId = "voice-input-daily-rate-thread";
+    const threadId = "e2000000-0000-4000-a000-000000000016";
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
-    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+    context.mocks.http.post("*/api/okou/voice-io/stt", () => {
       return new Response(
         JSON.stringify({
           error: {
@@ -1416,31 +1663,27 @@ describe("chat lifecycle", () => {
       );
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-      });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
 
-      await user.click(await screen.findByLabelText("Voice input"));
-      await waitFor(() => {
-        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-      });
-      await user.click(screen.getByLabelText("Stop recording"));
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Stop recording"));
 
-      await waitFor(() => {
-        expect(toastError).toHaveBeenCalledWith(
-          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
-          { id: "voice-input-quota-limit" },
-        );
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-        expect(
-          screen.getByRole("heading", { name: "Compare plans" }),
-        ).toBeInTheDocument();
-      });
-    } finally {
-      toastError.mockRestore();
-    }
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+        { id: "voice-input-quota-limit" },
+      );
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Compare plans" }),
+      ).toBeInTheDocument();
+    });
   });
 });

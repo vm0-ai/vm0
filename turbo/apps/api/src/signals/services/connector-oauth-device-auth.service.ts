@@ -5,25 +5,25 @@ import type {
   ConnectorResponse,
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorOauthDeviceAuthSessionStartResponse,
-} from "@vm0/api-contracts/contracts/connector-schemas";
+} from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   resolveConnectorAuthClient,
   type ConnectorAuthClient,
-} from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-auth-method";
 import {
   pollConnectorDeviceAuthorizationWithMethod,
   startConnectorDeviceAuthorizationWithMethod,
-} from "@vm0/connectors/auth-providers";
+} from "@okouai/connectors/auth-providers";
 import type {
   OAuthDeviceAuthCompleteResultBase,
   OAuthDeviceAuthPollResultBase,
-} from "@vm0/connectors/auth-providers/provider-flow-types";
-import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
+} from "@okouai/connectors/auth-providers/provider-flow-types";
+import { connectorOauthDeviceAuthorizationSessions } from "@okouai/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 
@@ -160,7 +160,6 @@ type PollClaimedSessionArgs = ResolvedDeviceAuthClient & {
   readonly userId: string;
   readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
-  readonly signal: AbortSignal;
   readonly persistConnector: (args: {
     readonly result: OAuthDeviceAuthCompleteResultBase;
   }) => Promise<ConnectorResponse>;
@@ -182,6 +181,18 @@ const connectorOauthDeviceAuthDisabled = Object.freeze({
     }),
   }),
 });
+
+function connectorOauthDeviceAuthUnavailable(connectorSlug: ConnectorSlug) {
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: `${connectorSlug} connector is not available`,
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
 
 function deviceAuthResolutionError(
   resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
@@ -228,7 +239,7 @@ function deviceAuthResolutionError(
       return connectorOauthDeviceAuthDisabled;
     }
     case "missing_executable_capability": {
-      return internalServerError("Connector execution is not configured");
+      return connectorOauthDeviceAuthUnavailable(args.connectorSlug);
     }
   }
 }
@@ -358,7 +369,7 @@ async function resolveStoredDeviceAuthMethod(args: {
     expectedGrantKind: "device-auth",
   });
   if (!resolved.ok) {
-    return internalServerError("Invalid OAuth device authorization session");
+    return connectorOauthDeviceAuthUnavailable(args.connectorSlug);
   }
   return resolved;
 }
@@ -407,13 +418,15 @@ async function markActiveSessionsSuperseded(
     );
 }
 
-async function markClaimAwaiting(args: {
-  readonly writeDb: Db;
-  readonly sessionId: string;
-  readonly claimStartedAt: Date;
-  readonly intervalSeconds: number;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+async function markClaimAwaiting(
+  args: {
+    readonly writeDb: Db;
+    readonly sessionId: string;
+    readonly claimStartedAt: Date;
+    readonly intervalSeconds: number;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const [session] = await args.writeDb
     .update(connectorOauthDeviceAuthorizationSessions)
     .set({
@@ -432,19 +445,21 @@ async function markClaimAwaiting(args: {
       ),
     )
     .returning({ id: connectorOauthDeviceAuthorizationSessions.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return Boolean(session);
 }
 
-async function loadOwnedSession(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorSlug: ConnectorSlug;
-  readonly sessionId: string;
-  readonly sessionToken: string;
-  readonly signal: AbortSignal;
-}): Promise<DeviceAuthSessionRow | null> {
+async function loadOwnedSession(
+  args: {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: ConnectorSlug;
+    readonly sessionId: string;
+    readonly sessionToken: string;
+  },
+  signal: AbortSignal,
+): Promise<DeviceAuthSessionRow | null> {
   const [session] = await args.writeDb
     .select(deviceAuthSessionSelection)
     .from(connectorOauthDeviceAuthorizationSessions)
@@ -464,16 +479,18 @@ async function loadOwnedSession(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return session ?? null;
 }
 
-async function expireSession(args: {
-  readonly writeDb: Db;
-  readonly session: DeviceAuthSessionRow;
-  readonly now: Date;
-  readonly signal: AbortSignal;
-}): Promise<PollSuccess> {
+async function expireSession(
+  args: {
+    readonly writeDb: Db;
+    readonly session: DeviceAuthSessionRow;
+    readonly now: Date;
+  },
+  signal: AbortSignal,
+): Promise<PollSuccess> {
   const [expiredSession] = await args.writeDb
     .update(connectorOauthDeviceAuthorizationSessions)
     .set({
@@ -496,24 +513,28 @@ async function expireSession(args: {
       ),
     )
     .returning(deviceAuthSessionSelection);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!expiredSession) {
-    return await claimNoLongerCurrentResponse({
-      writeDb: args.writeDb,
-      session: args.session,
-      signal: args.signal,
-    });
+    return await claimNoLongerCurrentResponse(
+      {
+        writeDb: args.writeDb,
+        session: args.session,
+      },
+      signal,
+    );
   }
   return { status: 200, body: terminalErrorBody(expiredSession) };
 }
 
-async function claimSession(args: {
-  readonly writeDb: Db;
-  readonly session: DeviceAuthSessionRow;
-  readonly claimStartedAt: Date;
-  readonly signal: AbortSignal;
-}): Promise<DeviceAuthSessionRow | null> {
+async function claimSession(
+  args: {
+    readonly writeDb: Db;
+    readonly session: DeviceAuthSessionRow;
+    readonly claimStartedAt: Date;
+  },
+  signal: AbortSignal,
+): Promise<DeviceAuthSessionRow | null> {
   const staleBefore = new Date(
     args.claimStartedAt.getTime() - POLLING_STALE_MS,
   );
@@ -539,7 +560,7 @@ async function claimSession(args: {
       ),
     )
     .returning(deviceAuthSessionSelection);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return claimedSession ?? null;
 }
 
@@ -560,12 +581,14 @@ async function parseEncryptedProviderState(args: {
   });
 }
 
-async function claimStillCurrent(args: {
-  readonly writeDb: Db;
-  readonly sessionId: string;
-  readonly claimStartedAt: Date;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+async function claimStillCurrent(
+  args: {
+    readonly writeDb: Db;
+    readonly sessionId: string;
+    readonly claimStartedAt: Date;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const [currentClaim] = await args.writeDb
     .select({
       status: connectorOauthDeviceAuthorizationSessions.status,
@@ -574,7 +597,7 @@ async function claimStillCurrent(args: {
     .from(connectorOauthDeviceAuthorizationSessions)
     .where(eq(connectorOauthDeviceAuthorizationSessions.id, args.sessionId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return (
     currentClaim?.status === "polling" &&
@@ -582,17 +605,19 @@ async function claimStillCurrent(args: {
   );
 }
 
-async function claimNoLongerCurrentResponse(args: {
-  readonly writeDb: Db;
-  readonly session: DeviceAuthSessionRow;
-  readonly signal: AbortSignal;
-}): Promise<PollSuccess> {
+async function claimNoLongerCurrentResponse(
+  args: {
+    readonly writeDb: Db;
+    readonly session: DeviceAuthSessionRow;
+  },
+  signal: AbortSignal,
+): Promise<PollSuccess> {
   const [currentSession] = await args.writeDb
     .select(deviceAuthSessionSelection)
     .from(connectorOauthDeviceAuthorizationSessions)
     .where(eq(connectorOauthDeviceAuthorizationSessions.id, args.session.id))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (
     currentSession?.status === "denied" ||
@@ -604,16 +629,20 @@ async function claimNoLongerCurrentResponse(args: {
   return pendingResponse(args.session);
 }
 
-async function markClaimTerminal(args: {
-  readonly writeDb: Db;
-  readonly session: DeviceAuthSessionRow;
-  readonly claimStartedAt: Date;
-  readonly result: Extract<
-    OAuthDeviceAuthPollResultBase,
-    { readonly status: "denied" | "expired" | "error" }
-  >;
-  readonly signal: AbortSignal;
-}): Promise<PollSuccess> {
+async function markClaimTerminal(
+  args: {
+    readonly writeDb: Db;
+    readonly session: DeviceAuthSessionRow;
+    readonly claimStartedAt: Date;
+    readonly result: Extract<
+      OAuthDeviceAuthPollResultBase,
+      {
+        readonly status: "denied" | "expired" | "error";
+      }
+    >;
+  },
+  signal: AbortSignal,
+): Promise<PollSuccess> {
   const completedAt = nowDate();
   const [terminalSession] = await args.writeDb
     .update(connectorOauthDeviceAuthorizationSessions)
@@ -635,25 +664,29 @@ async function markClaimTerminal(args: {
       ),
     )
     .returning(deviceAuthSessionSelection);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!terminalSession) {
-    return await claimNoLongerCurrentResponse({
-      writeDb: args.writeDb,
-      session: args.session,
-      signal: args.signal,
-    });
+    return await claimNoLongerCurrentResponse(
+      {
+        writeDb: args.writeDb,
+        session: args.session,
+      },
+      signal,
+    );
   }
   return { status: 200, body: terminalErrorBody(terminalSession) };
 }
 
-async function markClaimComplete(args: {
-  readonly writeDb: Db;
-  readonly session: DeviceAuthSessionRow;
-  readonly claimStartedAt: Date;
-  readonly connector: ConnectorResponse;
-  readonly signal: AbortSignal;
-}): Promise<PollSuccess> {
+async function markClaimComplete(
+  args: {
+    readonly writeDb: Db;
+    readonly session: DeviceAuthSessionRow;
+    readonly claimStartedAt: Date;
+    readonly connector: ConnectorResponse;
+  },
+  signal: AbortSignal,
+): Promise<PollSuccess> {
   const completedAt = nowDate();
   const [completedSession] = await args.writeDb
     .update(connectorOauthDeviceAuthorizationSessions)
@@ -669,14 +702,16 @@ async function markClaimComplete(args: {
       ),
     )
     .returning(deviceAuthSessionSelection);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!completedSession) {
-    return await claimNoLongerCurrentResponse({
-      writeDb: args.writeDb,
-      session: args.session,
-      signal: args.signal,
-    });
+    return await claimNoLongerCurrentResponse(
+      {
+        writeDb: args.writeDb,
+        session: args.session,
+      },
+      signal,
+    );
   }
   return {
     status: 200,
@@ -692,11 +727,11 @@ async function completeClaimedSession(
     readonly session: DeviceAuthSessionRow;
     readonly claimStartedAt: Date;
     readonly result: OAuthDeviceAuthCompleteResultBase;
-    readonly signal: AbortSignal;
     readonly persistConnector: (args: {
       readonly result: OAuthDeviceAuthCompleteResultBase;
     }) => Promise<ConnectorResponse>;
   },
+  signal: AbortSignal,
 ): Promise<PollSuccess> {
   return await args.writeDb.transaction(async (tx) => {
     await lockDeviceAuthSessionOwner({
@@ -704,39 +739,47 @@ async function completeClaimedSession(
       writeDb: tx,
     });
     if (
-      !(await claimStillCurrent({
-        writeDb: tx,
-        sessionId: args.session.id,
-        claimStartedAt: args.claimStartedAt,
-        signal: args.signal,
-      }))
+      !(await claimStillCurrent(
+        {
+          writeDb: tx,
+          sessionId: args.session.id,
+          claimStartedAt: args.claimStartedAt,
+        },
+        signal,
+      ))
     ) {
-      return await claimNoLongerCurrentResponse({
-        writeDb: tx,
-        session: args.session,
-        signal: args.signal,
-      });
+      return await claimNoLongerCurrentResponse(
+        {
+          writeDb: tx,
+          session: args.session,
+        },
+        signal,
+      );
     }
 
     const connector = await args.persistConnector({ result: args.result });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
 
-    return await markClaimComplete({
-      writeDb: tx,
-      session: args.session,
-      claimStartedAt: args.claimStartedAt,
-      connector,
-      signal: args.signal,
-    });
+    return await markClaimComplete(
+      {
+        writeDb: tx,
+        session: args.session,
+        claimStartedAt: args.claimStartedAt,
+        connector,
+      },
+      signal,
+    );
   });
 }
 
-async function completeSessionResponse(args: {
-  readonly connectorLoader: () => Promise<ConnectorResponse | null>;
-  readonly signal: AbortSignal;
-}): Promise<PollSuccess> {
+async function completeSessionResponse(
+  args: {
+    readonly connectorLoader: () => Promise<ConnectorResponse | null>;
+  },
+  signal: AbortSignal,
+): Promise<PollSuccess> {
   const connector = await args.connectorLoader();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!connector) {
     throw new Error("Completed OAuth connector not found");
   }
@@ -784,19 +827,21 @@ const completedDeviceSessionResponse$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const response = await completeSessionResponse({
-      connectorLoader: () => {
-        return get(
-          zeroConnectorBySlug({
-            orgId: args.orgId,
-            userId: args.userId,
-            connectorSlug: args.method.connectorSlug,
-            snapshot: args.method.snapshot,
-          }),
-        );
+    const response = await completeSessionResponse(
+      {
+        connectorLoader: () => {
+          return get(
+            zeroConnectorBySlug({
+              orgId: args.orgId,
+              userId: args.userId,
+              connectorSlug: args.method.connectorSlug,
+              snapshot: args.method.snapshot,
+            }),
+          );
+        },
       },
       signal,
-    });
+    );
     const error = await set(
       authorizeDeviceSessionConnector$,
       { ...args, connectorSlug: args.method.connectorSlug },
@@ -808,6 +853,7 @@ const completedDeviceSessionResponse$ = command(
 
 async function runClaimedSession(
   args: PollClaimedSessionArgs,
+  signal: AbortSignal,
 ): Promise<PollSuccess> {
   const providerState = await parseEncryptedProviderState({
     session: args.session,
@@ -823,26 +869,30 @@ async function runClaimedSession(
       ? {}
       : { pollState: providerState.pollState }),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (pollResult.status === "pending" || pollResult.status === "slow_down") {
     const intervalSeconds =
       pollResult.status === "pending"
         ? (pollResult.interval ?? args.session.intervalSeconds)
         : args.session.intervalSeconds + SLOW_DOWN_INCREMENT_SECONDS;
-    const restored = await markClaimAwaiting({
-      writeDb: args.writeDb,
-      sessionId: args.session.id,
-      claimStartedAt: args.claimStartedAt,
-      intervalSeconds,
-      signal: args.signal,
-    });
-    if (!restored) {
-      return await claimNoLongerCurrentResponse({
+    const restored = await markClaimAwaiting(
+      {
         writeDb: args.writeDb,
-        session: args.session,
-        signal: args.signal,
-      });
+        sessionId: args.session.id,
+        claimStartedAt: args.claimStartedAt,
+        intervalSeconds,
+      },
+      signal,
+    );
+    if (!restored) {
+      return await claimNoLongerCurrentResponse(
+        {
+          writeDb: args.writeDb,
+          session: args.session,
+        },
+        signal,
+      );
     }
     return {
       status: 200,
@@ -851,50 +901,59 @@ async function runClaimedSession(
   }
 
   if (pollResult.status !== "complete") {
-    return await markClaimTerminal({
-      writeDb: args.writeDb,
-      session: args.session,
-      claimStartedAt: args.claimStartedAt,
-      result: pollResult,
-      signal: args.signal,
-    });
+    return await markClaimTerminal(
+      {
+        writeDb: args.writeDb,
+        session: args.session,
+        claimStartedAt: args.claimStartedAt,
+        result: pollResult,
+      },
+      signal,
+    );
   }
 
-  return await completeClaimedSession({
-    connectorSlug: args.resolvedMethod.connectorSlug,
-    authMethod: args.resolvedMethod.authMethodId,
-    writeDb: args.writeDb,
-    orgId: args.orgId,
-    userId: args.userId,
-    session: args.session,
-    claimStartedAt: args.claimStartedAt,
-    signal: args.signal,
-    persistConnector: args.persistConnector,
-    result: pollResult,
-  });
+  return await completeClaimedSession(
+    {
+      connectorSlug: args.resolvedMethod.connectorSlug,
+      authMethod: args.resolvedMethod.authMethodId,
+      writeDb: args.writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      session: args.session,
+      claimStartedAt: args.claimStartedAt,
+      persistConnector: args.persistConnector,
+      result: pollResult,
+    },
+    signal,
+  );
 }
 
 async function pollClaimedSession(
   args: PollClaimedSessionArgs,
+  signal: AbortSignal,
 ): Promise<PollSuccess> {
-  const result = await settle(runClaimedSession(args), args.signal);
+  const result = await settle(runClaimedSession(args, signal), signal);
   if (result.ok) {
     return result.value;
   }
 
-  const restored = await markClaimAwaiting({
-    writeDb: args.writeDb,
-    sessionId: args.session.id,
-    claimStartedAt: args.claimStartedAt,
-    intervalSeconds: args.session.intervalSeconds,
-    signal: args.signal,
-  });
-  if (!restored) {
-    return await claimNoLongerCurrentResponse({
+  const restored = await markClaimAwaiting(
+    {
       writeDb: args.writeDb,
-      session: args.session,
-      signal: args.signal,
-    });
+      sessionId: args.session.id,
+      claimStartedAt: args.claimStartedAt,
+      intervalSeconds: args.session.intervalSeconds,
+    },
+    signal,
+  );
+  if (!restored) {
+    return await claimNoLongerCurrentResponse(
+      {
+        writeDb: args.writeDb,
+        session: args.session,
+      },
+      signal,
+    );
   }
   throw result.error;
 }
@@ -1047,15 +1106,17 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     signal: AbortSignal,
   ) => {
     const writeDb = set(writeDb$);
-    const session = await loadOwnedSession({
-      writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorSlug: args.connectorSlug,
-      sessionId: args.sessionId,
-      sessionToken: args.sessionToken,
+    const session = await loadOwnedSession(
+      {
+        writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug: args.connectorSlug,
+        sessionId: args.sessionId,
+        sessionToken: args.sessionToken,
+      },
       signal,
-    });
+    );
     if (!session) {
       return notFound("OAuth device authorization session not found");
     }
@@ -1103,47 +1164,51 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     }
 
     if (now > session.expiresAt) {
-      return await expireSession({ writeDb, session, now, signal });
+      return await expireSession({ writeDb, session, now }, signal);
     }
 
     const claimStartedAt = nowDate();
-    const claimedSession = await claimSession({
-      writeDb,
-      session,
-      claimStartedAt,
+    const claimedSession = await claimSession(
+      {
+        writeDb,
+        session,
+        claimStartedAt,
+      },
       signal,
-    });
+    );
     if (!claimedSession) {
-      return await claimNoLongerCurrentResponse({ writeDb, session, signal });
+      return await claimNoLongerCurrentResponse({ writeDb, session }, signal);
     }
 
-    const response = await pollClaimedSession({
-      ...resolvedClient,
-      writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      session: claimedSession,
-      claimStartedAt,
-      signal,
-      persistConnector: async ({ result }) => {
-        const connectorResult = await set(
-          upsertConnectorTokenConnection$,
-          {
-            orgId: args.orgId,
-            userId: args.userId,
-            runtimeMethod: resolvedMethod.runtimeMethod,
-            snapshot: resolvedMethod.snapshot,
-            outputs: result.token.outputs,
-            userInfo: result.token.userInfo,
-            oauthScopes: result.token.scopes,
-            expiresIn: result.token.expiresIn,
-            extraConnectorSecrets: result.token.extraConnectorSecrets,
-          },
-          signal,
-        );
-        return connectorResult.connector;
+    const response = await pollClaimedSession(
+      {
+        ...resolvedClient,
+        writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
+        session: claimedSession,
+        claimStartedAt,
+        persistConnector: async ({ result }) => {
+          const connectorResult = await set(
+            upsertConnectorTokenConnection$,
+            {
+              orgId: args.orgId,
+              userId: args.userId,
+              runtimeMethod: resolvedMethod.runtimeMethod,
+              snapshot: resolvedMethod.snapshot,
+              outputs: result.token.outputs,
+              userInfo: result.token.userInfo,
+              oauthScopes: result.token.scopes,
+              expiresIn: result.token.expiresIn,
+              extraConnectorSecrets: result.token.extraConnectorSecrets,
+            },
+            signal,
+          );
+          return connectorResult.connector;
+        },
       },
-    });
+      signal,
+    );
     if (response.body.status !== "complete") {
       return response;
     }

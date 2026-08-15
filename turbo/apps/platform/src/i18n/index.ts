@@ -10,8 +10,9 @@ import {
 
 export const i18n = createInstance().use(initReactI18next);
 
+// bootstrap$ awaits initializeI18n before rendering production callers.
 export function currentLocale(): string {
-  return i18n.resolvedLanguage ?? i18n.language ?? DEFAULT_LOCALE;
+  return i18n.resolvedLanguage ?? i18n.language;
 }
 
 export async function initializeI18n(

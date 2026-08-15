@@ -1,5 +1,5 @@
 /**
- * Tests for zero connector connect command
+ * Tests for okou connector connect command
  *
  * Tests command-level behavior via parseAsync():
  * - Entry point: command.parseAsync()
@@ -34,7 +34,7 @@ function connectorResponse(connectorSlug: string, authMethod = "api-token") {
   };
 }
 
-describe("zero connector connect command", () => {
+describe("okou connector connect command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -46,7 +46,7 @@ describe("zero connector connect command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -60,7 +60,7 @@ describe("zero connector connect command", () => {
     let receivedBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
           receivedBody = await request.json();
           return HttpResponse.json(
@@ -92,7 +92,7 @@ describe("zero connector connect command", () => {
     });
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Zendesk connected");
-    expect(output).toContain("zero connector status zendesk");
+    expect(output).toContain("okou connector status zendesk");
     expect(output).not.toContain("secret-token");
   });
 
@@ -100,7 +100,7 @@ describe("zero connector connect command", () => {
     let receivedBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
           receivedBody = await request.json();
           return HttpResponse.json(
@@ -142,7 +142,7 @@ describe("zero connector connect command", () => {
         }),
       ]),
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
           receivedType = String(params.connectorSlug);
           receivedBody = await request.json();
@@ -171,7 +171,7 @@ describe("zero connector connect command", () => {
   it("prints JSON output when requested", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         ({ params }) => {
           return HttpResponse.json(
             connectorResponse(String(params.connectorSlug)),
@@ -205,14 +205,14 @@ describe("zero connector connect command", () => {
     expect(errorOutput).toContain(
       "At least one --value NAME=VALUE is required",
     );
-    expect(errorOutput).toContain("zero connector connect zendesk");
+    expect(errorOutput).toContain("okou connector connect zendesk");
   });
 
   it("fails before the request for malformed values", async () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("openai"));
@@ -234,7 +234,7 @@ describe("zero connector connect command", () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("github"));
@@ -266,7 +266,7 @@ describe("zero connector connect command", () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("stripe"));
@@ -297,7 +297,7 @@ describe("zero connector connect command", () => {
   it("surfaces API validation errors without printing secret values", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           return HttpResponse.json(
             {
@@ -330,7 +330,7 @@ describe("zero connector connect command", () => {
   it("surfaces unavailable connector errors without printing secret values", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           return HttpResponse.json(
             {

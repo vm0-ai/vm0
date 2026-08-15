@@ -7,9 +7,10 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   type TelegramBot,
   zeroIntegrationsTelegramContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import {
   deleteTelegramFixture$,
   seedTelegramInstallation$,
@@ -18,6 +19,7 @@ import {
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { server } from "../../../mocks/server";
+import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
 
 const context = testContext();
 const store = createStore();
@@ -71,7 +73,9 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
   });
 
   function client() {
-    return setupApp({ context })(zeroIntegrationsTelegramContract);
+    return setupApp({ context, routes: zeroIntegrationsTelegramRoutes })(
+      zeroIntegrationsTelegramContract,
+    );
   }
 
   function newId(prefix: string): string {

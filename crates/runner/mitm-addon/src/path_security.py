@@ -10,10 +10,15 @@ _DOT_SEGMENTS = {".", ".."}
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _MAX_PERCENT_DECODE_PASSES = 5
 _PERCENT_ESCAPE_LENGTH = 3
+# Match the addon's existing 64 KiB request-work scale. Character count bounds
+# Python string processing without first scanning and allocating encoded bytes.
+MAX_PATH_VALIDATION_CHARACTERS = 64 * 1024
 
 
 def has_unsafe_path(path: str) -> bool:
-    """Return True when a URL path contains or may hide unsafe path syntax."""
+    """Return True when a URL path exceeds the validation budget or may hide unsafe syntax."""
+    if len(path) > MAX_PATH_VALIDATION_CHARACTERS:
+        return True
     if "\\" in path:
         return True
     raw_segments = path.split("/")

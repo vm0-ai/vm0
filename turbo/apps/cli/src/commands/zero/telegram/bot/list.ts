@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listTelegramBots } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
-import type { TelegramBotListItem } from "@vm0/api-contracts/contracts/integrations";
+import { listTelegramBots } from "../../../../lib/api/domains/integrations-telegram";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
+import type { TelegramBotListItem } from "@okouai/api-contracts/contracts/integrations";
 
 function usernameLabel(bot: TelegramBotListItem): string {
   if (!bot.username) return "-";
@@ -23,7 +23,7 @@ export const listCommand = new Command()
     "after",
     `
 Examples:
-  zero telegram bot list
+  okou telegram bot list
 
 Notes:
   - Use this to find the --bot-id value before sending Telegram messages.`,

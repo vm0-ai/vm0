@@ -78,7 +78,6 @@ const config: Config = {
           foreground: "hsl(var(--sidebar-foreground))",
           primary: "hsl(var(--sidebar-primary))",
           "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
-          accent: "hsl(var(--sidebar-accent))",
         },
         "semantic-foreground": "hsl(var(--semantic-foreground))",
         "on-filled": "hsl(var(--on-filled))",

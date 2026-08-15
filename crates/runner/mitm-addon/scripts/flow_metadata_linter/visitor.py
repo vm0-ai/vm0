@@ -21,6 +21,7 @@ from flow_metadata_linter.ast_helpers import (
     _static_first_call_argument_nodes,
     _static_truth_value,
     _target_names,
+    _target_requires_unpacking,
     _truth_test_may_raise,
     _type_alias_target_names,
     _type_alias_value,
@@ -141,11 +142,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
       a failing class body projects away class-bound names before propagating.
       Function and lambda bodies install boundaries, context managers retain paths
       they may suppress, and ``finally`` transfers normal and exceptional states.
-      Modeled implicit failures use one operation predicate, with ordered recording
-      for short-circuit, comparison, assertion, loop, and comprehension evaluation.
-      Deferred annotations, type parameters, and type-alias values retain the
-      linter's existing syntactic alias and key behavior without feeding runtime
-      exception collectors.
+      Expression-level modeled implicit failures use one operation predicate, with
+      ordered recording for short-circuit, comparison, assertion, loop, and
+      comprehension evaluation. Decorated definitions record their application-call
+      state after definition-time evaluation and before name binding. Deferred
+      annotations, type parameters, and type-alias values retain the linter's existing
+      syntactic alias and key behavior without feeding runtime exception collectors.
     * ``_class_nested_scope_alias_scopes`` holds the surrounding non-class alias
       base while a class body is active. Nested classes, function and lambda bodies,
       and implicit comprehension scopes use that base because they do not close over
@@ -172,7 +174,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
       backedges for the nearest loop, so the next iteration or truth test records
       the state that exists after the loop body. Assignment targets are visited in
       binding order so a later fallible attribute or subscript target observes
-      earlier name bindings.
+      earlier name bindings. Context-manager sequence targets record their outer
+      unpack before that traversal; because those bindings only remove metadata
+      aliases, the pre-binding state covers nested partial-binding failures.
     """
 
     def __init__(self, path: Path) -> None:
@@ -210,7 +214,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit(self, node: ast.AST) -> None:
         self._record_metadata_merge_key_violations(node)
         super().visit(node)
-        if _is_modeled_implicit_exception_operation(node) and not isinstance(node, ast.Compare):
+        if _is_modeled_implicit_exception_operation(node) and not isinstance(
+            node, (ast.Compare, ast.FormattedValue)
+        ):
             self._record_implicit_exception_aliases()
 
     def _is_metadata_reference(self, node: ast.AST) -> bool:
@@ -303,6 +309,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             return
         self._metadata_key_checked_node_ids.add(node_id)
         self._add_violations(violations)
+
+    def _record_metadata_subscript_key_violations(self, node: ast.Subscript) -> None:
+        if self._is_metadata_alias_value(node.value):
+            self._add_violations(_metadata_key_expression_violations(self.path, node.slice))
 
     def _metadata_default_argument_names(self, args: ast.arguments) -> set[str]:
         metadata_defaults: set[str] = set()
@@ -405,6 +415,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if isinstance(node, ast.Subscript):
             self._record_metadata_merge_key_violations(node.value)
             self._record_metadata_merge_key_violations(node.slice)
+            self._record_metadata_subscript_key_violations(node)
             self.visit(node.value)
             self.visit(node.slice)
 
@@ -559,6 +570,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._exception_alias_scopes.append(_ExceptionAliasState())
         self._visit_scoped_body(node.body, shadowed_names, metadata_defaults, body_base_aliases)
         self._exception_alias_scopes.pop()
+        if node.decorator_list:
+            self._record_implicit_exception_aliases()
         self._metadata_aliases.discard(node.name)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -616,6 +629,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             class_failure_aliases.difference_update(outer_visible_names)
             class_failure_aliases.update(class_exception_state.aliases & outer_visible_names)
             self._record_exception_aliases(class_failure_aliases)
+        if node.decorator_list:
+            self._record_implicit_exception_aliases()
         self._metadata_aliases.discard(node.name)
 
     def visit_TypeAlias(self, node: ast.AST) -> None:
@@ -800,7 +815,13 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def visit_FormattedValue(self, node: ast.FormattedValue) -> None:
         self._record_metadata_merge_key_violations(node.value)
-        self.generic_visit(node)
+        self.visit(node.value)
+        # Conversion precedes the optional spec; final formatting always follows both.
+        if node.conversion != -1:
+            self._record_implicit_exception_aliases()
+        if node.format_spec is not None:
+            self.visit(node.format_spec)
+        self._record_implicit_exception_aliases()
 
     def visit_Slice(self, node: ast.Slice) -> None:
         self._record_metadata_merge_key_violations(node.lower)
@@ -811,8 +832,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit_Subscript(self, node: ast.Subscript) -> None:
         self._record_metadata_merge_key_violations(node.value)
         self._record_metadata_merge_key_violations(node.slice)
-        if self._is_metadata_alias_value(node.value):
-            self._add_violations(_metadata_key_expression_violations(self.path, node.slice))
+        self._record_metadata_subscript_key_violations(node)
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -1039,6 +1059,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         exception_state = _ExceptionAliasState()
         self._exception_alias_scopes.append(exception_state)
         if item.optional_vars is not None:
+            if _target_requires_unpacking(item.optional_vars):
+                self._record_implicit_exception_aliases()
             self._visit_assignment_target(item.optional_vars, direct_value_is_metadata_alias=False)
         protected_region_falls_through = (
             self._visit_with_items(remaining_items, body)

@@ -2,13 +2,13 @@ import type { z } from "zod";
 import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
-} from "@vm0/api-contracts/contracts/webhooks";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { blobs } from "@vm0/db/schema/blob";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { conversations } from "@vm0/db/schema/conversation";
-import type { PersistedStorageMount } from "@vm0/db/types";
+} from "@okouai/api-contracts/contracts/webhooks";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { blobs } from "@okouai/db/schema/blob";
+import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { conversations } from "@okouai/db/schema/conversation";
+import type { PersistedStorageMount } from "@okouai/db/types";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 
@@ -170,13 +170,15 @@ async function loadSessionHistoryBlobMetadata(
   return blob;
 }
 
-async function ensureSessionHistoryBlobMetadata(args: {
-  readonly db: Db;
-  readonly body: PrepareHistoryBody;
-  readonly requestedEncoding: string;
-  readonly signal: AbortSignal;
-}): Promise<PreparedSessionHistoryBlob> {
-  const { db, body, requestedEncoding, signal } = args;
+async function ensureSessionHistoryBlobMetadata(
+  args: {
+    readonly db: Db;
+    readonly body: PrepareHistoryBody;
+    readonly requestedEncoding: string;
+  },
+  signal: AbortSignal,
+): Promise<PreparedSessionHistoryBlob> {
+  const { db, body, requestedEncoding } = args;
   const [insertedBlob] = await db
     .insert(blobs)
     .values({
@@ -265,12 +267,14 @@ export const prepareCheckpointHistoryUpload$ = command(
         "Identity session history encodedSize must match rawSize",
       );
     }
-    const { blob, insertedNewBlob } = await ensureSessionHistoryBlobMetadata({
-      db,
-      body: input.body,
-      requestedEncoding,
+    const { blob, insertedNewBlob } = await ensureSessionHistoryBlobMetadata(
+      {
+        db,
+        body: input.body,
+        requestedEncoding,
+      },
       signal,
-    });
+    );
 
     if (blob.rawSize !== input.body.rawSize) {
       return badRequestMessage(
@@ -363,21 +367,32 @@ export const createAgentCheckpoint$ = command(
       runStorageMounts: run.storageMounts,
       artifactSnapshots: input.body.artifactSnapshots,
     });
+    const historyHash = input.body.cliAgentSessionHistoryHash;
 
-    await db
-      .insert(blobs)
-      .values({
-        hash: input.body.cliAgentSessionHistoryHash,
-        rawSize: 0,
-        encoding: SESSION_HISTORY_ENCODING_IDENTITY,
-        encodedSize: 0,
-        refCount: 1,
-      })
-      .onConflictDoUpdate({
-        target: blobs.hash,
-        set: { refCount: sql`${blobs.refCount} + 1` },
-      });
-    signal.throwIfAborted();
+    if (historyHash !== undefined) {
+      await db
+        .insert(blobs)
+        .values({
+          hash: historyHash,
+          rawSize: 0,
+          encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+          encodedSize: 0,
+          refCount: 1,
+        })
+        .onConflictDoUpdate({
+          target: blobs.hash,
+          set: { refCount: sql`${blobs.refCount} + 1` },
+        });
+      signal.throwIfAborted();
+    }
+
+    const historyFields =
+      historyHash === undefined
+        ? {
+            cliAgentSessionHistory: null,
+            cliAgentSessionHistoryHash: null,
+          }
+        : { cliAgentSessionHistoryHash: historyHash };
 
     const [conversation] = await db
       .insert(conversations)
@@ -385,14 +400,14 @@ export const createAgentCheckpoint$ = command(
         runId: input.body.runId,
         cliAgentType: input.body.cliAgentType,
         cliAgentSessionId: input.body.cliAgentSessionId,
-        cliAgentSessionHistoryHash: input.body.cliAgentSessionHistoryHash,
+        ...historyFields,
       })
       .onConflictDoUpdate({
         target: conversations.runId,
         set: {
           cliAgentType: input.body.cliAgentType,
           cliAgentSessionId: input.body.cliAgentSessionId,
-          cliAgentSessionHistoryHash: input.body.cliAgentSessionHistoryHash,
+          ...historyFields,
         },
       })
       .returning({ id: conversations.id });

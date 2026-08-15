@@ -2,7 +2,7 @@ import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { IconLoader2, IconPlus, IconWand } from "@tabler/icons-react";
+import { Loader2, Plus, Wand } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -13,19 +13,18 @@ import {
   DialogTitle,
   Button,
   Input,
+  SegmentControl,
+  SegmentControlItem,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Tabs,
-  TabsList,
-  TabsTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { createSubagent$ } from "../../signals/zero-page/zero-agents.ts";
 import {
   defaultAgentId$,
@@ -36,8 +35,8 @@ import {
   orgMembers$,
   type OrgMember,
 } from "../../signals/external/org-members.ts";
-import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.ts";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { onDomEventFn } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import {
@@ -91,6 +90,7 @@ export function AgentsPageTabs() {
   const atPublicLimit = publicAgentCount >= MAX_PUBLIC_AGENTS;
 
   const openCreateDialog = (target: Visibility) => {
+    resetDialog();
     setVisibility(target);
     setDialogOpen(true);
   };
@@ -102,7 +102,6 @@ export function AgentsPageTabs() {
     }
     await createSubagentFn(trimmed, avatarUrl, visibility, pageSignal);
     setDialogOpen(false);
-    resetDialog();
     toast.success(
       t(
         ($) => {
@@ -205,33 +204,24 @@ function AgentTabsView({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <Tabs
+        <SegmentControl
+          aria-label={t(($) => {
+            return $.list.create.visibilityLabel;
+          })}
           value={activeTab}
-          onValueChange={(value) => {
-            if (value === "public" || value === "private") {
-              onTabChange(value);
-            }
-          }}
+          onValueChange={onTabChange}
         >
-          <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-            <TabsTrigger
-              value="public"
-              className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
-            >
-              {t(($) => {
-                return $.list.tabs.public;
-              })}
-            </TabsTrigger>
-            <TabsTrigger
-              value="private"
-              className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
-            >
-              {t(($) => {
-                return $.list.tabs.private;
-              })}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+          <SegmentControlItem value="public">
+            {t(($) => {
+              return $.list.tabs.public;
+            })}
+          </SegmentControlItem>
+          <SegmentControlItem value="private">
+            {t(($) => {
+              return $.list.tabs.private;
+            })}
+          </SegmentControlItem>
+        </SegmentControl>
         <Button
           variant="outline"
           size="sm"
@@ -241,7 +231,7 @@ function AgentTabsView({
             return onCreate(activeTab);
           }}
         >
-          <IconPlus size={14} stroke={2} />
+          <Plus size={14} />
           {t(($) => {
             return $.list.actions.new;
           })}
@@ -371,20 +361,17 @@ function CreateTeammateDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={creating ? undefined : onOpenChange}>
-      {/* Render content only when open so inner state resets each time */}
-      {open && (
-        <CreateTeammateDialogContent
-          newName={newName}
-          onNameChange={onNameChange}
-          onConfirm={onConfirm}
-          onCancel={() => {
-            return onOpenChange(false);
-          }}
-          creating={creating}
-          visibility={visibility}
-          onVisibilityChange={onVisibilityChange}
-        />
-      )}
+      <CreateTeammateDialogContent
+        newName={newName}
+        onNameChange={onNameChange}
+        onConfirm={onConfirm}
+        onCancel={() => {
+          return onOpenChange(false);
+        }}
+        creating={creating}
+        visibility={visibility}
+        onVisibilityChange={onVisibilityChange}
+      />
     </Dialog>
   );
 }
@@ -422,7 +409,7 @@ function CreateAgentAvatarPreview() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
-                      <IconWand size={10} stroke={1.5} />
+                      <Wand size={10} />
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
@@ -619,7 +606,7 @@ function CreateTeammateDialogContent({
         >
           {creating ? (
             <span className="inline-flex items-center gap-1.5">
-              <IconLoader2 size={14} className="animate-spin" />
+              <Loader2 size={14} className="animate-spin" />
               {t(($) => {
                 return $.list.create.creating;
               })}
@@ -724,7 +711,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
           }))
     : "";
   return (
-    <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
+    <Card className="zero-card cursor-pointer flex flex-col hover:bg-state-hover transition-colors h-full">
       <CardContent className="flex flex-1 flex-col gap-3 px-5 py-4">
         <div className="flex items-center gap-3">
           <span className="relative h-10 w-10 shrink-0">

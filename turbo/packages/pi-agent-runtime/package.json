@@ -1,0 +1,37 @@
+{
+  "name": "@okouai/pi-agent-runtime",
+  "version": "1.5.3",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./src/node.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "build": "tsc -p tsconfig.build.json",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.84.1",
+    "@earendil-works/pi-coding-agent": "0.84.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "oxlint": "^1.75.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

@@ -20,12 +20,14 @@ export const slockProvider: DeviceAuthConnectorAuthProvider<"slock"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       return oauthRefreshResultToProviderResult(
-        await refreshSlockToken({
-          refreshToken: args.inputs.refreshToken,
-          signal: args.signal,
-        }),
+        await refreshSlockToken(
+          {
+            refreshToken: args.inputs.refreshToken,
+          },
+          signal,
+        ),
       );
     },
   },

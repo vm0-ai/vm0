@@ -15,9 +15,9 @@ export const zeroTeamsCommand = new Command()
     "after",
     `
 Examples:
-  Send a message:    zero teams message send -c <conversation-id> -t "Hello!"
-  DM a user:         zero teams message send -u me -t "Hello!"
-  Reply in a thread: zero teams message send -c <conversation-id> --thread <activity-id> -t "reply"
-  Upload a file:     zero teams upload-file -f /tmp/report.pdf -c <conversation-id>
-  Download a file:   zero teams download-file <file-id> -o /tmp/out.png`,
+  Send a message:    okou teams message send -c <conversation-id> -t "Hello!"
+  DM a user:         okou teams message send -u me -t "Hello!"
+  Reply in a thread: okou teams message send -c <conversation-id> --thread <activity-id> -t "reply"
+  Upload a file:     okou teams upload-file -f /tmp/report.pdf -c <conversation-id>
+  Download a file:   okou teams download-file <file-id> -o /tmp/out.png`,
   );

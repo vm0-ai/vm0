@@ -7,6 +7,8 @@ import {
   foldLatestChatUsageByRunId,
   foldPendingChatQueueEvents,
   foldRunnableChatQueueEvents,
+  isChatEventContentTextType,
+  isChatEventUserMessageTextType,
   isPendingChatQueueEvent,
   isValidChatEventRevocation,
   revokedChatEventIds,
@@ -16,7 +18,9 @@ import {
   chatEventResponse,
   chatEventSchema,
   chatEventsContract,
-  chatThreadEventsContract,
+  parseChatFollowupsContent,
+  resolveChatEventRecommendedFollowups,
+  serializeChatFollowupsContent,
   type ChatEvent,
 } from "../chat-threads";
 
@@ -53,7 +57,6 @@ const chatEvents = [
         },
       ],
     },
-    triggerSource: "workflow-event",
     createdAt: "2026-07-23T00:00:01.000Z",
   },
   {
@@ -69,8 +72,21 @@ const chatEvents = [
     createdAt: "2026-07-23T00:00:02.000Z",
   },
   {
-    id: "input-rejected",
+    id: "input-budget",
     seqId: 4,
+    threadId: THREAD_ID,
+    eventType: "input.budget",
+    content: null,
+    runId: "run-1",
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text: "Five minutes remain" }],
+    },
+    createdAt: "2026-07-23T00:00:03.000Z",
+  },
+  {
+    id: "input-rejected",
+    seqId: 5,
     threadId: THREAD_ID,
     eventType: "input.rejected",
     content: null,
@@ -86,12 +102,11 @@ const chatEvents = [
       ],
     },
     error: "Insufficient credits",
-    triggerSource: "workflow-event",
     createdAt: CREATED_AT,
   },
   {
     id: "output-message",
-    seqId: 5,
+    seqId: 6,
     threadId: THREAD_ID,
     eventType: "output.message",
     content: "Done",
@@ -99,7 +114,7 @@ const chatEvents = [
   },
   {
     id: "output-error",
-    seqId: 6,
+    seqId: 7,
     threadId: THREAD_ID,
     eventType: "output.error",
     content: null,
@@ -108,7 +123,7 @@ const chatEvents = [
   },
   {
     id: "output-thinking",
-    seqId: 7,
+    seqId: 8,
     threadId: THREAD_ID,
     eventType: "output.thinking",
     content: null,
@@ -117,16 +132,18 @@ const chatEvents = [
   },
   {
     id: "output-followups",
-    seqId: 8,
+    seqId: 9,
     threadId: THREAD_ID,
     eventType: "output.followups",
-    content: null,
-    recommendedFollowups: [{ prompt: "Continue", kind: "talk" }],
+    content: JSON.stringify({
+      version: 1,
+      followups: [{ prompt: "Continue", kind: "talk" }],
+    }),
     createdAt: CREATED_AT,
   },
   {
     id: "run-queued",
-    seqId: 9,
+    seqId: 10,
     threadId: THREAD_ID,
     eventType: "run.queued",
     runId: "run-1",
@@ -135,7 +152,7 @@ const chatEvents = [
   },
   {
     id: "run-dequeued",
-    seqId: 10,
+    seqId: 11,
     threadId: THREAD_ID,
     eventType: "run.dequeued",
     runId: "run-1",
@@ -145,7 +162,7 @@ const chatEvents = [
   },
   {
     id: "run-completed",
-    seqId: 11,
+    seqId: 12,
     threadId: THREAD_ID,
     eventType: "run.completed",
     runId: "run-1",
@@ -155,7 +172,7 @@ const chatEvents = [
   },
   {
     id: "run-failed",
-    seqId: 12,
+    seqId: 13,
     threadId: THREAD_ID,
     eventType: "run.failed",
     runId: "run-2",
@@ -165,7 +182,7 @@ const chatEvents = [
   },
   {
     id: "run-cancelled",
-    seqId: 13,
+    seqId: 14,
     threadId: THREAD_ID,
     eventType: "run.cancelled",
     runId: "run-3",
@@ -175,7 +192,7 @@ const chatEvents = [
   },
   {
     id: "control-interrupt",
-    seqId: 14,
+    seqId: 15,
     threadId: THREAD_ID,
     eventType: "control.interrupt",
     content: null,
@@ -184,7 +201,7 @@ const chatEvents = [
   },
   {
     id: "control-revoke",
-    seqId: 15,
+    seqId: 16,
     threadId: THREAD_ID,
     eventType: "control.revoke",
     content: null,
@@ -192,37 +209,40 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
-    id: "browser-started",
-    seqId: 16,
-    threadId: THREAD_ID,
-    eventType: "browser.started",
-    content: null,
-    createdAt: CREATED_AT,
-  },
-  {
-    id: "browser-stopped",
+    id: "browser-open",
     seqId: 17,
     threadId: THREAD_ID,
-    eventType: "browser.stopped",
+    eventType: "browser.open",
     content: null,
     createdAt: CREATED_AT,
   },
   {
-    id: "goal-changed",
+    id: "browser-close",
     seqId: 18,
     threadId: THREAD_ID,
-    eventType: "goal.changed",
+    eventType: "browser.close",
     content: null,
-    goalEvent: {
-      type: "state",
-      status: "active",
-      objectiveBrief: "Ship the refactor",
-    },
+    createdAt: CREATED_AT,
+  },
+  {
+    id: "goal-open",
+    seqId: 19,
+    threadId: THREAD_ID,
+    eventType: "goal.open",
+    content: "Ship the refactor",
+    createdAt: CREATED_AT,
+  },
+  {
+    id: "goal-close",
+    seqId: 20,
+    threadId: THREAD_ID,
+    eventType: "goal.close",
+    content: null,
     createdAt: CREATED_AT,
   },
   {
     id: "usage-recorded",
-    seqId: 19,
+    seqId: 21,
     threadId: THREAD_ID,
     eventType: "usage.recorded",
     runId: "run-1",
@@ -309,6 +329,12 @@ describe("ChatEvent catalog", () => {
         encryptedParams: "must-stay-server-side",
       }).success,
     ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({
+        ...automation,
+        triggerSource: "automation-event",
+      }).success,
+    ).toBe(false);
     const goal = chatEvents[2];
     expect(
       chatEventSchema.safeParse({
@@ -328,15 +354,53 @@ describe("ChatEvent catalog", () => {
         callbackSecret: "must-stay-server-side",
       }).success,
     ).toBe(false);
-    const browserStarted = chatEvents.find((event) => {
-      return event.eventType === "browser.started";
+    const browserOpen = chatEvents.find((event) => {
+      return event.eventType === "browser.open";
     });
     expect(
       chatEventSchema.safeParse({
-        ...browserStarted,
+        ...browserOpen,
         browserId: "must-not-exist",
       }).success,
     ).toBe(false);
+  });
+
+  it("enforces payload-free goal markers with canonical titles", () => {
+    const open = chatEvents.find((event) => {
+      return event.eventType === "goal.open";
+    });
+    const close = chatEvents.find((event) => {
+      return event.eventType === "goal.close";
+    });
+    if (!open || !close) {
+      throw new Error("Missing goal marker fixtures");
+    }
+
+    expect(chatEventSchema.safeParse({ ...open, content: "" }).success).toBe(
+      false,
+    );
+    expect(
+      chatEventSchema.safeParse({ ...open, content: " untrimmed " }).success,
+    ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({ ...close, content: "closed" }).success,
+    ).toBe(false);
+  });
+
+  it("classifies only conversation-bearing fields as text", () => {
+    expect(
+      CHAT_EVENT_TYPES.filter(isChatEventUserMessageTextType),
+    ).toStrictEqual(["input.prompt", "input.rejected"]);
+    expect(CHAT_EVENT_TYPES.filter(isChatEventContentTextType)).toStrictEqual([
+      "output.message",
+      "output.error",
+      "run.queued",
+      "run.completed",
+      "run.failed",
+      "run.cancelled",
+    ]);
+    expect(isChatEventContentTextType("output.followups")).toBe(false);
+    expect(isChatEventContentTextType("goal.open")).toBe(false);
   });
 
   it("emits canonical responses for every registered leaf", () => {
@@ -346,20 +410,6 @@ describe("ChatEvent catalog", () => {
       expect(chatEventSchema.parse(response)).toStrictEqual(response);
     }
   });
-
-  it("rejects a response that only carries the retired rich-input field", () => {
-    const userMessage = {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: "Run the task" }],
-    };
-    expect(
-      chatEventSchema.safeParse({
-        ...chatEventResponse(chatEvents[0]!),
-        userMessage: undefined,
-        structuredPrompt: userMessage,
-      }).success,
-    ).toBe(false);
-  });
 });
 
 describe("ChatEvent revocation rules", () => {
@@ -368,6 +418,7 @@ describe("ChatEvent revocation rules", () => {
     "input.prompt->input.automation",
     "input.prompt->input.goal",
     "input.prompt->output.followups",
+    "input.budget->input.budget",
     "input.rejected->input.prompt",
     "input.rejected->input.automation",
     "input.rejected->input.goal",
@@ -375,6 +426,7 @@ describe("ChatEvent revocation rules", () => {
     "control.revoke->input.prompt",
     "control.revoke->input.automation",
     "control.revoke->input.goal",
+    "control.revoke->input.budget",
     "control.revoke->input.rejected",
     "run.dequeued->run.queued",
   ]);
@@ -387,6 +439,56 @@ describe("ChatEvent revocation rules", () => {
         );
       }
     }
+  });
+});
+
+describe("output.followups content", () => {
+  const followups = [
+    {
+      prompt: "Generate a launch page",
+      kind: "generate" as const,
+      generationType: "website" as const,
+    },
+  ];
+  const content = JSON.stringify({ version: 1, followups });
+
+  it("strictly parses the version-1 document without losing item fields", () => {
+    const event = chatEvents.find((candidate) => {
+      return candidate.eventType === "output.followups";
+    });
+    if (!event) {
+      throw new Error("Missing followups fixture");
+    }
+    expect(chatEventSchema.parse({ ...event, content })).toStrictEqual({
+      ...event,
+      content,
+    });
+    expect(serializeChatFollowupsContent(followups)).toBe(content);
+    expect(parseChatFollowupsContent(content)).toStrictEqual({
+      version: 1,
+      followups,
+    });
+    expect(
+      parseChatFollowupsContent(JSON.stringify({ version: 2, followups })),
+    ).toBeNull();
+    expect(
+      parseChatFollowupsContent(
+        JSON.stringify({
+          version: 1,
+          followups: [{ ...followups[0], unsupported: true }],
+        }),
+      ),
+    ).toBeNull();
+    expect(parseChatFollowupsContent("not json")).toBeNull();
+  });
+
+  it("reads only valid v1 content and fails safely otherwise", () => {
+    expect(resolveChatEventRecommendedFollowups({ content })).toStrictEqual(
+      followups,
+    );
+    expect(
+      resolveChatEventRecommendedFollowups({ content: "not json" }),
+    ).toStrictEqual([]);
   });
 });
 
@@ -410,28 +512,51 @@ describe("ChatEvent folds", () => {
     );
   });
 
-  it("folds only goal lifecycle events into active goal state", () => {
+  it("folds only canonical goal markers", () => {
     const queued = chatEvents.find((event) => {
       return event.eventType === "input.goal";
     });
-    const active = chatEvents.find((event) => {
-      return event.eventType === "goal.changed";
+    const open = chatEvents.find((event) => {
+      return event.eventType === "goal.open";
     });
-    if (!queued || !active) {
+    const close = chatEvents.find((event) => {
+      return event.eventType === "goal.close";
+    });
+    if (!queued || !open || !close) {
       throw new Error("Missing goal fold fixture");
     }
-    const paused = {
-      ...active,
-      id: "goal-paused",
-      goalEvent: { type: "state", status: "paused" } as const,
-    };
 
     expect(foldActiveChatGoalObjective([queued])).toBeNull();
-    expect(foldActiveChatGoalObjective([active])).toBe("Ship the refactor");
-    expect(foldActiveChatGoalObjective([active, queued])).toBe(
+    expect(foldActiveChatGoalObjective([open])).toBe("Ship the refactor");
+    expect(foldActiveChatGoalObjective([open, queued])).toBe(
       "Ship the refactor",
     );
-    expect(foldActiveChatGoalObjective([active, queued, paused])).toBeNull();
+    expect(foldActiveChatGoalObjective([open, queued, close])).toBeNull();
+  });
+
+  it("uses sequence order when a close is followed by a reopen", () => {
+    const close = {
+      id: "goal-close-later",
+      eventType: "goal.close" as const,
+      content: null,
+      seqId: 30,
+    };
+    const reopened = {
+      id: "goal-reopened",
+      eventType: "goal.open" as const,
+      content: "Reopened objective",
+      seqId: 31,
+    };
+
+    expect(foldActiveChatGoalObjective([reopened, close])).toBe(
+      "Reopened objective",
+    );
+    expect(
+      foldActiveChatGoalObjective([
+        reopened,
+        { ...close, id: "goal-final-close", seqId: 32 },
+      ]),
+    ).toBeNull();
   });
 
   it("keeps the latest settled usage snapshot for each run", () => {
@@ -472,7 +597,7 @@ describe("ChatEvent folds", () => {
     );
   });
 
-  it("folds pending queue events by user priority, original time, and revoke state", () => {
+  it("folds pending queue events by class priority, original time, and revoke state", () => {
     const revoked = revokedChatEventIds(queueFoldFixture);
     expect(isPendingChatQueueEvent(queueFoldFixture[1], revoked)).toBe(true);
     expect(isPendingChatQueueEvent(queueFoldFixture[3], revoked)).toBe(false);
@@ -480,7 +605,7 @@ describe("ChatEvent folds", () => {
       foldPendingChatQueueEvents(queueFoldFixture).map((event) => {
         return event.id;
       }),
-    ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);
+    ).toStrictEqual(["prompt-newer", "goal-oldest", "automation-oldest"]);
   });
 
   it("returns every pending queue event as runnable", () => {
@@ -488,19 +613,13 @@ describe("ChatEvent folds", () => {
       foldRunnableChatQueueEvents(queueFoldFixture).map((event) => {
         return event.id;
       }),
-    ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);
+    ).toStrictEqual(["prompt-newer", "goal-oldest", "automation-oldest"]);
   });
 });
 
 describe("ChatEvent HTTP contracts", () => {
-  it("uses event naming for canonical send and read routes", () => {
-    expect(chatEventsContract.send.path).toBe("/api/zero/chat/events");
-    expect(chatThreadEventsContract.list.path).toBe(
-      "/api/zero/chat-threads/:threadId/events",
-    );
-    expect(chatThreadEventsContract.get.path).toBe(
-      "/api/zero/chat-threads/:threadId/events/:eventId",
-    );
+  it("uses event naming for the canonical send route", () => {
+    expect(chatEventsContract.send.path).toBe("/api/okou/chat/events");
   });
 
   it("uses event ids in canonical write bodies", () => {
@@ -515,5 +634,26 @@ describe("ChatEvent HTTP contracts", () => {
       revokesEventId: "input-prompt",
       clientEventId: "00000000-0000-4000-8000-000000000002",
     });
+  });
+
+  it("accepts only the declared send body fields", () => {
+    const request = {
+      agentId: "agent-1",
+      prompt: "Run the task",
+      threadId: THREAD_ID,
+      userMessage: {
+        version: 1 as const,
+        parts: [{ type: "text" as const, text: "Run the task" }],
+      },
+      hasTextContent: true,
+    };
+
+    expect(chatEventsContract.send.body.safeParse(request).success).toBe(true);
+    expect(
+      chatEventsContract.send.body.safeParse({
+        ...request,
+        unsupportedField: "value",
+      }).success,
+    ).toBe(false);
   });
 });

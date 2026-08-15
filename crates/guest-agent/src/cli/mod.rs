@@ -5,36 +5,41 @@
 //!
 //! - `codex_app_server_events`: Codex app-server notification compatibility mapping.
 //! - `codex_setup`: pre-exec Codex auth/bootstrap.
-//! - `command`: Claude Code and Codex command construction.
+//! - `command`: Claude Code command construction.
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
-//! - `framework`: Claude-vs-Codex behavior switches.
+//! - `claude`: Claude result parsing and tool tracking.
 //! - `termination`: process-group termination FSM.
 //!
-//! `execute_cli` intentionally remains the orchestration owner for process
-//! spawn, stdout JSONL reading, event sender shutdown, heartbeat races, and
-//! child reaping. Branch ordering and deadline reset timing in that control
-//! flow are part of the runtime contract.
+//! `execute_cli` owns the Claude Code subprocess orchestration, while
+//! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle and
+//! Pi uses the same JSONL subprocess lifecycle as Claude Code. Each path retains
+//! ownership of its process, event delivery, heartbeat races, and child
+//! reaping until completion.
 
 mod child_env;
 mod child_exit_notifier;
+mod claude;
 #[doc(hidden)]
 pub mod codex_app_server;
 mod codex_app_server_backend;
 mod codex_app_server_events;
+mod codex_event_delivery;
 mod codex_runtime_config;
 mod codex_setup;
+mod codex_startup;
 mod command;
 mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
-mod framework;
 mod line_reader;
+mod pi_rpc;
 mod process_group;
 mod termination;
 
+pub use claude::{ClaudeResultStatus, ClaudeResultSummary};
 pub use codex_setup::setup_codex_for_config;
-pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
+pub use codex_startup::CodexStartupTiming;
 
 use crate::active_input::{ActiveInputController, ActiveInputWriter, ReplayUserEventAction};
 use crate::constants;
@@ -47,17 +52,16 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
 use event_delivery::{EventDeliveryRuntime, EventDeliverySender};
-use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
     FailureDetailSource, FailureReason,
 };
+use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
 use process_group::ChildProcessGroup;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::io::{Seek, Write};
 use std::path::Path;
 use std::pin::Pin;
 use std::process::{ExitStatus, Stdio};
@@ -73,19 +77,19 @@ use tokio_util::sync::CancellationToken;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
+const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
+const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
-const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
     "analytics.enabled=false",
     "features.plugins=false",
     "features.apps=false",
+    "features.goals=false",
+    "features.image_generation=false",
 ];
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
-/// Maximum retained bytes for one ordinary CLI stdout record before parsing.
-///
-/// LF is excluded. A preceding CR counts before CRLF normalization.
-const STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(serde::Serialize)]
 struct ClaudeUserFrame<'a> {
@@ -120,19 +124,6 @@ fn claude_initial_prompt_frame<'a>(run_id: &str, prompt: &'a str) -> ClaudeUserF
     claude_user_frame(&uuid, prompt)
 }
 
-fn codex_prompt_stdin(prompt: &str) -> Result<Stdio, AgentError> {
-    let mut file = tempfile::tempfile().map_err(|error| {
-        AgentError::Execution(format!("create anonymous Codex prompt stdin: {error}"))
-    })?;
-    file.write_all(prompt.as_bytes()).map_err(|error| {
-        AgentError::Execution(format!("write anonymous Codex prompt stdin: {error}"))
-    })?;
-    file.rewind().map_err(|error| {
-        AgentError::Execution(format!("rewind anonymous Codex prompt stdin: {error}"))
-    })?;
-    Ok(Stdio::from(file))
-}
-
 async fn write_claude_user_frame_to_stdin(
     stdin: &mut tokio::process::ChildStdin,
     uuid: &str,
@@ -160,39 +151,35 @@ async fn write_claude_stream_json_to_stdin(
 
     while let Some(frame) = active_input.next_frame().await {
         active_input.mark_writing(&frame.uuid);
-        write_claude_user_frame_to_stdin(&mut stdin, &frame.uuid, &frame.text).await?;
-        active_input.mark_written(&frame.uuid);
+        if let Err(error) =
+            write_claude_user_frame_to_stdin(&mut stdin, &frame.uuid, &frame.text).await
+        {
+            active_input.mark_backend_failed(&frame);
+            return Err(error);
+        }
+        active_input.mark_backend_accepted_with_replay(&frame)?;
     }
 
     active_input.close_terminal();
     Ok(())
 }
 
-async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
-    match interval {
-        Some(interval) => {
-            interval.tick().await;
-        }
-        None => std::future::pending::<()>().await,
-    }
-}
-
-/// Bounded terminal failure detail extracted from CLI stdout JSONL.
+/// Bounded terminal failure detail extracted from a CLI event stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliFailureDiagnostic {
-    /// Terminal failure message selected from CLI stdout JSONL.
+    /// Terminal failure message selected from a CLI event.
     ///
     /// When produced by [`execute_cli_with_active_input_for_config`], this
     /// message has already been secret-masked, line-break escaped, and bounded
     /// before exposure.
     pub message: String,
 
-    /// High-level source of the stdout-derived failure detail.
+    /// High-level source of the event-derived failure detail.
     ///
     /// Values produced by [`execute_cli_with_active_input_for_config`] use
     /// `ClaudeResult` for Claude Code terminal result events and `CodexJsonl`
-    /// for Codex JSONL failure events. The final run diagnostic may still
-    /// prefer stderr when this stdout message is generic.
+    /// for Codex compatibility JSONL failure events. The final run diagnostic
+    /// may still prefer stderr when this event message is generic.
     pub source: FailureDetailSource,
 
     /// Optional structured failure reason parsed from supported CLI payloads.
@@ -212,7 +199,7 @@ pub struct CliFailureDiagnostic {
 pub struct CliExecutionResult {
     /// Terminal outcome code for the configured CLI backend.
     ///
-    /// For ordinary CLI execution, this is the CLI process exit code. On Unix,
+    /// For Claude Code execution, this is the CLI process exit code. On Unix,
     /// signal termination is mapped to `128 + signal`, matching shell
     /// convention, so SIGKILL is reported as `137`.
     ///
@@ -261,12 +248,12 @@ pub struct CliExecutionResult {
     /// drained stdout may contain another result event after cleanup starts.
     pub post_result_cleanup_result: Option<ClaudeResultSummary>,
 
-    /// Best-effort, secret-masked terminal failure diagnostic parsed from CLI
-    /// stdout JSONL.
+    /// Best-effort, secret-masked terminal failure diagnostic parsed from the
+    /// framework event stream.
     ///
-    /// Some frameworks report terminal failures as JSONL events on stdout, not
-    /// stderr. Keeping the diagnostic here lets the guest-agent surface the
-    /// actual failure reason in its final run error.
+    /// Frameworks can report terminal failures as structured events rather
+    /// than stderr. Keeping the diagnostic here lets the guest-agent surface
+    /// the actual failure reason in its final run error.
     pub failure_diagnostic: Option<CliFailureDiagnostic>,
 
     /// Guest-agent control-path error that caused the CLI process group to be
@@ -276,8 +263,13 @@ pub struct CliExecutionResult {
     /// Structured attribution for guest-agent initiated CLI process-group
     /// termination.
     pub cli_termination: Option<CliTerminationDiagnostic>,
+
+    /// Backend-accepted delivery identities settled or recoverable at completion.
+    pub active_input_delivery_ids: Vec<String>,
 }
 
+/// How top-level guest-agent handling should settle a finished CLI execution.
+///
 /// Heartbeat completion signal observed by CLI execution.
 ///
 /// The top-level guest-agent owns the heartbeat task handle so shutdown can
@@ -330,7 +322,6 @@ pub(super) struct CliRuntimeConfig<'a> {
     use_mock_claude: bool,
     mock_claude_path: Cow<'a, str>,
     use_mock_codex: bool,
-    use_codex_app_server_backend: bool,
     mock_codex_path: Cow<'a, str>,
     home_dir: Cow<'a, str>,
     api_url: Cow<'a, str>,
@@ -348,6 +339,10 @@ pub(super) struct CliRuntimeConfig<'a> {
     agent_log_file: Cow<'a, str>,
     session_id_file: Cow<'a, str>,
     session_history_path_file: Cow<'a, str>,
+    pi_session_id: Cow<'a, str>,
+    pi_launch_config: Cow<'a, str>,
+    pi_launch_payload_file: Cow<'a, str>,
+    pi_model_config: Cow<'a, str>,
     user_env: &'a HashMap<String, String>,
 }
 
@@ -362,7 +357,8 @@ impl<'a> CliRuntimeConfig<'a> {
         } else {
             None
         };
-        let disable_builtin_web_search = config.user_env.contains_key(ZERO_AGENT_ID_ENV_KEY);
+        let disable_builtin_web_search = config.user_env.contains_key(OKOU_AGENT_ID_ENV_KEY)
+            || config.user_env.contains_key(ZERO_AGENT_ID_ENV_KEY);
         let disallowed_tools = disallowed_tools_with_builtin_web_search_disabled(
             &config.disallowed_tools,
             disable_builtin_web_search,
@@ -396,7 +392,6 @@ impl<'a> CliRuntimeConfig<'a> {
             use_mock_claude: config.use_mock_claude,
             mock_claude_path: Cow::Borrowed(&config.mock_claude_path),
             use_mock_codex: config.use_mock_codex,
-            use_codex_app_server_backend: config.use_codex_app_server_backend,
             mock_codex_path: Cow::Borrowed(&config.mock_codex_path),
             home_dir: Cow::Borrowed(&config.home_dir),
             api_url: Cow::Borrowed(&config.api_url),
@@ -409,8 +404,7 @@ impl<'a> CliRuntimeConfig<'a> {
             )),
             codex_runtime_config,
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
-            codex_fast_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty()
-                && user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
+            codex_fast_mode: user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
             disable_builtin_web_search,
             agent_execution_deadline,
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
@@ -422,6 +416,10 @@ impl<'a> CliRuntimeConfig<'a> {
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
             session_id_file: Cow::Borrowed(paths.session_id_file()),
             session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
+            pi_session_id: Cow::Borrowed(&config.pi_session_id),
+            pi_launch_config: Cow::Borrowed(&config.pi_launch_config),
+            pi_launch_payload_file: Cow::Borrowed(paths.pi_launch_payload_file()),
+            pi_model_config: Cow::Borrowed(&config.pi_model_config),
             user_env: &config.user_env,
         })
     }
@@ -481,6 +479,81 @@ fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a s
     user_env.get(key).map(String::as_str).unwrap_or("")
 }
 
+fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<String>, AgentError> {
+    for (name, value) in [
+        ("Pi session id", runtime.pi_session_id.as_ref()),
+        ("Pi launch config", runtime.pi_launch_config.as_ref()),
+        ("Pi model config", runtime.pi_model_config.as_ref()),
+    ] {
+        if value.is_empty() {
+            return Err(AgentError::Execution(format!(
+                "{name} is required for Pi execution"
+            )));
+        }
+    }
+    let package_url = runtime
+        .user_env
+        .get(CLI_PACKAGE_URL_ENV_KEY)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            AgentError::Execution(format!(
+                "{CLI_PACKAGE_URL_ENV_KEY} is required for Pi execution"
+            ))
+        })?;
+    Ok(vec![
+        "npx".to_string(),
+        "--yes".to_string(),
+        format!("--package={package_url}"),
+        "okou".to_string(),
+        "__agent-loop".to_string(),
+    ])
+}
+
+/// Write the private launch payload the Pi CLI child reads at startup.
+///
+/// Prompt-sized launch inputs travel through this file so the child's argv and
+/// environment stay small. The file is created 0600 inside the run's 0700
+/// private runtime directory.
+fn write_pi_launch_payload_file(runtime: &CliRuntimeConfig<'_>) -> Result<(), AgentError> {
+    let launch_config: serde_json::Value = serde_json::from_str(runtime.pi_launch_config.as_ref())
+        .map_err(|e| AgentError::Execution(format!("parse Pi launch config: {e}")))?;
+    let append_system_prompt = if runtime.append_system_prompt.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::Value::String(runtime.append_system_prompt.to_string())
+    };
+    let payload = serde_json::json!({
+        "schemaVersion": 1,
+        "appendSystemPrompt": append_system_prompt,
+        "launchConfig": launch_config,
+    });
+    let path = runtime.pi_launch_payload_file.as_ref();
+    paths::ensure_parent_dir(path)?;
+    paths::write_private(path, serde_json::to_vec(&payload)?)?;
+    Ok(())
+}
+
+fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 4] {
+    [
+        (
+            guest_contracts::env::RUN_ID_ENV.to_string(),
+            runtime.run_id.to_string(),
+        ),
+        (
+            guest_contracts::env::PI_SESSION_ID_ENV.to_string(),
+            runtime.pi_session_id.to_string(),
+        ),
+        (
+            guest_contracts::env::PI_LAUNCH_PAYLOAD_FILE_ENV.to_string(),
+            runtime.pi_launch_payload_file.to_string(),
+        ),
+        (
+            guest_contracts::env::PI_MODEL_CONFIG_ENV.to_string(),
+            runtime.pi_model_config.to_string(),
+        ),
+    ]
+}
+
 fn disallowed_tools_with_builtin_web_search_disabled(
     disallowed_tools: &str,
     disable_builtin_web_search: bool,
@@ -503,17 +576,75 @@ enum ParsedEventAction {
     Skip,
 }
 
-struct CliEventIngestor {
+struct BestEffortAgentLog {
+    file: Option<tokio::fs::File>,
+}
+
+impl BestEffortAgentLog {
+    fn open(path: &str) -> Self {
+        match guest_contracts::runtime_paths::create_private(path) {
+            Ok(file) => Self {
+                file: Some(tokio::fs::File::from_std(file)),
+            },
+            Err(error) => {
+                Self::warn_failure("open", &error);
+                Self { file: None }
+            }
+        }
+    }
+
+    async fn write_raw_line(&mut self, raw_line: impl AsRef<[u8]>) {
+        let result = {
+            let Some(file) = self.file.as_mut() else {
+                return;
+            };
+            match file.write_all(raw_line.as_ref()).await {
+                Ok(()) => file.write_all(b"\n").await,
+                Err(error) => Err(error),
+            }
+        };
+        if let Err(error) = result {
+            self.disable("write", error);
+        }
+    }
+
+    async fn flush(&mut self) {
+        let result = match self.file.as_mut() {
+            Some(file) => file.flush().await,
+            None => return,
+        };
+        if let Err(error) = result {
+            self.disable("flush", error);
+        }
+    }
+
+    fn disable(&mut self, operation: &str, error: std::io::Error) {
+        self.file = None;
+        Self::warn_failure(operation, &error);
+    }
+
+    fn warn_failure(operation: &str, error: &std::io::Error) {
+        log_warn!(
+            LOG_TAG,
+            "Agent log {operation} failed; continuing without local transcript: {error}"
+        );
+    }
+}
+
+struct CliEventIngestor<'a> {
+    framework: env::Framework,
     seq: u32,
     api_start_time: String,
     last_read_event_at: Option<Instant>,
     session_metadata_capture: events::SessionMetadataCapture,
     failure_diagnostic: Option<CliFailureDiagnostic>,
+    codex_startup: Option<&'a CodexStartupTiming>,
 }
 
-impl CliEventIngestor {
-    fn new(runtime: &CliRuntimeConfig<'_>) -> Self {
+impl<'a> CliEventIngestor<'a> {
+    fn new(runtime: &CliRuntimeConfig<'_>, codex_startup: Option<&'a CodexStartupTiming>) -> Self {
         Self {
+            framework: runtime.framework,
             seq: 0,
             api_start_time: runtime.api_start_time.to_string(),
             last_read_event_at: None,
@@ -524,6 +655,7 @@ impl CliEventIngestor {
                 runtime.session_history_path_file.as_ref(),
             ),
             failure_diagnostic: None,
+            codex_startup,
         }
     }
 
@@ -531,23 +663,27 @@ impl CliEventIngestor {
         timing::record_e2e_from_api_start_at(op_name, &self.api_start_time, observed_at_ms);
     }
 
-    async fn write_raw_line(log_file: &mut tokio::fs::File, raw_line: impl AsRef<[u8]>) {
-        let _ = log_file.write_all(raw_line.as_ref()).await;
-        let _ = log_file.write_all(b"\n").await;
-    }
-
     async fn begin_event(
         &mut self,
-        log_file: &mut tokio::fs::File,
+        agent_log: &mut BestEffortAgentLog,
         raw_line: impl AsRef<[u8]>,
         event: &serde_json::Value,
         masker: &SecretMasker,
-        behavior: CliFrameworkBehavior,
-    ) -> Result<ParsedEventAction, AgentError> {
-        Self::write_raw_line(log_file, raw_line).await;
+        framework: env::Framework,
+    ) -> ParsedEventAction {
+        let is_stream_event =
+            event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event");
+        if !is_stream_event
+            && matches!(framework, env::Framework::Codex)
+            && event.get("type").and_then(serde_json::Value::as_str) == Some("turn.started")
+            && let Some(codex_startup) = self.codex_startup
+        {
+            codex_startup.record_success_at(Instant::now());
+        }
+        agent_log.write_raw_line(raw_line).await;
 
-        if event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event") {
-            return Ok(ParsedEventAction::Skip);
+        if is_stream_event {
+            return ParsedEventAction::Skip;
         }
         self.last_read_event_at = Some(Instant::now());
         if self.seq == 0 {
@@ -555,7 +691,7 @@ impl CliEventIngestor {
         }
         self.session_metadata_capture.capture_event(event);
 
-        if behavior.logs_codex_failure_diagnostics()
+        if matches!(framework, env::Framework::Codex)
             && let Some(diagnostic) = events::masked_codex_failure_diagnostic(event, masker)
         {
             let candidate = CliFailureDiagnostic {
@@ -577,7 +713,7 @@ impl CliEventIngestor {
             }
         }
 
-        Ok(ParsedEventAction::Forward)
+        ParsedEventAction::Forward
     }
 
     fn replace_failure_diagnostic(&mut self, diagnostic: CliFailureDiagnostic) {
@@ -599,7 +735,28 @@ impl CliEventIngestor {
         self.seq += 1;
         if should_send_events {
             let event = events::prepare_event_for_delivery(event, sequence, masker);
-            event_tx.try_send(sequence, event)?;
+            if self.framework == env::Framework::Codex {
+                let prepared = codex_event_delivery::prepare_for_delivery(
+                    event,
+                    event_tx.max_serialized_event_bytes(),
+                )?;
+                if let Some(reduction) = prepared.reduction {
+                    log_warn!(
+                        LOG_TAG,
+                        "Codex event reduced for delivery: seq={} event_type={} item_type={} original_bytes={} delivered_bytes={} fields={} fallback={}",
+                        sequence,
+                        reduction.event_type,
+                        reduction.item_type,
+                        reduction.original_bytes,
+                        reduction.delivered_bytes,
+                        reduction.fields.join(","),
+                        reduction.fallback
+                    );
+                }
+                event_tx.try_send_serialized(sequence, prepared.serialized)?;
+            } else {
+                event_tx.try_send(sequence, event)?;
+            }
         }
         Ok(())
     }
@@ -653,7 +810,7 @@ pub async fn execute_cli_with_active_input_for_config_started_at(
         masker,
         heartbeat_monitor,
         http,
-        CliExecutionControls::new(active_input, CancellationToken::new()),
+        CliExecutionControls::new(active_input, CancellationToken::new(), None),
         config,
         paths,
         execution_started_at,
@@ -662,73 +819,92 @@ pub async fn execute_cli_with_active_input_for_config_started_at(
 }
 
 /// Run-scoped controls observed while the inner CLI is executing.
-pub struct CliExecutionControls {
+pub struct CliExecutionControls<'a> {
     active_input: ActiveInputWriter,
     user_cancellation: CancellationToken,
+    codex_startup: Option<&'a CodexStartupTiming>,
+    workload_containment: Option<&'a crate::workload_containment::WorkloadContainment>,
 }
 
-impl CliExecutionControls {
-    /// Create controls for active input and explicit user cancellation.
+impl<'a> CliExecutionControls<'a> {
+    /// Create controls for active input, cancellation, and optional Codex startup timing.
     #[must_use]
-    pub fn new(active_input: ActiveInputWriter, user_cancellation: CancellationToken) -> Self {
+    pub fn new(
+        active_input: ActiveInputWriter,
+        user_cancellation: CancellationToken,
+        codex_startup: Option<&'a CodexStartupTiming>,
+    ) -> Self {
         Self {
             active_input,
             user_cancellation,
+            codex_startup,
+            workload_containment: None,
         }
+    }
+    /// Supply the production workload placement capability for CLI children.
+    #[must_use]
+    pub fn with_workload_containment(
+        mut self,
+        containment: Option<&'a crate::workload_containment::WorkloadContainment>,
+    ) -> Self {
+        self.workload_containment = containment;
+        self
     }
 }
 
 /// Execute the CLI while observing run-scoped controls.
+///
 pub async fn execute_cli_with_controls_for_config_started_at(
     masker: &SecretMasker,
     heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
-    controls: CliExecutionControls,
+    controls: CliExecutionControls<'_>,
     config: &env::GuestConfig,
     paths: &paths::GuestPaths,
     execution_started_at: Instant,
 ) -> Result<CliExecutionResult, AgentError> {
-    let CliExecutionControls {
-        active_input,
-        user_cancellation,
-    } = controls;
     let runtime = CliRuntimeConfig::from_config(config, paths, execution_started_at)?;
-    execute_cli_inner(
-        masker,
-        heartbeat_monitor,
-        http,
-        active_input,
-        user_cancellation,
-        &runtime,
-    )
-    .await
+    execute_cli_inner(masker, heartbeat_monitor, http, controls, &runtime).await
 }
 
 async fn execute_cli_inner(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
-    active_input: ActiveInputWriter,
-    user_cancellation: CancellationToken,
+    controls: CliExecutionControls<'_>,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
-    if matches!(runtime.framework, env::Framework::Codex) && runtime.use_codex_app_server_backend {
+    if matches!(runtime.framework, env::Framework::Codex) {
         return codex_app_server_backend::execute_codex_app_server_for_runtime(
             masker,
             heartbeat_monitor,
             http,
-            active_input,
-            user_cancellation,
+            controls,
             runtime,
         )
         .await;
     }
 
-    let behavior = CliFrameworkBehavior::new(runtime.framework);
-    let replay_user_messages = active_input.is_enabled();
-    log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
+    let CliExecutionControls {
+        active_input,
+        user_cancellation,
+        codex_startup: _,
+        workload_containment,
+    } = controls;
 
-    let cmd = command::build_cli_command_for_runtime(runtime, replay_user_messages)?;
+    let replay_user_messages =
+        active_input.is_enabled() && matches!(runtime.framework, env::Framework::ClaudeCode);
+    log_info!(
+        LOG_TAG,
+        "Starting {} execution...",
+        runtime.framework.agent_type()
+    );
+
+    let cmd = if matches!(runtime.framework, env::Framework::Pi) {
+        build_pi_command_for_runtime(runtime)?
+    } else {
+        command::build_claude_command_for_runtime(runtime, replay_user_messages)
+    };
     let (bin, args) = cmd
         .split_first()
         .ok_or_else(|| AgentError::Execution("empty command".into()))?;
@@ -743,55 +919,37 @@ async fn execute_cli_inner(
         .kill_on_drop(true);
 
     let mut child_env_values = child_env::values_for_runtime(runtime);
-    match runtime.framework {
-        env::Framework::ClaudeCode => {
-            // Suppress Claude CLI features that are unnecessary or harmful in a
-            // sandbox: startup network calls (statsig, Datadog, Segment, GCS
-            // update check, GitHub) add ~2s latency, background tasks can keep
-            // a one-shot run alive after its final result, telemetry has no
-            // receiver, and the CLI version is baked into the rootfs image.
-            child_env_values.extend([
-                (
-                    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS".to_string(),
-                    "1".to_string(),
-                ),
-                (
-                    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_string(),
-                    "1".to_string(),
-                ),
-                (
-                    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY".to_string(),
-                    "1".to_string(),
-                ),
-                (
-                    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE".to_string(),
-                    "1".to_string(),
-                ),
-                ("DISABLE_AUTOUPDATER".to_string(), "1".to_string()),
-                ("DISABLE_ERROR_REPORTING".to_string(), "1".to_string()),
-                ("DISABLE_INSTALLATION_CHECKS".to_string(), "1".to_string()),
-                ("DISABLE_TELEMETRY".to_string(), "1".to_string()),
-            ]);
-        }
-        env::Framework::Codex => {
-            // Auth reconciliation and `codex exec` both honor CODEX_HOME;
-            // pin it to $HOME/.codex so setup_codex state is visible to exec.
-            child_env_values.push(("CODEX_HOME".to_string(), runtime.codex_home()));
-            // Test-only mock fixture selector; keep it explicit instead of
-            // reopening inherited env for Codex children.
-            if runtime.use_mock_codex
-                && let Ok(fixture) = std::env::var("MOCK_CODEX_FIXTURE")
-            {
-                child_env_values.push(("MOCK_CODEX_FIXTURE".to_string(), fixture));
-            }
-            if runtime.codex_oauth_mode {
-                child_env_values.push((
-                    "CODEX_REFRESH_TOKEN_URL_OVERRIDE".to_string(),
-                    crate::codex_auth::REFRESH_TOKEN_NOOP_URL.to_string(),
-                ));
-            }
-        }
+    if matches!(runtime.framework, env::Framework::Pi) {
+        write_pi_launch_payload_file(runtime)?;
+        child_env_values.extend(pi_child_env_values(runtime));
     }
+    // Suppress Claude CLI features that are unnecessary or harmful in a
+    // sandbox: startup network calls (statsig, Datadog, Segment, GCS update
+    // check, GitHub) add ~2s latency, background tasks can keep a one-shot run
+    // alive after its final result, telemetry has no receiver, and the CLI
+    // version is baked into the rootfs image.
+    child_env_values.extend([
+        (
+            "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS".to_string(),
+            "1".to_string(),
+        ),
+        (
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_string(),
+            "1".to_string(),
+        ),
+        (
+            "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY".to_string(),
+            "1".to_string(),
+        ),
+        (
+            "CLAUDE_CODE_DISABLE_TERMINAL_TITLE".to_string(),
+            "1".to_string(),
+        ),
+        ("DISABLE_AUTOUPDATER".to_string(), "1".to_string()),
+        ("DISABLE_ERROR_REPORTING".to_string(), "1".to_string()),
+        ("DISABLE_INSTALLATION_CHECKS".to_string(), "1".to_string()),
+        ("DISABLE_TELEMETRY".to_string(), "1".to_string()),
+    ]);
     let child_env_values = child_env::normalize_values(child_env_values);
     exec_boundary::validate_process_argv_env(
         "CLI child argv/env too large",
@@ -800,31 +958,24 @@ async fn execute_cli_inner(
         &child_env_values,
     )
     .map_err(AgentError::Execution)?;
-    let stdin = match runtime.framework {
-        env::Framework::ClaudeCode => Stdio::piped(),
-        env::Framework::Codex => codex_prompt_stdin(runtime.prompt.as_ref())?,
-    };
-    cmd.stdin(stdin);
+    cmd.stdin(Stdio::piped());
     child_env::apply_values_to_tokio_command(&mut cmd, &child_env_values);
     // Set the child cwd explicitly at spawn time so the CLI observes the
     // current canonical workspace mount instead of relying on inherited cwd.
     set_cli_current_dir(&mut cmd, paths::CANONICAL_WORKING_DIR)?;
+    if let Some(workload_containment) = workload_containment {
+        workload_containment.configure_command(&mut cmd)?;
+    }
 
-    // Open the run log before spawning the CLI. If the run-id-scoped path is
-    // invalid or unavailable, fail without starting a child process.
-    let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
-    let mut log_file = tokio::fs::File::from_std(log_file);
+    // The local transcript is best-effort observability. A backend must not
+    // fail an otherwise healthy run because this sink is unavailable.
+    let mut agent_log = BestEffortAgentLog::open(runtime.agent_log_file.as_ref());
 
     let mut child = cmd.spawn()?;
 
-    let claude_stdin = if behavior.uses_stream_json_stdin() {
-        let Some(stdin) = child.stdin.take() else {
-            let _ = child.start_kill();
-            return Err(AgentError::Execution("no stdin".into()));
-        };
-        Some(stdin)
-    } else {
-        None
+    let Some(claude_stdin) = child.stdin.take() else {
+        let _ = child.start_kill();
+        return Err(AgentError::Execution("no stdin".into()));
     };
 
     let stdout = child
@@ -841,15 +992,36 @@ async fn execute_cli_inner(
         tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
 
     let active_input_controller = active_input.controller();
-    let mut claude_stdin_write_handle = claude_stdin.map(|stdin| {
+    let pi_execution = matches!(runtime.framework, env::Framework::Pi);
+    let (pi_rpc_response_tx, pi_rpc_response_rx) = tokio::sync::mpsc::unbounded_channel();
+    let pi_rpc_cancellation = CancellationToken::new();
+    let mut pi_rpc_projection = pi_execution.then(|| {
+        pi_rpc::PiRpcProjection::new(runtime.run_id.as_ref(), runtime.pi_session_id.as_ref())
+    });
+    let mut claude_stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
+        let pi_rpc_cancellation = pi_rpc_cancellation.clone();
         tokio::spawn(async move {
-            write_claude_stream_json_to_stdin(stdin, &run_id, &prompt, active_input).await
+            if pi_execution {
+                pi_rpc::write_commands(
+                    claude_stdin,
+                    &run_id,
+                    &prompt,
+                    active_input,
+                    pi_rpc_response_rx,
+                    pi_rpc_cancellation,
+                )
+                .await
+            } else {
+                drop(pi_rpc_response_rx);
+                write_claude_stream_json_to_stdin(claude_stdin, &run_id, &prompt, active_input)
+                    .await
+            }
         })
     });
 
-    // Stream stdout JSONL, racing against heartbeat and process exit.
+    // Stream Claude Code stdout JSONL, racing against heartbeat and process exit.
     //
     // Event sending is decoupled from stdout reading via an mpsc channel
     // to prevent a deadlock: Bun (Claude CLI runtime) uses blocking stdout
@@ -897,16 +1069,6 @@ async fn execute_cli_inner(
         agent_execution_timeout_secs = deadline.timeout_secs;
     }
 
-    // A resumed Codex process prints `thread.started` from the resume response
-    // before its real turn notifications begin. Bound only that transition;
-    // once any real lifecycle event arrives, long turns remain unrestricted.
-    let codex_resume_startup_deadline = tokio::time::sleep(Duration::MAX);
-    tokio::pin!(codex_resume_startup_deadline);
-    let codex_resume_startup_guard_enabled =
-        matches!(runtime.framework, env::Framework::Codex) && !runtime.resume_session_id.is_empty();
-    let mut codex_resume_startup_deadline_armed = false;
-    let mut codex_resume_lifecycle_started = false;
-
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
     // if a network tool exceeds STUCK_TOOL_TIMEOUT_SECS without producing
@@ -914,15 +1076,11 @@ async fn execute_cli_inner(
     // parallel tool calls correctly.
     // See: https://github.com/anthropics/claude-code/issues/11650
     let mut stuck_tool_tracker: HashMap<String, (String, tokio::time::Instant)> = HashMap::new();
-    let mut stuck_tool_check = if behavior.uses_claude_tool_watchdog() {
-        let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
-        Some(tokio::time::interval_at(
-            tokio::time::Instant::now() + stuck_tool_interval,
-            stuck_tool_interval,
-        ))
-    } else {
-        None
-    };
+    let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
+    let mut stuck_tool_check = tokio::time::interval_at(
+        tokio::time::Instant::now() + stuck_tool_interval,
+        stuck_tool_interval,
+    );
     // MAINTENANCE: update if Claude Code adds new network tools that can hang.
     const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
 
@@ -936,10 +1094,11 @@ async fn execute_cli_inner(
 
     let mut heartbeat_done = false;
     let mut user_cancellation_handled = false;
+    let mut pi_user_cancelled = false;
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor = CliEventIngestor::new(runtime);
+    let mut event_ingestor = CliEventIngestor::new(runtime, None);
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
@@ -960,6 +1119,12 @@ async fn execute_cli_inner(
                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 user_cancellation_handled = true;
+                if pi_execution {
+                    pi_user_cancelled = true;
+                    active_input_controller.close_terminal();
+                    pi_rpc_cancellation.cancel();
+                    continue;
+                }
                 active_input_controller.close_terminal();
                 termination_runtime.begin_control_failure(
                     TerminationReason::UserCancellation,
@@ -1067,7 +1232,7 @@ async fn execute_cli_inner(
             line_result = line_reader::read_bounded_utf8_line(
                 &mut reader,
                 &mut stdout_partial_line,
-                STDOUT_MAX_LINE_BYTES,
+                ORDINARY_CLI_STDOUT_MAX_LINE_BYTES,
             ), if !stdout_closed => {
                 match line_result {
                     Ok(Some(line)) => {
@@ -1076,81 +1241,78 @@ async fn execute_cli_inner(
                             continue;
                         }
 
-                        if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
-                            if behavior.filters_replayed_user_events() && replay_user_messages {
-                                match active_input_controller.replay_user_event_action(&event) {
-                                    ReplayUserEventAction::External => {}
-                                    ReplayUserEventAction::InternalInitialPrompt => {
-                                        let _ = log_file
-                                            .write_all(
-                                                br#"{"type":"vm0_internal","event":"filtered_replayed_initial_prompt"}"#,
-                                            )
-                                            .await;
-                                        let _ = log_file.write_all(b"\n").await;
+                        if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            if let Some(projection) = pi_rpc_projection.as_mut() {
+                                match projection.project(event, &pi_rpc_response_tx) {
+                                    Ok(Some(projected)) => event = projected,
+                                    Ok(None) => {
+                                        agent_log.write_raw_line(line.as_bytes()).await;
                                         continue;
                                     }
-                                    ReplayUserEventAction::InternalActiveInput => {
-                                        let _ = log_file
-                                            .write_all(
-                                                br#"{"type":"vm0_internal","event":"filtered_replayed_active_input"}"#,
-                                            )
-                                            .await;
-                                        let _ = log_file.write_all(b"\n").await;
-                                        continue;
-                                    }
-                                    ReplayUserEventAction::UnknownPromptUser => {
-                                        let _ = log_file
-                                            .write_all(
-                                                br#"{"type":"vm0_internal","event":"filtered_unknown_prompt_user"}"#,
-                                            )
-                                            .await;
-                                        let _ = log_file.write_all(b"\n").await;
-                                        log_warn!(
-                                            LOG_TAG,
-                                            "Filtered unknown top-level Claude user replay event"
+                                    Err(error) => {
+                                        agent_log.write_raw_line(line.as_bytes()).await;
+                                        active_input_controller.close_terminal();
+                                        if cli_status.is_some() {
+                                            break Err(error);
+                                        }
+                                        let error_log = error.to_string();
+                                        termination_runtime.begin_control_failure(
+                                            TerminationReason::StdoutIngestion,
+                                            error,
+                                            ControlTerminationLog::StdoutIngestionFailed {
+                                                error: error_log,
+                                            },
+                                            termination_deadline.as_mut(),
                                         );
                                         continue;
                                     }
                                 }
                             }
+                            let replay_marker: Option<&[u8]> = if replay_user_messages {
+                                match active_input_controller.replay_user_event_action(&event) {
+                                    ReplayUserEventAction::External => None,
+                                    ReplayUserEventAction::InternalInitialPrompt => Some(
+                                        br#"{"type":"vm0_internal","event":"filtered_replayed_initial_prompt"}"#,
+                                    ),
+                                    ReplayUserEventAction::InternalActiveInput => Some(
+                                        br#"{"type":"vm0_internal","event":"filtered_replayed_active_input"}"#,
+                                    ),
+                                    ReplayUserEventAction::UnknownPromptUser => {
+                                        log_warn!(
+                                            LOG_TAG,
+                                            "Filtered unknown top-level Claude user replay event"
+                                        );
+                                        Some(
+                                            br#"{"type":"vm0_internal","event":"filtered_unknown_prompt_user"}"#,
+                                        )
+                                    }
+                                }
+                            } else {
+                                None
+                            };
+                            if let Some(replay_marker) = replay_marker {
+                                agent_log.write_raw_line(replay_marker).await;
+                                continue;
+                            }
 
                             let post_result_cleanup_was_armed =
                                 termination_runtime.has_post_result_cleanup();
-                            match event_ingestor
+                            let event_action = event_ingestor
                                 .begin_event(
-                                    &mut log_file,
+                                    &mut agent_log,
                                     line.as_bytes(),
                                     &event,
                                     masker,
-                                    behavior,
+                                    runtime.framework,
                                 )
-                                .await?
-                            {
+                                .await;
+                            match event_action {
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
                             }
-                            if codex_resume_startup_guard_enabled
-                                && !codex_resume_lifecycle_started
-                            {
-                                let event_type = event
-                                    .get("type")
-                                    .and_then(serde_json::Value::as_str);
-                                if behavior.is_codex_turn_lifecycle_event(&event) {
-                                    codex_resume_lifecycle_started = true;
-                                    codex_resume_startup_deadline_armed = false;
-                                } else if event_type == Some("thread.started")
-                                    && !codex_resume_startup_deadline_armed
-                                {
-                                    codex_resume_startup_deadline.as_mut().reset(
-                                        tokio::time::Instant::now()
-                                            + Duration::from_secs(
-                                                constants::CODEX_RESUME_STARTUP_TIMEOUT_SECS,
-                                            ),
-                                    );
-                                    codex_resume_startup_deadline_armed = true;
-                                }
-                            }
-                            let is_result_event = behavior.handles_claude_result_event(&event);
+                            let is_result_event =
+                                event.get("type").and_then(serde_json::Value::as_str)
+                                    == Some("result");
                             if post_result_cleanup_was_armed || is_result_event {
                                 match try_observe_cli_exit(
                                     &mut child,
@@ -1196,6 +1358,9 @@ async fn execute_cli_inner(
                                 }
                                 let active_input_idle =
                                     active_input_controller.close_for_result_if_idle();
+                                if pi_execution && active_input_idle {
+                                    active_input_controller.close_terminal();
+                                }
                                 // Arm the post-result reap deadline once per
                                 // run when no active follow-up input is still
                                 // pending.
@@ -1209,7 +1374,7 @@ async fn execute_cli_inner(
                                 }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
-                            behavior.track_claude_tool_events(&event, &mut stuck_tool_tracker);
+                            claude::track_claude_tool_events(&event, &mut stuck_tool_tracker);
                             termination_runtime.record_post_result_activity(
                                 post_result_cleanup_was_armed,
                                 termination_deadline.as_mut(),
@@ -1235,7 +1400,7 @@ async fn execute_cli_inner(
                                 );
                             }
                         } else {
-                            CliEventIngestor::write_raw_line(&mut log_file, line.as_bytes()).await;
+                            agent_log.write_raw_line(line.as_bytes()).await;
                         }
                     }
                     Ok(None) => {
@@ -1252,7 +1417,7 @@ async fn execute_cli_inner(
                             line_reader::BoundedLineError::Io(error) => AgentError::Io(error),
                             line_reader::BoundedLineError::TooLong => AgentError::Execution(
                                 format!(
-                                    "CLI stdout line exceeded {STDOUT_MAX_LINE_BYTES} bytes"
+                                    "CLI stdout line exceeded {ORDINARY_CLI_STDOUT_MAX_LINE_BYTES} bytes"
                                 ),
                             ),
                             line_reader::BoundedLineError::InvalidUtf8 {
@@ -1340,35 +1505,6 @@ async fn execute_cli_inner(
                 }
                 termination_runtime.handle_deadline(termination_deadline.as_mut());
             }
-            () = &mut codex_resume_startup_deadline, if codex_resume_startup_deadline_armed && cli_status.is_none() => {
-                match try_observe_cli_exit(
-                    &mut child,
-                    &mut cli_status,
-                    &mut cli_exit_at,
-                    &active_input_controller,
-                    &mut termination_runtime,
-                    stdout_closed,
-                    drain_deadline.as_mut(),
-                )? {
-                    CliExitObservation::NoNewExit => {}
-                    CliExitObservation::ExitedDrainingStdout => {
-                        codex_resume_startup_deadline_armed = false;
-                        continue;
-                    }
-                    CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
-                }
-                codex_resume_startup_deadline_armed = false;
-                let timeout_secs = constants::CODEX_RESUME_STARTUP_TIMEOUT_SECS;
-                let timeout_error = AgentError::Execution(format!(
-                    "Codex resume startup timeout: no turn lifecycle event received within {timeout_secs} seconds after thread.started"
-                ));
-                termination_runtime.begin_control_failure(
-                    TerminationReason::CodexResumeStartupTimeout,
-                    timeout_error,
-                    ControlTerminationLog::CodexResumeStartupTimeout { timeout_secs },
-                    termination_deadline.as_mut(),
-                );
-            }
             () = &mut drain_deadline, if cli_status.is_some() => {
                 log_warn!(
                     LOG_TAG,
@@ -1377,7 +1513,7 @@ async fn execute_cli_inner(
                 );
                 break Ok(());
             }
-            _ = tick_optional_interval(&mut stuck_tool_check), if cli_status.is_none() => {
+            _ = stuck_tool_check.tick(), if cli_status.is_none() => {
                 let timeout_secs = runtime.stuck_tool_timeout_secs;
                 // Find the oldest network tool that has exceeded the timeout.
                 let stuck = stuck_tool_tracker
@@ -1477,9 +1613,10 @@ async fn execute_cli_inner(
     // `tokio::fs::File` may still own an in-flight blocking write after
     // `write_all` returns. Wait for it before callers observe the completed
     // execution and read the run log.
-    let _ = log_file.flush().await;
+    agent_log.flush().await;
 
     active_input_controller.close_terminal();
+    let mut active_input_error = None;
     if let Some(handle) = claude_stdin_write_handle.take() {
         if handle.is_finished() {
             match handle.await {
@@ -1489,12 +1626,43 @@ async fn execute_cli_inner(
                         LOG_TAG,
                         "Claude stdin writer finished after CLI loop with error: {error}"
                     );
+                    if active_input_controller.has_activity() {
+                        active_input_error = Some(error);
+                    }
                 }
                 Err(error) => {
                     log_warn!(
                         LOG_TAG,
                         "Claude stdin writer failed after CLI loop: {error}"
                     );
+                    if active_input_controller.has_activity() {
+                        active_input_error = Some(AgentError::Execution(format!(
+                            "Claude stdin writer task failed during active-input quiescence: {error}"
+                        )));
+                    }
+                }
+            }
+        } else if active_input_controller.has_activity() {
+            let mut handle = handle;
+            match tokio::time::timeout(
+                Duration::from_secs(constants::ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS),
+                &mut handle,
+            )
+            .await
+            {
+                Ok(Ok(Ok(()))) => {}
+                Ok(Ok(Err(error))) => active_input_error = Some(error),
+                Ok(Err(error)) => {
+                    active_input_error = Some(AgentError::Execution(format!(
+                        "Claude stdin writer task failed during active-input quiescence: {error}"
+                    )));
+                }
+                Err(_) => {
+                    handle.abort();
+                    let _ = handle.await;
+                    active_input_error = Some(AgentError::Execution(
+                        "Claude stdin writer did not quiesce after terminal close".to_string(),
+                    ));
                 }
             }
         } else {
@@ -1504,8 +1672,20 @@ async fn execute_cli_inner(
         }
     }
 
+    let active_input_delivery_ids = match active_input_controller.finalize_receipts().await {
+        Ok(delivery_ids) => delivery_ids,
+        Err(error) => {
+            if active_input_error.is_none() {
+                active_input_error = Some(error);
+            }
+            Vec::new()
+        }
+    };
+
     let has_control_error = termination_runtime.has_control_error();
-    let event_error = if has_control_error {
+    let event_error = if active_input_error.is_some() {
+        active_input_error
+    } else if has_control_error {
         None
     } else {
         event_result.err()
@@ -1538,7 +1718,12 @@ async fn execute_cli_inner(
             None,
         );
     }
-    let (exit_code, cli_observed_exit) = cli_exit_summary_from_status(&status);
+    let (mut exit_code, cli_observed_exit) = cli_exit_summary_from_status(&status);
+    if pi_execution
+        && claude_result.is_some_and(|result| result.status == ClaudeResultStatus::Error)
+    {
+        exit_code = 1;
+    }
 
     // Apply the same drain deadline to stderr — orphaned child processes
     // may hold the stderr fd open just like stdout.
@@ -1565,7 +1750,13 @@ async fn execute_cli_inner(
     };
     let masked_stderr_lines = masker.mask_diagnostic_lines(stderr_lines);
 
-    let (control_error, cli_termination) = termination_runtime.finish(exit_code);
+    let (mut control_error, mut cli_termination) = termination_runtime.finish(exit_code);
+    if pi_user_cancelled {
+        control_error = Some(AgentError::Execution("Run cancelled by user".to_string()));
+        cli_termination = Some(CliTerminationDiagnostic::new(
+            guest_contracts::diagnostics::CliTerminationReason::UserCancellation,
+        ));
+    }
 
     if let Some(err) = event_error {
         return Err(err);
@@ -1582,6 +1773,7 @@ async fn execute_cli_inner(
         failure_diagnostic: event_ingestor.failure_diagnostic(),
         control_error,
         cli_termination,
+        active_input_delivery_ids,
     })
 }
 
@@ -1740,8 +1932,9 @@ mod tests {
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
-        codex_runtime_config, command, exec_boundary, record_cli_exit, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason,
+        codex_runtime_config, command, exec_boundary, pi_child_env_values, record_cli_exit,
+        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
+        write_pi_launch_payload_file,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::{constants, env};
@@ -1750,13 +1943,56 @@ mod tests {
     use std::collections::HashMap;
     #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
-    use std::time::Duration;
+    use std::path::Path;
+    use std::time::{Duration, Instant};
 
-    fn runtime_for_exec_boundary_test<'a>(
+    fn guest_config_for_agent_context(user_env: HashMap<String, String>) -> env::GuestConfig {
+        env::GuestConfig {
+            run_id: "run-okou-env-test".to_string(),
+            api_url: "https://runner.example".to_string(),
+            api_token: "test-token".to_string(),
+            sandbox_id: String::new(),
+            sandbox_reuse_result: String::new(),
+            workspace_reuse_result: String::new(),
+            prompt: "prompt".to_string(),
+            append_system_prompt: String::new(),
+            vercel_bypass: String::new(),
+            resume_session_id: String::new(),
+            api_start_time: String::new(),
+            agent_execution_timeout: None,
+            secret_values: String::new(),
+            disallowed_tools: String::new(),
+            tools: String::new(),
+            settings: String::new(),
+            use_mock_claude: false,
+            mock_claude_path: String::new(),
+            cli_agent_type: "codex".to_string(),
+            framework: env::Framework::Codex,
+            user_env,
+            use_mock_codex: false,
+            mock_codex_path: String::new(),
+            home_dir: "/tmp/home".to_string(),
+            artifacts: Vec::new(),
+            feature_flags: HashMap::new(),
+            codex_runtime_config: String::new(),
+            pi_launch_config: String::new(),
+            pi_model_config: String::new(),
+            pi_session_id: String::new(),
+            stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
+            post_result_sigterm_grace: Duration::from_secs(
+                constants::POST_RESULT_SIGTERM_GRACE_SECS,
+            ),
+            post_result_total_cap: Duration::from_secs(constants::POST_RESULT_TOTAL_CAP_SECS),
+            post_result_sigkill_grace: Duration::from_secs(
+                constants::POST_RESULT_SIGKILL_GRACE_SECS,
+            ),
+        }
+    }
+
+    fn runtime_for_command_test<'a>(
         framework: env::Framework,
         prompt: &'a str,
         append_system_prompt: &'a str,
-        use_codex_app_server_backend: bool,
         user_env: &'a HashMap<String, String>,
     ) -> CliRuntimeConfig<'a> {
         CliRuntimeConfig {
@@ -1771,7 +2007,6 @@ mod tests {
             use_mock_claude: false,
             mock_claude_path: Cow::Borrowed(""),
             use_mock_codex: false,
-            use_codex_app_server_backend,
             mock_codex_path: Cow::Borrowed(""),
             home_dir: Cow::Borrowed("/tmp/home"),
             api_url: Cow::Borrowed(""),
@@ -1793,58 +2028,170 @@ mod tests {
             agent_log_file: Cow::Borrowed("/tmp/agent.log"),
             session_id_file: Cow::Borrowed("/tmp/session-id"),
             session_history_path_file: Cow::Borrowed("/tmp/session-history-path"),
+            pi_session_id: Cow::Borrowed(""),
+            pi_launch_config: Cow::Borrowed(""),
+            pi_launch_payload_file: Cow::Borrowed("/tmp/pi-launch-payload/payload.json"),
+            pi_model_config: Cow::Borrowed(""),
             user_env,
         }
     }
 
-    fn command_config_index(command: &[String], config: &str) -> Option<usize> {
-        command
-            .windows(2)
-            .position(|window| window[0] == "-c" && window[1] == config)
-    }
-
     #[test]
-    fn codex_web_search_override_covers_new_and_resumed_exec() {
+    fn codex_web_search_override_is_in_app_server_startup_config() {
         let user_env = HashMap::new();
-        let mut runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+        let mut runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
 
-        let disabled_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
         assert!(
-            command_config_index(&disabled_command, super::CODEX_WEB_SEARCH_DISABLED_CONFIG)
-                .is_none()
+            !runtime
+                .codex_startup_config_overrides()
+                .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
         );
 
         runtime.disable_builtin_web_search = true;
 
-        let new_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        let new_config_index =
-            command_config_index(&new_command, super::CODEX_WEB_SEARCH_DISABLED_CONFIG).unwrap();
-        let prompt_separator_index = new_command.iter().position(|arg| arg == "--").unwrap();
-        assert!(new_config_index < prompt_separator_index);
+        assert!(
+            runtime
+                .codex_startup_config_overrides()
+                .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
+        );
+    }
 
-        runtime.resume_session_id = Cow::Borrowed("thread-1");
-        let resumed_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        let resumed_config_index =
-            command_config_index(&resumed_command, super::CODEX_WEB_SEARCH_DISABLED_CONFIG)
-                .unwrap();
-        let resume_index = resumed_command
+    #[test]
+    fn pi_child_env_uses_canonical_run_id() {
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_session_id = Cow::Borrowed("22222222-2222-4222-8222-222222222222");
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
+        runtime.pi_model_config = Cow::Borrowed(r#"{"provider":"deepseek"}"#);
+        let mut values = child_env::values_for_runtime(&runtime);
+        values.extend(pi_child_env_values(&runtime));
+        let values = child_env::normalize_values(values);
+
+        let canonical_run_id = values
             .iter()
-            .position(|arg| arg == "resume")
-            .unwrap();
-        assert!(resumed_config_index < resume_index);
+            .find(|(key, _)| key == guest_contracts::env::RUN_ID_ENV)
+            .map(|(_, value)| value.as_str());
+        assert_eq!(canonical_run_id, Some(runtime.run_id.as_ref()));
+        for (key, expected) in [
+            (
+                guest_contracts::env::PI_SESSION_ID_ENV,
+                runtime.pi_session_id.as_ref(),
+            ),
+            (
+                guest_contracts::env::PI_LAUNCH_PAYLOAD_FILE_ENV,
+                runtime.pi_launch_payload_file.as_ref(),
+            ),
+            (
+                guest_contracts::env::PI_MODEL_CONFIG_ENV,
+                runtime.pi_model_config.as_ref(),
+            ),
+        ] {
+            assert_eq!(
+                values
+                    .iter()
+                    .find(|(candidate, _)| candidate == key)
+                    .map(|(_, value)| value.as_str()),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn pi_child_env_omits_launch_config_value() {
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
+        let mut values = child_env::values_for_runtime(&runtime);
+        values.extend(pi_child_env_values(&runtime));
+        let values = child_env::normalize_values(values);
+
+        assert!(
+            !values
+                .iter()
+                .any(|(key, _)| key == guest_contracts::env::PI_LAUNCH_CONFIG_ENV)
+        );
+        assert!(
+            !values
+                .iter()
+                .any(|(_, value)| value.contains("schemaVersion"))
+        );
+    }
+
+    #[test]
+    fn pi_launch_payload_file_merges_append_system_prompt_privately() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::GuestPaths::from_runtime_dir(dir.path());
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(
+            env::Framework::Pi,
+            "prompt",
+            "Your name is Okou.",
+            &user_env,
+        );
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
+        runtime.pi_launch_payload_file = Cow::Borrowed(paths.pi_launch_payload_file());
+
+        write_pi_launch_payload_file(&runtime).unwrap();
+
+        let path = Path::new(paths.pi_launch_payload_file());
+        let payload: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(payload["schemaVersion"], 1);
+        assert_eq!(payload["appendSystemPrompt"], "Your name is Okou.");
+        assert_eq!(payload["launchConfig"]["schemaVersion"], 2);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+    }
+
+    #[test]
+    fn pi_launch_payload_file_uses_null_for_absent_append_system_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::GuestPaths::from_runtime_dir(dir.path());
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
+        runtime.pi_launch_payload_file = Cow::Borrowed(paths.pi_launch_payload_file());
+
+        write_pi_launch_payload_file(&runtime).unwrap();
+
+        let raw = std::fs::read(paths.pi_launch_payload_file()).unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        assert!(payload["appendSystemPrompt"].is_null());
+    }
+
+    #[test]
+    fn codex_runtime_accepts_okou_and_zero_agent_contexts() {
+        for key in [super::OKOU_AGENT_ID_ENV_KEY, super::ZERO_AGENT_ID_ENV_KEY] {
+            let config = guest_config_for_agent_context(HashMap::from([(
+                key.to_string(),
+                "agent-test".to_string(),
+            )]));
+            let paths = crate::paths::GuestPaths::from_runtime_dir("/tmp/okou-env-test");
+
+            let runtime = CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
+
+            assert!(runtime.disable_builtin_web_search);
+            assert!(
+                runtime
+                    .codex_startup_config_overrides()
+                    .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
+            );
+        }
     }
 
     #[test]
     fn codex_web_search_override_composes_with_provider_config() {
         let user_env = HashMap::new();
-        let mut runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", true, &user_env);
+        let mut runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
         runtime.disable_builtin_web_search = true;
         runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
-            provider_id: "minimax".to_string(),
-            name: "MiniMax".to_string(),
-            base_url: "https://api.minimax.io/v1".to_string(),
+            provider_id: "deepseek".to_string(),
+            name: "DeepSeek".to_string(),
+            base_url: "https://api.deepseek.com/".to_string(),
             env_key: "OPENAI_API_KEY".to_string(),
             http_headers: None,
             requires_openai_auth: None,
@@ -1855,7 +2202,7 @@ mod tests {
 
         let overrides = runtime.codex_startup_config_overrides();
 
-        assert!(overrides.contains(&r#"model_provider="minimax""#.to_string()));
+        assert!(overrides.contains(&r#"model_provider="deepseek""#.to_string()));
         assert!(overrides.contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string()));
     }
 
@@ -1863,15 +2210,9 @@ mod tests {
     fn claude_large_prompt_is_not_rejected_by_process_argv_guard() {
         let user_env = HashMap::new();
         let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let runtime = runtime_for_exec_boundary_test(
-            env::Framework::ClaudeCode,
-            &prompt,
-            "",
-            false,
-            &user_env,
-        );
+        let runtime = runtime_for_command_test(env::Framework::ClaudeCode, &prompt, "", &user_env);
 
-        let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
+        let cmd = command::build_claude_command_for_runtime(&runtime, false);
         let (bin, args) = cmd.split_first().unwrap();
         let env_values = child_env::values_for_runtime(&runtime);
 
@@ -1882,65 +2223,13 @@ mod tests {
             &env_values,
         )
         .unwrap();
-    }
-
-    #[test]
-    fn ordinary_codex_large_prompt_is_not_rejected_by_process_argv_guard() {
-        let user_env = HashMap::new();
-        let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, &prompt, "", false, &user_env);
-
-        let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        let (bin, args) = cmd.split_first().unwrap();
-        let env_values = child_env::values_for_runtime(&runtime);
-        exec_boundary::validate_process_argv_env(
-            "test cli child",
-            bin,
-            args.iter().map(String::as_str),
-            &env_values,
-        )
-        .unwrap();
-
-        assert!(!args.iter().any(|arg| arg == &prompt));
-    }
-
-    #[test]
-    fn ordinary_codex_large_developer_instructions_still_fail_process_argv_guard() {
-        let user_env = HashMap::new();
-        let append_system_prompt =
-            "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let runtime = runtime_for_exec_boundary_test(
-            env::Framework::Codex,
-            "user prompt",
-            &append_system_prompt,
-            false,
-            &user_env,
-        );
-
-        let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        let (bin, args) = cmd.split_first().unwrap();
-        let env_values = child_env::values_for_runtime(&runtime);
-        let error = exec_boundary::validate_process_argv_env(
-            "test cli child",
-            bin,
-            args.iter().map(String::as_str),
-            &env_values,
-        )
-        .unwrap_err();
-
-        assert!(error.contains("argv value too large"));
-        assert!(error.contains("length="));
-        assert!(error.contains("max=131071"));
-        assert!(!error.contains(&append_system_prompt));
     }
 
     #[test]
     fn codex_app_server_large_prompt_is_not_part_of_process_argv_guard() {
         let user_env = HashMap::new();
         let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, &prompt, "", true, &user_env);
+        let runtime = runtime_for_command_test(env::Framework::Codex, &prompt, "", &user_env);
         let mut env_values = child_env::values_for_runtime(&runtime);
         env_values.push(("CODEX_HOME".to_string(), runtime.codex_home()));
 
@@ -1954,7 +2243,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_codex_child_env_keeps_openai_base_url_without_structured_runtime_config() {
+    fn codex_child_env_keeps_openai_base_url_without_structured_runtime_config() {
         let user_env = HashMap::from([
             ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
             ("OPENAI_MODEL".to_string(), "gpt-5".to_string()),
@@ -1963,8 +2252,7 @@ mod tests {
                 "https://api.legacy-provider.test/v1".to_string(),
             ),
         ]);
-        let runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+        let runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
 
         let env_values = child_env::values_for_runtime(&runtime);
 
@@ -1977,18 +2265,17 @@ mod tests {
     fn structured_codex_runtime_config_omits_stale_openai_base_url_from_child_env() {
         let user_env = HashMap::from([
             ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
-            ("OPENAI_MODEL".to_string(), "MiniMax-M3".to_string()),
+            ("OPENAI_MODEL".to_string(), "deepseek-v4-flash".to_string()),
             (
                 "OPENAI_BASE_URL".to_string(),
                 "https://api.should-not-win.test/v1".to_string(),
             ),
         ]);
-        let mut runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+        let mut runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
         runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
-            provider_id: "minimax".to_string(),
-            name: "MiniMax".to_string(),
-            base_url: "https://api.minimax.io/v1".to_string(),
+            provider_id: "deepseek".to_string(),
+            name: "DeepSeek".to_string(),
+            base_url: "https://api.deepseek.com/".to_string(),
             env_key: "OPENAI_API_KEY".to_string(),
             http_headers: None,
             requires_openai_auth: None,
@@ -2007,7 +2294,7 @@ mod tests {
         assert!(
             env_values
                 .iter()
-                .any(|(key, value)| { key == "OPENAI_MODEL" && value == "MiniMax-M3" })
+                .any(|(key, value)| { key == "OPENAI_MODEL" && value == "deepseek-v4-flash" })
         );
         assert!(!env_values.iter().any(|(key, _)| key == "OPENAI_BASE_URL"));
     }
@@ -2103,7 +2390,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn cli_exit_observation_distinguishes_stdout_drain_from_loop_completion() {
-        let active_input = ActiveInputRuntime::new_disabled("run-exit-observation");
+        let active_input = ActiveInputRuntime::new_disabled("run-exit-observation", "");
         let controller = active_input.controller();
         let termination_deadline = tokio::time::sleep(Duration::MAX);
         tokio::pin!(termination_deadline);

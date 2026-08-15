@@ -36,13 +36,13 @@ async fn inspect_missing_cache_dir_returns_empty_summary() {
 
 #[tokio::test]
 async fn inspect_reports_reusable_entry_with_storage_counts() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -98,13 +98,13 @@ async fn inspect_reports_reusable_entry_with_storage_counts() {
 
 #[tokio::test]
 async fn inspect_reports_invalid_metadata_reason() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -142,7 +142,7 @@ async fn inspect_reports_invalid_metadata_reason() {
 
 #[tokio::test]
 async fn inspect_rejects_symlink_current_image() {
-    let (dir, paths, cache) = local_cache().await;
+    let (dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let image = b"image";
     let key = cache.scoped_cache_key(
@@ -151,12 +151,12 @@ async fn inspect_rejects_symlink_current_image() {
         "/workspace",
         image.len() as u64,
     );
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
     let target = dir.path().join("target.ext4");
     fs::write(&target, image).await.unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     std::os::unix::fs::symlink(&target, &current).unwrap();
     let current_target_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -194,7 +194,7 @@ async fn inspect_rejects_symlink_current_image() {
 
 #[tokio::test]
 async fn inspect_reports_current_directory_as_invalid() {
-    let (dir, paths, cache) = local_cache().await;
+    let (dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let reuse_key = "sess-1";
     let working_dir = "/workspace";
@@ -203,7 +203,7 @@ async fn inspect_reports_current_directory_as_invalid() {
     let image_size_bytes = fs::metadata(&probe).await.unwrap().len();
     tokio::fs::remove_dir_all(&probe).await.unwrap();
     let key = cache.scoped_cache_key(TEST_PROFILE_NAME, reuse_key, working_dir, image_size_bytes);
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     fs::create_dir_all(&current).await.unwrap();
     fs::write(current.join("nested"), vec![1_u8; 4096])
         .await
@@ -248,7 +248,7 @@ async fn inspect_reports_current_directory_as_invalid() {
 
 #[tokio::test]
 async fn inspect_reports_stale_entry_without_current_image() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let key = write_current_cache_entry(
         &cache,
         RunId::new_v4(),
@@ -258,7 +258,7 @@ async fn inspect_reports_stale_entry_without_current_image() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    fs::remove_file(paths.workspace_image_cache_current_image(&key))
+    fs::remove_file(cache.entry_paths(&key).current_image().to_path_buf())
         .await
         .unwrap();
 
@@ -273,9 +273,9 @@ async fn inspect_reports_stale_entry_without_current_image() {
 
 #[tokio::test]
 async fn inspect_reports_temporary_only_entry() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let key = workspace_image_cache_key("sess-1", "/workspace");
-    let tmp = paths.workspace_image_cache_tmp_image(&key, RunId::new_v4());
+    let tmp = cache.entry_paths(&key).tmp_image(RunId::new_v4());
     fs::create_dir_all(tmp.parent().unwrap()).await.unwrap();
     fs::write(&tmp, b"partial image").await.unwrap();
     let tmp_metadata = fs::metadata(&tmp).await.unwrap();
@@ -298,9 +298,9 @@ async fn inspect_reports_temporary_only_entry() {
 
 #[tokio::test]
 async fn inspect_reports_temporary_only_directory() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let key = workspace_image_cache_key("sess-1", "/workspace");
-    let tmp = paths.workspace_image_cache_tmp_image(&key, RunId::new_v4());
+    let tmp = cache.entry_paths(&key).tmp_image(RunId::new_v4());
     fs::create_dir_all(&tmp).await.unwrap();
     fs::write(tmp.join("partial-image"), vec![1_u8; 4096])
         .await
@@ -326,13 +326,13 @@ async fn inspect_reports_temporary_only_directory() {
 
 #[tokio::test]
 async fn inspect_reports_locked_entry_without_blocking() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let key = workspace_image_cache_key("sess-1", "/workspace");
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
     fs::write(
-        paths.workspace_image_cache_tmp_image(&key, RunId::new_v4()),
+        cache.entry_paths(&key).tmp_image(RunId::new_v4()),
         b"partial image",
     )
     .await
@@ -357,7 +357,7 @@ async fn inspect_propagates_lock_path_errors() {
     let paths = RunnerPaths::new(dir.path().join("runner"));
     let cache = WorkspaceImageCache::new(paths.clone());
     let key = workspace_image_cache_key("sess-1", "/workspace");
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
     fs::write(paths.base_dir().join("locks"), b"not a directory")
@@ -378,7 +378,7 @@ async fn inspect_entry_skips_directory_removed_after_scan() {
     let paths = RunnerPaths::new(dir.path().join("runner"));
     let cache = WorkspaceImageCache::new(paths.clone());
     let key = workspace_image_cache_key("sess-1", "/workspace");
-    let entry_dir = paths.workspace_image_cache_entry_dir(&key);
+    let entry_dir = cache.entry_paths(&key).entry_dir().to_path_buf();
     fs::create_dir_all(&entry_dir).await.unwrap();
     fs::remove_dir_all(&entry_dir).await.unwrap();
 
@@ -393,7 +393,7 @@ async fn inspect_entry_skips_symlink_replacement_after_scan() {
     let paths = RunnerPaths::new(dir.path().join("runner"));
     let cache = WorkspaceImageCache::new(paths.clone());
     let key = workspace_image_cache_key("sess-1", "/workspace");
-    let entry_dir = paths.workspace_image_cache_entry_dir(&key);
+    let entry_dir = cache.entry_paths(&key).entry_dir().to_path_buf();
     fs::create_dir_all(entry_dir.parent().unwrap())
         .await
         .unwrap();
@@ -412,13 +412,16 @@ async fn inspect_reports_non_file_metadata_as_invalid_entry() {
     let paths = RunnerPaths::new(dir.path().join("runner"));
     let cache = WorkspaceImageCache::new(paths.clone());
     let key = workspace_image_cache_key("sess-1", "/workspace");
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    fs::write(paths.workspace_image_cache_current_image(&key), b"image")
-        .await
-        .unwrap();
-    fs::create_dir(paths.workspace_image_cache_metadata(&key))
+    fs::write(
+        cache.entry_paths(&key).current_image().to_path_buf(),
+        b"image",
+    )
+    .await
+    .unwrap();
+    fs::create_dir(cache.entry_paths(&key).metadata().to_path_buf())
         .await
         .unwrap();
 
@@ -444,7 +447,7 @@ async fn inspect_rejects_metadata_symlink_without_following_it() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    let metadata_path = paths.workspace_image_cache_metadata(&key);
+    let metadata_path = cache.entry_paths(&key).metadata().to_path_buf();
     let outside = dir.path().join("outside-metadata.json");
     fs::rename(&metadata_path, &outside).await.unwrap();
     std::os::unix::fs::symlink(&outside, &metadata_path).unwrap();
@@ -463,14 +466,17 @@ async fn inspect_rejects_oversized_metadata() {
     let paths = RunnerPaths::new(dir.path().join("runner"));
     let cache = WorkspaceImageCache::new(paths.clone());
     let key = workspace_image_cache_key("sess-1", "/workspace");
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
-        .await
-        .unwrap();
-    fs::write(paths.workspace_image_cache_current_image(&key), b"image")
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
     fs::write(
-        paths.workspace_image_cache_metadata(&key),
+        cache.entry_paths(&key).current_image().to_path_buf(),
+        b"image",
+    )
+    .await
+    .unwrap();
+    fs::write(
+        cache.entry_paths(&key).metadata().to_path_buf(),
         vec![b' '; crate::state_file::WORKSPACE_METADATA_MAX_BYTES as usize + 1],
     )
     .await

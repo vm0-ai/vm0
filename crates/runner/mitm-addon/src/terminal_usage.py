@@ -37,9 +37,30 @@ def report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
     """Avoid duplicate usage webhook enqueue if response/error both fire."""
     if flow.metadata.get(_MODEL_PROVIDER_USAGE_REPORTED, False):
         return
-    reported_usage = usage.report_model_provider_usage(flow, run_id)
-    reported_observation = usage.report_model_provider_usage_observation(flow, run_id)
+    accepted_usage_keys: set[str] = set()
+    accepted_observation_keys: set[str] = set()
+    reported_usage = usage.report_model_provider_usage(
+        flow,
+        run_id,
+        accepted_source_keys=accepted_usage_keys,
+    )
+    reported_observation = usage.report_model_provider_usage_observation(
+        flow,
+        run_id,
+        accepted_source_keys=accepted_observation_keys,
+    )
     if reported_usage or reported_observation:
+        usage.log_terminal_model_provider_usage_sources(
+            flow,
+            run_id,
+            include_usage_events=reported_usage,
+            include_observations=reported_observation,
+            accepted_usage_keys=accepted_usage_keys,
+            accepted_observation_keys=accepted_observation_keys,
+            transport=(
+                "websocket" if response_streaming.is_model_websocket_usage_enabled(flow) else "http"
+            ),
+        )
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
 
 

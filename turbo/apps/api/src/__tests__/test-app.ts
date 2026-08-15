@@ -5,9 +5,10 @@ import {
   type AppRouter,
   type InitClientArgs,
   type InitClientReturn,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { createAppWithRoutes } from "../app-factory-core";
+import type { UsagePricingResolution } from "../signals/context/usage-pricing-resolution";
 import type { RouteEntry } from "../signals/route-entry";
 import type { TestContext } from "./test-context";
 
@@ -15,6 +16,7 @@ interface SetupAppWithRoutesOptions {
   readonly context: TestContext;
   readonly routes: readonly RouteEntry[];
   readonly signal?: AbortSignal;
+  readonly usagePricingResolution?: UsagePricingResolution;
 }
 
 function parseResponseBody(response: Response): Promise<unknown> | undefined {
@@ -56,11 +58,40 @@ function createAppFetcher(
   context: TestContext,
   routes: readonly RouteEntry[],
   signal?: AbortSignal,
+  usagePricingResolution?: UsagePricingResolution,
 ): ApiFetcher {
-  const app = createAppWithRoutes({ signal: signal ?? context.signal, routes });
+  const app = createAppWithRoutes({
+    signal: signal ?? context.signal,
+    routes,
+    usagePricingResolution,
+  });
 
   return (args) => {
     return requestApp(app, args);
+  };
+}
+
+/**
+ * Sends a request the ts-rest client cannot express, so a route test can cover
+ * what a non-TypeScript caller sends: a body that the contract schema rejects.
+ * Everything the typed client can express belongs on `setupAppWithRoutes`.
+ */
+export function setupRawAppRequestWithRoutes({
+  context,
+  routes,
+  signal,
+}: SetupAppWithRoutesOptions) {
+  const app = createAppWithRoutes({
+    signal: signal ?? context.signal,
+    routes,
+  });
+
+  return async (
+    path: string,
+    init: RequestInit,
+  ): Promise<{ readonly status: number; readonly body: unknown }> => {
+    const response = await app.request(path, init);
+    return { status: response.status, body: await parseResponseBody(response) };
   };
 }
 
@@ -68,8 +99,9 @@ export function setupAppWithRoutes({
   context,
   routes,
   signal,
+  usagePricingResolution,
 }: SetupAppWithRoutesOptions) {
-  const app = createAppFetcher(context, routes, signal);
+  const app = createAppFetcher(context, routes, signal, usagePricingResolution);
 
   return <TContract extends AppRouter>(
     contract: TContract,

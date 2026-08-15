@@ -210,12 +210,109 @@ jobs:
             console.log(`Deleted: ${deleted}`);
             console.log(`Skipped: ${skipped}`);
 
+  cleanup-app-pages-deployments:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Cleanup stale Cloudflare Pages app preview deployments
+        env:
+          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          resolve_pr_state() {
+            local pr_number="$1"
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" \
+              --jq '.state'
+          }
+
+          CLEANED=0
+          SKIPPED=0
+
+          mapfile -t PR_NUMBERS < <(
+            bash .github/scripts/list-okou-pages-preview-pr-numbers.sh \
+              "$CLOUDFLARE_ACCOUNT_ID" \
+              "$CF_PAGES_PROJECT_NAME"
+          )
+
+          for PR_NUMBER in "${PR_NUMBERS[@]}"; do
+            if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "Invalid PR number from Cloudflare Pages: $PR_NUMBER" >&2
+              exit 1
+            fi
+
+            PR_STATE="$(resolve_pr_state "$PR_NUMBER")"
+            if [ "$PR_STATE" = "open" ]; then
+              echo "Keeping pr-${PR_NUMBER}-app - PR #${PR_NUMBER} is open"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+            if [ "$PR_STATE" != "closed" ]; then
+              echo "Unexpected state for PR #${PR_NUMBER}: $PR_STATE" >&2
+              exit 1
+            fi
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[DRY-RUN] Would delete pr-${PR_NUMBER}-app for closed PR #${PR_NUMBER}"
+              CLEANED=$((CLEANED + 1))
+              continue
+            fi
+
+            PR_NUMBER="$PR_NUMBER" \
+              RUNNER_OWNER_SCOPE=closed-pr-cleanup \
+              .github/scripts/cancel-superseded-merge-group-runs.sh
+
+            # A closed-but-unmerged PR may reopen while the owner barrier is
+            # waiting. Revalidate immediately before deleting its deployment.
+            PR_STATE="$(resolve_pr_state "$PR_NUMBER")"
+            if [ "$PR_STATE" = "open" ]; then
+              echo "Keeping pr-${PR_NUMBER}-app - PR #${PR_NUMBER} reopened"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+            if [ "$PR_STATE" != "closed" ]; then
+              echo "Unexpected state for PR #${PR_NUMBER}: $PR_STATE" >&2
+              exit 1
+            fi
+
+            bash .github/scripts/delete-okou-pages-preview-deployments.sh \
+              "$CLOUDFLARE_ACCOUNT_ID" \
+              "$CF_PAGES_PROJECT_NAME" \
+              "pr-${PR_NUMBER}-app"
+            CLEANED=$((CLEANED + 1))
+          done
+
+          echo ""
+          echo "=== Cloudflare Pages App Preview Cleanup Summary ==="
+          echo "Cleaned: $CLEANED"
+          echo "Skipped: $SKIPPED"
+
   cleanup-metal-runners:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
+      contents: read
       pull-requests: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
 
       - name: Check if cleanup needed
         id: check
@@ -271,6 +368,9 @@ jobs:
       - name: Cleanup stale runners
         if: steps.check.outputs.should-cleanup == 'true' && steps.prs.outputs.has-prs == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           PR_NUMBERS: ${{ steps.prs.outputs.numbers }}
@@ -293,13 +393,18 @@ jobs:
 
             PR_FAILED=0
 
+            # First await owners visible through GitHub, then hold the same
+            # host-local namespace lock as Turbo through the actual deletion.
+            # A late approval serializes behind cleanup and reconciles after it.
+            PR_NUMBER="$PR_NUMBER" \
+              RUNNER_OWNER_SCOPE=closed-pr-cleanup \
+              "$GITHUB_WORKSPACE/.github/scripts/cancel-superseded-merge-group-runs.sh"
+
             # Cleanup turbo runner
-            if ! ansible-playbook \
-              -i "${METAL_HOSTS}," \
-              playbooks/cleanup-turbo-runner.yml \
-              -e "ansible_user=${METAL_USER}" \
-              -e "job_ref=pr-${PR_NUMBER}" \
-              -v; then
+            JOB_REF="pr-${PR_NUMBER}"
+            export JOB_REF
+            if ! "$GITHUB_WORKSPACE/.github/scripts/with-runner-lifecycle-lock.sh" \
+              "$GITHUB_WORKSPACE/.github/scripts/cleanup-turbo-runner-namespace.sh"; then
               echo "::warning::Turbo runner cleanup failed for pr-${PR_NUMBER}"
               PR_FAILED=1
             fi
@@ -338,147 +443,37 @@ jobs:
           echo "Cleaned: $CLEANED"
           echo "Failures: $FAILED"
 
-  cleanup-clerk-test-users:
+  cleanup-clerk-test-resources:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read
+      contents: read
     steps:
-      - name: Find recently closed PRs
-        id: prs
-        uses: actions/github-script@v9
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          script: |
-            const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-            const { data: pulls } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'closed',
-              sort: 'updated',
-              direction: 'desc',
-              per_page: 100
-            });
-            const recent = pulls
-              .filter(pr => pr.closed_at && pr.closed_at >= since)
-              .map(pr => pr.number);
-            console.log(`Found ${recent.length} PRs closed since ${since}: ${recent.join(', ')}`);
-            core.setOutput('numbers', JSON.stringify(recent));
-            core.setOutput('has-prs', recent.length > 0 ? 'true' : 'false');
-
-      - name: Delete stale Clerk test users for closed PRs
-        if: steps.prs.outputs.has-prs == 'true'
-        env:
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          PR_NUMBERS: ${{ steps.prs.outputs.numbers }}
-          DRY_RUN: ${{ env.DRY_RUN }}
-        run: |
-          set -eu
-
-          DELETED=0
-          SKIPPED=0
-
-          for PR_NUMBER in $(echo "$PR_NUMBERS" | jq -r '.[]'); do
-            JOB_REF="pr-${PR_NUMBER}"
-            echo "--- Searching for test users matching ${JOB_REF}+clerk_test ---"
-
-            USERS=$(curl -sS -X GET "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-              -H "Content-Type: application/json")
-
-            while read -r user; do
-              USER_ID=$(echo "$user" | jq -r '.id')
-              EMAIL=$(echo "$user" | jq -r '.email_addresses[0].email_address // "unknown"')
-
-              # Verify email actually matches this PR (Clerk query is fuzzy)
-              if [[ "$EMAIL" != "${JOB_REF}+clerk_test"* ]]; then
-                echo "Skipping $USER_ID ($EMAIL) — does not match ${JOB_REF}"
-                SKIPPED=$((SKIPPED + 1))
-                continue
-              fi
-
-              if [ "$DRY_RUN" = "true" ]; then
-                echo "[DRY-RUN] Would delete $USER_ID ($EMAIL)"
-              else
-                echo "Deleting $USER_ID ($EMAIL)"
-                if ! curl -sS -X DELETE "https://api.clerk.com/v1/users/${USER_ID}" \
-                  -H "Authorization: Bearer ${CLERK_SECRET_KEY}"; then
-                  echo "::warning::Failed to delete user $USER_ID ($EMAIL)"
-                fi
-              fi
-              DELETED=$((DELETED + 1))
-            done < <(echo "$USERS" | jq -c '.[]' 2>/dev/null)
-          done
-
-          echo ""
-          echo "=== Clerk Test User Cleanup Summary ==="
-          echo "Deleted: $DELETED"
-          echo "Skipped: $SKIPPED"
-
-  cleanup-clerk-empty-orgs:
-    runs-on: ubuntu-latest
-    needs: cleanup-clerk-test-users
-    steps:
-      - name: Delete Clerk organizations with no members
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Delete stale non-runner Clerk test resources
+        run: >-
+          cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
+          cleanup-stale browser,playwright,paid-onboarding --older-than-hours 6
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           DRY_RUN: ${{ env.DRY_RUN }}
-        run: |
-          set -eu
-
-          DELETED=0
-          SKIPPED=0
-          OFFSET=0
-          LIMIT=100
-
-          # Collect all org IDs first
-          ORG_IDS=()
-          ORG_NAMES=()
-          TOTAL=$(curl -sS -X GET "https://api.clerk.com/v1/organizations?limit=1" \
-            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" | jq '.total_count')
-
-          echo "Total organizations: $TOTAL"
-
-          while [ "$OFFSET" -lt "$TOTAL" ]; do
-            ORGS=$(curl -sS -X GET "https://api.clerk.com/v1/organizations?limit=${LIMIT}&offset=${OFFSET}" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
-
-            while read -r org; do
-              ORG_IDS+=("$(echo "$org" | jq -r '.id')")
-              ORG_NAMES+=("$(echo "$org" | jq -r '.name')")
-            done < <(echo "$ORGS" | jq -c '.data[]')
-
-            OFFSET=$((OFFSET + LIMIT))
-          done
-
-          echo "Fetched ${#ORG_IDS[@]} organizations, checking memberships..."
-
-          for i in "${!ORG_IDS[@]}"; do
-            ORG_ID="${ORG_IDS[$i]}"
-            ORG_NAME="${ORG_NAMES[$i]}"
-
-            MEMBER_COUNT=$(curl -sS -X GET "https://api.clerk.com/v1/organizations/${ORG_ID}/memberships?limit=1" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" | jq '.total_count')
-
-            if [ "$MEMBER_COUNT" -gt 0 ]; then
-              SKIPPED=$((SKIPPED + 1))
-              continue
-            fi
-
-            if [ "$DRY_RUN" = "true" ]; then
-              echo "[DRY-RUN] Would delete org ${ORG_ID} (${ORG_NAME})"
-            else
-              echo "Deleting org ${ORG_ID} (${ORG_NAME})"
-              if ! curl -sS -X DELETE "https://api.clerk.com/v1/organizations/${ORG_ID}" \
-                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null; then
-                echo "::warning::Failed to delete org ${ORG_ID} (${ORG_NAME})"
-              fi
-            fi
-            DELETED=$((DELETED + 1))
-          done
-
-          echo ""
-          echo "=== Clerk Empty Org Cleanup Summary ==="
-          echo "Deleted: $DELETED"
-          echo "Skipped (has members): $SKIPPED"
+      - name: Delete stale runner Clerk test resources
+        run: >-
+          cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
+          cleanup-stale runner,runner-real-codex,runner-real-claude,runner-mock-claude
+          --older-than-hours 30
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          DRY_RUN: ${{ env.DRY_RUN }}
 
   cleanup-git-branches:
     runs-on: ubuntu-latest

@@ -2,8 +2,10 @@ use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Buffer size for reading stdout chunks from a child process.
-const STDOUT_CHUNK_SIZE: usize = 8 * 1024;
+/// Default buffer size for reading process output from stdout/stderr pipes.
+const DEFAULT_DRAIN_READ_BYTES: usize = 64 * 1024;
+/// Initial allocation for captured output, independent of the drain read size.
+const INITIAL_CAPTURE_CAPACITY_BYTES: usize = 8 * 1024;
 const DRAIN_POLL_TIMEOUT_MS: libc::c_int = 100;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,7 +38,7 @@ pub(crate) fn drain_until_eof_or_cancelled(
 ) {
     let pipe = pipe.into();
     let raw_fd = pipe.as_raw_fd();
-    let mut chunk = [0u8; STDOUT_CHUNK_SIZE];
+    let mut chunk = [0u8; DEFAULT_DRAIN_READ_BYTES];
     loop {
         if cancel.load(Ordering::Acquire) {
             break;
@@ -112,8 +114,8 @@ pub(crate) fn drain_bounded_cancellable<R>(
 where
     R: Into<OwnedFd>,
 {
-    let mut captured =
-        capture_limit_bytes.map(|limit| Vec::with_capacity(limit.min(STDOUT_CHUNK_SIZE)));
+    let mut captured = capture_limit_bytes
+        .map(|limit| Vec::with_capacity(limit.min(INITIAL_CAPTURE_CAPACITY_BYTES)));
     let mut capture_truncated = false;
     let mut stream_emitted = 0usize;
     let mut stream_truncated = false;
@@ -173,12 +175,14 @@ where
 mod tests {
     use super::*;
     use std::fs::File;
-    use std::io::Write;
+    use std::io::{Seek, SeekFrom, Write};
     use std::os::unix::io::FromRawFd;
     use std::path::Path;
     use std::sync::{Arc, mpsc};
     use std::thread;
     use std::time::Duration;
+
+    const EXPECTED_DEFAULT_DRAIN_READ_BYTES: usize = 64 * 1024;
 
     fn pipe_pair() -> (File, File) {
         let mut fds = [0; 2];
@@ -188,6 +192,13 @@ mod tests {
 
         // SAFETY: pipe2() initialized both fds and ownership is transferred to File.
         unsafe { (File::from_raw_fd(fds[0]), File::from_raw_fd(fds[1])) }
+    }
+
+    fn file_with_contents(contents: &[u8]) -> File {
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(contents).unwrap();
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file
     }
 
     fn fd_target(fd: i32) -> std::path::PathBuf {
@@ -349,6 +360,72 @@ mod tests {
 
         assert_eq!(result.captured, None);
         assert!(!result.capture_truncated);
+    }
+
+    #[test]
+    fn bounded_drain_streams_sustained_input_in_64_kib_chunks() {
+        assert_eq!(DEFAULT_DRAIN_READ_BYTES, EXPECTED_DEFAULT_DRAIN_READ_BYTES);
+        let input = vec![b'x'; EXPECTED_DEFAULT_DRAIN_READ_BYTES * 3 + 123];
+        let reader = file_with_contents(&input);
+        let cancel = AtomicBool::new(false);
+        let mut streamed = Vec::new();
+        let mut chunk_lengths = Vec::new();
+
+        let result = drain_bounded_cancellable(
+            reader,
+            &cancel,
+            None,
+            Some(BoundedStreamConfig {
+                chunk_limit_bytes: EXPECTED_DEFAULT_DRAIN_READ_BYTES,
+                stream_limit_bytes: input.len(),
+            }),
+            |chunk, truncated| {
+                assert!(!truncated);
+                streamed.extend_from_slice(chunk);
+                chunk_lengths.push(chunk.len());
+                true
+            },
+        );
+
+        assert_eq!(result.captured, None);
+        assert!(!result.capture_truncated);
+        assert_eq!(streamed, input);
+        assert_eq!(
+            chunk_lengths,
+            vec![
+                EXPECTED_DEFAULT_DRAIN_READ_BYTES,
+                EXPECTED_DEFAULT_DRAIN_READ_BYTES,
+                EXPECTED_DEFAULT_DRAIN_READ_BYTES,
+                123,
+            ]
+        );
+    }
+
+    #[test]
+    fn bounded_drain_large_read_preserves_stream_truncation() {
+        let input = vec![b'y'; EXPECTED_DEFAULT_DRAIN_READ_BYTES + 123];
+        let stream_limit = EXPECTED_DEFAULT_DRAIN_READ_BYTES / 2;
+        let reader = file_with_contents(&input);
+        let cancel = AtomicBool::new(false);
+        let mut chunks = Vec::new();
+
+        let result = drain_bounded_cancellable(
+            reader,
+            &cancel,
+            Some(input.len()),
+            Some(BoundedStreamConfig {
+                chunk_limit_bytes: EXPECTED_DEFAULT_DRAIN_READ_BYTES,
+                stream_limit_bytes: stream_limit,
+            }),
+            |chunk, truncated| {
+                chunks.push((chunk.len(), truncated));
+                true
+            },
+        );
+
+        assert_eq!(result.captured, Some(input));
+        assert!(!result.capture_truncated);
+        assert_eq!(chunks, vec![(stream_limit, false), (0, true)]);
     }
 
     #[test]

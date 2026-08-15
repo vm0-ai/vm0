@@ -62,11 +62,9 @@ export const cronCleanupSandboxesContract = c.router({
 });
 
 export type CronCleanupSandboxesContract = typeof cronCleanupSandboxesContract;
-
-const cronAggregateUsageResponseSchema = z.object({
-  date: z.string(),
-  aggregated: z.number(),
-});
+export type CronCleanupSandboxesResponse = z.infer<
+  typeof cleanupResponseSchema
+>;
 
 const cronProcessUsageEventsResponseSchema = z.object({
   success: z.literal(true),
@@ -79,6 +77,71 @@ const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   eventsApplied: z.number(),
   removedDeletedAgentThreads: z.number(),
   eventsPruned: z.number(),
+});
+
+export const cronProjectChatEventSearchResponseSchema = z.object({
+  success: z.literal(true),
+  threads: z.number(),
+  indexedEvents: z.number(),
+  deletedDocs: z.number(),
+  convergence: z.object({
+    eligibleThreads: z.number(),
+    durableCaughtUpThreads: z.number(),
+  }),
+});
+
+const chatEventSnapshotConvergenceSchema = z.object({
+  snapshotHeads: z.number().int().nonnegative(),
+  nonV4SnapshotHeads: z.number().int().nonnegative(),
+  snapshotHeadVersions: z.array(
+    z.object({
+      archiveSchemaVersion: z.number().int().positive(),
+      heads: z.number().int().positive(),
+    }),
+  ),
+});
+
+const cronSnapshotChatEventsResponseSchema =
+  chatEventSnapshotConvergenceSchema.extend({
+    success: z.literal(true),
+    snapshots: z.number(),
+    archivedEvents: z.number(),
+    unreadableParents: z.number().int().nonnegative(),
+    skippedUnreadableHeads: z.number().int().nonnegative(),
+    skippedUndecodableHeads: z.number().int().nonnegative(),
+    skippedIncompleteHeads: z.number().int().nonnegative(),
+    skippedUnsupportedHeads: z.number().int().nonnegative(),
+    duplicateEventIdConflictThreads: z.number().int().nonnegative(),
+    duplicateEventIdConflicts: z.number().int().nonnegative(),
+    duplicateEventIdsRemapped: z.number().int().nonnegative(),
+    duplicateEventReferencesRemapped: z.number().int().nonnegative(),
+    retiredSnapshotReferencesDeleted: z.number().int().nonnegative(),
+    r2ObjectsScanned: z.number().int().nonnegative(),
+    r2ObjectsMeasured: z.number().int().nonnegative(),
+    r2ObjectsDeleted: z.number().int().nonnegative(),
+    r2BytesMeasured: z.number().int().nonnegative(),
+    r2BytesDeleted: z.number().int().nonnegative(),
+    r2GcShardsScanned: z.number().int().nonnegative(),
+    r2GcSubpartitionedShards: z.number().int().nonnegative(),
+  });
+
+const cronRetainChatEventsResponseSchema = z.object({
+  success: z.literal(true),
+  cutoff: z.iso.datetime(),
+  scanLimit: z.number().int().positive(),
+  deleteLimit: z.number().int().positive(),
+  scanned: z.number().int().nonnegative(),
+  candidates: z.number().int().nonnegative(),
+  deleted: z.number().int().nonnegative(),
+  skippedSnapshot: z.number().int().nonnegative(),
+  skippedSearchWatermark: z.number().int().nonnegative(),
+  skippedPendingRunless: z.number().int().nonnegative(),
+  skippedNonterminalRun: z.number().int().nonnegative(),
+  skippedActiveInput: z.number().int().nonnegative(),
+  skippedBatchLimit: z.number().int().nonnegative(),
+  hasMore: z.boolean(),
+  overlapPrevented: z.boolean(),
+  durationMs: z.number().int().nonnegative(),
 });
 
 const cronCompactUsageEventsResponseSchema = z.object({
@@ -106,6 +169,11 @@ const cronCompactUsageEventsResponseSchema = z.object({
 const cronMonitorChatEventQueueResponseSchema = z.object({
   success: z.literal(true),
   orphanedMessages: z.number().int().nonnegative(),
+});
+
+const cronSteerRunTimeBudgetResponseSchema = z.object({
+  scanned: z.number().int().nonnegative(),
+  steered: z.number().int().nonnegative(),
 });
 
 const cronReconcileBillingEntitlementsResponseSchema = z.object({
@@ -175,6 +243,12 @@ const cronRenewGmailWatchesResponseSchema = z.object({
   failed: z.number(),
 });
 
+const cronRenewGoogleFormsWatchesResponseSchema = z.object({
+  success: z.literal(true),
+  renewed: z.number(),
+  failed: z.number(),
+});
+
 const cronRenewGoogleCalendarWatchesResponseSchema = z.object({
   success: z.literal(true),
   renewed: z.number(),
@@ -188,22 +262,6 @@ const cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema = z.object({
   failed: z.number(),
 });
 
-const cronAggregateInsightsSkippedResponseSchema = z.object({
-  users: z.number(),
-  skipped: z.literal(true),
-});
-
-const cronAggregateInsightsAggregatedResponseSchema = z.object({
-  users: z.number(),
-  windows: z.number(),
-  networkRows: z.number(),
-});
-
-const cronAggregateInsightsResponseSchema = z.union([
-  cronAggregateInsightsSkippedResponseSchema,
-  cronAggregateInsightsAggregatedResponseSchema,
-]);
-
 const storagePresignedUrlRefreshResultSchema = z.object({
   due: z.number(),
   refreshed: z.number(),
@@ -214,6 +272,7 @@ const cronRefreshStoragePresignedUrlsResponseSchema = z.object({
   success: z.literal(true),
   system: storagePresignedUrlRefreshResultSchema,
   workflowSkill: storagePresignedUrlRefreshResultSchema,
+  readOnly: storagePresignedUrlRefreshResultSchema,
 });
 
 const cronAggregateModelStatsResponseSchema = z.object({
@@ -223,19 +282,6 @@ const cronAggregateModelStatsResponseSchema = z.object({
   processedObservations: z.number().int().nonnegative(),
   updatedStats: z.number().int().nonnegative(),
   deletedObservations: z.number().int().nonnegative(),
-});
-
-export const cronAggregateUsageContract = c.router({
-  aggregate: {
-    method: "GET",
-    path: "/api/cron/aggregate-usage",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronAggregateUsageResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Aggregate daily usage cache",
-  },
 });
 
 export const cronProcessUsageEventsContract = c.router({
@@ -264,6 +310,47 @@ export const cronCompactChatThreadSnapshotsContract = c.router({
   },
 });
 
+export const cronProjectChatEventSearchContract = c.router({
+  project: {
+    method: "GET",
+    path: "/api/cron/project-chat-event-search",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronProjectChatEventSearchResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Project chat events into durable search messages",
+  },
+});
+
+export const cronSnapshotChatEventsContract = c.router({
+  snapshot: {
+    method: "GET",
+    path: "/api/cron/snapshot-chat-events",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronSnapshotChatEventsResponseSchema,
+      401: apiErrorSchema,
+      500: z.object({ error: z.string() }),
+    },
+    summary: "Archive chat events into immutable full-thread R2 snapshots",
+  },
+});
+
+export const cronRetainChatEventsContract = c.router({
+  retain: {
+    method: "GET",
+    path: "/api/cron/retain-chat-events",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronRetainChatEventsResponseSchema,
+      401: apiErrorSchema,
+      500: z.object({ error: z.string() }),
+    },
+    summary: "Physically retain the 30-day PostgreSQL chat event window",
+  },
+});
+
 export const cronCompactUsageEventsContract = c.router({
   compact: {
     method: "GET",
@@ -288,6 +375,19 @@ export const cronMonitorChatEventQueueContract = c.router({
       500: z.object({ error: z.string() }),
     },
     summary: "Monitor for orphaned queued chat messages",
+  },
+});
+
+export const cronSteerRunTimeBudgetContract = c.router({
+  steer: {
+    method: "GET",
+    path: "/api/cron/steer-run-time-budget",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronSteerRunTimeBudgetResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Steer chat runs that reached their time budget",
   },
 });
 
@@ -382,6 +482,19 @@ export const cronRenewGmailWatchesContract = c.router({
   },
 });
 
+export const cronRenewGoogleFormsWatchesContract = c.router({
+  renew: {
+    method: "GET",
+    path: "/api/cron/renew-google-forms-watches",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronRenewGoogleFormsWatchesResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Renew Google Forms response watches",
+  },
+});
+
 export const cronRenewGoogleCalendarWatchesContract = c.router({
   renew: {
     method: "GET",
@@ -460,19 +573,6 @@ export const cronExecuteMorningBriefsContract = c.router({
   },
 });
 
-export const cronAggregateInsightsContract = c.router({
-  aggregate: {
-    method: "GET",
-    path: "/api/cron/aggregate-insights",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronAggregateInsightsResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Aggregate daily usage insights",
-  },
-});
-
 export const cronAggregateModelStatsContract = c.router({
   aggregate: {
     method: "GET",
@@ -500,7 +600,6 @@ export const cronRefreshStoragePresignedUrlsContract = c.router({
   },
 });
 
-export type CronAggregateUsageContract = typeof cronAggregateUsageContract;
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronCompactChatThreadSnapshotsContract =
@@ -509,8 +608,6 @@ export type CronMonitorChatEventQueueContract =
   typeof cronMonitorChatEventQueueContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
-export type CronAggregateInsightsContract =
-  typeof cronAggregateInsightsContract;
 export type CronAggregateModelStatsContract =
   typeof cronAggregateModelStatsContract;
 export type CronRefreshStoragePresignedUrlsContract =
@@ -526,6 +623,8 @@ export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
 export type CronConnectorCatalogContract = typeof cronConnectorCatalogContract;
 export type CronRenewGmailWatchesContract =
   typeof cronRenewGmailWatchesContract;
+export type CronRenewGoogleFormsWatchesContract =
+  typeof cronRenewGoogleFormsWatchesContract;
 export type CronRenewGoogleCalendarWatchesContract =
   typeof cronRenewGoogleCalendarWatchesContract;
 export type CronRenewGoogleWorkspaceEventSubscriptionsContract =
@@ -535,8 +634,9 @@ export type CronRenewGoogleWorkspaceEventSubscriptionsContract =
 export {
   cleanupResultSchema,
   cleanupResponseSchema,
-  cronAggregateUsageResponseSchema,
   cronCompactChatThreadSnapshotsResponseSchema,
+  cronSnapshotChatEventsResponseSchema,
+  cronRetainChatEventsResponseSchema,
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
@@ -547,9 +647,9 @@ export {
   cronSyncSkillsResponseSchema,
   cronExecuteWorkflowAutomationsResponseSchema,
   cronRenewGmailWatchesResponseSchema,
+  cronRenewGoogleFormsWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
-  cronAggregateInsightsResponseSchema,
   cronAggregateModelStatsResponseSchema,
   cronRefreshStoragePresignedUrlsResponseSchema,
 };

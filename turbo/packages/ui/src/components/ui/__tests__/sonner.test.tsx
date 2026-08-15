@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Toaster, toast } from "../sonner";
 
 describe("Toaster", () => {
@@ -40,5 +40,20 @@ describe("Toaster", () => {
     expect(
       (toaster as HTMLElement).style.getPropertyValue("--mobile-offset-bottom"),
     ).toBe("calc(var(--sab, 0px) + 16px)");
+  });
+
+  it("calls onReady only once when its callback identity changes", async () => {
+    const firstOnReady = vi.fn<() => void>();
+    const secondOnReady = vi.fn<() => void>();
+    const { rerender } = render(<Toaster onReady={firstOnReady} />);
+
+    await waitFor(() => {
+      expect(firstOnReady).toHaveBeenCalledOnce();
+    });
+    rerender(<Toaster onReady={secondOnReady} />);
+
+    await waitFor(() => {
+      expect(secondOnReady).not.toHaveBeenCalled();
+    });
   });
 });

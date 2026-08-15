@@ -10,7 +10,7 @@ const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
 const isWatchMode = process.argv.includes("--watch");
 
 export default defineConfig({
-  entry: ["src/zero.ts"],
+  entry: ["src/okou.ts"],
   format: ["esm"],
   // Skip DTS generation in watch mode to avoid memory issues
   // DTS files are still generated during production builds
@@ -18,6 +18,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   shims: true,
+  removeNodeProtocol: false,
   banner: {
     js: [
       "#!/usr/bin/env node",
@@ -27,16 +28,8 @@ export default defineConfig({
       "const require = __createRequire(import.meta.url);",
     ].join("\n"),
   },
-  // @ngrok/ngrok contains platform-specific native binaries (.node) that
-  // cannot be bundled by esbuild — must remain external.
-  // All other dependencies live in devDependencies and are bundled by tsup.
-  // @sentry/node was previously external due to ImportInTheMiddle ESM loader
-  // hook issues, but that was fixed upstream in sentry-javascript v8.8.0
-  // (see getsentry/sentry-javascript#12009). It is now in devDependencies
-  // and bundled like everything else.
-  external: ["@ngrok/ngrok"],
   // Resolve packages from the CLI's node_modules when bundling workspace deps
-  // (e.g. @vm0/core imports zod, which lives in apps/cli/node_modules)
+  // (e.g. @okouai/core imports zod, which lives in apps/cli/node_modules)
   esbuildOptions(options) {
     options.nodePaths = [resolve("node_modules")];
   },
@@ -47,11 +40,17 @@ export default defineConfig({
       process.env.DEFAULT_SENTRY_DSN ?? "",
     ),
   },
-  onSuccess: isWatchMode
-    ? async () => {
-        console.log("Installing Zero CLI globally...");
-        execSync("sudo npm link --local", { cwd: "dist", stdio: "inherit" });
-        console.log("Zero CLI installed globally");
-      }
-    : undefined,
+  onSuccess: async () => {
+    if (!isWatchMode) {
+      return;
+    }
+    console.log("Uploading Okou CLI for local runners...");
+    execSync("pnpm --workspace-root deploy-cli:local", {
+      stdio: "inherit",
+    });
+    console.log("Okou CLI uploaded for local runners");
+    console.log("Installing Okou CLI globally...");
+    execSync("sudo npm link --local", { cwd: "dist", stdio: "inherit" });
+    console.log("Okou CLI installed globally");
+  },
 });

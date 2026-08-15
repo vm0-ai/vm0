@@ -1,22 +1,24 @@
 import { command, computed, type Computed } from "ccstate";
-import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
+import type { ComposeListItem } from "@okouai/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { storages } from "@vm0/db/schema/storage";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { storages } from "@okouai/db/schema/storage";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import {
   getInstructionsStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
+} from "@okouai/core/storage-names";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { env } from "../../lib/env";
 import { conflict } from "../../lib/error";
+import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
 export function zeroComposeExists(args: {
   readonly orgId: string;
@@ -109,6 +111,22 @@ export const deleteComposeById$ = command(
         return { kind: "conflict" as const };
       }
 
+      const automations = await tx
+        .select({
+          orgId: workflowAutomations.orgId,
+          ownerUserId: workflowAutomations.ownerUserId,
+          eventType: workflowAutomations.eventType,
+          eventConfig: workflowAutomations.eventConfig,
+        })
+        .from(workflowAutomations)
+        .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
+        .where(
+          and(
+            eq(workflows.orgId, args.orgId),
+            eq(workflows.agentId, args.composeId),
+          ),
+        );
+
       const versionRows = await tx
         .select({ id: agentComposeVersions.id })
         .from(agentComposeVersions)
@@ -149,6 +167,7 @@ export const deleteComposeById$ = command(
       return {
         kind: "deleted" as const,
         s3Prefix: storage?.s3Prefix ?? null,
+        automations,
       };
     });
     signal.throwIfAborted();
@@ -156,6 +175,15 @@ export const deleteComposeById$ = command(
     if (result.kind === "conflict") {
       return conflict("Cannot delete agent: agent is currently running");
     }
+
+    await reconcileAutomationEventWatches(
+      {
+        db: writeDb,
+        automations: result.automations,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
 
     if (result.s3Prefix) {
       const bucket = env("R2_USER_STORAGES_BUCKET_NAME");

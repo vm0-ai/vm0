@@ -1,14 +1,11 @@
 /**
  * CONN-02: external-code authorization sessions through public APIs.
  *
- * Feature-switched connectors are enabled per test actor through
- * POST /api/zero/feature-switches. External provider endpoints are mocked with
- * MSW at the HTTP boundary.
+ * External provider endpoints are mocked with MSW at the HTTP boundary.
  */
 
 import { Buffer } from "node:buffer";
 
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -20,7 +17,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { readUserSecrets } from "./helpers/user-config-state";
 import {
   awsVerificationCode,
   createConnectorBddApi,
@@ -30,7 +27,6 @@ import {
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
-const authOrgApi = createAuthOrgAgentsBddApi(context);
 
 const AWS_REDIRECT_URI =
   "https://us-east-1.signin.aws.amazon.com/v1/sessions/confirmation";
@@ -77,15 +73,13 @@ const NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN =
   "bdd-switch-parental-controls-session-token";
 const NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN =
   "bdd-switch-parental-controls-replacement-session-token";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE =
+  "bdd-switch-parental-controls-unlock-code-must-not-leak";
 
-async function awsActor(): Promise<ApiTestUser> {
+function awsActor(): ApiTestUser {
   const bdd = createBddApi(context);
-  const actor = bdd.user();
   context.mocks.ably.publish.mockResolvedValue(undefined);
-  await connectorsApi.updateFeatureSwitches(actor, {
-    [FeatureSwitchKey.AwsConnector]: true,
-  });
-  return actor;
+  return bdd.user();
 }
 
 function expectNoVisibleSecret(value: unknown, secret: string): void {
@@ -259,7 +253,8 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
                 label: "Family room",
                 device: {
                   serialNumber: "bdd-serial-must-not-leak",
-                  synchronizedUnlockCode: "1234",
+                  synchronizedUnlockCode:
+                    NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE,
                 },
               },
             ],
@@ -420,8 +415,11 @@ describe("CONN-02: external-code session lifecycle", () => {
       );
     }
 
-    const secretList = await authOrgApi.listSecrets(actor);
-    const connectorSecretNames = secretList.secrets
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const connectorSecretNames = storedSecrets
       .filter((secret) => {
         return secret.type === "connector";
       })
@@ -435,8 +433,8 @@ describe("CONN-02: external-code session lifecycle", () => {
       "AWS_SECRET_ACCESS_KEY",
       "AWS_SESSION_TOKEN",
     ]);
-    expectNoVisibleSecret(secretList, "aws-secret-access-key");
-    expectNoVisibleSecret(secretList, "aws-login-refresh-token");
+    expectNoVisibleSecret(storedSecrets, "aws-secret-access-key");
+    expectNoVisibleSecret(storedSecrets, "aws-login-refresh-token");
 
     const replay = await connectorsApi.completeExternalCode(actor, "aws", {
       sessionId: session.sessionId,
@@ -460,14 +458,15 @@ describe("CONN-02: external-code session lifecycle", () => {
     expectApiError(afterDelete.body);
     expect(afterDelete.body.error.code).toBe("NOT_FOUND");
 
-    const secretsAfterDelete = await authOrgApi.listSecrets(actor);
+    const secretsAfterDelete = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secretsAfterDelete.secrets.filter((secret) => {
+      secretsAfterDelete.filter((secret) => {
         return secret.type === "connector";
       }),
     ).toStrictEqual([]);
-
-    await connectorsApi.deleteFeatureSwitches(actor);
   });
 
   it("supersedes pending sessions and restores provider-rejected sessions to pending", async () => {
@@ -524,7 +523,6 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(readBack.id).toBe(retried.connector.id);
 
     await connectorsApi.deleteConnectorBySlug(actor, "aws");
-    await connectorsApi.deleteFeatureSwitches(actor);
   });
 
   it("returns generic external-code copy when the PlayStation NPSSO token is rejected", async () => {
@@ -663,8 +661,11 @@ describe("CONN-02: external-code session lifecycle", () => {
         name: "NINTENDO_STORE_LOCALE",
       }),
     );
-    const secretList = await authOrgApi.listSecrets(actor);
-    const connectorSecretNames = secretList.secrets
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const connectorSecretNames = storedSecrets
       .filter((secret) => {
         return secret.type === "connector";
       })
@@ -676,8 +677,8 @@ describe("CONN-02: external-code session lifecycle", () => {
       "NINTENDO_STORE_ID_TOKEN",
       "NINTENDO_STORE_SESSION_TOKEN",
     ]);
-    expectNoVisibleSecret(secretList, "bdd-nintendo-session-token");
-    expectNoVisibleSecret(secretList, "bdd-nintendo-access-token");
+    expectNoVisibleSecret(storedSecrets, "bdd-nintendo-session-token");
+    expectNoVisibleSecret(storedSecrets, "bdd-nintendo-access-token");
 
     await connectorsApi.deleteConnectorBySlug(actor, "nintendo-store");
   });
@@ -764,7 +765,10 @@ describe("CONN-02: external-code session lifecycle", () => {
       "bdd-switch-parental-controls-access-token",
     );
     expectNoVisibleSecret(complete, "bdd-serial-must-not-leak");
-    expectNoVisibleSecret(complete, "1234");
+    expectNoVisibleSecret(
+      complete,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE,
+    );
 
     const listed = await connectorsApi.listConnectors(actor);
     for (const name of [
@@ -795,8 +799,11 @@ describe("CONN-02: external-code session lifecycle", () => {
       );
     }
 
-    const secretList = await authOrgApi.listSecrets(actor);
-    const connectorSecretNames = secretList.secrets
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const connectorSecretNames = storedSecrets
       .filter((secret) => {
         return secret.type === "connector";
       })
@@ -873,24 +880,6 @@ describe("CONN-02: external-code session lifecycle", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
-  it("completes after the AWS connector switch is disabled", async () => {
-    const provider = mockAwsExternalCodeProvider();
-    const actor = await awsActor();
-
-    const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.AwsConnector]: false,
-    });
-
-    const completed = await connectorsApi.completeExternalCode(actor, "aws", {
-      sessionId: session.sessionId,
-      sessionToken: session.sessionToken,
-      code: awsVerificationCode(session.authorizationUrl),
-    });
-    expect(completed.status).toBe("complete");
-    expect(provider.tokenRequests).toHaveLength(1);
-  });
-
   it("keeps an in-flight completion exclusive without superseding it", async () => {
     const provider = mockAwsDeferredTokenExchange();
     const actor = await awsActor();
@@ -947,7 +936,6 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(provider.tokenRequests).toHaveLength(2);
 
     await connectorsApi.deleteConnectorBySlug(actor, "aws");
-    await connectorsApi.deleteFeatureSwitches(actor);
   });
 
   it("expires external-code sessions past their deadline, including stale completing claims", async () => {

@@ -1,14 +1,16 @@
+import type { ReactNode } from "react";
 import {
-  IconBrowser,
-  IconBrowserOff,
-  IconLoader2,
-  IconPlayerPlay,
-} from "@tabler/icons-react";
+  RectangleHorizontal,
+  AppWindow,
+  AppWindowMac,
+  Loader2,
+  Play,
+} from "lucide-react";
 import {
   ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
   ZERO_BROWSER_SCREEN_WIDTH,
-} from "@vm0/api-contracts/contracts/zero-browser";
-import { cn } from "@vm0/ui";
+} from "@okouai/api-contracts/contracts/zero-browser";
+import { Button, cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 
@@ -17,6 +19,7 @@ import {
   type BrowserSessionSignals,
 } from "../../signals/chat-page/browser-session-block.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
@@ -29,7 +32,7 @@ function PanelFrame({
   children,
   panelRef,
 }: {
-  readonly children: React.ReactNode;
+  readonly children: ReactNode;
   readonly panelRef?: (element: HTMLDivElement | null) => void;
 }) {
   return (
@@ -50,10 +53,10 @@ function PanelMessage({
   action,
   className,
 }: {
-  readonly icon: React.ReactNode;
+  readonly icon: ReactNode;
   readonly title: string;
-  readonly description: string;
-  readonly action?: React.ReactNode;
+  readonly description?: string;
+  readonly action?: ReactNode;
   readonly className?: string;
 }) {
   return (
@@ -65,11 +68,60 @@ function PanelMessage({
     >
       {icon}
       <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="max-w-md text-xs leading-5 text-muted-foreground">
-        {description}
-      </p>
+      {description ? (
+        <p className="max-w-md text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
       {action}
     </div>
+  );
+}
+
+export function BrowserSessionNotFound() {
+  const { t } = useTranslation();
+  return (
+    <PanelFrame>
+      <PanelMessage
+        icon={<AppWindowMac size={26} className="text-muted-foreground" />}
+        title={t(($) => {
+          return $.browserSession.notFound;
+        })}
+      />
+    </PanelFrame>
+  );
+}
+
+export function BrowserSessionLoading() {
+  const { t } = useTranslation();
+  return (
+    <PanelFrame>
+      <div role="status" className="flex flex-1 items-center justify-center">
+        <Loader2 className="animate-spin" size={20} />
+        <span className="sr-only">
+          {t(($) => {
+            return $.browserSession.status.starting;
+          })}
+        </span>
+      </div>
+    </PanelFrame>
+  );
+}
+
+export function BrowserSessionUnavailable() {
+  const { t } = useTranslation();
+  return (
+    <PanelFrame>
+      <PanelMessage
+        icon={<AppWindowMac size={26} className="text-muted-foreground" />}
+        title={t(($) => {
+          return $.browserSession.unavailable.title;
+        })}
+        description={t(($) => {
+          return $.browserSession.unavailable.description;
+        })}
+      />
+    </PanelFrame>
   );
 }
 
@@ -108,13 +160,79 @@ function LiveBrowserFrame({
   );
 }
 
+function ContainedLiveBrowserViewport({
+  signals,
+  browserAspectRatio,
+  canFitWindow,
+  children,
+}: {
+  readonly signals: BrowserSessionSignals;
+  readonly browserAspectRatio: number;
+  readonly canFitWindow: boolean;
+  readonly children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const fitViewport = useSet(signals.fitViewport$);
+  const fitViewportRef = useSet(signals.fitViewportRef$);
+  const fittingWindow = useGet(signals.fittingWindow$);
+  const pageSignal = useGet(pageSignal$);
+
+  return (
+    <div
+      ref={fitViewportRef}
+      data-browser-session-viewport
+      data-browser-aspect-ratio={browserAspectRatio}
+      data-can-fit-window={canFitWindow}
+      style={{ containerType: "size" }}
+      className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/20"
+    >
+      {children}
+      <div
+        data-browser-session-fit-action
+        hidden
+        className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3"
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-browser-session-fit
+          disabled={fittingWindow}
+          onClick={() => {
+            detach(
+              fitViewport(pageSignal),
+              Reason.DomCallback,
+              "fit browser to sidebar window",
+            );
+          }}
+          aria-label={t(($) => {
+            return $.browserSession.fitWindow;
+          })}
+          className="pointer-events-auto rounded-full border-border/70 bg-background/90 px-3 text-xs text-foreground backdrop-blur-sm hover:bg-state-hover"
+        >
+          {fittingWindow ? (
+            <Loader2 className="animate-spin" size={14} />
+          ) : (
+            <RectangleHorizontal size={14} />
+          )}
+          {t(($) => {
+            return $.browserSession.fitAction;
+          })}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function PausedBrowserSession({
   screenshotUrl,
+  screenshotLoad,
   containLiveFrame,
   starting,
   onStart,
 }: {
   readonly screenshotUrl?: string | null;
+  readonly screenshotLoad: ImageLoadSignals;
   readonly containLiveFrame: boolean;
   readonly starting: boolean;
   readonly onStart: () => void;
@@ -123,7 +241,7 @@ function PausedBrowserSession({
   const showScreenshot = containLiveFrame && screenshotUrl;
   const pausedMessage = (
     <PanelMessage
-      icon={<IconBrowser size={26} className="text-muted-foreground" />}
+      icon={<AppWindow size={26} className="text-muted-foreground" />}
       title={t(($) => {
         return $.browserSession.panel.notLive;
       })}
@@ -136,12 +254,12 @@ function PausedBrowserSession({
           disabled={starting}
           data-browser-session-start
           onClick={onStart}
-          className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
+          className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
         >
           {starting ? (
-            <IconLoader2 className="animate-spin" size={14} />
+            <Loader2 className="animate-spin" size={14} />
           ) : (
-            <IconPlayerPlay size={14} />
+            <Play size={14} />
           )}
           {starting
             ? t(($) => {
@@ -167,6 +285,7 @@ function PausedBrowserSession({
       <div className="relative min-h-0 flex-1 overflow-hidden bg-muted/20">
         <ArtifactThumbnailImage
           src={screenshotUrl}
+          load={screenshotLoad}
           testId="browser-session-panel-screenshot"
           className="absolute inset-x-0 top-0 h-auto w-full object-contain object-top"
           fallback={
@@ -191,36 +310,10 @@ export function BrowserSessionPanel({
   const pageSignal = useGet(pageSignal$);
 
   if (sessionLoadable.state === "loading") {
-    return (
-      <PanelFrame>
-        <div role="status" className="flex flex-1 items-center justify-center">
-          <IconLoader2
-            className="animate-spin text-muted-foreground"
-            size={20}
-          />
-          <span className="sr-only">
-            {t(($) => {
-              return $.browserSession.status.starting;
-            })}
-          </span>
-        </div>
-      </PanelFrame>
-    );
+    return <BrowserSessionLoading />;
   }
   if (sessionLoadable.state === "hasError") {
-    return (
-      <PanelFrame>
-        <PanelMessage
-          icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
-          title={t(($) => {
-            return $.browserSession.unavailable.title;
-          })}
-          description={t(($) => {
-            return $.browserSession.unavailable.description;
-          })}
-        />
-      </PanelFrame>
-    );
+    return <BrowserSessionUnavailable />;
   }
 
   const session = sessionLoadable.data;
@@ -229,6 +322,7 @@ export function BrowserSessionPanel({
     return (
       <PausedBrowserSession
         screenshotUrl={session?.screenshotUrl}
+        screenshotLoad={signals.screenshotImageLoad}
         containLiveFrame={containLiveFrame}
         starting={starting}
         onStart={() => {
@@ -261,13 +355,13 @@ export function BrowserSessionPanel({
   return (
     <PanelFrame panelRef={keepAliveRef}>
       {containLiveFrame ? (
-        <div
-          data-browser-session-viewport
-          style={{ containerType: "size" }}
-          className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/20"
+        <ContainedLiveBrowserViewport
+          signals={signals}
+          browserAspectRatio={browserAspectRatio}
+          canFitWindow={session.screen?.resizable === true}
         >
           {liveFrame}
-        </div>
+        </ContainedLiveBrowserViewport>
       ) : (
         liveFrame
       )}

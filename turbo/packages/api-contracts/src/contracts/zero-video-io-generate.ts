@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
+import { builtInGenerationAcceptedResponseSchema } from "./built-in-generation";
 
 const c = initContract();
 const stringOrStringArraySchema = z.union([
@@ -60,12 +60,12 @@ export type ZeroVideoIoGenerateResponse = z.infer<
 export const zeroVideoIoGenerateContract = c.router({
   post: {
     method: "POST",
-    path: "/api/zero/video-io/generate",
+    path: "/api/okou/video-io/generate",
     headers: authHeadersSchema,
     body: zeroVideoIoGenerateRequestSchema,
     responses: {
       200: zeroVideoIoGenerateResponseSchema,
-      202: zeroBuiltInGenerationAcceptedResponseSchema,
+      202: builtInGenerationAcceptedResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,

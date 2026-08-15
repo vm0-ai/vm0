@@ -65,9 +65,20 @@ type TeamsBotAuthResult =
       readonly message: string;
     };
 
-const teamsBotAuthCache = singleton(() => {
-  return new TeamsBotAuthCache();
+const teamsBotAuthCaches = singleton(() => {
+  return new WeakMap<AbortSignal, TeamsBotAuthCache>();
 });
+
+function teamsBotAuthCache(owner: AbortSignal): TeamsBotAuthCache {
+  const caches = teamsBotAuthCaches();
+  const existing = caches.get(owner);
+  if (existing) {
+    return existing;
+  }
+  const cache = new TeamsBotAuthCache();
+  caches.set(owner, cache);
+  return cache;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -210,9 +221,11 @@ async function fetchJson(url: string): Promise<unknown> {
   return await response.json();
 }
 
-async function loadBotFrameworkKeys(): Promise<CachedKeys> {
+async function loadBotFrameworkKeys(
+  cacheOwner: AbortSignal,
+): Promise<CachedKeys> {
   const currentTime = now();
-  const cache = teamsBotAuthCache();
+  const cache = teamsBotAuthCache(cacheOwner);
   if (cache.keys && cache.keys.expiresAt > currentTime) {
     return cache.keys;
   }
@@ -346,11 +359,14 @@ function keyEndorsesChannel(key: JwkKey, channelId: string | null): boolean {
   return key.endorsements.includes(channelId);
 }
 
-export async function verifyTeamsBotAuthorization(args: {
-  readonly authorization: string | undefined;
-  readonly serviceUrl: string;
-  readonly channelId: string | null;
-}): Promise<TeamsBotAuthResult> {
+export async function verifyTeamsBotAuthorization(
+  args: {
+    readonly authorization: string | undefined;
+    readonly serviceUrl: string;
+    readonly channelId: string | null;
+  },
+  cacheOwner: AbortSignal,
+): Promise<TeamsBotAuthResult> {
   const botAppId = env("MICROSOFT_TEAMS_BOT_APP_ID");
   if (!botAppId) {
     return {
@@ -380,7 +396,7 @@ export async function verifyTeamsBotAuthorization(args: {
     return { ok: false, status: 401, message: "Invalid Teams bot token" };
   }
 
-  const botFrameworkKeys = await loadBotFrameworkKeys();
+  const botFrameworkKeys = await loadBotFrameworkKeys(cacheOwner);
   if (!botFrameworkKeys.metadata.algorithms.includes(header.alg)) {
     return {
       ok: false,
@@ -430,8 +446,4 @@ export async function verifyTeamsBotAuthorization(args: {
   }
 
   return { ok: true, claims };
-}
-
-export function clearTeamsBotAuthCacheForTest(): void {
-  teamsBotAuthCache.reset();
 }

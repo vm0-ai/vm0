@@ -1,7 +1,7 @@
 import {
   zeroUsageMembersContract,
   type UsageMembersResponse,
-} from "@vm0/api-contracts/contracts/zero-usage";
+} from "@okouai/api-contracts/contracts/zero-usage";
 import { mockApi } from "../msw-contract.ts";
 
 let mockUsageMembersResponse: UsageMembersResponse = {

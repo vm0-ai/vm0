@@ -8,31 +8,40 @@ import {
 import userEvent from "@testing-library/user-event";
 import {
   chatThreadsContract,
+  chatThreadVideoModelContract,
   type ChatThreadEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
-import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
-import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+  type ChatThreadServiceTier,
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusItem,
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
+import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
+import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import {
+  userModelPreferenceContract,
+  type UserModelPreferenceResponse,
+} from "@okouai/api-contracts/contracts/user-model-preference";
+import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
+import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
 import {
   reloadUserModelPreference$,
   userModelPreference$,
 } from "../../../signals/external/user-model-preference.ts";
-import { codexFastModeLocalDefault$ } from "../../../signals/zero-page/codex-fast-local-default.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
 import {
   resetChatPageModelSelection$,
   setChatPageModelSelection$,
@@ -42,6 +51,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -54,9 +64,7 @@ import {
   OTHER_AGENT_ID,
   THREAD_ID,
   OTHER_AGENT_THREAD_ID,
-  MOONSHOT_PROVIDER_ID,
-  setCodexFastModeDefaultStorageForTest$,
-  clearCodexFastModeDefaultStorageForTest$,
+  OPENROUTER_PROVIDER_ID,
   applyUserConnectorUpdate,
   expectTextBefore,
   buttonContainingText,
@@ -74,18 +82,12 @@ import {
   findComposerModel,
   expectComposerModel,
   chatClipboardHtml,
-  oversizedFile,
   composerElementFrom,
   findComposerEditor,
 } from "./chat-composer-test-helpers.ts";
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
-});
-
-afterEach(async () => {
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
 });
 
 async function navigateToChatThread(threadId: string): Promise<void> {
@@ -101,21 +103,67 @@ async function navigateToChatThread(threadId: string): Promise<void> {
   click(link);
 }
 
+function queryFastModeOption(
+  modelLabel: string,
+  fastLabel = "Fast",
+): HTMLElement | undefined {
+  return (
+    screen.queryByRole("option", {
+      name: `${modelLabel} ${fastLabel}`,
+    }) ?? undefined
+  );
+}
+
+function findFastModeOption(
+  modelLabel: string,
+  fastLabel = "Fast",
+): Promise<HTMLElement> {
+  return waitFor(() => {
+    const option = queryFastModeOption(modelLabel, fastLabel);
+    if (!option) {
+      throw new Error(`Fast mode option not found: ${modelLabel} ${fastLabel}`);
+    }
+    return option;
+  });
+}
+
+function fastModeIcon(option: HTMLElement): SVGElement {
+  const icon = option.querySelector<SVGElement>("svg.lucide-zap");
+  if (!icon) {
+    throw new Error("Fast mode icon not found");
+  }
+  return icon;
+}
+
+function mockBuiltInFastModel(): void {
+  context.mocks.data.orgModelPolicies([
+    buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000911",
+      model: "gpt-5.6-sol",
+      modelLabel: "GPT 5.6 Sol",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+    }),
+  ]);
+  mockAgent();
+}
+
 describe("chat composer models", () => {
   it("keeps model resources cached across Clerk profile events", async () => {
     const policy = buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000205",
-      model: "kimi-k2.7-code",
-      modelLabel: "Kimi K2.7 Code",
+      model: "claude-fable-5",
+      modelLabel: "Claude Fable 5",
       isDefault: true,
-      defaultProviderType: "moonshot-api-key",
+      defaultProviderType: "openrouter-api-key",
       credentialScope: "org",
-      modelProviderId: MOONSHOT_PROVIDER_ID,
+      modelProviderId: OPENROUTER_PROVIDER_ID,
     });
     let policiesRequestCount = 0;
     let preferenceRequestCount = 0;
 
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(zeroModelPoliciesMainContract.list, ({ respond }) => {
       policiesRequestCount += 1;
       return respond(200, {
@@ -124,15 +172,19 @@ describe("chat composer models", () => {
         workspaceDefaultPolicyId: policy.id,
       });
     });
-    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+    context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
       preferenceRequestCount += 1;
-      return respond(200, { selectedModel: null, updatedAt: null });
+      return respond(200, {
+        selectedModel: null,
+        serviceTier: null,
+        updatedAt: null,
+      });
     });
     mockAgent();
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    await expectComposerModel("Kimi K2.7 Code");
+    await expectComposerModel("Claude Fable 5");
     await waitFor(() => {
       expect(policiesRequestCount).toBe(1);
       expect(preferenceRequestCount).toBe(1);
@@ -148,8 +200,73 @@ describe("chat composer models", () => {
     expect(preferenceRequestCount).toBe(1);
   });
 
+  it("shows the cached default model immediately when returning from agents", async () => {
+    const policy = buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000205",
+      model: "claude-fable-5",
+      modelLabel: "Claude Fable 5",
+      isDefault: true,
+      defaultProviderType: "openrouter-api-key",
+      credentialScope: "org",
+      modelProviderId: OPENROUTER_PROVIDER_ID,
+    });
+    const pendingModelRequests = context.mocks.deferred<void>();
+    let blockModelRequests = false;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.api(
+      zeroModelPoliciesMainContract.list,
+      async ({ respond, withSignal }) => {
+        if (blockModelRequests) {
+          await withSignal(pendingModelRequests.promise);
+        }
+        return respond(200, {
+          policies: [policy],
+          workspaceDefaultModel: policy.model,
+          workspaceDefaultPolicyId: policy.id,
+        });
+      },
+    );
+    context.mocks.api(
+      userModelPreferenceContract.get,
+      async ({ respond, withSignal }) => {
+        if (blockModelRequests) {
+          await withSignal(pendingModelRequests.promise);
+        }
+        return respond(200, {
+          selectedModel: null,
+          serviceTier: null,
+          updatedAt: null,
+        });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await expectComposerModel("Claude Fable 5");
+
+    act(() => {
+      context.store.set(detachedNavigateTo$, ROUTES.agents);
+    });
+    await screen.findByRole("heading", { name: "Agents" });
+
+    blockModelRequests = true;
+
+    act(() => {
+      context.store.set(detachedNavigateTo$, ROUTES.agentChat, {
+        pathParams: { agentId: AGENT_ID },
+      });
+    });
+
+    await findComposerEditor();
+    expect(
+      screen.getByRole("combobox", { name: "Claude Fable 5" }),
+    ).toBeInTheDocument();
+  });
+
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -157,13 +274,14 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(document.title).toContain("Scout");
     });
-    await expectComposerModel("Kimi K2.7 Code");
+    await expectComposerModel("Claude Fable 5");
   });
 
   it("shows user preference over workspace default", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.data.userModelPreference({
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockAgent();
@@ -173,19 +291,461 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(document.title).toContain("Scout");
     });
-    await expectComposerModel("Claude Opus 4.7");
+    await expectComposerModel("Claude Opus 4.8");
   });
 
-  it("sends Codex fast mode as a run option from the model picker", async () => {
+  it("reloads the member default when the push carries only the video kind", async () => {
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      selectedVideoModel: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectComposerModel("Claude Fable 5");
+
+    // A sibling session changed the video default, so the push carries that
+    // kind alone. The preference is one resource, so it still has to refetch.
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-opus-4-8",
+      serviceTier: null,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      updatedAt: "2026-03-10T00:01:00Z",
+    });
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultVideoModel"],
+      });
+    });
+
+    await waitFor(async () => {
+      await expect(
+        context.store.get(userModelPreference$),
+      ).resolves.toMatchObject({
+        selectedModel: "claude-opus-4-8",
+        selectedVideoModel: "fal-ai/veo3.1/fast",
+      });
+    });
+    await expectComposerModel("Claude Opus 4.8");
+  });
+
+  it("offers to make a temporary new-chat model choice the default below the composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    let preference: UserModelPreferenceResponse = {
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    };
+    const updatedModels: UserModelPreferenceResponse["selectedModel"][] = [];
+    const preferenceUpdate = context.mocks.deferred<void>();
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
+      return respond(200, preference);
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      async ({ body, respond }) => {
+        updatedModels.push(body.selectedModel);
+        await preferenceUpdate.promise;
+        preference = {
+          selectedModel: body.selectedModel,
+          serviceTier: body.serviceTier,
+          updatedAt: "2026-03-10T00:01:00Z",
+        };
+        return respond(200, preference);
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await expectComposerModel("Claude Fable 5");
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await expectComposerModel("Claude Sonnet 4.6");
+    expect(updatedModels).toStrictEqual([]);
+
+    await user.click(await findComposerModel("Claude Sonnet 4.6"));
+    const modelPicker = await screen.findByRole("listbox");
+    expect(within(modelPicker).getByText("Models")).toBeInTheDocument();
+    expect(
+      within(modelPicker).queryByText(
+        "Default for new chats and new automations",
+      ),
+    ).not.toBeInTheDocument();
+    expect(within(modelPicker).getByText("Claude Fable 5")).toBeInTheDocument();
+    expect(within(modelPicker).queryByText("Default")).not.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(
+      screen.getByText("Temporarily switched to Claude Sonnet 4.6"),
+    ).toBeInTheDocument();
+    const setDefaultButton = buttonContainingText(
+      "Set as default",
+      document.body,
+    );
+
+    await user.click(setDefaultButton);
+
+    await waitFor(() => {
+      expect(updatedModels).toStrictEqual(["claude-sonnet-4-6"]);
+    });
+    expect(setDefaultButton).toHaveAttribute("aria-busy", "true");
+    expect(setDefaultButton.querySelector(".animate-spin")).not.toBeNull();
+
+    preferenceUpdate.resolve();
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.trigger("userPreferenceChanged", {
+      kinds: ["defaultModel"],
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
+      ).not.toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button").some((button) => {
+          return button.textContent === "Set as default";
+        }),
+      ).toBeFalsy();
+    });
+  });
+
+  it.each([
+    {
+      defaultServiceTier: null,
+      targetSpeed: "Fast",
+      notice: "Fast mode is temporarily enabled for this run",
+      expectedServiceTier: "priority" as const,
+      expectedZapIcon: true,
+    },
+    {
+      defaultServiceTier: "priority" as const,
+      targetSpeed: "Standard",
+      notice: "Fast mode is temporarily disabled for this run",
+      expectedServiceTier: null,
+      expectedZapIcon: false,
+    },
+  ])(
+    "offers to make a temporary $targetSpeed run speed the default",
+    async ({
+      defaultServiceTier,
+      notice,
+      expectedServiceTier,
+      expectedZapIcon,
+    }) => {
+      const user = userEvent.setup({ delay: null });
+      const codexProvider = buildProvider({
+        id: "00000000-0000-4000-a000-000000000921",
+        type: "codex-oauth-token",
+        framework: "codex",
+        secretName: null,
+        authMethod: "auth_json",
+        secretNames: ["CODEX_AUTH_JSON"],
+      });
+      let updatedPreference:
+        | { selectedModel: string | null; serviceTier?: "priority" | null }
+        | undefined;
+      context.mocks.data.orgModelPolicies([
+        buildModelPolicy({
+          id: "00000000-0000-4000-a000-000000000922",
+          model: "gpt-5.6-sol",
+          modelLabel: "GPT 5.6 Sol",
+          isDefault: true,
+          defaultProviderType: "codex-oauth-token",
+          credentialScope: "member",
+        }),
+      ]);
+      context.mocks.data.personalModelProviders([codexProvider]);
+      context.mocks.data.userModelPreference({
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: defaultServiceTier,
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+      context.mocks.api(
+        userModelPreferenceContract.update,
+        ({ body, respond }) => {
+          updatedPreference = body;
+          return respond(200, {
+            selectedModel: body.selectedModel,
+            serviceTier: body.serviceTier,
+            updatedAt: "2026-03-10T00:01:00Z",
+          });
+        },
+      );
+      mockAgent();
+
+      detachedSetupPage({
+        context,
+        featureSwitches: {
+          [FeatureSwitchKey.CodexFastMode]: true,
+          [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+        },
+        path: `/agents/${AGENT_ID}/chat`,
+      });
+
+      const initialLabel =
+        defaultServiceTier === "priority" ? "GPT 5.6 Sol Fast" : "GPT 5.6 Sol";
+      const targetLabel = expectedZapIcon ? "GPT 5.6 Sol Fast" : "GPT 5.6 Sol";
+      await user.click(await findComposerModel(initialLabel));
+      const fastModeOption = await findFastModeOption("GPT 5.6 Sol");
+      expect(fastModeIcon(fastModeOption)).toHaveAttribute(
+        "fill",
+        expectedZapIcon ? "none" : "currentColor",
+      );
+      await user.click(fastModeOption);
+      await expectComposerModel(targetLabel);
+      await expect(screen.findByText(notice)).resolves.toBeInTheDocument();
+      await user.click(buttonContainingText("Set as default", document.body));
+
+      await waitFor(() => {
+        expect(updatedPreference).toStrictEqual({
+          selectedModel: "gpt-5.6-sol",
+          serviceTier: expectedServiceTier,
+        });
+      });
+    },
+  );
+
+  it("includes Fast in the temporary label when model and run speed change", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({
-      id: "00000000-0000-4000-a000-000000000912",
+      id: "00000000-0000-4000-a000-000000000919",
       type: "codex-oauth-token",
       framework: "codex",
       secretName: null,
       authMethod: "auth_json",
       secretNames: ["CODEX_AUTH_JSON"],
     });
+    let updatedPreference:
+      | { selectedModel: string | null; serviceTier?: "priority" | null }
+      | undefined;
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000918",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000920",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updatedPreference = body;
+        return respond(200, {
+          selectedModel: body.selectedModel,
+          serviceTier: body.serviceTier,
+          updatedAt: "2026-03-10T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.CodexFastMode]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findFastModeOption("GPT 5.6 Sol"));
+
+    await expect(
+      screen.findByText("Temporarily switched to GPT 5.6 Sol Fast"),
+    ).resolves.toBeInTheDocument();
+    await user.click(buttonContainingText("Set as default", document.body));
+
+    await waitFor(() => {
+      expect(updatedPreference).toStrictEqual({
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      });
+    });
+  });
+
+  it("preserves selection-as-default behavior while the feature switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    let updatedModel: string | null = null;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updatedModel = body.selectedModel;
+        return respond(200, {
+          selectedModel: body.selectedModel,
+          serviceTier: body.serviceTier,
+          updatedAt: "2026-03-10T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatDefaultModelAction]: false,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await waitFor(() => {
+      expect(updatedModel).toBe("claude-sonnet-4-6");
+    });
+    expect(
+      screen.queryByText("Default for new chats and new automations"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Fast details only while the Fast option is hovered", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    mockBuiltInFastModel();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("GPT 5.6 Sol"));
+    const fastModeOption = await findFastModeOption("GPT 5.6 Sol");
+    expect(fastModeIcon(fastModeOption)).toHaveAttribute("fill", "none");
+    await user.hover(fastModeOption);
+    fireEvent.mouseMove(fastModeOption);
+    expect(
+      screen.queryByText("Fast · 1.5× model speed · 2.5× credit usage"),
+    ).not.toBeInTheDocument();
+    const fastModeTooltip = await screen.findByText(
+      "Fast · 1.5× model speed · 2.5× credit usage",
+      {},
+      { timeout: 2000 },
+    );
+    expect(fastModeTooltip).toBeInTheDocument();
+
+    await user.unhover(fastModeOption);
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Fast · 1.5× model speed · 2.5× credit usage"),
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(fastModeOption);
+    await expectComposerModel("GPT 5.6 Sol Fast");
+    expect(
+      screen.queryByText("Fast · 1.5× model speed · 2.5× credit usage"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows active Fast state and preserves exact model row selection", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    mockBuiltInFastModel();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("GPT 5.6 Sol"));
+    let fastModeOption = await findFastModeOption("GPT 5.6 Sol");
+    await user.click(fastModeOption);
+    await expectComposerModel("GPT 5.6 Sol Fast");
+
+    await user.click(await findComposerModel("GPT 5.6 Sol Fast"));
+    fastModeOption = await findFastModeOption("GPT 5.6 Sol");
+    const standardOption = screen.getByRole("option", {
+      name: "GPT 5.6 Sol",
+    });
+    expect(fastModeIcon(fastModeOption)).toHaveAttribute(
+      "fill",
+      "currentColor",
+    );
+    expect(standardOption.querySelector("svg.lucide-check")).not.toBeNull();
+    expect(fastModeOption.querySelector("svg.lucide-check")).toBeNull();
+
+    await user.hover(fastModeOption);
+    fireEvent.mouseMove(fastModeOption);
+    expect(
+      screen.queryByText("Fast · 1.5× model speed · 2.5× credit usage"),
+    ).not.toBeInTheDocument();
+    const activeFastModeTooltip = await screen.findByText(
+      "Fast · 1.5× model speed · 2.5× credit usage",
+      {},
+      { timeout: 2000 },
+    );
+    expect(activeFastModeTooltip).toBeInTheDocument();
+
+    await user.unhover(fastModeOption);
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Fast · 1.5× model speed · 2.5× credit usage"),
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(standardOption);
+    await expectComposerModel("GPT 5.6 Sol Fast");
+
+    await user.click(await findComposerModel("GPT 5.6 Sol Fast"));
+    fastModeOption = await findFastModeOption("GPT 5.6 Sol");
+    await user.click(fastModeOption);
+    await expectComposerModel("GPT 5.6 Sol");
+
+    await user.click(await findComposerModel("GPT 5.6 Sol"));
+    fastModeOption = await findFastModeOption("GPT 5.6 Sol");
+    expect(fastModeIcon(fastModeOption)).toHaveAttribute("fill", "none");
+    await user.click(fastModeOption);
+    await expectComposerModel("GPT 5.6 Sol Fast");
+  });
+
+  it("keeps a new Fast thread Fast when its optimistic state reconciles", async () => {
+    const user = userEvent.setup({ delay: null });
     let sentBody:
       | {
           model?: string;
@@ -194,25 +754,21 @@ describe("chat composer models", () => {
       | undefined;
     let createdBody:
       | {
+          clientThreadId?: string;
+          eventId?: string;
           model?: string;
+          serviceTier?: ChatThreadServiceTier | null;
         }
       | undefined;
+    let modelSelectionUpdateCount = 0;
 
-    context.mocks.data.orgModelPolicies([
-      buildModelPolicy({
-        id: "00000000-0000-4000-a000-000000000911",
-        model: "gpt-5.6-sol",
-        modelLabel: "GPT 5.6 Sol",
-        isDefault: true,
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
-      }),
-    ]);
-    context.mocks.data.personalModelProviders([codexProvider]);
-    mockAgent();
+    mockBuiltInFastModel();
     mockChatLifecycle(context, {
       onThreadCreate: (body) => {
         createdBody = body;
+      },
+      onModelSelectionUpdate: () => {
+        modelSelectionUpdateCount++;
       },
       onRunCreate: (body) => {
         sentBody = body;
@@ -225,19 +781,9 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.6 Sol"));
-    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-    click(buttonContainingText("Fast", runSpeed));
-    await waitFor(() => {
-      expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-    });
-    await user.keyboard("{Escape}");
-    await waitFor(() => {
-      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-    });
+    await user.click(await findComposerModel("GPT 5.6 Sol"));
+    await user.click(await findFastModeOption("GPT 5.6 Sol"));
+    await expectComposerModel("GPT 5.6 Sol Fast");
 
     await sendMessageInUI(
       user,
@@ -247,11 +793,50 @@ describe("chat composer models", () => {
 
     await waitFor(() => {
       expect(createdBody?.model).toBe("gpt-5.6-sol");
+      expect(createdBody?.serviceTier).toBe("priority");
       expect(sentBody?.model).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
+      expect(modelSelectionUpdateCount).toBe(1);
     });
+
+    const reconciledThreadId = createdBody?.clientThreadId;
+    const reconciledCreateEventId = createdBody?.eventId;
+    if (
+      reconciledThreadId === undefined ||
+      reconciledCreateEventId === undefined
+    ) {
+      throw new Error("Expected the created Fast thread identifiers");
+    }
+    const reconciledTitle = "Reconciled Fast thread";
+    const reconciledSelectedModel = createdBody?.model ?? null;
+    const reconciledServiceTier = createdBody?.serviceTier ?? null;
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, {
+        events: [
+          {
+            id: reconciledCreateEventId,
+            seqId: 1,
+            kind: "created",
+            chatThreadId: reconciledThreadId,
+            agentId: AGENT_ID,
+            title: reconciledTitle,
+            selectedModel: reconciledSelectedModel,
+            serviceTier: reconciledServiceTier,
+            computerUseHostId: null,
+            cloudBrowserEnabled: false,
+            createdAt: "2026-08-12T09:00:00Z",
+          },
+        ],
+        hasMore: false,
+      });
+    });
+    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(document.title).toBe(`${reconciledTitle} | VM0`);
+    });
+    await expectComposerModel("GPT 5.6 Sol Fast");
   });
 
   it("localizes model routes, price guidance, and Codex speed controls in Portuguese", async () => {
@@ -276,8 +861,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000915",
-        model: "deepseek-v4-pro",
-        modelLabel: "DeepSeek V4 Pro",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -293,30 +878,55 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.6 Sol"));
-    const runSpeed = await screen.findByRole("group", {
-      name: "Velocidade de execução",
-    });
-    expect(buttonContainingText("Padrão", runSpeed)).toBeInTheDocument();
-    expect(buttonContainingText("Rápido", runSpeed)).toBeInTheDocument();
-    expect(within(runSpeed).getByText("Uso equilibrado")).toBeInTheDocument();
+    await user.click(await findComposerModel("GPT 5.6 Sol"));
+    const fastModeOption = await findFastModeOption("GPT 5.6 Sol", "Rápido");
+    expect(fastModeIcon(fastModeOption)).toHaveAttribute("fill", "none");
+    await user.hover(fastModeOption);
+    fireEvent.mouseMove(fastModeOption);
     expect(
-      within(runSpeed).getByText("Prioriza a velocidade"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Usa mais créditos do Codex.")).toBeInTheDocument();
+      screen.queryByText(
+        "Rápido · Velocidade do modelo 1,5× · uso de créditos 2,5×",
+      ),
+    ).not.toBeInTheDocument();
+    const fastModeTooltip = await screen.findByText(
+      "Rápido · Velocidade do modelo 1,5× · uso de créditos 2,5×",
+      {},
+      { timeout: 2000 },
+    );
+    expect(fastModeTooltip).toBeInTheDocument();
 
-    await user.hover(screen.getByText("$"));
+    await user.unhover(fastModeOption);
+    await waitFor(() => {
+      expect(
+        screen.queryByText(
+          "Rápido · Velocidade do modelo 1,5× · uso de créditos 2,5×",
+        ),
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(fastModeOption);
+    await expectComposerModel("GPT 5.6 Sol Rápido");
+    expect(
+      screen.queryByText(
+        "Rápido · Velocidade do modelo 1,5× · uso de créditos 2,5×",
+      ),
+    ).not.toBeInTheDocument();
+
+    await user.click(await findComposerModel("GPT 5.6 Sol Rápido"));
+    const modelPicker = await screen.findByRole("listbox");
+
+    await user.hover(within(modelPicker).getByText("$"));
     await expect(
       screen.findAllByText("Nível econômico para tarefas simples do dia a dia"),
     ).resolves.not.toHaveLength(0);
 
-    await user.hover(screen.getByText("BYOK"));
+    await user.hover(within(modelPicker).getByText("BYOK"));
     await expect(
       screen.findAllByText("Usa seu provedor configurado"),
     ).resolves.not.toHaveLength(0);
   });
 
-  it("remembers Codex fast mode for new chats in the current browser account", async () => {
+  it("remembers Codex fast mode in the user model preference", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000923",
@@ -348,8 +958,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000924",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -372,24 +982,19 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.5"));
-    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-    click(buttonContainingText("Fast", runSpeed));
-    await waitFor(() => {
-      expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-    });
-    await user.keyboard("{Escape}");
-    await waitFor(() => {
-      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await user.click(await findComposerModel("GPT 5.6 Luna"));
+    await user.click(await findFastModeOption("GPT 5.6 Luna"));
+    await expectComposerModel("GPT 5.6 Luna Fast");
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultModel"],
+      });
     });
     act(() => {
       context.store.set(resetChatPageModelSelection$);
     });
 
-    await expectComposerModel("GPT 5.5");
+    await expectComposerModel("GPT 5.6 Luna Fast");
 
     await sendMessageInUI(
       user,
@@ -400,7 +1005,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(updatedModelSelection?.modelSelection).toStrictEqual({
         modelProviderId: "00000000-0000-4000-8000-000000000000",
-        selectedModel: "gpt-5.5",
+        selectedModel: "gpt-5.6-luna",
       });
       expect(updatedModelSelection?.codexServiceTier).toBe("fast");
       expect(sentBody?.runOptions).toStrictEqual({
@@ -424,80 +1029,83 @@ describe("chat composer models", () => {
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
-    act(() => {
-      context.store.set(
-        setCodexFastModeDefaultStorageForTest$,
-        JSON.stringify({ "test-user-123:org_default": true }),
-      );
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.6-terra",
+      serviceTier: "priority",
+      updatedAt: "2026-05-08T00:00:00.000Z",
     });
 
-    try {
-      context.mocks.data.orgModelPolicies([
-        buildModelPolicy({
-          id: "00000000-0000-4000-a000-000000000926",
-          model: "gpt-5.5",
-          modelLabel: "GPT 5.5",
-          isDefault: true,
-          defaultProviderType: "codex-oauth-token",
-          credentialScope: "member",
-        }),
-      ]);
-      context.mocks.data.personalModelProviders([codexProvider]);
-      mockAgent();
-      mockChatLifecycle(context, {
-        onRunCreate: (body) => {
-          sentBody = body;
-        },
-      });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000926",
+        model: "gpt-5.6-terra",
+        modelLabel: "GPT 5.6 Terra",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
 
-      detachedSetupPage({
-        context,
-        featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
-        path: `/agents/${AGENT_ID}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
-      await waitFor(() => {
-        expect(
-          screen.getByRole("combobox", { name: /^GPT 5\.5$/ }),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByRole("group", { name: "Run speed" }),
-        ).not.toBeInTheDocument();
-      });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: /^GPT 5\.6 Terra$/ }),
+      ).toBeInTheDocument();
+    });
+    await user.click(await findComposerModel("GPT 5.6 Terra"));
+    expect(queryFastModeOption("GPT 5.6 Terra")).toBeUndefined();
+    await user.keyboard("{Escape}");
 
-      await sendMessageInUI(
-        user,
-        screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-        "Use standard mode",
-      );
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use standard mode",
+    );
 
-      await waitFor(() => {
-        expect(sentBody).toBeDefined();
-        expect(sentBody?.runOptions).toBeUndefined();
-      });
-    } finally {
-      act(() => {
-        context.store.set(clearCodexFastModeDefaultStorageForTest$);
-      });
-    }
+    await waitFor(() => {
+      expect(sentBody).toBeDefined();
+      expect(sentBody?.runOptions).toBeUndefined();
+    });
   });
 
   it.each([
     {
       reason: "the feature switch is off",
       codexFastModeEnabled: false,
+      model: "gpt-5.6-sol" as const,
+      modelLabel: "GPT 5.6 Sol",
       defaultProviderType: "codex-oauth-token" as const,
       credentialScope: "member" as const,
     },
     {
-      reason: "the current model route is not Codex",
+      reason: "the selected model is not GPT 5.6",
       codexFastModeEnabled: true,
+      model: "gpt-5.5" as const,
+      modelLabel: "GPT 5.5",
       defaultProviderType: "vm0" as const,
       credentialScope: "org" as const,
     },
   ])(
     "drops an explicit new-thread Codex Fast tier when $reason",
-    async ({ codexFastModeEnabled, defaultProviderType, credentialScope }) => {
+    async ({
+      codexFastModeEnabled,
+      model,
+      modelLabel,
+      defaultProviderType,
+      credentialScope,
+    }) => {
       const user = userEvent.setup({ delay: null });
       let modelSelectionUpdateCount = 0;
       let sentBody:
@@ -508,8 +1116,8 @@ describe("chat composer models", () => {
       context.mocks.data.orgModelPolicies([
         buildModelPolicy({
           id: crypto.randomUUID(),
-          model: "gpt-5.5",
-          modelLabel: "GPT 5.5",
+          model,
+          modelLabel,
           isDefault: true,
           defaultProviderType,
           credentialScope,
@@ -531,7 +1139,7 @@ describe("chat composer models", () => {
       );
       act(() => {
         context.store.set(setChatPageModelSelection$, {
-          selectedModel: "gpt-5.5",
+          selectedModel: model,
           codexServiceTier: "fast",
         });
       });
@@ -553,8 +1161,9 @@ describe("chat composer models", () => {
         path: `/agents/${AGENT_ID}/chat`,
       });
 
-      const modelPicker = await findComposerModel("GPT 5.5");
-      expect(within(modelPicker).queryByText("Fast")).toBeNull();
+      await user.click(await findComposerModel(modelLabel));
+      expect(queryFastModeOption(modelLabel)).toBeUndefined();
+      await user.keyboard("{Escape}");
       await sendMessageInUI(
         user,
         screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -569,8 +1178,7 @@ describe("chat composer models", () => {
     },
   );
 
-  it("keeps the remembered Codex fast default when Fast is unavailable", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("ignores the stored Codex priority default when Fast is unavailable", async () => {
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000927",
       type: "codex-oauth-token",
@@ -579,54 +1187,49 @@ describe("chat composer models", () => {
       authMethod: "auth_json",
       secretNames: ["CODEX_AUTH_JSON"],
     });
-    act(() => {
-      context.store.set(
-        setCodexFastModeDefaultStorageForTest$,
-        JSON.stringify({ "test-user-123:org_default": true }),
-      );
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.6-luna",
+      serviceTier: "priority",
+      updatedAt: "2026-05-08T00:00:00.000Z",
     });
 
-    try {
-      context.mocks.data.orgModelPolicies([
-        buildModelPolicy({
-          id: "00000000-0000-4000-a000-000000000928",
-          model: "kimi-k2.7-code",
-          modelLabel: "Kimi K2.7 Code",
-          isDefault: true,
-          defaultProviderType: "vm0",
-          credentialScope: "org",
-        }),
-        buildModelPolicy({
-          id: "00000000-0000-4000-a000-000000000929",
-          model: "gpt-5.5",
-          modelLabel: "GPT 5.5",
-          defaultProviderType: "codex-oauth-token",
-          credentialScope: "member",
-        }),
-      ]);
-      context.mocks.data.personalModelProviders([codexProvider]);
-      mockAgent();
-      mockChatLifecycle(context);
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000928",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000929",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    mockChatLifecycle(context);
 
-      detachedSetupPage({
-        context,
-        featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
-        path: `/agents/${AGENT_ID}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
-      await user.click(await findComposerModel("Kimi K2.7 Code"));
-      await user.click(await screen.findByRole("option", { name: /GPT 5\.5/ }));
-      await expectComposerModel("GPT 5.5");
-      await waitFor(async () => {
-        await expect(
-          context.store.get(codexFastModeLocalDefault$),
-        ).resolves.toBeTruthy();
+    await expectComposerModel("GPT 5.6 Luna");
+    await waitFor(async () => {
+      await expect(
+        context.store.get(userModelPreference$),
+      ).resolves.toStrictEqual({
+        selectedModel: "gpt-5.6-luna",
+        serviceTier: "priority",
+        updatedAt: "2026-05-08T00:00:00.000Z",
       });
-    } finally {
-      act(() => {
-        context.store.set(clearCodexFastModeDefaultStorageForTest$);
-      });
-    }
+    });
   });
 
   it("keeps Codex fast mode when continuing a hydrated thread", async () => {
@@ -675,18 +1278,10 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }),
-      ).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }));
-    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-    expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    await user.click(await findComposerModel("GPT 5.6 Sol Fast"));
+    expect(
+      fastModeIcon(await findFastModeOption("GPT 5.6 Sol")),
+    ).toHaveAttribute("fill", "currentColor");
     await user.keyboard("{Escape}");
 
     await sendMessageInUI(
@@ -722,8 +1317,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000924",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-terra",
+        modelLabel: "GPT 5.6 Terra",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -732,7 +1327,7 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-terra",
       codexServiceTier: "fast",
       onRunCreate: (body) => {
         sentBody = body;
@@ -745,10 +1340,9 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const modelPicker = await screen.findByRole("combobox", {
-      name: "GPT 5.5",
-    });
-    const showedFast = within(modelPicker).queryByText("Fast") !== null;
+    await user.click(await findComposerModel("GPT 5.6 Terra"));
+    const showedFast = queryFastModeOption("GPT 5.6 Terra") !== undefined;
+    await user.keyboard("{Escape}");
 
     await sendMessageInUI(
       user,
@@ -762,7 +1356,7 @@ describe("chat composer models", () => {
     expect(showedFast).toBeFalsy();
   });
 
-  it("hides a hydrated Codex fast tier when the current route is not Codex", async () => {
+  it("keeps a hydrated Codex fast tier on a built-in route", async () => {
     const user = userEvent.setup({ delay: null });
     let sentBody:
       | {
@@ -773,8 +1367,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000930",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -782,7 +1376,7 @@ describe("chat composer models", () => {
     ]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-luna",
       codexServiceTier: "fast",
       onRunCreate: (body) => {
         sentBody = body;
@@ -795,19 +1389,22 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const modelPicker = await screen.findByRole("combobox", {
-      name: "GPT 5.5",
-    });
-    expect(within(modelPicker).queryByText("Fast")).toBeNull();
+    await user.click(await findComposerModel("GPT 5.6 Luna Fast"));
+    expect(
+      fastModeIcon(await findFastModeOption("GPT 5.6 Luna")),
+    ).toHaveAttribute("fill", "currentColor");
+    await user.keyboard("{Escape}");
 
     await sendMessageInUI(
       user,
       screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      "Continue without fast mode",
+      "Continue with fast mode",
     );
 
     await waitFor(() => {
-      expect(sentBody?.runOptions).toBeUndefined();
+      expect(sentBody?.runOptions).toStrictEqual({
+        codexServiceTier: "fast",
+      });
     });
   });
 
@@ -830,8 +1427,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000919",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -840,7 +1437,7 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     const lifecycle = mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-sol",
       codexServiceTier: "fast",
       onRunCreate: (body) => {
         sentBody = body;
@@ -852,25 +1449,13 @@ describe("chat composer models", () => {
       featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
       path: `/chats/${THREAD_ID}`,
     });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("combobox", { name: /GPT 5\.5/ }),
-      ).toBeInTheDocument();
-    });
+    await expectComposerModel("GPT 5.6 Sol Fast");
 
     lifecycle.setCodexServiceTier(null);
     act(() => {
       triggerAblyEvent("threadListChanged");
     });
-    await user.click(screen.getByRole("combobox", { name: /GPT 5\.5/ }));
-    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-    await waitFor(() => {
-      expect(buttonContainingText("Standard", runSpeed)).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-    });
-    await user.keyboard("{Escape}");
+    await expectComposerModel("GPT 5.6 Sol");
     await sendMessageInUI(
       user,
       screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -882,7 +1467,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("clears Codex fast mode when switching to a non-fast model", async () => {
+  it("uses each model row click as an exact Standard or Fast selection", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000915",
@@ -914,14 +1499,21 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000916",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000917",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000932",
         model: "claude-sonnet-5",
         modelLabel: "Claude Sonnet 5",
         defaultProviderType: "vm0",
@@ -931,7 +1523,7 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-sol",
       codexServiceTier: "fast",
       onModelSelectionUpdate: (body) => {
         updatedModelSelection = body;
@@ -947,15 +1539,27 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await user.click(await screen.findByRole("combobox", { name: /GPT 5\.5/ }));
+    await user.click(await findComposerModel("GPT 5.6 Sol Fast"));
+    await user.click(
+      await screen.findByRole("option", { name: "GPT 5.6 Luna" }),
+    );
+    await expectComposerModel("GPT 5.6 Luna");
+
+    await user.click(await findComposerModel("GPT 5.6 Luna"));
+    await user.click(await findFastModeOption("GPT 5.6 Luna"));
+    await expectComposerModel("GPT 5.6 Luna Fast");
+    await waitFor(() => {
+      expect(updatedModelSelection?.modelSelection?.selectedModel).toBe(
+        "gpt-5.6-luna",
+      );
+      expect(updatedModelSelection?.codexServiceTier).toBe("fast");
+    });
+
+    await user.click(await findComposerModel("GPT 5.6 Luna Fast"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 5/ }),
     );
-    await waitFor(() => {
-      expect(
-        screen.getByRole("combobox", { name: /Claude Sonnet 5/ }),
-      ).toBeInTheDocument();
-    });
+    await expectComposerModel("Claude Sonnet 5");
 
     await sendMessageInUI(
       user,
@@ -987,8 +1591,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000921",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1004,16 +1608,14 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.5"));
+    click(await findComposerModel("GPT 5.6 Luna"));
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("group", { name: "Run speed" }),
-      ).not.toBeInTheDocument();
+      expect(queryFastModeOption("GPT 5.6 Luna")).toBeUndefined();
     });
   });
 
-  it("hides Codex fast mode for non-Codex models", async () => {
+  it("hides Codex fast mode for non-GPT-5.6 models", async () => {
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000932",
       type: "codex-oauth-token",
@@ -1045,9 +1647,7 @@ describe("chat composer models", () => {
     click(await findComposerModel("Claude Sonnet 5"));
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("group", { name: "Run speed" }),
-      ).not.toBeInTheDocument();
+      expect(queryFastModeOption("Claude Sonnet 5")).toBeUndefined();
     });
   });
 
@@ -1057,15 +1657,19 @@ describe("chat composer models", () => {
     let holdPreferenceReload = false;
     let preferenceReloadStarted = false;
 
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(
-      zeroUserModelPreferenceContract.get,
+      userModelPreferenceContract.get,
       async ({ respond, withSignal }) => {
         if (holdPreferenceReload) {
           preferenceReloadStarted = true;
           await withSignal(pendingPreferenceReload.promise);
         }
-        return respond(200, { selectedModel: null, updatedAt: null });
+        return respond(200, {
+          selectedModel: null,
+          serviceTier: null,
+          updatedAt: null,
+        });
       },
     );
     mockAgent();
@@ -1076,7 +1680,7 @@ describe("chat composer models", () => {
       expect(document.title).toContain("Scout");
     });
     await user.click(
-      await screen.findByRole("combobox", { name: "Kimi K2.7 Code" }),
+      await screen.findByRole("combobox", { name: "Claude Fable 5" }),
     );
     await expect(
       screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
@@ -1096,7 +1700,7 @@ describe("chat composer models", () => {
     expect(
       screen.getByRole("combobox", {
         hidden: true,
-        name: "Kimi K2.7 Code",
+        name: "Claude Fable 5",
       }),
     ).toBeInTheDocument();
     expect(screen.getByRole("listbox")).toBeInTheDocument();
@@ -1107,14 +1711,15 @@ describe("chat composer models", () => {
 
   it("shows thread override over user and workspace defaults, then remains editable", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.data.userModelPreference({
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockAgent();
     mockThread({
-      selectedModel: "glm-5.1",
+      selectedModel: "claude-opus-5",
       messages: [
         {
           id: "msg-user",
@@ -1129,17 +1734,24 @@ describe("chat composer models", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await screen.findByText("Use GLM");
-    await user.click(await findComposerModel("GLM-5.1"));
+    await user.click(await findComposerModel("Claude Opus 5"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
     await expectComposerModel("Claude Sonnet 4.6");
+    expect(
+      screen.getByRole("combobox", {
+        hidden: true,
+        name: "Claude Sonnet 4.6",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("does not fall back to defaults when thread projection has no model", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.data.userModelPreference({
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockAgent();
@@ -1150,10 +1762,10 @@ describe("chat composer models", () => {
     await screen.findByPlaceholderText(PLACEHOLDER);
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("combobox", { name: "Kimi K2.7 Code" }),
+      screen.queryByRole("combobox", { name: "Claude Fable 5" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("combobox", { name: "Claude Opus 4.7" }),
+      screen.queryByRole("combobox", { name: "Claude Opus 4.8" }),
     ).not.toBeInTheDocument();
   });
 
@@ -1161,17 +1773,18 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     let preferenceRequestStarted = false;
 
-    mockOrgModelRoutes("kimi-k2.7-code");
-    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
       preferenceRequestStarted = true;
       return respond(200, {
-        selectedModel: "claude-opus-4-7",
+        selectedModel: "claude-opus-4-8",
+        serviceTier: null,
         updatedAt: "2026-03-10T00:00:00Z",
       });
     });
     mockAgent();
     mockThread({
-      selectedModel: "glm-5.1",
+      selectedModel: "claude-opus-5",
       messages: [
         {
           id: "msg-user",
@@ -1183,33 +1796,62 @@ describe("chat composer models", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
 
     await screen.findByText("Use GLM");
-    await user.click(await findComposerModel("GLM-5.1"));
+    await user.click(await findComposerModel("Claude Opus 5"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
     await expectComposerModel("Claude Sonnet 4.6");
     expect(preferenceRequestStarted).toBeFalsy();
+    expect(
+      screen.queryByText("Default for new chats and new automations"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
+    ).not.toBeInTheDocument();
   });
 
-  it("opens compare plans from limited-free-1 Pro composer model items", async () => {
+  it("shows limited-free-1 models and opens plans for Pro models", async () => {
     const user = userEvent.setup({ delay: null });
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
+    mockBillingCapabilities(
+      { supportByok: false, restrictedVm0Models: true },
+      "limited-free-1",
+    );
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000701",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000702",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000703",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000704",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -1218,12 +1860,22 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    await expectComposerModel("Kimi K2.7 Code");
-    await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
-    await user.click(
-      await screen.findByRole("option", { name: /GPT 5\.5.*Pro/u }),
-    );
+    await expectComposerModel("DeepSeek V4 Flash");
+    await user.click(await findComposerModel("DeepSeek V4 Flash"));
 
+    const deepseek = await screen.findByRole("option", {
+      name: /DeepSeek V4 Flash/u,
+    });
+    const luna = screen.getByRole("option", { name: /GPT 5\.6 Luna/u });
+    expect(deepseek).not.toHaveTextContent("Pro");
+    expect(luna).not.toHaveTextContent("Pro");
+    expect(
+      screen.getByRole("option", { name: /GPT 5\.6 Sol.*Pro/u }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("option", { name: /Claude Fable 5.*Pro/u }),
+    );
     await expect(
       screen.findByRole("heading", { name: "Compare plans" }),
     ).resolves.toBeInTheDocument();
@@ -1243,11 +1895,11 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000302",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
-        defaultProviderType: "moonshot-api-key",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
+        defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
-        modelProviderId: MOONSHOT_PROVIDER_ID,
+        modelProviderId: OPENROUTER_PROVIDER_ID,
       }),
     ]);
     mockChatLifecycle(context, {
@@ -1266,7 +1918,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
       expect(
-        screen.getByRole("option", { name: /Kimi K2\.7 Code BYOK/ }),
+        screen.getByRole("option", { name: /Claude Fable 5 BYOK/ }),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     });
@@ -1297,8 +1949,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000305",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -1331,7 +1983,7 @@ describe("chat composer models", () => {
         context.mocks.ably.hasSubscription("billing:changed"),
       ).toBeTruthy();
     });
-    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await user.click(await findComposerModel("Claude Fable 5"));
     await expect(
       screen.findByRole("option", { name: /GPT 5\.5/ }),
     ).resolves.toBeInTheDocument();
@@ -1363,8 +2015,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000304",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -1385,7 +2037,7 @@ describe("chat composer models", () => {
       await screen.findByRole("combobox", { name: "Claude Sonnet 4.6" }),
     );
     await expect(
-      screen.findByRole("option", { name: /Kimi K2\.7 Code/ }),
+      screen.findByRole("option", { name: /Claude Fable 5/ }),
     ).resolves.toBeInTheDocument();
 
     context.mocks.ably.trigger("billing:changed");
@@ -1394,7 +2046,7 @@ describe("chat composer models", () => {
       screen.findByText("Model picker billing refresh failed"),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: /Kimi K2\.7 Code/ }),
+      screen.getByRole("option", { name: /Claude Fable 5/ }),
     ).toBeInTheDocument();
     expect(screen.queryByText("Loading models...")).not.toBeInTheDocument();
   });
@@ -1442,17 +2094,17 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000309",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         isDefault: true,
-        defaultProviderType: "moonshot-api-key",
+        defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
-        modelProviderId: MOONSHOT_PROVIDER_ID,
+        modelProviderId: OPENROUTER_PROVIDER_ID,
       }),
     ]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "kimi-k2.7-code",
+      selectedModel: "claude-fable-5",
       onRunCreate: () => {
         runCreateCount++;
       },
@@ -1478,8 +2130,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000308",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -1592,15 +2244,15 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000306",
-        model: "claude-opus-4-7",
-        modelLabel: "Claude Opus 4.7",
+        model: "claude-opus-4-8",
+        modelLabel: "Claude Opus 4.8",
         defaultProviderType: "claude-code-oauth-token",
         credentialScope: "member",
       }),
     ]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
       onRunCreate: () => {
         runCreateCount++;
       },
@@ -1616,7 +2268,7 @@ describe("chat composer models", () => {
       },
     });
 
-    await expectComposerModel("Claude Opus 4.7");
+    await expectComposerModel("Claude Opus 4.8");
     expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
 
     holdProviderReload = true;
@@ -1644,7 +2296,7 @@ describe("chat composer models", () => {
 
     await user.click(
       screen.getByRole("combobox", {
-        name: "Claude Opus 4.7",
+        name: "Claude Opus 4.8",
       }),
     );
     await user.click(await screen.findByRole("option", { name: /GPT 5\.5/ }));
@@ -1690,7 +2342,7 @@ describe("chat composer models", () => {
     ]);
     context.mocks.data.personalModelProviders([]);
     mockAgent();
-    context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-codex-device-session",
         type: "codex",
@@ -1702,18 +2354,15 @@ describe("chat composer models", () => {
         interval: 1,
       });
     });
-    context.mocks.api(
-      zeroCodexDeviceAuthContract.complete,
-      async ({ respond }) => {
-        await codexApproval.promise;
-        context.mocks.data.personalModelProviders([codexProvider]);
-        return respond(200, {
-          status: "complete",
-          provider: codexProvider,
-          created: true,
-        });
-      },
-    );
+    context.mocks.api(codexDeviceAuthContract.complete, async ({ respond }) => {
+      await codexApproval.promise;
+      context.mocks.data.personalModelProviders([codexProvider]);
+      return respond(200, {
+        status: "complete",
+        provider: codexProvider,
+        created: true,
+      });
+    });
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
     await expectComposerModel("GPT 5.5");
@@ -1780,7 +2429,7 @@ describe("chat composer models", () => {
       }),
     ]);
     mockAgent();
-    context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-stale-codex-device-session",
         type: "codex",
@@ -1792,7 +2441,7 @@ describe("chat composer models", () => {
         interval: 1,
       });
     });
-    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+    context.mocks.api(codexDeviceAuthContract.complete, ({ respond }) => {
       return respond(200, { status: "pending", errorMessage: null });
     });
 
@@ -1823,8 +2472,8 @@ describe("chat composer models", () => {
     context.mocks.browser.open(null);
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
-        model: "claude-opus-4-7",
-        modelLabel: "Claude Opus 4.7",
+        model: "claude-opus-4-8",
+        modelLabel: "Claude Opus 4.8",
         isDefault: true,
         defaultProviderType: "claude-code-oauth-token",
         credentialScope: "member",
@@ -1832,7 +2481,7 @@ describe("chat composer models", () => {
     ]);
     context.mocks.data.personalModelProviders([]);
     mockAgent();
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-claude-code-device-session",
         type: "claude-code",
@@ -1842,23 +2491,20 @@ describe("chat composer models", () => {
         expiresIn: 30,
       });
     });
-    context.mocks.api(
-      zeroClaudeCodeDeviceAuthContract.complete,
-      ({ respond }) => {
-        return respond(200, {
-          status: "complete",
-          provider: buildProvider({
-            id: "00000000-0000-4000-a000-000000000401",
-            type: "claude-code-oauth-token",
-            secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-          }),
-          created: true,
-        });
-      },
-    );
+    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
+      return respond(200, {
+        status: "complete",
+        provider: buildProvider({
+          id: "00000000-0000-4000-a000-000000000401",
+          type: "claude-code-oauth-token",
+          secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+        }),
+        created: true,
+      });
+    });
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-    await expectComposerModel("Claude Opus 4.7");
+    await expectComposerModel("Claude Opus 4.8");
 
     await fill(await screen.findByPlaceholderText(PLACEHOLDER), "Hello");
     await user.keyboard("{Enter}");
@@ -1902,168 +2548,9 @@ describe("chat composer models", () => {
     });
   });
 
-  it("keeps unsupported visual files out of text-only model sends while accepting text files", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("glm-5.1");
-    mockAgent();
-    context.mocks.upload.success({
-      id: "notes-upload",
-      filename: "notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: "https://example.com/notes.txt",
-    });
-
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await expectComposerModel("GLM-5.1");
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-
-    await user.upload(
-      fileInput,
-      new File(["image"], "screenshot.png", { type: "image/png" }),
-    );
-
-    await expect(
-      screen.findAllByText(/GLM-5\.1 cannot recognize images or videos/i),
-    ).resolves.not.toHaveLength(0);
-    expect(
-      screen.queryByLabelText("Open image preview for screenshot.png"),
-    ).not.toBeInTheDocument();
-
-    await user.upload(
-      fileInput,
-      new File(["plain text"], "notes.txt", { type: "text/plain" }),
-    );
-
-    await expect(
-      screen.findByLabelText("Remove notes.txt"),
-    ).resolves.toBeInTheDocument();
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-
-    fireEvent.paste(editor, {
-      clipboardData: {
-        getData: (type: string) => {
-          return type === "text/plain" ? "Keep this pasted caption" : "";
-        },
-        items: [
-          {
-            kind: "file",
-            getAsFile: () => {
-              return new File(["pasted image"], "pasted.png", {
-                type: "image/png",
-              });
-            },
-          },
-        ],
-      },
-    });
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("Keep this pasted caption");
-      expect(
-        screen.queryByLabelText("Open image preview for pasted.png"),
-      ).not.toBeInTheDocument();
-    });
-
-    await fill(editor, "");
-
-    fireEvent.paste(editor, {
-      clipboardData: {
-        getData: (type: string) => {
-          if (type === "text/html") {
-            return chatClipboardHtml({
-              text: "Use the copied launch brief",
-              attachments: [
-                {
-                  id: "copied-brief",
-                  url: "https://cdn.vm7.io/artifacts/test/copied/copied-brief.md",
-                  filename: "copied-brief.md",
-                  contentType: "text/markdown",
-                  size: 42,
-                },
-                {
-                  id: "copied-image",
-                  url: "https://cdn.vm7.io/artifacts/test/copied/copied-image.png",
-                  filename: "copied-image.png",
-                  contentType: "image/png",
-                  size: 420,
-                },
-              ],
-            });
-          }
-          return "";
-        },
-        items: [],
-      },
-    });
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("Use the copied launch brief");
-      expect(
-        screen.getByLabelText("Remove copied-brief.md"),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByLabelText("Open image preview for copied-image.png"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
-          .length,
-      ).toBeGreaterThan(0);
-    });
-
-    fireEvent.paste(editor, {
-      clipboardData: {
-        getData: (type: string) => {
-          return type === "text/plain" ? "Do not insert oversized paste" : "";
-        },
-        items: [
-          {
-            kind: "file",
-            getAsFile: () => {
-              return oversizedFile("oversized-paste.txt", "text/plain");
-            },
-          },
-        ],
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("oversized-paste.txt exceeds the 1 GB limit"),
-      ).toBeInTheDocument();
-      expect(editor).toHaveTextContent("Use the copied launch brief");
-    });
-
-    const composer = composerElementFrom(editor);
-    fireEvent.dragOver(composer);
-    fireEvent.dragLeave(composer, { relatedTarget: document.body });
-    fireEvent.drop(composer, {
-      dataTransfer: {
-        files: [
-          new File(["dropped image"], "dropped.png", { type: "image/png" }),
-          oversizedFile("oversized-drop.txt", "text/plain"),
-        ],
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("oversized-drop.txt exceeds the 1 GB limit"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
-          .length,
-      ).toBeGreaterThan(0);
-    });
-  });
-
   it("accepts visual attachments across composer paths for fallback-enabled text-only models", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("glm-5.1");
+    mockOrgModelRoutes("claude-opus-5");
     mockAgent();
     context.mocks.upload.success({
       id: "recognition-compatible-upload",
@@ -2076,12 +2563,9 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
-    await expectComposerModel("GLM-5.1");
+    await expectComposerModel("Claude Opus 5");
     const fileInput =
       document.querySelector<HTMLInputElement>('input[type="file"]')!;
 
@@ -2154,13 +2638,13 @@ describe("chat composer models", () => {
       screen.findByLabelText("Open image preview for dropped.webp"),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+      screen.queryByText(/Claude Opus 5 cannot recognize images or videos/i),
     ).not.toBeInTheDocument();
   });
 
   it("accepts media outside the direct recognition contract for fallback-enabled text-only models", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("glm-5.1");
+    mockOrgModelRoutes("claude-opus-5");
     mockAgent();
     context.mocks.upload.success({
       id: "recognition-boundary-visual",
@@ -2173,12 +2657,9 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
-    await expectComposerModel("GLM-5.1");
+    await expectComposerModel("Claude Opus 5");
     const fileInput =
       document.querySelector<HTMLInputElement>('input[type="file"]')!;
     const oversizedImage = new File(["png"], "oversized.png", {
@@ -2186,7 +2667,7 @@ describe("chat composer models", () => {
     });
     Object.defineProperty(oversizedImage, "size", {
       configurable: true,
-      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+      value: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
     });
 
     await user.upload(fileInput, [
@@ -2209,50 +2690,8 @@ describe("chat composer models", () => {
       screen.findByLabelText("Remove clip.mp4"),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+      screen.queryByText(/Claude Opus 5 cannot recognize images or videos/i),
     ).not.toBeInTheDocument();
-  });
-
-  it("hides an accepted visual attachment after switching to a text-only model", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("claude-sonnet-4-6");
-    mockAgent();
-    context.mocks.upload.success({
-      id: "visual-model-switch",
-      filename: "storyboard.png",
-      contentType: "image/png",
-      size: 128,
-      url: "https://example.com/storyboard.png",
-    });
-
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await expectComposerModel("Claude Sonnet 4.6");
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(
-      fileInput,
-      new File(["image"], "storyboard.png", { type: "image/png" }),
-    );
-
-    await expect(
-      screen.findByLabelText("Open image preview for storyboard.png"),
-    ).resolves.toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
-    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
-          .length,
-      ).toBeGreaterThan(0);
-      expect(
-        screen.queryByLabelText("Open image preview for storyboard.png"),
-      ).not.toBeInTheDocument();
-    });
   });
 
   it("keeps a non-native image after switching to a fallback-enabled text-only model", async () => {
@@ -2270,9 +2709,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     await expectComposerModel("Claude Sonnet 4.6");
@@ -2290,14 +2726,16 @@ describe("chat composer models", () => {
     await user.click(
       screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
     );
-    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Opus 5/ }),
+    );
 
     await waitFor(() => {
       expect(
         screen.getByLabelText("Open image preview for storyboard.gif"),
       ).toBeInTheDocument();
       expect(
-        screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+        screen.queryByText(/Claude Opus 5 cannot recognize images or videos/i),
       ).not.toBeInTheDocument();
     });
   });
@@ -2308,7 +2746,10 @@ describe("chat composer models", () => {
     mockManyConnectedConnectors();
     mockAgentConnectorAuthorizations(["github"]);
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -2332,7 +2773,10 @@ describe("chat composer models", () => {
     mockManyConnectedConnectors();
     mockAgentConnectorAuthorizations(["slack"]);
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -2346,11 +2790,117 @@ describe("chat composer models", () => {
     });
   });
 
-  it("keeps connector access resolved across same-agent chat navigation", async () => {
+  it("keeps connector display stable without reloading the agent on same-agent navigation", async () => {
+    let agentRequestCount = 0;
+
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    mockManyConnectedConnectors();
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "First Scout thread" },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Second Scout thread",
+      },
+    ]);
+    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      agentRequestCount += 1;
+      return respond(200, {
+        agentId: params.id,
+        ownerId: "test-user-123",
+        displayName: "Scout",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+        visibility: "public",
+      });
+    });
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledConnectorSlugs: ["github"] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { grants: [] });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const initialConnectorButton = within(
+      await screen.findByLabelText("Chat thread"),
+    ).getByLabelText("Connectors");
+    await waitFor(() => {
+      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+    });
+    const settledAgentRequestCount = agentRequestCount;
+
+    await navigateToChatThread(OTHER_AGENT_THREAD_ID);
+    await waitFor(() => {
+      expect(
+        within(screen.getByLabelText("Chat thread")).getByText(
+          "Second Scout thread",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(agentRequestCount).toBe(settledAgentRequestCount);
+
+    const nextConnectorButton = within(
+      screen.getByLabelText("Chat thread"),
+    ).getByLabelText("Connectors");
+    expect(nextConnectorButton.querySelector("img")).not.toBeNull();
+  });
+
+  it("keeps connector catalog and access resolved across same-agent chat navigation", async () => {
     const unexpectedReload = context.mocks.deferred<void>();
     const unexpectedCustomReload = context.mocks.deferred<void>();
+    const unexpectedDiscoveryReload = context.mocks.deferred<void>();
     let authorizationRequestCount = 0;
     let customAuthorizationRequestCount = 0;
+    let discoveryRequestCount = 0;
+    const githubCatalogItem: PublicConnectorCatalogStatusItem = {
+      slug: "github",
+      label: "GitHub",
+      description: "Connect GitHub",
+      icon: {
+        url: "https://icons.example.test/github.svg",
+        invertInDarkMode: false,
+      },
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: [],
+      authMethods: [
+        {
+          id: "oauth",
+          label: "OAuth",
+          description: null,
+          grantKind: "auth-code",
+          manualFields: [],
+          startOptions: [],
+        },
+      ],
+      permissionSummary: {
+        hasPermissions: false,
+        permissionCount: 0,
+        hasCategories: false,
+        hasDefaultPolicyOverrides: false,
+      },
+      connection: {
+        authMethod: "oauth",
+        externalUsername: "octocat",
+        externalEmail: null,
+        reconnectReason: null,
+      },
+      connected: true,
+      connectionStatus: "connected",
+      scopeMismatch: false,
+      authMethodSupportsRefresh: true,
+      tokenExpiresAt: null,
+      singleAuthCodeAuthMethodId: "oauth",
+      connectNotice: null,
+    };
 
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
@@ -2381,11 +2931,28 @@ describe("chat composer models", () => {
         if (customAuthorizationRequestCount > 1) {
           await withSignal(unexpectedCustomReload.promise);
         }
-        return respond(200, { enabledIds: [] });
+        return respond(200, { grants: [] });
+      },
+    );
+    context.mocks.api(
+      zeroConnectorCatalogContract.discovery,
+      async ({ respond, withSignal }) => {
+        discoveryRequestCount += 1;
+        if (discoveryRequestCount > 1) {
+          await withSignal(unexpectedDiscoveryReload.promise);
+        }
+        return respond(200, {
+          connectors: [githubCatalogItem],
+          totalConnectorCount: 1,
+        });
       },
     );
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
+    });
 
     const initialThread = await screen.findByLabelText("Chat thread");
     const initialConnectorButton =
@@ -2394,6 +2961,7 @@ describe("chat composer models", () => {
       expect(initialConnectorButton.querySelector("img")).not.toBeNull();
       expect(authorizationRequestCount).toBe(1);
       expect(customAuthorizationRequestCount).toBe(1);
+      expect(discoveryRequestCount).toBe(1);
     });
 
     await navigateToChatThread(OTHER_AGENT_THREAD_ID);
@@ -2413,12 +2981,15 @@ describe("chat composer models", () => {
       screen.queryByLabelText("Remove GitHub") !== null;
     const requestCountAfterNavigation = authorizationRequestCount;
     const customRequestCountAfterNavigation = customAuthorizationRequestCount;
+    const discoveryRequestCountAfterNavigation = discoveryRequestCount;
     unexpectedReload.resolve();
     unexpectedCustomReload.resolve();
+    unexpectedDiscoveryReload.resolve();
 
     expect(connectorStatusStayedResolved).toBeTruthy();
     expect(requestCountAfterNavigation).toBe(1);
     expect(customRequestCountAfterNavigation).toBe(1);
+    expect(discoveryRequestCountAfterNavigation).toBe(1);
     expect(nextConnectorButton.querySelector("img")).not.toBeNull();
   });
 
@@ -2533,8 +3104,10 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}?sidebar=${OTHER_AGENT_THREAD_ID}`,
     });
 
-    const threadRegions = await screen.findAllByLabelText("Chat thread");
-    expect(threadRegions).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    const threadRegions = screen.getAllByLabelText("Chat thread");
     await waitFor(() => {
       expect(authorizationRequestCount).toBe(1);
     });
@@ -2648,8 +3221,10 @@ describe("chat composer models", () => {
       },
     });
 
-    const threadRegions = await screen.findAllByLabelText("Chat thread");
-    expect(threadRegions).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    const threadRegions = screen.getAllByLabelText("Chat thread");
     const sideThread = threadRegions[1];
     if (!sideThread) {
       throw new Error("Side chat thread not found");
@@ -2726,5 +3301,314 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(updatedAuthorizationAgentId).toBe(OTHER_AGENT_ID);
     });
+  });
+});
+
+describe("chat composer video model", () => {
+  function videoPanelButton(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("button").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
+    });
+  }
+
+  function findVideoPanelButton(label: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = videoPanelButton(label);
+      if (!button) {
+        throw new Error(`${label} button not found`);
+      }
+      return button;
+    });
+  }
+
+  function mockVideoModelThread(selectedVideoModel: string | null): {
+    readonly bodies: { model: string | null }[];
+  } {
+    const bodies: { model: string | null }[] = [];
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockThread({ selectedModel: "claude-fable-5", selectedVideoModel });
+    context.mocks.api(
+      chatThreadVideoModelContract.update,
+      ({ body, respond }) => {
+        bodies.push({ model: body.model });
+        return respond(204);
+      },
+    );
+    return { bodies };
+  }
+
+  it("uses the live member default for an untouched new chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    const initialPreference: UserModelPreferenceResponse = {
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    };
+    let createdVideoModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference(initialPreference);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdVideoModel = body.videoModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+    await expect(findVideoPanelButton("MiniMax H3")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    context.mocks.data.userModelPreference({
+      ...initialPreference,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      updatedAt: "2026-08-14T00:01:00Z",
+    });
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultVideoModel"],
+      });
+    });
+    await expect(findVideoPanelButton("Veo 3.1 fast")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.keyboard("{Escape}");
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use my current video default",
+    );
+
+    await waitFor(() => {
+      expect(createdVideoModel).toBe("fal-ai/veo3.1/fast");
+    });
+  });
+
+  it("writes a landing selection to the member default and new thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updates: {
+      selectedModel: string | null;
+      serviceTier: ChatThreadServiceTier | null;
+      selectedVideoModel?: string | null;
+    }[] = [];
+    let createdVideoModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updates.push(body);
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-14T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdVideoModel = body.videoModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findVideoPanelButton("Veo 3.1 fast"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          selectedModel: null,
+          serviceTier: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+        },
+      ]);
+    });
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Pin my selected video model",
+    );
+
+    await waitFor(() => {
+      expect(createdVideoModel).toBe("fal-ai/veo3.1/fast");
+    });
+  });
+
+  it("leaves new-chat video defaults disabled while the feature switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    let preferenceUpdateCount = 0;
+    let createdThreadBody: { readonly videoModel?: string } | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        preferenceUpdateCount += 1;
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-14T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdThreadBody = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: false },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await sendMessageInUI(
+      user,
+      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
+      "Keep video model defaults disabled",
+    );
+
+    await waitFor(() => {
+      expect(createdThreadBody).toBeDefined();
+    });
+    expect(createdThreadBody?.videoModel).toBeUndefined();
+    expect(preferenceUpdateCount).toBe(0);
+  });
+
+  it("pins a video model on the thread from the model picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { bodies } = mockVideoModelThread(null);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+
+    // Every public catalog model is offered, with no plan or provider filter.
+    expect(videoPanelButton("Seedance 2.5")).toBeInTheDocument();
+    expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
+    expect(videoPanelButton("Seedance 2.0 fast")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(await findVideoPanelButton("Veo 3.1 fast"));
+
+    await waitFor(() => {
+      expect(bodies).toStrictEqual([{ model: "fal-ai/veo3.1/fast" }]);
+    });
+    // Choosing closes the popover, so the picker reopens on the model list.
+    await waitFor(() => {
+      expect(videoPanelButton("Veo 3.1 fast")).toBeUndefined();
+    });
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await expect(
+      findVideoPanelButton("Manage more models"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("pins the visible fallback model to the current thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { bodies } = mockVideoModelThread("MiniMax-H3");
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+    expect(videoPanelButton("MiniMax H3")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(await findVideoPanelButton("Seedance 2.0 fast"));
+
+    await waitFor(() => {
+      expect(bodies).toStrictEqual([
+        { model: "dreamina-seedance-2-0-fast-260128" },
+      ]);
+    });
+  });
+
+  it("checks the resolved member default when the thread has no pin", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockVideoModelThread(null);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findVideoPanelButton("Manage more models"));
+
+    await expect(findVideoPanelButton("Veo 3.1 fast")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("hides the video model row while the feature switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockVideoModelThread(null);
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
+    expect(videoPanelButton("Manage more models")).toBeUndefined();
   });
 });

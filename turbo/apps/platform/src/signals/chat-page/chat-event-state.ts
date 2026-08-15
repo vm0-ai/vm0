@@ -1,10 +1,12 @@
 import {
   chatEventCompatibilityRole,
   isBrowserLifecycleEventType,
+  isChatGoalMarkerEventType,
   isChatRunTerminalEventType,
   revokedChatEventIds,
   terminatedChatRunIds,
-} from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-events";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 
@@ -29,8 +31,14 @@ export function isQueueMarkerEvent(
 
 export function isGoalMarkerEvent(
   event: ChatEvent,
-): event is Extract<ChatEvent, { eventType: "goal.changed" }> {
-  return event.eventType === "goal.changed";
+): event is Extract<ChatEvent, { eventType: "goal.open" | "goal.close" }> {
+  return isChatGoalMarkerEventType(event.eventType);
+}
+
+export function isFollowupsEvent(
+  event: ChatEvent,
+): event is Extract<ChatEvent, { eventType: "output.followups" }> {
+  return event.eventType === "output.followups";
 }
 
 export function isGoalQueueEvent(
@@ -82,7 +90,6 @@ export function isInterruptedAssistantCancellation(
 export interface SemanticChatEventState {
   readonly event: ChatEvent;
   readonly isQueued: boolean;
-  readonly isOptimisticRun: boolean;
 }
 
 type QueuedChatEvent = Extract<
@@ -93,6 +100,15 @@ type QueuedChatEvent = Extract<
 function isQueuedChatEvent(event: ChatEvent): event is QueuedChatEvent {
   return (
     event.eventType === "input.prompt" || event.eventType === "input.automation"
+  );
+}
+
+function isTemporarilyQueuedMorningBrief(event: ChatEvent): boolean {
+  return (
+    event.eventType === "input.prompt" &&
+    event.userMessage.parts.some((part) => {
+      return part.type === "morning_brief";
+    })
   );
 }
 
@@ -140,6 +156,7 @@ export function semanticChatEventsFromChatEvents(
       isRecallControlEvent(event) ||
       isQueueMarkerEvent(event) ||
       isGoalQueueEvent(event) ||
+      event.eventType === "input.budget" ||
       isGoalMarkerEvent(event) ||
       isBrowserLifecycleEventType(event.eventType) ||
       isInterruptedAssistantCancellation(event, interruptedRunIds) ||
@@ -156,7 +173,6 @@ export function semanticChatEventsFromChatEvents(
             event.interruptsRunId,
           ),
           isQueued: false,
-          isOptimisticRun: false,
         },
       ];
     }
@@ -165,14 +181,13 @@ export function semanticChatEventsFromChatEvents(
       chatEventCompatibilityRole(event.eventType) === "user" &&
       event.runId === undefined;
     const optimisticAssociation = event.optimisticUserMessageAssociation;
-    const isOptimisticRun =
-      isUnassociatedUser && optimisticAssociation === "run";
     const isQueued =
       isUnassociatedUser &&
       optimisticAssociation !== "run" &&
-      (event.eventType === "input.prompt" ||
-        event.eventType === "input.automation");
-    return [{ event, isQueued, isOptimisticRun }];
+      (event.eventType === "input.automation" ||
+        (event.eventType === "input.prompt" &&
+          isTemporarilyQueuedMorningBrief(event)));
+    return [{ event, isQueued }];
   });
 }
 
@@ -478,4 +493,41 @@ export function liveRunIdsFromChatEvents(
     }
   }
   return liveRunIds;
+}
+
+export interface ChatRunModelSelection {
+  readonly selectedModel: string;
+  readonly serviceTier?: ChatThreadServiceTier;
+}
+
+export function runningModelSelectionFromChatEvents(
+  events: readonly ChatEvent[],
+): ChatRunModelSelection | null {
+  const runningRunId = liveRunIdsFromChatEvents(events).at(-1);
+  if (runningRunId === undefined) {
+    return null;
+  }
+
+  const revokedEventIds = revokedChatEventIds(events);
+  for (const event of events) {
+    if (
+      event.eventType !== "input.prompt" ||
+      event.runId !== runningRunId ||
+      revokedEventIds.has(event.id)
+    ) {
+      continue;
+    }
+    const model = event.userMessage.parts.find((part) => {
+      return part.type === "model";
+    });
+    if (model?.type === "model") {
+      return {
+        selectedModel: model.selectedModel,
+        ...(model.serviceTier === undefined
+          ? {}
+          : { serviceTier: model.serviceTier }),
+      };
+    }
+  }
+  return null;
 }

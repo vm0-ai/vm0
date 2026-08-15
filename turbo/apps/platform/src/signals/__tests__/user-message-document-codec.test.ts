@@ -3,7 +3,7 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { initializeI18n } from "../../i18n/index.ts";
@@ -21,6 +21,7 @@ import {
 const context = testContext();
 const THREAD_ID = "1fe7f3cc-40b9-49f2-8f86-5f07d8d8dfd8";
 const MENTIONED_AGENT_ID = "a1000000-0000-4000-a000-000000000001";
+const FEEDBACK_EVENT_ID = "assistant-event-1";
 
 beforeAll(async () => {
   await initializeI18n(DEFAULT_LOCALE);
@@ -106,7 +107,7 @@ describe("user message document codec", () => {
     const template = presentationTemplate();
     const attachments = persistedAttachments();
     const structured = editorDocToMessageDocument(editorDocument, {
-      generationTemplate: template,
+      selectedTemplate: template,
       attachments,
     });
     expect(structured).toStrictEqual({
@@ -145,7 +146,8 @@ describe("user message document codec", () => {
       ],
     });
     expect(messageDocumentToPrompt(structured)).toBe(
-      `  Review [Project Alpha](/chats/${THREAD_ID}) with ` +
+      `Select Pitch deck presentation template  Review ` +
+        `[Project Alpha](/chats/${THREAD_ID}) with ` +
         `[Ada](/agents/${MENTIONED_AGENT_ID}/chat) then\ncontinue  \nlast`,
     );
     expect(messageDocumentToDisplayText(structured)).toContain("[Agent: Ada]");
@@ -155,17 +157,18 @@ describe("user message document codec", () => {
       type: "doc",
       content: [
         {
-          type: "templateAttachment",
-          attrs: {
-            templateType: "presentation",
-            title: "Pitch deck",
-            category: "slides",
-            previewImageUrl: "https://example.com/pitch-deck.png",
-          },
-        },
-        {
           type: "paragraph",
           content: [
+            {
+              type: "inlineTemplate",
+              attrs: {
+                templateType: "presentation",
+                template,
+                title: "Pitch deck",
+                category: "slides",
+                previewImageUrl: "https://example.com/pitch-deck.png",
+              },
+            },
             { type: "text", text: "  Review " },
             {
               type: "chatThreadMention",
@@ -197,12 +200,49 @@ describe("user message document codec", () => {
       throw new Error("Expected the structured document to restore");
     }
 
+    // Restoring normalizes the legacy leading template chip into an inline
+    // template node: it carries its own template data, so the re-encode needs
+    // no ambient selected-template context, and the template part now sits in
+    // the text flow after the elevated file parts.
     expect(
       editorDocToMessageDocument(workflowComposerDocument(restored), {
-        generationTemplate: template,
         attachments,
       }),
-    ).toStrictEqual(structured);
+    ).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "file",
+          fileId: "file-one",
+          filenameSnapshot: "file-one.pdf",
+          contentType: "application/pdf",
+        },
+        {
+          type: "file",
+          fileId: "file-two",
+          filenameSnapshot: "file-two.txt",
+          contentType: "text/plain",
+        },
+        {
+          type: "template",
+          titleSnapshot: "Pitch deck",
+          template,
+        },
+        { type: "text", text: "  Review " },
+        {
+          type: "chat_thread",
+          threadId: THREAD_ID,
+          titleSnapshot: "Project Alpha",
+        },
+        { type: "text", text: " with " },
+        {
+          type: "agent",
+          agentId: MENTIONED_AGENT_ID,
+          nameSnapshot: "Ada",
+        },
+        { type: "text", text: " then\ncontinue  \nlast" },
+      ],
+    });
   });
 
   it("excludes non-content parts from prompt and display text", () => {
@@ -236,11 +276,34 @@ describe("user message document codec", () => {
           { type: "goal", goalBrief: "Private goal prompt" },
         ],
       },
+      {
+        version: 1,
+        parts: [
+          { type: "text", text: "Keep this text" },
+          { type: "morning_brief", briefDate: "2026-08-05" },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          { type: "text", text: "Keep this text" },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     ];
 
     for (const document of documents) {
       expect(messageDocumentToPrompt(document)).toBe("Keep this text");
       expect(messageDocumentToDisplayText(document)).toBe("Keep this text");
+      expect(messageDocumentToEditorDoc(document)).toStrictEqual({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Keep this text" }],
+          },
+        ],
+      });
     }
   });
 
@@ -343,9 +406,7 @@ describe("user message document codec", () => {
       ],
     });
 
-    const restored = messageDocumentToEditorDoc(structured, {
-      inlineTemplates: true,
-    });
+    const restored = messageDocumentToEditorDoc(structured);
     expect(restored).not.toBeNull();
     if (!restored) {
       throw new Error("Expected inline templates to restore");
@@ -353,14 +414,12 @@ describe("user message document codec", () => {
     expect(
       editorDocToMessageDocument(workflowComposerDocument(restored)),
     ).toStrictEqual(structured);
-    expect(
-      messageDocumentToDisplayText(structured, { inlineTemplates: true }),
-    ).toContain(
+    expect(messageDocumentToDisplayText(structured)).toContain(
       "Use [Template: Pitch deck] for dogs and [Template: Paper cut] for cats",
     );
-    expect(
-      messageDocumentToPrompt(structured, { inlineTemplates: true }),
-    ).toContain("Restyle with Select Paper cut illustration template");
+    expect(messageDocumentToPrompt(structured)).toContain(
+      "Restyle with Select Paper cut illustration template",
+    );
   });
 
   it("serializes an inline template-only message without ambient template state", () => {
@@ -490,6 +549,9 @@ describe("user message document codec", () => {
             quote: "Second quote",
             showDivider: true,
             fill: true,
+            eventId: FEEDBACK_EVENT_ID,
+            rangeStart: 18,
+            rangeEnd: 30,
           },
           content: [
             {
@@ -525,6 +587,8 @@ describe("user message document codec", () => {
         {
           type: "feedback",
           quote: "Second quote",
+          eventId: FEEDBACK_EVENT_ID,
+          range: { start: 18, end: 30 },
           note: [
             { type: "text", text: "Second note\n" },
             {
@@ -574,6 +638,9 @@ describe("user message document codec", () => {
             quote: "Second quote",
             showDivider: true,
             fill: true,
+            eventId: FEEDBACK_EVENT_ID,
+            rangeStart: 18,
+            rangeEnd: 30,
           },
           content: [
             {
@@ -704,7 +771,7 @@ describe("user message document codec", () => {
             { type: "paragraph", content: [{ type: "text", text: "x" }] },
           ],
         }),
-        { generationTemplate: presentationTemplate() },
+        { selectedTemplate: presentationTemplate() },
       ),
     ).toBeNull();
 
@@ -713,7 +780,7 @@ describe("user message document codec", () => {
     expect(messageDocumentToPrompt(malformed)).toBeNull();
   });
 
-  it("restores each template variant to the shared attachment node", () => {
+  it("restores each template variant to the inline template node", () => {
     const templates: readonly UserMessageDocument[] = [
       {
         version: 1,
@@ -771,40 +838,56 @@ describe("user message document codec", () => {
 
     expect(
       templates.map((document) => {
-        return messageDocumentToEditorDoc(document)?.content?.[0];
+        return messageDocumentToEditorDoc(document)?.content?.[0]?.content?.[0];
       }),
     ).toStrictEqual([
       {
-        type: "templateAttachment",
+        type: "inlineTemplate",
         attrs: {
           templateType: "illustration",
+          template: {
+            type: "illustration",
+            selection: { illustrationStyleId: "paper-cut" },
+          },
           title: "Illustration style",
           category: "illustration",
           previewImageUrl: null,
         },
       },
       {
-        type: "templateAttachment",
+        type: "inlineTemplate",
         attrs: {
           templateType: "video",
+          template: {
+            type: "video",
+            selection: { stylePresetId: "cinematic" },
+          },
           title: "Video style",
           category: "video",
           previewImageUrl: null,
         },
       },
       {
-        type: "templateAttachment",
+        type: "inlineTemplate",
         attrs: {
           templateType: "workflow",
+          template: {
+            type: "workflow",
+            selection: { workflowTemplateId: "weekly-report" },
+          },
           title: "Workflow template",
           category: "workflow",
           previewImageUrl: null,
         },
       },
       {
-        type: "templateAttachment",
+        type: "inlineTemplate",
         attrs: {
           templateType: "website",
+          template: {
+            type: "website",
+            selection: { websiteTemplateId: "launch-page" },
+          },
           title: "Website template",
           category: "website",
           previewImageUrl: null,

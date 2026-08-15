@@ -6,10 +6,9 @@ import {
 } from "ccstate-react";
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
+import { useEditorState } from "@tiptap/react";
+import { Popover, PopoverAnchor, type KeyboardEventLike } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
-
 import { i18n } from "../../i18n/index.ts";
 import type { ComposerAgentSuggestion } from "../../signals/zero-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
@@ -18,9 +17,11 @@ import { ComposerMentionSuggestionMenu } from "./chat-thread-suggestion.tsx";
 import {
   buildComposerSlashWorkflows,
   findWorkflowQueryMatches,
+  type ComposerSlashWorkflow,
+} from "../../signals/zero-page/workflow-composer-domain";
+import {
   scrollSlashWorkflowIntoView,
   SlashWorkflowMenu,
-  type ComposerSlashWorkflow,
 } from "./slash-workflow.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
@@ -79,12 +80,6 @@ function resolveMacControlLineNavigation(
 interface ComposerSuggestionRange {
   readonly start: number;
   readonly end: number;
-}
-
-function resolvedAgentId(
-  agent: ZeroAgentResponse | undefined,
-): string | undefined {
-  return agent?.agentId;
 }
 
 interface ComposerSuggestionCaretVirtualRef {
@@ -151,10 +146,16 @@ function WorkflowComposerPlaceholder({
 }) {
   useTranslation();
   const hasInput = useGet(composer.editor.hasInput$);
+  const hasEditorText = useEditorState({
+    editor: composer.editor.editor,
+    selector: ({ editor }) => {
+      return editor.state.doc.textContent.length > 0;
+    },
+  });
   const hasTemplateAttachment = useGet(
     composer.template.hasTemplateAttachment$,
   );
-  if (hasInput) {
+  if (hasInput || hasEditorText) {
     return null;
   }
   return (
@@ -306,7 +307,7 @@ function useComposerSuggestionMenu({
   const insertWorkflow = useSet(composer.workflow.insertWorkflow$);
   const insertAgent = useSet(composer.suggestion.insertAgent$);
   const insertChatThread = useSet(composer.suggestion.insertChatThread$);
-  const currentAgentId = resolvedAgentId(useLastResolved(composer.agent$));
+  const currentAgentId = composer.agentId;
   const workflowsLoadable = useLastLoadable(composer.workflow.workflows$);
   const workflows = buildComposerSlashWorkflows({
     agentId: currentAgentId,

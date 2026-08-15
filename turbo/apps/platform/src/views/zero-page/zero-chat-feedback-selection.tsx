@@ -1,19 +1,22 @@
 import type { CSSProperties } from "react";
-import { IconCopy, IconMessageCircle } from "@tabler/icons-react";
+import { Copy, Forward, MessageCircle } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getShortcutParts,
   Popover,
   PopoverAnchor,
   PopoverContent,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type {
   ChatThreadFeedbackSelection,
   ChatThreadFeedbackSignals,
 } from "../../signals/chat-page/chat-thread-feedback.ts";
+import { ChatForwardDialog } from "./zero-chat-forward-dialog.tsx";
 
 function anchorStyle(selection: ChatThreadFeedbackSelection): CSSProperties {
   return {
@@ -46,9 +49,11 @@ function ShortcutHint({ shortcut }: { readonly shortcut: string }) {
 function FeedbackToolbar({
   onCopy,
   onProvideFeedback,
+  onForward,
 }: {
   onCopy: () => void;
   onProvideFeedback: () => void;
+  onForward?: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -69,9 +74,9 @@ function FeedbackToolbar({
           type="button"
           onClick={onCopy}
           aria-keyshortcuts="c"
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
         >
-          <IconCopy size={14} stroke={2} />
+          <Copy size={14} />
           {t(($) => {
             return $.chat.actions.copy;
           })}
@@ -81,36 +86,64 @@ function FeedbackToolbar({
         <button
           type="button"
           onClick={onProvideFeedback}
-          aria-keyshortcuts="f"
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+          aria-keyshortcuts="q"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
         >
-          <IconMessageCircle size={14} stroke={2} />
+          <MessageCircle size={14} />
           {t(($) => {
-            return $.chat.feedback.provide;
+            return $.chat.feedback.quote;
           })}
-          <ShortcutHint shortcut="f" />
+          <ShortcutHint shortcut="q" />
         </button>
+        {onForward ? (
+          <>
+            <div className="h-4 w-px bg-border" />
+            <button
+              type="button"
+              onClick={onForward}
+              aria-keyshortcuts="f"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
+            >
+              <Forward size={14} />
+              {t(($) => {
+                return $.chat.forward.action;
+              })}
+              <ShortcutHint shortcut="f" />
+            </button>
+          </>
+        ) : null}
       </div>
     </PopoverContent>
   );
 }
 
-// Mounts the selection listeners and the floating Copy / Provide feedback
-// toolbar anchored to the highlighted passage. Picking "Provide feedback"
+// Mounts the selection listeners and the floating Copy / Quote / Forward
+// toolbar anchored to the selected passage. Picking "Quote"
 // drops the quoted passage straight into the composer (see ComposerFeedbackRows
 // in zero-chat-composer.tsx) — there is no separate feedback panel.
 export function ChatFeedbackSelection({
   feedback,
+  sourceAgentId,
+  sourceThreadTitle,
 }: {
   readonly feedback: ChatThreadFeedbackSignals;
+  readonly sourceAgentId: string;
+  readonly sourceThreadTitle: string;
 }) {
   const selection = useGet(feedback.selection$);
+  const forwardSelection = useGet(feedback.forwardSelection$);
+  const forwardComposerState = useGet(feedback.forwardComposerState$);
+  const forwardEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatForward] ?? false;
   const rootSignal = useGet(rootSignal$);
   const setFeedbackSelectionListenersRef = useSet(feedback.setListenersRef$);
   const setFeedbackSelectionToolbarRef = useSet(feedback.setToolbarRef$);
   const startFeedback = useSet(feedback.start$);
   const closeSelectionToolbar = useSet(feedback.close$);
   const copy = useSet(feedback.copy$);
+  const startForward = useSet(feedback.startForward$);
+  const setForwardComposerState = useSet(feedback.setForwardComposerState$);
+  const closeForward = useSet(feedback.closeForward$);
 
   return (
     <>
@@ -133,8 +166,25 @@ export function ChatFeedbackSelection({
               return detach(copy(rootSignal), Reason.DomCallback);
             }}
             onProvideFeedback={startFeedback}
+            onForward={
+              forwardEnabled && selection.threadId && selection.runId
+                ? startForward
+                : undefined
+            }
           />
         </Popover>
+      ) : null}
+      {forwardSelection ? (
+        <ChatForwardDialog
+          selection={forwardSelection}
+          composerState={forwardComposerState}
+          sourceAgentId={sourceAgentId}
+          sourceThreadTitle={sourceThreadTitle}
+          onComposerStateChange={setForwardComposerState}
+          onDismiss={() => {
+            closeForward();
+          }}
+        />
       ) : null}
     </>
   );

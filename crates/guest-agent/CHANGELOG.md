@@ -1,5 +1,347 @@
 # Changelog
 
+## [0.74.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.1...guest-agent-v0.74.2) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** use official resources and jsonl sessions ([#27288](https://github.com/vm0-ai/vm0/issues/27288)) ([b287f72](https://github.com/vm0-ai/vm0/commit/b287f7270f0fd0613adff61ab91289b73e39e7f6))
+
+## [0.74.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.0...guest-agent-v0.74.1) (2026-08-14)
+
+## [0.74.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.9...guest-agent-v0.74.0) (2026-08-14)
+
+
+### Features
+
+* use official pi rpc lifecycle ([#27252](https://github.com/vm0-ai/vm0/issues/27252)) ([38051ff](https://github.com/vm0-ai/vm0/commit/38051ff9d3c2505c4ac133d196eeb881817249fe))
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve descendant cleanup without pidfd ([#27185](https://github.com/vm0-ai/vm0/issues/27185)) ([097a91f](https://github.com/vm0-ai/vm0/commit/097a91f380ccff0e2033d52a800e3d2094467b3c))
+* **runner:** preserve runs after tool process oom ([#27272](https://github.com/vm0-ai/vm0/issues/27272)) ([bdba0d6](https://github.com/vm0-ai/vm0/commit/bdba0d6cfb57fec9f7193a02ab93dbf7b7074ea9))
+
+## [0.73.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.8...guest-agent-v0.73.9) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** let guest reclaim memory before workload oom ([#27206](https://github.com/vm0-ai/vm0/issues/27206)) ([d8bd1c7](https://github.com/vm0-ai/vm0/commit/d8bd1c7471c220f8595edcb64dde3e70840d4467))
+
+## [0.73.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.7...guest-agent-v0.73.8) (2026-08-14)
+
+
+### Bug Fixes
+
+* **guest-agent:** make agent log persistence best effort ([#27135](https://github.com/vm0-ai/vm0/issues/27135)) ([28356db](https://github.com/vm0-ai/vm0/commit/28356db2c3d9701530700771be2220c19c474b5b))
+
+## [0.73.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.6...guest-agent-v0.73.7) (2026-08-14)
+
+
+### Bug Fixes
+
+* **runner:** disable workload memory.high reclaim ([#27126](https://github.com/vm0-ai/vm0/issues/27126)) ([24743ab](https://github.com/vm0-ai/vm0/commit/24743ab1a9901f769ee07a40cffea63c2a516e37))
+
+## [0.73.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.5...guest-agent-v0.73.6) (2026-08-14)
+
+
+### Refactoring
+
+* **pi:** build the pi prompt inside the sandbox ([#27036](https://github.com/vm0-ai/vm0/issues/27036)) ([1e248af](https://github.com/vm0-ai/vm0/commit/1e248afd1118468a8950f81c668d65b27fe6f429))
+
+## [0.73.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.4...guest-agent-v0.73.5) (2026-08-14)
+
+
+### Bug Fixes
+
+* **guest:** terminate stuck codex steers after timeout ([#27044](https://github.com/vm0-ai/vm0/issues/27044)) ([9e713bb](https://github.com/vm0-ai/vm0/commit/9e713bb9e1c18fc53a351a29b4397bb2e6e25bb4))
+
+## [0.73.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.3...guest-agent-v0.73.4) (2026-08-13)
+
+## [0.73.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.2...guest-agent-v0.73.3) (2026-08-13)
+
+
+### Refactoring
+
+* **rust:** share active-input control payload contract ([#26950](https://github.com/vm0-ai/vm0/issues/26950)) ([403bfd8](https://github.com/vm0-ai/vm0/commit/403bfd8f08fcd272d7c39df9149b1aa9124dca42))
+
+## [0.73.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.1...guest-agent-v0.73.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* disable Codex image generation ([#26879](https://github.com/vm0-ai/vm0/issues/26879)) ([43fa6e1](https://github.com/vm0-ai/vm0/commit/43fa6e113f583f9d06768a043f9382a86423b050))
+* **runner:** preserve guest control headroom under workload pressure ([#26683](https://github.com/vm0-ai/vm0/issues/26683)) ([789adcd](https://github.com/vm0-ai/vm0/commit/789adcd9e7a35dc545ae660f4b5a55d802ea854f))
+
+## [0.73.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.73.0...guest-agent-v0.73.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **runner:** retire legacy pi run id compatibility ([#26830](https://github.com/vm0-ai/vm0/issues/26830)) ([8ad8821](https://github.com/vm0-ai/vm0/commit/8ad8821431080de674c4d83159e344a31d7877ca))
+
+## [0.73.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.72.0...guest-agent-v0.73.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate pi child environment to okou ([#26810](https://github.com/vm0-ai/vm0/issues/26810)) ([9c54e70](https://github.com/vm0-ai/vm0/commit/9c54e70777750b608dad06fde2a44a5a08f9796b))
+
+
+### Refactoring
+
+* **guest:** centralize private file replacement ([#26786](https://github.com/vm0-ai/vm0/issues/26786)) ([b12cef8](https://github.com/vm0-ai/vm0/commit/b12cef89edbcdf0f9748dba40f3ebe99bfb3fbe5))
+
+
+### Performance Improvements
+
+* **guest-agent:** prevent overdue heartbeat replay ([#26792](https://github.com/vm0-ai/vm0/issues/26792)) ([8f03dfe](https://github.com/vm0-ai/vm0/commit/8f03dfef2cb09562767a4b9c2fa6b7865e06e489))
+
+## [0.72.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.3...guest-agent-v0.72.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate run identity env to okou ([#26796](https://github.com/vm0-ai/vm0/issues/26796)) ([88850c3](https://github.com/vm0-ai/vm0/commit/88850c33b9bb20018d9e0fd12097cc5eb7fb2bde))
+
+## [0.71.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.2...guest-agent-v0.71.3) (2026-08-12)
+
+
+### Refactoring
+
+* **pi:** persist sandbox sessions in native sqlite ([#26555](https://github.com/vm0-ai/vm0/issues/26555)) ([9ed505e](https://github.com/vm0-ai/vm0/commit/9ed505e1c567ff019d521fac167700c2b390cffe))
+
+## [0.71.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.1...guest-agent-v0.71.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* discard oversized session history at checkpoint ([#26635](https://github.com/vm0-ai/vm0/issues/26635)) ([b449da7](https://github.com/vm0-ai/vm0/commit/b449da711810bebde8cf12f9a1b6c7acceefe2c9))
+
+
+### Refactoring
+
+* **chat:** remove active input rollout compatibility ([#26625](https://github.com/vm0-ai/vm0/issues/26625)) ([8d1be07](https://github.com/vm0-ai/vm0/commit/8d1be07f2d1665a02d86cb2ef550fa9a1f1e212a))
+* **cli:** remove zero migration compatibility ([#26640](https://github.com/vm0-ai/vm0/issues/26640)) ([fd1fa43](https://github.com/vm0-ai/vm0/commit/fd1fa43ac7b94af08ee21a85dfaf8c06dcdc2a98))
+* **rust:** centralize guest stdout framing limits ([#26648](https://github.com/vm0-ai/vm0/issues/26648)) ([962e753](https://github.com/vm0-ai/vm0/commit/962e7532f4e8d319fb05b096bdbfca85431731ed))
+
+## [0.71.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.0...guest-agent-v0.71.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound oversized codex event delivery ([#26520](https://github.com/vm0-ai/vm0/issues/26520)) ([cf619b1](https://github.com/vm0-ai/vm0/commit/cf619b153ddae4fdb3c4b00065d737d1d9194bb0))
+
+## [0.71.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.70.0...guest-agent-v0.71.0) (2026-08-12)
+
+
+### Features
+
+* **protocol:** accept okou environment names and token scope ([#26505](https://github.com/vm0-ai/vm0/issues/26505)) ([6d4b0c7](https://github.com/vm0-ai/vm0/commit/6d4b0c7b08179e5d816af6d53208248bf79d3cd4))
+
+## [0.70.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.69.1...guest-agent-v0.70.0) (2026-08-12)
+
+
+### Features
+
+* cut first-party cli producers over to okou ([#26491](https://github.com/vm0-ai/vm0/issues/26491)) ([33c4c03](https://github.com/vm0-ai/vm0/commit/33c4c034b421249e220bb0f586a514d44ed78655))
+
+## [0.69.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.69.0...guest-agent-v0.69.1) (2026-08-12)
+
+
+### Documentation
+
+* **guest-agent:** clarify secret length byte threshold ([#26448](https://github.com/vm0-ai/vm0/issues/26448)) ([274efbc](https://github.com/vm0-ai/vm0/commit/274efbca39310e71a0dc04e0f04374216ec03ef2))
+
+## [0.69.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.68.0...guest-agent-v0.69.0) (2026-08-11)
+
+
+### Features
+
+* **runner:** enable durable active-input delivery ([#26392](https://github.com/vm0-ai/vm0/issues/26392)) ([6225b5e](https://github.com/vm0-ai/vm0/commit/6225b5e85da2833f011830d21498744893b2f625))
+
+## [0.68.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.67.0...guest-agent-v0.68.0) (2026-08-11)
+
+
+### Features
+
+* **guest:** persist active-input acceptance receipts ([#26191](https://github.com/vm0-ai/vm0/issues/26191)) ([f6ede96](https://github.com/vm0-ai/vm0/commit/f6ede96f136515283ec1f76d380cc3c835f85420))
+
+## [0.67.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.5...guest-agent-v0.67.0) (2026-08-10)
+
+
+### Features
+
+* add priority inheritance and gpt-5.6 fast billing ([#26147](https://github.com/vm0-ai/vm0/issues/26147)) ([3350fbb](https://github.com/vm0-ai/vm0/commit/3350fbbec7afa95483d0b051e6580fa969a50b10))
+
+## [0.66.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.4...guest-agent-v0.66.5) (2026-08-10)
+
+## [0.66.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.3...guest-agent-v0.66.4) (2026-08-10)
+
+
+### Documentation
+
+* **rust:** document pi standby current-run gate ([#26039](https://github.com/vm0-ai/vm0/issues/26039)) ([a1c13c7](https://github.com/vm0-ai/vm0/commit/a1c13c7ee2229ec2a5a74768f5c3e31cfae76ec2))
+
+## [0.66.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.2...guest-agent-v0.66.3) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** preserve sidecar export failure causes ([#25999](https://github.com/vm0-ai/vm0/issues/25999)) ([76c5c0a](https://github.com/vm0-ai/vm0/commit/76c5c0a8470eecbce17615134b3a6f6c306a98a9))
+
+## [0.66.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.1...guest-agent-v0.66.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **guest-agent:** disable codex native goals ([#25981](https://github.com/vm0-ai/vm0/issues/25981)) ([17338ff](https://github.com/vm0-ai/vm0/commit/17338ffd1ab2b28ab76ac463f76bade20d2dee72))
+
+## [0.66.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.0...guest-agent-v0.66.1) (2026-08-09)
+
+## [0.66.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.7...guest-agent-v0.66.0) (2026-08-09)
+
+
+### Features
+
+* persist and display runner reuse outcomes ([#25942](https://github.com/vm0-ai/vm0/issues/25942)) ([90f8d8f](https://github.com/vm0-ai/vm0/commit/90f8d8ffb713f7f99acd8377b8cba26a91504d0b))
+
+## [0.65.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.6...guest-agent-v0.65.7) (2026-08-09)
+
+## [0.65.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.5...guest-agent-v0.65.6) (2026-08-09)
+
+
+### Documentation
+
+* **rust:** document app-server cancellation semantics ([#25880](https://github.com/vm0-ai/vm0/issues/25880)) ([1b1d984](https://github.com/vm0-ai/vm0/commit/1b1d984b2c9ad2ad2a216ec678ec9bd1d26e2a87))
+
+
+### Refactoring
+
+* **pi:** replace handoff fallbacks with session polling ([#25906](https://github.com/vm0-ai/vm0/issues/25906)) ([66cbcad](https://github.com/vm0-ai/vm0/commit/66cbcada1c224b1c7541b6d7c90696d3733e53f8))
+
+
+### Performance Improvements
+
+* **guest-agent:** compact artifact manifests ([#25886](https://github.com/vm0-ai/vm0/issues/25886)) ([94ab439](https://github.com/vm0-ai/vm0/commit/94ab43970058094f4ffe095db41339a6354cc5b9))
+
+## [0.65.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.4...guest-agent-v0.65.5) (2026-08-08)
+
+
+### Bug Fixes
+
+* snapshot writeback artifacts when a pi sandbox run completes ([#25831](https://github.com/vm0-ai/vm0/issues/25831)) ([ae814e0](https://github.com/vm0-ai/vm0/commit/ae814e004f35538ba8d6421b4ee9631c6ebbf44b)), closes [#25827](https://github.com/vm0-ai/vm0/issues/25827)
+
+## [0.65.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.3...guest-agent-v0.65.4) (2026-08-08)
+
+## [0.65.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.2...guest-agent-v0.65.3) (2026-08-08)
+
+
+### Bug Fixes
+
+* **runner:** preserve exact reuse generation on rollback ([#25753](https://github.com/vm0-ai/vm0/issues/25753)) ([5b7191c](https://github.com/vm0-ai/vm0/commit/5b7191cdc389da31a23a5ffbefd196c0a510e53a))
+
+## [0.65.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.1...guest-agent-v0.65.2) (2026-08-07)
+
+
+### Documentation
+
+* **rust:** document pi standby lifecycle ([#25659](https://github.com/vm0-ai/vm0/issues/25659)) ([373a5b4](https://github.com/vm0-ai/vm0/commit/373a5b44a3cea5da393252623bf533ed8b0cf5fd))
+
+## [0.65.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.0...guest-agent-v0.65.1) (2026-08-07)
+
+## [0.65.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.9...guest-agent-v0.65.0) (2026-08-07)
+
+
+### Features
+
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+
+
+### Bug Fixes
+
+* **guest-agent:** classify credit error envelopes ([#25580](https://github.com/vm0-ai/vm0/issues/25580)) ([61475bf](https://github.com/vm0-ai/vm0/commit/61475bf97e6750715d4db0115444219f16636fe5))
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+## [0.64.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.8...guest-agent-v0.64.9) (2026-08-07)
+
+
+### Refactoring
+
+* **runner:** remove obsolete codex event fallbacks ([#25511](https://github.com/vm0-ai/vm0/issues/25511)) ([94e8703](https://github.com/vm0-ai/vm0/commit/94e87037eef09c503c7280070237483fafad69fa))
+
+## [0.64.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.7...guest-agent-v0.64.8) (2026-08-07)
+
+## [0.64.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.6...guest-agent-v0.64.7) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
+## [0.64.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.5...guest-agent-v0.64.6) (2026-08-06)
+
+## [0.64.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.4...guest-agent-v0.64.5) (2026-08-05)
+
+
+### Bug Fixes
+
+* **guest-agent:** isolate api token from cli descendants ([#25205](https://github.com/vm0-ai/vm0/issues/25205)) ([b057140](https://github.com/vm0-ai/vm0/commit/b057140f03c25cfeeabaa1afc0ed91575f9371ab))
+
+## [0.64.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.3...guest-agent-v0.64.4) (2026-08-05)
+
+## [0.64.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.2...guest-agent-v0.64.3) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** centralize epoch-millisecond validation ([#25159](https://github.com/vm0-ai/vm0/issues/25159)) ([4780d82](https://github.com/vm0-ai/vm0/commit/4780d82181ac10f4f7bfaafc6b16e448f89f2860))
+
+## [0.64.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.1...guest-agent-v0.64.2) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** use rustix for child exit pidfds ([#25122](https://github.com/vm0-ai/vm0/issues/25122)) ([85100f1](https://github.com/vm0-ai/vm0/commit/85100f174664559002a35778a73a3b4d9ec722ad))
+
+## [0.64.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.0...guest-agent-v0.64.1) (2026-08-04)
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+
+## [0.64.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.7...guest-agent-v0.64.0) (2026-08-04)
+
+
+### Features
+
+* **chat:** add feature-gated inline steering ([#24941](https://github.com/vm0-ai/vm0/issues/24941)) ([f705e9d](https://github.com/vm0-ai/vm0/commit/f705e9d8d1a1038055d62839ce0bb3725edbd2e3))
+
+## [0.63.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.6...guest-agent-v0.63.7) (2026-08-04)
+
+## [0.63.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.5...guest-agent-v0.63.6) (2026-08-04)
+
+
+### Performance Improvements
+
+* **guest-agent:** measure codex catalog setup ([#24996](https://github.com/vm0-ai/vm0/issues/24996)) ([8f78d8d](https://github.com/vm0-ai/vm0/commit/8f78d8dd548bf1d8ce547f6d0e571db0775e89fb))
+
+## [0.63.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.4...guest-agent-v0.63.5) (2026-08-04)
+
+
+### Refactoring
+
+* **guest-agent:** hydrate codex catalogs structurally ([#24957](https://github.com/vm0-ai/vm0/issues/24957)) ([7520643](https://github.com/vm0-ai/vm0/commit/75206430a93a6f4fcdb1dfec1f43f93499ef85ba))
+
+## [0.63.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.3...guest-agent-v0.63.4) (2026-08-04)
+
+
+### Performance Improvements
+
+* **guest-agent:** bound artifact checkpoint manifests ([#24914](https://github.com/vm0-ai/vm0/issues/24914)) ([27694a0](https://github.com/vm0-ai/vm0/commit/27694a095efd2d559c1a539a512970567946fb85))
+
 ## [0.63.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.2...guest-agent-v0.63.3) (2026-08-04)
 
 ## [0.63.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.1...guest-agent-v0.63.2) (2026-08-04)
@@ -640,7 +982,6 @@
 ### Bug Fixes
 
 * add runner exit signal diagnostics ([#20674](https://github.com/vm0-ai/vm0/issues/20674)) ([bf46c07](https://github.com/vm0-ai/vm0/commit/bf46c07f8a9954576040760dfcfb3bb81ee2d1ea))
-* remove minimax codex legacy base url ([#20707](https://github.com/vm0-ai/vm0/issues/20707)) ([a4a9e77](https://github.com/vm0-ai/vm0/commit/a4a9e77fe2d8e1065f1b57a9ead26565b054fa39))
 
 
 ### Refactoring
@@ -654,7 +995,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 
 ## [0.49.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.48.0...guest-agent-v0.49.0) (2026-07-08)
 
@@ -807,7 +1147,6 @@
 
 ### Features
 
-* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
 
 ## [0.43.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.5...guest-agent-v0.43.6) (2026-07-01)
 

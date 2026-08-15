@@ -66,6 +66,15 @@ gh api repos/vm0-ai/vm0/contents/docs/bad-smell.md --jq '.content' | base64 -d
 gh api repos/vm0-ai/vm0/contents/docs/testing.md --jq '.content' | base64 -d
 ```
 
+Fetch the fallback rules when the PR adds, keeps, or removes a fallback path:
+`??`/`||` defaults on contract-owned fields, compatibility branches for old
+clients, runners, routes, or persisted shapes, behavior gated by a feature
+switch, or tests that assert removed behavior stays removed:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/fallback.md --jq '.content' | base64 -d
+```
+
 #### Surface-Specific Practice Documents
 
 Fetch the event-sourcing rules when the PR changes persistent or optimistic
@@ -208,6 +217,56 @@ Review the diff for:
   fallback cleanup for optimistic events. A rare transient mismatch is recovered
   by refreshing the page and reloading persistent state.
 
+**Fallback Discipline**
+
+Apply `docs/fallback.md`. The default is no fallback. `docs/fallback.md` is the
+authoritative source for the rules below, including this severity table:
+
+| Rule                                                                     | Severity |
+| ------------------------------------------------------------------------ | -------- |
+| No negative tests asserting removed behavior stays removed               | P1       |
+| Every fallback introduced by the diff must be declared in the PR summary | P1       |
+| A rollout fallback must name its surface, window, and removal condition  | P1       |
+
+- Request changes for a fallback that guards a state the owning contract
+  already prevents: a `??`/`||` chain on a required SDK field, Zod-required
+  property, or `NOT NULL` column; a fabricated default for a corrupted row; a
+  reader for a producer that no longer exists.
+- A feature still gated by a non-GA `FeatureSwitchKey` has no external users.
+  Do not request compatibility code, dual-read/dual-write, migrations, or
+  rollback handling for it, and do not treat a transient error during its
+  cutover as a blocker. Request removal when such a PR adds that fallback.
+- A new cross-version rollout fallback must carry a comment naming the
+  affected surface, its rollout window, the condition that makes it removable,
+  and a follow-up issue or PR. An open-ended "tolerate the old shape" branch is
+  a finding. Size the window by the observed maximum exposure, not the nominal
+  deploy gap: DB/API skew has reached about 102 minutes in recorded incidents
+  even though the pipeline promotes within seconds, existing runner or sandbox
+  instances stay old for up to 2 hours, and old web or app clients stay in use
+  for about 2 days. A branch sized to the wrong surface's window, or to a
+  nominal gap, is a finding. For DB/API changes, check both directions defined
+  in `docs/deployment-compatibility.md`: old code after migration and new code
+  before migration.
+- A PR that removes a fallback must establish its evidence — type/schema,
+  single-writer, production query, or closed rollback window — through the
+  diff, tests, or linked data, and must delete the branch, its contract entry,
+  and its own tests together. It needs no `Fallbacks` section or separate
+  fallback declaration in the PR summary.
+- Flag negative tests that only assert deleted behavior is still deleted
+  (retired route still 404s, legacy field still ignored). The exception is a
+  fail-closed security boundary, where rejection is the product behavior.
+- When a PR introduces a fallback or compatibility behavior, its summary must
+  contain a `Fallbacks` section listing every new one. An undeclared new
+  fallback is a **P1** finding on its own, independent of whether the fallback
+  itself is justified. Report it under High Priority (P1), require the author
+  to add the missing entry to the PR summary, and set the verdict to
+  `Changes Requested`. PRs that introduce none need neither the section nor
+  `Fallbacks: none`.
+- The review comment must itself list every fallback introduced by the diff,
+  with its surface, window, removal condition, and a justified / not-justified
+  verdict. A review that stays silent about fallbacks in a PR that adds one is
+  incomplete.
+
 **Testing Coverage**
 
 - `feat:` commits → must have integration tests (missing = **P0**)
@@ -270,6 +329,20 @@ LGTM
 - Conventions: <Compliant / Violations: ...>
 ```
 
+When the diff introduces a fallback, insert this section between Findings and
+Testing:
+
+```
+### Fallbacks
+- <file path and symbol>: <old/new interaction it protects> — surface <DB/API up to ~102min | runner or sandbox up to 2h | web or app client ~2d | none, non-GA feature switch>, removal condition <condition and follow-up>, declared in PR summary <Yes / No — P1>, verdict <Justified / Not justified>
+```
+
+Do not include a `Fallbacks` section when the diff introduces none, including
+when the PR only keeps or removes an existing fallback. Every introduced
+fallback missing from the PR summary is also a P1 entry under Findings, phrased
+as a request to add it to the summary, and forces the `Changes Requested`
+verdict.
+
 Or if there are P0/P1 blockers:
 
 ```
@@ -290,10 +363,17 @@ Changes Requested
 ...
 ```
 
+Insert the same conditional `Fallbacks` section before Testing when the PR
+introduces a fallback.
+
 **Verdict rules:**
 
-- Start with `LGTM` if there are no P0 issues and no missing tests on `feat:`/`fix:` commits
-- Start with `Changes Requested` if there are any P0 issues OR missing required tests
+- Start with `LGTM` if there are no P0 issues, no missing tests on
+  `feat:`/`fix:` commits, and every fallback introduced by the diff is declared
+  in the PR summary
+- Start with `Changes Requested` if there are any P0 issues, OR missing required
+  tests, OR any fallback or compatibility behavior introduced by the diff that
+  the PR summary does not declare
 
 If the caller asks for pr-auto marker-comment mode:
 
@@ -303,7 +383,7 @@ If the caller asks for pr-auto marker-comment mode:
 - Include the caller-provided pr-auto marker lines near the top of the same
   comment.
 - Keep the rest of the body as the detailed pr-review result, including Summary,
-  Findings, and Testing.
+  Findings, Testing, and Fallbacks when the diff introduces one.
 
 ```bash
 gh pr comment <PR_NUMBER> --repo vm0-ai/vm0 --body-file "<REVIEW_BODY_FILE>"
@@ -344,6 +424,7 @@ Review posted: https://github.com/vm0-ai/vm0/pull/<number>#pullrequestreview-<re
 
 - Documentation index: https://github.com/vm0-ai/vm0/blob/main/docs/docs.md
 - Production-code quality: https://github.com/vm0-ai/vm0/blob/main/docs/bad-smell.md
+- Fallbacks to avoid: https://github.com/vm0-ai/vm0/blob/main/docs/fallback.md
 - Event sourcing and optimistic events: https://github.com/vm0-ai/vm0/blob/main/docs/event-sourcing.md
 - Testing standards: https://github.com/vm0-ai/vm0/blob/main/docs/testing.md
 - React effects and ccstate commands: https://github.com/vm0-ai/vm0/blob/main/docs/effect.md

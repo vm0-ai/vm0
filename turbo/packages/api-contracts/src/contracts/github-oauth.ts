@@ -52,7 +52,7 @@ export const githubOauthContract = c.router({
   },
   connect: {
     method: "GET",
-    path: "/api/zero/github/oauth/connect",
+    path: "/api/okou/github/oauth/connect",
     query: githubOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),
@@ -63,7 +63,7 @@ export const githubOauthContract = c.router({
   },
   connectCallback: {
     method: "GET",
-    path: "/api/zero/github/oauth/connect/callback",
+    path: "/api/okou/github/oauth/connect/callback",
     query: githubOauthConnectCallbackQuerySchema,
     responses: {
       307: c.noBody(),

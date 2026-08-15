@@ -124,7 +124,11 @@ pub(super) fn agent_message_item_started_notification(
     })
 }
 
-pub(super) fn assistant_item_completed_notification(thread_id: &str, turn_id: &str) -> Value {
+pub(super) fn assistant_item_completed_notification(
+    thread_id: &str,
+    turn_id: &str,
+    text: &str,
+) -> Value {
     json!({
         "method": "item/completed",
         "params": {
@@ -134,10 +138,132 @@ pub(super) fn assistant_item_completed_notification(thread_id: &str, turn_id: &s
             "item": {
                 "id": Uuid::now_v7().to_string(),
                 "type": "agentMessage",
-                "text": "guest-mock-codex app-server response"
+                "text": text
             }
         }
     })
+}
+
+pub(super) fn write_oversized_delivery_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+) -> io::Result<()> {
+    let large = "α".repeat(2_150_000);
+    let secret = "delivery-secret-value";
+    let completed_at_ms = 2;
+    write_json_line(
+        output,
+        &json!({
+            "method": "item/completed",
+            "params": {
+                "threadId": thread_id,
+                "turnId": turn_id,
+                "completedAtMs": completed_at_ms,
+                "item": {
+                    "id": "oversized-agent-message",
+                    "type": "agentMessage",
+                    "text": format!("agent-head-{secret}-{large}-agent-tail"),
+                }
+            }
+        }),
+    )?;
+    write_json_line(
+        output,
+        &json!({
+            "method": "item/completed",
+            "params": {
+                "threadId": thread_id,
+                "turnId": turn_id,
+                "completedAtMs": completed_at_ms + 1,
+                "item": {
+                    "id": "oversized-reasoning",
+                    "type": "reasoning",
+                    "summary": [format!("reasoning-head-{large}")],
+                    "content": [format!("{secret}-{large}-reasoning-tail")],
+                }
+            }
+        }),
+    )?;
+    write_json_line(
+        output,
+        &json!({
+            "method": "item/completed",
+            "params": {
+                "threadId": thread_id,
+                "turnId": turn_id,
+                "completedAtMs": completed_at_ms + 2,
+                "item": {
+                    "id": "oversized-plan",
+                    "type": "plan",
+                    "text": format!("plan-head-{large}-{secret}-plan-tail"),
+                }
+            }
+        }),
+    )?;
+    write_json_line(
+        output,
+        &json!({
+            "method": "item/completed",
+            "params": {
+                "threadId": thread_id,
+                "turnId": turn_id,
+                "completedAtMs": completed_at_ms + 3,
+                "item": {
+                    "id": "oversized-command",
+                    "type": "commandExecution",
+                    "command": format!("command-head-{large}-command-tail"),
+                    "cwd": "/workspace",
+                    "status": "completed",
+                    "aggregatedOutput": format!("output-head-{secret}-{large}-output-tail"),
+                    "exitCode": 0,
+                    "durationMs": 123,
+                }
+            }
+        }),
+    )?;
+    write_json_line(
+        output,
+        &json!({
+            "method": "item/completed",
+            "params": {
+                "threadId": thread_id,
+                "turnId": turn_id,
+                "completedAtMs": completed_at_ms + 4,
+                "item": {
+                    "id": "oversized-file-change",
+                    "type": "fileChange",
+                    "status": "completed",
+                    "changes": [{
+                        "path": "large.txt",
+                        "kind": "modify",
+                        "diff": format!("diff-head-{secret}-{large}-diff-tail"),
+                    }],
+                }
+            }
+        }),
+    )?;
+    write_json_line(
+        output,
+        &json!({
+            "method": "item/completed",
+            "params": {
+                "threadId": thread_id,
+                "turnId": turn_id,
+                "completedAtMs": completed_at_ms + 5,
+                "item": {
+                    "id": "oversized-structure",
+                    "type": "fileChange",
+                    "status": "completed",
+                    "changes": (0..75_000).map(|index| json!({
+                        "path": format!("path-{index:06}-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz"),
+                        "kind": "modify",
+                    })).collect::<Vec<_>>(),
+                }
+            }
+        }),
+    )?;
+    write_json_line(output, &warning_notification(thread_id, 999))
 }
 
 pub(super) fn turn_completed_notification(thread_id: &str, turn_id: &str) -> Value {
@@ -150,6 +276,32 @@ pub(super) fn turn_completed_notification(thread_id: &str, turn_id: &str) -> Val
                 "inputTokens": 7,
                 "outputTokens": 11,
                 "totalTokens": 18
+            }
+        }
+    })
+}
+
+pub(super) fn turn_failed_notification(thread_id: &str, turn_id: &str) -> Value {
+    json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": thread_id,
+            "turn": {
+                "id": turn_id,
+                "items": [],
+                "itemsView": "notLoaded",
+                "status": "failed",
+                "error": {
+                    "message": "mock codex primary failure"
+                },
+                "startedAt": 1,
+                "completedAt": 3,
+                "durationMs": 2
+            },
+            "usage": {
+                "inputTokens": 7,
+                "outputTokens": 0,
+                "totalTokens": 7
             }
         }
     })
@@ -183,6 +335,16 @@ pub(super) fn write_turn_notifications<W: Write>(
     output: &mut W,
     thread_id: &str,
     turn_id: &str,
+    response_text: &str,
+) -> io::Result<()> {
+    write_turn_start_notifications(output, thread_id, turn_id)?;
+    write_turn_completion_notifications(output, thread_id, turn_id, response_text)
+}
+
+pub(super) fn write_turn_start_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
 ) -> io::Result<()> {
     write_json_line(output, &turn_started_notification(thread_id, turn_id))?;
     let started_at_ms = SystemTime::now()
@@ -212,17 +374,18 @@ pub(super) fn write_turn_notifications<W: Write>(
             ),
         )?;
     }
-    write_turn_completion_notifications(output, thread_id, turn_id)
+    Ok(())
 }
 
 pub(super) fn write_turn_completion_notifications<W: Write>(
     output: &mut W,
     thread_id: &str,
     turn_id: &str,
+    response_text: &str,
 ) -> io::Result<()> {
     write_json_line(
         output,
-        &assistant_item_completed_notification(thread_id, turn_id),
+        &assistant_item_completed_notification(thread_id, turn_id, response_text),
     )?;
     write_json_line(output, &turn_completed_notification(thread_id, turn_id))
 }

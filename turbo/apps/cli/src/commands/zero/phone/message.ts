@@ -1,8 +1,8 @@
 import { readFileSync } from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
-import { sendPhoneMessage } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { sendPhoneMessage } from "../../../lib/api/domains/integrations-phone";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const messageCommand = new Command()
   .name("message")
@@ -14,8 +14,8 @@ export const messageCommand = new Command()
     "after",
     `
 Examples:
-  Send a message: zero phone message --to +15551234567 -t "Hello!"
-  From stdin:     printf "Hello!" | zero phone message --to +15551234567
+  Send a message: okou phone message --to +15551234567 -t "Hello!"
+  From stdin:     printf "Hello!" | okou phone message --to +15551234567
 
 Notes:
   - The phone handle must already be connected to the authenticated VM0 user
@@ -37,7 +37,7 @@ Notes:
         if (!text) {
           throw new Error("Either --text or piped stdin must be provided", {
             cause: new Error(
-              'Usage: zero phone message --to +15551234567 -t "your message"',
+              'Usage: okou phone message --to +15551234567 -t "your message"',
             ),
           });
         }

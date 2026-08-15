@@ -1,0 +1,339 @@
+import type { SharedMessage } from "@okouai/api-contracts/contracts/shared-threads";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { artifacts } from "@okouai/db/schema/artifact";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { sharedThreads } from "@okouai/db/schema/shared-thread";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { command, type Computed } from "ccstate";
+
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
+import { env } from "../../lib/env";
+import { nowDate } from "../../lib/time";
+import {
+  sharedThreadArtifactAuthorUserId,
+  sharedThreadArtifactLogicalKey,
+} from "../../lib/shared-thread-artifact";
+import { db$, writeDb$, type Db } from "../external/db";
+import { publishUserSignal } from "../external/realtime";
+import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
+import { generateSharedThreadTitle } from "./zero-chat-title.service";
+import { projectUserMessageForPublicShare } from "./chat-user-message.service";
+import {
+  canonicalArchivedChatEventContent,
+  canonicalArchivedChatEventError,
+  canonicalArchivedChatEventGoalId,
+  canonicalArchivedChatEventUserMessage,
+  canonicalChatEventContent,
+  canonicalChatEventGoalId,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
+import { readCurrentChatEventHistory } from "./chat-event-history.service";
+
+const SHARED_THREAD_MAX_SERIALIZED_BYTES = 2 * 1024 * 1024;
+
+interface CreateSharedThreadArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly eventIds: readonly string[];
+}
+
+type CreateSharedThreadResult =
+  | { readonly kind: "created"; readonly id: string }
+  | { readonly kind: "thread-not-found" }
+  | { readonly kind: "no-shareable-messages" }
+  | { readonly kind: "too-large" };
+
+interface SharedThreadSourceRow {
+  readonly eventType: ChatEventRow["eventType"];
+  readonly content: string | null;
+  readonly userMessage: ReturnType<
+    typeof canonicalArchivedChatEventUserMessage
+  >;
+  readonly runId: string | null;
+  readonly runGroupId: string | null;
+}
+
+type ComputedGetter = <T>(computedValue: Computed<T>) => T;
+
+function isShareableEventType(row: ChatEventRow): row is ChatEventRow & {
+  readonly eventType: "input.prompt" | "input.automation" | "output.message";
+} {
+  return (
+    row.eventType === "input.prompt" ||
+    row.eventType === "input.automation" ||
+    row.eventType === "output.message"
+  );
+}
+
+function archivedEventIsVisible(
+  row: ChatEventRow,
+  revokedEventIds: ReadonlySet<string>,
+): boolean {
+  if (revokedEventIds.has(row.id)) {
+    return false;
+  }
+  if (
+    (row.eventType === "input.prompt" ||
+      row.eventType === "input.automation") &&
+    row.runId === null &&
+    row.revokesEventId !== null &&
+    canonicalArchivedChatEventError(row) === null
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function archivedSharedThreadRows(
+  history: readonly ChatEventRow[],
+  selectedEventIds: ReadonlySet<string>,
+): readonly SharedThreadSourceRow[] {
+  const revokedEventIds = new Set(
+    history.flatMap((row) => {
+      return row.revokesEventId === null ? [] : [row.revokesEventId];
+    }),
+  );
+  return history.flatMap((row) => {
+    if (
+      !selectedEventIds.has(row.id) ||
+      !isShareableEventType(row) ||
+      !archivedEventIsVisible(row, revokedEventIds)
+    ) {
+      return [];
+    }
+    return [
+      {
+        eventType: row.eventType,
+        content: canonicalArchivedChatEventContent(row),
+        userMessage: canonicalArchivedChatEventUserMessage(row),
+        runId: row.runId,
+        runGroupId: canonicalArchivedChatEventGoalId(row),
+      },
+    ];
+  });
+}
+
+function localIndex(
+  sourceId: string | null,
+  indices: Map<string, number>,
+): number | undefined {
+  if (sourceId === null) {
+    return undefined;
+  }
+  const existing = indices.get(sourceId);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const next = indices.size;
+  indices.set(sourceId, next);
+  return next;
+}
+
+async function loadSharedThreadSourceRows(
+  database: Db,
+  get: ComputedGetter,
+  threadId: string,
+  selectedEventIds: readonly string[],
+  signal: AbortSignal,
+): Promise<readonly SharedThreadSourceRow[]> {
+  const hotSelectedRows = await database
+    .select({
+      id: chatEvents.id,
+      eventType: chatEvents.eventType,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
+      runId: chatEvents.runId,
+      runGroupId: canonicalChatEventGoalId(),
+      isVisible: sql`COALESCE(
+        ${visibleChatEventCondition(database)},
+        false
+      )`.mapWith(pgBooleanDecoder),
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, threadId),
+        inArray(chatEvents.id, [...selectedEventIds]),
+      ),
+    )
+    .orderBy(asc(chatEvents.seqId));
+  signal.throwIfAborted();
+
+  if (hotSelectedRows.length !== selectedEventIds.length) {
+    const history = await readCurrentChatEventHistory(
+      {
+        db: database,
+        get,
+        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+      },
+      threadId,
+      signal,
+    );
+    return archivedSharedThreadRows(history, new Set(selectedEventIds));
+  }
+
+  return hotSelectedRows.flatMap((row) => {
+    if (
+      !row.isVisible ||
+      (row.eventType !== "input.prompt" &&
+        row.eventType !== "input.automation" &&
+        row.eventType !== "output.message")
+    ) {
+      return [];
+    }
+    return [
+      {
+        eventType: row.eventType,
+        content: row.content,
+        userMessage: row.userMessage,
+        runId: row.runId,
+        runGroupId: row.runGroupId,
+      },
+    ];
+  });
+}
+
+export const createSharedThread$ = command(
+  async (
+    { get, set },
+    args: CreateSharedThreadArgs,
+    signal: AbortSignal,
+  ): Promise<CreateSharedThreadResult> => {
+    const database = set(writeDb$);
+    const [thread] = await database
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .innerJoin(
+        agentComposes,
+        eq(agentComposes.id, chatThreads.agentComposeId),
+      )
+      .where(
+        and(
+          eq(chatThreads.id, args.threadId),
+          eq(chatThreads.userId, args.userId),
+          eq(agentComposes.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!thread) {
+      return { kind: "thread-not-found" };
+    }
+
+    const selectedEventIds = [...new Set(args.eventIds)];
+    const rows = await loadSharedThreadSourceRows(
+      database,
+      get,
+      args.threadId,
+      selectedEventIds,
+      signal,
+    );
+
+    const runIndices = new Map<string, number>();
+    const runGroupIndices = new Map<string, number>();
+    const messages: SharedMessage[] = [];
+    for (const row of rows) {
+      const content =
+        row.eventType === "output.message"
+          ? row.content
+          : row.userMessage
+            ? projectUserMessageForPublicShare(row.userMessage)
+            : row.content;
+      if (content === null || content.length === 0) {
+        continue;
+      }
+      const runIndex = localIndex(row.runId, runIndices);
+      const runGroupIndex = localIndex(row.runGroupId, runGroupIndices);
+      messages.push({
+        messageIndex: messages.length,
+        role: row.eventType === "output.message" ? "assistant" : "user",
+        content,
+        ...(runIndex === undefined ? {} : { runIndex }),
+        ...(runGroupIndex === undefined ? {} : { runGroupIndex }),
+      });
+    }
+
+    if (messages.length === 0) {
+      return { kind: "no-shareable-messages" };
+    }
+    const serializedMessages = JSON.stringify(messages);
+    if (
+      new TextEncoder().encode(serializedMessages).byteLength >
+      SHARED_THREAD_MAX_SERIALIZED_BYTES
+    ) {
+      return { kind: "too-large" };
+    }
+
+    const title = await generateSharedThreadTitle(messages);
+    signal.throwIfAborted();
+    const createdAt = nowDate();
+    const id = await database.transaction(async (transaction) => {
+      const [sharedThread] = await transaction
+        .insert(sharedThreads)
+        .values({
+          userId: args.userId,
+          sourceChatThreadId: args.threadId,
+          title,
+          messages,
+          createdAt,
+        })
+        .returning({ id: sharedThreads.id });
+      if (!sharedThread) {
+        throw new Error("Shared thread insert did not return a row");
+      }
+      await transaction.insert(artifacts).values({
+        orgId: args.orgId,
+        authorUserId: sharedThreadArtifactAuthorUserId(args.userId),
+        kind: "file",
+        entityId: sharedThread.id,
+        logicalKey: sharedThreadArtifactLogicalKey(sharedThread.id),
+        projectionFileId: null,
+        projectionCreatedAt: createdAt,
+        title,
+        thumbnail: null,
+        createdAt,
+        updatedAt: createdAt,
+      });
+      return sharedThread.id;
+    });
+    signal.throwIfAborted();
+
+    await publishUserSignal(
+      [args.userId],
+      `chatThreadArtifactsChanged:${args.threadId}`,
+    );
+    signal.throwIfAborted();
+    return { kind: "created", id };
+  },
+);
+
+export const readSharedThread$ = command(
+  async ({ get }, id: string, signal: AbortSignal) => {
+    const [row] = await get(db$)
+      .select({
+        id: sharedThreads.id,
+        title: sharedThreads.title,
+        messages: sharedThreads.messages,
+      })
+      .from(sharedThreads)
+      .where(eq(sharedThreads.id, id))
+      .limit(1);
+    signal.throwIfAborted();
+    return row ?? null;
+  },
+);
+
+export const readSharedThreadMeta$ = command(
+  async ({ get }, id: string, signal: AbortSignal) => {
+    const [row] = await get(db$)
+      .select({ title: sharedThreads.title })
+      .from(sharedThreads)
+      .where(eq(sharedThreads.id, id))
+      .limit(1);
+    signal.throwIfAborted();
+    return row ?? null;
+  },
+);

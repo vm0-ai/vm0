@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
-import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
-import { usageContract } from "@vm0/api-contracts/contracts/usage";
-import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
-import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
+import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
+import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
+import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
@@ -22,41 +21,54 @@ import {
   type CreditCheckoutRequest,
   type RedeemCodeRequest,
   type RedeemRequest,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { builtInGenerationContract } from "@okouai/api-contracts/contracts/built-in-generation";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zero-image-io-generate";
+import { mapsContract } from "@okouai/api-contracts/contracts/maps";
+import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 import {
-  zeroInsightsContract,
-  type InsightsResponse,
-} from "@vm0/api-contracts/contracts/zero-insights";
-import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
-import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
-import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
-import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
-import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
-import {
-  zeroUsageRecordContract,
+  usageRecordContract,
   type UsageRecordRange,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
-import { zeroVideoIoGenerateContract } from "@vm0/api-contracts/contracts/zero-video-io-generate";
-import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
-import { zeroVoiceIoSpeechContract } from "@vm0/api-contracts/contracts/zero-voice-io-speech";
-import { zeroVoiceIoSttContract } from "@vm0/api-contracts/contracts/zero-voice-io-stt";
+} from "@okouai/api-contracts/contracts/usage-record";
+import { zeroVideoIoGenerateContract } from "@okouai/api-contracts/contracts/zero-video-io-generate";
+import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
+import { voiceIoSpeechContract } from "@okouai/api-contracts/contracts/voice-io-speech";
+import { voiceIoSttContract } from "@okouai/api-contracts/contracts/voice-io-stt";
 
 import { mockEnv } from "../../../../lib/env";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import {
   mockListStripeInvoices,
   mockStripeClient,
 } from "../../../external/stripe-client";
-import { modelStatsContract } from "../../model-stats";
+import { modelStatsContract, modelStatsPublicRoutes } from "../../model-stats";
 import { testUsageSettlementRoutes } from "../../test-usage-settlement";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { acquisitionAttributionRoutes } from "../../acquisition-attribution";
+import { zeroBankingRoutes } from "../../zero-banking";
+import { zeroBillingAutoRechargeRoutes } from "../../zero-billing-auto-recharge";
+import { zeroBillingCheckoutRoutes } from "../../zero-billing-checkout";
+import { zeroBillingCreditCheckoutRoutes } from "../../zero-billing-credit-checkout";
+import { zeroBillingDowngradeRoutes } from "../../zero-billing-downgrade";
+import { zeroBillingInvoicesRoutes } from "../../zero-billing-invoices";
+import { zeroBillingPortalRoutes } from "../../zero-billing-portal";
+import { zeroBillingRedeemRoutes } from "../../zero-billing-redeem";
+import { zeroBillingRedeemCodeRoutes } from "../../zero-billing-redeem-code";
+import { zeroBillingRestoreRoutes } from "../../zero-billing-restore";
+import { zeroBillingStatusRoutes } from "../../zero-billing-status";
+import { builtInGenerationRoutes } from "../../built-in-generation";
+import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+import { zeroImageIoGenerateRoutes } from "../../zero-image-io-generate";
+import { mapsRoutes } from "../../maps";
+import { zeroUsageMembersRoutes } from "../../zero-usage-members";
+import { usageRecordRoutes } from "../../usage-record";
+import { zeroVideoIoGenerateRoutes } from "../../zero-video-io-generate";
+import { voiceIoQuotaRoutes } from "../../voice-io-quota";
+import { voiceIoSpeechRoutes } from "../../voice-io-speech";
+import { voiceIoSttRoutes } from "../../voice-io-stt";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 
@@ -278,7 +290,9 @@ export function createBillingMediaApi(context: TestContext) {
     async readBillingStatus(
       actor: ApiTestUser,
     ): Promise<BillingStatusResponse> {
-      const client = setupApp({ context })(zeroBillingStatusContract);
+      const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+        zeroBillingStatusContract,
+      );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],
@@ -287,7 +301,9 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async startCheckout(actor: ApiTestUser, body: CheckoutBody) {
-      const client = setupApp({ context })(zeroBillingCheckoutContract);
+      const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingCheckoutContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         [200],
@@ -299,7 +315,9 @@ export function createBillingMediaApi(context: TestContext) {
       body: CheckoutBody,
       statuses: readonly CheckoutStatus[],
     ) {
-      const client = setupApp({ context })(zeroBillingCheckoutContract);
+      const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingCheckoutContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -311,7 +329,9 @@ export function createBillingMediaApi(context: TestContext) {
       body: { readonly sessionId: string },
       statuses: readonly (200 | 400 | 401 | 403 | 500 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroBillingCheckoutContract);
+      const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingCheckoutContract,
+      );
       return await accept(
         client.complete({ headers: authenticate(actor), body }),
         statuses,
@@ -319,7 +339,10 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async startCreditCheckout(actor: ApiTestUser, body: CreditCheckoutRequest) {
-      const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+      const client = setupApp({
+        context,
+        routes: zeroBillingCreditCheckoutRoutes,
+      })(zeroBillingCreditCheckoutContract);
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         [200],
@@ -331,7 +354,10 @@ export function createBillingMediaApi(context: TestContext) {
       body: CreditCheckoutRequest,
       statuses: readonly CheckoutStatus[],
     ) {
-      const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+      const client = setupApp({
+        context,
+        routes: zeroBillingCreditCheckoutRoutes,
+      })(zeroBillingCreditCheckoutContract);
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -339,7 +365,9 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async openPortal(actor: ApiTestUser, body: PortalBody) {
-      const client = setupApp({ context })(zeroBillingPortalContract);
+      const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         [200],
@@ -347,7 +375,10 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async readAutoRecharge(actor: ApiTestUser): Promise<AutoRechargeConfig> {
-      const client = setupApp({ context })(zeroBillingAutoRechargeContract);
+      const client = setupApp({
+        context,
+        routes: zeroBillingAutoRechargeRoutes,
+      })(zeroBillingAutoRechargeContract);
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],
@@ -360,7 +391,10 @@ export function createBillingMediaApi(context: TestContext) {
       body: AutoRechargeUpdateBody,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroBillingAutoRechargeContract);
+      const client = setupApp({
+        context,
+        routes: zeroBillingAutoRechargeRoutes,
+      })(zeroBillingAutoRechargeContract);
       return await accept(
         client.update({ headers: authenticate(actor), body }),
         statuses,
@@ -368,7 +402,9 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async readInvoices(actor: ApiTestUser): Promise<BillingInvoicesResponse> {
-      const client = setupApp({ context })(zeroBillingInvoicesContract);
+      const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+        zeroBillingInvoicesContract,
+      );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],
@@ -380,7 +416,9 @@ export function createBillingMediaApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroBillingInvoicesContract);
+      const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+        zeroBillingInvoicesContract,
+      );
       return await accept(
         client.get({ headers: authenticate(actor) }),
         statuses,
@@ -395,7 +433,9 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly BillingMutationStatus[],
     ) {
-      const client = setupApp({ context })(zeroBillingDowngradeContract);
+      const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+        zeroBillingDowngradeContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -407,7 +447,9 @@ export function createBillingMediaApi(context: TestContext) {
       body: { readonly returnUrl?: string },
       statuses: readonly (200 | 401 | 403 | 409 | 500 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroBillingRestoreContract);
+      const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+        zeroBillingRestoreContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -419,7 +461,9 @@ export function createBillingMediaApi(context: TestContext) {
       campaign: string,
       body: RedeemRequest,
     ) {
-      const client = setupApp({ context })(zeroBillingRedeemContract);
+      const client = setupApp({ context, routes: zeroBillingRedeemRoutes })(
+        zeroBillingRedeemContract,
+      );
       return await accept(
         client.create({
           params: { campaign },
@@ -435,18 +479,12 @@ export function createBillingMediaApi(context: TestContext) {
       body: RedeemCodeRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 500 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroBillingRedeemCodeContract);
+      const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+        zeroBillingRedeemCodeContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
-      );
-    },
-
-    async readUsage(actor: ApiTestUser) {
-      const client = setupApp({ context })(usageContract);
-      return await accept(
-        client.get({ headers: authenticate(actor), query: {} }),
-        [200],
       );
     },
 
@@ -457,7 +495,9 @@ export function createBillingMediaApi(context: TestContext) {
         readonly tz?: string;
       } = {},
     ) {
-      const client = setupApp({ context })(zeroUsageMembersContract);
+      const client = setupApp({ context, routes: zeroUsageMembersRoutes })(
+        zeroUsageMembersContract,
+      );
       return await accept(
         client.get({ headers: authenticate(actor), query }),
         [200],
@@ -472,66 +512,38 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroUsageMembersContract);
+      const client = setupApp({ context, routes: zeroUsageMembersRoutes })(
+        zeroUsageMembersContract,
+      );
       return await accept(
         client.get({ headers: authenticate(actor), query }),
-        statuses,
-      );
-    },
-
-    async readUsageRuns(
-      actor: ApiTestUser,
-      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
-    ) {
-      const client = setupApp({ context })(zeroUsageRunsContract);
-      return await accept(
-        client.get({
-          headers: authenticate(actor),
-          query: { page: 1, pageSize: 20 },
-        }),
         statuses,
       );
     },
 
     async readUsageRecord(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroUsageRecordContract);
+      const client = setupApp({ context, routes: usageRecordRoutes })(
+        usageRecordContract,
+      );
       return await accept(
         client.get({
           headers: authenticate(actor),
-          query: { page: 1, pageSize: 20 },
+          query: {
+            page: 1,
+            pageSize: 20,
+            scope: "mine",
+            range: "24h",
+            tz: "UTC",
+          },
         }),
         [200],
       );
     },
 
-    async readUsageInsight(
-      actor: ApiTestUser,
-      query: {
-        readonly range: "today" | "yesterday" | "day" | "7d" | "28d" | "30d";
-        readonly date?: string;
-        readonly groupBy: "source" | "agent";
-        readonly tz: string;
-      },
-      statuses: readonly (200 | 400 | 401 | 500)[],
-    ) {
-      const client = setupApp({ context })(zeroUsageInsightContract);
-      return await accept(
-        client.get({ headers: authenticate(actor), query }),
-        statuses,
-      );
-    },
-
-    async readInsights(actor: ApiTestUser): Promise<InsightsResponse> {
-      const client = setupApp({ context })(zeroInsightsContract);
-      const response = await accept(
-        client.get({ headers: authenticate(actor), query: { days: 7 } }),
-        [200],
-      );
-      return response.body;
-    },
-
     async readModelRankings() {
-      const client = setupApp({ context })(modelStatsContract);
+      const client = setupApp({ context, routes: modelStatsPublicRoutes })(
+        modelStatsContract,
+      );
       return await accept(
         client.rankings({ query: { period: "week" } }),
         [200],
@@ -553,7 +565,10 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async recordSignupAttribution(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroAttributionContract);
+      const client = setupApp({
+        context,
+        routes: acquisitionAttributionRoutes,
+      })(acquisitionAttributionContract);
       return await accept(
         client.recordSignup({
           headers: authenticate(actor),
@@ -574,7 +589,9 @@ export function createBillingMediaApi(context: TestContext) {
       actor: ApiTestUser,
       switches: Readonly<Record<string, boolean>>,
     ) {
-      const client = setupApp({ context })(zeroFeatureSwitchesContract);
+      const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+        zeroFeatureSwitchesContract,
+      );
       return await accept(
         client.update({
           headers: authenticate(actor),
@@ -585,7 +602,9 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async readVoiceQuota(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroVoiceIoQuotaContract);
+      const client = setupApp({ context, routes: voiceIoQuotaRoutes })(
+        voiceIoQuotaContract,
+      );
       return await accept(client.get({ headers: authenticate(actor) }), [200]);
     },
 
@@ -594,7 +613,9 @@ export function createBillingMediaApi(context: TestContext) {
       formData: FormData,
       statuses: readonly (200 | 400 | 401 | 402 | 403 | 429 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroVoiceIoSttContract);
+      const client = setupApp({ context, routes: voiceIoSttRoutes })(
+        voiceIoSttContract,
+      );
       return await accept(
         client.post({ headers: authenticate(actor), body: formData }),
         statuses,
@@ -610,7 +631,9 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly VoiceSpeechStatus[],
     ) {
-      const client = setupApp({ context })(zeroVoiceIoSpeechContract);
+      const client = setupApp({ context, routes: voiceIoSpeechRoutes })(
+        voiceIoSpeechContract,
+      );
       return await accept(
         client.post({ headers: authenticate(actor), body }),
         statuses,
@@ -639,7 +662,9 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly ImageIoStatus[],
     ) {
-      const client = setupApp({ context })(zeroImageIoGenerateContract);
+      const client = setupApp({ context, routes: zeroImageIoGenerateRoutes })(
+        zeroImageIoGenerateContract,
+      );
       return await accept(
         client.post({ headers: authenticate(actor), body }),
         statuses,
@@ -667,7 +692,9 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly VideoIoStatus[],
     ) {
-      const client = setupApp({ context })(zeroVideoIoGenerateContract);
+      const client = setupApp({ context, routes: zeroVideoIoGenerateRoutes })(
+        zeroVideoIoGenerateContract,
+      );
       return await accept(
         client.post({ headers: authenticate(actor), body }),
         statuses,
@@ -679,7 +706,9 @@ export function createBillingMediaApi(context: TestContext) {
       generationId = randomUUID(),
       statuses: readonly (200 | 401 | 403 | 404 | 500)[] = [200],
     ) {
-      const client = setupApp({ context })(zeroBuiltInGenerationContract);
+      const client = setupApp({ context, routes: builtInGenerationRoutes })(
+        builtInGenerationContract,
+      );
       return await accept(
         client.get({
           params: { generationId },
@@ -694,7 +723,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: { readonly address: string; readonly region?: string },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context })(zeroMapsContract);
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.geocode({ headers: authenticate(actor), body }),
         statuses,
@@ -706,7 +735,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: { readonly lat: number; readonly lng: number },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context })(zeroMapsContract);
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.reverseGeocode({ headers: authenticate(actor), body }),
         statuses,
@@ -723,7 +752,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context })(zeroMapsContract);
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.directions({ headers: authenticate(actor), body }),
         statuses,
@@ -742,7 +771,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context })(zeroMapsContract);
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.placesSearch({ headers: authenticate(actor), body }),
         statuses,
@@ -757,7 +786,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context })(zeroMapsContract);
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.placesDetails({ headers: authenticate(actor), body }),
         statuses,
@@ -769,7 +798,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: OsmAreaBody,
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context })(zeroMapsContract);
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.osmDownload({ headers: authenticate(actor), body }),
         statuses,
@@ -781,7 +810,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: OsmRenderBody,
       statuses: readonly MapsStatus[],
     ) {
-      const client = setupApp({ context })(zeroMapsContract);
+      const client = setupApp({ context, routes: mapsRoutes })(mapsContract);
       return await accept(
         client.osmRender({ headers: authenticate(actor), body }),
         statuses,
@@ -792,7 +821,9 @@ export function createBillingMediaApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 400 | 401 | 403 | 502 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroBankingContract);
+      const client = setupApp({ context, routes: zeroBankingRoutes })(
+        zeroBankingContract,
+      );
       return await accept(
         client.accounts({ headers: authenticate(actor), body: {} }),
         statuses,

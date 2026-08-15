@@ -107,10 +107,6 @@ const publicConnectorCatalogListResponseSchema = z.object({
   categoryMetadata: publicConnectorCatalogCategoryMetadataSchema.optional(),
 });
 
-const publicConnectorCatalogDetailResponseSchema = z.object({
-  connector: publicConnectorCatalogDetailSchema,
-});
-
 const publicConnectorCatalogConnectionStatusSchema = z.enum([
   "not-connected",
   "connected",
@@ -137,9 +133,14 @@ const publicConnectorCatalogStatusItemSchema =
     connectNotice: z.enum(["google-security-warning"]).nullable(),
   });
 
+const publicConnectorCatalogDetailResponseSchema = z.object({
+  connector: publicConnectorCatalogStatusItemSchema,
+});
+
 const publicConnectorCatalogStatusResponseSchema = z.object({
   connectors: z.array(publicConnectorCatalogStatusItemSchema),
   categoryMetadata: publicConnectorCatalogCategoryMetadataSchema.optional(),
+  totalConnectorCount: z.number().int().nonnegative().optional(),
 });
 
 const publicFirewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
@@ -239,7 +240,7 @@ export type PublicConnectorCatalogPermissionDetailResponse = z.infer<
 export const zeroConnectorCatalogContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/connector-catalog",
+    path: "/api/okou/connector-catalog",
     headers: authHeadersSchema,
     responses: {
       200: publicConnectorCatalogListResponseSchema,
@@ -251,7 +252,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   status: {
     method: "GET",
-    path: "/api/zero/connector-catalog/status",
+    path: "/api/okou/connector-catalog/status",
     headers: authHeadersSchema,
     responses: {
       200: publicConnectorCatalogStatusResponseSchema,
@@ -261,9 +262,23 @@ export const zeroConnectorCatalogContract = c.router({
     },
     summary: "List public connector catalog metadata with connection status",
   },
+  discovery: {
+    method: "GET",
+    path: "/api/okou/connector-catalog/discovery",
+    headers: authHeadersSchema,
+    query: z.object({ keyword: z.string().optional() }),
+    responses: {
+      200: publicConnectorCatalogStatusResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Browse featured connectors or search by slug and label",
+  },
   diagnostics: {
     method: "GET",
-    path: "/api/zero/connector-catalog/diagnostics",
+    path: "/api/okou/connector-catalog/diagnostics",
     headers: authHeadersSchema,
     responses: {
       200: connectorCatalogDiagnosticsSchema,
@@ -275,7 +290,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/connector-catalog/:connectorSlug",
+    path: "/api/okou/connector-catalog/:connectorSlug",
     headers: authHeadersSchema,
     pathParams: connectorCatalogPathParamsSchema,
     responses: {
@@ -286,11 +301,11 @@ export const zeroConnectorCatalogContract = c.router({
       404: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Get public connector catalog metadata",
+    summary: "Get public connector catalog metadata with connection status",
   },
   permissions: {
     method: "GET",
-    path: "/api/zero/connector-catalog/:connectorSlug/permissions",
+    path: "/api/okou/connector-catalog/:connectorSlug/permissions",
     headers: authHeadersSchema,
     pathParams: connectorCatalogPathParamsSchema,
     responses: {

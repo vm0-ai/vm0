@@ -1,12 +1,12 @@
 import { command, computed, state } from "ccstate";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import type { EventDrivenChatThread } from "@vm0/core/chat-thread-event-replay";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-replay";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import { reloadChatUnreadStateCounter$ } from "./chat-thread-list-reload.ts";
+import { reloadChatIndicatorsCounter$ } from "./chat-thread-list-reload.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
   chatThreadMetaMap$,
@@ -92,7 +92,7 @@ const filteredThreadIds$ = computed(
     if (!get(chatThreadOnlyUnread$)) {
       return null;
     }
-    get(reloadChatUnreadStateCounter$);
+    get(reloadChatIndicatorsCounter$);
 
     const agentId = await get(currentChatAgentId$);
     if (!agentId) {

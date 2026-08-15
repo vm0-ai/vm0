@@ -296,6 +296,12 @@ check_required_executable "/usr/bin/mkdir" "mkdir"
 # Media workflows rely on ffmpeg being available in fresh agent runtimes.
 check_required_executable "/usr/bin/ffmpeg" "ffmpeg"
 
+# Browser screenshots and exports need system fallbacks for multilingual text.
+check_bin "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf" "Noto Sans"
+check_bin "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf" "Noto Sans Arabic"
+check_bin "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc" "Noto Sans CJK"
+check_bin "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf" "Noto Color Emoji"
+
 # Browser automation relies on the native vm0 fork binary.
 check_required_executable "/usr/local/bin/agent-browser" "agent-browser CLI"
 

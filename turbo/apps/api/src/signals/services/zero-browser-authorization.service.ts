@@ -1,14 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
-
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { browserAuthorizationRequests } from "@vm0/db/schema/browser-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-
+import { and, eq, isNotNull } from "drizzle-orm";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { browserAuthorizationRequests } from "@okouai/db/schema/browser-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
@@ -74,14 +71,14 @@ async function resolveChatThreadId(args: {
     return "run_not_found";
   }
   const [run] = await args.db
-    .select({ chatThreadId: zeroRuns.chatThreadId })
+    .select({ chatThreadId: agentRuns.chatThreadId })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
       and(
         eq(agentRuns.id, args.runId),
         eq(agentRuns.orgId, args.orgId),
         eq(agentRuns.userId, args.userId),
+        isNotNull(agentRuns.triggerSource),
       ),
     )
     .limit(1);

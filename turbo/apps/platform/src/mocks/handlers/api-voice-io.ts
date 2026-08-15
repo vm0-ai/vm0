@@ -1,18 +1,18 @@
 /**
  * Voice IO API Handlers
  *
- * Mock handlers for /api/zero/voice-io endpoints.
+ * Mock handlers for /api/okou/voice-io endpoints.
  * Default behavior: quota endpoint returns `allowed: true` with unlimited
  * (limit: null) so tests that don't care about quota don't produce
  * unhandled-request warnings. Tests that need specific quota state should
- * override via `server.use(mockApi(zeroVoiceIoQuotaContract.get, ...))`.
+ * override via `server.use(mockApi(voiceIoQuotaContract.get, ...))`.
  */
 
-import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
+import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiVoiceIoHandlers = [
-  mockApi(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+  mockApi(voiceIoQuotaContract.get, ({ respond }) => {
     return respond(200, { allowed: true, count: 0, limit: null });
   }),
 ];

@@ -21,13 +21,13 @@ import {
 const c = initContract();
 
 /**
- * Zero contract for GET /api/zero/connectors
+ * Zero contract for GET /api/okou/connectors
  * Proxies to GET /api/connectors
  */
 export const zeroConnectorsMainContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/connectors",
+    path: "/api/okou/connectors",
     headers: authHeadersSchema,
     responses: {
       200: connectorListResponseSchema,
@@ -35,18 +35,18 @@ export const zeroConnectorsMainContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "List all connectors (zero proxy)",
+    summary: "List the current user's connector connections",
   },
 });
 
 /**
- * Zero contract for GET/DELETE /api/zero/connectors/:connectorSlug
+ * Zero contract for GET/DELETE /api/okou/connectors/:connectorSlug
  * Proxies to GET/DELETE /api/connectors/:connectorSlug
  */
 export const zeroConnectorsBySlugContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/connectors/:connectorSlug",
+    path: "/api/okou/connectors/:connectorSlug",
     headers: authHeadersSchema,
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     responses: {
@@ -59,7 +59,7 @@ export const zeroConnectorsBySlugContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/connectors/:connectorSlug",
+    path: "/api/okou/connectors/:connectorSlug",
     headers: authHeadersSchema,
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     responses: {
@@ -72,13 +72,13 @@ export const zeroConnectorsBySlugContract = c.router({
 });
 
 /**
- * Zero contract for GET /api/zero/connectors/:connectorSlug/scope-diff
+ * Zero contract for GET /api/okou/connectors/:connectorSlug/scope-diff
  * App-layer endpoint (direct service call, no proxy)
  */
 export const zeroConnectorScopeDiffContract = c.router({
   getScopeDiff: {
     method: "GET",
-    path: "/api/zero/connectors/:connectorSlug/scope-diff",
+    path: "/api/okou/connectors/:connectorSlug/scope-diff",
     headers: authHeadersSchema,
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     responses: {
@@ -94,7 +94,7 @@ export const zeroConnectorScopeDiffContract = c.router({
 export const zeroConnectorOauthStartContract = c.router({
   start: {
     method: "POST",
-    path: "/api/zero/connectors/:connectorSlug/oauth/start",
+    path: "/api/okou/connectors/:connectorSlug/oauth/start",
     headers: authHeadersSchema,
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
@@ -114,25 +114,10 @@ export const zeroConnectorOauthStartContract = c.router({
   },
 });
 
-export const zeroConnectorOauthContinueContract = c.router({
-  continue: {
-    method: "GET",
-    path: "/api/zero/connectors/:connectorSlug/oauth/continue",
-    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
-    query: z.object({ state: z.string().regex(/^[0-9a-f]{64}$/) }),
-    responses: {
-      307: c.noBody(),
-      400: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Continue connector OAuth in the browser",
-  },
-});
-
 export const zeroConnectorOpenIdStartContract = c.router({
   start: {
     method: "POST",
-    path: "/api/zero/connectors/:connectorSlug/openid/start",
+    path: "/api/okou/connectors/:connectorSlug/openid/start",
     headers: authHeadersSchema,
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
@@ -154,7 +139,7 @@ export const zeroConnectorOpenIdStartContract = c.router({
 export const zeroConnectorManualGrantContract = c.router({
   connect: {
     method: "POST",
-    path: "/api/zero/connectors/:connectorSlug/manual-grant",
+    path: "/api/okou/connectors/:connectorSlug/manual-grant",
     headers: authHeadersSchema,
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
@@ -178,7 +163,7 @@ export const zeroConnectorManualGrantContract = c.router({
 export const zeroConnectorNoAuthGrantContract = c.router({
   connect: {
     method: "POST",
-    path: "/api/zero/connectors/:connectorSlug/no-auth",
+    path: "/api/okou/connectors/:connectorSlug/no-auth",
     headers: authHeadersSchema,
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
@@ -201,7 +186,7 @@ export const zeroConnectorNoAuthGrantContract = c.router({
 export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/connectors/:connectorSlug/oauth/device/sessions",
+    path: "/api/okou/connectors/:connectorSlug/oauth/device/sessions",
     headers: authHeadersSchema,
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
@@ -221,7 +206,7 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
   },
   poll: {
     method: "POST",
-    path: "/api/zero/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+    path: "/api/okou/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
     headers: authHeadersSchema,
     pathParams: z.object({
       connectorSlug: connectorSlugSchema,
@@ -243,7 +228,7 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
 export const zeroConnectorExternalCodeSessionContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/connectors/:connectorSlug/external-code/sessions",
+    path: "/api/okou/connectors/:connectorSlug/external-code/sessions",
     headers: authHeadersSchema,
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
@@ -262,7 +247,7 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/zero/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+    path: "/api/okou/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
     headers: authHeadersSchema,
     pathParams: z.object({
       connectorSlug: connectorSlugSchema,
@@ -298,13 +283,13 @@ export type ConnectorSearchResponse = z.infer<
 >;
 
 /**
- * Zero contract for GET /api/zero/connectors/search
- * Returns all available connectors with optional keyword search
+ * Zero contract for GET /api/okou/connectors/search
+ * Returns up to 100 featured connectors or slug/label search results.
  */
 export const zeroConnectorsSearchContract = c.router({
   search: {
     method: "GET",
-    path: "/api/zero/connectors/search",
+    path: "/api/okou/connectors/search",
     headers: authHeadersSchema,
     query: z.object({ keyword: z.string().optional() }),
     responses: {
@@ -313,7 +298,7 @@ export const zeroConnectorsSearchContract = c.router({
       403: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Search available connectors by slug",
+    summary: "Search available connectors by slug or label",
   },
 });
 

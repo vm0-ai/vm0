@@ -1,26 +1,26 @@
 import {
-  chatThreadEventsContract,
   chatThreadMetadataContract,
   type ChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createConnectorBddApi } from "./api-bdd-connectors";
 import { createRunsApi } from "./api-bdd-runs";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { readProjectedChatEvents } from "./chat-event-test-reader";
+import { zeroChatThreadGetRoutes } from "../../zero-chat-threads-get";
+import { zeroWorkflowAutomationsRoutes } from "../../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../../zero-workflows";
 
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
@@ -171,16 +171,22 @@ export function createWorkflowsBddApi(context: TestContext) {
       options: {
         readonly agentId: string;
         readonly name: string;
+        readonly chatThreadId?: string;
         readonly visibility?: "public" | "private";
       },
     ): Promise<string> {
-      const client = setupApp({ context })(zeroWorkflowsCollectionContract);
+      const client = setupApp({ context, routes: zeroWorkflowsRoutes })(
+        zeroWorkflowsCollectionContract,
+      );
       const response = await accept(
         client.create({
           headers: authenticate(actor),
           body: {
             agentId: options.agentId,
             name: options.name,
+            ...(options.chatThreadId
+              ? { chatThreadId: options.chatThreadId }
+              : {}),
             visibility: options.visibility ?? "public",
           },
         }),
@@ -192,7 +198,10 @@ export function createWorkflowsBddApi(context: TestContext) {
     async readAutomation(
       automationId: string,
     ): Promise<ZeroWorkflowAutomationSummary> {
-      const client = setupApp({ context })(zeroWorkflowAutomationsContract);
+      const client = setupApp({
+        context,
+        routes: zeroWorkflowAutomationsRoutes,
+      })(zeroWorkflowAutomationsContract);
       const response = await accept(
         client.get({ headers: authHeaders(), params: { id: automationId } }),
         [200],
@@ -201,7 +210,9 @@ export function createWorkflowsBddApi(context: TestContext) {
     },
 
     async readThreadSelectedModel(threadId: string): Promise<string | null> {
-      const client = setupApp({ context })(chatThreadMetadataContract);
+      const client = setupApp({ context, routes: zeroChatThreadGetRoutes })(
+        chatThreadMetadataContract,
+      );
       const response = await accept(
         client.get({ headers: authHeaders(), params: { id: threadId } }),
         [200],
@@ -210,16 +221,10 @@ export function createWorkflowsBddApi(context: TestContext) {
     },
 
     async readThreadEvents(threadId: string): Promise<readonly ChatEvent[]> {
-      const client = setupApp({ context })(chatThreadEventsContract);
-      const response = await accept(
-        client.list({
-          headers: authHeaders(),
-          params: { threadId },
-          query: {},
-        }),
-        [200],
-      );
-      return response.body.events;
+      return await readProjectedChatEvents(context, {
+        threadId,
+        headers: authHeaders(),
+      });
     },
 
     /**
@@ -230,7 +235,7 @@ export function createWorkflowsBddApi(context: TestContext) {
      */
     async connectConnector(
       actor: ApiTestUser,
-      connectorSlug: "gmail" | "google-calendar" | "notion",
+      connectorSlug: "gmail" | "google-calendar" | "google-forms" | "notion",
     ): Promise<void> {
       const start = await connectors.startOauth(actor, connectorSlug, "oauth");
       const state = new URL(start.authorizationUrl).searchParams.get("state");

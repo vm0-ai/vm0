@@ -1,16 +1,22 @@
 import { command, computed } from "ccstate";
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
 import {
+  AUTONOMY_BUDGET_EXHAUSTED_MESSAGE,
+  autonomyBudgetExhausted,
   badRequestMessage,
   conflict,
   notFound,
   teamRequired,
 } from "../../lib/error";
+import {
+  childAutonomyBudget,
+  loadOwnedRunAutonomyBudget,
+} from "../services/autonomy-budget.service";
 import {
   loadVisibleWorkflowById,
   type WorkflowMember,
@@ -151,11 +157,31 @@ const createAutomationInner$ = command(
       return bodyResult.response;
     }
 
+    let autonomyBudget: number | undefined;
+    const db = get(db$);
+    if (auth.tokenType === "zero") {
+      const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(db, {
+        runId: auth.runId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      });
+      signal.throwIfAborted();
+      if (sourceAutonomyBudget === null) {
+        return notFound("Source run not found");
+      }
+      const derived = childAutonomyBudget(sourceAutonomyBudget);
+      if (derived.kind === "exhausted") {
+        return autonomyBudgetExhausted();
+      }
+      autonomyBudget = derived.autonomyBudget;
+    }
+
     const automationInputBase = {
       orgId: auth.orgId,
       member: memberFromAuth(auth),
       workflowId: params.workflowId,
       enabled: bodyResult.data.enabled ?? true,
+      ...(autonomyBudget === undefined ? {} : { autonomyBudget }),
     };
     const result = await set(
       createWorkflowAutomation$,
@@ -265,12 +291,33 @@ const enableAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroWorkflowAutomationsContract.enable));
+    let inheritedAutonomyBudget: number | undefined;
+    const db = get(db$);
+    if (auth.tokenType === "zero") {
+      const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(db, {
+        runId: auth.runId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      });
+      signal.throwIfAborted();
+      if (sourceAutonomyBudget === null) {
+        return notFound("Source run not found");
+      }
+      const derived = childAutonomyBudget(sourceAutonomyBudget);
+      if (derived.kind === "exhausted") {
+        return autonomyBudgetExhausted();
+      }
+      inheritedAutonomyBudget = derived.autonomyBudget;
+    }
     const result = await set(
       enableWorkflowAutomation$,
       {
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         automationId: params.id,
+        ...(inheritedAutonomyBudget === undefined
+          ? {}
+          : { inheritedAutonomyBudget }),
       },
       signal,
     );
@@ -313,6 +360,7 @@ const runAutomationInner$ = command(
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         automationId: params.id,
+        ...(auth.tokenType === "zero" ? { sourceRunId: auth.runId } : {}),
       },
       signal,
     );
@@ -328,6 +376,12 @@ const runAutomationInner$ = command(
     }
     if (result.kind === "run_error") {
       return result.response;
+    }
+    if (
+      result.kind === "conflict" &&
+      result.message === AUTONOMY_BUDGET_EXHAUSTED_MESSAGE
+    ) {
+      return autonomyBudgetExhausted();
     }
     return automationErrorResponse(result);
   },

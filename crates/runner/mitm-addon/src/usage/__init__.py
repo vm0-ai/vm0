@@ -7,6 +7,7 @@ The stable facade covers:
   per-response source identity for WebSocket reporting, and buffer results for
   aggregate platform webhook upload to billing and/or observation endpoints
   through a background thread pool — see :mod:`usage.providers.model_provider`.
+  Cross-provider non-streaming JSON dispatch is owned by :mod:`usage.model_json`.
 - Billable connector responses (flagged by the web layer via
   ``billableFirewalls`` → ``metadata_keys.FIREWALL_BILLABLE``): compute
   per-permission billable resource counts and buffer them for aggregate
@@ -17,13 +18,13 @@ The stable facade covers:
   used by the runner's usage-flush and shutdown protocol.
 
 Production consumers use this package facade for proxy hooks and response
-processing, runner flush lifecycle and terminal reporting, and Claude/Codex
-provider-output timing.
+processing, runner flush lifecycle and terminal reporting, and retained
+diagnostic telemetry.
 Tests should exercise public hook, provider, and lifecycle paths at their
 observable boundaries: runner-visible pending state and in-flight accounting,
 plus the local HTTP webhook boundary. Avoid patching private transport internals.
 Delivery admission tests may target the production ``usage.webhook`` enqueue
-boundary used by buffered usage and provider-output timing; retry and transport
+boundary used by buffered usage and diagnostic telemetry; retry and transport
 helpers remain private.
 """
 
@@ -54,13 +55,26 @@ from .counters import (
     set_pending_path,
     write_pending_snapshot,
 )
+from .model_json import (
+    ModelUsageProtocol,
+    create_model_json_usage_extractor,
+    extract_model_usage_with_error_from_json,
+)
+from .openai_chat_completions import (
+    create_openai_chat_completions_json_usage_extractor,
+    create_openai_chat_completions_sse_usage_extractor,
+    extract_openai_chat_completions_usage_with_error_from_json,
+)
 from .openai_responses import (
+    OpenAIResponsesClientEvent,
     OpenAIResponsesEvent,
     create_openai_responses_json_usage_extractor,
     create_openai_responses_sse_usage_extractor,
     extract_openai_responses_usage_from_event,
     extract_openai_responses_usage_with_error_from_json,
+    inspect_openai_responses_client_event_json,
     inspect_openai_responses_event_json,
+    inspect_openai_responses_server_lifecycle,
     merge_openai_responses_usage_result,
 )
 from .providers.connectors import (
@@ -72,6 +86,8 @@ from .providers.connectors import (
 from .providers.model_provider import (
     has_positive_model_provider_usage,
     is_model_provider_usage_observable,
+    log_ignored_model_provider_usage_source,
+    log_terminal_model_provider_usage_sources,
     release_model_provider_usage_tiers,
     report_model_provider_usage,
     report_model_provider_usage_observation,
@@ -81,6 +97,8 @@ from .providers.model_provider import (
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "BufferedReportLease",
+    "ModelUsageProtocol",
+    "OpenAIResponsesClientEvent",
     "OpenAIResponsesEvent",
     "admit_buffered_report",
     "buffer_model_usage_observations",
@@ -91,20 +109,29 @@ __all__ = [
     "create_anthropic_messages_json_usage_extractor",
     "create_anthropic_messages_sse_usage_extractor",
     "create_connector_response_parser",
+    "create_model_json_usage_extractor",
+    "create_openai_chat_completions_json_usage_extractor",
+    "create_openai_chat_completions_sse_usage_extractor",
     "create_openai_responses_json_usage_extractor",
     "create_openai_responses_sse_usage_extractor",
     "current_usage_state_id",
     "decrement_in_flight_flows",
     "drain_usage_events_after_executor_shutdown",
     "extract_anthropic_messages_usage_with_error_from_json",
+    "extract_model_usage_with_error_from_json",
+    "extract_openai_chat_completions_usage_with_error_from_json",
     "extract_openai_responses_usage_from_event",
     "extract_openai_responses_usage_with_error_from_json",
     "flush_usage_events",
     "has_connector_response_parser",
     "has_positive_model_provider_usage",
     "increment_in_flight_flows",
+    "inspect_openai_responses_client_event_json",
     "inspect_openai_responses_event_json",
+    "inspect_openai_responses_server_lifecycle",
     "is_model_provider_usage_observable",
+    "log_ignored_model_provider_usage_source",
+    "log_terminal_model_provider_usage_sources",
     "merge_openai_responses_usage_result",
     "needs_connector_response_buffer_fallback",
     "read_usage_flush_request_id",

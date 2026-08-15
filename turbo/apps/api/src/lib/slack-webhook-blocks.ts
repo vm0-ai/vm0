@@ -1,8 +1,11 @@
-import type { Block, KnownBlock, View } from "@slack/web-api";
+import type {
+  SlackAnyBlock,
+  SlackView,
+} from "../signals/external/slack-block-kit";
 
 import { env } from "./env";
 
-type SlackBlocks = (Block | KnownBlock)[];
+type SlackBlocks = SlackAnyBlock[];
 
 export const AGENT_PICKER_CALLBACK_ID = "switch_agent_modal";
 export const AGENT_PICKER_BLOCK_ID = "agent_select_block";
@@ -226,7 +229,7 @@ function buildAppHomeUsageBlocks(): SlackBlocks {
   ];
 }
 
-export function buildAppHomeView(options: AppHomeOptions): View {
+export function buildAppHomeView(options: AppHomeOptions): SlackView {
   const blocks = buildAppHomeHeaderBlocks();
 
   if (options.isInstalled === false) {
@@ -376,7 +379,7 @@ export function buildAgentPickerModal(args: {
   readonly includeOrgDefault: boolean;
   readonly orgDefaultName: string | null;
   readonly privateMetadata?: string;
-}): View {
+}): SlackView {
   const orgDefaultLabel = args.orgDefaultName
     ? `Use org default (${args.orgDefaultName})`
     : "Use org default";
@@ -451,7 +454,7 @@ export function buildModelPickerModal(args: {
   readonly options: readonly ModelPickerOption[];
   readonly currentSelectedModel: string | null;
   readonly privateMetadata?: string;
-}): View {
+}): SlackView {
   const selectOptions = args.options.map((option) => {
     return {
       text: {

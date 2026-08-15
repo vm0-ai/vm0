@@ -1,20 +1,21 @@
 import { randomUUID } from "node:crypto";
-
 import {
   chatThreadMetadataContract,
   chatThreadRenameContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
+import { zeroChatThreadRenameRoutes } from "../zero-chat-threads-rename";
 
 const context = testContext();
 const store = createStore();
@@ -78,11 +79,15 @@ function zeroToken(args: {
 }
 
 function renameClient() {
-  return setupApp({ context })(chatThreadRenameContract);
+  return setupApp({ context, routes: zeroChatThreadRenameRoutes })(
+    chatThreadRenameContract,
+  );
 }
 
 function metadataClient() {
-  return setupApp({ context })(chatThreadMetadataContract);
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
 }
 
 describe("POST /api/zero/chat-threads/:id/rename", () => {
@@ -122,6 +127,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
       agentId: fixture.agentId,
       title: "CLI renamed title",
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      serviceTier: null,
     });
   });
 

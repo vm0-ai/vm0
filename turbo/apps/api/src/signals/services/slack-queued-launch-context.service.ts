@@ -1,22 +1,15 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
-import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import {
-  CANONICAL_ASSET_VERSION,
-  chatEventAssetRefs,
-  runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
-import { and, asc, eq, isNull, or } from "drizzle-orm";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
+import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 import {
   buildSlackSystemPrompt,
   canonicalSlackAgentPrompt,
   resolveUserMentions,
-  type SlackPromptAsset,
 } from "../../lib/slack-webhook-context";
-import { inferMimetype } from "../../lib/mimetype";
 import type { SlackUserInfo } from "../external/slack-message-client";
 import type { Db } from "../external/db";
 
@@ -37,24 +30,28 @@ export interface SlackQueuedLaunchMaterial {
 type SlackLaunchContextRow = Pick<
   typeof chatSlackContext.$inferSelect,
   | "channelId"
+  | "botUserId"
   | "conversationContext"
   | "messageText"
   | "messageFiles"
+  | "messageAssets"
   | "mentionDisplayNames"
   | "senderDisplayName"
   | "senderUserId"
   | "channelType"
   | "threadTs"
   | "routeThreadTs"
-> & { readonly botUserId: string };
+>;
 
 function requiredSlackLaunchContext(row: SlackLaunchContextRow | undefined) {
   if (
     !row ||
     row.channelId === null ||
+    row.botUserId === null ||
     row.conversationContext === null ||
     row.messageText === null ||
     row.messageFiles === null ||
+    row.messageAssets === null ||
     row.mentionDisplayNames === null ||
     row.channelType === null ||
     row.threadTs === null
@@ -64,9 +61,11 @@ function requiredSlackLaunchContext(row: SlackLaunchContextRow | undefined) {
   return {
     ...row,
     channelId: row.channelId,
+    botUserId: row.botUserId,
     conversationContext: row.conversationContext,
     messageText: row.messageText,
     messageFiles: row.messageFiles,
+    messageAssets: row.messageAssets,
     mentionDisplayNames: row.mentionDisplayNames,
     channelType: row.channelType,
     threadTs: row.threadTs,
@@ -84,11 +83,12 @@ async function loadSlackLaunchContext(
 ) {
   const [row] = await db
     .select({
-      botUserId: slackOrgInstallations.botUserId,
       channelId: chatSlackContext.channelId,
+      botUserId: chatSlackContext.botUserId,
       conversationContext: chatSlackContext.conversationContext,
       messageText: chatSlackContext.messageText,
       messageFiles: chatSlackContext.messageFiles,
+      messageAssets: chatSlackContext.messageAssets,
       mentionDisplayNames: chatSlackContext.mentionDisplayNames,
       senderDisplayName: chatSlackContext.senderDisplayName,
       senderUserId: chatSlackContext.senderUserId,
@@ -141,49 +141,10 @@ async function loadSlackLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "slack"),
-        eq(chatEvents.triggerSource, "slack"),
       ),
     )
     .limit(1);
   return requiredSlackLaunchContext(row);
-}
-
-async function loadSlackPromptAssets(
-  db: Db,
-  args: { readonly eventId: string; readonly userId: string },
-): Promise<SlackPromptAsset[]> {
-  const rows = await db
-    .select({
-      assetId: runUploadedFiles.id,
-      position: chatEventAssetRefs.position,
-      filename: runUploadedFiles.filename,
-      contentType: runUploadedFiles.contentType,
-      status: runUploadedFiles.materializationStatus,
-    })
-    .from(chatEventAssetRefs)
-    .innerJoin(
-      runUploadedFiles,
-      eq(runUploadedFiles.id, chatEventAssetRefs.assetId),
-    )
-    .where(
-      and(
-        eq(chatEventAssetRefs.chatEventId, args.eventId),
-        eq(runUploadedFiles.userId, args.userId),
-        eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
-        eq(runUploadedFiles.classification, "input"),
-      ),
-    )
-    .orderBy(asc(chatEventAssetRefs.position));
-  return rows.map((row) => {
-    const filename = row.filename ?? row.assetId;
-    return {
-      assetId: row.assetId,
-      position: row.position,
-      filename,
-      contentType: row.contentType ?? inferMimetype(filename),
-      status: row.status ?? "failed",
-    };
-  });
 }
 
 function mentionUserInfoMap(
@@ -209,10 +170,6 @@ export async function loadSlackQueuedLaunchMaterial(
   if (!context) {
     return null;
   }
-  const assets = await loadSlackPromptAssets(db, {
-    eventId: args.eventId,
-    userId: args.userId,
-  });
   const messagePrompt = resolveUserMentions(
     context.messageText,
     mentionUserInfoMap(context.mentionDisplayNames),
@@ -221,7 +178,7 @@ export async function loadSlackQueuedLaunchMaterial(
     prompt: canonicalSlackAgentPrompt(
       messagePrompt,
       context.messageFiles,
-      assets,
+      context.messageAssets,
     ),
     appendSystemPrompt: buildSlackSystemPrompt({
       botUserId: context.botUserId,

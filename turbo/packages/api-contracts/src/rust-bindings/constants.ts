@@ -15,11 +15,13 @@ import {
   CLIENT_VERSION_HEADER,
 } from "../contracts/client-headers";
 import {
+  ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANONICAL_GUEST_HOME_DIR,
+  CANONICAL_PI_SESSION_DIR,
   CANONICAL_WORKING_DIR,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
-  NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
-  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -30,6 +32,10 @@ import {
   SESSION_HISTORY_ENCODING_ZSTD,
   SESSION_HISTORY_GZIP_MIN_BYTES,
 } from "../contracts/runners";
+import {
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
+} from "../contracts/storages";
 
 export type RustConstantValue =
   | {
@@ -86,10 +92,11 @@ const modelProviderEnvPlaceholderModule = [
 const clientHeadersModule = ["client", "headers"] as const;
 const clientTypesModule = ["client", "types"] as const;
 const runnerPathsModule = ["runners", "paths"] as const;
+const storagesModule = ["storages"] as const;
 
 export const rustConstantRootDoc = [
-  "Generated Rust constants for `@vm0/api-contracts`.",
-  "Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.",
+  "Generated Rust constants for `@okouai/api-contracts`.",
+  "Do not edit by hand; regenerate with `cd turbo && pnpm -F @okouai/api-contracts generate:rust`.",
   "These constants are shared TypeScript/Rust contract values.",
   "Token-shaped placeholder values in this module are fake marker bytes, not secrets.",
 ] as const;
@@ -147,6 +154,12 @@ export const rustConstantModuleDocs = [
     rustModulePath: runnerPathsModule,
     rustDoc: [
       "Runner and guest filesystem path constants shared across Rust and TypeScript.",
+    ],
+  },
+  {
+    rustModulePath: storagesModule,
+    rustDoc: [
+      "Storage manifest contract constants shared by TypeScript and Rust.",
     ],
   },
 ] satisfies readonly RustConstantModuleDoc[];
@@ -257,20 +270,28 @@ export const rustConstantBindings = [
   },
   {
     rustModulePath: ["runners"],
-    rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX",
-    value: rustU64(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX),
+    rustConstName: "ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES",
+    value: rustU64(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
     rustDoc: [
-      "Maximum connector slugs accepted by the runner network policy refresh endpoint.",
-      "Rust runners use this shared contract value to split refresh requests before calling the API.",
+      "Maximum serialized active-input control payload accepted by runner and guest process control.",
+      "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
     ],
   },
   {
     rustModulePath: ["runners"],
-    rustConstName: "NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE",
-    value: rustString(NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE),
+    rustConstName: "CONNECTOR_RUNTIME_SYNC_TARGETS_MAX",
+    value: rustU64(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX),
     rustDoc: [
-      "API error code returned when network policy refresh targets a terminal run.",
-      "Rust runners use this shared contract value to distinguish terminal reconciliation from ambiguous refresh failures.",
+      "Maximum connector runtime targets accepted by the sync endpoint.",
+      "Rust runners use this shared contract value to split target batches before calling the API.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE",
+    value: rustString(CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE),
+    rustDoc: [
+      "API error code returned when connector runtime synchronization targets a terminal run.",
     ],
   },
   {
@@ -381,6 +402,33 @@ export const rustConstantBindings = [
     rustDoc: [
       "Canonical working directory path expected inside runner guests.",
       "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
+    ],
+  },
+  {
+    rustModulePath: runnerPathsModule,
+    rustConstName: "CANONICAL_PI_SESSION_DIR",
+    value: rustString(CANONICAL_PI_SESSION_DIR),
+    rustDoc: [
+      "Official Pi JSONL session directory for the canonical guest workspace.",
+      "Guest checkpointing validates Pi session files under this directory and runner restore materializes resume history here.",
+    ],
+  },
+  {
+    rustModulePath: storagesModule,
+    rustConstName: "STORAGE_MANIFEST_MAX_FILES",
+    value: rustU64(STORAGE_MANIFEST_MAX_FILES),
+    rustDoc: [
+      "Maximum file entries accepted in a storage manifest.",
+      "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
+    ],
+  },
+  {
+    rustModulePath: storagesModule,
+    rustConstName: "STORAGE_MANIFEST_MAX_PATH_BYTES",
+    value: rustU64(STORAGE_MANIFEST_MAX_PATH_BYTES),
+    rustDoc: [
+      "Maximum cumulative UTF-8 path bytes accepted in a storage manifest.",
+      "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
     ],
   },
   ...codexOauthPlaceholderNames.map((name) => {

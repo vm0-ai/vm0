@@ -5,9 +5,21 @@ import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { Realtime, type AuthOptions, type InboundMessage } from "ably";
 import type {
-  ZeroBuiltInGenerationAcceptedResponse,
-  ZeroBuiltInGenerationResponse,
-} from "@vm0/api-contracts/contracts/zero-built-in-generation";
+  BuiltInGenerationAcceptedResponse,
+  BuiltInGenerationResponse,
+} from "@okouai/api-contracts/contracts/built-in-generation";
+import type {
+  ZeroAvatarVideoAvatar,
+  ZeroAvatarVideoAvatarsQuery,
+  ZeroAvatarVideoGenerateRequest,
+  ZeroAvatarVideoGenerateResponse,
+  ZeroAvatarVideoVoice,
+  ZeroAvatarVideoVoicesQuery,
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
+import {
+  zeroAvatarVideoAvatarsResponseSchema,
+  zeroAvatarVideoVoicesResponseSchema,
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
@@ -18,16 +30,12 @@ const BUILT_IN_GENERATION_WAIT_TIMEOUT_MS_BY_TYPE = {
   video: 30 * 60 * 1000,
   presentation: 60 * 60 * 1000,
   website: 60 * 60 * 1000,
-} as const satisfies Record<
-  ZeroBuiltInGenerationAcceptedResponse["type"],
-  number
->;
+} as const satisfies Record<BuiltInGenerationAcceptedResponse["type"], number>;
 const ABLY_CONNECT_TIMEOUT_MS = 10_000;
 
 /**
- * Minimal extension → MIME map covering the server allowlist for
- * `/api/zero/uploads/prepare`. Kept in this file rather than a shared module
- * to match the YAGNI pattern used elsewhere in the CLI.
+ * Known extension → MIME map for accurate upload metadata. Unknown extensions
+ * remain opaque as `application/octet-stream`.
  */
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
@@ -62,6 +70,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".md": "text/markdown",
   ".html": "text/html",
   ".htm": "text/html",
+  ".har": "application/json",
   ".json": "application/json",
   ".xml": "application/xml",
   ".yaml": "application/yaml",
@@ -127,7 +136,7 @@ interface DownloadWebFileResult {
 
 /**
  * Download a web-uploaded file to a local path, streaming the response body
- * to disk. Authenticates via ZERO_TOKEN. Response is binary, so this bypasses
+ * to disk. Authenticates via OKOU_TOKEN. Response is binary, so this bypasses
  * the typed contract client.
  */
 export async function downloadWebFile(
@@ -140,7 +149,7 @@ export async function downloadWebFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/zero/web/download-file", baseUrl);
+  const url = new URL("/api/okou/web/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
 
   const headers: Record<string, string> = {
@@ -242,6 +251,7 @@ interface GenerateWebImageResult {
   contentType: string;
   size: number;
   url: string;
+  embedUrl?: string;
   creditsCharged: number;
   model: string;
   provider: string;
@@ -302,6 +312,15 @@ interface GenerateWebVideoResult {
   generateAudio: boolean;
   sourceUrl: string;
   requestId?: string;
+}
+
+interface ListWebAvatarVideoAvatarsResult {
+  readonly avatars: readonly ZeroAvatarVideoAvatar[];
+}
+
+interface ListWebAvatarVideoVoicesResult {
+  readonly voices: readonly ZeroAvatarVideoVoice[];
+  readonly hasMore: boolean;
 }
 
 function shouldIncludePayloadValue(value: unknown): boolean {
@@ -393,7 +412,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isBuiltInGenerationAcceptedResponse(
   value: unknown,
-): value is ZeroBuiltInGenerationAcceptedResponse {
+): value is BuiltInGenerationAcceptedResponse {
   if (!isRecord(value)) {
     return false;
   }
@@ -414,7 +433,7 @@ interface BuiltInGenerationNotifier {
 }
 
 function createBuiltInGenerationRealtime(
-  accepted: ZeroBuiltInGenerationAcceptedResponse,
+  accepted: BuiltInGenerationAcceptedResponse,
 ): Realtime {
   let nextAuthRequest = accepted.realtime.tokenRequest;
   const authCallback: NonNullable<AuthOptions["authCallback"]> = (
@@ -466,7 +485,7 @@ function waitForRealtimeConnected(
 }
 
 async function createBuiltInGenerationNotifier(
-  accepted: ZeroBuiltInGenerationAcceptedResponse,
+  accepted: BuiltInGenerationAcceptedResponse,
 ): Promise<BuiltInGenerationNotifier | null> {
   const ably = createBuiltInGenerationRealtime(accepted);
 
@@ -533,9 +552,9 @@ async function getBuiltInGenerationStatus(
   baseUrl: string,
   token: string,
   generationId: string,
-): Promise<ZeroBuiltInGenerationResponse> {
+): Promise<BuiltInGenerationResponse> {
   const response = await fetch(
-    new URL(`/api/zero/built-in-generations/${generationId}`, baseUrl),
+    new URL(`/api/okou/built-in-generations/${generationId}`, baseUrl),
     { headers: authenticatedJsonHeaders(token) },
   );
 
@@ -547,11 +566,11 @@ async function getBuiltInGenerationStatus(
     throw new ApiRequestError(message, code, response.status);
   }
 
-  return (await response.json()) as ZeroBuiltInGenerationResponse;
+  return (await response.json()) as BuiltInGenerationResponse;
 }
 
 function readBuiltInGenerationResult<T>(
-  status: ZeroBuiltInGenerationResponse,
+  status: BuiltInGenerationResponse,
   fallback: string,
 ): T | undefined {
   if (status.status === "completed") {
@@ -606,7 +625,7 @@ function statusForBuiltInGenerationError(code: string): number {
 }
 
 async function waitForBuiltInGenerationResult<T>(args: {
-  readonly accepted: ZeroBuiltInGenerationAcceptedResponse;
+  readonly accepted: BuiltInGenerationAcceptedResponse;
   readonly baseUrl: string;
   readonly token: string;
   readonly fallback: string;
@@ -680,13 +699,13 @@ async function readBuiltInGenerationResponse<T>(args: {
 
 /**
  * Upload a local file and receive back metadata including a public CDN URL.
- * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI
+ * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI
  * PAT / Clerk session.
  *
  * Three-step flow:
- *   1. POST /api/zero/uploads/prepare — server signs a PUT URL for R2
+ *   1. POST /api/okou/uploads/prepare — server signs a PUT URL for R2
  *   2. PUT the file bytes directly to R2
- *   3. POST /api/zero/uploads/complete — server verifies the object and
+ *   3. POST /api/okou/uploads/complete — server verifies the object and
  *      records any run-scoped upload association
  *
  * Step 2 never touches the Next.js runtime, which lifts the cap from
@@ -720,7 +739,7 @@ export async function uploadWebFile(
     "Content-Type": "application/json",
   };
 
-  const prepareUrl = new URL("/api/zero/uploads/prepare", baseUrl);
+  const prepareUrl = new URL("/api/okou/uploads/prepare", baseUrl);
   const prepareRes = await fetch(prepareUrl, {
     method: "POST",
     headers: headersWithCliClientHeaders(prepareHeaders),
@@ -728,7 +747,6 @@ export async function uploadWebFile(
       filename,
       contentType,
       size: stats.size,
-      supportsUploadHeaders: true,
     }),
   });
 
@@ -760,7 +778,7 @@ export async function uploadWebFile(
     );
   }
 
-  const completeUrl = new URL("/api/zero/uploads/complete", baseUrl);
+  const completeUrl = new URL("/api/okou/uploads/complete", baseUrl);
   const completeRes = await fetch(completeUrl, {
     method: "POST",
     headers: headersWithCliClientHeaders(prepareHeaders),
@@ -791,7 +809,7 @@ export async function uploadWebFile(
 
 /**
  * Generate billed speech audio from text and receive the public CDN URL.
- * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
+ * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI PAT /
  * Clerk session.
  */
 export async function generateWebVoice(
@@ -808,7 +826,7 @@ export async function generateWebVoice(
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(new URL("/api/zero/voice-io/speech", baseUrl), {
+  const response = await fetch(new URL("/api/okou/voice-io/speech", baseUrl), {
     method: "POST",
     headers: headersWithCliClientHeaders(headers),
     body: JSON.stringify({
@@ -831,7 +849,7 @@ export async function generateWebVoice(
 
 /**
  * Generate a billed image from a prompt and receive the public CDN URL.
- * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
+ * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI PAT /
  * Clerk session.
  */
 export async function generateWebImage(
@@ -849,7 +867,7 @@ export async function generateWebImage(
   };
 
   const response = await fetch(
-    new URL("/api/zero/image-io/generate", baseUrl),
+    new URL("/api/okou/image-io/generate", baseUrl),
     {
       method: "POST",
       headers: headersWithCliClientHeaders(headers),
@@ -903,7 +921,7 @@ export async function generateWebImage(
 
 /**
  * Generate a billed video from a prompt and receive the public CDN URL.
- * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
+ * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI PAT /
  * Clerk session.
  */
 export async function generateWebVideo(
@@ -921,7 +939,7 @@ export async function generateWebVideo(
   };
 
   const response = await fetch(
-    new URL("/api/zero/video-io/generate", baseUrl),
+    new URL("/api/okou/video-io/generate", baseUrl),
     {
       method: "POST",
       headers: headersWithCliClientHeaders(headers),
@@ -943,6 +961,101 @@ export async function generateWebVideo(
     token,
     fallback: "Failed to generate video",
   });
+}
+
+/**
+ * Generate a billed JoggAI talking-avatar video and receive its public CDN URL.
+ */
+export async function generateWebAvatarVideo(
+  options: ZeroAvatarVideoGenerateRequest,
+): Promise<ZeroAvatarVideoGenerateResponse> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(
+    new URL("/api/okou/avatar-video/generate", baseUrl),
+    {
+      method: "POST",
+      headers: headersWithCliClientHeaders({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(options),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate avatar video",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return readBuiltInGenerationResponse<ZeroAvatarVideoGenerateResponse>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate avatar video",
+  });
+}
+
+function avatarVideoCollectionUrl(
+  baseUrl: string,
+  collection: "avatars" | "voices",
+  query: Record<string, string | number | undefined>,
+): URL {
+  const url = new URL(`/api/okou/avatar-video/${collection}`, baseUrl);
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  return url;
+}
+
+async function getAvatarVideoCollection(
+  url: URL,
+  fallback: string,
+): Promise<unknown> {
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(url, {
+    headers: headersWithCliClientHeaders({
+      Authorization: `Bearer ${token}`,
+    }),
+  });
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(response, fallback);
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return await response.json();
+}
+
+export async function listWebAvatarVideoAvatars(
+  query: ZeroAvatarVideoAvatarsQuery,
+): Promise<ListWebAvatarVideoAvatarsResult> {
+  const baseUrl = await getBaseUrl();
+  return zeroAvatarVideoAvatarsResponseSchema.parse(
+    await getAvatarVideoCollection(
+      avatarVideoCollectionUrl(baseUrl, "avatars", query),
+      "Failed to list JoggAI avatars",
+    ),
+  );
+}
+
+export async function listWebAvatarVideoVoices(
+  query: ZeroAvatarVideoVoicesQuery,
+): Promise<ListWebAvatarVideoVoicesResult> {
+  const baseUrl = await getBaseUrl();
+  return zeroAvatarVideoVoicesResponseSchema.parse(
+    await getAvatarVideoCollection(
+      avatarVideoCollectionUrl(baseUrl, "voices", query),
+      "Failed to list JoggAI voices",
+    ),
+  );
 }
 
 export interface TranscribeAudioSegment {
@@ -970,7 +1083,7 @@ export async function transcribeAudio(
     Authorization: `Bearer ${token}`,
   };
 
-  const url = new URL("/api/zero/voice-io/stt", baseUrl);
+  const url = new URL("/api/okou/voice-io/stt", baseUrl);
   if (options.verbose) {
     url.searchParams.set("verbose", "true");
   }

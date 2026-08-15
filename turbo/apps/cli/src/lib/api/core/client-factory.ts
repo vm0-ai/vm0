@@ -1,5 +1,5 @@
 import { getApiUrl, getActiveToken } from "../config";
-import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
+import type { ApiErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import { cliClientHeaderApi } from "../client-headers";
 
 /**

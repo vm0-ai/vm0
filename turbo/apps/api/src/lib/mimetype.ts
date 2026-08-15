@@ -36,6 +36,7 @@ const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   md: "text/markdown",
   html: "text/html",
   htm: "text/html",
+  har: "application/json",
   json: "application/json",
   xml: "application/xml",
   yaml: "application/yaml",

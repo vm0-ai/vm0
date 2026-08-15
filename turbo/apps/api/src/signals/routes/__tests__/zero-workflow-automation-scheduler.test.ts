@@ -1,15 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { createStore } from "ccstate";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
@@ -17,29 +18,41 @@ import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
-import { chatEventAutomationPart } from "./helpers/chat-event";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+import { zeroAgentsRoutes } from "../zero-agents";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...testWorkflowAutomationExecutionRoutes,
+  ...zeroAgentsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+  ...zeroWorkflowsRoutes,
+]);
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
+const runReadsApi = createRunReadsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const chatFilesApi = createChatFilesBddApi(context);
 const computerUseApi = createComputerUseBddApi(context);
 
 const WORKFLOW_NAME = "scheduler-workflow";
-const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
-  "/api/cron/execute-workflow-automations";
-const CRON_SECRET = "test-cron-secret";
 
 interface Scenario {
   readonly actor: ApiTestUser;
@@ -55,7 +68,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function workflowAutomationExecutionClient() {
@@ -72,12 +87,12 @@ function expectOk(response: Response, operation: string): void {
   throw new Error(`${operation} failed with ${response.status}`);
 }
 
-function zeroTokenFromClaim(
+function okouTokenFromClaim(
   claim: Awaited<ReturnType<typeof runsApi.claimRunnerJob>>,
 ): string {
-  const token = claim.environment?.ZERO_TOKEN;
+  const token = claim.environment?.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
   }
   return token;
 }
@@ -86,7 +101,6 @@ async function setup(
   options: { readonly timezone?: string } = {},
 ): Promise<Scenario> {
   const runnerGroup = runsApi.configureRunnerGroup();
-  mockEnv("CRON_SECRET", CRON_SECRET);
   const { actor } = await wf.setupWorkflowOrg({ timezone: options.timezone });
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped workflow actor");
@@ -164,7 +178,6 @@ async function executeDueWorkflowAutomations(
 interface WorkflowRunMessage {
   readonly runId: string;
   readonly runGroupId?: string;
-  readonly triggerSource: string | undefined;
   readonly triggerBrief: string | null | undefined;
   readonly workflowId: string | undefined;
   readonly workflowName: string;
@@ -193,7 +206,6 @@ async function workflowRunMessages(
         ...(message.runGroupId === undefined
           ? {}
           : { runGroupId: message.runGroupId }),
-        triggerSource: message.triggerSource,
         triggerBrief: automationPart.automationBrief,
         workflowId: automationPart.workflowId,
         workflowName: automationPart.workflowName,
@@ -210,11 +222,18 @@ async function onlyWorkflowRunMessage(
   return messages[0]!;
 }
 
-function friendlyTriggeredAtPattern(timezone: string): string {
-  return String.raw`Triggered at \d{1,2}:\d{2} [AP]M, [A-Z][a-z]{2} \d{1,2}, \d{4} \(${timezone.replace(
-    /\//gu,
-    String.raw`\/`,
-  )}\)`;
+async function onlyWorkflowDisplayText(
+  threadId: string,
+): Promise<string | null> {
+  const messages = await wf.readThreadEvents(threadId);
+  const workflowMessages = messages.filter((message) => {
+    return (
+      message.eventType === "input.prompt" &&
+      chatEventAutomationPart(message)?.workflowName === WORKFLOW_NAME
+    );
+  });
+  expect(workflowMessages).toHaveLength(1);
+  return chatEventDisplayText(workflowMessages[0]!);
 }
 
 async function completeRunThroughSandbox(
@@ -245,30 +264,17 @@ async function completeRunThroughSandbox(
 }
 
 async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
-  const response = await createApp({ signal: context.signal }).request(
-    `/api/zero/workflows/${scenario.workflowId}`,
-    {
-      method: "DELETE",
-      headers: { authorization: "Bearer clerk-session" },
-    },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/zero/workflows/${scenario.workflowId}`, {
+    method: "DELETE",
+    headers: { authorization: "Bearer clerk-session" },
+  });
   await expectOk(response, "delete workflow");
 }
 
-describe("zero workflow automation scheduler", () => {
-  it("rejects unauthenticated production cron requests", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
-
-    const response = await createApp({ signal: context.signal }).request(
-      CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
-    );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-    });
-  });
-
+describe("okou workflow automation scheduler", () => {
   it("does not expose scoped workflow execution in production", async () => {
     mockEnv("ENV", "production");
 
@@ -319,7 +325,7 @@ describe("zero workflow automation scheduler", () => {
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     await computerUseApi.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(claim) },
+      { bearer: okouTokenFromClaim(claim) },
       [200],
     );
     const createdRun = await runsApi.readRun(scenario.actor, run.runId);
@@ -339,7 +345,7 @@ describe("zero workflow automation scheduler", () => {
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     const denied = await computerUseApi.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(claim) },
+      { bearer: okouTokenFromClaim(claim) },
       [403],
     );
     expect(denied.body).toMatchObject({
@@ -359,7 +365,9 @@ describe("zero workflow automation scheduler", () => {
     mockGmailConnectorOAuth({ email: "automation-user@example.com" });
     await wf.connectConnector(scenario.actor, "gmail");
     await accept(
-      setupApp({ context })(zeroUserConnectorsContract).update({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroUserConnectorsContract,
+      ).update({
         headers: authHeaders(),
         params: { id: scenario.agentId },
         body: { enabledConnectorSlugs: ["gmail"] },
@@ -429,14 +437,15 @@ describe("zero workflow automation scheduler", () => {
 
     const run = await onlyWorkflowRunMessage(threadId);
     expect(run.runGroupId).toBeUndefined();
-    expect(run.triggerSource).toBe("workflow-schedule");
-    expect(run.triggerBrief).toMatch(
-      new RegExp(
-        `^${friendlyTriggeredAtPattern(
-          "Asia/Shanghai",
-        )}\\nSchedule: Every day at 5:00 PM$`,
-        "u",
-      ),
+    const logs = await runReadsApi.requestListLogs(scenario.actor, {}, [200]);
+    expect(logs.body.data).toContainEqual(
+      expect.objectContaining({
+        id: run.runId,
+        triggerSource: "automation-schedule",
+      }),
+    );
+    await expect(onlyWorkflowDisplayText(threadId)).resolves.toBe(
+      "This workflow started on schedule.",
     );
 
     const automation = await wf.readAutomation(created.body.id);
@@ -496,27 +505,19 @@ describe("zero workflow automation scheduler", () => {
     expect(automation.enabled).toBeFalsy();
     expect(automation.nextRunAt).toBeNull();
 
-    const run = await onlyWorkflowRunMessage(threadId);
-    expect(run.triggerBrief).toMatch(
-      new RegExp(
-        `^Once at \\d{1,2}:\\d{2} [AP]M, [A-Z][a-z]{2} \\d{1,2}, \\d{4} \\(Asia\\/Shanghai\\)$`,
-        "u",
-      ),
+    await expect(onlyWorkflowDisplayText(threadId)).resolves.toBe(
+      "The one-time scheduled run started.",
     );
   });
 
-  it("fires a due loop automation with a persisted friendly automation brief", async () => {
+  it("fires a due loop automation with a user-facing message", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
     const automation = await createDueLoopAutomation(scenario, 3600);
 
     await executeDueWorkflowAutomations(automation.automationId);
 
-    const run = await onlyWorkflowRunMessage(automation.threadId);
-    expect(run.triggerBrief).toMatch(
-      new RegExp(
-        `^${friendlyTriggeredAtPattern("Asia/Shanghai")}\\nEvery 1 hour$`,
-        "u",
-      ),
+    await expect(onlyWorkflowDisplayText(automation.threadId)).resolves.toBe(
+      "The next recurring run started.",
     );
     await disableAutomation(automation.automationId);
   });
@@ -540,7 +541,9 @@ describe("zero workflow automation scheduler", () => {
     mocks.clerk.session(member.userId, scenario.orgId, "org:member");
     const apiKey = await runsApi.createCliToken(member);
     await accept(
-      setupApp({ context })(zeroAgentsMainContract).list({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsMainContract,
+      ).list({
         headers: { authorization: `Bearer ${apiKey.token}` },
       }),
       [200],
@@ -563,7 +566,9 @@ describe("zero workflow automation scheduler", () => {
     // The agent owner flips the agent private, hiding it from the member.
     mocks.clerk.session(scenario.userId, scenario.orgId);
     await accept(
-      setupApp({ context })(zeroAgentsByIdContract).updateMetadata({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsByIdContract,
+      ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },
         body: { visibility: "private" },
@@ -576,7 +581,9 @@ describe("zero workflow automation scheduler", () => {
     // Restore visibility so the member's product reads work again; the skip
     // already happened during the tick above.
     await accept(
-      setupApp({ context })(zeroAgentsByIdContract).updateMetadata({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsByIdContract,
+      ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },
         body: { visibility: "public" },
@@ -809,7 +816,6 @@ describe("zero workflow automation scheduler", () => {
     expect(historicalRuns).toStrictEqual([
       {
         runId: run.runId,
-        triggerSource: "workflow-schedule",
         triggerBrief: run.triggerBrief,
         workflowId: scenario.workflowId,
         workflowName: WORKFLOW_NAME,

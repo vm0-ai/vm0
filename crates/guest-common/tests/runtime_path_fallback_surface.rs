@@ -23,11 +23,11 @@ fn assert_no_fallback_surface(source: &str, label: &str) {
     let source = non_comment_lines(source).collect::<Vec<_>>().join("\n");
     assert!(
         !source.contains("static RUN_ID"),
-        "{label} must not cache VM0_RUN_ID in process-global state"
+        "{label} must not cache OKOU_RUN_ID in process-global state"
     );
     assert!(
         !source.contains("RUN_ID_ENV"),
-        "{label} must not read VM0_RUN_ID to derive runtime log paths"
+        "{label} must not read OKOU_RUN_ID to derive runtime log paths"
     );
     assert!(
         !source.contains("run_dir_from_env"),

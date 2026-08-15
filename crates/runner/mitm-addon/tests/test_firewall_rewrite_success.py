@@ -11,8 +11,8 @@ from tests.firewall_rewrite_helpers import make_allow, make_success_rewrite_inpu
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
 
-def _fail_if_ordinary_upstream_credentials_are_revalidated() -> bool:
-    raise AssertionError("ordinary upstream credential guard must not run")
+def _allow_current_firewall_authorization() -> bool:
+    return True
 
 
 class TestAuthBaseUrlRewriteSuccess:
@@ -81,9 +81,7 @@ class TestAuthBaseUrlRewriteSuccess:
                 flow,
                 allow,
                 vm_info,
-                revalidate_ordinary_upstream_credentials=(
-                    _fail_if_ordinary_upstream_credentials_are_revalidated
-                ),
+                revalidate_current_firewall_authorization=_allow_current_firewall_authorization,
             )
         assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
         assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True

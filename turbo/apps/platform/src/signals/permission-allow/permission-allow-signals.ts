@@ -5,18 +5,19 @@ import {
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
   zeroUserPermissionGrantsContract,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
-import { agentById, currentAgentId$, reloadAgentById$ } from "../agent.ts";
+import { agentById, currentAgentId$ } from "../agent.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { retryTransientLoad } from "../utils.ts";
+import { rootSignal$ } from "../root-signal.ts";
 import { resolveActiveUserPermissionGrantPolicy } from "../user-permission-grants.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -62,10 +63,7 @@ export const permissionAllowExpiresIn$ = computed((get) => {
 // Agent data
 // ---------------------------------------------------------------------------
 
-const internalAgentReload$ = state(0);
-
 export const permissionAllowAgent$ = computed((get) => {
-  get(internalAgentReload$);
   const agentId = get(permissionAllowAgentId$);
   if (!agentId) {
     return null;
@@ -144,9 +142,15 @@ export function userPermissionGrantsByAgent(
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    const result = await retryTransientLoad(() => {
-      return accept(client.list({ query: params }), [200]);
-    });
+    const result = await retryTransientLoad((signal) => {
+      return accept(
+        client.list({
+          query: params,
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+    }, get(rootSignal$));
     return result.body;
   });
 }
@@ -157,9 +161,15 @@ export function userPermissionGrantsByAgentIfExists(
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    const result = await retryTransientLoad(() => {
-      return accept(client.list({ query: params }), [200, 404]);
-    });
+    const result = await retryTransientLoad((signal) => {
+      return accept(
+        client.list({
+          query: params,
+          fetchOptions: { signal },
+        }),
+        [200, 404],
+      );
+    }, get(rootSignal$));
     return result.status === 404 ? null : result.body;
   });
 }
@@ -223,10 +233,6 @@ export const applyUserPermissionGrants$ = command(
     set(internalUserPermissionGrantsReload$, (prev) => {
       return prev + 1;
     });
-    set(internalAgentReload$, (prev) => {
-      return prev + 1;
-    });
-    set(reloadAgentById$);
     return result.body;
   },
 );

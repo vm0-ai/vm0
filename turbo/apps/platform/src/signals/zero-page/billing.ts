@@ -2,6 +2,11 @@ import { command, computed, state } from "ccstate";
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCatalogContract,
+  zeroBillingUsagePackCheckoutContract,
+  zeroBillingUsagePackManagementContract,
+  zeroBillingUsagePackCreditsContract,
+  zeroBillingUsagePackMigrationContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -11,18 +16,41 @@ import {
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { toast } from "@vm0/ui/components/ui/sonner";
+  type ConcurrencySubscriptionChangePreviewResponse,
+  type CreditPurchasePreviewResponse,
+  type MemberUsagePack,
+  type UsagePackCreditsResponse,
+  type UsagePackMigrationStateResponse,
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
+import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
-import { setAblyLoop$ } from "../realtime.ts";
-import { tapError } from "../utils.ts";
+import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
+import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
+import { foregroundReady$ } from "../auth-retry.ts";
+import { isOrgAdmin$ } from "../org.ts";
+import { settle, tapError, withCleanup } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
-  applyStoredAdAttribution,
-  getStoredAdAttributionMetadata,
+  applyStoredAdAttribution$,
+  readStoredAdAttributionMetadata$,
 } from "../bootstrap/ad-attribution.ts";
+import {
+  capturePaidOnboardingCheckoutCreated$,
+  capturePaidOnboardingRedirectToStripe$,
+} from "../bootstrap/paid-funnel-telemetry.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
+import {
+  setUsagePackMigrationRevisionPreview$,
+  setUsagePackMigrationPreview$,
+  setUsagePackSubscriptionChangePreview$,
+  usagePackMigrationRevisionPreview$,
+  usagePackSubscriptionChangePreview$,
+} from "./settings/usage-pack-pricing-state.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,9 +67,18 @@ type DowngradeTargetTier = "limited-free-1" | "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
+type CreditPurchaseOrigin = "billing" | "chat";
+type ConcurrencyPurchaseOrigin = "billing" | "queue";
+export type ConcurrencyChangeMode = "quantity" | "cancel";
 
 const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
 const DOWNGRADE_PAYMENT_PENDING_KEY = "vm0:billing:downgrade-payment-pending";
+const restorePaymentPendingStorage = sessionStorageSignals(
+  RESTORE_PAYMENT_PENDING_KEY,
+);
+const downgradePaymentPendingStorage = sessionStorageSignals(
+  DOWNGRADE_PAYMENT_PENDING_KEY,
+);
 export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN = 1;
 export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
 
@@ -76,21 +113,13 @@ export function apiTierToBillingTier(tier: string | undefined): BillingTier {
   return "pro-suspend";
 }
 
-function pendingRestoreStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
+const rememberPendingRestorePayment$ = command(({ set }) => {
+  set(restorePaymentPendingStorage.set$, "1");
+});
 
-  return window.sessionStorage;
-}
-
-function rememberPendingRestorePayment(): void {
-  pendingRestoreStorage()?.setItem(RESTORE_PAYMENT_PENDING_KEY, "1");
-}
-
-function clearPendingRestorePayment(): void {
-  pendingRestoreStorage()?.removeItem(RESTORE_PAYMENT_PENDING_KEY);
-}
+const clearPendingRestorePayment$ = command(({ set }) => {
+  set(restorePaymentPendingStorage.clear$);
+});
 
 function downgradeSuccessToastMessage(
   targetTier: DowngradeTargetTier,
@@ -122,15 +151,15 @@ function downgradeSuccessToastMessage(
       });
 }
 
-function rememberPendingDowngradePayment(
-  targetTier: DowngradeTargetTier,
-): void {
-  pendingRestoreStorage()?.setItem(DOWNGRADE_PAYMENT_PENDING_KEY, targetTier);
-}
+const rememberPendingDowngradePayment$ = command(
+  ({ set }, targetTier: DowngradeTargetTier) => {
+    set(downgradePaymentPendingStorage.set$, targetTier);
+  },
+);
 
-function clearPendingDowngradePayment(): void {
-  pendingRestoreStorage()?.removeItem(DOWNGRADE_PAYMENT_PENDING_KEY);
-}
+const clearPendingDowngradePayment$ = command(({ set }) => {
+  set(downgradePaymentPendingStorage.clear$);
+});
 
 function pendingDowngradeTargetTier(
   value: string | null,
@@ -145,63 +174,70 @@ function pendingDowngradeTargetTier(
   return null;
 }
 
-function maybeShowPendingDowngradeToast(status: BillingStatusResponse): void {
-  const storage = pendingRestoreStorage();
-  const targetTier = pendingDowngradeTargetTier(
-    storage?.getItem(DOWNGRADE_PAYMENT_PENDING_KEY) ?? null,
-  );
-  if (!targetTier) {
-    return;
-  }
+const maybeShowPendingDowngradeToast$ = command(
+  ({ get, set }, status: BillingStatusResponse): void => {
+    const targetTier = pendingDowngradeTargetTier(
+      get(downgradePaymentPendingStorage.get$),
+    );
+    if (!targetTier) {
+      return;
+    }
 
-  const scheduledChange = status.scheduledChange;
-  const scheduled =
-    targetTier === "pro"
-      ? scheduledChange?.type === "downgrade" &&
-        scheduledChange.targetTier === "pro"
-      : scheduledChange?.type === "cancel" || status.cancelAtPeriodEnd;
-  if (!scheduled) {
-    return;
-  }
+    const scheduledChange = status.scheduledChange;
+    const scheduled =
+      targetTier === "pro"
+        ? scheduledChange?.type === "downgrade" &&
+          scheduledChange.targetTier === "pro"
+        : scheduledChange?.type === "cancel" || status.cancelAtPeriodEnd;
+    if (!scheduled) {
+      return;
+    }
 
-  storage?.removeItem(DOWNGRADE_PAYMENT_PENDING_KEY);
-  toast.success(
-    downgradeSuccessToastMessage(
-      targetTier,
-      scheduledChange?.effectiveDate ?? status.currentPeriodEnd,
-    ),
-  );
-}
+    set(downgradePaymentPendingStorage.clear$);
+    toast.success(
+      downgradeSuccessToastMessage(
+        targetTier,
+        scheduledChange?.effectiveDate ?? status.currentPeriodEnd,
+      ),
+    );
+  },
+);
 
-function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
-  const storage = pendingRestoreStorage();
-  if (storage?.getItem(RESTORE_PAYMENT_PENDING_KEY) !== "1") {
-    return;
-  }
+const maybeShowPendingRestoreToast$ = command(
+  ({ get, set }, status: BillingStatusResponse): void => {
+    if (get(restorePaymentPendingStorage.get$) !== "1") {
+      return;
+    }
 
-  const tier = apiTierToBillingTier(status.tier);
-  const restored =
-    status.hasSubscription &&
-    (tier === "pro" || tier === "team" || tier === "custom") &&
-    !status.cancelAtPeriodEnd &&
-    status.scheduledChange === null;
-  if (!restored) {
-    return;
-  }
+    const tier = apiTierToBillingTier(status.tier);
+    const restored =
+      status.hasSubscription &&
+      (tier === "pro" || tier === "team" || tier === "custom") &&
+      !status.cancelAtPeriodEnd &&
+      status.scheduledChange === null;
+    if (!restored) {
+      return;
+    }
 
-  storage.removeItem(RESTORE_PAYMENT_PENDING_KEY);
-  toast.success(
-    i18n.t(($) => {
-      return $.billing.toasts.planRestored;
-    }),
-  );
-}
+    set(restorePaymentPendingStorage.clear$);
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.planRestored;
+      }),
+    );
+  },
+);
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
+const accountMenuBillingStatusReload$ = state(0);
+const accountMenuUsagePackCreditsReload$ = state(0);
+const completedForegroundBillingCatchUp$ = state<Promise<void> | null>(null);
+const usagePackManagementReload$ = state(0);
+const usagePackMigrationReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
 const internalRestoreDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
@@ -209,10 +245,40 @@ const internalFormThresholdOverride$ = state<string | null>(null);
 const internalFormAmountOverride$ = state<string | null>(null);
 const internalConcurrencySubscriptionQuantity$ = state<number | null>(null);
 const internalConcurrencyPurchaseDialogOpen$ = state(false);
-const internalConcurrencyConfirmDialog$ = state<{
-  readonly action: "cancel" | "restore";
+
+interface ConcurrencySubscriptionConfirmDialogState {
+  readonly action: "change" | "restore";
   readonly subscriptionId: string;
-} | null>(null);
+  readonly currentQuantity: number;
+  readonly canReduce: boolean;
+  readonly canChangeInApp: boolean;
+  readonly changeMode: ConcurrencyChangeMode;
+  readonly targetQuantity: number | null;
+  readonly preview: ConcurrencySubscriptionChangePreviewResponse | null;
+}
+
+interface ConcurrencyPurchaseConfirmDialogState {
+  readonly action: "purchase";
+  readonly newTab: boolean;
+  readonly origin: ConcurrencyPurchaseOrigin;
+  readonly quantity: number;
+  readonly preview: ConcurrencySubscriptionChangePreviewResponse;
+}
+
+export type ConcurrencyConfirmDialogState =
+  | ConcurrencyPurchaseConfirmDialogState
+  | ConcurrencySubscriptionConfirmDialogState;
+
+interface CreditPurchasePreviewState {
+  readonly origin: CreditPurchaseOrigin;
+  readonly preview: CreditPurchasePreviewResponse;
+}
+
+const internalConcurrencyConfirmDialog$ =
+  state<ConcurrencyConfirmDialogState | null>(null);
+const internalCreditPurchasePreview$ = state<CreditPurchasePreviewState | null>(
+  null,
+);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -236,7 +302,12 @@ export const concurrencyPurchaseDialogOpen$ = computed((get) => {
 export const concurrencyConfirmDialog$ = computed((get) => {
   return get(internalConcurrencyConfirmDialog$);
 });
-
+export const creditPurchasePreview$ = computed((get) => {
+  return get(internalCreditPurchasePreview$)?.preview ?? null;
+});
+export const creditPurchaseOrigin$ = computed((get) => {
+  return get(internalCreditPurchasePreview$)?.origin ?? null;
+});
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
 });
@@ -256,33 +327,146 @@ export const setConcurrencySubscriptionQuantity$ = command(
   },
 );
 export const openConcurrencyPurchaseDialog$ = command(({ set }) => {
-  set(internalConcurrencySubscriptionQuantity$, null);
+  set(
+    internalConcurrencySubscriptionQuantity$,
+    CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN,
+  );
   set(internalConcurrencyPurchaseDialogOpen$, true);
 });
 export const closeConcurrencyPurchaseDialog$ = command(({ set }) => {
   set(internalConcurrencyPurchaseDialogOpen$, false);
 });
 export const openConcurrencyConfirmDialog$ = command(
-  ({ set }, action: "cancel" | "restore", subscriptionId: string) => {
-    set(internalConcurrencyConfirmDialog$, { action, subscriptionId });
+  (
+    { set },
+    args: {
+      readonly action: "change" | "restore";
+      readonly subscriptionId: string;
+      readonly currentQuantity: number;
+      readonly canReduce: boolean;
+      readonly canChangeInApp: boolean;
+    },
+  ) => {
+    set(internalConcurrencyConfirmDialog$, {
+      action: args.action,
+      subscriptionId: args.subscriptionId,
+      currentQuantity: args.currentQuantity,
+      canReduce: args.action === "change" && args.canReduce,
+      canChangeInApp: args.action === "change" && args.canChangeInApp,
+      changeMode: "quantity",
+      targetQuantity: args.action === "change" ? args.currentQuantity : null,
+      preview: null,
+    });
   },
 );
 export const closeConcurrencyConfirmDialog$ = command(({ set }) => {
   set(internalConcurrencyConfirmDialog$, null);
 });
-/**
- * Async computed signal that fetches billing status on first access.
- * Use with useLastLoadable() in views for automatic loading.
- */
-export const billingStatusAsync$ = computed(async (get) => {
-  get(billingReload$);
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingStatusContract);
-  const result = await accept(client.get(), [200]);
-  maybeShowPendingRestoreToast(result.body);
-  maybeShowPendingDowngradeToast(result.body);
-  return result.body;
+export const closeCreditPurchasePreview$ = command(({ set }) => {
+  set(internalCreditPurchasePreview$, null);
 });
+export const setConcurrencyChangeMode$ = command(
+  ({ set }, mode: ConcurrencyChangeMode) => {
+    set(internalConcurrencyConfirmDialog$, (dialog) => {
+      if (!dialog || dialog.action !== "change") {
+        return dialog;
+      }
+      return { ...dialog, changeMode: mode, preview: null };
+    });
+  },
+);
+export const setConcurrencyTargetQuantity$ = command(
+  ({ set }, quantity: number | null) => {
+    set(internalConcurrencyConfirmDialog$, (dialog) => {
+      if (!dialog || dialog.action !== "change") {
+        return dialog;
+      }
+      return { ...dialog, targetQuantity: quantity, preview: null };
+    });
+  },
+);
+/** Track whether a ccstate-owned async load is still available for joining. */
+interface TrackedAsyncResource<T> {
+  readonly pending: () => boolean;
+  readonly promise: Promise<T>;
+}
+
+function trackAsyncResource<T>(promise: Promise<T>): TrackedAsyncResource<T> {
+  let pending = true;
+  const trackedPromise = withCleanup(promise, () => {
+    pending = false;
+  });
+  return {
+    pending: () => {
+      return pending;
+    },
+    promise: trackedPromise,
+  };
+}
+
+const billingStatusResource$ = computed(
+  (get): TrackedAsyncResource<BillingStatusResponse> => {
+    get(billingReload$);
+    get(accountMenuBillingStatusReload$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingStatusContract);
+    const load = async (): Promise<BillingStatusResponse> => {
+      const result = await accept(client.get(), [200]);
+      return result.body;
+    };
+    return trackAsyncResource(load());
+  },
+);
+
+const usagePackCreditsResource$ = computed(
+  (get): TrackedAsyncResource<UsagePackCreditsResponse> => {
+    get(billingReload$);
+    get(accountMenuUsagePackCreditsReload$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackCreditsContract);
+    const load = async (): Promise<UsagePackCreditsResponse> => {
+      const result = await accept(client.get(), [200]);
+      return result.body;
+    };
+    return trackAsyncResource(load());
+  },
+);
+
+export const billingStatusAsync$ = computed((get) => {
+  return get(billingStatusResource$).promise;
+});
+
+export const usagePackCreditsAsync$ = computed((get) => {
+  return get(usagePackCreditsResource$).promise;
+});
+
+export const usagePackCatalogAsync$ = computed(async (get) => {
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingUsagePackCatalogContract);
+  const result = await accept(client.get(), [200]);
+  return result.body.usagePacks;
+});
+
+export const usagePackManagementAsync$ = computed(async (get) => {
+  get(usagePackManagementReload$);
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingUsagePackManagementContract);
+  const result = await accept(client.get(), [200, 404]);
+  return result.status === 200 ? result.body : null;
+});
+
+export const usagePackMigrationAsync$ = computed(
+  async (get): Promise<UsagePackMigrationStateResponse | null> => {
+    get(usagePackMigrationReload$);
+    if (!get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
+      return null;
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(client.get(), [200, 403, 404, 409]);
+    return result.status === 200 ? result.body : null;
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Commands
@@ -295,49 +479,298 @@ export const reloadBillingStatus$ = command(({ set }) => {
   });
 });
 
-const reloadBillingStatusFromRealtime$ = command(({ set }) => {
-  set(reloadBillingStatus$);
-  set(reloadUsageRecords$);
-  return false;
+const reloadAccountMenuBillingStatusResource$ = command(({ set }) => {
+  set(accountMenuBillingStatusReload$, (value) => {
+    return value + 1;
+  });
 });
+
+const reloadAccountMenuUsagePackCreditsResource$ = command(({ set }) => {
+  set(accountMenuUsagePackCreditsReload$, (value) => {
+    return value + 1;
+  });
+});
+
+interface AccountMenuCreditResources {
+  readonly billing: TrackedAsyncResource<BillingStatusResponse> | null;
+  readonly usagePack: TrackedAsyncResource<UsagePackCreditsResponse> | null;
+}
+
+const readAccountMenuCreditResources$ = command(
+  (
+    { get },
+    options: {
+      readonly isAdmin: boolean;
+      readonly usagePackPlansEnabled: boolean;
+    },
+  ): AccountMenuCreditResources => {
+    return {
+      billing: options.isAdmin ? get(billingStatusResource$) : null,
+      usagePack: options.usagePackPlansEnabled
+        ? get(usagePackCreditsResource$)
+        : null,
+    };
+  },
+);
+
+const reloadSettledAccountMenuCreditResources$ = command(
+  (
+    { set },
+    resources: AccountMenuCreditResources,
+  ): AccountMenuCreditResources => {
+    const billingPending = resources.billing?.pending() ?? false;
+    const usagePackPending = resources.usagePack?.pending() ?? false;
+    if (resources.billing && !billingPending) {
+      set(reloadAccountMenuBillingStatusResource$);
+    }
+    if (resources.usagePack && !usagePackPending) {
+      set(reloadAccountMenuUsagePackCreditsResource$);
+    }
+    return {
+      billing: billingPending ? resources.billing : null,
+      usagePack: usagePackPending ? resources.usagePack : null,
+    };
+  },
+);
+
+const joinAccountMenuCreditResources$ = command(
+  async (
+    { set },
+    resources: AccountMenuCreditResources,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const [billingResult, usagePackResult] = await Promise.all([
+      resources.billing
+        ? settle(resources.billing.promise, signal)
+        : Promise.resolve(null),
+      resources.usagePack
+        ? settle(resources.usagePack.promise, signal)
+        : Promise.resolve(null),
+    ]);
+    signal.throwIfAborted();
+    if (billingResult && !billingResult.ok) {
+      set(reloadAccountMenuBillingStatusResource$);
+    }
+    if (usagePackResult && !usagePackResult.ok) {
+      set(reloadAccountMenuUsagePackCreditsResource$);
+    }
+  },
+);
+
+export const reloadAccountMenuCreditBalances$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const foregroundReady = get(foregroundReady$);
+    const isAdmin = await get(isOrgAdmin$);
+    signal.throwIfAborted();
+    const usagePackPlansEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans] ?? false;
+    if (!isAdmin && !usagePackPlansEnabled) {
+      return;
+    }
+    const options = { isAdmin, usagePackPlansEnabled };
+
+    if (!foregroundReady.pending) {
+      const resources = set(readAccountMenuCreditResources$, options);
+      const pendingResources = set(
+        reloadSettledAccountMenuCreditResources$,
+        resources,
+      );
+      await set(joinAccountMenuCreditResources$, pendingResources, signal);
+      signal.throwIfAborted();
+      return;
+    }
+
+    const foregroundCatchUp = foregroundReady.promise;
+    await settle(foregroundCatchUp, signal);
+    signal.throwIfAborted();
+    if (get(completedForegroundBillingCatchUp$) !== foregroundCatchUp) {
+      if (isAdmin) {
+        set(reloadAccountMenuBillingStatusResource$);
+      }
+      if (usagePackPlansEnabled) {
+        set(reloadAccountMenuUsagePackCreditsResource$);
+      }
+    }
+    const resources = set(readAccountMenuCreditResources$, options);
+    await set(joinAccountMenuCreditResources$, resources, signal);
+    signal.throwIfAborted();
+  },
+);
+
+export const reloadUsagePackManagement$ = command(({ set }) => {
+  set(usagePackManagementReload$, (value) => {
+    return value + 1;
+  });
+});
+
+const reloadUsagePackMigration$ = command(({ set }) => {
+  set(usagePackMigrationReload$, (value) => {
+    return value + 1;
+  });
+});
+
+const reconcilePendingBillingPayment$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const hasPendingPayment =
+      get(restorePaymentPendingStorage.get$) === "1" ||
+      pendingDowngradeTargetTier(get(downgradePaymentPendingStorage.get$)) !==
+        null;
+    if (!hasPendingPayment) {
+      return;
+    }
+
+    const status = await get(billingStatusAsync$);
+    signal.throwIfAborted();
+    set(maybeShowPendingRestoreToast$, status);
+    set(maybeShowPendingDowngradeToast$, status);
+  },
+);
+
+export const handleBillingRedirect$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    await set(reconcilePendingBillingPayment$, signal);
+
+    const searchParams = new URLSearchParams(get(searchParams$));
+    const billing = searchParams.get("billing");
+    const credits = searchParams.get("credits");
+    const concurrency = searchParams.get("concurrency");
+    if (!billing && !credits && !concurrency) {
+      return;
+    }
+
+    searchParams.delete("billing");
+    searchParams.delete("billing_session_id");
+    searchParams.delete("credits");
+    searchParams.delete("credit_checkout_session_id");
+    searchParams.delete("concurrency");
+    set(replaceSearchParams$, searchParams);
+
+    if (billing === "pro" || billing === "team") {
+      const label =
+        billing === "pro"
+          ? i18n.t(($) => {
+              return $.billing.plans.pro.name;
+            })
+          : i18n.t(($) => {
+              return $.billing.plans.team.name;
+            });
+      toast.success(
+        i18n.t(
+          ($) => {
+            return $.billing.toasts.checkoutCompleted;
+          },
+          { plan: label },
+        ),
+      );
+      set(reloadBillingStatus$);
+    }
+
+    if (credits === "purchased") {
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.creditsAdded;
+        }),
+      );
+      set(reloadBillingStatus$);
+    }
+
+    if (concurrency === "purchased") {
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.concurrencyAdded;
+        }),
+      );
+      set(reloadBillingStatus$);
+    }
+
+    if (concurrency === "reduced") {
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.concurrencyReduced;
+        }),
+      );
+      set(reloadBillingStatus$);
+    }
+  },
+);
+
+const reloadBillingStatusFromRemoteChange$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(reloadBillingStatus$);
+    set(reloadQueueData$);
+    set(reloadUsagePackManagement$);
+    set(reloadUsageRecords$);
+    await set(reconcilePendingBillingPayment$, signal);
+  },
+);
+
+const reloadBillingStatusFromRealtime$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await set(reloadBillingStatusFromRemoteChange$, signal);
+    signal.throwIfAborted();
+    return false;
+  },
+);
+
+const reloadBillingStatusOnForeground$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const foregroundCatchUp = get(foregroundReady$).promise;
+    const result = await settle(
+      set(reloadBillingStatusFromRemoteChange$, signal),
+      signal,
+    );
+    if (result.ok) {
+      set(completedForegroundBillingCatchUp$, foregroundCatchUp);
+    }
+  },
+);
 
 export const setupBillingRealtime$ = command(
   async ({ set }, signal: AbortSignal) => {
+    set(
+      subscribeRealtimeReadyCatchUp$,
+      reloadBillingStatusOnForeground$,
+      signal,
+    );
     await set(
       setAblyLoop$,
       {
         topic: "billing:changed",
         loopCommand$: reloadBillingStatusFromRealtime$,
-        options: { runOnSubscribe: true },
+        options: { runOnForegroundCatchUp: false, runOnSubscribe: true },
       },
       signal,
     );
   },
 );
 
+function checkoutReturnUrl(): URL {
+  return new URL(window.location.pathname, window.location.origin);
+}
+
 export const startCheckout$ = command(
   async (
-    { get },
+    { get, set },
     tier: "pro" | "team",
     newTab: boolean,
     options: { readonly trialDays?: 7 } | undefined,
     signal: AbortSignal,
   ) => {
-    const currentUrl = window.location.href;
-    const successUrl = new URL(currentUrl);
+    const successUrl = checkoutReturnUrl();
     successUrl.searchParams.set("billing", tier);
     successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
-    applyStoredAdAttribution(successUrl);
+    set(applyStoredAdAttribution$, successUrl);
     const stripeSuccessUrl = successUrl
       .toString()
       .replace(
         "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
         "billing_session_id={CHECKOUT_SESSION_ID}",
       );
-    const cancelUrl = new URL(currentUrl);
+    const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("billing", "canceled");
-    applyStoredAdAttribution(cancelUrl);
-    const adAttribution = getStoredAdAttributionMetadata();
+    set(applyStoredAdAttribution$, cancelUrl);
+    const adAttribution = set(readStoredAdAttributionMetadata$);
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCheckoutContract);
@@ -357,6 +790,8 @@ export const startCheckout$ = command(
       [200],
     );
     signal.throwIfAborted();
+    set(capturePaidOnboardingCheckoutCreated$, "paywall");
+    set(capturePaidOnboardingRedirectToStripe$, "paywall");
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
@@ -366,38 +801,42 @@ export const startCheckout$ = command(
   },
 );
 
-export const startCreditCheckout$ = command(
+export const startUsagePackCheckout$ = command(
   async (
-    { get },
-    selection: CreditCheckoutSelection,
+    { get, set },
+    args: {
+      readonly tier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
     newTab: boolean,
     signal: AbortSignal,
   ) => {
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
-    successUrl.searchParams.set("credits", "purchased");
-    successUrl.searchParams.set(
-      "credit_checkout_session_id",
-      "{CHECKOUT_SESSION_ID}",
-    );
+    successUrl.searchParams.set("billing", args.tier);
+    successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
+    set(applyStoredAdAttribution$, successUrl);
     const stripeSuccessUrl = successUrl
       .toString()
       .replace(
-        "credit_checkout_session_id=%7BCHECKOUT_SESSION_ID%7D",
-        "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+        "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
+        "billing_session_id={CHECKOUT_SESSION_ID}",
       );
     const cancelUrl = new URL(currentUrl);
-    cancelUrl.searchParams.set("credits", "canceled");
+    cancelUrl.searchParams.set("billing", "canceled");
+    set(applyStoredAdAttribution$, cancelUrl);
+    const adAttribution = set(readStoredAdAttributionMetadata$);
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingCreditCheckoutContract);
+    const client = createClient(zeroBillingUsagePackCheckoutContract);
     const result = await accept(
       client.create({
         body: {
-          credits: selection.credits,
-          ...(selection.customAmount === true ? { customAmount: true } : {}),
+          tier: args.tier,
+          memberUsagePacks: [...args.memberUsagePacks],
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
+          ...(adAttribution === undefined ? {} : { adAttribution }),
         },
         fetchOptions: { signal },
       }),
@@ -412,12 +851,290 @@ export const startCreditCheckout$ = command(
   },
 );
 
+export const previewUsagePackMigration$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly targetTier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(
+      client.preview({
+        body: {
+          targetTier: args.targetTier,
+          memberUsagePacks: [...args.memberUsagePacks],
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(setUsagePackMigrationPreview$, result.body);
+    return result.body;
+  },
+);
+
+export const confirmUsagePackMigration$ = command(
+  async ({ get, set }, migrationId: string, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(
+      client.confirm({
+        params: { migrationId },
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(setUsagePackMigrationPreview$, null);
+    set(reloadUsagePackMigration$);
+    set(reloadUsagePackManagement$);
+    set(reloadBillingStatus$);
+    return result.body;
+  },
+);
+
+export const previewUsagePackMigrationRevision$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly migrationId: string;
+      readonly targetTier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(
+      client.previewRevision({
+        params: { migrationId: args.migrationId },
+        body: {
+          targetTier: args.targetTier,
+          memberUsagePacks: [...args.memberUsagePacks],
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(setUsagePackMigrationRevisionPreview$, result.body);
+    return result.body;
+  },
+);
+
+export const confirmUsagePackMigrationRevision$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly migrationId: string;
+      readonly targetTier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const preview = get(usagePackMigrationRevisionPreview$);
+    if (
+      !preview ||
+      preview.migrationId !== args.migrationId ||
+      preview.targetTier !== args.targetTier
+    ) {
+      throw new Error("Usage pack migration revision preview is not open");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(
+      client.confirmRevision({
+        params: { migrationId: args.migrationId },
+        body: {
+          targetTier: args.targetTier,
+          memberUsagePacks: [...args.memberUsagePacks],
+          previewToken: preview.previewToken,
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.subscriptionChangeConfirmed;
+      }),
+    );
+    set(setUsagePackMigrationRevisionPreview$, null);
+    set(reloadUsagePackMigration$);
+    set(reloadBillingStatus$);
+    return result.body;
+  },
+);
+
+export const previewUsagePackSubscriptionChange$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly targetTier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackManagementContract);
+    const preview = await accept(
+      client.previewSubscriptionChange({
+        body: {
+          targetTier: args.targetTier,
+          memberUsagePacks: [...args.memberUsagePacks],
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(setUsagePackSubscriptionChangePreview$, preview.body);
+    return preview.body;
+  },
+);
+
+export const closeUsagePackSubscriptionChangePreview$ = command(({ set }) => {
+  set(setUsagePackSubscriptionChangePreview$, null);
+});
+
+export const confirmUsagePackSubscriptionChange$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const preview = get(usagePackSubscriptionChangePreview$);
+    if (!preview) {
+      throw new Error("Usage pack subscription change preview is not open");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackManagementContract);
+    const result = await accept(
+      client.confirmSubscriptionChange({
+        body: { changeId: preview.changeId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.subscriptionChangeConfirmed;
+      }),
+    );
+    set(setUsagePackSubscriptionChangePreview$, null);
+    set(reloadUsagePackManagement$);
+    set(reloadBillingStatus$);
+    return result.body;
+  },
+);
+
+export const startCreditCheckout$ = command(
+  async (
+    { get, set },
+    selection: CreditCheckoutSelection,
+    newTab: boolean,
+    origin: CreditPurchaseOrigin,
+    signal: AbortSignal,
+  ) => {
+    const successUrl = checkoutReturnUrl();
+    successUrl.searchParams.set("credits", "purchased");
+    successUrl.searchParams.set(
+      "credit_checkout_session_id",
+      "{CHECKOUT_SESSION_ID}",
+    );
+    const stripeSuccessUrl = successUrl
+      .toString()
+      .replace(
+        "credit_checkout_session_id=%7BCHECKOUT_SESSION_ID%7D",
+        "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+      );
+    const cancelUrl = checkoutReturnUrl();
+    cancelUrl.searchParams.set("credits", "canceled");
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingCreditCheckoutContract);
+    const savedBillingCreditPurchaseEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
+    const result = await accept(
+      client.create({
+        body: {
+          credits: selection.credits,
+          ...(selection.customAmount === true ? { customAmount: true } : {}),
+          ...(savedBillingCreditPurchaseEnabled
+            ? { previewExistingBilling: true }
+            : {}),
+          successUrl: stripeSuccessUrl,
+          cancelUrl: cancelUrl.toString(),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (!("url" in result.body)) {
+      set(internalCreditPurchasePreview$, {
+        origin,
+        preview: result.body,
+      });
+      return;
+    }
+    // Hosted Checkout is the canonical response when saved billing is absent.
+    // During rollout it also lets a switched-on app tolerate an API from before
+    // preview support for the ~2-day old-client window. Remove that rollout-only
+    // responsibility after #26842; the unavailable-billing path remains.
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
+    }
+  },
+);
+
+export const confirmCreditPurchase$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const previewState = get(internalCreditPurchasePreview$);
+    if (!previewState) {
+      throw new Error("Credit purchase preview is not available");
+    }
+    const { preview } = previewState;
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingCreditCheckoutContract);
+    const result = await accept(
+      client.confirm({
+        body: { previewToken: preview.previewToken },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (result.body.status === "pending_payment") {
+      window.location.href = result.body.hostedInvoiceUrl;
+      return;
+    }
+    set(internalCreditPurchasePreview$, null);
+    set(reloadBillingStatus$);
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.creditPurchaseConfirmed;
+      }),
+    );
+  },
+);
+
 export const startConcurrencyCheckout$ = command(
-  async ({ get }, quantity: number, newTab: boolean, signal: AbortSignal) => {
-    const currentUrl = window.location.href;
-    const successUrl = new URL(currentUrl);
+  async (
+    { get, set },
+    quantity: number,
+    newTab: boolean,
+    signal: AbortSignal,
+  ) => {
+    const successUrl = new URL("/", window.location.origin);
     successUrl.searchParams.set("concurrency", "purchased");
-    const cancelUrl = new URL(currentUrl);
+    const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("concurrency", "canceled");
 
     const createClient = get(zeroClient$);
@@ -434,11 +1151,203 @@ export const startConcurrencyCheckout$ = command(
       [200],
     );
     signal.throwIfAborted();
+    if (result.body.url === successUrl.toString()) {
+      set(billingReload$, (value) => {
+        return value + 1;
+      });
+      set(internalConcurrencyConfirmDialog$, null);
+      set(internalConcurrencyPurchaseDialogOpen$, false);
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.concurrencyAdded;
+        }),
+      );
+      return;
+    }
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const openConcurrencyPurchaseReview$ = command(
+  async (
+    { get, set },
+    quantity: number,
+    newTab: boolean,
+    origin: ConcurrencyPurchaseOrigin,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencyCheckoutContract);
+    const result = await accept(
+      client.preview({
+        body: { quantity },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalConcurrencyPurchaseDialogOpen$, false);
+    set(internalConcurrencyConfirmDialog$, {
+      action: "purchase",
+      newTab,
+      origin,
+      quantity,
+      preview: result.body,
+    });
+  },
+);
+
+interface ConcurrencySubscriptionChangePreviewArgs {
+  readonly subscriptionId: string;
+  readonly quantity: number;
+}
+
+const loadConcurrencySubscriptionChangePreview$ = command(
+  async (
+    { get },
+    args: ConcurrencySubscriptionChangePreviewArgs,
+    signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const result = await accept(
+      client.previewChange({
+        params: { subscriptionId: args.subscriptionId },
+        body: { quantity: args.quantity },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return result.body;
+  },
+);
+
+export const previewConcurrencySubscriptionChange$ = command(
+  async (
+    { set },
+    args: ConcurrencySubscriptionChangePreviewArgs,
+    signal: AbortSignal,
+  ) => {
+    const preview = await set(
+      loadConcurrencySubscriptionChangePreview$,
+      args,
+      signal,
+    );
+    signal.throwIfAborted();
+    set(internalConcurrencyConfirmDialog$, (dialog) => {
+      if (
+        !dialog ||
+        dialog.action !== "change" ||
+        dialog.subscriptionId !== args.subscriptionId ||
+        dialog.targetQuantity !== args.quantity
+      ) {
+        return dialog;
+      }
+      return { ...dialog, preview };
+    });
+  },
+);
+
+export const openConcurrencyChangeReview$ = command(
+  async (
+    { set },
+    args: {
+      readonly subscriptionId: string;
+      readonly currentQuantity: number;
+      readonly targetQuantity: number;
+      readonly canReduce: boolean;
+    },
+    signal: AbortSignal,
+  ) => {
+    const preview = await set(
+      loadConcurrencySubscriptionChangePreview$,
+      {
+        subscriptionId: args.subscriptionId,
+        quantity: args.targetQuantity,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    set(internalConcurrencyConfirmDialog$, {
+      action: "change",
+      subscriptionId: args.subscriptionId,
+      currentQuantity: args.currentQuantity,
+      canReduce: args.canReduce,
+      canChangeInApp: true,
+      changeMode: "quantity",
+      targetQuantity: args.targetQuantity,
+      preview,
+    });
+  },
+);
+
+export const confirmConcurrencySubscriptionChange$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const dialog = get(internalConcurrencyConfirmDialog$);
+    if (dialog?.action !== "change" || !dialog.preview) {
+      throw new Error("Concurrency change preview is not available");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const result = await accept(
+      client.confirmChange({
+        params: { subscriptionId: dialog.subscriptionId },
+        body: { quantity: dialog.preview.targetQuantity },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (result.body.status === "pending_payment") {
+      window.location.href = result.body.hostedInvoiceUrl;
+      return;
+    }
+    set(billingReload$, (x) => {
+      return x + 1;
+    });
+    set(internalConcurrencyConfirmDialog$, null);
+    toast.success(
+      i18n.t(($) => {
+        return result.body.effectiveAt
+          ? $.billing.toasts.concurrencyReduced
+          : $.billing.toasts.concurrencyChanged;
+      }),
+    );
+  },
+);
+
+export const startConcurrencyReduction$ = command(
+  async (
+    { get },
+    args: { readonly subscriptionId: string; readonly quantity: number },
+    signal: AbortSignal,
+  ) => {
+    const successUrl = new URL("/", window.location.origin);
+    successUrl.searchParams.set("concurrency", "reduced");
+    const cancelUrl = checkoutReturnUrl();
+    cancelUrl.searchParams.set("concurrency", "canceled");
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const result = await accept(
+      client.reduce({
+        params: { subscriptionId: args.subscriptionId },
+        body: {
+          quantity: args.quantity,
+          successUrl: successUrl.toString(),
+          cancelUrl: cancelUrl.toString(),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    window.location.href = result.body.url;
   },
 );
 
@@ -500,19 +1409,25 @@ export const restoreConcurrencySubscription$ = command(
   },
 );
 
-export const startDowngrade$ = command(async ({ get }, signal: AbortSignal) => {
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingPortalContract);
-  const result = await accept(
-    client.create({
-      body: { returnUrl: window.location.href },
-      fetchOptions: { signal },
-    }),
-    [200],
-  );
-  signal.throwIfAborted();
-  window.location.href = result.body.url;
-});
+export const openBillingPortal$ = command(
+  async ({ get }, newTab: boolean, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingPortalContract);
+    const result = await accept(
+      client.create({
+        body: { returnUrl: window.location.href },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Downgrade dialog commands
@@ -552,13 +1467,13 @@ export const confirmDowngrade$ = command(
     signal.throwIfAborted();
     const response = result.body;
     if (!("success" in response)) {
-      rememberPendingDowngradePayment(targetTier);
+      set(rememberPendingDowngradePayment$, targetTier);
       set(internalDowngradeDialogOpen$, false);
       window.location.assign(response.checkoutUrl);
       return;
     }
 
-    clearPendingDowngradePayment();
+    set(clearPendingDowngradePayment$);
     set(internalDowngradeDialogOpen$, false);
     // Reload billing status to reflect the change
     set(billingReload$, (x) => {
@@ -583,13 +1498,13 @@ export const restorePlan$ = command(
     );
     signal.throwIfAborted();
     if (result.body.status === "payment_method_required") {
-      rememberPendingRestorePayment();
+      set(rememberPendingRestorePayment$);
       set(internalRestoreDialogOpen$, false);
       window.location.assign(result.body.checkoutUrl);
       return;
     }
 
-    clearPendingRestorePayment();
+    set(clearPendingRestorePayment$);
     set(internalRestoreDialogOpen$, false);
     set(billingReload$, (x) => {
       return x + 1;

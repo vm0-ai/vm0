@@ -15,7 +15,7 @@ async fn complete_cleans_up_cancel_file() {
     std::fs::write(&claim_path, b"").unwrap();
 
     provider
-        .complete(run_id, 0, None, None, None, CompletionAuth::local())
+        .complete(complete_request(run_id, 0, None), CompletionAuth::local())
         .await;
 
     assert!(
@@ -48,7 +48,7 @@ async fn complete_removes_duplicate_job_files_across_profiles() {
     let large_job_path = local_queue::job_path(dir.path(), "vm0/large", run_id).unwrap();
 
     provider
-        .complete(run_id, 0, None, None, None, CompletionAuth::local())
+        .complete(complete_request(run_id, 0, None), CompletionAuth::local())
         .await;
 
     assert!(
@@ -83,7 +83,7 @@ async fn complete_result_failure_removes_job_before_claim() {
     std::fs::write(&result_dir, b"not a directory").unwrap();
 
     provider
-        .complete(run_id, 0, None, None, None, CompletionAuth::local())
+        .complete(complete_request(run_id, 0, None), CompletionAuth::local())
         .await;
 
     assert!(
@@ -128,7 +128,7 @@ async fn complete_result_failure_removes_duplicate_jobs_before_claim() {
     std::fs::write(&result_dir, b"not a directory").unwrap();
 
     provider
-        .complete(run_id, 0, None, None, None, CompletionAuth::local())
+        .complete(complete_request(run_id, 0, None), CompletionAuth::local())
         .await;
 
     assert!(
@@ -165,7 +165,7 @@ async fn complete_result_failure_keeps_state_when_job_scan_fails() {
     std::fs::write(local_queue::jobs_dir(dir.path()), b"not a directory").unwrap();
 
     provider
-        .complete(run_id, 0, None, None, None, CompletionAuth::local())
+        .complete(complete_request(run_id, 0, None), CompletionAuth::local())
         .await;
 
     assert!(

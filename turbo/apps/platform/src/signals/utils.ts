@@ -1,5 +1,5 @@
 import { command, state, type Command } from "ccstate";
-import { delay } from "signal-timers";
+import { delay, timeout } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { logger } from "./log.ts";
 
@@ -134,6 +134,23 @@ export const isAbortError = (error: unknown): boolean => {
   return false;
 };
 
+/**
+ * Treat cancellation by a nested lifecycle as successful completion while
+ * preserving parent cancellation and unrelated failures.
+ */
+export function completeOnLocalAbort(
+  completion: Promise<void>,
+  localSignal: AbortSignal,
+  parentSignal: AbortSignal,
+): Promise<void> {
+  return completion.then(undefined, (error) => {
+    parentSignal.throwIfAborted();
+    if (!localSignal.aborted || !isAbortError(error)) {
+      throw error;
+    }
+  });
+}
+
 function throwIfNotAbort(e: unknown) {
   if (!isAbortError(e)) {
     throw e;
@@ -162,25 +179,6 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
     throwIfAbort(error);
     return fallback;
   }
-}
-
-const base64UrlPattern = /^[A-Za-z0-9_-]*$/;
-
-export function jsonParseBase64UrlOr<T>(value: string, fallback: T): T {
-  if (!base64UrlPattern.test(value) || value.length % 4 === 1) {
-    return fallback;
-  }
-
-  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
-  const padded = base64.padEnd(
-    base64.length + ((4 - (base64.length % 4)) % 4),
-    "=",
-  );
-  const raw = atob(padded);
-  const bytes = Uint8Array.from(raw, (char) => {
-    return char.charCodeAt(0);
-  });
-  return jsonParseOr(new TextDecoder().decode(bytes), fallback);
 }
 
 /**
@@ -229,7 +227,9 @@ export async function tapError<T>(
 /**
  * Await `p` and invoke `fn` on any rejection (including abort), then re-throw.
  * Use as a `.catch(handler)` replacement when the caller needs to run a
- * cleanup side effect before the rejection propagates.
+ * cleanup side effect before the rejection propagates. `fn` runs on abort by
+ * design so cleanup still happens when the page is cancelled, which is why
+ * `ccstate/no-catch-abort` cannot apply to this file.
  */
 export async function onRejection<T>(
   p: Promise<T>,
@@ -319,11 +319,21 @@ function runRetriedLoad<T>(load: () => Promise<T>): Promise<T> {
 /**
  * Retry idempotent read/lazy-load operations that can fail on transient
  * network or chunk-loading errors. Do not wrap mutations: `load` may run more
- * than once.
+ * than once. The caller must pass the lifecycle that owns both the request and
+ * its retry delay; computed reads that outlive invalidation use the app root.
  */
-export function retryTransientLoad<T>(load: () => Promise<T>): Promise<T> {
+export function retryTransientLoad<T>(
+  load: (signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
   async function attemptLoad(attempt: number): Promise<T> {
-    const result = await settle(runRetriedLoad(load));
+    signal.throwIfAborted();
+    const result = await settle(
+      runRetriedLoad(() => {
+        return load(signal);
+      }),
+      signal,
+    );
     if (result.ok) {
       return result.value;
     }
@@ -331,7 +341,7 @@ export function retryTransientLoad<T>(load: () => Promise<T>): Promise<T> {
     if (delayMs === undefined || !isRetryableError(result.error)) {
       throw result.error;
     }
-    await delay(IN_VITEST ? 0 : delayMs);
+    await delay(IN_VITEST ? 0 : delayMs, { signal });
     return attemptLoad(attempt + 1);
   }
 
@@ -358,46 +368,8 @@ async function waitForFibonacciRetry(
   signal: AbortSignal,
 ): Promise<void> {
   const delayMs = fibonacciRetryDelayMs(retryIndex);
-  await (IN_VITEST
-    ? delay(0, { signal: AbortSignal.any([]) })
-    : delay(delayMs, { signal }));
+  await (IN_VITEST ? waitForNextMacrotask(signal) : delay(delayMs, { signal }));
   signal.throwIfAborted();
-}
-
-/**
- * Retry one async operation with fibonacci backoff while `shouldRetry`
- * classifies its rejection as transient. Resolves on the first successful
- * attempt and rejects when the signal aborts or an error is not retryable.
- */
-export async function retryWithFibonacciBackoff<T>(
-  operation: () => Promise<T>,
-  shouldRetry: (error: unknown) => boolean,
-  signal: AbortSignal,
-): Promise<T> {
-  const completion: { result?: { readonly value: T } } = {};
-  await setLoop(
-    async (loopSignal) => {
-      const result = await settle(runRetriedLoad(operation), loopSignal);
-      if (!result.ok) {
-        throw result.error;
-      }
-      completion.result = result;
-      return true;
-    },
-    0,
-    signal,
-    {
-      shouldRetryError: shouldRetry,
-      logTransientErrors: false,
-    },
-  );
-
-  const completed = completion.result;
-  if (!completed) {
-    signal.throwIfAborted();
-    throw new Error("Retry loop ended before the operation completed");
-  }
-  return completed.value;
 }
 
 /**
@@ -433,14 +405,12 @@ export async function setLoop(
         return;
       }
       fibIndex = 0;
-      // In VITEST, yield to the macrotask queue via setTimeout so React can
-      // flush renders between iterations. Using Promise.resolve() only queues
-      // a microtask, which starves React's render cycle. We avoid
-      // delay(0, { signal }) because signal-timers' Promise.race leaves an
-      // abandoned promiseFromSignal that rejects as an unhandled rejection
-      // when the abort signal fires during afterEach cleanup.
+      // In VITEST, yield to the macrotask queue so React can flush renders
+      // between iterations. Using Promise.resolve() only queues a microtask,
+      // which starves React's render cycle. The callback timer avoids
+      // signal-timers' delay Promise.race while still honoring the loop signal.
       await (IN_VITEST
-        ? delay(0, { signal: AbortSignal.any([]) })
+        ? waitForNextMacrotask(signal)
         : delay(interval, { signal }));
     } catch (error) {
       throwIfAbort(error);
@@ -464,6 +434,20 @@ export async function setLoop(
   }
 }
 
+function waitForNextMacrotask(signal: AbortSignal): Promise<void> {
+  const deferred = createDeferredPromise<void>(signal);
+  if (!signal.aborted) {
+    timeout(
+      () => {
+        deferred.resolve(undefined);
+      },
+      0,
+      { signal },
+    );
+  }
+  return deferred.promise;
+}
+
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
   const controller$ = state<AbortController | undefined>(undefined);
 
@@ -474,6 +458,31 @@ export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
 
     return AbortSignal.any([controller.signal, ...signals]);
   });
+}
+
+/**
+ * Create a local cancellation owner that always cascades its parent signal.
+ * Aborting the child also removes its listener from the parent immediately.
+ */
+export function createChildAbortController(
+  parentSignal: AbortSignal,
+): AbortController {
+  const controller = new AbortController();
+  const onParentAbort = () => {
+    controller.abort(parentSignal.reason);
+  };
+  if (parentSignal.aborted) {
+    onParentAbort();
+  } else {
+    const removeParentListener = () => {
+      parentSignal.removeEventListener("abort", onParentAbort);
+    };
+    parentSignal.addEventListener("abort", onParentAbort, { once: true });
+    controller.signal.addEventListener("abort", removeParentListener, {
+      once: true,
+    });
+  }
+  return controller;
 }
 
 export function onDomEventFn<T>(callback: (e: T) => void | Promise<void>) {

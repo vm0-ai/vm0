@@ -47,6 +47,7 @@ pub fn base_failure_diagnostic_for_config(
     let framework = match config.framework {
         env::Framework::ClaudeCode => AgentFramework::ClaudeCode,
         env::Framework::Codex => AgentFramework::Codex,
+        env::Framework::Pi => AgentFramework::Pi,
     };
     FailureDiagnostic::new(
         failure_class,
@@ -158,6 +159,7 @@ pub fn diagnostic_session_history_status_for_config(
             claude_history_target_status_for_config(config, runtime_paths)
         }
         env::Framework::Codex => SessionHistoryStatus::NotApplicable,
+        env::Framework::Pi => SessionHistoryStatus::NotApplicable,
     }
 }
 
@@ -378,6 +380,23 @@ fn is_insufficient_credits_error(normalized: &str) -> bool {
         || (normalized.contains("api error: 402")
             && normalized.contains("requires more credits")
             && normalized.contains("can only afford"))
+        || has_insufficient_credits_response_envelope(normalized)
+}
+
+fn has_insufficient_credits_response_envelope(normalized: &str) -> bool {
+    const STATUS_MARKER: &str = "402 payment required";
+
+    let Some(status_index) = normalized.find(STATUS_MARKER) else {
+        return false;
+    };
+
+    let Some((Some(value), _)) =
+        parse_next_json_object(normalized, status_index + STATUS_MARKER.len())
+    else {
+        return false;
+    };
+
+    value.get("error").and_then(Value::as_str) == Some("insufficient_credits")
 }
 
 fn is_claude_invalid_credentials_error(normalized: &str) -> bool {

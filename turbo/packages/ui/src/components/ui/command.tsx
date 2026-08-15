@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
-import { IconSearch } from "@tabler/icons-react";
+import { Search } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { Dialog, DialogContent } from "./dialog";
@@ -24,9 +24,11 @@ const Command = React.forwardRef<
 });
 Command.displayName = CommandPrimitive.displayName;
 
-interface CommandDialogProps extends React.ComponentPropsWithoutRef<
-  typeof Dialog
+interface CommandDialogProps extends Omit<
+  React.ComponentPropsWithoutRef<typeof Dialog>,
+  "children"
 > {
+  readonly children?: React.ReactNode;
   readonly className?: string | undefined;
   readonly closeLabel?: string | undefined;
   readonly commandClassName?: string | undefined;
@@ -77,11 +79,7 @@ const CommandInput = React.forwardRef<
         wrapperClassName,
       )}
     >
-      <IconSearch
-        size={16}
-        stroke={2}
-        className="shrink-0 text-muted-foreground"
-      />
+      <Search size={16} className="shrink-0 text-muted-foreground" />
       <CommandPrimitive.Input
         ref={ref}
         className={cn(
@@ -165,7 +163,7 @@ const CommandItem = React.forwardRef<
     <CommandPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex cursor-pointer select-none items-center rounded-lg text-sm outline-none transition-colors data-[disabled=true]:pointer-events-none data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50",
+        "relative flex cursor-pointer select-none items-center rounded-lg text-sm outline-none transition-colors data-[disabled=true]:pointer-events-none data-[selected=true]:bg-state-hover data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50",
         className,
       )}
       {...props}

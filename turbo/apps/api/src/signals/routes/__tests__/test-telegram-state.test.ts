@@ -5,11 +5,11 @@ import { http, HttpResponse } from "msw";
 import type {
   TestSlackStatePostResponse,
   TestSlackStateResponse,
-} from "@vm0/api-contracts/contracts/test-slack-state";
+} from "@okouai/api-contracts/contracts/test-slack-state";
 import type {
   TestTelegramStateResponse,
   TestTelegramStateSeedResponse,
-} from "@vm0/api-contracts/contracts/test-telegram-state";
+} from "@okouai/api-contracts/contracts/test-telegram-state";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -19,7 +19,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { testTelegramStateRoutes } from "../test-telegram-state";
 import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
-import { seedRun$ } from "./helpers/zero-usage-insight";
+import { seedRun$ } from "./helpers/usage-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -370,8 +370,6 @@ describe("GET /api/test/telegram-state", () => {
     expect(body.default_agent).toBeNull();
     expect(body.default_compose).toBeNull();
     expect(body.default_compose_version).toBeNull();
-    expect(body.resolved_telegram_api_url).toBeNull();
-    expect(Array.isArray(body.mock_calls)).toBeTruthy();
   });
 
   it("returns seeded Telegram diagnostic state", async () => {
@@ -430,8 +428,6 @@ describe("GET /api/test/telegram-state", () => {
     expect(body.default_compose_version).toMatchObject({
       content_keys: expect.arrayContaining(["version", "agents"]),
     });
-    expect(body.resolved_telegram_api_url).toBe("https://telegram.test/bot");
-    expect(Array.isArray(body.mock_calls)).toBeTruthy();
   });
 });
 

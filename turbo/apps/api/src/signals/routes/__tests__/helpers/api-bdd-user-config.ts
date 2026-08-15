@@ -1,25 +1,19 @@
 import { randomUUID } from "node:crypto";
 
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { authContract } from "@vm0/api-contracts/contracts/auth";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import type { SetVariableRequest } from "@vm0/api-contracts/contracts/variables";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroSecretsByNameContract,
-  zeroVariablesByNameContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
-import {
-  zeroUserModelPreferenceContract,
+  userModelPreferenceContract,
   type UpdateUserModelPreferenceRequest,
   type UserModelPreferenceResponse,
-} from "@vm0/api-contracts/contracts/zero-user-model-preference";
+} from "@okouai/api-contracts/contracts/user-model-preference";
 import {
-  zeroUserPreferencesContract,
+  userPreferencesContract,
   type UpdateUserPreferencesRequest,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { z } from "zod";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -31,10 +25,9 @@ import {
 } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
-import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
-import { zeroSecretsRoutes } from "../../zero-secrets";
-import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
-import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import { pushSubscriptionsRoutes } from "../../push-subscriptions";
+import { userModelPreferenceRoutes } from "../../user-model-preference";
+import { userPreferencesRoutes } from "../../user-preferences";
 import {
   healthAuthProbeContract,
   healthAuthProbeRoutes,
@@ -88,7 +81,7 @@ const c = initContract();
  * Permissive mirror of the user-model-preference update route used to send
  * contract-invalid bodies through the app (the real contract types reject
  * them at compile time). Mirrors the raw `app.request` cases in the legacy
- * zero-user-model-preference test.
+ * user-model-preference test.
  */
 const rawModelPreferenceContract = c.router({
   update: {
@@ -112,10 +105,9 @@ const userConfigRoutes = [
   ...healthAuthProbeRoutes,
   ...authMeRoutes,
   ...zeroAgentsRoutes,
-  ...zeroUserModelPreferenceRoutes,
-  ...zeroPushSubscriptionsRoutes,
-  ...zeroUserPreferencesRoutes,
-  ...zeroSecretsRoutes,
+  ...userModelPreferenceRoutes,
+  ...pushSubscriptionsRoutes,
+  ...userPreferencesRoutes,
 ] as const;
 
 function isBearerCredential(
@@ -343,7 +335,7 @@ export function createUserConfigBddApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<UserModelPreferenceResponse> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserModelPreferenceContract,
+        userModelPreferenceContract,
       );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
@@ -357,7 +349,7 @@ export function createUserConfigBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserModelPreferenceContract,
+        userModelPreferenceContract,
       );
       return await accept(
         client.get({ headers: authenticate(actor) }),
@@ -370,7 +362,7 @@ export function createUserConfigBddApi(context: TestContext) {
       body: UpdateUserModelPreferenceRequest,
     ): Promise<UserModelPreferenceResponse> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserModelPreferenceContract,
+        userModelPreferenceContract,
       );
       const response = await accept(
         client.update({ headers: authenticate(actor), body }),
@@ -385,7 +377,7 @@ export function createUserConfigBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserModelPreferenceContract,
+        userModelPreferenceContract,
       );
       return await accept(
         client.update({ headers: authenticate(actor), body }),
@@ -427,52 +419,10 @@ export function createUserConfigBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserPreferencesContract,
+        userPreferencesContract,
       );
       return await accept(
         client.update({ headers: authenticate(actor), body }),
-        statuses,
-      );
-    },
-
-    async requestSetVariable(
-      actor: ApiTestUser | null,
-      body: SetVariableRequest,
-      statuses: readonly (200 | 201 | 400 | 401)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroVariablesContract,
-      );
-      return await accept(
-        client.set({ headers: authenticate(actor), body }),
-        statuses,
-      );
-    },
-
-    async requestDeleteSecret(
-      actor: ApiTestUser | null,
-      name: string,
-      statuses: readonly (204 | 401 | 404)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroSecretsByNameContract,
-      );
-      return await accept(
-        client.delete({ headers: authenticate(actor), params: { name } }),
-        statuses,
-      );
-    },
-
-    async requestDeleteVariable(
-      actor: ApiTestUser | null,
-      name: string,
-      statuses: readonly (204 | 401 | 404)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroVariablesByNameContract,
-      );
-      return await accept(
-        client.delete({ headers: authenticate(actor), params: { name } }),
         statuses,
       );
     },

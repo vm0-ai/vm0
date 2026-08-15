@@ -1,8 +1,9 @@
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
-} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+  zeroPersonalModelProviderAccountsByIdContract,
+} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
@@ -23,12 +24,12 @@ export function resetMockPersonalModelProviders(): void {
 }
 
 export const apiPersonalModelProvidersHandlers = [
-  // GET /api/zero/me/model-providers - List the user's personal model providers
+  // GET /api/okou/me/model-providers - List the user's personal model providers
   mockApi(zeroPersonalModelProvidersMainContract.list, ({ respond }) => {
     return respond(200, { modelProviders: mockPersonalModelProviders });
   }),
 
-  // POST /api/zero/me/model-providers - Create or update a personal model provider
+  // POST /api/okou/me/model-providers - Create or update a personal model provider
   mockApi(
     zeroPersonalModelProvidersMainContract.upsert,
     ({ body, respond }) => {
@@ -68,7 +69,7 @@ export const apiPersonalModelProvidersHandlers = [
     },
   ),
 
-  // DELETE /api/zero/me/model-providers/:type - Delete a personal model provider
+  // DELETE /api/okou/me/model-providers/:type - Delete a personal model provider
   mockApi(
     zeroPersonalModelProvidersByTypeContract.delete,
     ({ params, respond }) => {
@@ -89,7 +90,7 @@ export const apiPersonalModelProvidersHandlers = [
     },
   ),
 
-  // POST /api/zero/me/model-providers/:type/subscription-reset - Reset Codex usage
+  // POST /api/okou/me/model-providers/:type/subscription-reset - Reset Codex usage
   mockApi(
     zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
     ({ params, respond }) => {
@@ -118,6 +119,75 @@ export const apiPersonalModelProvidersHandlers = [
       });
 
       return respond(200, { outcome: "reset" });
+    },
+  ),
+
+  mockApi(
+    zeroPersonalModelProviderAccountsByIdContract.activate,
+    ({ params, respond }) => {
+      const selected = mockPersonalModelProviders.find((provider) => {
+        return provider.id === params.id;
+      });
+      if (!selected) {
+        return respond(404, {
+          error: {
+            message: "Model provider account not found",
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      mockPersonalModelProviders = mockPersonalModelProviders.map(
+        (provider) => {
+          return provider.type === selected.type
+            ? { ...provider, isActive: provider.id === selected.id }
+            : provider;
+        },
+      );
+      return respond(200, { ...selected, isActive: true });
+    },
+  ),
+
+  mockApi(
+    zeroPersonalModelProviderAccountsByIdContract.delete,
+    ({ params, respond }) => {
+      const selected = mockPersonalModelProviders.find((provider) => {
+        return provider.id === params.id;
+      });
+      if (!selected) {
+        return respond(404, {
+          error: {
+            message: "Model provider account not found",
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      mockPersonalModelProviders = mockPersonalModelProviders.filter(
+        (provider) => {
+          return provider.id !== params.id;
+        },
+      );
+      return respond(204);
+    },
+  ),
+
+  mockApi(
+    zeroPersonalModelProviderAccountsByIdContract.resetSubscriptionUsage,
+    ({ params, respond }) => {
+      const selected = mockPersonalModelProviders.find((provider) => {
+        return provider.id === params.id;
+      });
+      if (!selected || selected.type !== "codex-oauth-token") {
+        return respond(404, {
+          error: {
+            message: "Model provider account not found",
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      return respond(200, {
+        outcome:
+          (selected.subscriptionResetCredits ?? 0) > 0 ? "reset" : "noCredit",
+      });
     },
   ),
 ];

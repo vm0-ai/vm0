@@ -245,7 +245,7 @@ let originalEnv: NodeJS.ProcessEnv;
 
 beforeEach(() => {
   originalEnv = { ...process.env };
-  delete process.env.ZERO_TOKEN;
+  delete process.env.OKOU_TOKEN;
   process.env.TEST_SECRET = "value";
 });
 
@@ -316,7 +316,7 @@ Key points:
 4. **Prefer page tests over signal tests**. Signal-only tests are reserved for
    behavior with no user-visible page surface.
 5. **Let `testContext()` own cleanup**. It aborts the test signal and resets
-   handlers, local storage state, and logger state after each test.
+   handlers, local and session storage state, and logger state after each test.
 
 ---
 
@@ -325,7 +325,7 @@ Key points:
 Every API route test file should follow this structure:
 
 ```typescript
-import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -342,7 +342,7 @@ function authHeaders() {
 }
 
 // ========== TEST SUITE ==========
-describe("POST /api/zero/agents", () => {
+describe("POST /api/okou/agents", () => {
   it("creates an agent and returns it from the list endpoint", async () => {
     context.mocks.clerk.session("user_test", "org_test");
 

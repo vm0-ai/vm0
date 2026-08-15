@@ -3,8 +3,11 @@ import { randomUUID } from "node:crypto";
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { getZeroChatThreadAgentId, sendZeroChatEvent } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  getZeroChatThreadAgentId,
+  sendZeroChatEvent,
+} from "../../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
 import { printChatUsageError, resolveChatThreadId } from "./shared";
 
@@ -59,7 +62,7 @@ export const cancelCommand = new Command()
   .description("Cancel one active run or queued chat event")
   .option(
     "--thread-id <id>",
-    "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)",
+    "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)",
   )
   .option("--run-id <id>", "Queued, pending, or running run ID to interrupt")
   .option("--event-id <id>", "Queued chat event ID to revoke")
@@ -68,12 +71,12 @@ export const cancelCommand = new Command()
     "after",
     `
 Examples:
-  Cancel a run:      zero chat cancel --thread-id <thread-id> --run-id <run-id>
-  Cancel a message:  zero chat cancel --thread-id <thread-id> --event-id <event-id>
+  Cancel a run:      okou chat cancel --thread-id <thread-id> --run-id <run-id>
+  Cancel a message:  okou chat cancel --thread-id <thread-id> --event-id <event-id>
 
 Notes:
   - --run-id and --event-id are mutually exclusive
-  - Authenticates via ZERO_TOKEN (requires chat-thread:read and chat-event:write capabilities)`,
+  - Authenticates via OKOU_TOKEN (requires chat-thread:read and chat-event:write capabilities)`,
   )
   .action(
     withErrorHandler(async (options: CancelOptions) => {

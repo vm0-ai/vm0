@@ -10,7 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
-import type { GitHubInstallationRepoConfigs } from "@vm0/db/jsonb-contracts/github-installation";
+import type { GitHubInstallationRepoConfigs } from "@okouai/db/jsonb-contracts/github-installation";
 
 /**
  * GitHub Installations table

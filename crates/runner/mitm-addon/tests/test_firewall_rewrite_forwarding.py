@@ -192,6 +192,98 @@ class TestAuthBaseUrlRewriteForwarding:
         if decoded_body is not None:
             assert flow.response.content == decoded_body
 
+    @pytest.mark.parametrize(
+        ("method", "status"),
+        [
+            pytest.param("HEAD", 200, id="head"),
+            pytest.param("GET", 304, id="not-modified"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("response_headers", "expected_content_lengths"),
+        [
+            pytest.param(
+                [("Content-Length", "123")],
+                ["123"],
+                id="representation-length",
+            ),
+            pytest.param([], [], id="absent"),
+            pytest.param(
+                [("Content-Length", "123"), ("Content-Length", "124")],
+                [],
+                id="conflicting",
+            ),
+            pytest.param([("Content-Length", "invalid")], [], id="malformed"),
+            pytest.param([("Content-Length", "123, 123")], [], id="comma-list"),
+            pytest.param(
+                [("Content-Length", "123"), ("Content-Length", "123")],
+                [],
+                id="repeated",
+            ),
+        ],
+    )
+    async def test_url_rewrite_preserves_bodyless_response_content_length(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        method: str,
+        status: int,
+        response_headers: list[tuple[str, str]],
+        expected_content_lengths: list[str],
+    ):
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method=method,
+        )
+
+        with (
+            fake_forwarder_upstream(status=status, body=b"", headers=response_headers),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == status
+        assert flow.response.raw_content == b""
+        assert flow.response.headers.get_all("Content-Length") == expected_content_lengths
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            pytest.param(204, id="no-content"),
+            pytest.param(205, id="reset-content"),
+        ],
+    )
+    async def test_url_rewrite_does_not_restore_content_length_for_empty_head_status(
+        self, real_flow, mitm_ctx, tmp_path, status: int
+    ):
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="HEAD",
+        )
+
+        with (
+            fake_forwarder_upstream(
+                status=status,
+                body=b"",
+                headers=[("Content-Length", "123")],
+            ),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == status
+        assert flow.response.raw_content == b""
+        assert flow.response.headers.get_all("Content-Length") == ["0"]
+
     async def test_url_rewrite_sends_resolved_auth_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):

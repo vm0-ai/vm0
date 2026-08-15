@@ -10,12 +10,12 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
-  IconAlertTriangle,
-  IconDotsVertical,
-  IconPencil,
-  IconPlus,
-  IconTrash,
-} from "@tabler/icons-react";
+  AlertTriangle,
+  EllipsisVertical,
+  Pencil,
+  Plus,
+  Trash,
+} from "lucide-react";
 import {
   Button,
   DropdownMenu,
@@ -40,7 +40,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
@@ -52,22 +52,21 @@ import {
   type OrgModelPoliciesResponse,
   type SupportedRunModel,
   type UpdateOrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   getModelProviderTypeForSurfaceProtocol,
   type ModelProviderConnectionResponse,
   type ModelProviderSurfaceProtocol,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import {
   orgModelPolicies$,
   updateOrgModelPolicies$,
 } from "../../../../signals/external/org-model-policies.ts";
+import { modelProviderConnections$ } from "../../../../signals/external/model-provider-connections.ts";
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
-import { availableModelProviderConnections$ } from "../../../../signals/zero-page/settings/model-provider-connections.ts";
 import {
   closeModelPolicyDialog$,
+  completeModelPolicyDialogClose$,
   modelPolicyApiKey$,
   modelPolicyApiKeyError$,
   modelPolicyApiKeyTouched$,
@@ -117,10 +116,12 @@ function isByokProviderType(type: ModelProviderType): boolean {
   return type !== "vm0" && !isOAuthMemberType(type);
 }
 
-function isOpenAIOrAnthropicModel(model: SupportedRunModel): boolean {
+function isAddableManagedModel(model: SupportedRunModel): boolean {
   const providerType = getModelIconType(model);
   return (
-    providerType === "openai-api-key" || providerType === "anthropic-api-key"
+    providerType === "openai-api-key" ||
+    providerType === "anthropic-api-key" ||
+    providerType === "deepseek"
   );
 }
 
@@ -550,7 +551,7 @@ function PolicyActionsMenu({
             },
           )}
         >
-          <IconDotsVertical size={14} stroke={1.5} />
+          <EllipsisVertical size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -560,7 +561,7 @@ function PolicyActionsMenu({
             onEdit(policy);
           }}
         >
-          <IconPencil size={14} stroke={1.5} />
+          <Pencil size={14} />
           {t(($) => {
             return $.settings.models.actions.editModel;
           })}
@@ -573,7 +574,7 @@ function PolicyActionsMenu({
             onDelete(policy);
           }}
         >
-          <IconTrash size={14} stroke={1.5} />
+          <Trash size={14} />
           {t(($) => {
             return $.settings.models.actions.deleteModel;
           })}
@@ -606,7 +607,7 @@ function AddModelButton({
       disabled={disabled}
       onClick={onClick}
     >
-      <IconPlus size={14} stroke={2} />
+      <Plus size={14} />
       {t(($) => {
         return $.settings.models.actions.addModel;
       })}
@@ -663,7 +664,7 @@ function PolicyRow({
           )}
           {policy.routeStatus !== "valid" && (
             <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-              <IconAlertTriangle size={12} />
+              <AlertTriangle size={12} />
               {policy.routeStatus === "missing_provider"
                 ? t(($) => {
                     return $.settings.models.policies.missingProvider;
@@ -729,7 +730,7 @@ function RouteChoiceButton({
       className={cn(
         "flex flex-col gap-0.5 rounded-xl bg-card px-5 py-4 text-left transition-colors",
         active && "bg-primary/5",
-        !active && !disabled && "hover:bg-muted/40",
+        !active && !disabled && "hover:bg-state-hover",
         disabled && "cursor-not-allowed opacity-50",
       )}
     >
@@ -759,7 +760,7 @@ function ProviderTypeSelect({
 
   return (
     <Select
-      value={value ?? undefined}
+      value={value}
       onValueChange={(next) => {
         onChange(next as ModelProviderType);
       }}
@@ -915,7 +916,7 @@ function GatewayProviderSection({
         })}
       </label>
       <Select
-        value={surfaceId ?? undefined}
+        value={surfaceId}
         onValueChange={(next) => {
           const selected = options.find((option) => {
             return option.surface.id === next;
@@ -1150,7 +1151,7 @@ function ModelSelectionField({
         })}
       </label>
       <Select
-        value={selectedModel ?? undefined}
+        value={selectedModel}
         onValueChange={(next) => {
           onChange(next as SupportedRunModel);
         }}
@@ -1199,7 +1200,6 @@ function ProviderRouteChoices({
   apiTypes,
   oauthTypes,
   gatewayCount,
-  customGatewaysEnabled,
   supportByok,
   onChoose,
 }: {
@@ -1207,7 +1207,6 @@ function ProviderRouteChoices({
   apiTypes: ModelProviderType[];
   oauthTypes: ModelProviderType[];
   gatewayCount: number;
-  customGatewaysEnabled: boolean;
   supportByok: boolean;
   onChoose: (routeKind: ModelPolicyRouteKind) => void;
 }) {
@@ -1253,22 +1252,20 @@ function ProviderRouteChoices({
             onChoose("api-key");
           }}
         />
-        {customGatewaysEnabled && (
-          <RouteChoiceButton
-            active={routeKind === "gateway"}
-            disabled={gatewayCount === 0}
-            pro={!supportByok}
-            title={t(($) => {
-              return $.settings.models.policies.gateway;
-            })}
-            description={t(($) => {
-              return $.settings.models.policies.gatewayDescription;
-            })}
-            onClick={() => {
-              onChoose("gateway");
-            }}
-          />
-        )}
+        <RouteChoiceButton
+          active={routeKind === "gateway"}
+          disabled={gatewayCount === 0}
+          pro={!supportByok}
+          title={t(($) => {
+            return $.settings.models.policies.gateway;
+          })}
+          description={t(($) => {
+            return $.settings.models.policies.gatewayDescription;
+          })}
+          onClick={() => {
+            onChoose("gateway");
+          }}
+        />
         {oauthTypes.length > 0 && (
           <RouteChoiceButton
             active={routeKind === "oauth"}
@@ -1367,7 +1364,6 @@ function ModelPolicyRouteDialog({
   addableModels,
   providers,
   connections,
-  customGatewaysEnabled,
   saving,
   modelCapabilities,
   onUpgrade,
@@ -1377,7 +1373,6 @@ function ModelPolicyRouteDialog({
   addableModels: SupportedRunModel[];
   providers: ModelProviderResponse[];
   connections: ModelProviderConnectionResponse[];
-  customGatewaysEnabled: boolean;
   saving: boolean;
   modelCapabilities: ModelPlanCapabilities;
   onUpgrade: () => void;
@@ -1386,6 +1381,7 @@ function ModelPolicyRouteDialog({
   const { t } = useTranslation();
   const dialog = useGet(modelPolicyDialogState$);
   const close = useSet(closeModelPolicyDialog$);
+  const completeClose = useSet(completeModelPolicyDialogClose$);
   const setModel = useSet(updateModelPolicyDialogModel$);
   const setRoute = useSet(updateModelPolicyDialogRoute$);
   const apiKeyValue = useGet(modelPolicyApiKey$);
@@ -1560,6 +1556,11 @@ function ModelPolicyRouteDialog({
           close();
         }
       }}
+      onOpenChangeComplete={(open) => {
+        if (!open) {
+          completeClose();
+        }
+      }}
     >
       <DialogContent
         className="max-w-3xl"
@@ -1597,7 +1598,6 @@ function ModelPolicyRouteDialog({
             apiTypes={apiTypes}
             oauthTypes={oauthTypes}
             gatewayCount={gatewayOptions.length}
-            customGatewaysEnabled={customGatewaysEnabled}
             supportByok={modelCapabilities.supportByok}
             onChoose={chooseRoute}
           />
@@ -1656,7 +1656,6 @@ function resolveModelPolicySectionData(params: {
   lastConnections: ModelProviderConnectionResponse[] | undefined;
   modelCapabilitiesLoadable: Loadable<ModelPlanCapabilities>;
   lastModelCapabilities: ModelPlanCapabilities | undefined;
-  customGatewaysEnabled: boolean;
 }) {
   const data =
     params.policiesLoadable.state === "hasData"
@@ -1674,7 +1673,6 @@ function resolveModelPolicySectionData(params: {
       ? params.connectionsLoadable.data
       : (params.lastConnections ?? []);
   const connectionsReady =
-    !params.customGatewaysEnabled ||
     params.connectionsLoadable.state === "hasData" ||
     params.lastConnections !== undefined;
   const modelCapabilities =
@@ -1705,14 +1703,11 @@ export function OrgModelPoliciesSection() {
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const providersLoadable = useLoadable(orgConfiguredProviders$);
   const lastProviders = useLastResolved(orgConfiguredProviders$);
-  const connectionsLoadable = useLoadable(availableModelProviderConnections$);
-  const lastConnections = useLastResolved(availableModelProviderConnections$);
+  const connectionsLoadable = useLoadable(modelProviderConnections$);
+  const lastConnections = useLastResolved(modelProviderConnections$);
   const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
   const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
   const pageSignal = useGet(pageSignal$);
-  const featureSwitches = useGet(featureSwitch$);
-  const customGatewaysEnabled =
-    featureSwitches[FeatureSwitchKey.CustomModelGateways] ?? false;
   const openAddModelDialog = useSet(openAddModelPolicyDialog$);
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
   const openSettingsBillingPlans = useSet(openSettingsBillingPlans$);
@@ -1732,7 +1727,6 @@ export function OrgModelPoliciesSection() {
       lastConnections,
       modelCapabilitiesLoadable,
       lastModelCapabilities,
-      customGatewaysEnabled,
     });
 
   if (showSkeleton) {
@@ -1753,10 +1747,7 @@ export function OrgModelPoliciesSection() {
     }),
   );
   const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
-    return (
-      (isOpenAIOrAnthropicModel(model) || model === "deepseek-v4-flash") &&
-      !configuredModels.has(model)
-    );
+    return isAddableManagedModel(model) && !configuredModels.has(model);
   });
 
   const submit = (next: UpdateOrgModelPolicy[]) => {
@@ -1857,7 +1848,6 @@ export function OrgModelPoliciesSection() {
         addableModels={addableModels}
         providers={providers}
         connections={connections}
-        customGatewaysEnabled={customGatewaysEnabled}
         saving={saving}
         modelCapabilities={modelCapabilities}
         onUpgrade={openComparePlans}

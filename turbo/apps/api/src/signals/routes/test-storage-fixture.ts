@@ -1,16 +1,14 @@
 import {
   testStorageFixtureContract,
   type TestStorageStateActionBody,
-} from "@vm0/api-contracts/contracts/test-storage-fixture";
-import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/api-contracts/contracts/test-storage-fixture";
+import { VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
 import { and, desc, eq } from "drizzle-orm";
 
 import { conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
-import { authContext$ } from "../auth/auth-context";
-import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
@@ -23,10 +21,8 @@ import {
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
-const prepareBody$ = bodyResultOf(testStorageFixtureContract.prepare);
-const commitBody$ = bodyResultOf(testStorageFixtureContract.commit);
 const actionBody$ = bodyResultOf(testStorageFixtureContract.action);
 
 type StorageStateAction<TAction extends TestStorageStateActionBody["action"]> =
@@ -302,77 +298,6 @@ async function downloadStorageState(
   });
 }
 
-const prepare$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!isTestEndpointAllowed(get(request$))) {
-    return testEndpointNotFoundResponse();
-  }
-  const bodyResult = await get(prepareBody$);
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
-  const auth = get(authContext$);
-  const orgId = auth.orgId;
-  if (!orgId) {
-    return testEndpointNotFoundResponse();
-  }
-  const db = set(writeDb$);
-  const storageId = await findOrCreateFixtureStorageId({
-    db,
-    orgId,
-    userId: auth.userId,
-    name: bodyResult.data.storageName,
-    owner: bodyResult.data.storageOwner,
-  });
-  signal.throwIfAborted();
-
-  return await set(
-    prepareStorageUploadForStorage$,
-    {
-      storageId,
-      files: bodyResult.data.files,
-      force: bodyResult.data.force,
-    },
-    signal,
-  );
-});
-
-const commit$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!isTestEndpointAllowed(get(request$))) {
-    return testEndpointNotFoundResponse();
-  }
-  const bodyResult = await get(commitBody$);
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
-  const auth = get(authContext$);
-  const orgId = auth.orgId;
-  if (!orgId) {
-    return testEndpointNotFoundResponse();
-  }
-  const db = set(writeDb$);
-  const storageId = await findOrCreateFixtureStorageId({
-    db,
-    orgId,
-    userId: auth.userId,
-    name: bodyResult.data.storageName,
-    owner: bodyResult.data.storageOwner,
-  });
-  signal.throwIfAborted();
-
-  return await commitFixtureStorage(
-    set,
-    db,
-    {
-      storageId,
-      versionId: bodyResult.data.versionId,
-      files: bodyResult.data.files,
-    },
-    signal,
-  );
-});
-
 const action$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!isTestEndpointAllowed(get(request$))) {
     return testEndpointNotFoundResponse();
@@ -398,17 +323,6 @@ const action$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
   }
 });
-
-export const testStorageFixtureRoutes: readonly RouteEntry[] = [
-  {
-    route: testStorageFixtureContract.prepare,
-    handler: authRoute({ requireOrganization: true }, prepare$),
-  },
-  {
-    route: testStorageFixtureContract.commit,
-    handler: authRoute({ requireOrganization: true }, commit$),
-  },
-];
 
 export const testStorageStateRoutes: readonly RouteEntry[] = [
   {

@@ -1,4 +1,4 @@
-import { listZeroConnectorCatalog } from "../../../../lib/api";
+import { listZeroConnectorCatalog } from "../../../../lib/api/domains/zero-connectors";
 import type { ZeroConnectorCatalogItem } from "../../../../lib/api/domains/zero-connectors";
 import type { GenerationType } from "./lister";
 
@@ -6,6 +6,8 @@ function toConnectorGenerationType(
   generationType: GenerationType,
 ): string | null {
   switch (generationType) {
+    case "avatar-video":
+      return "video";
     case "voice":
     case "music":
       return "audio";
@@ -82,7 +84,7 @@ export async function printConnectorGuidance(
     console.log(`Provider "${provider}" is not a known connector.`);
     console.log("");
     console.log(
-      `Run "zero generate ${generationType}" to see every provider available for this generation type.`,
+      `Run "okou generate ${generationType}" to see every provider available for this generation type.`,
     );
     return;
   }
@@ -93,13 +95,13 @@ export async function printConnectorGuidance(
     );
     console.log("");
     console.log(
-      `Run "zero generate ${generationType}" to see every provider that supports this generation type.`,
+      `Run "okou generate ${generationType}" to see every provider that supports this generation type.`,
     );
     return;
   }
 
   console.log(
-    `${guidance.label} (${guidance.connectorSlug}) handles ${generationType} generation through its own connector skill, not through "zero generate".`,
+    `${guidance.label} (${guidance.connectorSlug}) handles ${generationType} generation through its own connector skill, not through "okou generate".`,
   );
   console.log("");
   console.log(`Next steps:`);
@@ -109,6 +111,6 @@ export async function printConnectorGuidance(
   );
   console.log("");
   console.log(
-    `Run "zero connector status ${guidance.connectorSlug}" to verify the connector is connected and authorized for the current agent.`,
+    `Run "okou connector status ${guidance.connectorSlug}" to verify the connector is connected and authorized for the current agent.`,
   );
 }

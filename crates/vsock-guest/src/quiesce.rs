@@ -140,6 +140,12 @@ impl OperationState {
         self.inner.lock().unwrap_or_else(|e| e.into_inner()).mode == Mode::Quiescing
     }
 
+    /// Return whether admission is fenced and no operations remain pending.
+    pub(crate) fn is_quiesced(&self) -> bool {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner.mode == Mode::Quiescing && inner.pending == 0
+    }
+
     fn release_one(&self) {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.pending = inner.pending.saturating_sub(1);
@@ -215,6 +221,22 @@ mod tests {
 
         drop(guard);
         assert_eq!(state.pending(), 0);
+    }
+
+    #[test]
+    fn fully_quiesced_requires_fenced_admission_and_zero_pending_operations() {
+        let state = OperationState::default();
+        assert!(!state.is_quiesced());
+
+        let guard = state.acquire().unwrap();
+        assert_eq!(state.enter_quiescing(), QuiesceResult::Busy { pending: 1 });
+        assert!(!state.is_quiesced());
+
+        drop(guard);
+        assert!(state.is_quiesced());
+
+        state.resume();
+        assert!(!state.is_quiesced());
     }
 
     #[test]

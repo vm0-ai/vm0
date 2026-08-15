@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DESKTOP_UPDATE_SILENT_RESTART_IDLE_MS,
-  shouldNotifyUserForDesktopUpdate,
+  shouldDeferDesktopUpdate,
 } from "./desktop-auto-update-policy";
 import type {
   ComputerUseHostRuntimeState,
@@ -51,12 +51,12 @@ function hostState(
 
 describe("desktop auto-update policy", () => {
   it("allows silent restart when there is no command activity", () => {
-    expect(shouldNotifyUserForDesktopUpdate(hostState({}), now)).toBe(false);
+    expect(shouldDeferDesktopUpdate(hostState({}), now)).toBe(false);
   });
 
   it("allows silent restart when the last command is older than 30 minutes", () => {
     expect(
-      shouldNotifyUserForDesktopUpdate(
+      shouldDeferDesktopUpdate(
         hostState({
           lastCommandAt: isoAgo(DESKTOP_UPDATE_SILENT_RESTART_IDLE_MS + 1),
         }),
@@ -65,9 +65,9 @@ describe("desktop auto-update policy", () => {
     ).toBe(false);
   });
 
-  it("notifies when the last command completed within 30 minutes", () => {
+  it("defers when the last command completed within 30 minutes", () => {
     expect(
-      shouldNotifyUserForDesktopUpdate(
+      shouldDeferDesktopUpdate(
         hostState({
           lastCommandAt: isoAgo(DESKTOP_UPDATE_SILENT_RESTART_IDLE_MS - 1),
         }),
@@ -76,9 +76,9 @@ describe("desktop auto-update policy", () => {
     ).toBe(true);
   });
 
-  it("notifies when a local command log entry completed within 30 minutes", () => {
+  it("defers when a local command log entry completed within 30 minutes", () => {
     expect(
-      shouldNotifyUserForDesktopUpdate(
+      shouldDeferDesktopUpdate(
         hostState({
           localCommandLog: [
             commandEntry({
@@ -92,9 +92,9 @@ describe("desktop auto-update policy", () => {
     ).toBe(true);
   });
 
-  it("notifies while a command is still running", () => {
+  it("defers while a command is still running", () => {
     expect(
-      shouldNotifyUserForDesktopUpdate(
+      shouldDeferDesktopUpdate(
         hostState({
           localCommandLog: [
             commandEntry({
@@ -111,7 +111,7 @@ describe("desktop auto-update policy", () => {
 
   it("ignores malformed timestamps", () => {
     expect(
-      shouldNotifyUserForDesktopUpdate(
+      shouldDeferDesktopUpdate(
         hostState({
           lastCommandAt: "not-a-date",
           localCommandLog: [

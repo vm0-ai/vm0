@@ -2,7 +2,7 @@
 #
 # Idempotent playbook that installs all system-level dependencies required by
 # the VM0 runner on runner hosts. Safe to run repeatedly — all tasks use
-# idempotent operations (apt state=present, group append, chmod).
+# idempotent operations (apt state=present, group append, file metadata convergence).
 #
 # Usage:
 #   ansible-playbook -i "host1,host2," playbooks/provision-runner.yml \
@@ -123,7 +123,9 @@
     - name: Ensure /dev/kvm is accessible
       file:
         path: /dev/kvm
-        mode: '0666'
+        owner: root
+        group: kvm
+        mode: '0660'
       become: true
 
     # Write options BEFORE enabling auto-load so that a reboot between

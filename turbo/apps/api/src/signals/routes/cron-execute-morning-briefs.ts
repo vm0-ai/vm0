@@ -1,8 +1,8 @@
-import { cronExecuteMorningBriefsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronExecuteMorningBriefsContract } from "@okouai/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { executeDueMorningBriefs$ } from "../services/morning-brief-run.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 

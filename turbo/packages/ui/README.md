@@ -1,4 +1,4 @@
-# @vm0/ui - Design System
+# @okouai/ui - Design System
 
 VM0's shared UI component library with a complete design system including components, colors, and utilities.
 
@@ -7,7 +7,7 @@ VM0's shared UI component library with a complete design system including compon
 This package provides:
 
 - **UI Components** - Pre-built React components (Button, Card, Input, Table, Dialog)
-- **Icons** - Tabler Icons for consistent iconography
+- **Icons** - Lucide for consistent iconography
 - **Color System** - Complete color palette with semantic mappings
 - **Design Tokens** - Typography, spacing, and border radius
 - **Utilities** - Helper functions like `cn()`
@@ -18,7 +18,7 @@ This package provides:
 
 - **Figma**: https://www.figma.com/design/eTWIsjktpymTDYEb55OxXx/VM0-Cloud
 - **Typography**: Noto Sans (Primary), Fira Code (Monospace)
-- **Icons**: Tabler Icons (https://tabler.io/icons)
+- **Icons**: Lucide (https://lucide.dev/icons/)
 - **Primary Color**: `#ed4e01` (Orange)
 
 ### Typography
@@ -74,57 +74,58 @@ pre {
 
 ## 🎨 Icons
 
-VM0 uses **Tabler Icons** for all iconography, providing a consistent and comprehensive icon set.
+VM0 uses **Lucide** for all UI iconography, providing a consistent and comprehensive icon set.
 
 ### Installation
 
-Tabler Icons is already included in the `@vm0/ui` package. For apps using it:
+Lucide is already included in the `@okouai/ui` package. For apps using it:
 
 ```bash
-pnpm add @tabler/icons-react
+pnpm add lucide-react
 ```
 
 ### Usage
 
 ```tsx
 import {
-  IconRobot,
-  IconChartBar,
-  IconKey,
-  IconReceipt
-} from "@tabler/icons-react";
+  Bot,
+  ChartBar,
+  Key,
+  ReceiptText,
+  Rocket,
+} from "lucide-react";
 
 // Basic usage
-<IconRobot size={16} />
-<IconRobot size={20} />
-<IconRobot size={24} />
+<Bot size={16} />
+<Bot size={20} />
+<Bot size={24} />
 
 // With custom styling
-<IconRobot size={16} className="text-primary" />
-<IconRobot size={20} stroke={1.5} />
-<IconRobot size={24} color="#ed4e01" />
+<Bot size={16} className="text-primary" />
+<Bot size={20} strokeWidth={1.5} />
+<Bot size={24} color="#ed4e01" />
 
 // In buttons
 <Button>
-  <IconRocket size={16} />
+  <Rocket size={16} />
   Launch
 </Button>
 ```
 
 ### Common Icons
 
-| Icon | Component        | Use Case                 |
-| ---- | ---------------- | ------------------------ |
-| 🤖   | `IconRobot`      | Agents, AI features      |
-| 📊   | `IconChartBar`   | Analytics, reports       |
-| 🔑   | `IconKey`        | API keys, authentication |
-| 🧾   | `IconReceipt`    | Billing, transactions    |
-| ❓   | `IconHelpCircle` | Help, support            |
-| 🚀   | `IconRocket`     | Getting started, launch  |
-| 📋   | `IconList`       | Lists, logs              |
-| ⚙️   | `IconSettings`   | Settings, configuration  |
-| 🔔   | `IconBell`       | Notifications            |
-| 👤   | `IconUser`       | User profile             |
+| Icon | Component     | Use Case                 |
+| ---- | ------------- | ------------------------ |
+| 🤖   | `Bot`         | Agents, AI features      |
+| 📊   | `ChartBar`    | Analytics, reports       |
+| 🔑   | `Key`         | API keys, authentication |
+| 🧾   | `ReceiptText` | Billing, transactions    |
+| ❓   | `CircleHelp`  | Help, support            |
+| 🚀   | `Rocket`      | Getting started, launch  |
+| 📋   | `List`        | Lists, logs              |
+| ⚙️   | `Settings`    | Settings, configuration  |
+| 🔔   | `Bell`        | Notifications            |
+| 👤   | `User`        | User profile             |
 
 ### Icon Sizes
 
@@ -137,9 +138,9 @@ Follow these size guidelines:
 
 ### Resources
 
-- **Browse icons**: https://tabler.io/icons
-- **React docs**: https://tabler.io/docs/icons/react
-- **Total icons**: 5000+ free icons
+- **Browse icons**: https://lucide.dev/icons/
+- **React docs**: https://lucide.dev/guide/packages/lucide-react
+- **Total icons**: 1500+ free icons
 
 ---
 
@@ -244,12 +245,13 @@ Semantic colors provide consistent theming across the application:
 
 ## 🧩 Components
 
-All components are built with Radix UI primitives and styled with Tailwind CSS.
+Interactive components are built with Base UI primitives and styled with
+Tailwind CSS, following the shadcn Base UI component patterns.
 
 ### Button
 
 ```tsx
-import { Button } from "@vm0/ui";
+import { Button } from "@okouai/ui";
 
 <Button variant="default">Default</Button>
 <Button variant="destructive">Delete</Button>
@@ -283,7 +285,7 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
-} from "@vm0/ui";
+} from "@okouai/ui";
 
 <Card>
   <CardHeader>
@@ -298,7 +300,7 @@ import {
 ### Input
 
 ```tsx
-import { Input } from "@vm0/ui";
+import { Input } from "@okouai/ui";
 
 <Input type="text" placeholder="Enter text..." />
 <Input type="email" placeholder="Email" />
@@ -315,7 +317,7 @@ import {
   TableRow,
   TableHead,
   TableCell,
-} from "@vm0/ui";
+} from "@okouai/ui";
 
 <Table>
   <TableHeader>
@@ -336,10 +338,10 @@ import {
 ### Dialog
 
 ```tsx
-import { Dialog } from "@vm0/ui";
+import { Dialog } from "@okouai/ui";
 
-// Based on Radix UI Dialog primitive
-// See Radix UI docs for full API
+// Based on Base UI Dialog primitive
+// See Base UI docs for the underlying API
 ```
 
 ---
@@ -351,7 +353,7 @@ import { Dialog } from "@vm0/ui";
 Intelligently merges and deduplicates Tailwind class names.
 
 ```tsx
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 
 cn("px-2 py-1", "px-4"); // => "px-4 py-1"
 cn("text-red-500", undefined); // => "text-red-500"
@@ -416,7 +418,7 @@ This package is part of the VM0 monorepo and uses workspace protocol:
 ```json
 {
   "dependencies": {
-    "@vm0/ui": "workspace:*"
+    "@okouai/ui": "workspace:*"
   }
 }
 ```
@@ -425,13 +427,13 @@ This package is part of the VM0 monorepo and uses workspace protocol:
 
 ```tsx
 // Import components
-import { Button, Card, Input } from "@vm0/ui";
+import { Button, Card, Input } from "@okouai/ui";
 
 // Import styles (in your app's layout/entry)
-import "@vm0/ui/styles/globals.css";
+import "@okouai/ui/styles/globals.css";
 
 // Import utilities
-import { cn } from "@vm0/ui/lib/utils";
+import { cn } from "@okouai/ui/lib/utils";
 ```
 
 ### Theme Setup
@@ -677,7 +679,7 @@ colors: {
 - [Figma Design File](https://www.figma.com/design/eTWIsjktpymTDYEb55OxXx/VM0-Cloud)
 - [shadcn/ui Documentation](https://ui.shadcn.com/)
 - [Tailwind CSS v4](https://tailwindcss.com/)
-- [Radix UI](https://www.radix-ui.com/)
+- [Base UI](https://base-ui.com/react/)
 - [Class Variance Authority](https://cva.style/docs)
 
 ---

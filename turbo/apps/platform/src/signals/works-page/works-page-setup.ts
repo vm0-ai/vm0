@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { ZeroWorksPage } from "../../views/zero-page/zero-works-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -10,6 +10,7 @@ import {
   watchSlackConnection$,
 } from "../zero-page/zero-slack.ts";
 import { watchTeamsConnection$ } from "../zero-page/zero-teams.ts";
+import { watchGithubIntegration$ } from "../zero-page/zero-github.ts";
 import {
   resetAgentPhoneConnectUi$,
   setAgentPhoneConnectDialogOpen$,
@@ -62,6 +63,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     Promise.all([
       set(watchSlackConnection$, signal),
       set(watchTeamsConnection$, signal),
+      set(watchGithubIntegration$, signal),
       set(watchAgentPhoneConnection$, signal),
     ]),
     Reason.Entrance,

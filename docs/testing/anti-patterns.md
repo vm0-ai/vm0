@@ -168,21 +168,16 @@ beforeEach(() => {
 
 Fake timers feel convenient for tests that involve time, but they mask real timing issues. Race conditions, actual timeout behavior, and real async patterns all get hidden behind the fake timer abstraction.
 
-If you need deterministic time, mock only what you need:
+If you need deterministic time in Platform, mock the application clock and bind
+the override to the owning test signal:
 
 ```typescript
-beforeEach(() => {
-  vi.spyOn(Date, "now").mockReturnValue(
-    new Date("2024-01-15T12:00:00Z").getTime(),
-  );
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+mockNow(context.signal, new Date("2024-01-15T12:00:00Z"));
 ```
 
-This approach is more specific—you're only controlling `Date.now()`, not all timers. Tests still handle real async behavior and can catch actual race conditions.
+Platform production code reads time through `lib/time.ts`'s `now()`. The test
+override is released when `context.signal` aborts, while timers remain real so
+tests can still catch actual race conditions.
 
 ---
 
@@ -191,8 +186,8 @@ This approach is more specific—you're only controlling `Date.now()`, not all t
 Sometimes you see code like this:
 
 ```typescript
-vi.mock("@vm0/core", async () => {
-  const actual = await vi.importActual("@vm0/core");
+vi.mock("@okouai/core", async () => {
+  const actual = await vi.importActual("@okouai/core");
   return {
     ...actual,
     extractVariableReferences: vi.fn(),
@@ -206,7 +201,7 @@ This partial mocking—where you import the real module and selectively replace 
 The solution is to use the real implementation. If your tests require partial mocking to pass, that often indicates a design issue in the production code—maybe it's doing too much, or has too many dependencies.
 
 ```typescript
-// Use real @vm0/core implementation
+// Use real @okouai/core implementation
 import { extractRequiredVarNames } from "../cook";
 
 it("should extract and combine vars and secrets", () => {
@@ -395,7 +390,7 @@ it("should create a provider", async () => {
 
 ```typescript
 // ✅ Good — testing through the API endpoint
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 

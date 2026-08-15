@@ -15,8 +15,8 @@ use guest_contracts::session_history_identity::{
 };
 use httpmock::prelude::*;
 use sandbox::{ExecResult, ExecTermination, ProcessExit};
+use sandbox_mock::MockLifecycleGate;
 use sha2::{Digest, Sha256};
-use tokio::sync::Notify;
 
 use super::{
     LARGE_SESSION_HISTORY_SIZE_BYTES, assert_successful_action, history_prefix_attribution,
@@ -27,11 +27,11 @@ use crate::executor::tests::agent_run_tests::support::{
     final_identity_runtime_paths,
 };
 use crate::executor::tests::support::{
-    OperationGateSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, SandboxGatePoint, create_overridden_sandbox,
-    minimal_context, sandbox_exec_error, test_executor_config, test_telemetry,
+    RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context, sandbox_exec_error,
+    test_executor_config, test_telemetry,
 };
 use crate::executor::{
-    EXIT_SIGKILL, RestoredSessionIdentity, SessionHistoryMaterializer,
+    EXIT_SIGKILL, RestoredSessionIdentity, SessionHistoryCpuPool, SessionHistoryMaterializer,
     SessionHistoryRestoreFallback, SessionHistoryRestorePlan, effective_cli_framework,
 };
 use crate::restored_session_identity::{
@@ -132,6 +132,7 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -220,6 +221,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -283,14 +285,9 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let start_process_entered = Arc::new(Notify::new());
-    let start_process_release = Arc::new(Notify::new());
-    let sandbox = OperationGateSandbox {
-        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
-        point: SandboxGatePoint::StartProcess,
-        entered: Arc::clone(&start_process_entered),
-        release: Arc::clone(&start_process_release),
-    };
+    let start_process_gate = MockLifecycleGate::new();
+    overrides.set_start_process_lifecycle_gate(start_process_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let (ctx, idle_identity) = context_with_checkpointed_session_identity(
         "sess-cancelled-reuse-123",
         br#"{"type":"before"}"#,
@@ -298,12 +295,13 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
     let run = run_in_sandbox(
-        &sandbox,
+        sandbox.as_ref(),
         &ctx,
         &config,
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -319,7 +317,9 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
                 let _ = result;
                 panic!("run finished before the start-process barrier");
             }
-            () = start_process_entered.notified() => {}
+            entered = start_process_gate.wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT) => {
+                entered.expect("run should reach the start-process barrier");
+            }
         }
     })
     .await
@@ -369,6 +369,7 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_exits_nonzero() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -508,6 +509,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -598,6 +600,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -707,6 +710,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -830,6 +834,7 @@ async fn run_in_sandbox_records_mismatch_fallback_and_restores_prestarted_histor
             RunStart {
                 restore_guest_state: false,
                 reuse_result: SandboxReuseResult::Reused,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
                 prev_storage: None,
             },
             &mut telemetry,
@@ -942,6 +947,7 @@ async fn run_in_sandbox_records_requested_larger_prefix_outcomes_without_changin
             RunStart {
                 restore_guest_state: false,
                 reuse_result: SandboxReuseResult::Reused,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
                 prev_storage: None,
             },
             &mut telemetry,
@@ -1058,6 +1064,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -1096,4 +1103,80 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
             .any(|op| op.0 == "session_history_identity_reuse_missing" && op.1),
         "expected identity reuse missing telemetry, got: {ops:?}"
     );
+}
+
+#[tokio::test]
+async fn reused_sandbox_fallback_materializes_prune_eligible_codex_zstd_as_raw() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let history =
+        b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
+    let compressed_history = zstd::encode_all(history.as_slice(), 0).unwrap();
+    config.session_history_cpu =
+        SessionHistoryCpuPool::with_test_codex_raw_restore_threshold(1, history.len() as u64 - 1);
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(&compressed_history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                encoding: ResumeSessionHistoryEncoding::Zstd,
+                raw_size: history.len() as u64,
+                encoded_size: compressed_history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
+    sandbox.push_read_file_result(Ok(None));
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        &config.session_history_cpu,
+        ctx.resume_session.as_ref(),
+        effective_cli_framework(&ctx.cli_agent_type),
+        tokio_util::sync::CancellationToken::new(),
+        None,
+    );
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
+                materializer,
+                fallback: Some(SessionHistoryRestoreFallback::MissingIdleIdentity),
+            }),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    history_mock.assert_calls_async(1).await;
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
 }

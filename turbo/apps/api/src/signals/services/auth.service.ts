@@ -1,11 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { cliTokens } from "@okouai/db/schema/cli-tokens";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { and, eq, gt } from "drizzle-orm";
 
 import { membershipsByUserId } from "../external/clerk";
 import { db$, writeDb$ } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import type { ApiOrgRole, CliAuth, CliTokenRecord } from "../../types/auth";
 
 const MEMBER_ROLE_CACHE_TTL_MS = 60_000;

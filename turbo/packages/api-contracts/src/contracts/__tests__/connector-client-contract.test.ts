@@ -16,11 +16,15 @@ import { zeroConnectorCatalogContract } from "../zero-connector-catalog";
 import {
   connectorCheckDiagnosticResultSchema,
   connectorCheckRequestSchema,
-} from "../zero-connector-check";
+} from "../connector-check";
 import {
   zeroConnectorsBySlugContract,
   zeroConnectorsSearchContract,
 } from "../zero-connectors";
+import {
+  customConnectorListResponseSchema,
+  customConnectorResponseSchema,
+} from "../zero-custom-connectors";
 import {
   applyUserPermissionGrantsRequestSchema,
   userPermissionGrantResponseSchema,
@@ -29,6 +33,39 @@ import { zeroWorkflowConnectorReadinessResponseSchema } from "../zero-workflows"
 import { initClient } from "../trpc-contract";
 
 const AGENT_ID = "00000000-0000-4000-a000-000000000001";
+
+const customHttpConnectorPayloadBase = {
+  id: "00000000-0000-4000-a000-000000000005",
+  slug: "_example",
+  displayName: "Example",
+  fields: [
+    {
+      key: "token",
+      label: "Token",
+      kind: "secret",
+      required: true,
+    },
+  ],
+  headerInjections: [
+    { name: "Authorization", valueTemplate: "Bearer {{token}}" },
+  ],
+  queryInjections: [],
+  authMode: "manual",
+  permissionBundleRef: null,
+  skillMarkdown: null,
+  storageVersion: 1,
+  connected: true,
+  missingRequiredFields: [],
+  configuredFieldKeys: ["token"],
+  createdAt: "2026-08-11T00:00:00.000Z",
+  updatedAt: "2026-08-11T00:00:00.000Z",
+  prefixTemplates: ["https://api.example.test"],
+} as const;
+
+const customHttpConnectorPayload = {
+  ...customHttpConnectorPayloadBase,
+  kind: "http",
+} as const;
 
 const connector = {
   id: "00000000-0000-4000-a000-000000000002",
@@ -78,7 +115,6 @@ describe("connector client response contracts", () => {
     expect(
       connectorListResponseSchema.parse({
         connectors: [connector],
-        configuredConnectorSlugs: ["github"],
         connectorProvidedBindings: [
           {
             connectorSlug: "github",
@@ -90,7 +126,11 @@ describe("connector client response contracts", () => {
           },
         ],
       }),
-    ).toMatchObject({ configuredConnectorSlugs: ["github"] });
+    ).toMatchObject({
+      connectorProvidedBindings: [
+        { connectorSlug: "github", name: "GITHUB_TOKEN" },
+      ],
+    });
     expect(
       connectorOauthDeviceAuthSessionStartResponseSchema.parse({
         sessionId: "00000000-0000-4000-a000-000000000003",
@@ -197,6 +237,74 @@ describe("connector client response contracts", () => {
   });
 });
 
+describe("custom connector response contracts", () => {
+  it("requires tagged HTTP responses", () => {
+    expect(
+      customConnectorResponseSchema.parse(customHttpConnectorPayload),
+    ).toStrictEqual(customHttpConnectorPayload);
+    expect(
+      customConnectorListResponseSchema.parse({
+        connectors: [customHttpConnectorPayload],
+      }),
+    ).toStrictEqual({ connectors: [customHttpConnectorPayload] });
+    expect(() => {
+      customConnectorResponseSchema.parse(customHttpConnectorPayloadBase);
+    }).toThrow();
+  });
+
+  it("parses canonical OAuth HTTP responses", () => {
+    const payload = {
+      ...customHttpConnectorPayload,
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "oauth-client-id",
+        authorizationUrl: "https://example.test/oauth/authorize",
+        tokenUrl: "https://example.test/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    } as const;
+
+    expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
+  });
+
+  it("rejects responses without an auth mode", () => {
+    const { authMode: _authMode, ...payload } = customHttpConnectorPayload;
+
+    expect(() => {
+      return customConnectorResponseSchema.parse(payload);
+    }).toThrow();
+  });
+
+  it("parses canonical MCP responses", () => {
+    const payload = {
+      id: "00000000-0000-4000-a000-000000000006",
+      slug: "_example-mcp",
+      displayName: "Example MCP",
+      kind: "mcp",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "manual",
+      permissionBundleRef: null,
+      skillMarkdown: null,
+      storageVersion: 1,
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: [],
+      createdAt: "2026-08-11T00:00:00.000Z",
+      updatedAt: "2026-08-11T00:00:00.000Z",
+      endpoint: "https://mcp.example.test",
+      transport: "streamable-http",
+      prefixTemplates: [],
+    } as const;
+    expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
+  });
+});
+
 describe("connector client request contracts", () => {
   it("accepts canonical connector check requests", () => {
     const base = {
@@ -272,8 +380,8 @@ describe("connector path parameter contracts", () => {
     });
 
     expect(paths).toStrictEqual([
-      "https://api.example.test/api/zero/connectors/github",
-      "https://api.example.test/api/zero/connector-catalog/github/permissions",
+      "https://api.example.test/api/okou/connectors/github",
+      "https://api.example.test/api/okou/connector-catalog/github/permissions",
       "https://api.example.test/api/connectors/github/callback?responseMode=json",
     ]);
   });

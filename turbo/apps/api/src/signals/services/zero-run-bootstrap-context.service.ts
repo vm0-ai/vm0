@@ -1,19 +1,17 @@
-import { userPermissionGrantActionSchema } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import { userPermissionGrantActionSchema } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import type {
   FirewallPermissionGrant,
   FirewallPermissionGrantAction,
-} from "@vm0/connectors/firewall-metadata/policy";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+} from "@okouai/connectors/firewall-metadata/policy";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { userConnectors } from "@okouai/db/schema/user-connector";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { userFeatureSwitches } from "@okouai/db/schema/user-feature-switches";
+import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
+import { workflows } from "@okouai/db/schema/workflow";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -49,7 +47,6 @@ const bootstrapMetadataRowKindSchema = z.enum([
   "builtin_connector",
   "custom_connector",
   "permission_grant",
-  "trigger_agent",
 ]);
 type BootstrapMetadataRowKind = z.output<typeof bootstrapMetadataRowKindSchema>;
 const bootstrapMetadataRowKindDecoder = zodEnumDriverValueDecoder(
@@ -110,14 +107,12 @@ export interface ZeroRunBootstrapContext extends AgentConnectorScope {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly workflows: readonly RunWorkflowRef[];
   readonly permissionGrants: readonly FirewallPermissionGrant[];
-  readonly triggerAgentId: string | undefined;
 }
 
 interface ZeroRunBootstrapSnapshotArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly agentId: string;
-  readonly triggerRunId: string | undefined;
   readonly checkedAt: Date;
 }
 
@@ -148,25 +143,6 @@ function emptyBootstrapMetadataFields() {
   };
 }
 
-function zeroRunTriggerAgentMetadataQuery(
-  db: ReadonlyDb,
-  triggerRunId: string | undefined,
-) {
-  return db
-    .select({
-      kind: sql`'trigger_agent'`
-        .mapWith(bootstrapMetadataRowKindDecoder)
-        .as("kind"),
-      ...emptyBootstrapMetadataFields(),
-      id: sql`${agentSessions.agentComposeId}::text`
-        .mapWith(nullableTextDecoder)
-        .as("id"),
-    })
-    .from(agentRuns)
-    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .where(triggerRunId ? eq(agentRuns.id, triggerRunId) : sql`FALSE`);
-}
-
 function zeroRunCustomConnectorMetadataQuery(
   db: ReadonlyDb,
   args: ZeroRunBootstrapSnapshotArgs,
@@ -190,10 +166,6 @@ function zeroRunCustomConnectorMetadataQuery(
       and(
         eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
         eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
-        eq(
-          orgCustomConnectors.revision,
-          userCustomConnectors.connectorRevision,
-        ),
       ),
     )
     .where(
@@ -296,18 +268,12 @@ async function queryZeroRunBootstrapMetadataSnapshot(
         activeUserPermissionGrantCondition(args.checkedAt),
       ),
     );
-  const triggerAgentQuery = zeroRunTriggerAgentMetadataQuery(
-    db,
-    args.triggerRunId,
-  );
-
   return await unionAll(
     userInfoQuery,
     featureSwitchQuery,
     builtinConnectorQuery,
     customConnectorQuery,
     permissionGrantQuery,
-    triggerAgentQuery,
   );
 }
 
@@ -317,20 +283,20 @@ async function queryZeroRunWorkflowCandidates(
 ): Promise<RunWorkflowSourceRow[]> {
   return await db
     .select({
-      id: zeroWorkflows.id,
-      name: zeroWorkflows.name,
-      visibility: zeroWorkflows.visibility,
-      ownerUserId: zeroWorkflows.ownerUserId,
-      createdAt: zeroWorkflows.createdAt,
+      id: workflows.id,
+      name: workflows.name,
+      visibility: workflows.visibility,
+      ownerUserId: workflows.ownerUserId,
+      createdAt: workflows.createdAt,
     })
-    .from(zeroWorkflows)
+    .from(workflows)
     .where(
       and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.agentId),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.agentId, args.agentId),
         or(
-          eq(zeroWorkflows.visibility, "public"),
-          eq(zeroWorkflows.ownerUserId, args.userId),
+          eq(workflows.visibility, "public"),
+          eq(workflows.ownerUserId, args.userId),
         ),
       ),
     );
@@ -363,7 +329,6 @@ export function materializeZeroRunBootstrapContext(
   const connectorRows: AgentConnectorSlugRow[] = [];
   const customConnectorRows: AgentCustomConnectorRow[] = [];
   const permissionGrants: FirewallPermissionGrant[] = [];
-  let triggerAgentId: string | undefined;
 
   for (const row of rows.metadataRows) {
     switch (row.kind) {
@@ -417,13 +382,6 @@ export function materializeZeroRunBootstrapContext(
         });
         break;
       }
-      case "trigger_agent": {
-        if (row.id === null) {
-          throw new Error("Invalid Zero bootstrap metadata trigger agent row");
-        }
-        triggerAgentId = row.id;
-        break;
-      }
     }
   }
 
@@ -452,6 +410,5 @@ export function materializeZeroRunBootstrapContext(
     ...connectorScope,
     workflows: workflowsForRunFromRows(rows.workflowRows, args.userId),
     permissionGrants,
-    triggerAgentId,
   };
 }

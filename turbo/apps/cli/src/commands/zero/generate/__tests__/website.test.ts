@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate website command
+ * Tests for okou generate website command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -9,32 +9,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-registry";
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
 
-function buildZeroToken(
-  featureSwitchOverrides: Partial<Record<FeatureSwitchKey, boolean>>,
-): string {
-  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
-    "base64url",
-  );
-  const payload = Buffer.from(
-    JSON.stringify({
-      userId: "user-1",
-      runId: "run-1",
-      orgId: "org-1",
-      scope: "zero",
-      capabilities: [],
-      featureSwitchOverrides,
-      iat: 1000,
-      exp: 2000,
-    }),
-  ).toString("base64url");
-  return `vm0_sandbox_${header}.${payload}.test-signature`;
-}
-
-describe("zero generate website command", () => {
+describe("okou generate website command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -46,12 +25,6 @@ describe("zero generate website command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv(
-      "ZERO_TOKEN",
-      buildZeroToken({
-        [FeatureSwitchKey.HtmlResourceIndex]: false,
-      }),
-    );
   });
 
   afterEach(() => {
@@ -74,27 +47,33 @@ describe("zero generate website command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("# Zero generate website");
+    expect(stdout).toContain("# Okou generate website");
     expect(stdout).toContain("generation source-selection packet");
     expect(stdout).not.toContain("federated");
     expect(stdout).toContain("## Stage 1: Resource Selection");
-    expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain(
-      "Default Git Source: `nexu-io/open-design@3fb620af423534643677c7c6fae76be088fa770a`",
+      "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
     );
     expect(stdout).not.toContain("Sources:");
     expect(stdout).not.toContain("vm0-ai/vm0-skills");
     expect(stdout).toContain(
-      "For a candidate without `source.archive`, resolve `source.path` only from the pinned Git Source above. Do not run `zero resource pull` for it.",
+      "There is no fixed selection count for any resource type.",
     );
     expect(stdout).toContain(
-      "For a candidate with `source.archive`, run `zero resource pull <candidate-id> --dir ./generated/resources` with that candidate's `id`, then resolve it at `./generated/resources/<source.path>`. Do not look for it in the Git Source.",
+      "For a selected entry without `source.archive`, resolve its `source.path` from the index's pinned `source.repo@source.ref`. Do not run `okou resource pull` for it.",
+    );
+    expect(stdout).toContain(
+      "run its exact `source.pull.command`, then use `source.pull.resolvedPath`.",
+    );
+    expect(stdout).toContain(
+      "The Website index includes Okou built-in R2 template packages as template entries with `source.archive`.",
+    );
+    expect(stdout).toContain(
+      "Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
     );
     expect(stdout).toContain("observability launch site");
-    expect(stdout).toContain("template:black-slabs");
-    expect(stdout).toContain("template:web-prototype-taste-editorial");
     expect(stdout).toContain(
-      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+      "For landing, marketing, official brand or product, and launch pages, select an Okou built-in website template.",
     );
     expect(stdout).toContain(
       "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
@@ -102,12 +81,42 @@ describe("zero generate website command", () => {
     expect(stdout).toContain(
       "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
     );
-    expect(stdout).not.toContain("template:html-ppt-pitch-deck");
+    expect(stdout).toContain("Built-in Website template release: previous");
+    expect(stdout).not.toContain("use `seedream4` by default");
+    expect(stdout).not.toContain("Keep at most 3 image generations");
+    expect(stdout).not.toContain("Embed this URL in HTML");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
     expect(stdout).toContain(
-      "zero host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
+      "okou host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
+    );
+  });
+
+  it("should expose the latest independent registry inside the rollout", async () => {
+    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "observability launch site",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "https://static.vm0.io/html-resources/website/v1/f0ad1af26306b7cbd9e4e1505a9991e8e9330ca507d5890245553c760878be04/website.json",
+    );
+    expect(stdout).toContain("Built-in Website template release: latest");
+    expect(stdout).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
+    );
+    expect(stdout).toContain(
+      "Keep at most 3 image generations in flight at once",
+    );
+    expect(stdout).toContain(
+      "Embed the `Embed this URL in HTML` value returned by the generator",
     );
   });
 
@@ -124,45 +133,7 @@ describe("zero generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "zero host ./generated/mockups/clearpath --site clearpath --spa",
-    );
-  });
-
-  it("should use the static website resource index when enabled", async () => {
-    vi.stubEnv(
-      "ZERO_TOKEN",
-      buildZeroToken({
-        [FeatureSwitchKey.HtmlResourceIndex]: true,
-      }),
-    );
-
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "website",
-      "--prompt",
-      "observability launch site",
-      "--title",
-      "Clearpath",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain(
-      "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
-    );
-    expect(stdout).not.toContain("## Candidate Registry Slice");
-    expect(stdout).not.toContain('"id": "template:black-slabs"');
-    expect(stdout).toContain(
-      "There is no fixed selection count for any resource type.",
-    );
-    expect(stdout).toContain(
-      "The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
-    );
-    expect(stdout).toContain(
-      "Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
-    );
-    expect(stdout).toContain(
-      "run its exact `source.pull.command`, then use `source.pull.resolvedPath`.",
+      "okou host ./generated/mockups/clearpath --site clearpath --spa",
     );
   });
 
@@ -183,10 +154,10 @@ describe("zero generate website command", () => {
     );
     expect(stdout).toContain("Use the explicitly selected template.");
     expect(stdout).not.toContain(
-      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+      "For landing, marketing, official brand or product, and launch pages, select an Okou built-in website template.",
     );
     expect(stdout).not.toContain(
-      "Selected template package: zero resource pull template:web-prototype",
+      "Selected template package: okou resource pull template:web-prototype",
     );
   });
 
@@ -213,12 +184,29 @@ describe("zero generate website command", () => {
       "Selected design system: design-system:stripe (Stripe)",
     );
     expect(stdout).toContain(
-      "Selected template package: zero resource pull template:dot-matrix --dir ./generated/resources",
+      "Selected template package: okou resource pull template:dot-matrix --dir ./generated/resources",
     );
-    expect(stdout).toContain('"id": "template:dot-matrix"');
-    expect(stdout).toContain('"type": "tar.gz"');
     expect(stdout).toContain(
-      '"sha256": "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2"',
+      "Selected template archive SHA-256: f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
+    );
+  });
+
+  it("should pin the latest built-in package inside the rollout", async () => {
+    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "Kinetic onchain brand studio",
+      "--template",
+      "dot-matrix",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected template archive SHA-256: cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
     );
   });
 

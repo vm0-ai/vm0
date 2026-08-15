@@ -6,10 +6,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
-import { Button } from "@vm0/ui/components/ui/button";
-import { CopyButton } from "@vm0/ui/components/ui/copy-button";
-import { IconLoader2 } from "@tabler/icons-react";
+} from "@okouai/ui/components/ui/dialog";
+import { Button } from "@okouai/ui/components/ui/button";
+import { CopyButton } from "@okouai/ui/components/ui/copy-button";
+import { Loader2 } from "lucide-react";
 
 import {
   closeCodexDeviceAuthDialog$,
@@ -133,7 +133,6 @@ function CodexDeviceAuthDialogView({
           mode={dialog.mode}
           onStart={handleStart}
           openApprovalPage={openApprovalPage}
-          pageSignal={pageSignal}
         />
       </DialogContent>
     </Dialog>
@@ -145,15 +144,14 @@ function CodexDeviceAuthBody({
   mode,
   onStart,
   openApprovalPage,
-  pageSignal,
 }: {
   flow: CodexDeviceAuthFlowState;
   mode: "connect" | "reconnect";
   onStart: () => void;
   openApprovalPage: (signal: AbortSignal) => Promise<boolean>;
-  pageSignal: AbortSignal;
 }) {
   const brandName = useGet(brandName$);
+  const pageSignal = useGet(pageSignal$);
   const { t } = useTranslation();
   switch (flow.status) {
     case "idle": {
@@ -208,7 +206,7 @@ function CodexDeviceAuthBody({
               <CopyButton
                 type="button"
                 text={flow.verificationCode}
-                className="-m-1 p-1.5 hover:bg-accent"
+                className="-m-1 p-1.5 hover:bg-state-hover"
               />
             </div>
           </div>
@@ -260,7 +258,7 @@ function CodexDeviceAuthLoadingContent() {
       role="status"
       data-testid="codex-device-auth-loading"
     >
-      <IconLoader2 size={16} className="animate-spin" />
+      <Loader2 size={16} className="animate-spin" />
       <span>
         {t(($) => {
           return $.settings.models.deviceAuth.codex.preparing;

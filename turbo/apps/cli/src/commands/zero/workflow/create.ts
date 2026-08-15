@@ -1,9 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { readFileSync } from "node:fs";
-import { createWorkflow } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { createWorkflow } from "../../../lib/api/domains/zero-workflows";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { readSupplementaryFiles } from "../../../lib/skill-directory";
+import { getOkouAgentId, getOkouChatThreadId } from "../../../lib/okou-env";
 import { formatWorkflowAgentName } from "./format";
 
 export const createCommand = new Command()
@@ -12,7 +13,7 @@ export const createCommand = new Command()
   .argument("<name>", "Workflow name (lowercase alphanumeric with hyphens)")
   .option(
     "--agent <id>",
-    "Agent ID to host the workflow (defaults to ZERO_AGENT_ID)",
+    "Agent ID to host the workflow (defaults to OKOU_AGENT_ID)",
   )
   .option("--instruction <text>", "Workflow instruction text")
   .option(
@@ -30,17 +31,17 @@ export const createCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow create my-workflow --agent <agent-id> --instruction "Summarize the inbox"
-  zero workflow create my-workflow --instruction-file ./instruction.md
-  zero workflow create my-workflow --instruction "Do things" --dir ./workflows/my-workflow/files/
-  zero workflow create shared-workflow --instruction "Shared logic" --public
+  okou workflow create my-workflow --agent <agent-id> --instruction "Summarize the inbox"
+  okou workflow create my-workflow --instruction-file ./instruction.md
+  okou workflow create my-workflow --instruction "Do things" --dir ./workflows/my-workflow/files/
+  okou workflow create shared-workflow --instruction "Shared logic" --public
 
 Notes:
-  - A workflow belongs to exactly one agent; provide --agent or set ZERO_AGENT_ID
+  - A workflow belongs to exactly one agent; provide --agent or set OKOU_AGENT_ID
   - SKILL.md is synthesized from (name, description, instruction); do not include it
   - --dir uploads supplementary files only; any SKILL.md is rejected
   - New workflows are private by default
-  - Copy a workflow onto another agent: zero workflow copy <workflow-id> --to-agent <agent-id>`,
+  - Copy a workflow onto another agent: okou workflow copy <workflow-id> --to-agent <agent-id>`,
   )
   .action(
     withErrorHandler(
@@ -56,12 +57,12 @@ Notes:
           public?: boolean;
         },
       ) => {
-        const agentId = options.agent ?? process.env.ZERO_AGENT_ID;
+        const agentId = options.agent ?? getOkouAgentId();
         if (!agentId) {
           console.error(chalk.red("✗ --agent is required"));
           console.error(
             chalk.dim(
-              "  Provide --agent <agent-id> or run inside an agent sandbox (ZERO_AGENT_ID)",
+              "  Provide --agent <agent-id> or run inside an agent sandbox (OKOU_AGENT_ID)",
             ),
           );
           process.exit(1);
@@ -85,7 +86,7 @@ Notes:
 
         const workflow = await createWorkflow({
           agentId,
-          chatThreadId: process.env.ZERO_CHAT_THREAD_ID || undefined,
+          chatThreadId: getOkouChatThreadId(),
           name,
           instruction,
           files,
@@ -111,7 +112,7 @@ Notes:
         }
         console.log();
         console.log(
-          `Copy onto another agent: zero workflow copy ${workflow.id} --to-agent <agent-id>`,
+          `Copy onto another agent: okou workflow copy ${workflow.id} --to-agent <agent-id>`,
         );
       },
     ),

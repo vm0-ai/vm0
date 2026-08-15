@@ -29,7 +29,6 @@ export const testSlackStatePostBodySchema = z.object({
   default_agent_name: z.string().optional(),
   default_agent_display_name: z.string().nullable().optional(),
   compose_content: z.record(z.string(), z.unknown()).optional(),
-  org_slug: z.string().optional(),
   org_name: z.string().optional(),
   seed_secret_names: z.array(z.string()).optional(),
   seed_variables: z.record(z.string(), z.string()).optional(),
@@ -43,8 +42,6 @@ export const testSlackStatePostResponseSchema = z.object({
   connection_id: z.string().nullable(),
   default_agent_id: z.string().nullable(),
 });
-
-const nullableDateStringSchema = z.string().nullable();
 
 export const testSlackStateResponseSchema = z.object({
   installation: z
@@ -96,7 +93,6 @@ export const testSlackStateResponseSchema = z.object({
       id: z.string(),
       chatThreadId: z.string(),
       eventType: z.enum(["input.prompt", "input.automation"]),
-      triggerSource: z.string().nullable(),
       createdAt: z.string(),
     }),
   ),
@@ -139,16 +135,6 @@ export const testSlackStateResponseSchema = z.object({
       content_keys: z.array(z.string()),
     })
     .nullable(),
-  resolved_slack_api_url: z.string().nullable(),
-  mock_calls: z.array(
-    z.object({
-      method: z.string(),
-      teamId: z.string().nullable(),
-      channelId: z.string().nullable(),
-      bodyJson: z.unknown(),
-      createdAt: nullableDateStringSchema,
-    }),
-  ),
 });
 
 export const testSlackStateContract = c.router({
@@ -165,7 +151,7 @@ export const testSlackStateContract = c.router({
       400: testSlackStateErrorSchema,
       404: z.string(),
     },
-    summary: "Read Slack e2e diagnostic state for a test workspace",
+    summary: "Read Slack API integration test state",
   },
   post: {
     method: "POST",
@@ -176,7 +162,7 @@ export const testSlackStateContract = c.router({
       400: testSlackStateErrorSchema,
       404: z.string(),
     },
-    summary: "Seed Slack e2e diagnostic state for a test workspace",
+    summary: "Seed Slack API integration test state",
   },
   delete: {
     method: "DELETE",
@@ -190,7 +176,7 @@ export const testSlackStateContract = c.router({
       400: testSlackStateErrorSchema,
       404: z.string(),
     },
-    summary: "Clear Slack e2e diagnostic state for a test workspace",
+    summary: "Clear Slack API integration test state",
   },
 });
 

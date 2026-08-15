@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import StripeSDK from "stripe";
-import { zeroBillingRedeemContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroBillingRedeemContract } from "@okouai/api-contracts/contracts/zero-billing";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { postOneTimePurchaseCompleted } from "./helpers/stripe-billing-webhook";
+import { zeroBillingRedeemRoutes } from "../zero-billing-redeem";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -46,7 +48,9 @@ function postRedeem(options?: {
   readonly successUrl?: string;
   readonly headers?: { readonly authorization?: string };
 }) {
-  const client = setupApp({ context })(zeroBillingRedeemContract);
+  const client = setupApp({ context, routes: zeroBillingRedeemRoutes })(
+    zeroBillingRedeemContract,
+  );
   return client.create({
     params: { campaign: options?.campaign ?? CAMPAIGN },
     body: {
@@ -111,6 +115,43 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
       status: "error",
       reason: "campaign_misconfigured",
     });
+  });
+
+  it("prefers OKOU campaign configuration over the Zero fallback", async () => {
+    mockEnv(
+      "OKOU_ONE_TIME_CAMPAIGN",
+      JSON.stringify({
+        [CAMPAIGN]: { priceId: PRICE_ID, couponId: COUPON_ID },
+      }),
+    );
+    mockEnv(
+      "ZERO_ONE_TIME_CAMPAIGN",
+      JSON.stringify({
+        [CAMPAIGN]: {
+          priceId: "price_ignored_zero_campaign",
+          couponId: "ignored-zero-coupon",
+        },
+      }),
+    );
+    const fixture = redeemFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      id: "cs_okou_campaign",
+      url: checkoutUrl("cs_okou_campaign"),
+    });
+
+    const response = await accept(postRedeem(), [200]);
+
+    expect(response.body).toStrictEqual({
+      status: "ready",
+      checkoutUrl: checkoutUrl("cs_okou_campaign"),
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line_items: [{ price: PRICE_ID, quantity: 1 }],
+        discounts: [{ coupon: COUPON_ID }],
+      }),
+    );
   });
 
   it("returns campaign_misconfigured when the campaign is missing from env config", async () => {

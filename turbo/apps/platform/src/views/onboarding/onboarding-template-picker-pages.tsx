@@ -1,18 +1,13 @@
 import type { SyntheticEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
-import {
-  IconChevronLeft,
-  IconChevronRight,
-  IconCircleCheckFilled,
-  IconEye,
-} from "@tabler/icons-react";
+import { ChevronLeft, ChevronRight, CircleCheckBig, Eye } from "lucide-react";
 import {
   r2ImageTransformUrl,
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
   type VideoTemplateItem,
-} from "@vm0/core";
-import { cn } from "@vm0/ui";
+} from "@okouai/core";
+import { Button, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
   onboardingDraft$,
@@ -37,7 +32,7 @@ import {
 
 function SelectionCheck({ selected }: { readonly selected: boolean }) {
   return selected ? (
-    <IconCircleCheckFilled
+    <CircleCheckBig
       size={18}
       className="shrink-0 text-primary"
       aria-hidden="true"
@@ -71,24 +66,16 @@ function PresentationPreview({
       onClose={onClose}
       footer={
         <>
-          <button
-            type="button"
-            className="h-9 rounded-[10px] border border-border bg-muted px-4 text-sm font-medium"
-            onClick={onClose}
-          >
+          <Button type="button" variant="outline" onClick={onClose}>
             {t(($) => {
               return $.onboarding.common.gotIt;
             })}
-          </button>
-          <button
-            type="button"
-            className="h-9 rounded-[10px] bg-primary px-4 text-sm font-medium text-white"
-            onClick={onSelect}
-          >
+          </Button>
+          <Button type="button" onClick={onSelect}>
             {t(($) => {
               return $.onboarding.common.selectThisTemplate;
             })}
-          </button>
+          </Button>
         </>
       }
     >
@@ -115,7 +102,7 @@ function PresentationPreview({
             move(-1);
           }}
         >
-          <IconChevronLeft size={20} aria-hidden="true" />
+          <ChevronLeft size={20} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -127,7 +114,7 @@ function PresentationPreview({
             move(1);
           }}
         >
-          <IconChevronRight size={20} aria-hidden="true" />
+          <ChevronRight size={20} aria-hidden="true" />
         </button>
       </div>
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
@@ -218,7 +205,7 @@ function PresentationTemplateCard({
         )}
         onClick={onPreview}
       >
-        <IconEye size={13} aria-hidden="true" />
+        <Eye size={13} aria-hidden="true" />
       </button>
       <div className="flex min-w-0 items-center justify-between gap-2 px-2.5 py-[9px]">
         <span className="truncate text-[11px] font-semibold leading-4">

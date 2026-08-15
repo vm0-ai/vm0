@@ -4,16 +4,17 @@ import {
   webhookModelUsageObservationContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
-} from "@vm0/api-contracts/contracts/webhooks";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
+  type RunnerStartupPath,
+  type SandboxReuseResult,
+} from "@okouai/api-contracts/contracts/webhooks";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { and, eq, isNotNull } from "drizzle-orm";
 import {
   isSupportedRunModel,
   normalizeRunModelId,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -45,6 +46,10 @@ const L = logger("webhooks:agent");
 
 interface SandboxOperationDimensionInput {
   readonly error?: string;
+  readonly outcome?: string;
+  readonly reason?: string;
+  readonly runner_startup_path?: RunnerStartupPath;
+  readonly sandbox_reuse_result?: SandboxReuseResult;
   readonly encoding?: string;
   readonly session_history_raw_size_bucket?: string;
   readonly session_history_encoded_size_bucket?: string;
@@ -63,6 +68,14 @@ function sandboxOperationDimensions(
   return {
     source: "sandbox",
     ...(op.error ? { error: op.error } : {}),
+    ...(op.outcome ? { outcome: op.outcome } : {}),
+    ...(op.reason ? { reason: op.reason } : {}),
+    ...(op.runner_startup_path
+      ? { runner_startup_path: op.runner_startup_path }
+      : {}),
+    ...(op.sandbox_reuse_result
+      ? { sandbox_reuse_result: op.sandbox_reuse_result }
+      : {}),
     ...(op.encoding ? { encoding: op.encoding } : {}),
     ...(op.session_history_raw_size_bucket
       ? {
@@ -172,10 +185,12 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   const [runModelContext] = hasModelEvents
     ? await db
         .select({
-          modelProvider: zeroRuns.modelProvider,
+          modelProvider: agentRuns.modelProvider,
         })
-        .from(zeroRuns)
-        .where(eq(zeroRuns.id, body.runId))
+        .from(agentRuns)
+        .where(
+          and(eq(agentRuns.id, body.runId), isNotNull(agentRuns.triggerSource)),
+        )
         .limit(1)
     : [];
   signal.throwIfAborted();
@@ -250,10 +265,12 @@ const modelUsageObservation$ = command(
     const db = set(writeDb$);
     const [runModelContext] = await db
       .select({
-        selectedModel: zeroRuns.selectedModel,
+        selectedModel: agentRuns.selectedModel,
       })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, body.runId))
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.id, body.runId), isNotNull(agentRuns.triggerSource)),
+      )
       .limit(1);
     signal.throwIfAborted();
 

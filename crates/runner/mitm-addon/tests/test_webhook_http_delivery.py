@@ -1,6 +1,9 @@
 """Tests for usage webhook HTTP delivery behavior."""
 
+import base64
 import json
+import os
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -21,7 +24,6 @@ from tests.jsonl_log_helpers import (
 from tests.pending_helpers import assert_current_pending
 from tests.webhook_test_helpers import (
     SANITIZED_WEBHOOK_URL,
-    SENSITIVE_WEBHOOK_URL,
     assert_body_free_webhook_entry,
     assert_client_headers,
     assert_sensitive_webhook_url_parts_absent,
@@ -193,6 +195,154 @@ def test_succeeds_on_first_attempt(tmp_path, real_flow, sync_usage_executor, usa
         )
 
 
+def test_environment_proxy_uses_canonical_hostname_and_credentials(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    resolved_hosts: list[str] = []
+    real_getaddrinfo = socket.getaddrinfo
+
+    def resolve_proxy(
+        host: str,
+        port: int,
+        family: int = 0,
+        socket_type: int = 0,
+        proto: int = 0,
+        flags: int = 0,
+    ):
+        resolved_hosts.append(host)
+        return real_getaddrinfo("127.0.0.1", port, family, socket_type, proto, flags)
+
+    proxy_port = usage_webhook_server.api_url.rsplit(":", maxsplit=1)[1]
+    proxy_environment = {
+        "http_proxy": f"http://proxy-user:proxy-password@faß.proxy:{proxy_port}",
+        "HTTP_PROXY": "",
+        "all_proxy": "",
+        "ALL_PROXY": "",
+        "no_proxy": "",
+        "NO_PROXY": "",
+    }
+    payload = {"runId": "run-1", "events": []}
+    with (
+        patch.dict(os.environ, proxy_environment),
+        patch.object(socket, "getaddrinfo", side_effect=resolve_proxy),
+        patch.object(usage.webhook, "_opener", platform_api.build_api_opener()),
+    ):
+        assert usage.webhook.enqueue_webhook_delivery(
+            "http://platform.example:8123/usage",
+            "tok",
+            payload,
+            str(tmp_path / "proxy.jsonl"),
+            "usage_event",
+        )
+        sync_usage_executor.shutdown(wait=True)
+
+    expected_proxy_authorization = "Basic " + base64.b64encode(b"proxy-user:proxy-password").decode(
+        "ascii"
+    )
+    assert resolved_hosts == ["xn--fa-hia.proxy"]
+    assert usage_webhook_server.request_count == 1
+    request = usage_webhook_server.requests[0]
+    assert request.path == "http://platform.example:8123/usage"
+    assert request.header("proxy-authorization") == expected_proxy_authorization
+    assert request.header("authorization") == "Bearer tok"
+
+
+def test_environment_proxy_respects_no_proxy(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    proxy_environment = {
+        "http_proxy": "http://proxy-user:proxy-password@127.0.0.1:1",
+        "HTTP_PROXY": "",
+        "all_proxy": "",
+        "ALL_PROXY": "",
+        "no_proxy": "127.0.0.1",
+        "NO_PROXY": "127.0.0.1",
+    }
+    with (
+        patch.dict(os.environ, proxy_environment),
+        patch.object(usage.webhook, "_opener", platform_api.build_api_opener()),
+    ):
+        assert usage.webhook.enqueue_webhook_delivery(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(tmp_path / "proxy.jsonl"),
+            "usage_event",
+        )
+        sync_usage_executor.shutdown(wait=True)
+
+    assert usage_webhook_server.request_count == 1
+    request = usage_webhook_server.requests[0]
+    assert request.path == "/usage"
+    assert request.header("proxy-authorization") is None
+
+
+def test_environment_proxy_rejects_unsafe_hostname_before_dns(
+    tmp_path,
+    sync_usage_executor,
+):
+    proxy_environment = {
+        "http_proxy": "http://proxy-user:proxy-password@\uff26\uff2f\uff2f.proxy:8123",
+        "HTTP_PROXY": "",
+        "all_proxy": "",
+        "ALL_PROXY": "",
+        "no_proxy": "platform.example",
+        "NO_PROXY": "platform.example",
+    }
+    with (
+        patch.dict(os.environ, proxy_environment),
+        patch.object(socket, "getaddrinfo") as mock_getaddrinfo,
+        patch.object(usage.webhook, "_opener", platform_api.build_api_opener()),
+    ):
+        assert usage.webhook.enqueue_webhook_delivery(
+            "http://platform.example:8123/usage",
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(tmp_path / "proxy.jsonl"),
+            "usage_event",
+        )
+        with pytest.raises(UnicodeError, match="unsafe IDNA compatibility mapping"):
+            sync_usage_executor.shutdown(wait=True)
+
+    mock_getaddrinfo.assert_not_called()
+
+
+def test_malformed_environment_proxy_does_not_expose_credentials_before_dns(
+    tmp_path,
+    sync_usage_executor,
+):
+    password = "sensitive-proxy-password"
+    proxy_environment = {
+        "http_proxy": f"http://proxy-user:{password}@proxy\uff1ahost:8123",
+        "HTTP_PROXY": "",
+        "all_proxy": "",
+        "ALL_PROXY": "",
+        "no_proxy": "",
+        "NO_PROXY": "",
+    }
+    with (
+        patch.dict(os.environ, proxy_environment),
+        patch.object(socket, "getaddrinfo") as mock_getaddrinfo,
+        patch.object(usage.webhook, "_opener", platform_api.build_api_opener()),
+    ):
+        assert usage.webhook.enqueue_webhook_delivery(
+            "http://platform.example:8123/usage",
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(tmp_path / "proxy.jsonl"),
+            "usage_event",
+        )
+        with pytest.raises(ValueError, match="Proxy URL is invalid") as exc_info:
+            sync_usage_executor.shutdown(wait=True)
+
+    assert password not in str(exc_info.value)
+    mock_getaddrinfo.assert_not_called()
+
+
 def test_adds_vercel_bypass_header(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
 
@@ -329,6 +479,21 @@ def test_retry_success_logs_body_free_payload_summary_with_colliding_fields(
         )
 
 
+def test_http_408_is_retryable(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
+    flow = model_usage_flow(real_flow, tmp_path)
+
+    with (
+        usage_webhook_api() as webhook,
+        patch.object(time, "sleep") as mock_sleep,
+    ):
+        webhook.queue_response(408)
+        webhook.queue_response(204)
+        _report_and_flush_model_usage(flow)
+
+    assert webhook.request_count == 2
+    mock_sleep.assert_called_once_with(0.5)
+
+
 def test_http_429_is_retryable(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
     proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
@@ -391,17 +556,16 @@ def test_retry_failure_sanitizes_sensitive_webhook_url_in_message_and_error(
     proxy_log = tmp_path / "proxy.jsonl"
     payload = {"runId": "run-1", "events": []}
     payload_bytes = len(json.dumps(payload).encode())
-    url_without_fragment = SENSITIVE_WEBHOOK_URL.removesuffix("#frag")
+    retry_url = "https://api.vm0.ai/api/webhooks/agent/usage-event?token=secret#frag"
+    url_without_fragment = retry_url.removesuffix("#frag")
 
     with patch.object(
         urllib.request.OpenerDirector,
         "open",
-        side_effect=urllib.error.URLError(
-            f"failed {SENSITIVE_WEBHOOK_URL} and {url_without_fragment}"
-        ),
+        side_effect=urllib.error.URLError(f"failed {retry_url} and {url_without_fragment}"),
     ):
         assert usage.webhook.enqueue_webhook_delivery(
-            SENSITIVE_WEBHOOK_URL,
+            retry_url,
             "tok",
             payload,
             str(proxy_log),

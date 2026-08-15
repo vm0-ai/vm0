@@ -96,12 +96,14 @@ describe("Steam OpenID provider", () => {
     });
 
     await expect(
-      verifySteamOpenIdCallback({
-        callbackParams: callbackParams(),
-        expectedReturnTo: RETURN_TO,
-        expectedRealm: REALM,
-        signal: new AbortController().signal,
-      }),
+      verifySteamOpenIdCallback(
+        {
+          callbackParams: callbackParams(),
+          expectedReturnTo: RETURN_TO,
+          expectedRealm: REALM,
+        },
+        new AbortController().signal,
+      ),
     ).resolves.toStrictEqual({ steamId: STEAM_ID });
   });
 
@@ -109,15 +111,17 @@ describe("Steam OpenID provider", () => {
     mockSteamVerification({ valid: true });
 
     await expect(
-      verifySteamOpenIdCallback({
-        callbackParams: callbackParams({
-          "openid.return_to":
-            "https://api.vm0.ai/api/connectors/steam/callback?state=other",
-        }),
-        expectedReturnTo: RETURN_TO,
-        expectedRealm: REALM,
-        signal: new AbortController().signal,
-      }),
+      verifySteamOpenIdCallback(
+        {
+          callbackParams: callbackParams({
+            "openid.return_to":
+              "https://api.vm0.ai/api/connectors/steam/callback?state=other",
+          }),
+          expectedReturnTo: RETURN_TO,
+          expectedRealm: REALM,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toThrow("unexpected return URL");
   });
 
@@ -125,12 +129,14 @@ describe("Steam OpenID provider", () => {
     mockSteamVerification({ valid: false });
 
     await expect(
-      verifySteamOpenIdCallback({
-        callbackParams: callbackParams(),
-        expectedReturnTo: RETURN_TO,
-        expectedRealm: REALM,
-        signal: new AbortController().signal,
-      }),
+      verifySteamOpenIdCallback(
+        {
+          callbackParams: callbackParams(),
+          expectedReturnTo: RETURN_TO,
+          expectedRealm: REALM,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toThrow("assertion was not valid");
   });
 
@@ -138,14 +144,17 @@ describe("Steam OpenID provider", () => {
     mockSteamVerification({ valid: true });
 
     await expect(
-      verifySteamOpenIdCallback({
-        callbackParams: callbackParams({
-          "openid.claimed_id": "https://steamcommunity.com/profiles/not-steam",
-        }),
-        expectedReturnTo: RETURN_TO,
-        expectedRealm: REALM,
-        signal: new AbortController().signal,
-      }),
+      verifySteamOpenIdCallback(
+        {
+          callbackParams: callbackParams({
+            "openid.claimed_id":
+              "https://steamcommunity.com/profiles/not-steam",
+          }),
+          expectedReturnTo: RETURN_TO,
+          expectedRealm: REALM,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toThrow("invalid claimed ID");
   });
 
@@ -153,28 +162,33 @@ describe("Steam OpenID provider", () => {
     mockSteamVerification({ valid: true });
 
     await expect(
-      verifySteamOpenIdCallback({
-        callbackParams: callbackParams({
-          "openid.claimed_id": `http://steamcommunity.com/openid/id/${STEAM_ID}`,
-          "openid.identity": `http://steamcommunity.com/openid/id/${STEAM_ID}`,
-        }),
-        expectedReturnTo: RETURN_TO,
-        expectedRealm: REALM,
-        signal: new AbortController().signal,
-      }),
+      verifySteamOpenIdCallback(
+        {
+          callbackParams: callbackParams({
+            "openid.claimed_id": `http://steamcommunity.com/openid/id/${STEAM_ID}`,
+            "openid.identity": `http://steamcommunity.com/openid/id/${STEAM_ID}`,
+          }),
+          expectedReturnTo: RETURN_TO,
+          expectedRealm: REALM,
+        },
+        new AbortController().signal,
+      ),
     ).resolves.toStrictEqual({ steamId: STEAM_ID });
   });
 
   it("rejects assertions that do not sign required identity fields", async () => {
     await expect(
-      verifySteamOpenIdCallback({
-        callbackParams: callbackParams({
-          "openid.signed": "op_endpoint,return_to,response_nonce,assoc_handle",
-        }),
-        expectedReturnTo: RETURN_TO,
-        expectedRealm: REALM,
-        signal: new AbortController().signal,
-      }),
+      verifySteamOpenIdCallback(
+        {
+          callbackParams: callbackParams({
+            "openid.signed":
+              "op_endpoint,return_to,response_nonce,assoc_handle",
+          }),
+          expectedReturnTo: RETURN_TO,
+          expectedRealm: REALM,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toThrow("did not sign required fields");
   });
 });

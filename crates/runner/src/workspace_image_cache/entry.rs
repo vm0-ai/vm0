@@ -10,7 +10,7 @@ use super::WorkspaceImageCache;
 use super::metadata::WorkspaceCacheMetadata;
 
 #[derive(Clone, Debug)]
-pub(super) struct CacheEntryPaths {
+pub(crate) struct CacheEntryPaths {
     entry_dir: PathBuf,
     metadata: PathBuf,
     current_image: PathBuf,
@@ -18,7 +18,7 @@ pub(super) struct CacheEntryPaths {
 }
 
 impl CacheEntryPaths {
-    pub(super) fn new(cache_dir: &Path, cache_key: &str) -> Self {
+    pub(crate) fn new(cache_dir: &Path, cache_key: &str) -> Self {
         let entry_dir = cache_dir.join(cache_key);
         Self {
             metadata: entry_dir.join("metadata.json"),
@@ -32,24 +32,28 @@ impl CacheEntryPaths {
         workspace_image_cache_lock_path(lock_dir, cache_key)
     }
 
-    pub(super) fn entry_dir(&self) -> &Path {
+    pub(crate) fn entry_dir(&self) -> &Path {
         &self.entry_dir
     }
 
-    pub(super) fn metadata(&self) -> &Path {
+    pub(crate) fn metadata(&self) -> &Path {
         &self.metadata
     }
 
-    pub(super) fn current_image(&self) -> &Path {
+    pub(crate) fn current_image(&self) -> &Path {
         &self.current_image
     }
 
-    pub(super) fn session_history_sidecar_metadata(&self) -> &Path {
+    pub(crate) fn session_history_sidecar_metadata(&self) -> &Path {
         &self.session_history_sidecar_metadata
     }
 
-    pub(super) fn tmp_image(&self, run_id: RunId) -> PathBuf {
+    pub(crate) fn tmp_image(&self, run_id: RunId) -> PathBuf {
         self.entry_dir.join(format!("current.ext4.tmp.{run_id}"))
+    }
+
+    pub(crate) fn tmp_metadata(&self, run_id: RunId) -> PathBuf {
+        self.entry_dir.join(format!("metadata.json.tmp.{run_id}"))
     }
 
     pub(super) fn tmp_session_history_sidecar(&self, run_id: RunId) -> PathBuf {
@@ -140,7 +144,7 @@ impl WorkspaceImageCache {
         ) == cache_key
     }
 
-    pub(super) fn entry_paths(&self, cache_key: &str) -> CacheEntryPaths {
+    pub(crate) fn entry_paths(&self, cache_key: &str) -> CacheEntryPaths {
         CacheEntryPaths::new(self.workspace_image_cache_dir(), cache_key)
     }
 

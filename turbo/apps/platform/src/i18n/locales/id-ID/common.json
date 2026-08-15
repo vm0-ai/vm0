@@ -108,23 +108,40 @@
         "title": "Tidak ada log jaringan"
       },
       "notFound": {
-        "back": "Kembali ke aktivitas",
+        "back": "Kembali ke chat",
         "description": "Log ini tidak ada atau Anda tidak memiliki izin untuk melihatnya di ruang kerja saat ini.",
         "title": "Log tidak ditemukan"
       },
       "runner": {
+        "cacheMiss": "Tidak ada workspace dalam cache yang cocok dengan kunci penggunaan ulang.",
         "deviceLimitMismatch": "Entri pool idle ada, tetapi status rate limiter perangkatnya tidak cocok.",
+        "diskPressure": "Penggunaan ulang workspace dilewati karena runner mengalami tekanan disk.",
         "featureDisabled": "Penggunaan ulang sandbox dinonaktifkan untuk run ini.",
+        "invalidMetadata": "Metadata workspace dalam cache tidak valid.",
+        "invalidWorkingDir": "Direktori kerja yang diminta tidak dapat digunakan ulang.",
+        "lockBusy": "Run lain sedang menyiapkan workspace yang sama.",
         "noReuseKey": "Tidak ada kunci penggunaan ulang yang tersedia untuk mencocokkan sandbox idle.",
         "noSessionId": "Hasil lama: alasan pasti sandbox tidak digunakan ulang tidak tersedia.",
+        "notConfigured": "Penggunaan ulang workspace tidak dikonfigurasi untuk run ini.",
         "notReused": "Tidak digunakan ulang",
         "poolMiss": "Tidak ada sandbox yang cocok ditemukan di pool idle.",
         "profileMismatch": "Entri pool idle ada, tetapi profilnya tidak cocok.",
+        "provisioning": "Menyiapkan",
         "reused": "Digunakan ulang",
         "reusedDescription": "Sandbox dibuka kembali dari pool idle.",
         "sandbox": "Sandbox",
-        "unknown": "Tidak diketahui (run lama, direkam sebelum pelacakan penggunaan ulang sandbox ditambahkan).",
-        "unparkFailed": "Percobaan membuka kembali gagal; sandbox baru disediakan."
+        "sandboxPrepareFallback": "Workspace dalam cache ditemukan, tetapi tidak dapat digunakan setelah persiapan sandbox.",
+        "sandboxReusedDescription": "Workspace tetap tersedia di dalam sandbox yang digunakan ulang.",
+        "startup": "Startup",
+        "startupCold": "Cold start",
+        "startupSandbox": "Penggunaan ulang sandbox",
+        "startupUnknown": "Tidak diketahui",
+        "startupWorkspace": "Penggunaan ulang workspace",
+        "unavailable": "Tidak tersedia",
+        "unparkFailed": "Percobaan membuka kembali gagal; sandbox baru disediakan.",
+        "workspace": "Workspace",
+        "workspaceNoReuseKey": "Tidak ada kunci penggunaan ulang workspace yang tersedia.",
+        "workspaceReusedDescription": "Workspace dipulihkan dari cache runner."
       },
       "steps": {
         "matched": "({{matched}}/{{total}} cocok)",
@@ -204,22 +221,6 @@
         "title": "Belum ada log yang dimuat",
         "upload": "Unggah JSON"
       }
-    },
-    "list": {
-      "description": "Log dan eksekusi dari agen Anda.",
-      "errors": {
-        "description": "Terjadi kesalahan. Silakan coba lagi nanti.",
-        "title": "Gagal memuat data aktivitas"
-      },
-      "filters": {
-        "agent": "Filter agen",
-        "allAgents": "Semua agen",
-        "allSources": "Semua sumber",
-        "allStatuses": "Semua status",
-        "source": "Filter sumber",
-        "status": "Filter status"
-      },
-      "title": "Aktivitas"
     },
     "network": {
       "actions": {
@@ -320,30 +321,21 @@
       "unknown": "tidak diketahui",
       "yes": "Ya"
     },
-    "pagination": {
-      "backTwo": "Mundur 2 halaman",
-      "forwardTwo": "Maju 2 halaman",
-      "next": "Halaman berikutnya",
-      "page": "Halaman {{current}}",
-      "pageOf": "Halaman {{current}} dari {{total}}",
-      "previous": "Halaman sebelumnya",
-      "rowsPerPage": "Baris per halaman"
-    },
     "sources": {
       "agent": "Agen",
       "agentphone": "AgentPhone",
-      "agentWithName": "Agen ({{name}})",
+      "automationEvent": "Peristiwa otomatisasi",
+      "automationSchedule": "Jadwal otomatisasi",
       "email": "Email",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "Tujuan",
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
       "test": "Tes",
       "web": "Web",
-      "webhook": "Webhook",
-      "workflowEvent": "Peristiwa alur kerja",
-      "workflowSchedule": "Jadwal alur kerja"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "Dibatalkan",
@@ -353,34 +345,6 @@
       "queued": "Dalam antrean",
       "running": "Berjalan",
       "timeout": "Timeout"
-    },
-    "statusFilters": {
-      "cancelled": "Dibatalkan",
-      "completed": "Selesai",
-      "failed": "Gagal",
-      "pending": "Menunggu",
-      "queued": "Dalam antrean",
-      "running": "Berjalan",
-      "timeout": "Timeout"
-    },
-    "table": {
-      "empty": {
-        "description": "Saat agen Anda mulai bekerja, aktivitas mereka akan muncul di sini.",
-        "title": "Masih sepi untuk saat ini"
-      },
-      "filteredEmpty": {
-        "description": "Coba filter lain untuk menemukan yang Anda cari.",
-        "title": "Tidak ada yang cocok dengan filter tersebut"
-      },
-      "headers": {
-        "agent": "Agen",
-        "description": "Deskripsi",
-        "duration": "Durasi",
-        "session": "Sesi",
-        "source": "Sumber",
-        "startTime": "Waktu mulai",
-        "status": "Status"
-      }
     }
   },
   "appShell": {
@@ -472,19 +436,15 @@
         "overlay": "Overlay sidebar"
       },
       "navigation": {
-        "activity": "Log aktivitas",
         "agents": "Agen",
         "artifacts": "Artifact",
         "connectors": "Konektor",
-        "insights": "Insight",
-        "insightsAndUsage": "Wawasan & Penggunaan",
         "newChat": "Chat baru",
         "settings": "Pengaturan",
         "workflows": "Alur kerja",
         "works": "Tempat {{agentName}} bekerja"
       },
       "rail": {
-        "activity": "Aktivitas",
         "new": "Baru",
         "workflows": "Alur kerja",
         "works": "Bekerja"
@@ -506,7 +466,6 @@
       "backToArtifacts": "Kembali ke artefak",
       "close": "Tutup",
       "closeArtifact": "Tutup artefak",
-      "closeDownloadMenu": "Tutup menu unduhan",
       "closeNamed": "Tutup {{title}}",
       "closePreviewMenu": "Tutup menu pratinjau",
       "download": "Unduh",
@@ -538,6 +497,8 @@
       "emptyTitle": "Tidak ada artefak ditemukan",
       "error": "Tidak dapat memuat artefak. Coba lagi nanti.",
       "filters": {
+        "avatar": "Avatar",
+        "avatarAria": "Tampilkan artefak avatar",
         "file": "File",
         "fileAria": "Tampilkan artefak file",
         "image": "Gambar",
@@ -545,6 +506,8 @@
         "label": "Filter jenis artefak",
         "presentation": "Presentasi",
         "presentationAria": "Tampilkan artefak presentasi",
+        "sharedConversation": "Percakapan yang dibagikan",
+        "sharedConversationAria": "Tampilkan artefak percakapan yang dibagikan",
         "video": "Video",
         "videoAria": "Tampilkan artefak video",
         "website": "Situs web",
@@ -579,6 +542,7 @@
     },
     "kinds": {
       "audio": "Audio",
+      "avatar": "Avatar",
       "code": "Kode",
       "csv": "CSV",
       "data": "Data",
@@ -589,6 +553,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Presentasi",
+      "sharedConversation": "Percakapan yang dibagikan",
       "text": "Teks",
       "video": "Video"
     },
@@ -619,6 +584,7 @@
       "videoLabel": "Pratinjau video untuk {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Buka percakapan yang dibagikan",
       "panelTitle": "Artefak",
       "singularTitle": "Artefak",
       "unavailable": "Artefak ini tidak lagi tersedia."
@@ -626,8 +592,25 @@
     "templates": {
       "activeHtmlPreview": "Pratinjau HTML aktif {{title}}",
       "all": "Semua",
+      "avatar": "Avatar",
+      "avatarWithId": "Avatar {{id}}",
+      "backToAvatars": "Kembali ke avatar",
       "categories": "Kategori template",
       "category": "Kategori template",
+      "chooseVoice": "Pilih suara untuk {{title}}",
+      "filters": {
+        "age": "Usia",
+        "all": "Semua",
+        "aspectRatio": "Rasio aspek",
+        "clear": "Hapus",
+        "ethnicity": "Etnis",
+        "gender": "Gender",
+        "language": "Bahasa",
+        "scene": "Adegan",
+        "style": "Gaya",
+        "title": "Filter",
+        "useCase": "Kasus penggunaan"
+      },
       "fullPreview": "pratinjau penuh website {{title}}",
       "htmlPreview": "pratinjau HTML {{title}}",
       "illustration": "Ilustrasi",
@@ -637,17 +620,21 @@
       "noMatches": "Tidak ada hasil",
       "placeholder": "placeholder pratinjau website {{title}}",
       "playVideo": "Putar pratinjau template video {{title}}",
+      "previewAvatarVideo": "Pratinjau video avatar {{title}}",
       "previewCurrentSlide": "Pratinjau {{title}} pada slide saat ini",
       "previewSlide": "Pratinjau slide {{slideNumber}}",
+      "previewVoice": "Dengarkan suara {{title}}",
       "previewWebsite": "Pratinjau template website {{title}}",
       "previousHtmlPreview": "pratinjau HTML sebelumnya {{title}}",
       "previousSlide": "Pratinjau slide sebelumnya",
-      "searchConnector": "Cari konektor...",
-      "searchConnectors": "Cari konektor",
+      "recommended": "Direkomendasikan",
+      "searchConnector": "Cari templat",
+      "searchConnectors": "Cari templat",
       "selected": "Templat: {{title}}",
       "selectStyle": "Pilih gaya {{style}}",
       "selectTemplate": "Pilih template {{title}}",
       "selectVideo": "Pilih template video {{title}}",
+      "selectVoice": "Pilih suara {{title}}",
       "selectWebsite": "Pilih template website {{title}}",
       "selectWorkflow": "Pilih template alur kerja {{title}}",
       "showVariant": "Tampilkan varian {{variantNumber}}",
@@ -722,7 +709,7 @@
       "lastSeen": "Terakhir terlihat {{date}}",
       "linkExpires": "Tautan kedaluwarsa pada {{date}}.",
       "macRequirement": "Memerlukan Mac Apple silicon dengan macOS 14 atau yang lebih baru. Mac Intel tidak didukung.",
-      "noHostsDescription": "Buka Zero Computer Use di Mac Anda dan muat ulang halaman ini saat sudah online.",
+      "noHostsDescription": "Buka {{desktopApplicationName}} di Mac Anda dan muat ulang halaman ini saat sudah online.",
       "noHostsTitle": "Tidak ada komputer online",
       "sources": {
         "chat": "thread chat ini",
@@ -799,8 +786,10 @@
     "common": {
       "back": "Kembali",
       "cancel": "Batal",
+      "confirm": "Konfirmasi",
       "credits": "kredit",
       "manage": "Kelola",
+      "preparing": "Menyiapkan...",
       "redirecting": "Mengarahkan...",
       "restore": "Pulihkan",
       "retry": "Coba lagi",
@@ -812,20 +801,37 @@
       "billedMonthly": "Ditagih bulanan",
       "buyAmount": "Beli {{amount}}",
       "buyButton": "Beli concurrency",
-      "buyDescription": "Tambahkan langganan bulanan untuk lebih banyak eksekusi concurrent.",
+      "buyDescription": "Pilih jumlah slot tambahan yang Anda inginkan.",
       "buyTitle": "Beli concurrency",
       "cancelDescription": "Ini menghentikan perpanjangan di akhir periode tagihan saat ini. Slot yang ada tetap aktif sampai saat itu.",
+      "cancelEntireOption": "Batalkan seluruh langganan",
       "cancellationScheduled": "Pembatalan dijadwalkan",
-      "cancelTitle": "Batalkan langganan concurrency?",
+      "changeButton": "Ubah",
+      "changeDescription": "Pilih jumlah total slot baru atau hentikan perpanjangan.",
+      "changeOptionsAria": "Opsi perubahan langganan concurrency",
+      "changeQuantityOption": "Ubah slot",
+      "changeQuantityOptionDescription": "Penambahan berlaku segera. Pengurangan dimulai pada tanggal penagihan berikutnya.",
+      "changeTitle": "Ubah concurrency",
       "concurrentRun_one": "{{value}} eksekusi concurrent",
       "concurrentRun_other": "{{value}} eksekusi concurrent",
+      "continueToStripe": "Lanjutkan ke Stripe",
       "decreaseAria": "Kurangi jumlah concurrency tambahan",
+      "dueNow": "Jatuh tempo sekarang",
       "emptyDescription": "Beli eksekusi concurrent tambahan untuk ruang kerja ini.",
       "emptyTitle": "Tidak ada langganan concurrency",
       "increaseAria": "Tambah jumlah concurrency tambahan",
+      "monthlyTotal": "Total bulanan",
+      "newQuantity": "Jumlah total slot baru",
+      "orderSummary": "Ringkasan pesanan",
+      "quantityRange": "Masukkan angka {{minimum}} hingga {{maximum}}. Saat ini Anda memiliki {{current}} slot.",
       "restoreDescription": "Ini melanjutkan perpanjangan untuk langganan concurrency ini.",
       "restoreSubscription": "Pulihkan langganan",
       "restoreTitle": "Pulihkan langganan concurrency?",
+      "reviewChange": "Tinjau perubahan",
+      "reviewDescription": "Tinjau jumlah yang harus dibayar sekarang dan langganan bulanan Anda yang diperbarui.",
+      "reviewTitle": "Tinjau perubahan kapasitas bersamaan",
+      "scheduledChange": "Berubah menjadi {{quantity}} pada {{date}}",
+      "scheduledReviewDescription": "Slot saat ini tetap aktif hingga periode penagihan ini berakhir. Jumlah yang lebih rendah berlaku saat perpanjangan, tanpa pengembalian dana atau kredit akun.",
       "slot_one": "{{value}} slot",
       "slot_other": "{{value}} slot",
       "slots": "Slot",
@@ -840,6 +846,9 @@
       "exchangeRate": "Kredit tidak pernah kedaluwarsa. 1 USD = {{credits}} kredit.",
       "quickBuy": "Beli cepat",
       "quickBuyAmount": "Beli cepat {{amount}}",
+      "reviewDescription": "Konfirmasikan tagihan satu kali ini dengan metode pembayaran tersimpan.",
+      "reviewError": "Pembelian kredit ini tidak dapat diselesaikan. Periksa detail penagihan Anda dan coba lagi.",
+      "reviewTitle": "Tinjau pembelian kredit",
       "title": "Beli kredit"
     },
     "downgrade": {
@@ -869,15 +878,30 @@
       "selectMonth": "Pilih bulan",
       "to": "Ke"
     },
-    "manage": {
-      "description": "Langganan, metode pembayaran, dan faktur di Stripe.",
-      "title": "Kelola penagihan"
+    "paymentMethods": {
+      "description": "Kelola metode pembayaran yang digunakan untuk penagihan di Stripe.",
+      "title": "Metode pembayaran"
     },
     "plans": {
       "cancellationNotice": "Paket {{plan}} Anda telah dibatalkan dan akan berakhir pada {{date}}.",
       "changeAnytime": "Naikkan atau turunkan paket kapan saja.",
       "compare": "Bandingkan paket",
       "compareAll": "Bandingkan semua paket",
+      "comparison": {
+        "addOnConcurrency": "Konkurensi tambahan",
+        "available": "Tersedia",
+        "concurrentRuns": "Proses bersamaan",
+        "included": "Ya",
+        "ownLlmKeys": "Kunci LLM Anda sendiri",
+        "privateAgents": "Agen privat",
+        "sharedAgents": "Agen bersama",
+        "support": "Dukungan",
+        "supportEmail": "Email",
+        "supportPriority": "Prioritas",
+        "unlimited": "Tanpa batas",
+        "voiceInput": "Input suara",
+        "voiceInputValue": "{{requests}}/hari · {{minutes}} mnt"
+      },
       "currentPlan": "Paket saat ini",
       "custom": {
         "name": "Kustom"
@@ -895,20 +919,21 @@
         "communitySupport": "Dukungan komunitas",
         "emailSupport": "Dukungan email",
         "existingCredits": "Hanya kredit gratis yang sudah ada",
-        "monthlyCredits": "{{value}} kredit / bulan",
         "oneConcurrentRun": "1 eksekusi concurrent",
-        "payAsYouGo": "Bayar sesuai pemakaian setelah itu",
         "prioritySupport": "Dukungan prioritas",
+        "sharedAndPrivateAgents": "7 agen bersama, agen privat tanpa batas",
         "tenConcurrentRuns": "10 eksekusi concurrent",
         "twoConcurrentRuns": "2 eksekusi concurrent",
         "unlimitedAgents": "Agen total tidak terbatas",
-        "voiceInput": "Input suara",
-        "voiceInputLifetime": "Input suara (10 penggunaan seumur hidup per anggota)"
+        "voiceInputFree": "Input suara (10 permintaan total · 10 mnt/hari per anggota)",
+        "voiceInputPro": "Input suara (300 permintaan/hari · 200 mnt/hari per anggota)",
+        "voiceInputTeam": "Input suara (500 permintaan/hari · 500 mnt/hari per anggota)"
       },
       "free": {
         "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
         "name": "Gratis"
       },
+      "legacy": "Lama",
       "limitedFree": {
         "name": "Gratis terbatas"
       },
@@ -924,7 +949,7 @@
       "popular": "Populer",
       "pricePerMonth": "{{price}}/bulan",
       "pro": {
-        "description": "Lebih bertenaga dan kolaborasi yang mulus untuk tim Anda.",
+        "description": "Lebih banyak kredit dan konkurensi untuk tim yang menjalankan agen AI setiap hari.",
         "name": "Pro"
       },
       "renews": "Memperbarui {{date}}",
@@ -932,11 +957,72 @@
       "sectionTitle": "Paket",
       "selectedPlan": "paket yang dipilih",
       "team": {
-        "description": "Berkembang cepat tanpa hambatan dan dengan fleksibilitas penuh.",
+        "description": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
         "name": "Tim"
       },
       "upgrade": "Tingkatkan",
-      "upgradeTo": "Tingkatkan ke {{plan}}"
+      "upgradeTo": "Tingkatkan ke {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "Kredit bonus",
+        "bonusIncluded": "termasuk {{credits}} bonus",
+        "choosePlan": "Pilih paket",
+        "concurrentSlots": "Slot bersamaan",
+        "configurePackages": "Konfigurasikan paket anggota",
+        "credits": "Kredit",
+        "currentMember": "Anggota saat ini",
+        "existingPackagesUnchanged": "Paket anggota yang ada tetap tidak berubah.",
+        "management": {
+          "comparison": "Perbandingan langganan saat ini dan baru",
+          "current": "Saat ini",
+          "downgradeDescription": "Paket yang lebih rendah dimulai pada tanggal penagihan berikutnya. Kredit yang ada tetap tersedia hingga kedaluwarsa.",
+          "downgradesToDate": "Turun ke {{package}} pada {{date}}.",
+          "downgradesToPeriod": "Turun ke {{package}} pada tanggal penagihan berikutnya.",
+          "everyMonth": "Setiap bulan",
+          "immediateAmount": "Dibayar sekarang",
+          "immediateAmountNote": "Untuk sisa periode penagihan ini",
+          "immediateCredits": "Kredit ditambahkan setelah pembayaran",
+          "new": "Baru",
+          "processing": "Perubahan sedang diproses",
+          "reviewDescription": "Konfirmasi akan menagih metode pembayaran tersimpan Anda.",
+          "reviewTitle": "Tinjau perubahan paket",
+          "scheduledFor": "Dijadwalkan untuk {{date}}",
+          "today": "Hari ini"
+        },
+        "memberExclusive": "Setiap paket hanya untuk satu anggota dan tidak dapat dibagikan. Saat paket habis, penggunaan kembali memakai kredit bayar sesuai pemakaian. Anda dapat meningkatkan ke paket baru nanti.",
+        "memberPackages": "Paket anggota",
+        "memberUsage": "Penggunaan anggota",
+        "migration": {
+          "action": "Konversi paket",
+          "confirmDescription": "Paket dan hak Anda saat ini tetap aktif hingga periode penagihan ini berakhir. Stripe menagih total berulang baru saat paket baru dimulai.",
+          "convertPlan": "Konversi paket",
+          "description": "Konversikan ruang kerja {{plan}} lama ke paket baru dengan paket penggunaan bulanan individual untuk setiap anggota.",
+          "error": "Langganan ini tidak dapat dimigrasikan. Muat ulang halaman dan coba lagi.",
+          "invoice": "Lihat faktur",
+          "processing": "Menjadwalkan konversi dengan Stripe.",
+          "ready": "Pilih satu paket bulanan wajib untuk setiap anggota dan undangan yang tertunda.",
+          "review": "Tinjau konversi",
+          "reviewDescription": "Bandingkan paket lama saat ini dengan paket berulang baru sebelum menjadwalkan konversi.",
+          "reviewTitle": "Tinjau konversi paket",
+          "scheduled": "Konversi dijadwalkan pada {{date}}. Paket dan hak Anda saat ini tetap aktif hingga saat itu.",
+          "switchesOn": "Beralih ke paket {{plan}} pada {{date}}",
+          "title": "Konversi paket lama"
+        },
+        "monthlyTotal": "Total bulanan",
+        "orderSummary": "Ringkasan pesanan",
+        "packagePerMemberNote": "Setiap anggota memerlukan paket. Anda memilihnya pada langkah berikutnya.",
+        "packCredits": "{{credits}} kredit",
+        "packCreditsDiscount": "{{credits}} kredit · diskon {{discount}}%",
+        "packOption": "{{price}} · {{credits}} kredit · Diskon {{discount}}%",
+        "planChangeError": "Perubahan langganan tidak dapat disiapkan. Coba lagi.",
+        "planPlusPackages": "Paket {{plan}} · paket anggota {{lowest}}–{{highest}} per orang",
+        "planStep": "Paket",
+        "priceFrom": "mulai",
+        "purchasedCredits": "Kredit yang dibeli",
+        "selectPlan": "Mulai dengan {{plan}}",
+        "selectUsage": "Penggunaan untuk {{name}}",
+        "stepOfTotal": "Langkah {{current}} dari {{total}}",
+        "totalCreditsWithBonus": "{{credits}} kredit · bonus {{bonus}}"
+      }
     },
     "restore": {
       "cancellationDescription": "Ini akan membatalkan pembatalan terjadwal untuk paket {{plan}} Anda.",
@@ -957,20 +1043,25 @@
       "concurrencyAdded": "Kapasitas bersamaan ditambahkan. Slot baru Anda akan tersedia setelah Stripe mengonfirmasi langganan.",
       "concurrencyCanceled": "Langganan kapasitas bersamaan dibatalkan.",
       "concurrencyCanceledDate": "Langganan kapasitas bersamaan dibatalkan. Slot tetap aktif hingga {{date}}.",
+      "concurrencyChanged": "Perubahan kapasitas bersamaan dikonfirmasi. Jumlah slot akan diperbarui setelah Stripe memproses perubahan.",
+      "concurrencyReduced": "Pengurangan concurrency dijadwalkan untuk tanggal penagihan berikutnya.",
       "concurrencyRestored": "Langganan kapasitas bersamaan dipulihkan.",
+      "creditPurchaseConfirmed": "Pembayaran dikonfirmasi. Kredit akan muncul setelah Stripe memproses faktur.",
       "creditsAdded": "Kredit ditambahkan. Anda dapat melanjutkan mengobrol dengan Zero.",
       "downgradeScheduledDate": "Penurunan paket dijadwalkan. Paket Anda saat ini tetap aktif hingga {{date}}.",
       "downgradeScheduledPeriod": "Penurunan paket dijadwalkan. Paket Anda saat ini tetap aktif hingga periode tagihan berakhir.",
       "planRestored": "Paket dipulihkan. Langganan Anda akan diperbarui seperti biasa.",
       "preparingReceiptDownload": "Menyiapkan unduhan struk...",
       "receiptDownloadFailed": "Gagal mengunduh struk",
-      "receiptsDownloaded": "Struk diunduh"
+      "receiptsDownloaded": "Struk diunduh",
+      "subscriptionChangeConfirmed": "Perubahan langganan dikonfirmasi."
     },
     "usage": {
       "added": "Ditambahkan {{date}}",
       "allowance": {
         "day": "{{value}} hari",
         "hour": "{{value}} jam",
+        "left": "sisa {{value}}",
         "minute": "{{value}} m",
         "remaining": "{{remaining}} / {{total}} kredit",
         "remainingAria": "Sisa jatah penggunaan {{label}}",
@@ -979,6 +1070,7 @@
         "title": "Jatah penggunaan",
         "week": "{{value}} minggu"
       },
+      "autoRechargeOn": "Isi ulang otomatis aktif",
       "breakdown": {
         "currentPlanDescription": "Kredit paket bulanan, direset setiap siklus tagihan",
         "freeDescription": "Kredit starter, gunakan sampai habis",
@@ -995,12 +1087,33 @@
       "creditsRemaining_one": "{{value}} kredit tersisa",
       "creditsRemaining_other": "{{value}} kredit tersisa",
       "expires": "Kedaluwarsa {{date}}",
+      "grantsTable": {
+        "added": "Ditambahkan",
+        "amount": "Jumlah",
+        "expires": "Kedaluwarsa",
+        "left": "Sisa",
+        "source": "Sumber"
+      },
       "left": "Sisa {{value}}",
       "member": "Anggota",
       "neverExpires": "Tidak pernah kedaluwarsa",
+      "orgCredits": "Kredit organisasi",
+      "seeUsageRecords": "Lihat ke mana kredit ini digunakan",
       "unavailable": "Saldo kredit tidak tersedia.",
       "upgradeDescription": "Pro mencakup kredit bulanan dan membuka opsi kredit tambahan.",
       "upgradeTitle": "Tingkatkan ke Pro untuk mendapatkan lebih banyak kredit",
+      "usagePack": {
+        "bonus": "Bonus",
+        "members": "Anggota",
+        "membersDescription": "Tinjau sisa kredit paket penggunaan dan penambahan kredit setiap anggota.",
+        "membersTitle": "Kredit paket penggunaan anggota",
+        "nextExpiry": "Kedaluwarsa berikutnya",
+        "purchased": "Dibeli",
+        "remaining": "Tersisa",
+        "title": "Kredit paket penggunaan",
+        "totalRemaining": "Total tersisa",
+        "viewMembers": "Lihat saldo anggota"
+      },
       "used": "Digunakan"
     }
   },
@@ -1008,9 +1121,10 @@
     "cardTitle": "Browser cloud",
     "close": "Tutup browser live",
     "documentTitle": "Browser live",
+    "fitAction": "Sesuaikan",
     "fitWindow": "Sesuaikan browser ke jendela",
     "iframeTitle": "Browser live: {{name}}",
-    "invalidLink": "Tautan browser tidak valid",
+    "notFound": "Browser tidak ditemukan",
     "open": "Buka browser {{name}}",
     "openAction": "Buka",
     "openNewPage": "Buka browser ini di halaman baru",
@@ -1027,7 +1141,6 @@
       "starting": "Memulai",
       "stopped": "Berhenti"
     },
-    "stop": "Hentikan browser",
     "title": "Browser live",
     "unavailable": {
       "description": "Browser ini bukan milik chat ini atau telah dihapus.",
@@ -1038,7 +1151,6 @@
     "actions": {
       "authorize": "Otorisasi",
       "cancel": "Batal",
-      "configure": "Konfigurasi",
       "confirm": "Konfirmasi",
       "continue": "Lanjutkan",
       "copied": "Disalin!",
@@ -1087,24 +1199,14 @@
       "viewAgentProfile": "Lihat profil agen"
     },
     "attachments": {
-      "addLink": "Tambahkan tautan",
       "attach": "Lampirkan",
-      "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} melebihi batas 1 GB",
       "imageUnavailable": "[Gambar tidak tersedia: {{filename}}]",
-      "importing": "Mengimpor lampiran",
-      "invalidLink": "Masukkan tautan yang valid",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "Memuat {{filename}}",
       "previewFile": "Pratinjau {{filename}}",
-      "supportedTypes": "Gambar, dokumen, audio, video, dan arsip",
       "title": "Lampiran",
-      "unavailable": "Lampiran tidak tersedia",
-      "upload": "Unggah",
       "uploadFailed": "Gagal mengunggah {{filename}}",
       "uploadFailedRetry": "Gagal mengunggah {{filename}}. Coba lagi.",
-      "uploadFromComputer": "Unggah dari komputer",
-      "uploadFromLink": "Unggah dari tautan",
       "uploadsFailed": "Beberapa lampiran gagal diunggah. Coba lagi."
     },
     "automations": {
@@ -1123,7 +1225,7 @@
       "events": {
         "githubDeploymentStatus": "Status deployment GitHub dibuat",
         "githubIssueComment": "Komentar issue GitHub dibuat",
-        "githubLabelApplied": "Label GitHub diterapkan",
+        "githubPullRequest": "Pull request GitHub",
         "githubReviewSubmitted": "Ulasan pull request GitHub dikirim",
         "githubWorkflowCompleted": "Alur kerja GitHub selesai",
         "githubWorkflowJobCompleted": "Job alur kerja GitHub selesai",
@@ -1132,6 +1234,7 @@
         "googleCalendarCancelled": "Acara Google Calendar dibatalkan",
         "googleCalendarCreated": "Acara Google Calendar dibuat",
         "googleCalendarUpdated": "Acara Google Calendar diperbarui",
+        "googleFormsResponseSubmitted": "Respons Google Forms dikirim",
         "googleMeetTranscript": "Transkrip Google Meet siap",
         "notionChildPage": "Halaman anak baru Notion",
         "notionDatabaseItem": "Item database baru Notion",
@@ -1232,6 +1335,10 @@
       "selectedModelUnavailable": "Model yang dipilih tidak tersedia. Konfigurasikan sebelum mengirim.",
       "selectedModelUnavailableToast": "Model yang dipilih tidak tersedia",
       "selectModel": "Pilih model",
+      "setAsDefault": "Jadikan default",
+      "temporaryFastModeDisabledNotice": "Mode Cepat dinonaktifkan sementara untuk proses ini",
+      "temporaryFastModeEnabledNotice": "Mode Cepat diaktifkan sementara untuk proses ini",
+      "temporaryModelNotice": "Sementara beralih ke {{model}}",
       "threadSuggestions": "Thread chat",
       "visualAttachmentsUnsupported": "{{modelName}} tidak dapat mengenali gambar atau video. Ganti ke model yang mendukung visi untuk melampirkannya.",
       "workflows": {
@@ -1248,8 +1355,8 @@
       "cloudBrowser": "Browser cloud",
       "connectHost": "Hubungkan {{hostName}}",
       "connectMyComputer": "Hubungkan komputer saya",
-      "dialogDescription": "Agar Zero bisa bekerja di browser dan aplikasi Anda, bahkan yang tidak punya konektor seperti LinkedIn atau Reddit.",
-      "dialogTitle": "Izinkan Zero menggunakan komputer Anda",
+      "dialogDescription": "Agar {{desktopProductName}} bisa bekerja di browser dan aplikasi Anda, bahkan yang tidak punya konektor seperti LinkedIn atau Reddit.",
+      "dialogTitle": "Izinkan {{desktopProductName}} menggunakan komputer Anda",
       "disableCloudBrowser": "Nonaktifkan Cloud browser",
       "disconnectHost": "Putuskan {{hostName}}",
       "downloadMacos": "Unduh untuk macOS",
@@ -1270,7 +1377,6 @@
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
-      "customConnectDescription": "Tinjau dan hubungkan konektor kustom ini.",
       "find": "Cari konektor...",
       "remove": "Hapus {{connectorName}}",
       "title": "Konektor"
@@ -1306,13 +1412,25 @@
       "partsHeading_one": "Masukan untuk {{count}} bagian balasan Anda:",
       "partsHeading_other": "Masukan untuk {{count}} bagian balasan Anda:",
       "placeholder": "Apa yang harus diubah dari ini?",
-      "provide": "Berikan masukan",
+      "quote": "Kutip",
       "remove": "Hapus masukan",
       "sentEmailDescription": "email yang telah dikirim (ID mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID terkirim: {{sentId}}",
       "sourcePartHeading": "Masukan untuk bagian {{description}} ini:",
       "sourcePartsHeading_one": "Masukan untuk {{count}} bagian {{description}}:",
       "sourcePartsHeading_other": "Masukan untuk {{count}} bagian {{description}}:"
+    },
+    "forward": {
+      "action": "Teruskan",
+      "agents": "Agen",
+      "back": "Kembali",
+      "content": "Konten",
+      "description": "Teruskan konten yang dipilih ke agen atau chat.",
+      "noResults": "Agen atau chat tidak ditemukan",
+      "search": "Cari agen dan chat...",
+      "sent": "Berhasil diteruskan",
+      "threads": "Chat",
+      "title": "Teruskan ke"
     },
     "mail": {
       "bcc": "bcc",
@@ -1322,18 +1440,6 @@
       "deletedEmail": "Email dihapus: {{subject}}",
       "details": "Detail email",
       "email": "Email",
-      "followUp": {
-        "action": "Tindak lanjut",
-        "active": "Pelacakan balasan",
-        "activeDescription": "Balasan dilacak dan akan dilaporkan di chat ini.",
-        "idleDescription": "Lacak balasan dan dapatkan notifikasi di chat ini.",
-        "paused": "Pelacakan dijeda",
-        "pausedDescription": "Pelacakan balasan saat ini dijeda.",
-        "settingUp": "Menyiapkan…",
-        "submitting": "Menyiapkan…",
-        "submittingDescription": "Menyiapkan pelacakan balasan…",
-        "tracking": "Lacak balasan"
-      },
       "loadingDetails": "Memuat detail email",
       "needReconnect": "Perlu sambungkan ulang",
       "noMessage": "(Tidak ada pesan)",
@@ -1463,13 +1569,20 @@
       "durationFor": "{{duration}} untuk {{label}}",
       "expandGroupedHistory": "Kembangkan riwayat eksekusi yang dikelompokkan",
       "expandWorkHistory": "Kembangkan riwayat kerja",
+      "fastModelName": "{{model}} Fast",
+      "fastModeOff": "Mode cepat nonaktif",
+      "fastModeOn": "Mode cepat aktif",
+      "fastModeWillBeOff": "Mode cepat akan nonaktif",
+      "fastModeWillBeOn": "Mode cepat akan aktif",
       "goalFor": "Tujuan untuk {{label}}",
       "groupedRunsFor_one": "{{count}} eksekusi untuk {{source}}",
       "groupedRunsFor_other": "{{count}} eksekusi untuk {{source}}",
       "justNow": "baru saja",
       "keepGoing": "Lanjutkan",
       "keepGoingAt": "Lanjutkan · {{timestamp}}",
+      "modelChangedTo": "Model diganti menjadi {{model}}",
       "queueEllipsis": "antrean...",
+      "selectedModelAppliesAfterCurrentRun": "Model {{model}} yang Anda pilih akan berlaku setelah eksekusi ini",
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",
         "brewing": "Meracik respons...",
@@ -1487,6 +1600,21 @@
       "waitingIn": "Menunggu di",
       "worked": "Dikerjakan",
       "workedFor": "Dikerjakan selama {{duration}}"
+    },
+    "sharing": {
+      "cancel": "Batal",
+      "close": "Tutup",
+      "copyFailed": "Tautan tidak dapat disalin",
+      "copyLink": "Salin tautan",
+      "create": "Bagikan",
+      "createFailed": "Percakapan yang dibagikan tidak dapat dibuat. Coba lagi.",
+      "deselectGroup": "Batalkan pilihan grup pesan",
+      "linkCopied": "Tautan disalin",
+      "selectedCount_other": "{{count}} dipilih",
+      "selectGroup": "Pilih grup pesan",
+      "shareLink": "Tautan percakapan yang dibagikan",
+      "start": "Bagikan pesan",
+      "tooLarge": "Pilih lebih sedikit pesan untuk dibagikan"
     },
     "shortcuts": {
       "number": "nomor"
@@ -1521,7 +1649,6 @@
         "website": "Situs web",
         "workflow": "Alur kerja"
       },
-      "messageTemplate": "Template pesan {{title}}",
       "previewTemplate": "Pratinjau template {{title}}",
       "previewVideo": "Pratinjau template video {{title}}",
       "previewWebsite": "Pratinjau template situs web {{title}}",
@@ -1529,7 +1656,17 @@
       "removeTemplate": "Hapus template {{title}}",
       "removeVideo": "Hapus template video {{title}}",
       "removeWebsite": "Hapus template situs web {{title}}",
-      "removeWorkflow": "Hapus template alur kerja {{title}}"
+      "removeWorkflow": "Hapus template alur kerja {{title}}",
+      "videoModelLabel": "Model video {{model}}",
+      "videoOptions": "Opsi video",
+      "videoOptionsAudio": "Hasilkan audio",
+      "videoOptionsDuration": "Durasi",
+      "videoOptionsLabel": "Opsi video {{spec}}",
+      "videoOptionsModel": "Model",
+      "videoOptionsRatio": "Rasio",
+      "videoOptionsResolution": "Resolusi",
+      "videoSpecAudioOff": "Tanpa audio",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Thread chat",
@@ -1545,17 +1682,24 @@
         "waiting": "Menunggu",
         "watching": "Dipantau"
       },
+      "emojiCategories": "Kategori emoji",
       "empty": "Kirim pesan untuk memulai percakapan",
       "frequentlyUsed": "Sering digunakan",
       "icon": "Ikon thread chat",
-      "loadingEarlier": "Memuat pesan sebelumnya",
+      "locator": {
+        "you": "Anda"
+      },
       "noEmojiFound": "Emoji tidak ditemukan",
+      "notFound": "Utas chat tidak ditemukan",
       "openArtifacts": "Buka artefak",
       "openBrowser": "Buka browser",
       "openNamedAgent": "Buka agen {{name}}",
       "openNamedChat": "Buka chat {{title}}",
+      "pickEmoji": "Pilih emoji",
       "scrollToBottom": "Gulir ke bawah",
-      "searchEmoji": "Cari emoji"
+      "searchEmoji": "Cari emoji",
+      "steerAcknowledgement_one": "Diterima saat proses berjalan — pekerjaan sebelumnya tetap ada",
+      "steerAcknowledgement_other": "Semua {{count}} pesan diterima saat proses berjalan — pekerjaan sebelumnya tetap ada"
     },
     "threadSidebar": {
       "resize": "Ubah ukuran sidebar"
@@ -1568,6 +1712,10 @@
       "checkingLimit": "Memeriksa batas input suara",
       "input": "Input suara",
       "inputLimitReached": "Batas input suara tercapai. Upgrade ke Pro atau Team untuk batas yang lebih tinggi.",
+      "inputLimitReachedMember": "Batas input suara tercapai. Minta admin ruang kerja untuk upgrade agar mendapatkan batas yang lebih tinggi.",
+      "inputLimitReachedPro": "Batas input suara tercapai. Upgrade ke Team untuk batas yang lebih tinggi.",
+      "inputLimitReachedProMember": "Batas input suara tercapai. Minta admin ruang kerja untuk upgrade ke Team agar mendapatkan batas yang lebih tinggi.",
+      "inputLimitReachedReset": "Batas input suara tercapai. Tunggu hingga batas Anda direset.",
       "microphoneAccessDenied": "Akses mikrofon ditolak. Izinkan akses mikrofon dan coba lagi.",
       "openingMicrophone": "Membuka mikrofon...",
       "starting": "Memulai input suara",
@@ -1614,7 +1762,6 @@
       "edit": "Edit",
       "grant": "Berikan",
       "reconnect": "Hubungkan ulang",
-      "rename": "Ganti nama",
       "revoke": "Cabut",
       "save": "Simpan",
       "saving": "Menyimpan...",
@@ -1718,6 +1865,7 @@
       },
       "categoriesAria": "Kategori konektor",
       "description": "Hubungkan layanan pihak ketiga agar agen Anda dapat menggunakannya.",
+      "descriptionWithCount": "Hubungkan {{value}} layanan agar agen Anda dapat menggunakannya.",
       "empty": {
         "agent": "Tidak ada konektor untuk agen ini",
         "connected": "Tidak ada konektor yang terhubung",
@@ -1791,24 +1939,14 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "Tidak digunakan oleh agen mana pun",
-        "usedBy": "Digunakan oleh {{agents}}",
-        "usedByOverflow_one": "Digunakan oleh {{agents}} +{{value}}",
-        "usedByOverflow_other": "Digunakan oleh {{agents}} +{{value}}"
-      },
       "connect": {
-        "apiAuthentication": "Autentikasi API",
-        "apiDescription": "Masukkan rahasia API yang diterbitkan oleh penyedia.",
-        "back": "Kembali",
+        "configured": "Terkonfigurasi",
         "connecting": "Menghubungkan…",
         "continue": "Lanjut",
         "continueToProvider": "Lanjutkan ke penyedia untuk mengotorisasi akses.",
         "description": "Rahasia Anda dienkripsi saat disimpan dan disisipkan ke permintaan keluar oleh firewall. Rahasia ini tidak pernah diekspos ke agen sebagai variabel lingkungan.",
-        "oauthDescription": "Otorisasi akses dengan aplikasi OAuth konektor.",
         "save": "Simpan",
         "saving": "Menyimpan…",
-        "secret": "Rahasia",
         "title": "Hubungkan {{connector}}"
       },
       "create": {
@@ -1822,13 +1960,18 @@
         "authorizationUrl": "URL otorisasi",
         "clientId": "ID Klien",
         "clientSecret": "Rahasia klien",
+        "connectorType": "Jenis konektor",
         "displayName": "Nama tampilan",
         "headerName": "Nama header",
         "headerTemplate": "Template header",
         "headerTemplateHint": "(harus berisi {{placeholder}})",
         "httpBasicAuthentication": "Autentikasi HTTP Basic",
+        "httpType": "API HTTP",
         "keepClientSecret": "Biarkan rahasia klien kosong untuk mempertahankan nilai yang tersimpan.",
         "keepClientSecretPlaceholder": "Kosongkan untuk mempertahankan yang sekarang",
+        "mcpEndpoint": "Endpoint MCP",
+        "mcpEndpointHint": "(Streamable HTTP, hanya HTTPS)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "Rahasia klien baru",
         "none": "Tidak ada",
         "oauthChangesDisconnect": "Mengubah pengaturan OAuth atau kredensial klien akan memutus koneksi OAuth yang sudah ada.",
@@ -1863,18 +2006,15 @@
       },
       "emptyAdmin": "Belum ada konektor kustom. Buat satu untuk mendaftarkan API agar bisa digunakan semua anggota.",
       "emptyMember": "Org Anda belum mendaftarkan konektor kustom apa pun.",
+      "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Opsi lainnya",
-      "rename": {
-        "displayName": "Nama tampilan",
-        "title": "Ganti nama konektor kustom"
-      },
       "statusConnected": "Terhubung",
       "toasts": {
         "connected": "Terhubung",
         "created": "Membuat \"{{connector}}\"",
         "deleted": "Konektor kustom dihapus",
         "disconnected": "Terputus",
-        "renamed": "Diubah namanya menjadi \"{{connector}}\"",
         "updated": "Diperbarui \"{{connector}}\""
       },
       "updateConfirm": {
@@ -1882,19 +2022,6 @@
         "description": "Perubahan OAuth ini akan memutus semua anggota yang saat ini terhubung dengan OAuth. Mereka perlu menghubungkan lagi konektor kustom ini.",
         "title": "Putuskan koneksi OAuth yang ada?"
       }
-    },
-    "customProposal": {
-      "configure": "Konfigurasikan {{connector}}",
-      "descriptionAgent": "Menyimpan akan menghubungkan nilai Anda dan memberi otorisasi untuk {{agent}}.",
-      "descriptionUser": "Menyimpan akan menghubungkan konektor kustom ini untuk akun Anda.",
-      "documentTitle": "Konfigurasikan konektor kustom",
-      "invalid": "Tautan proposal konektor kustom ini tidak valid atau sudah kedaluwarsa.",
-      "requestScope": "Minta scope",
-      "returnToChat": "Kembali ke chat dan balas ACK agar agen dapat memverifikasi konektornya.",
-      "saved": "Tersimpan",
-      "savedToast": "{{connector}} tersimpan",
-      "targetFallback": "agen ini",
-      "update": "Perbarui {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Otorisasi {{agent}}",
@@ -2211,19 +2338,14 @@
           "challengeQuestion": "Mengapa Feishu menampilkan \"Challenge code didn't get a response\"?",
           "title": "FAQ penyiapan"
         },
-        "guide": {
-          "next": "Tampilkan gambar panduan Feishu berikutnya",
-          "previous": "Tampilkan gambar panduan Feishu sebelumnya",
-          "show": "Tampilkan gambar panduan Feishu {{number}}"
-        },
         "loadError": "Tidak dapat memuat pengaturan Feishu.",
         "manage": "Kelola",
         "manageDialogTitle": "Kelola bot Feishu",
         "moreOptions": "Opsi lainnya untuk {{bot}}",
         "pageDescription": "Kelola perutean bot untuk ruang kerja ini",
         "permissions": {
-          "description": "Di konsol developer Feishu, buka Permissions & Scopes, pilih Batch Import/Export > Import, lalu tempel JSON di bawah. Tindakan ini mengimpor semua scope konektor terkelola di bawah User identity.",
-          "hint": "Konfirmasikan izin User identity yang diimpor, lalu buat dan publikasikan versi aplikasi baru agar layar persetujuan OAuth dapat memberikannya.",
+          "description": "Di konsol developer Feishu, buka Permissions & Scopes, pilih Batch Import/Export > Import, lalu tempel JSON di bawah. Tindakan ini mengimpor semua scope konektor terkelola di bawah User identity. Ini adalah izin minimum yang diperlukan agar integrasi berfungsi.",
+          "hint": "Pertahankan semua izin User identity yang diimpor, lalu buat dan publikasikan versi aplikasi baru agar layar persetujuan OAuth dapat memberikannya. Menghapus izin apa pun akan membuat integrasi tidak berfungsi, dan persetujuan administrator Feishu mungkin diperlukan.",
           "label": "JSON scope token pengguna",
           "menuAlt": "Halaman Permissions & Scopes Feishu dengan menu Batch import/export scopes disorot",
           "menuLabel": "Buka Batch import/export scopes",
@@ -2449,95 +2571,21 @@
       "requestFailed": "Permintaan gagal"
     },
     "realtime": {
-      "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman."
+      "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman.",
+      "disconnected": "Koneksi realtime terputus",
+      "reconnecting": "Menyambungkan kembali koneksi realtime"
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "Bulan depan",
-      "previousMonth": "Bulan sebelumnya"
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Undangan diterima untuk akun lain"
     },
-    "cards": {
-      "agents": "Agen",
-      "agentsRan_one": "{{agents}} menjalankan {{runs}}",
-      "agentsRan_other": "{{agents}} menjalankan {{runs}}",
-      "allowed": "Diizinkan",
-      "allowedSummary_one": "{{calls}} dilakukan dalam {{permissions}} izin yang diberikan",
-      "allowedSummary_other": "{{calls}} dilakukan dalam {{permissions}} izin yang diberikan",
-      "automations": "Otomatisasi",
-      "automationsUsed_one": "{{automations}} menggunakan {{credits}}",
-      "automationsUsed_other": "{{automations}} menggunakan {{credits}}",
-      "balance": "Saldo",
-      "byAgent": "oleh {{agent}}",
-      "chats": "Obrolan",
-      "chatsUsed_one": "{{chats}} menggunakan {{credits}}",
-      "chatsUsed_other": "{{chats}} menggunakan {{credits}}",
-      "clickToOpen": "Klik untuk membuka",
-      "consumedToday": "dipakai hari ini",
-      "moreAutomations_one": "+{{value}} otomatisasi lagi",
-      "moreAutomations_other": "+{{value}} otomatisasi lagi",
-      "moreChats_one": "+{{value}} obrolan lagi",
-      "moreChats_other": "+{{value}} obrolan lagi",
-      "protected": "Dilindungi",
-      "protectedSummary_one": "{{calls}} dilindungi di {{permissions}} izin",
-      "protectedSummary_other": "{{calls}} dilindungi di {{permissions}} izin",
-      "rejected_one": "{{value}} ditolak",
-      "rejected_other": "{{value}} ditolak",
-      "rejectedOf": "{{denied}} dari {{total}} ditolak",
-      "services": "Layanan",
-      "servicesReceived_one": "{{services}} menerima {{calls}}",
-      "servicesReceived_other": "{{services}} menerima {{calls}}",
-      "team": "Tim",
-      "teamCreditUsage": "Penggunaan Kredit Tim",
-      "untitled": "(tanpa judul)",
-      "yourCreditUsage": "Penggunaan Kredit Anda"
+    "actions": {
+      "switchAccount": "Ganti akun",
+      "switchWorkspace": "Ganti ruang kerja"
     },
-    "common": {
-      "loadMore": "Muat lebih banyak",
-      "showLess": "Tampilkan lebih sedikit"
-    },
-    "page": {
-      "description": "Pantau apa yang diakses agen Anda, bagaimana kredit digunakan, izin apa yang mereka pakai, dan temukan hal yang tidak biasa.",
-      "documentTitle": "Insight & Penggunaan",
-      "empty": "Jalankan agen untuk melihat insight di sini.",
-      "emptyRange": "Tidak ada aktivitas dalam rentang waktu ini.",
-      "lastUpdated": "Terakhir diperbarui — {{date}}",
-      "loadError": "Tidak dapat memuat aktivitas jaringan.",
-      "title": "Insight"
-    },
-    "range": {
-      "custom": "Rentang Kustom",
-      "last28Days": "28 Hari Terakhir",
-      "last30Days": "30 Hari Terakhir",
-      "last7Days": "7 Hari Terakhir",
-      "today": "Hari Ini",
-      "yesterday": "Kemarin"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}} permintaan diblokir oleh aturan izin Anda. Tinjau agar tidak ada yang penting terlewat.",
-      "blocked_other": "{{blocked}} permintaan diblokir oleh aturan izin Anda. Tinjau agar tidak ada yang penting terlewat.",
-      "blockedCaption": "{{calls}} · {{blocked}} diblokir",
-      "busy_one": "Hari yang sibuk — {{agentCount}} agen menyelesaikan {{runs}}. Jaringan Anda bekerja keras.",
-      "busy_other": "Hari yang sibuk — {{agentCount}} agen menyelesaikan {{runs}}. Jaringan Anda bekerja keras.",
-      "distributed_one": "{{agents}} aktif, menggunakan total {{credits}}. Beban kerja tersebar dengan baik.",
-      "distributed_other": "{{agents}} aktif, menggunakan total {{credits}}. Beban kerja tersebar dengan baik.",
-      "highTraffic_one": "{{callCount}} panggilan layanan di {{services}}. Hari dengan lalu lintas tinggi.",
-      "highTraffic_other": "{{callCount}} panggilan layanan di {{services}}. Hari dengan lalu lintas tinggi.",
-      "light_one": "Aktivitas ringan — hanya {{runs}} dan {{calls}}. Hari yang tenang.",
-      "light_other": "Aktivitas ringan — hanya {{runs}} dan {{calls}}. Hari yang tenang.",
-      "quietCaption": "{{runs}} · hari yang tenang",
-      "smooth": "{{runs}} dan {{callCount}} panggilan layanan hari ini. Semuanya berjalan lancar."
-    },
-    "units": {
-      "agent_one": "{{value}} agen",
-      "agent_other": "{{value}} agen",
-      "call_one": "{{value}} panggilan",
-      "call_other": "{{value}} panggilan",
-      "run_one": "{{value}} eksekusi",
-      "run_other": "{{value}} eksekusi",
-      "service_one": "{{value}} layanan",
-      "service_other": "{{value}} layanan"
+    "success": {
+      "title": "Undangan untuk {{workspace}} diterima"
     }
   },
   "lifecycle": {
@@ -3898,6 +3946,7 @@
       "atLimit_other": "Anda hanya dapat menjalankan {{limit}} tugas sekaligus. Eksekusi baru akan menunggu di antrean sampai satu selesai.",
       "available_one": "{{count}} slot tersedia",
       "available_other": "{{count}} slot tersedia",
+      "availableNow": "Tersedia sekarang",
       "inUse_one": "{{active}} dari {{limit}} slot digunakan",
       "inUse_other": "{{active}} dari {{limit}} slot digunakan"
     },
@@ -3924,40 +3973,6 @@
       "recommended": "Direkomendasikan",
       "teamDescription": "Kembangkan tim Anda dengan 10 eksekusi paralel dan lebih banyak kredit."
     }
-  },
-  "reportError": {
-    "description": "Kirim informasi diagnostik untuk eksekusi yang gagal ini ke tim pengembang. Kami akan menyelidiki dan menindaklanjuti segera.",
-    "disclosure": {
-      "agentConfiguration": "Konfigurasi agen",
-      "agentTelemetry": "Telemetry agen dan log eksekusi",
-      "chatHistory": "Riwayat chat dan event agen",
-      "connectedServices": "Layanan yang terhubung (tanpa kredensial)",
-      "networkLogs": "Log permintaan jaringan",
-      "runContext": "Konteks eksekusi dan lingkungan",
-      "title": "Apa yang akan dikirim"
-    },
-    "documentTitle": "Laporkan Kesalahan",
-    "error": {
-      "loadFailed": "Gagal memuat detail eksekusi",
-      "notFailed": "Eksekusi ini tidak gagal dan tidak dapat dilaporkan",
-      "title": "Kesalahan",
-      "tryAgain": "Coba Lagi"
-    },
-    "fields": {
-      "description": "Deskripsi",
-      "descriptionPlaceholder": "Apa yang terjadi? Apa yang Anda harapkan?",
-      "title": "Judul",
-      "titlePlaceholder": "Ringkasan singkat masalah"
-    },
-    "loading": "Memuat detail eksekusi",
-    "send": "Kirim Laporan",
-    "sending": "Mengirim...",
-    "success": {
-      "description": "Laporan kesalahan Anda telah dikirim ke tim developer. Mereka akan menyelidiki dan menindaklanjuti.",
-      "reference": "Referensi: {{reference}}",
-      "title": "Laporan terkirim"
-    },
-    "title": "Laporkan kesalahan ke developer"
   },
   "settings": {
     "accountMenu": {
@@ -4031,8 +4046,9 @@
           "title": "Preferensi"
         },
         "usage": {
-          "balanceDescription": "Saldo kredit dan penggunaan tim Anda.",
+          "balanceDescription": "Sisa yang bisa dibelanjakan tim Anda.",
           "balanceTitle": "Saldo kredit",
+          "balanceUsageDescription": "Saldo kredit dan penggunaan tim Anda.",
           "usageDescription": "Penggunaan kredit Anda di seluruh chat, otomatisasi, dan channel.",
           "usageTitle": "Penggunaan kredit"
         }
@@ -4190,12 +4206,18 @@
         "title": "Koneksi penyedia"
       },
       "personal": {
+        "accountFallback": "Akun {{number}}",
         "actionForProvider": "{{action}} {{provider}}",
+        "activeAccount": "Aktif",
+        "addAccount": "Tambah akun",
         "claudeDescription": "Hubungkan dengan login Claude Code untuk rute model berbasis Claude.",
         "claudeTitle": "OAuth Claude Code",
         "codexDescription": "Hubungkan dengan login perangkat Codex untuk rute model berbasis Codex.",
         "codexTitle": "ChatGPT (Codex)",
         "description": "Hanya digunakan di eksekusi Anda, dengan kredensial Anda sendiri.",
+        "noAccounts": "Belum ada akun terhubung.",
+        "reconnectAccount": "Hubungkan ulang",
+        "removeAccount": "Hapus",
         "sectionTitle": "Pribadi",
         "status": {
           "connected": "Terhubung",
@@ -4204,18 +4226,19 @@
           "left": "Sisa {{percent}}",
           "stale": "Perhatian",
           "week": "Minggu"
-        }
+        },
+        "useAccount": "Gunakan"
       },
       "picker": {
-        "balancedUse": "Penggunaan seimbang",
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
         "fast": "Cepat",
+        "fastImpact": "Kecepatan model 1,5× · penggunaan kredit 2,5×",
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
+        "manageMoreModels": "Kelola model lainnya",
         "models": "Model",
-        "moreCodexCredits": "Menggunakan lebih banyak kredit Codex.",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
           "balanced": "Biaya dan performa seimbang",
@@ -4223,15 +4246,14 @@
           "frontier": "Model andalan terdepan",
           "premium": "Model terdepan premium untuk tugas tersulit"
         },
-        "prioritizeSpeed": "Prioritaskan kecepatan",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "portal Azure foundry",
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Kecepatan jalankan",
-        "standard": "Standar"
+        "standard": "Standar",
+        "videoModels": "Model video"
       },
       "policies": {
         "actionsFor": "Tindakan untuk {{model}}",
@@ -4287,6 +4309,8 @@
         "codexTitle": "Sesi ChatGPT perlu disambungkan ulang"
       },
       "toasts": {
+        "accountRemoved": "Akun dihapus",
+        "accountSwitched": "Akun aktif diganti",
         "disconnected": "{{provider}} terputus",
         "policiesUpdated": "Pengaturan provider model diperbarui",
         "reset": "Penggunaan Codex direset",
@@ -4330,6 +4354,24 @@
           "enabled_one": "Diaktifkan untuk {{count}} eksekusi berikutnya",
           "enabled_other": "Diaktifkan untuk {{count}} eksekusi berikutnya",
           "title": "Tangkap body jaringan"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "Penantian aktif",
+          "blurred": "tidak fokus",
+          "channel": "kanal",
+          "clear": "Hapus",
+          "connection": "koneksi",
+          "copyJson": "Salin JSON",
+          "description": "Periksa siklus hidup browser, pemulihan autentikasi, dan sinyal koneksi Ably.",
+          "empty": "Tidak ada peristiwa diagnostik yang direkam.",
+          "events": "peristiwa",
+          "focused": "fokus",
+          "log": "Log peristiwa",
+          "offline": "luring",
+          "online": "daring",
+          "recovery": "pemulihan",
+          "title": "Diagnostik koneksi waktu nyata",
+          "unavailable": "tidak tersedia"
         },
         "tab": "Debug"
       },
@@ -4429,8 +4471,9 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Semua langganan aktif, termasuk paket penggunaan dan add-on, akan segera dibatalkan. Waktu langganan prabayar yang belum digunakan akan dikembalikan secara prorata. Pembelian satu kali dan pembelian non-langganan lainnya tidak akan dikembalikan.",
           "button": "Hapus ruang kerja",
-          "confirmDescription": "Ini akan menghapus {{workspace}} dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan. Ketik nama ruang kerja untuk mengonfirmasi.",
+          "confirmDescription": "Ini akan menghapus ruang kerja ini dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan. Ketik confirm untuk melanjutkan.",
           "description": "Hapus ruang kerja ini dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan.",
           "progress": "Menghapus...",
           "title": "Hapus ruang kerja",
@@ -4456,9 +4499,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Harap masukkan alamat email yang valid",
           "progress": "Mengirim...",
+          "purchase": {
+            "description": "Tinjau biaya prorata di bawah ini. Konfirmasi akan menagih metode pembayaran tersimpan dan mengirim undangan.",
+            "error": "Paket anggota ini tidak dapat dibeli. Periksa detail penagihan Anda dan coba lagi.",
+            "invitee": "Orang yang diundang",
+            "title": "Tinjau undangan"
+          },
           "roleLabel": "Peran",
           "send": "Kirim undangan",
-          "title": "Undang anggota"
+          "title": "Undang anggota",
+          "upgrade": {
+            "action": "Upgrade ke Pro",
+            "description": "Undangan anggota tersedia di paket Pro. Upgrade ruang kerja ini untuk mengundang orang dan mengelola peran mereka.",
+            "title": "Upgrade untuk mengundang anggota"
+          }
         },
         "joined": "Bergabung",
         "joinRequests": "Permintaan bergabung",
@@ -4473,7 +4527,10 @@
           "action": "Hapus dari ruang kerja",
           "confirmDescription": "{{email}} akan dihapus dari ruang kerja ini dan kehilangan akses ke semua sumber daya.",
           "progress": "Menghapus...",
-          "title": "Hapus anggota?"
+          "title": "Hapus anggota?",
+          "usagePackImpactDescription": "Sisa kredit paket penggunaan mereka akan langsung tidak tersedia. Paket akan dihapus pada akhir periode penagihan saat ini. Jika ruang kerja tidak lagi memiliki paket penggunaan, paket ruang kerja juga akan dibatalkan pada akhir periode penagihan.",
+          "usagePackImpactTitle": "Dampak paket penggunaan",
+          "usagePackRefundDescription": "Pengembalian dana: Bagian kredit yang dibeli tetapi belum digunakan dikembalikan ke metode pembayaran awal. Kredit yang sudah digunakan dan kredit bonus tidak dapat dikembalikan."
         },
         "revoke": {
           "action": "Cabut undangan",
@@ -4495,6 +4552,7 @@
           "progress": "Mengalihkan...",
           "title": "Alihkan ke anggota?"
         },
+        "usagePack": "Paket penggunaan",
         "user": "Pengguna",
         "you": "Anda"
       },
@@ -4556,40 +4614,21 @@
       "title": "Halaman tidak ditemukan"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "Percakapan yang dibagikan ini tidak ada.",
+    "notFoundTitle": "Percakapan yang dibagikan tidak ditemukan",
+    "tryOkou": "Coba Okou"
+  },
   "usage": {
-    "automations": {
-      "empty": "Tidak ada otomatisasi yang digunakan pada periode ini",
-      "more_one": "+{{value}} otomatisasi lagi",
-      "more_other": "+{{value}} otomatisasi lagi",
-      "summary_one": "{{automations}} menggunakan {{credits}}",
-      "summary_other": "{{automations}} menggunakan {{credits}}",
-      "title": "Otomatisasi"
-    },
-    "chart": {
-      "ariaLabel": "Total kredit",
-      "credits": "kredit",
-      "groupBy": {
-        "agent": "Agen",
-        "source": "Sumber"
-      },
-      "noUsage": "Tidak ada penggunaan",
-      "showDetails": "Tampilkan detail penggunaan untuk {{date}}"
-    },
-    "chats": {
-      "clickToOpen": "Klik untuk membuka",
-      "empty": "Tidak ada chat pada periode ini",
-      "more_one": "+{{value}} chat lagi",
-      "more_other": "+{{value}} chat lagi",
-      "summary_one": "{{chats}} menggunakan {{credits}}",
-      "summary_other": "{{chats}} menggunakan {{credits}}",
-      "title": "Chat",
-      "untitled": "(tanpa judul)"
-    },
     "displayNames": {
-      "auto": "Otomatis",
+      "avatar": "Avatar",
       "finance": "Keuangan",
+      "imageRecognize": "Pengenalan Gambar",
       "maps": "Peta",
       "peopleSearch": "Pencarian Orang",
+      "seo": "SEO",
+      "translation": "Terjemahan",
       "usage": "Penggunaan",
       "weather": "Cuaca",
       "webFetch": "Pengambilan Web",
@@ -4602,29 +4641,25 @@
       "other": "Lainnya",
       "video": "Video"
     },
-    "page": {
-      "description": "Konsumsi kredit Anda di chat, otomatisasi, dan kanal.",
-      "loadError": "Gagal memuat wawasan penggunaan. Coba lagi nanti.",
-      "title": "Penggunaan"
-    },
     "range": {
-      "ariaLabel": "Rentang tanggal",
       "billingPeriod": "Periode penagihan",
       "last24Hours": "24 jam terakhir",
-      "last28Days": "28 hari terakhir",
-      "last30Days": "30 hari terakhir",
       "last7Days": "7 hari terakhir",
-      "selectedDay": "Hari terpilih",
       "today": "Hari ini",
       "yesterday": "Kemarin"
     },
     "records": {
-      "emptyBillingPeriod": "Tidak ada penggunaan pada periode penagihan ini.",
-      "emptyRange": "Tidak ada penggunaan pada rentang waktu ini.",
+      "empty": {
+        "billingPeriodTitle": "Tidak ada penggunaan pada periode penagihan ini",
+        "description": "Kredit yang Anda pakai di chat, automasi, dan kanal muncul di sini.",
+        "noBillingPeriodDescription": "Penggunaan tim muncul setelah periode penagihan dimulai.",
+        "noBillingPeriodTitle": "Tidak ada periode penagihan aktif",
+        "rangeTitle": "Tidak ada penggunaan pada rentang waktu ini",
+        "teamDescription": "Kredit yang dipakai tim Anda di chat, automasi, dan kanal muncul di sini."
+      },
       "loadError": "Tidak dapat memuat penggunaan Anda.",
       "loadMore": "Muat lebih banyak",
       "myUsage": "Penggunaan saya",
-      "noActiveBillingPeriod": "Tidak ada periode penagihan aktif.",
       "teamLoadError": "Tidak dapat memuat penggunaan tim.",
       "teamUsage": "Penggunaan tim",
       "untitled": "(tanpa judul)"
@@ -4636,16 +4671,12 @@
       "email": "Email",
       "github": "GitHub",
       "other": "Lainnya",
-      "others": "Lain-lain",
       "phone": "Telepon",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "Tidak diketahui"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}} otomatisasi",
-      "automation_other": "{{value}} otomatisasi",
       "chat_one": "{{value}} chat",
       "chat_other": "{{value}} chat",
       "credit_one": "{{value}} kredit",
@@ -4726,17 +4757,21 @@
         "second_one": "{{count}} detik",
         "second_other": "{{count}} detik"
       },
+      "forms": {
+        "addAction": "Tambahkan otomatisasi Google Forms",
+        "addAria": "Tambahkan otomatisasi respons Google Forms",
+        "addDescription": "Jalankan alur kerja ini saat Google Form yang dipilih menerima respons baru.",
+        "addTitle": "Tambahkan otomatisasi Google Forms",
+        "formUrl": "Tautan formulir",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "Jalankan saat Google Form menerima respons baru.",
+        "responseSubmittedTitle": "Respons Google Forms dikirim",
+        "rule": "Saat {{form}} menerima respons",
+        "summary": "Formulir {{form}}"
+      },
       "github": {
-        "accountConnect": "Hubungkan GitHub",
-        "accountRequired": "Hubungkan akun GitHub Anda untuk menggunakan Me.",
-        "actorAnyone": "Siapa saja",
-        "actorMe": "Saya",
         "actors": "Aktor",
         "actorsPlaceholder": "octocat, dependabot[bot]",
-        "addLabelAction": "Tambahkan otomatisasi label",
-        "addLabelAria": "Tambahkan otomatisasi label GitHub",
-        "addLabelDescription": "Jalankan alur kerja ini saat label GitHub diterapkan.",
-        "addLabelTitle": "Tambahkan otomatisasi label GitHub",
         "addWebhookAction": "Tambahkan otomatisasi",
         "addWebhookAria": "Tambahkan otomatisasi {{title}}",
         "addWebhookDescription": "Jalankan alur kerja ini saat event webhook GitHub yang cocok diterima.",
@@ -4798,13 +4833,6 @@
         "jobs": "Job",
         "jobsPlaceholder": "test, build",
         "jobsSummary": "Job {{values}}",
-        "labelAppliedDescription": "Jalankan saat issue atau pull request mendapat label.",
-        "labelAppliedRule": "Saat label GitHub {{label}} diterapkan",
-        "labelAppliedTitle": "Label GitHub diterapkan",
-        "labelName": "Nama label",
-        "labelOnlySummary": "Label {{label}}",
-        "labelPlaceholder": "triage",
-        "labelSummary": "Label {{label}} · {{subject}} · Pelaku {{actor}}",
         "loadError": "Setelan GitHub tidak dapat dimuat.",
         "nonProductionOnly": "Hanya non-produksi",
         "option": {
@@ -4829,12 +4857,36 @@
         },
         "productionEnvironment": "Lingkungan produksi",
         "productionOnly": "Hanya produksi",
+        "pullRequestAction": "Aksi",
+        "pullRequestActionClosed": "Ditutup",
+        "pullRequestActionConvertedToDraft": "Diubah menjadi draf",
+        "pullRequestActionDequeued": "Dihapus dari antrean merge",
+        "pullRequestActionEnqueued": "Ditambahkan ke antrean merge",
+        "pullRequestActionLabeled": "Label diterapkan",
+        "pullRequestActionOpened": "Dibuka",
+        "pullRequestActionReadyForReview": "Siap ditinjau",
+        "pullRequestActionReopened": "Dibuka kembali",
+        "pullRequestActionSynchronize": "Commit baru didorong",
+        "pullRequestActionUnlabeled": "Label dihapus",
+        "pullRequestAuthors": "Penulis",
+        "pullRequestClosedWithoutMergeOnly": "Ditutup tanpa digabungkan",
+        "pullRequestDescription": "Berjalan saat pull request di satu repositori dibuka, digabungkan, diberi label, atau berubah status.",
+        "pullRequestLabels": "Label",
+        "pullRequestLabelsPlaceholder": "ready-to-merge",
+        "pullRequestMerged": "Digabungkan",
+        "pullRequestMergedOnly": "Hanya yang digabungkan",
+        "pullRequestNumbers": "Nomor pull request",
+        "pullRequestNumbersPlaceholder": "42, 128",
+        "pullRequestRule": "Pull request GitHub {{action}} di {{repository}}",
         "pullRequestsOnly": "Hanya pull request",
+        "pullRequestTitle": "Pull request GitHub",
         "refs": "Ref",
         "refsPlaceholder": "main, v1.0.0",
         "repositories": "Repositori",
         "repositoriesPlaceholder": "vm0-ai/vm0, owner/another-repo",
         "repositoriesSummary": "Repositori {{values}}",
+        "repository": "Repositori",
+        "repositoryPlaceholder": "owner/name",
         "reviewDescription": "Jalankan saat review yang cocok dikirim.",
         "reviewRule": "Saat review pull request GitHub yang cocok dikirim",
         "reviewStates": "Status review",
@@ -4846,10 +4898,8 @@
         "saveFilters": "Simpan filter",
         "selectNoneAny": "Pilih tidak ada untuk mencocokkan nilai apa pun.",
         "selectNoneConclusion": "Pilih tidak ada untuk mencocokkan konklusi selesai apa pun.",
-        "startedBy": "Dimulai oleh",
         "subject": "Subjek",
         "trustedAuthors": "Penulis tepercaya",
-        "updateLabelAria": "Perbarui otomatisasi label GitHub",
         "updateWebhookAria": "Perbarui otomatisasi {{title}}",
         "updateWorkflowAria": "Perbarui otomatisasi workflow GitHub",
         "withConclusions": " dengan {{values}}",
@@ -4967,6 +5017,7 @@
       "picker": {
         "calendar": "Kalender",
         "email": "Email",
+        "forms": "Google Forms",
         "integrations": "Integrasi",
         "notion": "Notion",
         "schedule": "Jadwal"
@@ -5043,14 +5094,53 @@
         "localeSummary": "Locale {{locale}}",
         "rule": "Saat entri Strapi yang cocok dipublikasikan"
       },
+      "stripe": {
+        "addAction": "Tambahkan otomatisasi Stripe",
+        "addAria": "Tambahkan otomatisasi faktur Stripe dibayar",
+        "addDescription": "Jalankan alur kerja ini saat faktur yang cocok dibayar di akun Stripe Live yang terhubung.",
+        "addTitle": "Tambahkan otomatisasi Stripe",
+        "anyBillingReason": "Alasan penagihan apa pun",
+        "billingReason": {
+          "automaticPendingInvoiceItemInvoice": "Item faktur tertunda otomatis",
+          "manual": "Manual",
+          "quoteAccept": "Penawaran diterima",
+          "subscription": "Langganan",
+          "subscriptionCreate": "Langganan dibuat",
+          "subscriptionCycle": "Siklus langganan",
+          "subscriptionThreshold": "Ambang langganan",
+          "subscriptionUpdate": "Langganan diperbarui",
+          "upcoming": "Mendatang"
+        },
+        "billingReasons": "Alasan penagihan",
+        "billingReasonsHint": "Jangan pilih apa pun untuk mencocokkan semua alasan penagihan.",
+        "bindingSummary": "Akun Stripe {{accountId}} · Mode Live · {{billingReasons}}",
+        "delivery": "Pengiriman",
+        "deliveryStatus": {
+          "delivered": "Terkirim",
+          "failed": "Gagal",
+          "pending": "Tertunda",
+          "skipped": "Dilewati"
+        },
+        "deliveryWarning": "Pengiriman terminal terbaru gagal. Periksa aktivitas alur kerja sebelum mencoba lagi.",
+        "immutableHint": "Akun Stripe dan alasan penagihan bersifat tetap. Untuk mengubahnya, hapus otomatisasi ini lalu buat ulang.",
+        "invoicePaidDescription": "Jalankan saat faktur Stripe yang cocok dibayar.",
+        "invoicePaidTitle": "Faktur Stripe dibayar",
+        "lastEvent": "Peristiwa terakhir",
+        "manageConnection": "Kelola koneksi Stripe",
+        "noDeliveries": "Belum ada pengiriman",
+        "noMatchingEvents": "Belum ada peristiwa yang cocok",
+        "rule": "Saat faktur Stripe yang cocok dibayar"
+      },
       "types": {
         "chat": "Chat",
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {
@@ -5291,6 +5381,12 @@
     "connectedWithDetail": "Terhubung ({{detail}})",
     "documentTitle": "Berfungsi",
     "feishuConnected": "Feishu berhasil terhubung",
+    "github": {
+      "adminInstall": "Minta admin organisasi untuk menginstal aplikasi GitHub",
+      "description": "Picu otomatisasi alur kerja dari peristiwa GitHub",
+      "install": "Instal aplikasi GitHub",
+      "title": "GitHub"
+    },
     "header": {
       "description": "Hubungkan dengan {{displayName}} melalui saluran ini",
       "title": "Tempat {{displayName}} bekerja"

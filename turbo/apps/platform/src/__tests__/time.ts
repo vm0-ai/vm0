@@ -1,6 +1,4 @@
-import { afterEach } from "vitest";
-
-import { clearMockNow, mockNow as mockPlatformNow } from "../lib/time.ts";
+import { mockNow as mockPlatformNow } from "../lib/time.ts";
 
 const FIXED_NOW_ISO = "2026-06-11T16:00:00.000Z";
 
@@ -32,10 +30,9 @@ export function unixSecondsFromIso(value: string): number {
   return dateFromIso(value).getTime() / 1000;
 }
 
-export function mockNow(value: Date | number = now()): void {
-  mockPlatformNow(value);
+export function mockNow(
+  signal: AbortSignal,
+  value: Date | number = now(),
+): void {
+  mockPlatformNow(value, signal);
 }
-
-afterEach(() => {
-  clearMockNow();
-});

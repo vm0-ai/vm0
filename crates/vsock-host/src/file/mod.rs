@@ -181,19 +181,13 @@ fn normalize_file_exec_stderr(mut stderr: Vec<u8>, stderr_truncated: bool) -> Ve
     stderr
 }
 
-fn file_operation_error_is_terminal(error: &io::Error) -> bool {
-    !matches!(
-        error.kind(),
-        io::ErrorKind::TimedOut
-            | io::ErrorKind::ConnectionReset
-            | io::ErrorKind::BrokenPipe
-            | io::ErrorKind::UnexpectedEof
-            | io::ErrorKind::InvalidData
-    )
-}
-
 #[cfg(test)]
 pub(crate) mod test_support {
+    use std::io;
+
+    use crate::{FrameWriteObserver, VsockHost};
+
+    pub(crate) const TEST_WRITE_FILE_CHUNK_LIMIT: usize = 1024;
     pub(crate) const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = super::copy::COPY_FILE_STREAM_CHUNK_LIMIT;
     pub(crate) const COPY_FILE_STREAM_MAX_BYTES: u64 = super::copy::COPY_FILE_STREAM_MAX_BYTES;
     pub(crate) const WRITE_FILE_CHUNK_LIMIT: usize = super::write::WRITE_FILE_CHUNK_LIMIT;
@@ -201,4 +195,36 @@ pub(crate) mod test_support {
         super::write::WRITE_FILES_BATCH_CONTENT_LIMIT;
     pub(crate) const WRITE_FILES_BATCH_FILE_LIMIT: usize =
         super::write::WRITE_FILES_BATCH_FILE_LIMIT;
+
+    pub(crate) async fn write_file_with_small_chunks(
+        host: &VsockHost,
+        path: &str,
+        content: &[u8],
+        sudo: bool,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<()> {
+        host.write_file_with_write_observer_and_chunk_limit(
+            path,
+            content,
+            sudo,
+            write_observer,
+            TEST_WRITE_FILE_CHUNK_LIMIT,
+        )
+        .await
+    }
+
+    pub(crate) async fn write_private_file_with_small_chunks(
+        host: &VsockHost,
+        path: &str,
+        content: &[u8],
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<()> {
+        host.write_private_file_with_write_observer_and_chunk_limit(
+            path,
+            content,
+            write_observer,
+            TEST_WRITE_FILE_CHUNK_LIMIT,
+        )
+        .await
+    }
 }

@@ -1,2 +1,3 @@
+# Crawlers must fetch HTML to observe the worker's noindex header and meta tag.
 User-agent: *
-Disallow: /
+Allow: /

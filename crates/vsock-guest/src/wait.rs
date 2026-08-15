@@ -8,11 +8,6 @@ use std::time::{Duration, Instant};
 use crate::process::{kill_and_reap_child, kill_owned_child_process_group, process_signal_pid};
 use crate::threading::spawn_scoped_named;
 
-/// After the child process exits, continue draining stdout/stderr for this
-/// many seconds. If EOF is not received within this deadline, proceed to
-/// the terminal exec result anyway to prevent indefinite hangs when orphaned
-/// child processes hold pipe fds open.
-pub(crate) const DRAIN_DEADLINE: Duration = Duration::from_secs(5);
 const WAIT_CANCEL_POLL_INTERVAL_MS: u64 = 50;
 const THREAD_WAIT_OBSERVER: &str = "vsock-wait-observer";
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
@@ -11,9 +12,9 @@ import {
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
-  fileEntryWithHashSchema,
-  storageChangesSchema,
   presignedUploadSchema,
+  storageChangesSchema,
+  storageManifestFilesSchema,
 } from "./storages";
 
 const c = initContract();
@@ -32,6 +33,10 @@ const thirdPartyWebhookOkSchema = z.union([
   z.string(),
   z.object({ message: z.literal("pong") }),
 ]);
+const miniMaxWebhookOkSchema = z.union([
+  thirdPartyWebhookOkSchema,
+  z.object({ challenge: z.string() }),
+]);
 
 /**
  * Clerk third-party webhook contract for /api/webhooks/clerk.
@@ -44,6 +49,7 @@ export const webhookClerkContract = c.router({
     responses: {
       200: thirdPartyWebhookOkSchema,
       401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
     },
     summary: "Handle Clerk organization and user webhooks",
   },
@@ -84,6 +90,26 @@ export const webhookStripeContract = c.router({
   },
 });
 
+/**
+ * Stripe Connect automation-event webhook contract. This route is intentionally
+ * separate from the vm0 billing webhook above.
+ */
+export const webhookStripeAutomationEventsContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/stripe-automation-events",
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      500: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Stripe Connect automation events",
+  },
+});
+
 const gmailWebhookResponseSchema = z.object({
   success: z.literal(true),
   watchStates: z.number(),
@@ -92,6 +118,13 @@ const gmailWebhookResponseSchema = z.object({
 });
 
 const googleCalendarWebhookResponseSchema = z.object({
+  success: z.literal(true),
+  watchStates: z.number(),
+  dispatched: z.number(),
+  duplicates: z.number(),
+});
+
+const googleFormsWebhookResponseSchema = z.object({
   success: z.literal(true),
   watchStates: z.number(),
   dispatched: z.number(),
@@ -135,6 +168,25 @@ export const webhookGmailContract = c.router({
       503: thirdPartyWebhookErrorSchema,
     },
     summary: "Handle Gmail Pub/Sub push notifications",
+  },
+});
+
+/**
+ * Google Forms Pub/Sub push webhook contract.
+ */
+export const webhookGoogleFormsContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/google-forms",
+    body: c.type<string>(),
+    responses: {
+      200: googleFormsWebhookResponseSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Google Forms Pub/Sub push notifications",
   },
 });
 
@@ -268,6 +320,43 @@ export const webhookBuiltInGenerationBytePlusContract = c.router({
   },
 });
 
+export const webhookBuiltInGenerationMiniMaxContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/built-in-generations/minimax/:generationId",
+    pathParams: z.object({
+      generationId: z.uuid(),
+    }),
+    query: z.object({
+      token: z.string().min(1),
+      visualKey: z.string().min(1).optional(),
+    }),
+    body: c.type<string>(),
+    responses: {
+      200: miniMaxWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle MiniMax built-in generation webhooks",
+  },
+});
+
+export const webhookBuiltInGenerationJoggAiContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/built-in-generations/joggai",
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle registered JoggAI built-in generation webhooks",
+  },
+});
+
 /**
  * Sandbox reuse outcome. One enum value per code branch in the runner's
  * reuse-decision block. `reused` means the sandbox was unparked from the idle
@@ -293,6 +382,91 @@ export const sandboxReuseResultSchema = z.enum([
 ]);
 
 export type SandboxReuseResult = z.infer<typeof sandboxReuseResultSchema>;
+
+/** Final workspace reuse outcome after sandbox preparation has settled. */
+export const workspaceReuseResultSchema = z.enum([
+  "reused",
+  "sandboxReused",
+  "cacheMiss",
+  "noReuseKey",
+  "invalidWorkingDir",
+  "lockBusy",
+  "invalidMetadata",
+  "diskPressure",
+  "notConfigured",
+  "sandboxPrepareFallback",
+]);
+
+export type WorkspaceReuseResult = z.infer<typeof workspaceReuseResultSchema>;
+
+const currentSandboxReuseMissSchema = z.enum([
+  "noReuseKey",
+  "poolMiss",
+  "profileMismatch",
+  "deviceLimitMismatch",
+  "unparkFailed",
+]);
+
+export const ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS = 1024;
+
+const activeInputDeliveryIdsSchema = z
+  .array(
+    z
+      .string()
+      .uuid()
+      .refine((id) => {
+        return id === id.toLowerCase();
+      }, "active input delivery IDs must use canonical lowercase UUIDs"),
+  )
+  .max(ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS)
+  .superRefine((ids, context) => {
+    const seen = new Set<string>();
+    ids.forEach((id, index) => {
+      if (seen.has(id)) {
+        context.addIssue({
+          code: "custom",
+          path: [index],
+          message: "active input delivery IDs must be unique",
+        });
+      }
+      seen.add(id);
+    });
+  });
+
+const webhookCompleteBodySchema = z
+  .object({
+    runId: z.string().min(1, "runId is required"),
+    exitCode: z.number(),
+    error: z.string().optional(),
+    lastEventSequence: eventSequenceNumberSchema.optional(),
+    // Sandbox id the run executed against. Optional because a run that fails
+    // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
+    // the 255-char cap matches the DB column (defense in depth).
+    sandboxId: z.string().max(255).optional(),
+    sandboxReuseResult: sandboxReuseResultSchema.optional(),
+    workspaceReuseResult: workspaceReuseResultSchema.optional(),
+    activeInputDeliveryIds: activeInputDeliveryIdsSchema.optional(),
+  })
+  .superRefine((body, context) => {
+    const workspaceResult = body.workspaceReuseResult;
+    if (workspaceResult === undefined) {
+      return;
+    }
+    const sandboxResult = body.sandboxReuseResult;
+    const coherentSandboxReuse =
+      sandboxResult === "reused" && workspaceResult === "sandboxReused";
+    const coherentSandboxMiss =
+      sandboxResult !== undefined &&
+      currentSandboxReuseMissSchema.safeParse(sandboxResult).success &&
+      workspaceResult !== "sandboxReused";
+    if (!coherentSandboxReuse && !coherentSandboxMiss) {
+      context.addIssue({
+        code: "custom",
+        path: ["workspaceReuseResult"],
+        message: "workspace reuse result does not match sandbox reuse result",
+      });
+    }
+  });
 
 /**
  * Agent event schema for webhook events
@@ -362,6 +536,25 @@ const firewallAuthResponseSchema = z.object({
   refreshedSecrets: z.array(z.string()),
 });
 
+const matchedFirewallAuthContextSchema = z
+  .object({
+    name: z.string().min(1),
+    apiId: z.string().min(1),
+    connectorSlug: connectorSlugSchema.optional(),
+    customConnectorId: z.uuid().optional(),
+    routingVariables: z.record(z.string(), z.string()),
+  })
+  .refine(
+    (context) => {
+      return (
+        Number(context.connectorSlug !== undefined) +
+          Number(context.customConnectorId !== undefined) ===
+        1
+      );
+    },
+    { message: "Matched firewall must identify exactly one connector" },
+  );
+
 export const webhookFirewallAuthContract = c.router({
   /**
    * POST /api/webhooks/agent/firewall/auth
@@ -386,6 +579,9 @@ export const webhookFirewallAuthContract = c.router({
       // alone is not enough to locate access storage.
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
+      // Stable matched-firewall identity plus exact routing inputs.
+      // Inline and model-provider firewalls do not identify a connector.
+      matchedFirewall: matchedFirewallAuthContextSchema.optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound
       // auth cache lifetime by the current credit authorization lease.
       firewallBillable: z.boolean().optional(),
@@ -449,21 +645,7 @@ export const webhookCompleteContract = c.router({
     method: "POST",
     path: "/api/webhooks/agent/complete",
     headers: authHeadersSchema,
-    body: z.object({
-      runId: z.string().min(1, "runId is required"),
-      exitCode: z.number(),
-      error: z.string().optional(),
-      lastEventSequence: eventSequenceNumberSchema.optional(),
-      // Sandbox id the run executed against. Optional because a run that fails
-      // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
-      // the 255-char cap matches the DB column (defense in depth).
-      sandboxId: z.string().max(255).optional(),
-      // Sandbox reuse outcome. One enum value covers both "reused" and the
-      // non-reuse reasons, because (reused, reason) is a partial function —
-      // encoding it as one field makes inconsistent states unrepresentable.
-      // Optional/nullable for old runners and historical rows.
-      sandboxReuseResult: sandboxReuseResultSchema.optional(),
-    }),
+    body: webhookCompleteBodySchema,
     responses: {
       200: z.object({
         success: z.boolean(),
@@ -495,13 +677,29 @@ export const webhookCheckpointsContract = c.router({
         runId: z.string().min(1, "runId is required"),
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
-        cliAgentSessionHistoryHash: sha256HexSchema,
+        cliAgentSessionHistoryHash: sha256HexSchema.optional(),
+        cliAgentSessionHistoryDisposition: z
+          .enum(["discarded_oversized"])
+          .optional(),
         // Multi-artifact snapshots are folded into canonical checkpoint mounts
         // and projected back into the legacy response shape.
         artifactSnapshots: artifactSnapshotsSchema.optional(),
         volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
       })
-      .strict(),
+      .strict()
+      .superRefine((body, ctx) => {
+        const hasHash = body.cliAgentSessionHistoryHash !== undefined;
+        const hasDisposition =
+          body.cliAgentSessionHistoryDisposition !== undefined;
+        if (hasHash === hasDisposition) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["cliAgentSessionHistoryHash"],
+            message:
+              "Exactly one session history hash or disposition is required",
+          });
+        }
+      }),
     responses: {
       200: z.object({
         checkpointId: z.string(),
@@ -644,6 +842,10 @@ const sandboxOperationDownloadSourceSchema = z
   }, sessionHistoryDownloadSourceSchema.optional())
   .optional();
 
+export const runnerStartupPathSchema = z.enum(["sandbox", "workspace", "cold"]);
+
+export type RunnerStartupPath = z.infer<typeof runnerStartupPathSchema>;
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -653,6 +855,10 @@ const sandboxOperationSchema = z.object({
   duration_ms: z.number(),
   success: z.boolean(),
   error: z.string().optional(),
+  outcome: z.string().max(64).optional(),
+  reason: z.string().max(64).optional(),
+  runner_startup_path: runnerStartupPathSchema.optional(),
+  sandbox_reuse_result: sandboxReuseResultSchema.optional(),
   encoding: sessionHistoryEncodingSchema.optional(),
   session_history_raw_size_bucket: sessionHistorySizeBucketSchema.optional(),
   session_history_encoded_size_bucket:
@@ -725,7 +931,7 @@ export const webhookStoragesPrepareContract = c.router({
        * mounts.
        */
       storageId: z.string().uuid(),
-      files: z.array(fileEntryWithHashSchema),
+      files: storageManifestFilesSchema,
       parentVersionId: z.string().optional(),
       force: z.boolean().optional(),
       baseVersion: z.string().optional(),
@@ -772,7 +978,7 @@ export const webhookStoragesCommitContract = c.router({
       storageId: z.string().uuid(),
       versionId: z.string().min(1, "Version ID is required"),
       parentVersionId: z.string().optional(),
-      files: z.array(fileEntryWithHashSchema),
+      files: storageManifestFilesSchema,
       message: z.string().optional(),
     }),
     responses: {
@@ -799,17 +1005,24 @@ export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
 export type WebhookGmailContract = typeof webhookGmailContract;
+export type WebhookGoogleFormsContract = typeof webhookGoogleFormsContract;
 export type WebhookGoogleCalendarContract =
   typeof webhookGoogleCalendarContract;
 export type WebhookGoogleWorkspaceEventsContract =
   typeof webhookGoogleWorkspaceEventsContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
+export type WebhookStripeAutomationEventsContract =
+  typeof webhookStripeAutomationEventsContract;
 export type WebhookWorkflowAutomationContract =
   typeof webhookWorkflowAutomationContract;
 export type WebhookBuiltInGenerationFalContract =
   typeof webhookBuiltInGenerationFalContract;
 export type WebhookBuiltInGenerationBytePlusContract =
   typeof webhookBuiltInGenerationBytePlusContract;
+export type WebhookBuiltInGenerationMiniMaxContract =
+  typeof webhookBuiltInGenerationMiniMaxContract;
+export type WebhookBuiltInGenerationJoggAiContract =
+  typeof webhookBuiltInGenerationJoggAiContract;
 export type WebhookFirewallAuthContract = typeof webhookFirewallAuthContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;

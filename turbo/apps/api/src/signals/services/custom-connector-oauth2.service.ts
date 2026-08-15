@@ -4,18 +4,18 @@ import { isIP } from "node:net";
 import { request as httpsRequest } from "node:https";
 
 import { command } from "ccstate";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, exists } from "drizzle-orm";
 import { z } from "zod";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
   isOAuthProviderHttpError,
   OAuthProviderHttpError,
-} from "@vm0/connectors/auth-providers/oauth/error";
-import { connectors } from "@vm0/db/schema/connector";
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { secrets } from "@vm0/db/schema/secret";
+} from "@okouai/connectors/auth-providers/oauth/error";
+import { connectors } from "@okouai/db/schema/connector";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { secrets } from "@okouai/db/schema/secret";
 
 import {
   fetchHostHasBlockedAddress,
@@ -25,9 +25,9 @@ import {
 import { badRequestMessage, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import {
-  CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+  connectorOAuthStateExpiresAt,
   generateConnectorOAuthState,
-} from "../routes/connector-oauth-route-state";
+} from "../../lib/connector-oauth-state";
 import { createDeferredPromise, safeJsonParse, settle } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -41,7 +41,6 @@ import {
 } from "./crypto.utils";
 import { feishuOAuthAppCallbackUrl } from "./feishu-config";
 import {
-  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME,
   CUSTOM_CONNECTOR_OAUTH_ID_TOKEN_SECRET_NAME,
   CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME,
@@ -49,16 +48,22 @@ import {
   normaliseCustomConnectorRow,
   type CustomConnectorOAuthConfigRow,
   type CustomConnectorRow,
-  type StoredValueRow,
 } from "./zero-custom-connector.service";
+import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
+import type { StoredCustomConnectorOAuthState } from "./connector-oauth-state.service";
+import {
+  customConnectorMcpDisabledResponse,
+  isCustomConnectorMcpEnabled,
+} from "./custom-connector-mcp-feature.service";
+import { replaceConnectorConnection } from "./connector-connection-write.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
-const CUSTOM_CONNECTOR_OAUTH_METHOD_ID = "oauth2";
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
 const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 
 const customConnectorOAuthStateContextSchema = z.object({
   connectorId: z.string().uuid(),
-  connectorRevision: z.number().int().positive(),
+  storageVersion: z.number().int().positive(),
   providerContext: z
     .object({
       provider: z.literal("feishu"),
@@ -293,20 +298,22 @@ function tokenRequestAuthentication(args: {
   ).toString("base64")}`;
 }
 
-async function requestToken(args: {
-  readonly config: CustomConnectorOAuthConfigRow;
-  readonly clientSecret: string;
-  readonly form: URLSearchParams;
-  readonly signal: AbortSignal;
-}): Promise<OAuthTokenResult> {
+async function requestToken(
+  args: {
+    readonly config: CustomConnectorOAuthConfigRow;
+    readonly clientSecret: string;
+    readonly form: URLSearchParams;
+  },
+  signal: AbortSignal,
+): Promise<OAuthTokenResult> {
   const authorization = tokenRequestAuthentication(args);
   const response = await postPublicHttpsForm(
     new URL(args.config.tokenUrl),
     args.form,
     authorization,
-    args.signal,
+    signal,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return tokenResult(response);
 }
 
@@ -357,24 +364,28 @@ function throwCustomConnectorFeishuOAuthError(error: unknown): never {
   );
 }
 
-export async function exchangeCustomConnectorOAuth2Code(args: {
-  readonly config: CustomConnectorOAuthConfigRow;
-  readonly clientSecret: string;
-  readonly code: string;
-  readonly codeVerifier: string | null;
-  readonly redirectUri: string;
-  readonly signal: AbortSignal;
-}): Promise<OAuthTokenResult> {
+export async function exchangeCustomConnectorOAuth2Code(
+  args: {
+    readonly config: CustomConnectorOAuthConfigRow;
+    readonly clientSecret: string;
+    readonly code: string;
+    readonly codeVerifier: string | null;
+    readonly redirectUri: string;
+  },
+  signal: AbortSignal,
+): Promise<OAuthTokenResult> {
   if (args.config.providerAdapter === "feishu") {
     const result = await settle(
-      exchangeFeishuOAuthCode({
-        appId: args.config.clientId,
-        appSecret: args.clientSecret,
-        code: args.code,
-        redirectUri: args.redirectUri,
-        signal: args.signal,
-      }),
-      args.signal,
+      exchangeFeishuOAuthCode(
+        {
+          appId: args.config.clientId,
+          appSecret: args.clientSecret,
+          code: args.code,
+          redirectUri: args.redirectUri,
+        },
+        signal,
+      ),
+      signal,
     );
     if (!result.ok) {
       throwCustomConnectorFeishuOAuthError(result.error);
@@ -389,24 +400,28 @@ export async function exchangeCustomConnectorOAuth2Code(args: {
   if (args.codeVerifier) {
     form.set("code_verifier", args.codeVerifier);
   }
-  return await requestToken({ ...args, form });
+  return await requestToken({ ...args, form }, signal);
 }
 
-async function refreshCustomConnectorOAuth2Token(args: {
-  readonly config: CustomConnectorOAuthConfigRow;
-  readonly clientSecret: string;
-  readonly refreshToken: string;
-  readonly signal: AbortSignal;
-}): Promise<OAuthTokenResult> {
+async function refreshCustomConnectorOAuth2Token(
+  args: {
+    readonly config: CustomConnectorOAuthConfigRow;
+    readonly clientSecret: string;
+    readonly refreshToken: string;
+  },
+  signal: AbortSignal,
+): Promise<OAuthTokenResult> {
   if (args.config.providerAdapter === "feishu") {
     const result = await settle(
-      refreshFeishuOAuthToken({
-        appId: args.config.clientId,
-        appSecret: args.clientSecret,
-        refreshToken: args.refreshToken,
-        signal: args.signal,
-      }),
-      args.signal,
+      refreshFeishuOAuthToken(
+        {
+          appId: args.config.clientId,
+          appSecret: args.clientSecret,
+          refreshToken: args.refreshToken,
+        },
+        signal,
+      ),
+      signal,
     );
     if (!result.ok) {
       throwCustomConnectorFeishuOAuthError(result.error);
@@ -417,7 +432,7 @@ async function refreshCustomConnectorOAuth2Token(args: {
     grant_type: "refresh_token",
     refresh_token: args.refreshToken,
   });
-  return await requestToken({ ...args, form });
+  return await requestToken({ ...args, form }, signal);
 }
 
 function createPkceVerifier(): string {
@@ -486,6 +501,15 @@ export const startCustomConnectorOAuth2$ = command(
         "Custom connector does not support OAuth 2.0 authentication",
       );
     }
+    if (connector.kind === "mcp") {
+      const featureContext = await get(
+        userFeatureSwitchContext(args.orgId, args.userId),
+      );
+      signal.throwIfAborted();
+      if (!isCustomConnectorMcpEnabled(featureContext)) {
+        return customConnectorMcpDisabledResponse();
+      }
+    }
     const providerAdapter = connector.oauthConfig.providerAdapter;
     const redirectUri =
       providerAdapter === "feishu" && !args.feishuContext
@@ -502,7 +526,7 @@ export const startCustomConnectorOAuth2$ = command(
     });
     const context: CustomConnectorOAuthStateContext = {
       connectorId: connector.id,
-      connectorRevision: connector.revision,
+      storageVersion: connector.storageVersion,
       ...(providerAdapter === "feishu"
         ? {
             providerContext: {
@@ -524,8 +548,8 @@ export const startCustomConnectorOAuth2$ = command(
       .values({
         state,
         customConnectorId: connector.id,
-        connectorRevision: connector.revision,
-        authMethod: CUSTOM_CONNECTOR_OAUTH_METHOD_ID,
+        storageVersion: connector.storageVersion,
+        authMethod: "oauth",
         userId: args.userId,
         orgId: args.orgId,
         agentId: args.agentId,
@@ -534,9 +558,7 @@ export const startCustomConnectorOAuth2$ = command(
         authorizationUrl,
         codeVerifier,
         oauthContext: JSON.stringify(context),
-        expiresAt: new Date(
-          nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
-        ),
+        expiresAt: connectorOAuthStateExpiresAt(),
       });
     signal.throwIfAborted();
     return { authorizationUrl };
@@ -553,6 +575,32 @@ export function parseCustomConnectorOAuthStateContext(
     safeJsonParse(raw),
   );
   return parsed.success ? parsed.data : null;
+}
+
+export function parseValidCustomConnectorOAuthState(
+  storedState: StoredCustomConnectorOAuthState,
+): CustomConnectorOAuthStateContext | null {
+  const context = parseCustomConnectorOAuthStateContext(
+    storedState.oauthContext,
+  );
+  if (
+    !context ||
+    storedState.customConnectorId !== context.connectorId ||
+    storedState.storageVersion !== context.storageVersion
+  ) {
+    return null;
+  }
+  return context;
+}
+
+export function customConnectorOAuthStateMatchesDefinition(
+  context: CustomConnectorOAuthStateContext,
+  connector: Pick<CustomConnectorRow, "id" | "storageVersion">,
+): boolean {
+  return (
+    connector.id === context.connectorId &&
+    connector.storageVersion === context.storageVersion
+  );
 }
 
 export async function decryptCustomConnectorOAuth2Credentials(
@@ -679,51 +727,82 @@ async function replaceConnectionTokens(args: {
   return encrypted.accessToken;
 }
 
-export async function storeCustomConnectorOAuth2Connection(args: {
+export async function lockCustomConnectorOAuth2CredentialContract(args: {
   readonly db: Db;
   readonly orgId: string;
-  readonly userId: string;
   readonly connectorId: string;
-  readonly token: OAuthTokenResult;
-  readonly featureContext: FeatureSwitchContext;
+  readonly storageVersion: number;
 }): Promise<void> {
+  const [definition] = await args.db
+    .select({
+      authMode: orgCustomConnectors.authMode,
+      storageVersion: orgCustomConnectors.storageVersion,
+    })
+    .from(orgCustomConnectors)
+    .where(
+      and(
+        eq(orgCustomConnectors.id, args.connectorId),
+        eq(orgCustomConnectors.orgId, args.orgId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (
+    !definition ||
+    definition.authMode !== "oauth" ||
+    definition.storageVersion !== args.storageVersion
+  ) {
+    throw new Error(
+      "Custom connector credential contract changed during OAuth connection",
+    );
+  }
+}
+
+export async function storeCustomConnectorOAuth2Connection(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly storageVersion: number;
+    readonly token: OAuthTokenResult;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const encrypted = await encryptTokenValues(args);
+  signal.throwIfAborted();
   await args.db.transaction(async (tx) => {
-    const [connection] = await tx
-      .insert(connectors)
-      .values({
-        customConnectorId: args.connectorId,
-        authMethod: "oauth",
-        storageVersion: 1,
-        tokenExpiresAt: args.token.expiresAt,
-        userId: args.userId,
+    await lockCustomConnectorOAuth2CredentialContract({
+      db: tx,
+      orgId: args.orgId,
+      connectorId: args.connectorId,
+      storageVersion: args.storageVersion,
+    });
+    signal.throwIfAborted();
+    await replaceConnectorConnection(
+      tx,
+      {
         orgId: args.orgId,
-      })
-      .onConflictDoUpdate({
-        target: [
-          connectors.orgId,
-          connectors.userId,
-          connectors.customConnectorId,
-        ],
-        targetWhere: isNotNull(connectors.customConnectorId),
-        set: {
-          tokenExpiresAt: args.token.expiresAt,
-          needsReconnect: false,
-          reconnectReason: null,
-          updatedAt: nowDate(),
+        userId: args.userId,
+        authMethod: "oauth",
+        storageVersion: args.storageVersion,
+        tokenExpiresAt: args.token.expiresAt,
+        target: {
+          kind: "custom",
+          customConnectorId: args.connectorId,
         },
-      })
-      .returning({ id: connectors.id });
-    if (!connection) {
-      throw new Error("Expected custom connector OAuth connection");
-    }
-    await tx.delete(secrets).where(eq(secrets.connectorId, connection.id));
-    await tx.insert(secrets).values(
-      connectionTokenRows({
-        ...args,
-        connectionId: connection.id,
-        encrypted,
-      }),
+        writeCredentials: async ({ db, connectorId }) => {
+          await db.insert(secrets).values(
+            connectionTokenRows({
+              ...args,
+              connectionId: connectorId,
+              encrypted,
+            }),
+          );
+        },
+      },
+      signal,
     );
   });
 }
@@ -742,6 +821,7 @@ async function loadConnection(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorId: string;
+  readonly storageVersion: number;
   readonly lockRow?: boolean;
 }): Promise<StoredConnection | null> {
   const query = args.db
@@ -757,6 +837,20 @@ async function loadConnection(args: {
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
         eq(connectors.authMethod, "oauth"),
+        eq(connectors.storageVersion, args.storageVersion),
+        exists(
+          args.db
+            .select({ id: orgCustomConnectors.id })
+            .from(orgCustomConnectors)
+            .where(
+              and(
+                eq(orgCustomConnectors.id, args.connectorId),
+                eq(orgCustomConnectors.orgId, args.orgId),
+                eq(orgCustomConnectors.authMode, "oauth"),
+                eq(orgCustomConnectors.storageVersion, args.storageVersion),
+              ),
+            ),
+        ),
       ),
     );
   const rows = args.lockRow
@@ -766,13 +860,34 @@ async function loadConnection(args: {
   if (!connection) {
     return null;
   }
+  // Re-check the complete identity at the secret read boundary because the
+  // organization definition can change after the parent lookup.
   const tokenRows = await args.db
     .select({
       secretName: secrets.name,
       encryptedValue: secrets.encryptedValue,
     })
     .from(secrets)
-    .where(eq(secrets.connectorId, connection.id));
+    .innerJoin(connectors, eq(connectors.id, secrets.connectorId))
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, connectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, connectors.orgId),
+        eq(orgCustomConnectors.authMode, "oauth"),
+        eq(orgCustomConnectors.storageVersion, args.storageVersion),
+      ),
+    )
+    .where(
+      and(
+        eq(connectors.id, connection.id),
+        eq(connectors.customConnectorId, args.connectorId),
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.authMethod, "oauth"),
+        eq(connectors.storageVersion, args.storageVersion),
+      ),
+    );
   return {
     id: connection.id,
     tokenExpiresAt: connection.tokenExpiresAt,
@@ -797,50 +912,76 @@ async function loadConnection(args: {
 }
 
 function connectionAccessTokenIsCurrent(connection: StoredConnection): boolean {
+  const refreshLeewayMs = connection.encryptedRefreshToken
+    ? TOKEN_REFRESH_LEEWAY_MS
+    : 0;
   return (
     !connection.tokenExpiresAt ||
-    connection.tokenExpiresAt.getTime() >
-      nowDate().getTime() + TOKEN_REFRESH_LEEWAY_MS
+    connection.tokenExpiresAt.getTime() > nowDate().getTime() + refreshLeewayMs
   );
 }
 
-function withoutRuntimeOAuthToken(
-  values: readonly StoredValueRow[],
-): readonly StoredValueRow[] {
-  return values.filter((value) => {
-    return !(
-      value.kind === "secret" &&
-      value.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
-    );
-  });
+interface AvailableCustomConnectorOAuth2AccessToken {
+  readonly kind: "available";
+  readonly encryptedAccessToken: string;
+  readonly tokenExpiresAt: Date | null;
+  readonly status: "current" | "refreshed";
 }
 
-function withRuntimeOAuthToken(
-  values: readonly StoredValueRow[],
+type CustomConnectorOAuth2AccessTokenResolution =
+  | AvailableCustomConnectorOAuth2AccessToken
+  | { readonly kind: "unavailable" }
+  | { readonly kind: "reconnect-required" };
+
+function storedConnectionAccessToken(
+  connection: StoredConnection,
+):
+  | AvailableCustomConnectorOAuth2AccessToken
+  | { readonly kind: "unavailable" } {
+  if (!connection.encryptedAccessToken) {
+    return { kind: "unavailable" };
+  }
+  return {
+    kind: "available",
+    encryptedAccessToken: connection.encryptedAccessToken,
+    tokenExpiresAt: connection.tokenExpiresAt,
+    status: "current",
+  };
+}
+
+export class CustomConnectorOAuth2TokenRefreshError extends Error {
+  constructor(cause: unknown) {
+    super("Custom connector OAuth 2.0 token refresh failed", { cause });
+    this.name = "CustomConnectorOAuth2TokenRefreshError";
+  }
+}
+
+async function markCustomConnectorNeedsReconnect(
+  db: Db,
   connectorId: string,
-  encryptedValue: string,
-): readonly StoredValueRow[] {
-  return [
-    ...withoutRuntimeOAuthToken(values),
-    {
-      connectorId,
-      kind: "secret",
-      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-      encryptedValue,
-    },
-  ];
+  reconnectReason: "missing_refresh_token" | "authorization_expired_or_revoked",
+): Promise<void> {
+  await db
+    .update(connectors)
+    .set({ needsReconnect: true, reconnectReason, updatedAt: nowDate() })
+    .where(eq(connectors.id, connectorId));
 }
 
-async function resolveCustomConnectorOAuth2AccessToken(args: {
+interface ResolveCustomConnectorOAuth2AccessTokenArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly connector: CustomConnectorRow;
   readonly featureContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+  readonly forceRefresh?: boolean;
+}
+
+async function resolveCustomConnectorOAuth2AccessToken(
+  args: ResolveCustomConnectorOAuth2AccessTokenArgs,
+  signal: AbortSignal,
+): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   if (args.connector.authMode !== "oauth" || !args.connector.oauthConfig) {
-    return null;
+    return { kind: "unavailable" };
   }
   const oauthConfig = args.connector.oauthConfig;
   const connection = await loadConnection({
@@ -848,13 +989,20 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
     orgId: args.orgId,
     userId: args.userId,
     connectorId: args.connector.id,
+    storageVersion: args.connector.storageVersion,
   });
-  args.signal.throwIfAborted();
-  if (!connection?.encryptedAccessToken || connection.needsReconnect) {
-    return null;
+  signal.throwIfAborted();
+  if (!connection) {
+    return { kind: "unavailable" };
   }
-  if (connectionAccessTokenIsCurrent(connection)) {
-    return connection.encryptedAccessToken;
+  const accessToken = storedConnectionAccessToken(connection);
+  if (
+    !args.forceRefresh &&
+    !connection.needsReconnect &&
+    accessToken.kind === "available" &&
+    connectionAccessTokenIsCurrent(connection)
+  ) {
+    return accessToken;
   }
   return await args.db.transaction(async (tx) => {
     const lockedConnection = await loadConnection({
@@ -862,28 +1010,35 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
       orgId: args.orgId,
       userId: args.userId,
       connectorId: args.connector.id,
+      storageVersion: args.connector.storageVersion,
       lockRow: true,
     });
-    args.signal.throwIfAborted();
-    if (
-      !lockedConnection?.encryptedAccessToken ||
-      lockedConnection.needsReconnect
-    ) {
-      return null;
+    signal.throwIfAborted();
+    if (!lockedConnection) {
+      return { kind: "unavailable" };
     }
-    if (connectionAccessTokenIsCurrent(lockedConnection)) {
-      return lockedConnection.encryptedAccessToken;
+    const lockedAccessToken = storedConnectionAccessToken(lockedConnection);
+    const recoveredSinceInitialRead =
+      connection.needsReconnect ||
+      accessToken.kind !== "available" ||
+      (lockedAccessToken.kind === "available" &&
+        lockedAccessToken.encryptedAccessToken !==
+          accessToken.encryptedAccessToken);
+    if (
+      !lockedConnection.needsReconnect &&
+      lockedAccessToken.kind === "available" &&
+      (!args.forceRefresh || recoveredSinceInitialRead) &&
+      connectionAccessTokenIsCurrent(lockedConnection)
+    ) {
+      return lockedAccessToken;
     }
     if (!lockedConnection.encryptedRefreshToken) {
-      await tx
-        .update(connectors)
-        .set({
-          needsReconnect: true,
-          reconnectReason: "missing_refresh_token",
-          updatedAt: nowDate(),
-        })
-        .where(eq(connectors.id, lockedConnection.id));
-      return null;
+      await markCustomConnectorNeedsReconnect(
+        tx,
+        lockedConnection.id,
+        "missing_refresh_token",
+      );
+      return { kind: "reconnect-required" };
     }
     const [credentials, refreshToken] = await Promise.all([
       decryptCustomConnectorOAuth2Credentials(
@@ -895,36 +1050,35 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
         args.featureContext,
       ),
     ]);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!credentials) {
-      return null;
+      return { kind: "unavailable" };
     }
     const refreshResult = await settle(
-      refreshCustomConnectorOAuth2Token({
-        config: oauthConfig,
-        clientSecret: credentials.clientSecret,
-        refreshToken,
-        signal: args.signal,
-      }),
+      refreshCustomConnectorOAuth2Token(
+        {
+          config: oauthConfig,
+          clientSecret: credentials.clientSecret,
+          refreshToken,
+        },
+        signal,
+      ),
     );
     if (!refreshResult.ok) {
       if (
         !isOAuthProviderHttpError(refreshResult.error) ||
         refreshResult.error.oauthError !== "invalid_grant"
       ) {
-        throw refreshResult.error;
+        throw new CustomConnectorOAuth2TokenRefreshError(refreshResult.error);
       }
-      await tx
-        .update(connectors)
-        .set({
-          needsReconnect: true,
-          reconnectReason: "authorization_expired_or_revoked",
-          updatedAt: nowDate(),
-        })
-        .where(eq(connectors.id, lockedConnection.id));
-      return null;
+      await markCustomConnectorNeedsReconnect(
+        tx,
+        lockedConnection.id,
+        "authorization_expired_or_revoked",
+      );
+      return { kind: "reconnect-required" };
     }
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     const encryptedAccessToken = await replaceConnectionTokens({
       db: tx,
       connectionId: lockedConnection.id,
@@ -935,32 +1089,14 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
       fallbackEncryptedIdToken: lockedConnection.encryptedIdToken ?? undefined,
       featureContext: args.featureContext,
     });
-    args.signal.throwIfAborted();
-    return encryptedAccessToken;
+    signal.throwIfAborted();
+    return {
+      kind: "available",
+      encryptedAccessToken,
+      tokenExpiresAt: refreshResult.value.expiresAt,
+      status: "refreshed",
+    };
   });
-}
-
-export async function refreshCustomConnectorOAuth2ValuesIfNeeded(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connector: CustomConnectorRow;
-  readonly values: readonly StoredValueRow[];
-  readonly featureContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<readonly StoredValueRow[]> {
-  if (args.connector.authMode !== "oauth") {
-    return args.values;
-  }
-  const encryptedAccessToken =
-    await resolveCustomConnectorOAuth2AccessToken(args);
-  return encryptedAccessToken
-    ? withRuntimeOAuthToken(
-        args.values,
-        args.connector.id,
-        encryptedAccessToken,
-      )
-    : withoutRuntimeOAuthToken(args.values);
 }
 
 async function loadLiveCustomConnector(args: {
@@ -970,7 +1106,7 @@ async function loadLiveCustomConnector(args: {
 }): Promise<CustomConnectorRow | null> {
   const [row] = await args.db
     .select({
-      connector: orgCustomConnectors,
+      connector: customConnectorDefinitionSelection(),
       oauthConfig: orgCustomConnectorOauthConfigs,
     })
     .from(orgCustomConnectors)
@@ -994,26 +1130,27 @@ async function loadLiveCustomConnector(args: {
     : null;
 }
 
-export async function resolveLiveCustomConnectorOAuth2AccessToken(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId: string;
-  readonly connectorRevision: number;
-  readonly featureContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+export async function resolveCurrentCustomConnectorOAuth2AccessToken(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly featureContext: FeatureSwitchContext;
+    readonly forceRefresh?: boolean;
+  },
+  signal: AbortSignal,
+): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   const connector = await loadLiveCustomConnector(args);
-  args.signal.throwIfAborted();
-  if (
-    !connector ||
-    connector.revision !== args.connectorRevision ||
-    connector.authMode !== "oauth"
-  ) {
-    return null;
+  signal.throwIfAborted();
+  if (!connector || connector.authMode !== "oauth") {
+    return { kind: "unavailable" };
   }
-  return await resolveCustomConnectorOAuth2AccessToken({
-    ...args,
-    connector,
-  });
+  return await resolveCustomConnectorOAuth2AccessToken(
+    {
+      ...args,
+      connector,
+    },
+    signal,
+  );
 }

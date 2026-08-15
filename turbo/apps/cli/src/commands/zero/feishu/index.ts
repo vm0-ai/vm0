@@ -14,9 +14,9 @@ export const zeroFeishuCommand = new Command()
     "after",
     `
 Examples:
-  Send to a chat:       zero feishu message send -c <chat-id> -t "Hello!"
-  Send a DM:            zero feishu message send -u <open-id> -t "Hello!"
-  Reply in a thread:    zero feishu message send -r <message-id> --thread -t "Reply"
-  Upload a file:        zero feishu upload-file -f /tmp/report.pdf -c <chat-id>
-  Download a file:      zero feishu download-file <message-id> <file-key> --type file`,
+  Send to a chat:       okou feishu message send -c <chat-id> -t "Hello!"
+  Send a DM:            okou feishu message send -u <open-id> -t "Hello!"
+  Reply in a thread:    okou feishu message send -r <message-id> --thread -t "Reply"
+  Upload a file:        okou feishu upload-file -f /tmp/report.pdf -c <chat-id>
+  Download a file:      okou feishu download-file <message-id> <file-key> --type file`,
   );

@@ -2,11 +2,11 @@ import { command } from "ccstate";
 import type {
   GithubConnectUserBody,
   GithubInstallationResponse,
-} from "@vm0/api-contracts/contracts/integrations-github";
-import { connectors } from "@vm0/db/schema/connector";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { githubUserLinks } from "@vm0/db/schema/github-user-link";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+} from "@okouai/api-contracts/contracts/integrations-github";
+import { connectors } from "@okouai/db/schema/connector";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
+import { githubUserLinks } from "@okouai/db/schema/github-user-link";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -14,7 +14,7 @@ import { request$ } from "../context/hono";
 import { writeDb$, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { env, optionalEnv } from "../../lib/env";
-import { getOAuthWebOrigin } from "../routes/oauth-web-origin";
+import { getOAuthWebOrigin } from "../../lib/oauth-origin";
 import {
   buildGithubAppInstallUrl,
   buildGithubUserConnectAuthorizationUrl,
@@ -30,23 +30,25 @@ function errorResponse(status: 400 | 404 | 409, message: string, code: string) {
 }
 
 function githubConnectStartUrl(origin: string): string {
-  return `${origin}/api/zero/github/oauth/connect`;
+  return `${origin}/api/okou/github/oauth/connect`;
 }
 
-async function githubInstallUrl(args: {
-  readonly db: ReadonlyDb;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly origin: string;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+async function githubInstallUrl(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly origin: string;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   const appSlug = optionalEnv("GITHUB_APP_SLUG");
   if (!appSlug) {
     return null;
   }
 
   const composeId = await loadOrgDefaultComposeId(args.db, args.orgId);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return await buildGithubAppInstallUrl({
     appSlug,
@@ -173,12 +175,14 @@ export const connectGithubUser$ = command(
     }
 
     const installation = connectSignature
-      ? await findGithubInstallationByInstallationId({
-          db,
-          installationId: connectSignature.installationId,
-          orgId: auth.orgId,
+      ? await findGithubInstallationByInstallationId(
+          {
+            db,
+            installationId: connectSignature.installationId,
+            orgId: auth.orgId,
+          },
           signal,
-        })
+        )
       : await loadOrgGithubInstallation(db, auth.orgId);
     signal.throwIfAborted();
 
@@ -186,13 +190,15 @@ export const connectGithubUser$ = command(
       return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
     }
 
-    const githubUserId = await linkGithubVm0User({
-      db,
-      installRecordId: installation.id,
-      vm0UserId: auth.userId,
-      knownGithubUserId: connectSignature?.githubUserId,
+    const githubUserId = await linkGithubVm0User(
+      {
+        db,
+        installRecordId: installation.id,
+        vm0UserId: auth.userId,
+        knownGithubUserId: connectSignature?.githubUserId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (!githubUserId) {
@@ -226,13 +232,15 @@ export const getGithubInstallation$ = command(
 
     if (!installation) {
       const installUrl = canManageInstallation({ orgRole: auth.orgRole })
-        ? await githubInstallUrl({
-            db,
-            userId: auth.userId,
-            orgId: auth.orgId,
-            origin,
+        ? await githubInstallUrl(
+            {
+              db,
+              userId: auth.userId,
+              orgId: auth.orgId,
+              origin,
+            },
             signal,
-          })
+          )
         : null;
       signal.throwIfAborted();
 
@@ -275,16 +283,18 @@ export const getGithubInstallation$ = command(
     signal.throwIfAborted();
     const connectUrl =
       link === null && resolvedMethod.ok
-        ? ((await buildGithubUserConnectAuthorizationUrl({
-            db,
-            vm0UserId: auth.userId,
-            orgId: auth.orgId,
-            origin,
-            authMethodId: resolvedMethod.authMethodId,
-            method: resolvedMethod.method,
-            readEnv: optionalEnv,
+        ? ((await buildGithubUserConnectAuthorizationUrl(
+            {
+              db,
+              vm0UserId: auth.userId,
+              orgId: auth.orgId,
+              origin,
+              authMethodId: resolvedMethod.authMethodId,
+              method: resolvedMethod.method,
+              readEnv: optionalEnv,
+            },
             signal,
-          })) ?? githubConnectStartUrl(origin))
+          )) ?? githubConnectStartUrl(origin))
         : githubConnectStartUrl(origin);
     signal.throwIfAborted();
 

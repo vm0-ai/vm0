@@ -7,6 +7,9 @@ surface; the index does not replace their detailed rules.
 ## Code Review
 
 - [Bad code smells](./bad-smell.md): production-code quality rules.
+- [Fallbacks to avoid](./fallback.md): fallback slop, negative tests against
+  removed code, feature-switched features that need no compatibility, and the
+  narrow cases where a time-boxed fallback is required.
 - [Event sourcing and optimistic events](./event-sourcing.md): authoritative
   persistent events, optimistic projections, reconciliation, and failure
   semantics.

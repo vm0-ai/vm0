@@ -7,30 +7,30 @@ import {
 } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { onTestFinished } from "vitest";
+import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
+import { builtInGenerationRoutes } from "../built-in-generation";
 import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
 import {
-  deleteUsagePricingRows,
+  createUsagePricingFixture,
   seedOrgMetadata,
-  seedUsagePricingRows,
-  type UsagePricingRow,
+  type UsagePricingFixture,
 } from "../../../test-fixtures/system-config-seeds";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { setRunVideoModelFixture } from "../../../test-fixtures/run-video-model";
+import { seedOrgMembership$ } from "./helpers/org-membership";
+import { seedCompose$, seedRun$ } from "./helpers/usage-state";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();
@@ -39,10 +39,16 @@ const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
 const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
+const SEEDANCE_2_5_MODEL = "dreamina-seedance-2-5-260628";
+const SEEDANCE_2_0_MINI_MODEL = "dreamina-seedance-2-0-mini-260615";
 const BYTEPLUS_VIDEO_TASKS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 const BYTEPLUS_VIDEO_URL =
   "https://ark-content.byteplus.example/files/video-output.mp4";
+const MINIMAX_H3_MODEL = "MiniMax-H3";
+const MINIMAX_VIDEO_GENERATION_URL =
+  "https://api.minimax.io/v2/video_generation";
+const MINIMAX_VIDEO_URL = "https://minimax.example/files/h3-video-output.mp4";
 const FAL_VEO_FAST_MODEL = "fal-ai/veo3.1/fast";
 const FAL_VEO_FAST_QUEUE_URL = `https://queue.fal.run/${FAL_VEO_FAST_MODEL}`;
 const FAL_STATUS_URL =
@@ -57,115 +63,177 @@ const KLING_STATUS_URL =
 const KLING_RESPONSE_URL =
   "https://queue.fal.run/fal-ai/kling-video/v3/4k/text-to-video/requests/kling-video-request/response";
 const KLING_VIDEO_URL = "https://v3b.fal.media/files/kling-output.mp4";
+const CLOUDFLARE_MEDIA_FRAME_URL =
+  /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//u;
 const WEB_ORIGIN = "https://www.vm0.test";
 
 const VIDEO_PRICING_DEFAULTS = [
   {
+    provider: SEEDANCE_2_5_MODEL,
+    category: "output_video_tokens.480p_720p.no_video",
+    unitPrice: 13_375,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: SEEDANCE_2_5_MODEL,
+    category: "output_video_tokens.480p_720p.with_video",
+    unitPrice: 8000,
+    unitSize: 1_000_000,
+  },
+  {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.480p_720p.no_video",
-    unitPrice: 14_000,
+    unitPrice: 8750,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.480p_720p.with_video",
-    unitPrice: 8600,
+    unitPrice: 5375,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.1080p.no_video",
-    unitPrice: 15_400,
+    unitPrice: 9625,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.1080p.with_video",
-    unitPrice: 9400,
+    unitPrice: 5875,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-fast-260128",
     category: "output_video_tokens.480p_720p.no_video",
-    unitPrice: 11_200,
+    unitPrice: 7000,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-fast-260128",
     category: "output_video_tokens.480p_720p.with_video",
-    unitPrice: 6600,
+    unitPrice: 4125,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: SEEDANCE_2_0_MINI_MODEL,
+    category: "output_video_tokens.480p_720p.no_video",
+    unitPrice: 4375,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: SEEDANCE_2_0_MINI_MODEL,
+    category: "output_video_tokens.480p_720p.with_video",
+    unitPrice: 2625,
     unitSize: 1_000_000,
   },
   {
     provider: "seedance-1-5-pro-251215",
     category: "output_video_tokens.audio",
-    unitPrice: 4800,
+    unitPrice: 3000,
     unitSize: 1_000_000,
   },
   {
     provider: "seedance-1-5-pro-251215",
     category: "output_video_tokens.silent",
-    unitPrice: 2400,
+    unitPrice: 1500,
     unitSize: 1_000_000,
   },
   {
     provider: FAL_VEO_FAST_MODEL,
     category: "output_video_seconds.audio",
-    unitPrice: 180,
+    unitPrice: 188,
     unitSize: 1,
   },
   {
     provider: FAL_VEO_FAST_MODEL,
     category: "output_video_seconds.silent",
-    unitPrice: 120,
+    unitPrice: 125,
     unitSize: 1,
   },
   {
     provider: FAL_VEO_FAST_MODEL,
     category: "output_video_seconds.audio.4k",
-    unitPrice: 420,
+    unitPrice: 438,
     unitSize: 1,
   },
   {
     provider: FAL_VEO_FAST_MODEL,
     category: "output_video_seconds.silent.4k",
-    unitPrice: 360,
+    unitPrice: 375,
     unitSize: 1,
   },
   {
     provider: KLING_V3_4K_MODEL,
     category: "output_video_seconds.audio.4k",
-    unitPrice: 504,
+    unitPrice: 525,
     unitSize: 1,
   },
   {
     provider: KLING_V3_4K_MODEL,
     category: "output_video_seconds.silent.4k",
-    unitPrice: 504,
+    unitPrice: 525,
+    unitSize: 1,
+  },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "output_video_seconds.768p",
+    unitPrice: 100,
+    unitSize: 1,
+  },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "output_video_seconds.2k",
+    unitPrice: 163,
+    unitSize: 1,
+  },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "input_video_seconds.768p",
+    unitPrice: 100,
+    unitSize: 1,
+  },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "input_video_seconds.2k",
+    unitPrice: 163,
+    unitSize: 1,
+  },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "input_image.additional",
+    unitPrice: 50,
     unitSize: 1,
   },
 ] as const;
 
 interface VideoFixture {
   readonly orgId: string;
+  readonly pricingResolution: UsagePricingFixture["resolution"];
   readonly userId: string;
 }
 
-type PricingSnapshot = UsagePricingRow;
+const VIDEO_PRICING_ROWS = VIDEO_PRICING_DEFAULTS.map((row) => {
+  return { ...row, kind: "video" };
+});
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function createVideoIoTestApp() {
+function createVideoIoTestApp(
+  usagePricingResolution?: UsagePricingFixture["resolution"],
+) {
   return createAppWithRoutes({
     signal: context.signal,
     routes: [
-      ...zeroBuiltInGenerationRoutes,
+      ...builtInGenerationRoutes,
       ...zeroVideoIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,
     ],
+    usagePricingResolution,
   });
 }
 
@@ -214,6 +282,19 @@ async function postBytePlusWebhook(
     body: JSON.stringify(payload),
   });
   expect(response.status).toBe(200);
+}
+
+async function postMiniMaxWebhook(
+  app: ReturnType<typeof createVideoIoTestApp>,
+  callbackUrl: string,
+  payload: unknown,
+): Promise<Response> {
+  const url = new URL(callbackUrl);
+  return await app.request(`${url.pathname}${url.search}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 function readFalWebhookUrl(requestUrl: string | null): string {
@@ -316,49 +397,28 @@ function zeroToken(args: {
   });
 }
 
-async function upsertDefaultVideoPricingRows(): Promise<void> {
-  await seedUsagePricingRows(
-    VIDEO_PRICING_DEFAULTS.map((row) => {
-      return {
-        kind: "video",
-        provider: row.provider,
-        category: row.category,
-        unitPrice: row.unitPrice,
-        unitSize: row.unitSize,
-      };
-    }),
+// Org/user isolation comes from random IDs. Pricing cleanup only bounds rows
+// owned by this request scope.
+async function seedVideoFixture(
+  options: {
+    readonly credits?: number;
+    readonly missingPricing?: boolean;
+    readonly tier?: OrgTier;
+  } = {},
+): Promise<VideoFixture> {
+  const pricing = await createUsagePricingFixture(
+    options.missingPricing
+      ? {
+          missing: VIDEO_PRICING_ROWS.filter((row) => {
+            return row.provider === VIDEO_IO_MODEL;
+          }),
+        }
+      : { configured: VIDEO_PRICING_ROWS },
   );
-}
-
-async function deleteDefaultModelPricingRows(): Promise<
-  readonly PricingSnapshot[]
-> {
-  const categories = VIDEO_PRICING_DEFAULTS.filter((row) => {
-    return row.provider === VIDEO_IO_MODEL;
-  }).map((row) => {
-    return row.category;
-  });
-  return await deleteUsagePricingRows({
-    kind: "video",
-    provider: VIDEO_IO_MODEL,
-    categories,
-  });
-}
-
-async function restoreVideoPricingRows(
-  rows: readonly PricingSnapshot[],
-): Promise<void> {
-  await seedUsagePricingRows(rows);
-}
-
-// Isolation comes from random org/user IDs; no teardown is needed.
-async function seedVideoFixture(options: {
-  readonly credits?: number;
-  readonly tier?: OrgTier;
-  readonly withPricing?: boolean;
-}): Promise<VideoFixture> {
+  onTestFinished(pricing.cleanup);
   const fixture = {
     orgId: `org_${randomUUID()}`,
+    pricingResolution: pricing.resolution,
     userId: `user_${randomUUID()}`,
   };
 
@@ -373,10 +433,6 @@ async function seedVideoFixture(options: {
     context.signal,
   );
 
-  if (options.withPricing) {
-    await upsertDefaultVideoPricingRows();
-  }
-
   return fixture;
 }
 
@@ -384,7 +440,7 @@ async function seedVideoFixture(options: {
 // assertions stay on externally observable state.
 async function orgCredits(fixture: VideoFixture): Promise<number> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
-  const app = createVideoIoTestApp();
+  const app = createVideoIoTestApp(fixture.pricingResolution);
   const response = await app.request("/api/zero/billing/status", {
     headers: authHeaders(),
   });
@@ -402,13 +458,16 @@ async function orgCredits(fixture: VideoFixture): Promise<number> {
 }
 
 describe("POST /api/zero/video-io/generate", () => {
-  const trackPricing = createFixtureTracker<readonly PricingSnapshot[]>(
-    restoreVideoPricingRows,
-  );
-
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    server.use(
+      http.get(CLOUDFLARE_MEDIA_FRAME_URL, () => {
+        return new HttpResponse("video poster unavailable in route fixture", {
+          status: 404,
+        });
+      }),
+    );
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -439,7 +498,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("rejects unsupported durations before BytePlus", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
@@ -449,7 +508,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -468,7 +527,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("rejects BytePlus 4k requests before provider submission", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
@@ -478,7 +537,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -503,7 +562,7 @@ describe("POST /api/zero/video-io/generate", () => {
     const fixture = await seedVideoFixture({ credits: 0 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -525,7 +584,6 @@ describe("POST /api/zero/video-io/generate", () => {
       const fixture = await seedVideoFixture({
         credits: 10_000,
         tier,
-        withPricing: true,
       });
       mocks.clerk.session(fixture.userId, fixture.orgId);
       let calledBytePlus = false;
@@ -536,7 +594,7 @@ describe("POST /api/zero/video-io/generate", () => {
         }),
       );
 
-      const app = createVideoIoTestApp();
+      const app = createVideoIoTestApp(fixture.pricingResolution);
       const response = await app.request("/api/zero/video-io/generate", {
         method: "POST",
         headers: authHeaders(),
@@ -559,7 +617,6 @@ describe("POST /api/zero/video-io/generate", () => {
     const fixture = await seedVideoFixture({
       credits: 10_000,
       tier: "team",
-      withPricing: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
@@ -574,7 +631,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -590,7 +647,6 @@ describe("POST /api/zero/video-io/generate", () => {
     const fixture = await seedVideoFixture({
       credits: 10_000,
       tier: "custom",
-      withPricing: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
@@ -605,7 +661,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -617,11 +673,255 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(calledBytePlus).toBeTruthy();
   });
 
-  it("returns 503 when video pricing is not configured", async () => {
-    const fixture = await seedVideoFixture({ credits: 1000 });
+  it("enforces the run video model over the request model and reports it", async () => {
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({
+      runId,
+      selectedVideoModel: KLING_V3_4K_MODEL,
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(KLING_V3_4K_QUEUE_URL, ({ request }) => {
+        observedRequestUrl = request.url;
+        return HttpResponse.json({
+          request_id: "pinned-kling-request",
+          status_url: KLING_STATUS_URL,
+          response_url: KLING_RESPONSE_URL,
+        });
+      }),
+      http.get(KLING_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a vertical concert stage reveal",
+        model: "dreamina-seedance-2.0-fast",
+        duration: "5s",
+        resolution: "4k",
+        aspectRatio: "9:16",
+        generateAudio: true,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    await postFalWebhook(app, observedRequestUrl, {
+      video: {
+        url: KLING_VIDEO_URL,
+        content_type: "video/mp4",
+      },
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+      model: KLING_V3_4K_MODEL,
+      resolution: "4k",
+      requestId: "pinned-kling-request",
+    });
+  });
+
+  it("keeps the request model when video model selection is disabled", async () => {
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({
+      runId,
+      selectedVideoModel: KLING_V3_4K_MODEL,
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: false,
+    });
+
+    let calledVeo = false;
+    let calledKling = false;
+    server.use(
+      http.post(FAL_VEO_FAST_QUEUE_URL, () => {
+        calledVeo = true;
+        return HttpResponse.json({
+          request_id: "switch-off-veo-request",
+          status_url: FAL_STATUS_URL,
+          response_url: FAL_RESPONSE_URL,
+        });
+      }),
+      http.post(KLING_V3_4K_QUEUE_URL, () => {
+        calledKling = true;
+        return HttpResponse.json({
+          request_id: "unexpected-kling-request",
+          status_url: KLING_STATUS_URL,
+          response_url: KLING_RESPONSE_URL,
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a city at night",
+        model: "veo3.1-fast",
+        duration: "8s",
+        resolution: "1080p",
+        aspectRatio: "16:9",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(calledVeo).toBeTruthy();
+    expect(calledKling).toBeFalsy();
+  });
+
+  it("keeps the request model when the run video model snapshot is null", async () => {
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({ runId, selectedVideoModel: null });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+
+    let calledFal = false;
+    server.use(
+      http.post(FAL_VEO_FAST_QUEUE_URL, () => {
+        calledFal = true;
+        return HttpResponse.json({
+          request_id: "legacy-null-pin-request",
+          status_url: FAL_STATUS_URL,
+          response_url: FAL_RESPONSE_URL,
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a city at night",
+        model: "veo3.1-fast",
+        duration: "8s",
+        resolution: "4k",
+        aspectRatio: "16:9",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(calledFal).toBeTruthy();
+  });
+
+  it("keeps the request model for callers without a run ID", async () => {
+    const fixture = await seedVideoFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    await upsertDefaultVideoPricingRows();
-    await trackPricing(deleteDefaultModelPricingRows());
+    let calledMiniMax = false;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, () => {
+        calledMiniMax = true;
+        return HttpResponse.json({ task_id: "session-minimax-request" });
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a city at night",
+        model: "h3",
+        duration: "5s",
+        resolution: "2k",
+        aspectRatio: "16:9",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(calledMiniMax).toBeTruthy();
+  });
+
+  it("returns 503 when video pricing is not configured", async () => {
+    const fixture = await seedVideoFixture({
+      credits: 1000,
+      missingPricing: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
       http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
@@ -630,7 +930,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -648,7 +948,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("generates video files with BytePlus and charges actual callback token usage", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -688,7 +988,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -750,7 +1050,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 1383,
+      creditsCharged: 865,
       model: VIDEO_IO_MODEL,
       aspectRatio: "16:9",
       duration: "8s",
@@ -812,11 +1112,295 @@ describe("POST /api/zero/video-io/generate", () => {
     // The callback-token charge (123,456 tokens at the no-video 720p rate) is
     // asserted through the result body above and the exact org balance drop,
     // observed on the product billing surface.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1383);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 865);
+  });
+
+  it("generates Seedance 2.0 Mini with video references and list-price gross-margin pricing", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "seedance-2-0-mini-video-task",
+          status: "queued",
+        });
+      }),
+      http.get(BYTEPLUS_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a cinematic product reveal",
+        model: "dreamina-seedance-2.0-mini",
+        duration: "8s",
+        resolution: "720p",
+        aspectRatio: "16:9",
+        videoUrls: ["https://example.com/reference.mp4"],
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    const callbackUrl = readCallbackUrl(observedBody);
+    expect(observedBody).toMatchObject({
+      model: SEEDANCE_2_0_MINI_MODEL,
+      callback_url: callbackUrl,
+      resolution: "720p",
+      ratio: "16:9",
+      duration: 8,
+      generate_audio: true,
+    });
+    const content = asRecord(observedBody).content;
+    expect(Array.isArray(content)).toBeTruthy();
+    if (!Array.isArray(content)) {
+      throw new Error("Expected BytePlus content array");
+    }
+    expect(content).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "video_url",
+          video_url: { url: "https://example.com/reference.mp4" },
+          role: "reference_video",
+        }),
+      ]),
+    );
+
+    await postBytePlusWebhook(app, callbackUrl, {
+      id: "seedance-2-0-mini-video-task",
+      model: SEEDANCE_2_0_MINI_MODEL,
+      status: "succeeded",
+      content: { video_url: BYTEPLUS_VIDEO_URL },
+      usage: { completion_tokens: 100_000 },
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      creditsCharged: 263,
+      model: SEEDANCE_2_0_MINI_MODEL,
+      duration: "8s",
+      durationSeconds: 8,
+      resolution: "720p",
+      sourceUrl: BYTEPLUS_VIDEO_URL,
+      requestId: "seedance-2-0-mini-video-task",
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 263);
+  });
+
+  it("generates Seedance 2.5 with expanded references and 20% gross-margin pricing", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const referenceImageUrls = Array.from({ length: 30 }, (_, index) => {
+      return `https://example.com/reference-${index + 1}.png`;
+    });
+    const referenceVideoUrls = Array.from({ length: 10 }, (_, index) => {
+      return `https://example.com/reference-${index + 1}.mp4`;
+    });
+    const referenceAudioUrls = Array.from({ length: 10 }, (_, index) => {
+      return `https://example.com/reference-${index + 1}.mp3`;
+    });
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "seedance-2-5-video-task",
+          status: "queued",
+        });
+      }),
+      http.get(BYTEPLUS_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "tell a complete cinematic story",
+        model: "dreamina-seedance-2.5",
+        duration: "30s",
+        resolution: "720p",
+        aspectRatio: "16:9",
+        imageUrls: referenceImageUrls,
+        videoUrls: referenceVideoUrls,
+        audioUrls: referenceAudioUrls,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    const callbackUrl = readCallbackUrl(observedBody);
+    expect(observedBody).toMatchObject({
+      model: SEEDANCE_2_5_MODEL,
+      callback_url: callbackUrl,
+      resolution: "720p",
+      ratio: "16:9",
+      duration: 30,
+      generate_audio: true,
+    });
+    const content = asRecord(observedBody).content;
+    expect(Array.isArray(content)).toBeTruthy();
+    if (!Array.isArray(content)) {
+      throw new Error("Expected BytePlus content array");
+    }
+    expect(content).toHaveLength(51);
+    const roles = content.map((entry) => {
+      return asRecord(entry).role;
+    });
+    expect(
+      roles.filter((role) => {
+        return role === "reference_image";
+      }),
+    ).toHaveLength(30);
+    expect(
+      roles.filter((role) => {
+        return role === "reference_video";
+      }),
+    ).toHaveLength(10);
+    expect(
+      roles.filter((role) => {
+        return role === "reference_audio";
+      }),
+    ).toHaveLength(10);
+
+    await postBytePlusWebhook(app, callbackUrl, {
+      id: "seedance-2-5-video-task",
+      model: SEEDANCE_2_5_MODEL,
+      status: "succeeded",
+      content: { video_url: BYTEPLUS_VIDEO_URL },
+      usage: { completion_tokens: 100_000 },
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      creditsCharged: 800,
+      model: SEEDANCE_2_5_MODEL,
+      duration: "30s",
+      durationSeconds: 30,
+      resolution: "720p",
+      sourceUrl: BYTEPLUS_VIDEO_URL,
+      requestId: "seedance-2-5-video-task",
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 800);
+  });
+
+  it("allows Seedance 2.5 audio-only references", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "seedance-2-5-audio-task",
+          status: "queued",
+        });
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "follow the rhythm and instrumentation",
+        model: "dreamina-seedance-2.5",
+        audioUrls: ["https://example.com/reference.mp3"],
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(observedBody).toMatchObject({
+      model: SEEDANCE_2_5_MODEL,
+      content: [
+        {
+          type: "text",
+          text: "follow the rhythm and instrumentation",
+        },
+        {
+          type: "audio_url",
+          audio_url: { url: "https://example.com/reference.mp3" },
+          role: "reference_audio",
+        },
+      ],
+    });
+  });
+
+  it("submits Seedance 2.5 frame generation with its required adaptive ratio", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "seedance-2-5-frame-task",
+          status: "queued",
+        });
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "animate the opening frame",
+        model: "dreamina-seedance-2.5",
+        aspectRatio: "4:3",
+        firstFrameImageUrl: "https://example.com/first.png",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(observedBody).toMatchObject({
+      model: SEEDANCE_2_5_MODEL,
+      ratio: "adaptive",
+      content: [
+        { type: "text", text: "animate the opening frame" },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/first.png" },
+          role: "first_frame",
+        },
+      ],
+    });
   });
 
   it("submits a single Dreamina first-frame image without a frame role", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -854,7 +1438,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -913,7 +1497,6 @@ describe("POST /api/zero/video-io/generate", () => {
 
   it("submits multimodal Dreamina references and charges with-video pricing", async () => {
     const fixture = await seedVideoFixture({ credits: 10_000 });
-    await upsertDefaultVideoPricingRows();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -951,7 +1534,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1040,20 +1623,306 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(statusResponse.status).toBe(200);
     const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
-      creditsCharged: 1880,
+      creditsCharged: 1175,
       model: "dreamina-seedance-2-0-260128",
       sourceUrl: BYTEPLUS_VIDEO_URL,
       requestId: "dreamina-video-task",
     });
 
-    // creditsCharged 1880 = 200,000 tokens at the 1080p with-video rate
-    // (9400/1M); the no-video rate would charge 3080, so the exact balance
+    // creditsCharged 1175 = 200,000 tokens at the 1080p with-video rate
+    // (5875/1M); the no-video rate would charge 1925, so the exact balance
     // drop pins the with-video pricing category.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1880);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1175);
+  });
+
+  it("generates MiniMax H3 with full references and charges every billed usage component", async () => {
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    const referenceImageUrls = Array.from({ length: 7 }, (_, index) => {
+      return `https://example.com/reference-${index + 1}.png`;
+    });
+    const referenceAudioUrls = [
+      "https://example.com/reference-1.mp3",
+      "https://example.com/reference-2.mp3",
+      "https://example.com/reference-3.mp3",
+    ];
+    const referenceVideoUrl = "https://example.com/reference.mp4";
+
+    let observedAuthorization: string | null = null;
+    let observedBody: unknown = null;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedBody = await request.json();
+        return HttpResponse.json({ task_id: "minimax-h3-task" });
+      }),
+      http.get(MINIMAX_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "preserve the character and follow the reference soundtrack",
+        model: "h3",
+        duration: "5s",
+        aspectRatio: "16:9",
+        imageUrls: referenceImageUrls,
+        videoUrls: [referenceVideoUrl],
+        audioUrls: referenceAudioUrls,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    const callbackUrl = readCallbackUrl(observedBody);
+    const webhookUrl = new URL(callbackUrl);
+    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
+    expect(webhookUrl.pathname).toBe(
+      `/api/webhooks/built-in-generations/minimax/${generationId}`,
+    );
+
+    const challengeResponse = await postMiniMaxWebhook(app, callbackUrl, {
+      challenge: "verify-minimax-callback",
+    });
+    expect(challengeResponse.status).toBe(200);
+    await expect(challengeResponse.json()).resolves.toStrictEqual({
+      challenge: "verify-minimax-callback",
+    });
+
+    const completionResponse = await postMiniMaxWebhook(app, callbackUrl, {
+      task: {
+        id: "minimax-h3-task",
+        model: MINIMAX_H3_MODEL,
+        status: "succeeded",
+        content: { url: MINIMAX_VIDEO_URL },
+        resolution: "2K",
+        duration: 5,
+        usage: {
+          total_seconds: 9,
+          input_seconds: 4,
+          output_seconds: 5,
+          input_image_count: 7,
+        },
+        ratio: "16:9",
+        task_type: "generation",
+        modality: "video",
+      },
+    });
+    expect(completionResponse.status).toBe(200);
+
+    expect(observedAuthorization).toBe("Bearer test-minimax-key");
+    expect(observedBody).toStrictEqual({
+      model: MINIMAX_H3_MODEL,
+      content: [
+        {
+          type: "text",
+          text: "preserve the character and follow the reference soundtrack",
+        },
+        ...referenceImageUrls.map((url) => {
+          return {
+            type: "image_url",
+            image_url: { url },
+            role: "reference_image",
+          };
+        }),
+        {
+          type: "video_url",
+          video_url: { url: referenceVideoUrl },
+          role: "reference_video",
+        },
+        ...referenceAudioUrls.map((url) => {
+          return {
+            type: "audio_url",
+            audio_url: { url },
+            role: "reference_audio",
+          };
+        }),
+      ],
+      callback_url: callbackUrl,
+      resolution: "2K",
+      duration: 5,
+      ratio: "16:9",
+    });
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "video/mp4",
+      size: VIDEO_BYTES.byteLength,
+      creditsCharged: 1567,
+      model: MINIMAX_H3_MODEL,
+      aspectRatio: "16:9",
+      duration: "5s",
+      durationSeconds: 5,
+      resolution: "2k",
+      generateAudio: true,
+      sourceUrl: MINIMAX_VIDEO_URL,
+      requestId: "minimax-h3-task",
+    });
+
+    // 5 output seconds at 163 credits, 4 reference-video seconds at 163
+    // credits, and 2 reference images after the five-image free tier at 50.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1567);
+  });
+
+  it("submits MiniMax H3 first and last frames with adaptive ratio", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedBody: unknown = null;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({ task_id: "minimax-h3-frame-task" });
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "transition naturally between the supplied frames",
+        model: "minimax-h3",
+        duration: "5s",
+        firstFrameImageUrl: "https://example.com/first.png",
+        lastFrameImageUrl: "https://example.com/last.png",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const callbackUrl = readCallbackUrl(observedBody);
+    expect(observedBody).toStrictEqual({
+      model: MINIMAX_H3_MODEL,
+      content: [
+        {
+          type: "text",
+          text: "transition naturally between the supplied frames",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/first.png" },
+          role: "first_frame",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/last.png" },
+          role: "last_frame",
+        },
+      ],
+      callback_url: callbackUrl,
+      resolution: "2K",
+      duration: 5,
+      ratio: "adaptive",
+    });
+
+    const cancellationResponse = await postMiniMaxWebhook(app, callbackUrl, {
+      task: {
+        id: "minimax-h3-frame-task",
+        status: "cancelled",
+        error: { message: "test cancellation" },
+      },
+    });
+    expect(cancellationResponse.status).toBe(200);
+  });
+
+  it("rejects silent MiniMax H3 requests before provider submission", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledMiniMax = false;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, () => {
+        calledMiniMax = true;
+        return HttpResponse.json({ task_id: "unexpected-task" });
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a silent city",
+        model: "minimax-h3",
+        generateAudio: false,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "MiniMax H3 always generates native audio",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(calledMiniMax).toBeFalsy();
+  });
+
+  it("rejects MiniMax H3 prompts above the official 7000-character limit", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledMiniMax = false;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, () => {
+        calledMiniMax = true;
+        return HttpResponse.json({ task_id: "unexpected-task" });
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "x".repeat(7001),
+        model: "minimax-h3",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "prompt exceeds 7000 characters for MiniMax H3",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(calledMiniMax).toBeFalsy();
   });
 
   it("generates video files with the recommended Fal fallback model", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1096,7 +1965,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1156,19 +2025,19 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 1440,
+      creditsCharged: 1504,
       model: FAL_VEO_FAST_MODEL,
       sourceUrl: FAL_VIDEO_URL,
       requestId: "video-request",
     });
 
-    // creditsCharged 1440 = 8 seconds at the audio rate (180/s); the silent
-    // rate would charge 960, so the exact balance drop pins the category.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1440);
+    // creditsCharged 1504 = 8 seconds at the audio rate (188/s); the silent
+    // rate would charge 1000, so the exact balance drop pins the category.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1504);
   });
 
   it("generates video files with the recommended Kling 4K model", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1209,7 +2078,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1253,22 +2122,21 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(statusResponse.status).toBe(200);
     const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
-      creditsCharged: 2520,
+      creditsCharged: 2625,
       model: KLING_V3_4K_MODEL,
       resolution: "4k",
       sourceUrl: KLING_VIDEO_URL,
       requestId: "kling-video-request",
     });
 
-    // creditsCharged 2520 = 5 seconds at the 4k audio rate (504/s); the exact
+    // creditsCharged 2625 = 5 seconds at the 4k audio rate (525/s); the exact
     // balance drop pins the single settled charge.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 2520);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 2625);
   });
 
   it("records a failed job when BytePlus video generation fails", async () => {
     const fixture = await seedVideoFixture({
       credits: 1000,
-      withPricing: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
@@ -1288,7 +2156,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1337,7 +2205,6 @@ describe("POST /api/zero/video-io/generate", () => {
   it("records specific BytePlus webhook failure details on async failure", async () => {
     const fixture = await seedVideoFixture({
       credits: 1000,
-      withPricing: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1352,7 +2219,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),

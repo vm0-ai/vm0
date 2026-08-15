@@ -15,21 +15,25 @@ function userMessage(params: {
   readonly content?: string;
 }): EnrichedChatEvent {
   const content = params.content ?? params.id;
+  const document = {
+    version: 1 as const,
+    parts: [{ type: "text" as const, text: content }],
+  };
   return {
     id: params.id,
     threadId: THREAD_ID,
     eventType: "input.prompt" as const,
     content: null,
-    userMessage: {
-      version: 1,
-      parts: [{ type: "text", text: content }],
+    userMessage: document,
+    userMessageRenderDocument: {
+      document,
+      parts: [{ type: "text", part: document.parts[0] }],
     },
     runId: params.runId,
     runGroupId: params.runGroupId,
     createdAt: "2026-06-24T00:00:00.000Z",
-    blocks: [],
+    tree: undefined,
     isQueued: false,
-    isOptimisticRun: false,
   };
 }
 
@@ -47,9 +51,9 @@ function assistantEvent(params: {
     runId: params.runId,
     runGroupId: params.runGroupId,
     createdAt: "2026-06-24T00:00:00.000Z",
-    blocks: [],
+    tree: undefined,
+    userMessageRenderDocument: undefined,
     isQueued: false,
-    isOptimisticRun: false,
   };
 }
 

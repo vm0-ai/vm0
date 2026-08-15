@@ -3,10 +3,14 @@ import type {
   DesktopAuthApi,
   DesktopComputerUseApi,
   DesktopDeveloperToolsApi,
+  DesktopIdentityInfo,
+  DesktopZeroMigrationApi,
 } from "./desktop-bridge";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
+import { DESKTOP_IDENTITY_CHANNEL } from "./desktop-identity-ipc-channels";
+import { DESKTOP_ZERO_MIGRATION_CHANNELS } from "./desktop-zero-migration-ipc-channels";
 import type { DesktopComputerUseState } from "./computer-use-types";
 
 const desktopAuthApi: DesktopAuthApi = {
@@ -157,9 +161,45 @@ const desktopDeveloperToolsApi: DesktopDeveloperToolsApi = {
   },
 };
 
+const desktopZeroMigrationApi: DesktopZeroMigrationApi = {
+  getState() {
+    return ipcRenderer.invoke(DESKTOP_ZERO_MIGRATION_CHANNELS.getState);
+  },
+  remindLater() {
+    return ipcRenderer.invoke(DESKTOP_ZERO_MIGRATION_CHANNELS.remindLater);
+  },
+  beginMigration() {
+    return ipcRenderer.invoke(DESKTOP_ZERO_MIGRATION_CHANNELS.beginMigration);
+  },
+  resumeZero() {
+    return ipcRenderer.invoke(DESKTOP_ZERO_MIGRATION_CHANNELS.resumeZero);
+  },
+  quitZero() {
+    return ipcRenderer.invoke(DESKTOP_ZERO_MIGRATION_CHANNELS.quitZero);
+  },
+  subscribe(callback: () => void): () => void {
+    const listener = (): void => {
+      callback();
+    };
+    ipcRenderer.on(DESKTOP_ZERO_MIGRATION_CHANNELS.changed, listener);
+    return () => {
+      ipcRenderer.off(DESKTOP_ZERO_MIGRATION_CHANNELS.changed, listener);
+    };
+  },
+};
+
+const desktopIdentity = ipcRenderer.sendSync(
+  DESKTOP_IDENTITY_CHANNEL,
+) as DesktopIdentityInfo;
+
 contextBridge.exposeInMainWorld("vm0DesktopAuth", desktopAuthApi);
 contextBridge.exposeInMainWorld("vm0DesktopComputerUse", desktopComputerUseApi);
 contextBridge.exposeInMainWorld(
   "vm0DesktopDeveloperTools",
   desktopDeveloperToolsApi,
 );
+contextBridge.exposeInMainWorld(
+  "vm0DesktopZeroMigration",
+  desktopZeroMigrationApi,
+);
+contextBridge.exposeInMainWorld("vm0DesktopIdentity", desktopIdentity);

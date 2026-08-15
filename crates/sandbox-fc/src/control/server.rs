@@ -4,8 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::Serialize;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
@@ -14,9 +12,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::CONTROL_SOCKET_OVERHEAD_MS;
+use super::exec_response::{ExecResult, write_raw_exec_response};
 use super::protocol::{
-    ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
-    TerminateStatus, read_frame, write_frame,
+    ExecRequest, TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus, read_frame,
+    write_frame,
 };
 use crate::exec_operation_result::{
     captured_exec_output_bytes, exec_termination_from_vsock_termination, reject_stream_overflow,
@@ -394,16 +393,15 @@ async fn handle_connection(
             () = shutdown.cancelled() => return Ok(()),
             response = execute(request, &guest_operations) => response,
         },
-        Err(e) => ExecResponse::Error {
+        Err(e) => ExecResult::Error {
             error: format!("invalid request: {e}"),
         },
     };
 
-    let response_json = encode_json_frame(&response)?;
     tokio::select! {
         biased;
         () = shutdown.cancelled() => return Ok(()),
-        result = write_frame(&mut stream, &response_json) => result?,
+        result = write_raw_exec_response(&mut stream, &response) => result?,
     }
 
     Ok(())
@@ -439,11 +437,11 @@ fn encode_json_frame<Response: Serialize>(response: &Response) -> io::Result<Vec
 }
 
 /// Execute an [`ExecRequest`] through the sandbox operation start gate.
-async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGate) -> ExecResponse {
+async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGate) -> ExecResult {
     let vsock = match guest_operations.begin_control_operation().await {
         Ok(vsock) => vsock,
         Err(error) => {
-            return ExecResponse::Error {
+            return ExecResult::Error {
                 error: control_start_error(error),
             };
         }
@@ -459,7 +457,7 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
     let env: &[(&str, &str)] = &[];
 
     if let Err(e) = validate_exec_capture_timeout(timeout_ms) {
-        return ExecResponse::Error {
+        return ExecResult::Error {
             error: format!("exec failed: {e}"),
         };
     }
@@ -494,19 +492,19 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
             write_admission,
         )
         .await
-        .and_then(exec_response_from_operation_result);
+        .and_then(exec_result_from_operation_result);
 
     match result {
         Ok(response) => response,
-        Err(e) => ExecResponse::Error {
+        Err(e) => ExecResult::Error {
             error: format!("exec failed: {e}"),
         },
     }
 }
 
-fn exec_response_from_operation_result(
+fn exec_result_from_operation_result(
     result: vsock_host::ExecOperationResult,
-) -> io::Result<ExecResponse> {
+) -> io::Result<ExecResult> {
     reject_stream_overflow(&result)?;
 
     let vsock_host::ExecOperationResult {
@@ -520,10 +518,10 @@ fn exec_response_from_operation_result(
     let (stdout, stdout_truncated) = captured_exec_output_bytes("stdout", stdout)?;
     let (stderr, stderr_truncated) = captured_exec_output_bytes("stderr", stderr)?;
 
-    Ok(ExecResponse::Success {
+    Ok(ExecResult::Success {
         termination: exec_termination_from_vsock_termination(termination),
-        stdout: BASE64.encode(stdout),
-        stderr: BASE64.encode(stderr),
+        stdout,
+        stderr,
         stdout_truncated,
         stderr_truncated,
         diagnostic,

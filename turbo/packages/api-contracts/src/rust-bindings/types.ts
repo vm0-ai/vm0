@@ -1,5 +1,7 @@
 import type { z } from "zod";
 import {
+  activeInputDeliveryReserveResponseSchema,
+  activeInputDeliveryReceiptResponseSchema,
   artifactMissingRootPolicySchema,
   storageMountEntrySchema,
 } from "../contracts/runners";
@@ -32,8 +34,8 @@ export interface RustTypeModuleDoc {
 }
 
 export const rustTypeRootDoc = [
-  "Generated Rust DTOs for selected `@vm0/api-contracts` request and response bodies.",
-  "Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.",
+  "Generated Rust DTOs for selected `@okouai/api-contracts` request and response bodies.",
+  "Do not edit by hand; regenerate with `cd turbo && pnpm -F @okouai/api-contracts generate:rust`.",
   "These types preserve the TypeScript wire contract for Rust runner and guest-agent code.",
 ] as const;
 
@@ -47,6 +49,24 @@ export const rustTypeModuleDocs = [
     rustDoc: [
       "Storage manifest DTOs used by runners to mount volumes and artifacts.",
     ],
+  },
+  {
+    rustModulePath: ["runners", "runs"],
+    rustDoc: [
+      "Run-scoped DTOs exchanged between runners, guests, and the API.",
+    ],
+  },
+  {
+    rustModulePath: ["runners", "runs", "active_inputs"],
+    rustDoc: ["DTOs for durable active-input delivery."],
+  },
+  {
+    rustModulePath: ["runners", "runs", "active_inputs", "reserve"],
+    rustDoc: ["DTOs for reserving or retrieving active-input delivery."],
+  },
+  {
+    rustModulePath: ["runners", "runs", "active_inputs", "receipt"],
+    rustDoc: ["DTOs for recording active-input acceptance receipts."],
   },
   {
     rustModulePath: ["webhooks"],
@@ -77,6 +97,57 @@ export const rustTypeModuleDocs = [
 ] satisfies readonly RustTypeModuleDoc[];
 
 export const rustTypeBindings = [
+  {
+    schema: activeInputDeliveryReserveResponseSchema,
+    rustModulePath: ["runners", "runs", "active_inputs", "reserve"],
+    rustTypeName: "Response",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["API outcome when reserving or retrieving active input."],
+        fields: {
+          deliveryId: ["Stable identity for the reserved delivery batch."],
+          eventIds: ["Ordered source chat-event identities in the batch."],
+          prompt: ["Materialized prompt sent to the active Guest."],
+          reason: ["Reason the pending input could not be reserved."],
+        },
+        variants: {
+          reserved: ["A stable delivery batch is ready for Guest delivery."],
+          empty: ["No pending active input is available."],
+          terminal: ["The run is terminal and has no open delivery."],
+          held: ["An open delivery remains held for a non-running run."],
+          rejected: ["Pending input cannot currently be reserved."],
+        },
+      },
+      {
+        rustTypeName: "ResponseRejectedReason",
+        rustDoc: ["Reason an active-input reservation was rejected."],
+        variants: {
+          payload_too_large: [
+            "The delivery-aware control payload exceeds the frame limit.",
+          ],
+          run_not_running: ["The target run is no longer running."],
+        },
+      },
+    ],
+  },
+  {
+    schema: activeInputDeliveryReceiptResponseSchema,
+    rustModulePath: ["runners", "runs", "active_inputs", "receipt"],
+    rustTypeName: "Response",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["API outcome after recording active-input acceptance."],
+        variants: {
+          delivered: ["The delivery receipt was accepted idempotently."],
+          rejected: ["The delivery can no longer be accepted."],
+        },
+      },
+    ],
+  },
   {
     schema: artifactMissingRootPolicySchema,
     rustModulePath: ["runners", "storage"],
@@ -162,6 +233,17 @@ export const rustTypeBindings = [
         },
       },
       {
+        rustTypeName: "RequestCliAgentSessionHistoryDisposition",
+        rustDoc: [
+          "Reason a checkpoint intentionally omits resumable CLI agent session history.",
+        ],
+        variants: {
+          discarded_oversized: [
+            "The native history was oversized and had no safe bounded generation.",
+          ],
+        },
+      },
+      {
         rustTypeName: "Request",
         rustDoc: ["Request body for creating a recoverable agent checkpoint."],
         fields: {
@@ -171,7 +253,10 @@ export const rustTypeBindings = [
             "CLI agent session identifier being checkpointed.",
           ],
           cliAgentSessionHistoryHash: [
-            "SHA-256 hash of the uploaded CLI agent session history.",
+            "Optional SHA-256 hash of the uploaded CLI agent session history.",
+          ],
+          cliAgentSessionHistoryDisposition: [
+            "Optional reason resumable CLI agent session history was intentionally omitted.",
           ],
           artifactSnapshots: [
             "Optional artifact versions captured by the checkpoint.",

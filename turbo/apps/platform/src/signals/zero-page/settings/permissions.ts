@@ -1,4 +1,4 @@
-import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
+import type { FirewallPolicyValue } from "@okouai/connectors/firewall-types";
 
 // ---------------------------------------------------------------------------
 // Permission policy: allow | deny | ask

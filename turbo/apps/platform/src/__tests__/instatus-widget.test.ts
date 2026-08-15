@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import indexHtml from "../../index.html?raw";
+import { testContext } from "../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
 
 const INSTATUS_SCRIPT_URL =
   "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
@@ -33,7 +36,7 @@ function getInstatusLoaderSource(): string {
 }
 
 function loadInstatusScripts(hostname: string): HTMLScriptElement[] {
-  window.location.href = `https://${hostname}/`;
+  context.mocks.browser.url(`https://${hostname}/`);
   const appendedScripts: HTMLScriptElement[] = [];
   vi.spyOn(document.body, "appendChild").mockImplementation(
     <T extends Node>(node: T): T => {

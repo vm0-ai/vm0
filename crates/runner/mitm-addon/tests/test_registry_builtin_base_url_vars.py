@@ -135,6 +135,33 @@ class TestRegistryBuiltinBaseUrlVars:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.zendesk.com"
 
+    def test_builtin_trailing_authority_fragment_resolves_with_provider_policy(self, tmp_path):
+        name = "audit"
+        install_test_builtin_firewall(
+            name=name,
+            base="https://api-${{ vars.HOST }}/v1",
+            host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id=f"run-{name}",
+            name=name,
+            base_url_vars={"HOST": "tenant.example.com"},
+        )
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        api = vm_info["firewalls"][0]["apis"][0]
+        assert api["base"] == "https://api-tenant.example.com/v1"
+        assert isinstance(
+            api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
+
     def test_builtin_firewall_entry_resolves_ecmascript_whitespace_template(self, tmp_path):
         name = "ecmascript-whitespace"
         install_test_builtin_firewall(
@@ -569,20 +596,6 @@ class TestRegistryBuiltinBaseUrlVars:
         for value in [
             "https://8.8.8.8",
             "https://[2606:4700:4700::1111]",
-            "https://[2001:1::1]",
-            "https://[2001:1::2]",
-            "https://[2001:1::3]",
-            "https://[2001:3::1]",
-            "https://[2001:4:112::1]",
-            "https://[2001:20::1]",
-            "https://[2001:30::1]",
-            "https://[2003::1]",
-            "https://100.128.0.1",
-            "https://172.32.0.1",
-            "https://192.0.0.9",
-            "https://192.0.0.10",
-            "https://192.0.1.1",
-            "https://[3fff:1000::1]",
         ]:
             path = tmp_path / f"registry-{abs(hash(value))}.json"
             write_builtin_firewall_registry(
@@ -602,27 +615,7 @@ class TestRegistryBuiltinBaseUrlVars:
     def test_builtin_public_destination_rejects_non_public_ip_literals(self, tmp_path):
         for value in [
             "https://127.0.0.1",
-            "https://127.0.0.1.",
-            "https://10.0.0.5",
-            "https://169.254.1.2",
-            "https://192.168.1.10",
-            "https://192.0.0.8",
-            "https://192.0.0.11",
-            "https://224.0.0.1",
             "https://[::1]",
-            "https://[fc00::1]",
-            "https://[64:ff9b::808:808]",
-            "https://[2001::1]",
-            "https://[2001:2::1]",
-            "https://[2001:4::1]",
-            "https://[2001:10::1]",
-            "https://[2001:1ff::1]",
-            "https://[2001:db8::1]",
-            "https://[2002:808:808::1]",
-            "https://[3fff::1]",
-            "https://[3fff:0fff::1]",
-            "https://[4000::1]",
-            "https://[ff0e::1]",
         ]:
             path = tmp_path / f"registry-{abs(hash(value))}.json"
             write_builtin_firewall_registry(
@@ -1028,6 +1021,8 @@ class TestRegistryBuiltinBaseUrlVars:
                     "vms": {
                         "10.200.0.1": {
                             "runId": "run-zendesk",
+                            "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                             "vars": {"ZENDESK_SUBDOMAIN": "top-level"},
                             "firewalls": [{"kind": "builtin", "name": "zendesk"}],
                         }
@@ -1043,7 +1038,7 @@ class TestRegistryBuiltinBaseUrlVars:
         invalid_vm = assert_invalid_builtin_vm(path)
         assert "ZENDESK_SUBDOMAIN" in invalid_vm.message
 
-    def test_unknown_builtin_firewall_entry_rejects_vm(self, tmp_path):
+    def test_unknown_builtin_firewall_entry_is_omitted(self, tmp_path):
         path = tmp_path / "registry.json"
         write_builtin_firewall_registry(
             path,
@@ -1053,5 +1048,13 @@ class TestRegistryBuiltinBaseUrlVars:
             cache_firewall=_builtin_firewall("zendesk"),
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "missing-firewall" in invalid_vm.message
+        context = registry.get_vm_context("10.200.0.1", str(path))
+        state = registry.load_registry_state(str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert vm_info["firewalls"] == []
+        assert compiled_firewalls is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.invalid_vms == {}
+        assert state.omitted_builtin_firewalls == {"10.200.0.1": frozenset({"missing-firewall"})}

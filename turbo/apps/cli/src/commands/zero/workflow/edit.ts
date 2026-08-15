@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { readFileSync } from "node:fs";
-import { updateWorkflow } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { updateWorkflow } from "../../../lib/api/domains/zero-workflows";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { readSupplementaryFiles } from "../../../lib/skill-directory";
 import {
   resolveWorkflowRef,
@@ -29,11 +29,11 @@ export const editCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow edit tell-a-joke --agent <agent-id> --instruction "New steps"
-  zero workflow edit <workflow-id> --instruction "New steps"
-  zero workflow edit <workflow-id> --instruction-file ./instruction.md
-  zero workflow edit <workflow-id> --dir ./workflows/my-workflow/files/
-  zero workflow edit <workflow-id> --display-name "My Workflow" --description "Does things"
+  okou workflow edit tell-a-joke --agent <agent-id> --instruction "New steps"
+  okou workflow edit <workflow-id> --instruction "New steps"
+  okou workflow edit <workflow-id> --instruction-file ./instruction.md
+  okou workflow edit <workflow-id> --dir ./workflows/my-workflow/files/
+  okou workflow edit <workflow-id> --display-name "My Workflow" --description "Does things"
 
 Notes:
   - SKILL.md is synthesized automatically; --dir uploads supplementary files only

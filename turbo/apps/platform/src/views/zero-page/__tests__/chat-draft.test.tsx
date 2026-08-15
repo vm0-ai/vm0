@@ -1,29 +1,28 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  zeroAgentsByIdContract,
-  zeroAgentDraftContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
-import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
+import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroRunsQueueContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
+import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { resetSignal } from "../../../signals/utils.ts";
+import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const THREAD_ONE_ID = "b0000000-0000-4000-a000-000000000801";
@@ -96,6 +95,7 @@ function mockThreadDetails(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -119,6 +119,7 @@ function textarea(): HTMLElement {
 function mockAgentChatPage(agentId: string): void {
   context.mocks.data.userModelPreference({
     selectedModel: "claude-sonnet-4-6",
+    serviceTier: null,
     updatedAt: "2026-03-10T00:00:00Z",
   });
   context.mocks.api(zeroTeamContract.list, ({ respond }) => {
@@ -193,7 +194,7 @@ describe("chat drafts", () => {
   it("restores a saved agent draft with attachments on first agent chat open", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000101";
     mockAgentChatPage(agentId);
-    context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
+    context.mocks.api(agentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
         draftUserMessage: {
           version: 1,
@@ -237,6 +238,73 @@ describe("chat drafts", () => {
     });
   });
 
+  it("keeps local edits made while an agent draft is loading", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000112";
+    const draftResponse = createDeferredPromise<void>(context.signal);
+    let draftRequested = false;
+    mockAgentChatPage(agentId);
+    context.mocks.api(agentDraftContract.get, async ({ respond }) => {
+      draftRequested = true;
+      await draftResponse.promise;
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "stale-agent-draft-image",
+              filenameSnapshot: "lightbox.svg",
+              contentType: "image/svg+xml",
+            },
+          ],
+        },
+        draftAttachments: [
+          {
+            id: "stale-agent-draft-image",
+            filename: "lightbox.svg",
+            contentType: "image/svg+xml",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/lightbox.svg",
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(200, {
+        concurrency: {
+          tier: "pro",
+          limit: 2,
+          active: 0,
+          available: 2,
+          memberUsage: [],
+        },
+        queue: [],
+        runningTasks: [],
+        estimatedTimePerRun: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat?queue=1`,
+    });
+
+    const editor = await findComposerEditor();
+    await waitFor(() => {
+      expect(draftRequested).toBeTruthy();
+    });
+    await fillComposer(editor, "Local draft created while loading");
+    draftResponse.resolve();
+
+    await screen.findByRole("heading", {
+      name: "Your agent is waiting in line",
+    });
+    await expect(findComposerEditor()).resolves.toHaveTextContent(
+      "Local draft created while loading",
+    );
+    expect(screen.queryByLabelText("Remove lightbox.svg")).toBeNull();
+  });
+
   it("loads an agent feedback draft from the canonical API", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000111";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000111";
@@ -255,7 +323,7 @@ describe("chat drafts", () => {
       url: "https://cdn.vm7.io/artifacts/test/drafts/second.txt",
     };
     mockAgentChatPage(agentId);
-    context.mocks.http.get("*/api/zero/agents/:id/draft", () => {
+    context.mocks.http.get("*/api/okou/agents/:id/draft", () => {
       return HttpResponse.json({
         draftUserMessage: {
           version: 1,
@@ -327,57 +395,53 @@ describe("chat drafts", () => {
     const draftPatches: Record<string, unknown>[] = [];
     const toastError = vi.spyOn(toast, "error");
     mockAgentChatPage(agentId);
-    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+    context.mocks.api(agentDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftUserMessage: null,
         draftAttachments: null,
       });
     });
     context.mocks.http.patch(
-      "*/api/zero/agents/:id/draft",
+      "*/api/okou/agents/:id/draft",
       async ({ request }) => {
         draftPatches.push((await request.json()) as Record<string, unknown>);
         return new Response(null, { status: 200 });
       },
     );
 
-    try {
-      detachedSetupPage({
-        context,
-        path: `/agents/${agentId}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
 
-      await waitFor(() => {
-        expect(textarea()).toBeInTheDocument();
-      });
-      await fill(textarea(), "agent-level draft");
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+    await fill(textarea(), "agent-level draft");
 
-      await waitFor(() => {
-        expect(draftPatches).toContainEqual({
-          draftUserMessage: {
-            version: 1,
-            parts: [{ type: "text", text: "agent-level draft" }],
-          },
-          draftAttachments: null,
-        });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "agent-level draft" }],
+        },
+        draftAttachments: null,
       });
+    });
 
-      await user.click(textarea());
-      await user.keyboard("{Control>}a{/Control}{Backspace}");
+    await user.click(textarea());
+    await user.keyboard("{Control>}a{/Control}{Backspace}");
 
-      await waitFor(() => {
-        expect(draftPatches).toContainEqual({
-          draftUserMessage: null,
-          draftAttachments: null,
-        });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: null,
+        draftAttachments: null,
       });
-      expect(textarea().textContent ?? "").toBe("");
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
-    } finally {
-      toastError.mockRestore();
-    }
+    });
+    expect(textarea().textContent ?? "").toBe("");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
   });
 
   it("persists and clears typed thread drafts as userMessage documents", async () => {
@@ -423,6 +487,7 @@ describe("chat drafts", () => {
   it("preserves per-thread text drafts while navigating", async () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -456,6 +521,7 @@ describe("chat drafts", () => {
     const note = "Name the responsible team";
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -511,12 +577,14 @@ describe("chat drafts", () => {
   it("restores a saved server draft with attachments on first thread open", async () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -545,7 +613,7 @@ describe("chat drafts", () => {
       });
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-server-draft" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
@@ -581,8 +649,11 @@ describe("chat drafts", () => {
       },
     };
 
-    mockChatLifecycle(context, { threadId });
-    context.mocks.http.get("*/api/zero/chat-threads/:id/draft", () => {
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "claude-sonnet-4-6",
+    });
+    context.mocks.http.get("*/api/okou/chat-threads/:id/draft", () => {
       return HttpResponse.json({
         draftUserMessage: {
           version: 1,
@@ -647,8 +718,8 @@ describe("chat drafts", () => {
         ),
       ).toHaveTextContent("Launch research");
       expect(
-        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
-      ).toBeInTheDocument();
+        editor.querySelector("[data-composer-inline-template]"),
+      ).toHaveTextContent(illustrationTemplate.title);
       const feedbackItem = editor.querySelector("[data-feedback-item]");
       expect(feedbackItem).toHaveTextContent("The launch sequence is vague");
       expect(feedbackItem).toHaveTextContent(
@@ -679,16 +750,18 @@ describe("chat drafts", () => {
         draftUserMessage: {
           version: 1,
           parts: [
-            {
-              type: "template",
-              titleSnapshot: illustrationTemplate.title,
-              template,
-            },
+            // Elevated file parts lead the document; the inline template keeps
+            // its place in the text flow behind them.
             {
               type: "file",
               fileId: secondAttachment.id,
               filenameSnapshot: secondAttachment.filename,
               contentType: secondAttachment.contentType,
+            },
+            {
+              type: "template",
+              titleSnapshot: illustrationTemplate.title,
+              template,
             },
             { type: "text", text: "Review " },
             {
@@ -729,6 +802,7 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -783,6 +857,7 @@ describe("chat drafts", () => {
     );
     await waitFor(() => {
       expect(screen.getByLabelText("Remove fresh.txt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
     });
 
     await fill(textarea(), "Review the updated launch brief");
@@ -851,15 +926,15 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
     context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
+      "*/api/okou/uploads/prepare",
       async ({ request }) => {
         await expect(request.json()).resolves.toMatchObject({
           filename: "photo.png",
-          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           id: "upload-photo",
@@ -924,16 +999,98 @@ describe("chat drafts", () => {
     });
   });
 
+  it("blocks button and keyboard submission until attachment upload finishes", async () => {
+    const user = userEvent.setup({ delay: null });
+    const uploadResponse = context.mocks.deferred<Response>();
+    const submittedPrompts: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: THREAD_UPLOADS_ID,
+      onRunCreate(body) {
+        submittedPrompts.push(body.prompt ?? "");
+      },
+    });
+    context.mocks.http.post(
+      "*/api/okou/uploads/prepare",
+      async ({ request }) => {
+        await expect(request.json()).resolves.toMatchObject({
+          filename: "pending.txt",
+        });
+        return HttpResponse.json({
+          id: "upload-pending-send",
+          filename: "pending.txt",
+          contentType: "text/plain",
+          size: 7,
+          uploadUrl: "https://mock-upload.example.com/pending.txt",
+          uploadHeaders: {},
+          url: "https://example.com/pending.txt",
+        });
+      },
+    );
+    context.mocks.http.put(
+      "https://mock-upload.example.com/pending.txt",
+      () => {
+        return uploadResponse.promise;
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
+
+    const editor = await findComposerEditor();
+    await fillComposer(editor, "Review the pending upload");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("File input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["pending"], "pending.txt", { type: "text/plain" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Cancel upload pending.txt"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeDisabled();
+    });
+
+    await user.click(editor);
+    await user.keyboard("{Enter}");
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    uploadResponse.resolve(new HttpResponse(null, { status: 200 }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove pending.txt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    expect(submittedPrompts).toStrictEqual([]);
+    expect(textarea()).toHaveTextContent("Review the pending upload");
+
+    click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submittedPrompts).toStrictEqual(["Review the pending upload"]);
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
   it("removes failed upload chips and leaves remaining draft attachments sendable", async () => {
     const user = userEvent.setup({ delay: null });
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
     context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
+      "*/api/okou/uploads/prepare",
       async ({ request }) => {
         const body = (await request.json()) as { filename: string };
         if (body.filename === "ok.txt") {
@@ -943,6 +1100,7 @@ describe("chat drafts", () => {
             contentType: "text/plain",
             size: 2,
             uploadUrl: "https://mock-upload.example.com/ok.txt",
+            uploadHeaders: {},
             url: "https://example.com/ok.txt",
           });
         }
@@ -952,6 +1110,7 @@ describe("chat drafts", () => {
           contentType: "text/plain",
           size: 6,
           uploadUrl: "https://mock-upload.example.com/failed.txt",
+          uploadHeaders: {},
           url: "https://example.com/failed.txt",
         });
       },
@@ -982,6 +1141,7 @@ describe("chat drafts", () => {
       ).toBeInTheDocument();
       expect(screen.queryByTitle("failed.txt")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Remove ok.txt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
     });
   });
 
@@ -994,11 +1154,12 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
     context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
+      "*/api/okou/uploads/prepare",
       async ({ request }) => {
         preparedBodies.push(await request.json());
         return HttpResponse.json({
@@ -1043,7 +1204,7 @@ describe("chat drafts", () => {
       },
     );
     context.mocks.http.post(
-      "*/api/zero/uploads/multipart/complete",
+      "*/api/okou/uploads/multipart/complete",
       async ({ request }) => {
         completeBody = await request.json();
         return HttpResponse.json({
@@ -1076,7 +1237,6 @@ describe("chat drafts", () => {
           contentType: "video/mp4",
           size: 5 * 1024 * 1024 + 1,
           multipart: true,
-          supportsUploadHeaders: true,
         },
       ]);
       expect(firstPartAttempts).toBe(2);
@@ -1090,60 +1250,6 @@ describe("chat drafts", () => {
     });
   });
 
-  it("falls back to a legacy single PUT response during API rollout", async () => {
-    const user = userEvent.setup({ delay: null });
-    let prepareBody: unknown = null;
-    let uploadedSize = 0;
-
-    context.mocks.data.userModelPreference({
-      selectedModel: "claude-sonnet-4-6",
-      updatedAt: "2026-03-10T00:00:00Z",
-    });
-    mockThreadDetails();
-    context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
-      async ({ request }) => {
-        prepareBody = await request.json();
-        return HttpResponse.json({
-          id: "3b649e8a-c608-4355-a7d9-12e21af26df5",
-          filename: "legacy.mp4",
-          contentType: "video/mp4",
-          size: 5 * 1024 * 1024 + 1,
-          uploadUrl: "https://mock-upload.example.com/legacy.mp4",
-          url: "https://example.com/legacy.mp4",
-        });
-      },
-    );
-    context.mocks.http.put(
-      "https://mock-upload.example.com/legacy.mp4",
-      async ({ request }) => {
-        uploadedSize = (await request.arrayBuffer()).byteLength;
-        return new HttpResponse(null, { status: 200 });
-      },
-    );
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
-
-    await waitFor(() => {
-      expect(textarea()).toBeInTheDocument();
-    });
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(
-      fileInput,
-      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "legacy.mp4", {
-        type: "video/mp4",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove legacy.mp4")).toBeInTheDocument();
-      expect(prepareBody).toMatchObject({ multipart: true });
-      expect(uploadedSize).toBe(5 * 1024 * 1024 + 1);
-    });
-  });
-
   it("aborts multipart storage after the final part retry fails", async () => {
     const user = userEvent.setup({ delay: null });
     let partAttempts = 0;
@@ -1151,10 +1257,11 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
+    context.mocks.http.post("*/api/okou/uploads/prepare", () => {
       return HttpResponse.json({
         id: "8d70fdfa-2eb4-4a32-a2e2-635799804ad6",
         filename: "failed-recording.mp4",
@@ -1187,7 +1294,7 @@ describe("chat drafts", () => {
       },
     );
     context.mocks.http.post(
-      "*/api/zero/uploads/multipart/abort",
+      "*/api/okou/uploads/multipart/abort",
       async ({ request }) => {
         abortBody = await request.json();
         return HttpResponse.json({
@@ -1233,8 +1340,11 @@ describe("chat drafts", () => {
     );
     const ownerContext = {
       mocks: context.mocks,
+      resourceId: context.resourceId,
       signal: ownerSignal,
       store: context.store,
+      workerStore: context.workerStore,
+      track: context.track,
     };
     const partStarted = context.mocks.deferred<void>();
     let abortBody: unknown = null;
@@ -1242,10 +1352,11 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
+    context.mocks.http.post("*/api/okou/uploads/prepare", () => {
       return HttpResponse.json({
         id: "6eb9fa2a-c5ec-4a6a-afbf-a28939735454",
         filename: "cancelled-recording.mp4",
@@ -1278,7 +1389,7 @@ describe("chat drafts", () => {
       },
     );
     context.mocks.http.post(
-      "*/api/zero/uploads/multipart/abort",
+      "*/api/okou/uploads/multipart/abort",
       async ({ request }) => {
         abortRequestWasCancelled = request.signal.aborted;
         abortBody = await request.json();
@@ -1321,61 +1432,73 @@ describe("chat drafts", () => {
     });
   });
 
-  it("infers attachment content type when the browser reports a generic file type", async () => {
-    const user = userEvent.setup({ delay: null });
-    let capturedPrepareBody: unknown = null;
+  it.each([
+    {
+      filename: "network.har",
+      expectedContentType: "application/json",
+      contents: '{"log":{"entries":[]}}',
+    },
+    {
+      filename: "payload.vm0unknown",
+      expectedContentType: "application/octet-stream",
+      contents: "opaque bytes",
+    },
+  ])(
+    "allows picker uploads and infers $expectedContentType for $filename",
+    async ({ filename, expectedContentType, contents }) => {
+      const user = userEvent.setup({ delay: null });
+      let capturedPrepareBody: unknown = null;
+      const uploadUrl = `https://mock-upload.example.com/${filename}`;
 
-    context.mocks.data.userModelPreference({
-      selectedModel: "claude-sonnet-4-6",
-      updatedAt: "2026-03-10T00:00:00Z",
-    });
-    mockThreadDetails();
-    context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
-      async ({ request }) => {
-        capturedPrepareBody = await request.json();
-        return HttpResponse.json({
-          id: "upload-launch-plan",
-          filename: "launch-plan.pdf",
-          contentType: "application/pdf",
-          size: 11,
-          uploadUrl: "https://mock-upload.example.com/launch-plan.pdf",
-          url: "https://example.com/launch-plan.pdf",
-        });
-      },
-    );
-    context.mocks.http.put(
-      "https://mock-upload.example.com/launch-plan.pdf",
-      () => {
-        return new HttpResponse(null, { status: 200 });
-      },
-    );
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
-
-    await waitFor(() => {
-      expect(textarea()).toBeInTheDocument();
-    });
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(
-      fileInput,
-      new File(["release pdf"], "launch-plan.pdf", {
-        type: "application/octet-stream",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Remove launch-plan.pdf"),
-      ).toBeInTheDocument();
-      expect(capturedPrepareBody).toMatchObject({
-        filename: "launch-plan.pdf",
-        contentType: "application/pdf",
+      context.mocks.data.userModelPreference({
+        selectedModel: "claude-sonnet-4-6",
+        serviceTier: null,
+        updatedAt: "2026-03-10T00:00:00Z",
       });
-    });
-  });
+      mockThreadDetails();
+      context.mocks.http.post(
+        "*/api/okou/uploads/prepare",
+        async ({ request }) => {
+          capturedPrepareBody = await request.json();
+          return HttpResponse.json({
+            id: `upload-${filename}`,
+            filename,
+            contentType: expectedContentType,
+            size: contents.length,
+            uploadUrl,
+            uploadHeaders: {},
+            url: `https://example.com/${filename}`,
+          });
+        },
+      );
+      context.mocks.http.put(uploadUrl, () => {
+        return new HttpResponse(null, { status: 200 });
+      });
+
+      detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
+
+      await waitFor(() => {
+        expect(textarea()).toBeInTheDocument();
+      });
+
+      const fileInput =
+        document.querySelector<HTMLInputElement>('input[type="file"]')!;
+      await user.upload(
+        fileInput,
+        new File([contents], filename, {
+          type: "application/octet-stream",
+        }),
+      );
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
+        expect(capturedPrepareBody).toMatchObject({
+          filename,
+          contentType: expectedContentType,
+        });
+      });
+    },
+  );
 
   it("uploads dropped files and reports oversized drops", async () => {
     const threadId = THREAD_UPLOADS_ID;
@@ -1388,6 +1511,7 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -1426,15 +1550,16 @@ describe("chat drafts", () => {
 
   it("keeps pasted plain text inline at the caret", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-plain-text-paste";
+    const threadId = "e3000000-0000-4000-a000-000000000001";
 
     mockChatLifecycle(context, { threadId });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    const editor = await findComposerEditor();
+    let editor = await findComposerEditor();
+    await fillComposer(editor, "Before after");
+    editor = await findComposerEditor();
     await user.click(editor);
-    await user.keyboard("Before after");
     await user.keyboard(
       "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
     );
@@ -1461,15 +1586,16 @@ describe("chat drafts", () => {
 
   it("joins multiline prompt items only at the paste boundaries", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-multiline-paste";
+    const threadId = "e3000000-0000-4000-a000-000000000002";
 
     mockChatLifecycle(context, { threadId });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    const editor = await findComposerEditor();
+    let editor = await findComposerEditor();
+    await fillComposer(editor, "Before after");
+    editor = await findComposerEditor();
     await user.click(editor);
-    await user.keyboard("Before after");
     await user.keyboard(
       "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
     );
@@ -1503,7 +1629,7 @@ describe("chat drafts", () => {
 
   it("restores copied chat text and attachments from the clipboard", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-copied-attachment";
+    const threadId = "e3000000-0000-4000-a000-000000000003";
     const pastedText = "Please use the copied brief";
     const filename = "product-brief.md";
 
@@ -1547,7 +1673,7 @@ describe("chat drafts", () => {
 
   it("falls back to plain text when copied chat html only carries attachments", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-copied-attachment-plain-fallback";
+    const threadId = "e3000000-0000-4000-a000-000000000004";
     const pastedText = "123";
     const filename = "image.png";
     const url =
@@ -1601,7 +1727,7 @@ describe("chat drafts", () => {
 
   it("preserves multiline copied chat text when attachments prevent default paste", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-copied-attachment-slash-composer";
+    const threadId = "e3000000-0000-4000-a000-000000000005";
     const pastedText = `first\n[Thread 1](/chats/${THREAD_ONE_ID})\nlast `;
     const filename = "image.png";
     const url =
@@ -1617,9 +1743,10 @@ describe("chat drafts", () => {
       path: `/chats/${threadId}`,
     });
 
-    const editor = await findComposerEditor();
+    let editor = await findComposerEditor();
+    await fillComposer(editor, "Before after");
+    editor = await findComposerEditor();
     await user.click(editor);
-    await user.keyboard("Before after");
     await user.keyboard(
       "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
     );

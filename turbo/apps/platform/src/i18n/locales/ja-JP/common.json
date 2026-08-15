@@ -108,23 +108,40 @@
         "title": "ネットワークログがありません"
       },
       "notFound": {
-        "back": "アクティビティに戻る",
+        "back": "チャットに戻る",
         "description": "このログは存在しないか、現在のワークスペースで表示する権限がありません。",
         "title": "ログが見つかりません"
       },
       "runner": {
+        "cacheMiss": "再利用キーに一致するキャッシュ済みワークスペースがありませんでした。",
         "deviceLimitMismatch": "アイドル プール エントリは存在しますが、そのデバイス レート リミッタの状態が一致しません。",
+        "diskPressure": "ランナーのディスク使用量が逼迫していたため、ワークスペースの再利用をスキップしました。",
         "featureDisabled": "この実行ではサンドボックスの再利用が無効になっています。",
+        "invalidMetadata": "キャッシュ済みワークスペースのメタデータが無効でした。",
+        "invalidWorkingDir": "指定された作業ディレクトリを再利用できませんでした。",
+        "lockBusy": "別の実行が同じワークスペースを準備していました。",
         "noReuseKey": "アイドル状態のサンドボックスと照合するための再利用キーがありませんでした。",
         "noSessionId": "従来の結果です。サンドボックスが再利用されなかった正確な理由は確認できません。",
+        "notConfigured": "この実行ではワークスペースの再利用が構成されていませんでした。",
         "notReused": "再利用されない",
         "poolMiss": "アイドル状態のプールに一致するサンドボックスが見つかりません。",
         "profileMismatch": "アイドル プール エントリは存在しますが、そのプロファイルが一致しません。",
+        "provisioning": "プロビジョニング中",
         "reused": "再利用",
         "reusedDescription": "サンドボックスがアイドル状態のプールからパーク解除されました。",
         "sandbox": "サンドボックス",
-        "unknown": "不明 (古い実行、サンドボックス再利用追跡が追加される前に記録されました)。",
-        "unparkFailed": "パーク解除の試行は失敗しました。新しいサンドボックスがプロビジョニングされました。"
+        "sandboxPrepareFallback": "キャッシュ済みワークスペースが見つかりましたが、サンドボックスの準備後に使用できませんでした。",
+        "sandboxReusedDescription": "再利用されたサンドボックス内でワークスペースを引き続き利用できました。",
+        "startup": "起動",
+        "startupCold": "コールドスタート",
+        "startupSandbox": "サンドボックス再利用",
+        "startupUnknown": "不明",
+        "startupWorkspace": "ワークスペース再利用",
+        "unavailable": "利用不可",
+        "unparkFailed": "パーク解除の試行は失敗しました。新しいサンドボックスがプロビジョニングされました。",
+        "workspace": "ワークスペース",
+        "workspaceNoReuseKey": "ワークスペースの再利用キーがありませんでした。",
+        "workspaceReusedDescription": "ワークスペースがランナーのキャッシュから復元されました。"
       },
       "steps": {
         "matched": "({{matched}}/{{total}} が一致しました)",
@@ -204,22 +221,6 @@
         "title": "ログがロードされていません",
         "upload": "JSONをアップロード"
       }
-    },
-    "list": {
-      "description": "エージェントのログと実行履歴。",
-      "errors": {
-        "description": "何か問題が発生しました。後でもう一度試してください。",
-        "title": "アクティビティデータのロードに失敗しました"
-      },
-      "filters": {
-        "agent": "エージェントフィルター",
-        "allAgents": "すべてのエージェント",
-        "allSources": "すべてのソース",
-        "allStatuses": "すべてのステータス",
-        "source": "ソースフィルター",
-        "status": "ステータスフィルター"
-      },
-      "title": "アクティビティ"
     },
     "network": {
       "actions": {
@@ -320,30 +321,21 @@
       "unknown": "不明",
       "yes": "はい"
     },
-    "pagination": {
-      "backTwo": "2ページ戻る",
-      "forwardTwo": "2ページ進む",
-      "next": "次のページ",
-      "page": "ページ {{current}}",
-      "pageOf": "ページ {{current}} / {{total}}",
-      "previous": "前のページへ",
-      "rowsPerPage": "ページあたりの行数"
-    },
     "sources": {
       "agent": "エージェント",
       "agentphone": "エージェントフォン",
-      "agentWithName": "エージェント ({{name}})",
+      "automationEvent": "オートメーションイベント",
+      "automationSchedule": "オートメーションスケジュール",
       "email": "メール",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "目標",
       "slack": "Slack",
       "teams": "チーム",
       "telegram": "Telegram",
       "test": "テスト",
       "web": "ウェブ",
-      "webhook": "Webhook",
-      "workflowEvent": "ワークフローイベント",
-      "workflowSchedule": "ワークフロースケジュール"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "キャンセルされました",
@@ -353,34 +345,6 @@
       "queued": "キューに入れられました",
       "running": "ランニング",
       "timeout": "タイムアウト"
-    },
-    "statusFilters": {
-      "cancelled": "キャンセルされました",
-      "completed": "完了しました",
-      "failed": "失敗しました",
-      "pending": "保留中",
-      "queued": "キューに入れられました",
-      "running": "ランニング",
-      "timeout": "タイムアウト"
-    },
-    "table": {
-      "empty": {
-        "description": "エージェントが作業を開始すると、そのアクティビティがここに表示されます。",
-        "title": "今はみんな静かに"
-      },
-      "filteredEmpty": {
-        "description": "さまざまなフィルターを試して、探しているものを見つけてください。",
-        "title": "これらのフィルターに一致するものはありません"
-      },
-      "headers": {
-        "agent": "エージェント",
-        "description": "説明",
-        "duration": "期間",
-        "session": "セッション",
-        "source": "ソース",
-        "startTime": "開始時間",
-        "status": "ステータス"
-      }
     }
   },
   "appShell": {
@@ -472,19 +436,15 @@
         "overlay": "サイドバーのオーバーレイ"
       },
       "navigation": {
-        "activity": "アクティビティログ",
         "agents": "エージェント",
         "artifacts": "アーティファクト",
         "connectors": "コネクター",
-        "insights": "インサイト",
-        "insightsAndUsage": "インサイトと使用量",
         "newChat": "新しいチャット",
         "settings": "設定",
         "workflows": "ワークフロー",
         "works": "{{agentName}}の連携先"
       },
       "rail": {
-        "activity": "アクティビティ",
         "new": "新しい",
         "workflows": "ワークフロー",
         "works": "連携先"
@@ -506,7 +466,6 @@
       "backToArtifacts": "アーティファクトに戻る",
       "close": "閉じる",
       "closeArtifact": "アーティファクトを閉じる",
-      "closeDownloadMenu": "ダウンロードメニューを閉じる",
       "closeNamed": "{{title}} を閉じる",
       "closePreviewMenu": "プレビューメニューを閉じる",
       "download": "ダウンロード",
@@ -538,6 +497,8 @@
       "emptyTitle": "アーティファクトは見つかりませんでした",
       "error": "アーティファクトをロードできませんでした。後でもう一度試してください。",
       "filters": {
+        "avatar": "アバター",
+        "avatarAria": "アバターのアーティファクトを表示する",
         "file": "ファイル",
         "fileAria": "ファイルアーティファクトを表示する",
         "image": "画像",
@@ -545,6 +506,8 @@
         "label": "アーティファクトの種類のフィルター",
         "presentation": "プレゼンテーション",
         "presentationAria": "プレゼンテーションのアーティファクトを表示する",
+        "sharedConversation": "共有された会話",
+        "sharedConversationAria": "共有された会話のアーティファクトを表示",
         "video": "動画",
         "videoAria": "ビデオアーティファクトを表示する",
         "website": "ウェブサイト",
@@ -579,6 +542,7 @@
     },
     "kinds": {
       "audio": "オーディオ",
+      "avatar": "アバター",
       "code": "コード",
       "csv": "CSV",
       "data": "データ",
@@ -589,6 +553,7 @@
       "json": "JSON",
       "markdown": "マークダウン",
       "presentation": "プレゼンテーション",
+      "sharedConversation": "共有された会話",
       "text": "テキスト",
       "video": "ビデオ"
     },
@@ -619,6 +584,7 @@
       "videoLabel": "{{filename}} のビデオ プレビュー"
     },
     "sidebar": {
+      "openSharedConversation": "共有された会話を開く",
       "panelTitle": "アーティファクト",
       "singularTitle": "アーティファクト",
       "unavailable": "このアーティファクトはもう入手できません。"
@@ -626,8 +592,25 @@
     "templates": {
       "activeHtmlPreview": "{{title}} アクティブな HTML プレビュー",
       "all": "すべて",
+      "avatar": "アバター",
+      "avatarWithId": "アバター {{id}}",
+      "backToAvatars": "アバターに戻る",
       "categories": "テンプレートのカテゴリ",
       "category": "テンプレートカテゴリ",
+      "chooseVoice": "{{title}}の音声を選択",
+      "filters": {
+        "age": "年齢",
+        "all": "すべて",
+        "aspectRatio": "アスペクト比",
+        "clear": "クリア",
+        "ethnicity": "民族",
+        "gender": "性別",
+        "language": "言語",
+        "scene": "シーン",
+        "style": "スタイル",
+        "title": "フィルター",
+        "useCase": "用途"
+      },
       "fullPreview": "{{title}} Web サイトの完全なプレビュー",
       "htmlPreview": "{{title}} HTML プレビュー",
       "illustration": "イラストレーション",
@@ -637,17 +620,21 @@
       "noMatches": "一致しません",
       "placeholder": "{{title}} Web サイトのプレビュー プレースホルダー",
       "playVideo": "ビデオ テンプレートのプレビューを再生 {{title}}",
+      "previewAvatarVideo": "アバター動画{{title}}をプレビュー",
       "previewCurrentSlide": "現在のスライドで {{title}} をプレビューする",
       "previewSlide": "スライドのプレビュー {{slideNumber}}",
+      "previewVoice": "音声{{title}}を試聴",
       "previewWebsite": "Web サイト テンプレートのプレビュー {{title}}",
       "previousHtmlPreview": "{{title}} 前の HTML プレビュー",
       "previousSlide": "前のスライドをプレビューする",
-      "searchConnector": "検索コネクタ...",
-      "searchConnectors": "検索コネクタ",
+      "recommended": "おすすめ",
+      "searchConnector": "テンプレートを検索",
+      "searchConnectors": "テンプレートを検索",
       "selected": "テンプレート: {{title}}",
       "selectStyle": "スタイル {{style}} を選択してください",
       "selectTemplate": "テンプレート {{title}} を選択します",
       "selectVideo": "ビデオ テンプレート {{title}} を選択してください",
+      "selectVoice": "音声{{title}}を選択",
       "selectWebsite": "Web サイト テンプレート {{title}} を選択してください",
       "selectWorkflow": "ワークフロー テンプレート {{title}} を選択します",
       "showVariant": "バリアント {{variantNumber}} を表示",
@@ -722,7 +709,7 @@
       "lastSeen": "最後に表示されたのは {{date}}",
       "linkExpires": "リンクの有効期限が切れます {{date}}。",
       "macRequirement": "macOS 14 以降を搭載した Apple Silicon Mac が必要です。 Intel Mac はサポートされていません。",
-      "noHostsDescription": "Mac で Zero Computer Use を開き、オンラインになったらこのページを更新します。",
+      "noHostsDescription": "Mac で {{desktopApplicationName}} を開き、オンラインになったらこのページを更新します。",
       "noHostsTitle": "オンラインコンピュータはありません",
       "sources": {
         "chat": "このチャットスレッド",
@@ -799,8 +786,10 @@
     "common": {
       "back": "戻る",
       "cancel": "キャンセル",
+      "confirm": "確認する",
       "credits": "クレジット",
       "manage": "管理",
+      "preparing": "準備中...",
       "redirecting": "リダイレクト中...",
       "restore": "復元",
       "retry": "再試行",
@@ -811,21 +800,38 @@
       "activeUntil": "{{date}} までアクティブ",
       "billedMonthly": "毎月請求される",
       "buyAmount": "{{amount}} を購入する",
-      "buyButton": "同時購入",
-      "buyDescription": "同時実行を増やすには、月次サブスクリプションを追加してください。",
+      "buyButton": "同時実行を購入",
+      "buyDescription": "追加するスロット数を選択してください。",
       "buyTitle": "同時実行性を購入する",
       "cancelDescription": "これにより、現在の請求期間の終了時に更新が停止されます。それまで既存のスロットはアクティブのままです。",
+      "cancelEntireOption": "サブスクリプション全体をキャンセル",
       "cancellationScheduled": "キャンセル予定",
-      "cancelTitle": "同時実行サブスクリプションをキャンセルしますか?",
+      "changeButton": "変更",
+      "changeDescription": "新しい合計スロット数を選択するか、更新を停止してください。",
+      "changeOptionsAria": "同時実行サブスクリプションの変更オプション",
+      "changeQuantityOption": "スロット数を変更",
+      "changeQuantityOptionDescription": "増加はすぐに適用されます。削減は次回の請求日から開始されます。",
+      "changeTitle": "同時実行数を変更",
       "concurrentRun_one": "{{value}} 同時実行",
       "concurrentRun_other": "{{value}} 同時実行数",
+      "continueToStripe": "Stripe に進む",
       "decreaseAria": "追加の同時実行数を減らす",
+      "dueNow": "今回のお支払い",
       "emptyDescription": "このワークスペースに対して追加の同時実行を購入します。",
       "emptyTitle": "同時実行サブスクリプションなし",
       "increaseAria": "追加の同時実行数を増やす",
+      "monthlyTotal": "月額合計",
+      "newQuantity": "新しい合計スロット数",
+      "orderSummary": "注文概要",
+      "quantityRange": "{{minimum}}～{{maximum}} の値を入力してください。現在は {{current}} スロットです。",
       "restoreDescription": "これにより、この同時実行サブスクリプションの更新が再開されます。",
       "restoreSubscription": "サブスクリプションを復元する",
       "restoreTitle": "同時実行サブスクリプションを復元しますか?",
+      "reviewChange": "変更を確認",
+      "reviewDescription": "今回のお支払い額と更新後の月額サブスクリプションを確認してください。",
+      "reviewTitle": "同時実行数の変更を確認",
+      "scheduledChange": "{{date}}に{{quantity}}に変更",
+      "scheduledReviewDescription": "現在のスロットはこの請求期間の終了まで有効です。少ない数量は更新時から適用され、返金やアカウントクレジットは発生しません。",
       "slot_one": "{{value}} スロット",
       "slot_other": "{{value}} スロット",
       "slots": "スロット",
@@ -840,6 +846,9 @@
       "exchangeRate": "クレジットに有効期限はありません。 1 USD = {{credits}} クレジット。",
       "quickBuy": "すぐに購入",
       "quickBuyAmount": "クイック購入 {{amount}}",
+      "reviewDescription": "保存済みのお支払い方法で今回の請求を確定します。",
+      "reviewError": "クレジットの購入を完了できませんでした。請求情報を確認して、もう一度お試しください。",
+      "reviewTitle": "クレジット購入を確認",
       "title": "クレジットを購入する"
     },
     "downgrade": {
@@ -869,15 +878,30 @@
       "selectMonth": "月を選択してください",
       "to": "に"
     },
-    "manage": {
-      "description": "Stripe のサブスクリプション、支払い方法、請求書。",
-      "title": "請求の管理"
+    "paymentMethods": {
+      "description": "Stripe で請求に使用する支払い方法を管理します。",
+      "title": "支払い方法"
     },
     "plans": {
       "cancellationNotice": "{{plan}} プランはキャンセルされ、{{date}} に終了します。",
       "changeAnytime": "いつでもアップグレードまたはダウングレードできます。",
       "compare": "プランを比較する",
       "compareAll": "すべてのプランを比較する",
+      "comparison": {
+        "addOnConcurrency": "同時実行の追加購入",
+        "available": "購入可能",
+        "concurrentRuns": "同時実行数",
+        "included": "対応",
+        "ownLlmKeys": "独自の LLM キー",
+        "privateAgents": "プライベートエージェント",
+        "sharedAgents": "共有エージェント",
+        "support": "サポート",
+        "supportEmail": "メール",
+        "supportPriority": "優先",
+        "unlimited": "無制限",
+        "voiceInput": "音声入力",
+        "voiceInputValue": "{{requests}} 回/日 · {{minutes}} 分"
+      },
       "currentPlan": "現在の計画",
       "custom": {
         "name": "カスタム"
@@ -895,20 +919,21 @@
         "communitySupport": "コミュニティサポート",
         "emailSupport": "メールサポート",
         "existingCredits": "既存の無料クレジットのみ",
-        "monthlyCredits": "{{value}} クレジット / 月",
         "oneConcurrentRun": "1つの同時実行",
-        "payAsYouGo": "その後は従量料金を支払う",
         "prioritySupport": "優先サポート",
+        "sharedAndPrivateAgents": "共有エージェント7個、プライベートは無制限",
         "tenConcurrentRuns": "10 個の同時実行",
         "twoConcurrentRuns": "2つの同時実行",
         "unlimitedAgents": "無制限の合計エージェント",
-        "voiceInput": "音声入力",
-        "voiceInputLifetime": "音声入力 (メンバーごとに生涯 10 回まで使用可能)"
+        "voiceInputFree": "音声入力（メンバーごとに累計10リクエスト・1日10分）",
+        "voiceInputPro": "音声入力（メンバーごとに1日300リクエスト・200分）",
+        "voiceInputTeam": "音声入力（メンバーごとに1日500リクエスト・500分）"
       },
       "free": {
         "description": "既存のワークスペースへの従来の無料アクセス。",
         "name": "無料"
       },
+      "legacy": "旧プラン",
       "limitedFree": {
         "name": "限定無料"
       },
@@ -924,7 +949,7 @@
       "popular": "人気のある",
       "pricePerMonth": "{{price}}/月",
       "pro": {
-        "description": "チームのさらなるパワーとシームレスなコラボレーション。",
+        "description": "AIエージェントを毎日実行するチーム向けに、より多くのクレジットと同時実行数を提供します。",
         "name": "プロ"
       },
       "renews": "{{date}} を更新します",
@@ -932,11 +957,72 @@
       "sectionTitle": "計画",
       "selectedPlan": "選択したプラン",
       "team": {
-        "description": "摩擦がなく、完全な柔軟性を備えているため、迅速に拡張できます。",
+        "description": "AI従業員チームのための余裕：大容量のクレジットと10エージェントの同時実行。",
         "name": "チーム"
       },
       "upgrade": "アップグレード",
-      "upgradeTo": "{{plan}} にアップグレードする"
+      "upgradeTo": "{{plan}} にアップグレードする",
+      "usagePacks": {
+        "bonusCredits": "ボーナスクレジット",
+        "bonusIncluded": "ボーナス {{credits}} を含む",
+        "choosePlan": "プランを選択",
+        "concurrentSlots": "同時実行スロット",
+        "configurePackages": "メンバーパッケージを設定",
+        "credits": "クレジット",
+        "currentMember": "現在のメンバー",
+        "existingPackagesUnchanged": "既存のメンバーパッケージは変更されません。",
+        "management": {
+          "comparison": "現在と新しいサブスクリプションの比較",
+          "current": "現在",
+          "downgradeDescription": "下位パッケージは次回請求日から開始します。既存のクレジットは有効期限まで利用できます。",
+          "downgradesToDate": "{{date}}に{{package}}へダウングレードします。",
+          "downgradesToPeriod": "次回請求日に{{package}}へダウングレードします。",
+          "everyMonth": "毎月",
+          "immediateAmount": "今回のお支払い",
+          "immediateAmountNote": "今回の請求期間の残り分",
+          "immediateCredits": "支払い後に追加されるクレジット",
+          "new": "新規",
+          "processing": "変更を処理中",
+          "reviewDescription": "確定すると、保存済みのお支払い方法に請求されます。",
+          "reviewTitle": "パッケージ変更の確認",
+          "scheduledFor": "{{date}}に変更予定",
+          "today": "本日"
+        },
+        "memberExclusive": "各パッケージは1人のメンバー専用で共有できません。パッケージを使い切ると、従量課金クレジットに切り替わります。後から新しいパッケージにアップグレードできます。",
+        "memberPackages": "メンバーパッケージ",
+        "memberUsage": "メンバーの利用設定",
+        "migration": {
+          "action": "プランを切り替える",
+          "confirmDescription": "現在のプランと権限は、この請求期間が終了するまで有効です。新しいプランの開始時に Stripe が新しい月額合計を請求します。",
+          "convertPlan": "プランを切り替える",
+          "description": "従来の {{plan}} ワークスペースを、各メンバー向けの個別月額利用パッケージを含む新しいプランへ切り替えます。",
+          "error": "このサブスクリプションを移行できませんでした。ページを更新してもう一度お試しください。",
+          "invoice": "請求書を表示",
+          "processing": "Stripe で切り替えを予約しています。",
+          "ready": "各メンバーと保留中の招待に必須の月額パッケージを選択してください。",
+          "review": "切り替え内容を確認",
+          "reviewDescription": "切り替えを予約する前に、現在の旧プランと新しい月額プランを比較します。",
+          "reviewTitle": "プラン切り替えを確認",
+          "scheduled": "切り替えは {{date}} に予定されています。それまでは現在のプランと権限が有効です。",
+          "switchesOn": "{{date}} に {{plan}} プランへ切り替わります",
+          "title": "旧プランを切り替える"
+        },
+        "monthlyTotal": "月額合計",
+        "orderSummary": "注文内容",
+        "packagePerMemberNote": "メンバーごとにパッケージが必要です。次のステップで各メンバーのパッケージを選びます。",
+        "packCredits": "{{credits}} クレジット",
+        "packCreditsDiscount": "{{credits}} クレジット · {{discount}}% オフ",
+        "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
+        "planChangeError": "サブスクリプションの変更を準備できませんでした。もう一度お試しください。",
+        "planPlusPackages": "プラン {{plan}} · メンバーパッケージ 各 {{lowest}}〜{{highest}}",
+        "planStep": "プラン",
+        "priceFrom": "最低",
+        "purchasedCredits": "購入クレジット",
+        "selectPlan": "{{plan}} で始める",
+        "selectUsage": "{{name}} の利用設定",
+        "stepOfTotal": "ステップ {{current}}/{{total}}",
+        "totalCreditsWithBonus": "{{credits}} クレジット · ボーナス {{bonus}}"
+      }
     },
     "restore": {
       "cancellationDescription": "これにより、{{plan}} プランの予定されたキャンセルが取り消されます。",
@@ -957,20 +1043,25 @@
       "concurrencyAdded": "同時実行性が追加されました。新しいスロットは、Stripe がサブスクリプションを確認した後に利用可能になります。",
       "concurrencyCanceled": "同時実行サブスクリプションがキャンセルされました。",
       "concurrencyCanceledDate": "同時実行サブスクリプションがキャンセルされました。スロットは {{date}} までアクティブのままです。",
+      "concurrencyChanged": "同時実行数の変更を確定しました。Stripe の処理後にスロット数が更新されます。",
+      "concurrencyReduced": "同時実行数の削減は次回の請求日に予定されています。",
       "concurrencyRestored": "同時実行サブスクリプションが復元されました。",
+      "creditPurchaseConfirmed": "支払いが確認されました。Stripe による請求書の処理後にクレジットが反映されます。",
       "creditsAdded": "クレジットが追加されました。 Zero とのチャットを続けることができます。",
       "downgradeScheduledDate": "ダウングレードが予定されています。現在のプランは {{date}} まで有効です。",
       "downgradeScheduledPeriod": "ダウングレードが予定されています。現在のプランは、請求期間が終了するまで有効のままです。",
       "planRestored": "計画が復元されました。サブスクリプションは通常どおり更新されます。",
       "preparingReceiptDownload": "領収書のダウンロードを準備しています...",
       "receiptDownloadFailed": "領収書のダウンロードに失敗しました",
-      "receiptsDownloaded": "領収書をダウンロードしました"
+      "receiptsDownloaded": "領収書をダウンロードしました",
+      "subscriptionChangeConfirmed": "サブスクリプションの変更が確認されました。"
     },
     "usage": {
       "added": "{{date}} を追加しました",
       "allowance": {
         "day": "{{value}}日",
         "hour": "{{value}}時間",
+        "left": "残り {{value}}",
         "minute": "{{value}}分",
         "remaining": "{{remaining}} / {{total}} クレジット",
         "remainingAria": "使用許容量 {{label}} が残っています",
@@ -979,6 +1070,7 @@
         "title": "使用枠",
         "week": "{{value}}週間"
       },
+      "autoRechargeOn": "自動チャージ オン",
       "breakdown": {
         "currentPlanDescription": "請求サイクルごとにリセットされる月間プランクレジット",
         "freeDescription": "残高がなくなるまで利用できるスタータークレジット",
@@ -995,12 +1087,33 @@
       "creditsRemaining_one": "{{value}} クレジットが残っています",
       "creditsRemaining_other": "{{value}} クレジットが残っています",
       "expires": "{{date}}に期限切れ",
+      "grantsTable": {
+        "added": "追加日",
+        "amount": "金額",
+        "expires": "有効期限",
+        "left": "残り",
+        "source": "種別"
+      },
       "left": "{{value}} 残り",
       "member": "メンバー",
       "neverExpires": "有効期限はありません",
+      "orgCredits": "組織クレジット",
+      "seeUsageRecords": "クレジットの使い道を見る",
       "unavailable": "クレジット残高が利用できません。",
       "upgradeDescription": "Pro には毎月のクレジットが含まれており、追加のクレジット オプションのロックが解除されます。",
       "upgradeTitle": "Pro にアップグレードしてより多くのクレジットを獲得",
+      "usagePack": {
+        "bonus": "ボーナス",
+        "members": "メンバー",
+        "membersDescription": "各メンバーの使用量パックの残高とクレジット追加を確認します。",
+        "membersTitle": "メンバーの使用量パッククレジット",
+        "nextExpiry": "次の有効期限",
+        "purchased": "購入分",
+        "remaining": "残り",
+        "title": "使用量パックのクレジット",
+        "totalRemaining": "残り合計",
+        "viewMembers": "メンバー残高を表示"
+      },
       "used": "使用済み"
     }
   },
@@ -1008,9 +1121,10 @@
     "cardTitle": "クラウドブラウザ",
     "close": "ライブブラウザを閉じる",
     "documentTitle": "ライブブラウザ",
+    "fitAction": "合わせる",
     "fitWindow": "ブラウザをウィンドウに合わせる",
     "iframeTitle": "ライブブラウザ: {{name}}",
-    "invalidLink": "無効なブラウザリンク",
+    "notFound": "ブラウザが見つかりません",
     "open": "{{name}} ブラウザを開きます",
     "openAction": "開く",
     "openNewPage": "このブラウザを新しいページで開く",
@@ -1027,7 +1141,6 @@
       "starting": "開始",
       "stopped": "停止しました"
     },
-    "stop": "ブラウザを停止",
     "title": "ライブブラウザ",
     "unavailable": {
       "description": "このブラウザはこのチャットに属していないか、削除されています。",
@@ -1038,7 +1151,6 @@
     "actions": {
       "authorize": "承認する",
       "cancel": "キャンセル",
-      "configure": "設定する",
       "confirm": "確認する",
       "continue": "続ける",
       "copied": "コピーしました！",
@@ -1087,24 +1199,14 @@
       "viewAgentProfile": "エージェントのプロフィールを表示する"
     },
     "attachments": {
-      "addLink": "リンクを追加",
       "attach": "添付する",
-      "file": "ファイル {{filename}}",
       "fileTooLarge": "{{filename}} が 1 GB の制限を超えています",
       "imageUnavailable": "[画像は利用できません: {{filename}}]",
-      "importing": "添付ファイルをインポートしています",
-      "invalidLink": "有効なリンクを入力してください",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "{{filename}} をロードしています",
       "previewFile": "{{filename}} のプレビュー",
-      "supportedTypes": "画像、ドキュメント、オーディオ、ビデオ、アーカイブ",
       "title": "添付ファイル",
-      "unavailable": "添付ファイルが利用できません",
-      "upload": "アップロード",
       "uploadFailed": "{{filename}} のアップロードに失敗しました",
       "uploadFailedRetry": "{{filename}} のアップロードに失敗しました。もう一度やり直してください。",
-      "uploadFromComputer": "パソコンからアップロードする",
-      "uploadFromLink": "リンクからアップロード",
       "uploadsFailed": "一部の添付ファイルのアップロードに失敗しました。もう一度やり直してください。"
     },
     "automations": {
@@ -1123,7 +1225,7 @@
       "events": {
         "githubDeploymentStatus": "GitHub デプロイメントステータスが作成されました",
         "githubIssueComment": "GitHub Issueのコメントが作成されました",
-        "githubLabelApplied": "GitHub ラベルが適用されました",
+        "githubPullRequest": "GitHub プルリクエスト",
         "githubReviewSubmitted": "GitHub プル リクエストのレビューが送信されました",
         "githubWorkflowCompleted": "GitHub ワークフローが完了しました",
         "githubWorkflowJobCompleted": "GitHub ワークフロー ジョブが完了しました",
@@ -1132,6 +1234,7 @@
         "googleCalendarCancelled": "Google Calendar イベントがキャンセルされました",
         "googleCalendarCreated": "Google Calendar イベントが作成されました",
         "googleCalendarUpdated": "Google Calendar イベントが更新されました",
+        "googleFormsResponseSubmitted": "Google Forms の回答が送信されました",
         "googleMeetTranscript": "Google 会議記録の準備が完了しました",
         "notionChildPage": "新しい Notion 子ページ",
         "notionDatabaseItem": "新しい Notion データベース項目",
@@ -1232,6 +1335,10 @@
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",
       "selectModel": "モデルを選択してください",
+      "setAsDefault": "デフォルトに設定",
+      "temporaryFastModeDisabledNotice": "この実行では一時的に高速モードが無効です",
+      "temporaryFastModeEnabledNotice": "この実行では一時的に高速モードが有効です",
+      "temporaryModelNotice": "一時的に {{model}} に切り替えました",
       "threadSuggestions": "チャットスレッド",
       "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {
@@ -1248,8 +1355,8 @@
       "cloudBrowser": "クラウドブラウザ",
       "connectHost": "{{hostName}} を接続します",
       "connectMyComputer": "コンピューターを接続する",
-      "dialogDescription": "そのため、Zero は、LinkedIn や Reddit のようなコネクタを持たないブラウザやアプリでも動作します。",
-      "dialogTitle": "Zero にコンピュータを使用させます",
+      "dialogDescription": "そのため、{{desktopProductName}} は、LinkedIn や Reddit のようなコネクタを持たないブラウザやアプリでも動作します。",
+      "dialogTitle": "{{desktopProductName}} にコンピュータを使用させます",
       "disableCloudBrowser": "クラウドブラウザを無効にする",
       "disconnectHost": "{{hostName}} を切断します",
       "downloadMacos": "macOS をダウンロード",
@@ -1270,7 +1377,6 @@
       "available_other": "接続可能なコネクタ ({{count}})",
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
-      "customConnectDescription": "このカスタム コネクタを確認して接続します。",
       "find": "コネクタを検索...",
       "remove": "{{connectorName}} を削除します",
       "title": "コネクター"
@@ -1306,13 +1412,25 @@
       "partsHeading_one": "返信の {{count}} 部分に関するフィードバック:",
       "partsHeading_other": "返信の {{count}} 部分に関するフィードバック:",
       "placeholder": "これについて何を変える必要がありますか?",
-      "provide": "フィードバックを提供する",
+      "quote": "引用",
       "remove": "フィードバックを削除する",
       "sentEmailDescription": "送信されたメール (メール ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": "、送信された ID: {{sentId}}",
       "sourcePartHeading": "{{description}} のこの部分に関するフィードバック:",
       "sourcePartsHeading_one": "{{description}} の {{count}} 部分に関するフィードバック:",
       "sourcePartsHeading_other": "{{description}} の {{count}} 部分に関するフィードバック:"
+    },
+    "forward": {
+      "action": "転送",
+      "agents": "エージェント",
+      "back": "戻る",
+      "content": "内容",
+      "description": "選択した内容をエージェントまたはチャットに転送します。",
+      "noResults": "エージェントまたはチャットが見つかりません",
+      "search": "エージェントとチャットを検索...",
+      "sent": "転送しました",
+      "threads": "チャット",
+      "title": "転送先"
     },
     "mail": {
       "bcc": "BCC",
@@ -1322,18 +1440,6 @@
       "deletedEmail": "削除されたメール: {{subject}}",
       "details": "メールの詳細",
       "email": "メール",
-      "followUp": {
-        "action": "フォローアップ",
-        "active": "返信の追跡",
-        "activeDescription": "返信は追跡され、このチャットで報告されます。",
-        "idleDescription": "返信を追跡し、このチャットで通知を受け取ります。",
-        "paused": "追跡が一時停止されました",
-        "pausedDescription": "返信追跡は現在一時停止されています。",
-        "settingUp": "セットアップ中…",
-        "submitting": "セットアップ中…",
-        "submittingDescription": "返信追跡を設定しています…",
-        "tracking": "返信の追跡"
-      },
       "loadingDetails": "メールの詳細を読み込んでいます",
       "needReconnect": "再接続が必要です",
       "noMessage": "(メッセージなし)",
@@ -1463,13 +1569,20 @@
       "durationFor": "{{label}} の場合は {{duration}}",
       "expandGroupedHistory": "グループ化された実行履歴を展開する",
       "expandWorkHistory": "作業履歴を展開",
+      "fastModelName": "{{model}} Fast",
+      "fastModeOff": "Fastモード オフ",
+      "fastModeOn": "Fastモード オン",
+      "fastModeWillBeOff": "Fastモードがオフになります",
+      "fastModeWillBeOn": "Fastモードがオンになります",
       "goalFor": "{{label}} の目標",
       "groupedRunsFor_one": "{{count}} は {{source}} に対して実行されます",
       "groupedRunsFor_other": "{{count}} は {{source}} に対して実行されます",
       "justNow": "たった今",
       "keepGoing": "続ける",
       "keepGoingAt": "続ける · {{timestamp}}",
+      "modelChangedTo": "モデルを{{model}}に変更しました",
       "queueEllipsis": "行列...",
+      "selectedModelAppliesAfterCurrentRun": "選択した{{model}}モデルはこの実行後に適用されます",
       "thinking": {
         "assembling": "部品を組み立て中...",
         "brewing": "返答を作成中...",
@@ -1487,6 +1600,21 @@
       "waitingIn": "待機中",
       "worked": "働いた",
       "workedFor": "{{duration}} で働いていました"
+    },
+    "sharing": {
+      "cancel": "キャンセル",
+      "close": "閉じる",
+      "copyFailed": "リンクをコピーできませんでした",
+      "copyLink": "リンクをコピー",
+      "create": "共有",
+      "createFailed": "共有された会話を作成できませんでした。もう一度お試しください。",
+      "deselectGroup": "メッセージグループの選択を解除",
+      "linkCopied": "リンクをコピーしました",
+      "selectedCount_other": "{{count}}件選択中",
+      "selectGroup": "メッセージグループを選択",
+      "shareLink": "共有された会話のリンク",
+      "start": "メッセージを共有",
+      "tooLarge": "共有するメッセージを減らしてください"
     },
     "shortcuts": {
       "number": "番号"
@@ -1521,7 +1649,6 @@
         "website": "ウェブサイト",
         "workflow": "ワークフロー"
       },
-      "messageTemplate": "メッセージ テンプレート {{title}}",
       "previewTemplate": "プレビュー テンプレート {{title}}",
       "previewVideo": "プレビュービデオテンプレート {{title}}",
       "previewWebsite": "Web サイト テンプレートのプレビュー {{title}}",
@@ -1529,7 +1656,17 @@
       "removeTemplate": "テンプレート {{title}} を削除します",
       "removeVideo": "ビデオ テンプレート {{title}} を削除します",
       "removeWebsite": "Web サイト テンプレート {{title}} を削除します",
-      "removeWorkflow": "ワークフロー テンプレート {{title}} を削除します"
+      "removeWorkflow": "ワークフロー テンプレート {{title}} を削除します",
+      "videoModelLabel": "動画モデル {{model}}",
+      "videoOptions": "動画オプション",
+      "videoOptionsAudio": "音声を生成",
+      "videoOptionsDuration": "長さ",
+      "videoOptionsLabel": "動画オプション {{spec}}",
+      "videoOptionsModel": "モデル",
+      "videoOptionsRatio": "比率",
+      "videoOptionsResolution": "解像度",
+      "videoSpecAudioOff": "音声なし",
+      "videoSpecAudioOn": "音声あり"
     },
     "thread": {
       "ariaLabel": "チャットスレッド",
@@ -1545,17 +1682,24 @@
         "waiting": "待っています",
         "watching": "見てる"
       },
+      "emojiCategories": "絵文字のカテゴリ",
       "empty": "メッセージを送信して会話を始めましょう",
       "frequentlyUsed": "頻繁に使用される",
       "icon": "チャットスレッドアイコン",
-      "loadingEarlier": "以前のメッセージを読み込んでいます",
+      "locator": {
+        "you": "あなた"
+      },
       "noEmojiFound": "絵文字が見つかりませんでした",
+      "notFound": "チャットスレッドが見つかりません",
       "openArtifacts": "オープンアーティファクト",
       "openBrowser": "ブラウザを開く",
       "openNamedAgent": "エージェント {{name}} を開く",
       "openNamedChat": "チャットを開く {{title}}",
+      "pickEmoji": "絵文字を選択",
       "scrollToBottom": "一番下までスクロール",
-      "searchEmoji": "絵文字を検索"
+      "searchEmoji": "絵文字を検索",
+      "steerAcknowledgement_one": "実行中に受け取りました。これまでの作業はそのまま残ります",
+      "steerAcknowledgement_other": "{{count}} 件すべてを実行中に受け取りました。これまでの作業はそのまま残ります"
     },
     "threadSidebar": {
       "resize": "サイドバーのサイズを変更する"
@@ -1568,6 +1712,10 @@
       "checkingLimit": "音声入力制限を確認する",
       "input": "音声入力",
       "inputLimitReached": "音声入力の制限に達しました。より高い制限を得るには、Pro または Team にアップグレードしてください。",
+      "inputLimitReachedMember": "音声入力の制限に達しました。より高い制限を得るには、ワークスペース管理者にアップグレードを依頼してください。",
+      "inputLimitReachedPro": "音声入力の制限に達しました。より高い制限を得るには、Team にアップグレードしてください。",
+      "inputLimitReachedProMember": "音声入力の制限に達しました。より高い制限を得るには、ワークスペース管理者に Team へのアップグレードを依頼してください。",
+      "inputLimitReachedReset": "音声入力の制限に達しました。制限がリセットされるまでお待ちください。",
       "microphoneAccessDenied": "マイクへのアクセスが拒否されました。マイクへのアクセスを許可して、再試行してください。",
       "openingMicrophone": "マイクを開いて...",
       "starting": "音声入力を開始する",
@@ -1614,7 +1762,6 @@
       "edit": "編集",
       "grant": "グラント",
       "reconnect": "再接続",
-      "rename": "名前の変更",
       "revoke": "取り消し",
       "save": "保存",
       "saving": "保存中...",
@@ -1718,6 +1865,7 @@
       },
       "categoriesAria": "コネクタのカテゴリ",
       "description": "エージェントが使用できるようにサードパーティのサービスを接続します。",
+      "descriptionWithCount": "エージェントが使用できる{{value}}個のサービスを接続します。",
       "empty": {
         "agent": "このエージェントにはコネクタがありません",
         "connected": "コネクタが接続されていません",
@@ -1791,24 +1939,14 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "どのエージェントも使用していません",
-        "usedBy": "{{agents}} によって使用されます",
-        "usedByOverflow_one": "{{agents}} +{{value}} によって使用されます",
-        "usedByOverflow_other": "{{agents}} +{{value}} によって使用されます"
-      },
       "connect": {
-        "apiAuthentication": "API認証",
-        "apiDescription": "プロバイダーが発行したAPIシークレットを入力します。",
-        "back": "戻る",
+        "configured": "設定済み",
         "connecting": "接続中…",
         "continue": "続ける",
         "continueToProvider": "プロバイダーに進み、アクセスを承認します。",
         "description": "シークレットは保存時に暗号化され、ファイアウォールによって送信リクエストに挿入されます。環境変数としてエージェントに公開されることはありません。",
-        "oauthDescription": "コネクタの OAuth アプリを使用してアクセスを承認します。",
         "save": "保存",
         "saving": "保存中…",
-        "secret": "シークレット",
         "title": "{{connector}} を接続します"
       },
       "create": {
@@ -1822,13 +1960,18 @@
         "authorizationUrl": "認可URL",
         "clientId": "クライアントID",
         "clientSecret": "クライアントシークレット",
+        "connectorType": "コネクターの種類",
         "displayName": "表示名",
         "headerName": "ヘッダー名",
         "headerTemplate": "ヘッダーテンプレート",
         "headerTemplateHint": "({{placeholder}} を含める必要があります)",
         "httpBasicAuthentication": "HTTP基本認証",
+        "httpType": "HTTP API",
         "keepClientSecret": "保存された値を保持するには、クライアント シークレットを空白のままにしておきます。",
         "keepClientSecretPlaceholder": "最新の状態を保つには空白のままにしてください",
+        "mcpEndpoint": "MCP エンドポイント",
+        "mcpEndpointHint": "(Streamable HTTP、HTTPS のみ)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "新しいクライアントシークレット",
         "none": "なし",
         "oauthChangesDisconnect": "OAuth 設定またはクライアント認証情報を変更すると、既存の OAuth 接続が切断されます。",
@@ -1863,18 +2006,15 @@
       },
       "emptyAdmin": "カスタム コネクタはまだありません。すべてのメンバーが使用する API を登録するために作成します。",
       "emptyMember": "組織はまだカスタム コネクタを登録していません。",
+      "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "その他のオプション",
-      "rename": {
-        "displayName": "表示名",
-        "title": "カスタムコネクタの名前を変更する"
-      },
       "statusConnected": "接続済み",
       "toasts": {
         "connected": "接続済み",
         "created": "「{{connector}}」を作成しました",
         "deleted": "カスタムコネクタが削除されました",
         "disconnected": "切断されました",
-        "renamed": "名前を「{{connector}}」に変更しました",
         "updated": "「{{connector}}」を更新しました"
       },
       "updateConfirm": {
@@ -1882,19 +2022,6 @@
         "description": "これらの OAuth の変更により、現在 OAuth に接続しているすべてのメンバーが切断されます。このカスタム コネクタを再度接続する必要があります。",
         "title": "既存の OAuth 接続を切断しますか?"
       }
-    },
-    "customProposal": {
-      "configure": "{{connector}} を構成する",
-      "descriptionAgent": "保存すると、値が接続され、{{agent}} が承認されます。",
-      "descriptionUser": "保存すると、アカウントのこのカスタム コネクタが接続されます。",
-      "documentTitle": "カスタムコネクタの構成",
-      "invalid": "このカスタム コネクタ プロポーザル リンクは無効であるか、期限切れです。",
-      "requestScope": "リクエストの範囲",
-      "returnToChat": "チャットに戻り、エージェントがコネクタを確認できるように ACK を返信します。",
-      "saved": "保存されました",
-      "savedToast": "{{connector}} が保存されました",
-      "targetFallback": "このエージェント",
-      "update": "{{connector}} を更新します"
     },
     "directed": {
       "authorizeAgent": "{{agent}} を承認する",
@@ -2211,19 +2338,14 @@
           "challengeQuestion": "Feishu に「チャレンジ コードは応答がありませんでした」と表示されるのはなぜですか?",
           "title": "セットアップに関するよくある質問"
         },
-        "guide": {
-          "next": "次の Feishu ガイド画像を表示",
-          "previous": "以前の Feishu ガイド画像を表示",
-          "show": "Feishu ガイド画像 {{number}} を表示"
-        },
         "loadError": "Feishu 設定を読み込めませんでした。",
         "manage": "管理",
         "manageDialogTitle": "Feishu ボットを管理する",
         "moreOptions": "{{bot}} のその他のオプション",
         "pageDescription": "このワークスペースのボット ルーティングを管理する",
         "permissions": {
-          "description": "Feishu 開発者コンソールで「権限とスコープ」を開き、「一括インポート/エクスポート > インポート」を選択して、以下の JSON を貼り付けます。管理対象コネクタに必要なすべてのスコープがユーザー ID にインポートされます。",
-          "hint": "インポートされたユーザー ID の権限を確認し、OAuth 同意画面で権限を付与できるように、アプリの新しいバージョンを作成して公開します。",
+          "description": "Feishu 開発者コンソールで「権限とスコープ」を開き、「一括インポート/エクスポート > インポート」を選択して、以下の JSON を貼り付けます。管理対象コネクタに必要なすべてのスコープがユーザー ID にインポートされます。これらは、連携の動作に必要な最小限の権限です。",
+          "hint": "インポートされたユーザー ID の権限はすべて維持し、OAuth 同意画面で権限を付与できるように、アプリの新しいバージョンを作成して公開します。いずれかの権限を削除すると連携は動作しなくなり、Feishu 管理者の承認が必要になる場合があります。",
           "label": "ユーザートークンスコープ JSON",
           "menuAlt": "「スコープの一括インポート/エクスポート」メニューが強調表示された Feishu の「権限とスコープ」ページ",
           "menuLabel": "スコープの一括インポート/エクスポートを開く",
@@ -2449,95 +2571,21 @@
       "requestFailed": "リクエストが失敗しました"
     },
     "realtime": {
-      "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。"
+      "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。",
+      "disconnected": "リアルタイム接続が切断されました",
+      "reconnecting": "リアルタイム接続を再接続中"
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "来月",
-      "previousMonth": "前月"
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "別のアカウントで招待を承諾しました"
     },
-    "cards": {
-      "agents": "エージェント",
-      "agentsRan_one": "{{agents}} は {{runs}} を実行しました",
-      "agentsRan_other": "{{agents}} は {{runs}} を実行しました",
-      "allowed": "許可される",
-      "allowedSummary_one": "{{permissions}} 内で作成された {{calls}} には権限が付与されました",
-      "allowedSummary_other": "{{permissions}} 内で作成された {{calls}} に権限が付与されました",
-      "automations": "オートメーション",
-      "automationsUsed_one": "{{automations}} は {{credits}} を使用しました",
-      "automationsUsed_other": "{{automations}} は {{credits}} を使用しました",
-      "balance": "バランス",
-      "byAgent": "{{agent}} 著",
-      "chats": "チャット",
-      "chatsUsed_one": "{{chats}} は {{credits}} を使用しました",
-      "chatsUsed_other": "{{chats}} は {{credits}} を使用しました",
-      "clickToOpen": "クリックして開きます",
-      "consumedToday": "今日消費された",
-      "moreAutomations_one": "+{{value}} のさらなるオートメーション",
-      "moreAutomations_other": "+{{value}} 個以上のオートメーション",
-      "moreChats_one": "+{{value}} その他のチャット",
-      "moreChats_other": "+{{value}} 件以上のチャット",
-      "protected": "保護されています",
-      "protectedSummary_one": "{{calls}} は {{permissions}} 権限全体で保護されています",
-      "protectedSummary_other": "{{calls}} は {{permissions}} 権限全体で保護されています",
-      "rejected_one": "{{value}} が拒否されました",
-      "rejected_other": "{{value}} が拒否されました",
-      "rejectedOf": "{{total}} の {{denied}} が拒否されました",
-      "services": "サービス",
-      "servicesReceived_one": "{{services}} が {{calls}} を受け取りました",
-      "servicesReceived_other": "{{services}} が {{calls}} を受け取りました",
-      "team": "チーム",
-      "teamCreditUsage": "チームクレジットの使用状況",
-      "untitled": "(無題)",
-      "yourCreditUsage": "クレジットの使用状況"
+    "actions": {
+      "switchAccount": "アカウントを切り替える",
+      "switchWorkspace": "ワークスペースを切り替える"
     },
-    "common": {
-      "loadMore": "さらにロードする",
-      "showLess": "表示を少なくする"
-    },
-    "page": {
-      "description": "エージェントが何にアクセスするか、クレジットがどのように消費されるか、エージェントが使用する権限を監視し、異常な点を見つけます。",
-      "documentTitle": "インサイトと使用量",
-      "empty": "ここでエージェントを実行してインサイトを確認します。",
-      "emptyRange": "この時間範囲にはアクティビティはありません。",
-      "lastUpdated": "最終更新日 — {{date}}",
-      "loadError": "ネットワークアクティビティを読み込めませんでした。",
-      "title": "インサイト"
-    },
-    "range": {
-      "custom": "カスタム範囲",
-      "last28Days": "過去 28 日間",
-      "last30Days": "過去 30 日間",
-      "last7Days": "過去 7 日間",
-      "today": "今日",
-      "yesterday": "昨日"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}} リクエストは権限ルールによってブロックされました。重要なことが妨げられていないことを確認するためにレビューしてください。",
-      "blocked_other": "{{blocked}} リクエストは権限ルールによってブロックされました。それらを見直して、重要なことが妨げられていないことを確認してください。",
-      "blockedCaption": "{{calls}} · {{blocked}} がブロックされました",
-      "busy_one": "忙しい 1 日 — {{agentCount}} エージェントが {{runs}} を完了しました。ネットワークは懸命に動作しています。",
-      "busy_other": "忙しい 1 日 — {{agentCount}} エージェントが {{runs}} を完了しました。ネットワークは懸命に動作しています。",
-      "distributed_one": "{{agents}} がアクティブで、合計 {{credits}} を使用しています。適切に分散されたワークロード。",
-      "distributed_other": "{{agents}} がアクティブで、合計 {{credits}} を使用しています。適切に分散されたワークロード。",
-      "highTraffic_one": "{{callCount}} サービスは {{services}} 経由で呼び出します。交通量の多い日。",
-      "highTraffic_other": "{{callCount}} サービスは {{services}} 経由で呼び出します。交通量の多い日。",
-      "light_one": "軽いアクティビティ — {{runs}} および {{calls}} のみ。静かな一日。",
-      "light_other": "軽いアクティビティ — {{runs}} および {{calls}} のみ。静かな一日。",
-      "quietCaption": "{{runs}} · 静かな一日",
-      "smooth": "本日、{{runs}} および {{callCount}} サービス コールが行われます。すべてがスムーズに進んでいます。"
-    },
-    "units": {
-      "agent_one": "{{value}} エージェント",
-      "agent_other": "{{value}} エージェント",
-      "call_one": "{{value}} 呼び出し",
-      "call_other": "{{value}} 呼び出し",
-      "run_one": "{{value}} の実行",
-      "run_other": "{{value}} が実行されます",
-      "service_one": "{{value}} サービス",
-      "service_other": "{{value}} サービス"
+    "success": {
+      "title": "{{workspace}} への招待を承諾しました"
     }
   },
   "lifecycle": {
@@ -3898,6 +3946,7 @@
       "atLimit_other": "一度に実行できるタスクは {{limit}} のみです。新しい実行は、終了するまでキューで待機します。",
       "available_one": "{{count}} スロットが使用可能です",
       "available_other": "{{count}} スロットが利用可能",
+      "availableNow": "現在利用可能",
       "inUse_one": "{{limit}} スロットの {{active}} が使用中です",
       "inUse_other": "{{limit}} スロット中 {{active}} が使用中です"
     },
@@ -3924,40 +3973,6 @@
       "recommended": "おすすめ",
       "teamDescription": "10 回の並列実行とより多くのクレジットでチームを拡張します。"
     }
-  },
-  "reportError": {
-    "description": "この失敗した実行に関する診断情報を開発者チームに送信します。すぐに調査してフォローアップいたします。",
-    "disclosure": {
-      "agentConfiguration": "エージェントの構成",
-      "agentTelemetry": "エージェントのテレメトリと実行ログ",
-      "chatHistory": "チャット履歴とエージェント イベント",
-      "connectedServices": "接続されたサービス (認証情報なし)",
-      "networkLogs": "ネットワークリクエストログ",
-      "runContext": "実行コンテキストと環境",
-      "title": "何が送られるのか"
-    },
-    "documentTitle": "エラーを報告する",
-    "error": {
-      "loadFailed": "実行の詳細をロードできませんでした",
-      "notFailed": "この実行は失敗していないため、報告できません",
-      "title": "エラー",
-      "tryAgain": "もう一度試してください"
-    },
-    "fields": {
-      "description": "説明",
-      "descriptionPlaceholder": "何が起こったのでしょうか？何を期待していましたか？",
-      "title": "タイトル",
-      "titlePlaceholder": "問題の簡単な概要"
-    },
-    "loading": "実行の詳細をロードしています",
-    "send": "レポートの送信",
-    "sending": "送信中...",
-    "success": {
-      "description": "エラーレポートは開発者チームに送信されました。彼らは調査して追跡調査します。",
-      "reference": "参照: {{reference}}",
-      "title": "レポートを送信しました"
-    },
-    "title": "開発者にエラーを報告する"
   },
   "settings": {
     "accountMenu": {
@@ -4031,8 +4046,9 @@
           "title": "好み"
         },
         "usage": {
-          "balanceDescription": "チームのクレジット残高と使用量。",
+          "balanceDescription": "チームが使える残高です。",
           "balanceTitle": "クレジット残高",
+          "balanceUsageDescription": "チームのクレジット残高と使用量。",
           "usageDescription": "チャット、オートメーション、チャネル全体でのクレジットの使用状況。",
           "usageTitle": "クレジット使用量"
         }
@@ -4190,12 +4206,18 @@
         "title": "プロバイダー接続"
       },
       "personal": {
+        "accountFallback": "アカウント {{number}}",
         "actionForProvider": "{{action}} {{provider}}",
+        "activeAccount": "使用中",
+        "addAccount": "アカウントを追加",
         "claudeDescription": "Claudeベースのモデルルートで使用するClaude Codeログインを接続します。",
         "claudeTitle": "Claude Code OAuth",
         "codexDescription": "Codex をサポートするモデル ルートの Codex デバイス ログインを使用して接続します。",
         "codexTitle": "ChatGPT (Codex)",
         "description": "自分の実行でのみ、自分の資格情報を使用して使用されます。",
+        "noAccounts": "接続済みのアカウントはありません。",
+        "reconnectAccount": "再接続",
+        "removeAccount": "削除",
         "sectionTitle": "個人的な",
         "status": {
           "connected": "接続済み",
@@ -4204,18 +4226,19 @@
           "left": "{{percent}} 残り",
           "stale": "注意",
           "week": "週"
-        }
+        },
+        "useAccount": "使用"
       },
       "picker": {
-        "balancedUse": "バランスよく使う",
         "builtInModel": "内蔵モデル",
         "byokHelp": "設定されたプロバイダーを使用します",
         "fast": "速い",
+        "fastImpact": "モデル速度 1.5× · クレジット消費 2.5×",
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
+        "manageMoreModels": "他のモデルを管理",
         "models": "モデル",
-        "moreCodexCredits": "Codex クレジットをさらに使用します。",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
           "balanced": "バランスの取れたコストとパフォーマンス",
@@ -4223,15 +4246,14 @@
           "frontier": "フロンティアフラッグシップモデル",
           "premium": "最も困難なタスクに対応するプレミアムフロンティアモデル"
         },
-        "prioritizeSpeed": "スピードを優先",
         "pro": "プロ",
         "providerLabels": {
           "azureFoundryPortal": "Azure ファウンドリ ポータル",
           "claudeCodeOauth": "Claude Code（OAuthトークン）",
           "deepseek": "ディープシーク"
         },
-        "runSpeed": "走行速度",
-        "standard": "標準"
+        "standard": "標準",
+        "videoModels": "動画モデル"
       },
       "policies": {
         "actionsFor": "{{model}} のアクション",
@@ -4287,6 +4309,8 @@
         "codexTitle": "ChatGPTセッションは再接続が必要です"
       },
       "toasts": {
+        "accountRemoved": "アカウントを削除しました",
+        "accountSwitched": "使用するアカウントを切り替えました",
         "disconnected": "{{provider}} が切断されました",
         "policiesUpdated": "モデルプロバイダーの設定が更新されました",
         "reset": "Codex 使用量のリセット",
@@ -4330,6 +4354,24 @@
           "enabled_one": "次回の {{count}} の実行で有効になります",
           "enabled_other": "次回の {{count}} の実行に対して有効になります",
           "title": "ネットワーク本体をキャプチャする"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "処理中の待機",
+          "blurred": "フォーカス外",
+          "channel": "チャネル",
+          "clear": "消去",
+          "connection": "接続",
+          "copyJson": "JSON をコピー",
+          "description": "ブラウザーのライフサイクル、認証の復旧、Ably 接続シグナルを確認します。",
+          "empty": "診断イベントは記録されていません。",
+          "events": "イベント",
+          "focused": "フォーカス中",
+          "log": "イベントログ",
+          "offline": "オフライン",
+          "online": "オンライン",
+          "recovery": "復旧",
+          "title": "リアルタイム接続診断",
+          "unavailable": "利用不可"
         },
         "tab": "デバッグ"
       },
@@ -4429,8 +4471,9 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "使用量パックやアドオンを含むすべての有効なサブスクリプションは直ちに解約されます。未使用の前払いサブスクリプション期間は日割りで返金されます。1 回限りの購入やその他のサブスクリプション以外の購入は返金されません。",
           "button": "ワークスペースの削除",
-          "confirmDescription": "これにより、{{workspace}} とそのすべてのデータが完全に削除されます。この操作は元に戻すことができません。確認のためにワークスペース名を入力します。",
+          "confirmDescription": "このワークスペースとそのすべてのデータが完全に削除されます。この操作は元に戻すことができません。続行するには confirm と入力してください。",
           "description": "このワークスペースとそのすべてのデータを完全に削除します。この操作は元に戻すことができません。",
           "progress": "削除中...",
           "title": "ワークスペースの削除",
@@ -4456,9 +4499,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "有効なメールアドレスを入力してください",
           "progress": "送信中...",
+          "purchase": {
+            "description": "以下の日割り料金をご確認ください。確定すると、保存済みのお支払い方法に請求され、招待が送信されます。",
+            "error": "このメンバーパッケージを購入できませんでした。請求情報を確認して、もう一度お試しください。",
+            "invitee": "招待するユーザー",
+            "title": "招待内容を確認"
+          },
           "roleLabel": "役割",
           "send": "招待状を送信する",
-          "title": "メンバーを招待する"
+          "title": "メンバーを招待する",
+          "upgrade": {
+            "action": "Proにアップグレード",
+            "description": "メンバーの招待はProプランでご利用いただけます。このワークスペースをアップグレードすると、メンバーを招待してロールを管理できます。",
+            "title": "メンバーを招待するにはアップグレード"
+          }
         },
         "joined": "参加しました",
         "joinRequests": "参加リクエスト",
@@ -4473,7 +4527,10 @@
           "action": "ワークスペースから削除",
           "confirmDescription": "{{email}} はこのワークスペースから削除され、すべてのリソースにアクセスできなくなります。",
           "progress": "削除中...",
-          "title": "メンバーを削除しますか?"
+          "title": "メンバーを削除しますか?",
+          "usagePackImpactDescription": "このメンバーの利用パックの残りクレジットは直ちに利用できなくなります。パックは現在の請求期間の終了時に削除されます。これによりワークスペースに利用パックがなくなる場合、ワークスペースプランも請求期間の終了時に解約されます。",
+          "usagePackImpactTitle": "利用パックへの影響",
+          "usagePackRefundDescription": "返金：購入済みクレジットの未使用分は、元のお支払い方法に返金されます。使用済みクレジットとボーナスクレジットは返金対象外です。"
         },
         "revoke": {
           "action": "招待を取り消す",
@@ -4495,6 +4552,7 @@
           "progress": "切り替え中...",
           "title": "メンバーに切り替えますか？"
         },
+        "usagePack": "利用パック",
         "user": "ユーザー",
         "you": "あなた"
       },
@@ -4556,40 +4614,21 @@
       "title": "ページが見つかりません"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "この共有された会話は存在しません。",
+    "notFoundTitle": "共有された会話が見つかりません",
+    "tryOkou": "Okouを試す"
+  },
   "usage": {
-    "automations": {
-      "empty": "この期間にオートメーションの利用はありません",
-      "more_one": "ほか{{value}}件のオートメーション",
-      "more_other": "ほか{{value}}件のオートメーション",
-      "summary_one": "{{automations}}で{{credits}}を使用",
-      "summary_other": "{{automations}}で{{credits}}を使用",
-      "title": "オートメーション"
-    },
-    "chart": {
-      "ariaLabel": "クレジットの合計",
-      "credits": "クレジット",
-      "groupBy": {
-        "agent": "エージェント",
-        "source": "ソース"
-      },
-      "noUsage": "利用なし",
-      "showDetails": "{{date}} の使用状況の詳細を表示する"
-    },
-    "chats": {
-      "clickToOpen": "クリックして開きます",
-      "empty": "この期間にチャットの利用はありません",
-      "more_one": "ほか{{value}}件の会話",
-      "more_other": "ほか{{value}}件の会話",
-      "summary_one": "{{chats}}で{{credits}}を使用",
-      "summary_other": "{{chats}}で{{credits}}を使用",
-      "title": "チャット",
-      "untitled": "(無題)"
-    },
     "displayNames": {
-      "auto": "自動",
+      "avatar": "アバター",
       "finance": "金融",
+      "imageRecognize": "画像認識",
       "maps": "地図",
       "peopleSearch": "人物検索",
+      "seo": "SEO",
+      "translation": "翻訳",
       "usage": "使用量",
       "weather": "天気",
       "webFetch": "ウェブフェッチ",
@@ -4602,29 +4641,25 @@
       "other": "その他",
       "video": "動画"
     },
-    "page": {
-      "description": "チャット、オートメーション、チャンネル別のクレジット使用量。",
-      "loadError": "使用量のインサイトを読み込めませんでした。しばらくしてからもう一度お試しください。",
-      "title": "使用量"
-    },
     "range": {
-      "ariaLabel": "日付範囲",
       "billingPeriod": "請求期間",
       "last24Hours": "過去 24 時間",
-      "last28Days": "過去 28 日間",
-      "last30Days": "過去 30 日間",
       "last7Days": "過去7日間",
-      "selectedDay": "選択した日",
       "today": "今日",
       "yesterday": "昨日"
     },
     "records": {
-      "emptyBillingPeriod": "この請求期間の利用はありません。",
-      "emptyRange": "この期間の利用はありません。",
+      "empty": {
+        "billingPeriodTitle": "この請求期間の利用はありません",
+        "description": "チャット、オートメーション、チャネルで使ったクレジットがここに表示されます。",
+        "noBillingPeriodDescription": "請求期間が始まるとチームの利用状況が表示されます。",
+        "noBillingPeriodTitle": "有効な請求期間はありません",
+        "rangeTitle": "この期間の利用はありません",
+        "teamDescription": "チームがチャット、オートメーション、チャネルで使ったクレジットがここに表示されます。"
+      },
       "loadError": "使用量を読み込めませんでした。",
       "loadMore": "さらに読み込む",
       "myUsage": "自分の使用量",
-      "noActiveBillingPeriod": "有効な請求期間はありません。",
       "teamLoadError": "チームの使用量を読み込めませんでした。",
       "teamUsage": "チームの使用量",
       "untitled": "(無題)"
@@ -4636,16 +4671,12 @@
       "email": "メール",
       "github": "GitHub",
       "other": "その他",
-      "others": "その他",
       "phone": "電話",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "不明"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}}件のオートメーション",
-      "automation_other": "{{value}}件のオートメーション",
       "chat_one": "{{value}}件の会話",
       "chat_other": "{{value}}件の会話",
       "credit_one": "{{value}}クレジット",
@@ -4726,17 +4757,21 @@
         "second_one": "{{count}} 秒",
         "second_other": "{{count}} 秒"
       },
+      "forms": {
+        "addAction": "Google Forms オートメーションを追加",
+        "addAria": "Google Forms 回答オートメーションを追加",
+        "addDescription": "選択した Google フォームに新しい回答が届いたときに、このワークフローを実行します。",
+        "addTitle": "Google Forms オートメーションを追加",
+        "formUrl": "フォームのリンク",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "Google フォームに新しい回答が届いたときに実行します。",
+        "responseSubmittedTitle": "Google Forms の回答が送信されました",
+        "rule": "{{form}} に回答が送信されたとき",
+        "summary": "フォーム {{form}}"
+      },
       "github": {
-        "accountConnect": "GitHub を接続します",
-        "accountRequired": "Me を使用するには、GitHub アカウントを接続します。",
-        "actorAnyone": "誰でも",
-        "actorMe": "私",
         "actors": "俳優",
         "actorsPlaceholder": "オクトキャット、ディペンダボット[ボット]",
-        "addLabelAction": "ラベルのオートメーションを追加する",
-        "addLabelAria": "GitHub ラベルのオートメーションを追加",
-        "addLabelDescription": "GitHub ラベルが適用されている場合は、このワークフローを実行します。",
-        "addLabelTitle": "GitHub ラベルのオートメーションを追加",
         "addWebhookAction": "オートメーションを追加する",
         "addWebhookAria": "{{title}} オートメーションを追加",
         "addWebhookDescription": "一致する GitHub Webhook イベントが到着したときに、このワークフローを実行します。",
@@ -4798,13 +4833,6 @@
         "jobs": "求人",
         "jobsPlaceholder": "テスト、ビルド",
         "jobsSummary": "ジョブ {{values}}",
-        "labelAppliedDescription": "Issue または Pull Request がラベルを取得したときに実行します。",
-        "labelAppliedRule": "GitHub ラベル {{label}} が適用される場合",
-        "labelAppliedTitle": "GitHub ラベルが適用されました",
-        "labelName": "レーベル名",
-        "labelOnlySummary": "ラベル {{label}}",
-        "labelPlaceholder": "トリアージ",
-        "labelSummary": "ラベル {{label}} · {{subject}} · アクター {{actor}}",
         "loadError": "GitHub 設定をロードできませんでした。",
         "nonProductionOnly": "非実稼働のみ",
         "option": {
@@ -4829,12 +4857,36 @@
         },
         "productionEnvironment": "生産環境",
         "productionOnly": "本番のみ",
+        "pullRequestAction": "アクション",
+        "pullRequestActionClosed": "クローズ",
+        "pullRequestActionConvertedToDraft": "ドラフトに変更",
+        "pullRequestActionDequeued": "マージキューから削除",
+        "pullRequestActionEnqueued": "マージキューに追加",
+        "pullRequestActionLabeled": "ラベル適用",
+        "pullRequestActionOpened": "オープン",
+        "pullRequestActionReadyForReview": "レビュー準備完了",
+        "pullRequestActionReopened": "再オープン",
+        "pullRequestActionSynchronize": "新しいコミット",
+        "pullRequestActionUnlabeled": "ラベル削除",
+        "pullRequestAuthors": "作成者",
+        "pullRequestClosedWithoutMergeOnly": "マージせずにクローズ",
+        "pullRequestDescription": "1 つのリポジトリでプルリクエストが作成・マージ・ラベル付け・状態変更されたときに実行します。",
+        "pullRequestLabels": "ラベル",
+        "pullRequestLabelsPlaceholder": "ready-to-merge",
+        "pullRequestMerged": "マージ",
+        "pullRequestMergedOnly": "マージ済みのみ",
+        "pullRequestNumbers": "プルリクエスト番号",
+        "pullRequestNumbersPlaceholder": "42, 128",
+        "pullRequestRule": "{{repository}} のプルリクエスト {{action}} のとき",
         "pullRequestsOnly": "プルリクエストのみ",
+        "pullRequestTitle": "GitHub プルリクエスト",
         "refs": "参照",
         "refsPlaceholder": "メイン、v1.0.0",
         "repositories": "リポジトリ",
         "repositoriesPlaceholder": "vm0-ai/vm0、所有者/別のリポジトリ",
         "repositoriesSummary": "リポジトリ {{values}}",
+        "repository": "リポジトリ",
+        "repositoryPlaceholder": "owner/name",
         "reviewDescription": "一致するレビューが送信されたときに実行されます。",
         "reviewRule": "一致する GitHub プル リクエストのレビューが送信されたとき",
         "reviewStates": "レビュー状態",
@@ -4846,10 +4898,8 @@
         "saveFilters": "フィルターを保存する",
         "selectNoneAny": "任意の値と一致させるには、[なし] を選択します。",
         "selectNoneConclusion": "完了した結論に一致する場合は、[なし] を選択します。",
-        "startedBy": "によって開始されました",
         "subject": "件名",
         "trustedAuthors": "信頼できる著者",
-        "updateLabelAria": "GitHub ラベルのオートメーションを更新する",
         "updateWebhookAria": "{{title}} オートメーションの更新",
         "updateWorkflowAria": "GitHub ワークフローオートメーションを更新します",
         "withConclusions": " {{values}} を使用",
@@ -4967,6 +5017,7 @@
       "picker": {
         "calendar": "カレンダー",
         "email": "メール",
+        "forms": "Google Forms",
         "integrations": "統合",
         "notion": "Notion",
         "schedule": "スケジュール"
@@ -5043,14 +5094,53 @@
         "localeSummary": "ロケール {{locale}}",
         "rule": "一致する Strapi エントリが公開されたとき"
       },
+      "stripe": {
+        "addAction": "Stripe オートメーションを追加",
+        "addAria": "Stripe の請求書支払い済みオートメーションを追加",
+        "addDescription": "接続済みの Stripe Live アカウントで一致する請求書が支払われたときに、このワークフローを実行します。",
+        "addTitle": "Stripe オートメーションを追加",
+        "anyBillingReason": "すべての請求理由",
+        "billingReason": {
+          "automaticPendingInvoiceItemInvoice": "保留中の請求項目の自動請求",
+          "manual": "手動",
+          "quoteAccept": "見積もり承認",
+          "subscription": "サブスクリプション",
+          "subscriptionCreate": "サブスクリプション作成",
+          "subscriptionCycle": "サブスクリプション周期",
+          "subscriptionThreshold": "サブスクリプションしきい値",
+          "subscriptionUpdate": "サブスクリプション更新",
+          "upcoming": "次回予定"
+        },
+        "billingReasons": "請求理由",
+        "billingReasonsHint": "何も選択しない場合は、すべての請求理由に一致します。",
+        "bindingSummary": "Stripe アカウント {{accountId}} · Live モード · {{billingReasons}}",
+        "delivery": "配信",
+        "deliveryStatus": {
+          "delivered": "配信済み",
+          "failed": "失敗",
+          "pending": "保留中",
+          "skipped": "スキップ"
+        },
+        "deliveryWarning": "直近の最終配信に失敗しました。再試行する前にワークフローのアクティビティを確認してください。",
+        "immutableHint": "Stripe アカウントと請求理由は固定されています。変更するには、このオートメーションを削除して再作成してください。",
+        "invoicePaidDescription": "一致する Stripe の請求書が支払われたときに実行します。",
+        "invoicePaidTitle": "Stripe 請求書の支払い完了",
+        "lastEvent": "最新イベント",
+        "manageConnection": "Stripe 接続を管理",
+        "noDeliveries": "配信はまだありません",
+        "noMatchingEvents": "一致するイベントはまだありません",
+        "rule": "一致する Stripe 請求書の支払いが完了したとき"
+      },
       "types": {
         "chat": "チャット",
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google 会う",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {
@@ -5291,6 +5381,12 @@
     "connectedWithDetail": "接続されました ({{detail}})",
     "documentTitle": "連携先",
     "feishuConnected": "Feishu は正常に接続されました",
+    "github": {
+      "adminInstall": "組織管理者に GitHub App のインストールを依頼してください",
+      "description": "GitHub イベントからワークフローオートメーションを起動",
+      "install": "GitHub App をインストール",
+      "title": "GitHub"
+    },
     "header": {
       "description": "これらのチャネルを通じて {{displayName}} に接続します",
       "title": "{{displayName}}の連携先"

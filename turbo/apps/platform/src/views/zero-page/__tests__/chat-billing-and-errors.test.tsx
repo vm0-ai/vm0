@@ -4,24 +4,25 @@ import {
   chatThreadByIdContract,
   chatThreadEventsContract,
   chatThreadsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+  type ChatEvent,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroBillingCheckoutContract,
   zeroBillingCreditCheckoutContract,
   zeroBillingStatusContract,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
-import {
-  zeroRunAgentEventsContract,
-  zeroRunsByIdContract,
-} from "@vm0/api-contracts/contracts/zero-runs";
-import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core";
+import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
+import { zeroRunsByIdContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import {
   click,
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
+import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import {
   context,
   detachedSetupPage,
@@ -36,7 +37,7 @@ import {
 
 describe("chat lifecycle", () => {
   it("shows billing recovery guidance when credits are depleted", async () => {
-    const threadId = "failed-guidance-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000001";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.api(
       zeroBillingCheckoutContract.create,
@@ -66,7 +67,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows Pro upgrade guidance when built-in video requires Pro", async () => {
-    const threadId = "failed-guidance-video-pro";
+    const threadId = "e1000000-0000-4000-a000-000000000002";
     mockFailedAssistantThread({ threadId, error: "pro_required" });
     context.mocks.api(
       zeroBillingCheckoutContract.create,
@@ -96,11 +97,10 @@ describe("chat lifecycle", () => {
   });
 
   it("shows Pro upgrade guidance for limited-free-1 even with credits", async () => {
-    const threadId = "failed-guidance-limited-free";
+    const threadId = "e1000000-0000-4000-a000-000000000003";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -154,11 +154,10 @@ describe("chat lifecycle", () => {
   });
 
   it("shows admin-only billing guidance when a member runs out of credits", async () => {
-    const threadId = "failed-guidance-member-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000004";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -179,11 +178,10 @@ describe("chat lifecycle", () => {
   });
 
   it("shows that chat can continue when credits become available", async () => {
-    const threadId = "failed-guidance-restored-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000005";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -223,11 +221,11 @@ describe("chat lifecycle", () => {
   });
 
   it("shows paid credit top-ups when a paid workspace runs out of credits", async () => {
-    const threadId = "failed-guidance-paid-credits";
+    const checkoutReady = createDeferredPromise<void>(context.signal);
+    const threadId = "e1000000-0000-4000-a000-000000000006";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -254,7 +252,8 @@ describe("chat lifecycle", () => {
     });
     context.mocks.api(
       zeroBillingCreditCheckoutContract.create,
-      ({ body, respond }) => {
+      async ({ body, respond }) => {
+        await checkoutReady.promise;
         return respond(200, {
           url: `https://checkout.stripe.com/credits?credits=${body.credits}`,
         });
@@ -286,18 +285,96 @@ describe("chat lifecycle", () => {
     click(buttonByText("Buy"));
 
     await waitFor(() => {
+      expect(buttonByText("Preparing...")).toBeDisabled();
+    });
+    expect(queryButtonByText("Redirecting...")).toBeNull();
+    checkoutReady.resolve(undefined);
+
+    await waitFor(() => {
       expect(window.location.href).toBe(
         "https://checkout.stripe.com/credits?credits=25000",
       );
     });
   });
 
-  it("uses the plan capability when a paid tier cannot buy credits", async () => {
-    const threadId = "failed-guidance-capability-blocked-credits";
+  it("keeps a paid credit trigger stable while its review dialog opens", async () => {
+    const checkoutReady = createDeferredPromise<void>(context.signal);
+    const threadId = "e1000000-0000-4000-a000-000000000009";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        credits: 0,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
+        },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
+      });
+    });
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.create,
+      async ({ respond }) => {
+        await checkoutReady.promise;
+        return respond(200, {
+          status: "preview",
+          credits: 25_000,
+          amountCents: 2500,
+          currency: "usd",
+          expiresAt: "2026-08-13T12:15:00.000Z",
+          previewToken: "chat-credit-preview-token",
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("$100")).toBeInTheDocument();
+    });
+    click(buttonByText("Custom"));
+    await fill(screen.getByLabelText("Custom dollar amount"), "25");
+    const buyButton = buttonByText("Buy");
+    click(buyButton);
+
+    await waitFor(() => {
+      expect(buyButton).toHaveTextContent("Preparing...");
+      expect(buyButton).toBeDisabled();
+    });
+    checkoutReady.resolve(undefined);
+
+    await expect(
+      screen.findByRole("dialog", { name: "Review credit purchase" }),
+    ).resolves.toBeInTheDocument();
+    expect(buyButton).toHaveTextContent("Preparing...");
+    expect(buyButton).toBeDisabled();
+  });
+
+  it("uses the plan capability when a paid tier cannot buy credits", async () => {
+    const threadId = "e1000000-0000-4000-a000-000000000007";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
       name: "Test Org",
       role: "admin",
     });
@@ -336,11 +413,10 @@ describe("chat lifecycle", () => {
   });
 
   it("shows credit top-ups when a Custom workspace runs out of credits", async () => {
-    const threadId = "failed-guidance-custom-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000008";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -396,7 +472,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows model-provider setup guidance from failed assistant messages", async () => {
-    const threadId = "failed-guidance-provider";
+    const threadId = "e1000000-0000-4000-a000-000000000009";
     mockFailedAssistantThread({
       threadId,
       error: "No model provider configured",
@@ -415,7 +491,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows restart guidance for incompatible provider sessions", async () => {
-    const threadId = "failed-guidance-incompatible";
+    const threadId = "e1000000-0000-4000-a000-000000000010";
     mockFailedAssistantThread({
       threadId,
       error: "Cannot continue session with the selected provider",
@@ -432,7 +508,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows restart guidance for deleted provider sessions", async () => {
-    const threadId = "failed-guidance-deleted";
+    const threadId = "e1000000-0000-4000-a000-000000000011";
     mockFailedAssistantThread({
       threadId,
       error: "Model provider unavailable",
@@ -451,7 +527,7 @@ describe("chat lifecycle", () => {
   });
 
   it("renders generic assistant failures as markdown", async () => {
-    const threadId = "failed-guidance-generic";
+    const threadId = "e1000000-0000-4000-a000-000000000012";
     mockFailedAssistantThread({
       threadId,
       error: "Unexpected **tool** failure",
@@ -490,46 +566,41 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId || query.sinceId) {
-          return respond(200, { events: [] });
-        }
+        let events: ChatEvent[];
         if (params.threadId === RUNNING_THREAD_ID) {
-          return respond(200, {
-            events: [
-              {
-                id: "msg-running-user",
-                threadId: RUNNING_THREAD_ID,
-                eventType: "input.prompt" as const,
-                content: null,
-                userMessage: {
-                  version: 1,
-                  parts: [{ type: "text", text: "Active task prompt" }],
-                },
-                runId: "run-active",
-                seqId: 1,
-                createdAt: "2026-03-10T00:00:00Z",
+          events = [
+            {
+              id: "msg-running-user",
+              threadId: RUNNING_THREAD_ID,
+              eventType: "input.prompt" as const,
+              content: null,
+              userMessage: {
+                version: 1,
+                parts: [{ type: "text", text: "Active task prompt" }],
               },
-              {
-                id: "msg-running-assistant",
-                threadId: RUNNING_THREAD_ID,
-                eventType: "output.thinking" as const,
-                thinking: "",
-                content: null,
-                runId: "run-active",
-                seqId: 2,
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ],
-          });
-        }
-        return respond(200, {
-          events: [
+              runId: "run-active",
+              seqId: 1,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-running-assistant",
+              threadId: RUNNING_THREAD_ID,
+              eventType: "output.thinking" as const,
+              thinking: "",
+              content: null,
+              runId: "run-active",
+              seqId: 2,
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ];
+        } else {
+          events = [
             {
               id: "msg-completed-user",
               threadId: COMPLETED_THREAD_ID,
-              eventType: "input.prompt" as const,
+              eventType: "input.prompt",
               content: null,
               userMessage: {
                 version: 1,
@@ -541,18 +612,24 @@ describe("chat lifecycle", () => {
             {
               id: "msg-completed-assistant",
               threadId: COMPLETED_THREAD_ID,
-              eventType: "output.message" as const,
+              eventType: "output.message",
               content: "All done!",
               seqId: 2,
               createdAt: "2026-03-10T00:00:01Z",
             },
-          ],
+          ];
+        }
+        return respond(200, {
+          rows: mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
@@ -565,7 +642,6 @@ describe("chat lifecycle", () => {
         modelProvider: null,
         selectedModel: null,
         triggerSource: "web",
-        triggerAgentName: null,
         status: "running",
         prompt: "Active task prompt",
         appendSystemPrompt: null,
@@ -576,16 +652,6 @@ describe("chat lifecycle", () => {
         artifact: { name: null, version: null },
       });
     });
-    context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
-      ({ respond }) => {
-        return respond(200, {
-          events: [],
-          hasMore: false,
-          framework: "claude-code",
-        });
-      },
-    );
     context.mocks.api(zeroRunsByIdContract.getById, ({ respond }) => {
       return respond(200, {
         runId: "run-active",
@@ -597,7 +663,7 @@ describe("chat lifecycle", () => {
         createdAt: "2026-03-10T00:00:00Z",
       });
     });
-    context.mocks.api(zeroQueuePositionContract.getPosition, ({ respond }) => {
+    context.mocks.api(queuePositionContract.getPosition, ({ respond }) => {
       return respond(200, { position: 0, total: 0 });
     });
 
@@ -626,7 +692,7 @@ describe("chat lifecycle", () => {
 });
 describe("initial thinking indicator", () => {
   it("renders the latest run thinking marker inside the thinking indicator", async () => {
-    const threadId = "thread-initial-thinking";
+    const threadId = "e1000000-0000-4000-a000-000000000013";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
@@ -662,7 +728,7 @@ describe("initial thinking indicator", () => {
   });
 
   it("renders the thinking marker before thread detail resolves", async () => {
-    const threadId = "thread-initial-thinking-thread-detail-gated";
+    const threadId = "e1000000-0000-4000-a000-000000000014";
     const threadGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, {
       threadId,
@@ -698,8 +764,8 @@ describe("initial thinking indicator", () => {
     threadGate.resolve();
   });
 
-  it("restarts on every follow-up line instead of sliding a short tail", async () => {
-    const threadId = "thread-initial-thinking-rollover";
+  it("ellipsizes an overflowing thinking line without animating its remainder", async () => {
+    const threadId = "e1000000-0000-4000-a000-000000000015";
     const thinking = "ABCDEFG";
     mockThinkingTypewriterLayout({
       text: thinking,
@@ -761,27 +827,27 @@ describe("initial thinking indicator", () => {
     });
 
     const label = await screen.findByLabelText(thinking);
-    const sawFollowUpLine = () => {
+    const sawEllipsis = () => {
       if (label.textContent) {
         displayedLabels.add(label.textContent);
       }
-      return Array.from(displayedLabels).some((value) => {
-        return value === "D" || value === "DE" || value === "DEF";
-      });
+      return displayedLabels.has("AB…");
     };
     await waitFor(() => {
-      expect(sawFollowUpLine()).toBeTruthy();
+      expect(sawEllipsis()).toBeTruthy();
     });
-    await waitFor(() => {
-      expect(label).toHaveTextContent(/^G$/);
-    });
-    expect(displayedLabels.has("...EFG")).toBeFalsy();
+    expect(label).toHaveTextContent(/^AB…$/);
+    expect(
+      Array.from(displayedLabels).some((value) => {
+        return /[D-G]/.test(value);
+      }),
+    ).toBeFalsy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
   it("shows every explicit thinking line in sequence", async () => {
-    const threadId = "thread-initial-thinking-multiline";
+    const threadId = "e1000000-0000-4000-a000-000000000016";
     const thinking = "ONE\nTWO\nTHREE";
     mockThinkingTypewriterLayout({
       text: thinking,
@@ -862,8 +928,8 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("keeps the thinking marker visible while later messages are queued", async () => {
-    const threadId = "thread-initial-thinking-with-queue";
+  it("keeps the thinking marker visible while a later Morning Brief is queued", async () => {
+    const threadId = "e1000000-0000-4000-a000-000000000017";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
@@ -885,7 +951,14 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-queued-followup",
           eventType: "input.prompt" as const,
-          content: "Also include owners",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Also include owners" },
+              { type: "morning_brief", briefDate: "2026-03-10" },
+            ],
+          },
           runId: undefined,
           createdAt: "2026-03-10T00:00:02Z",
         },
@@ -908,7 +981,7 @@ describe("initial thinking indicator", () => {
   });
 
   it("hides the thinking marker when the same run has assistant text", async () => {
-    const threadId = "thread-initial-thinking-answer";
+    const threadId = "e1000000-0000-4000-a000-000000000018";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [

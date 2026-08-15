@@ -38,6 +38,20 @@ def test_rejects_invalid_scalar_field_config_value():
         JsonSelectiveExtractor(scalar_fields=json.loads('{"model": "string"}'))
 
 
+def test_rejects_consistency_path_without_scalar_field():
+    with pytest.raises(ValueError, match="must reference scalar fields"):
+        JsonSelectiveExtractor(scalar_consistency_paths={("type",)})
+
+
+def test_consistency_query_requires_configured_path():
+    extractor = JsonSelectiveExtractor()
+    extractor.feed(b"{}")
+    assert extractor.finish().complete is True
+
+    with pytest.raises(ValueError, match="was not configured"):
+        extractor.selected_scalar_values_are_consistent(("type",))
+
+
 @pytest.mark.parametrize(
     ("bound", "value"),
     [
@@ -74,6 +88,7 @@ def test_rejects_non_integer_extractor_bounds(bound, value):
         {"scalar_fields": {("data", "*"): ScalarField("string")}},
         {"array_count_paths": {("data", "*")}},
         {"object_presence_paths": {("data", "*")}},
+        {"value_presence_paths": {("data", "*")}},
     ],
 )
 def test_rejects_wildcards_in_exact_observation_paths(kwargs):
@@ -88,10 +103,11 @@ def test_rejects_wildcards_in_exact_observation_paths(kwargs):
         {"array_count_paths": {"data"}},
         {"wildcard_array_count_paths": {"includes"}},
         {"object_presence_paths": {"data"}},
+        {"value_presence_paths": {"data"}},
     ],
 )
 def test_rejects_non_tuple_observation_paths(kwargs):
-    with pytest.raises(TypeError, match=r"tuple\[str, \.\.\.\]"):
+    with pytest.raises(TypeError, match="must be tuple"):
         JsonSelectiveExtractor(**kwargs)
 
 
@@ -102,10 +118,11 @@ def test_rejects_non_tuple_observation_paths(kwargs):
         {"array_count_paths": {(1,)}},
         {"wildcard_array_count_paths": {("includes", 1)}},
         {"object_presence_paths": {(1,)}},
+        {"value_presence_paths": {(1,)}},
     ],
 )
 def test_rejects_non_string_path_segments(kwargs):
-    with pytest.raises(TypeError, match=r"tuple\[str, \.\.\.\]"):
+    with pytest.raises(TypeError, match="must be tuple"):
         JsonSelectiveExtractor(**kwargs)
 
 
@@ -114,17 +131,20 @@ def test_constructor_copies_observation_config():
     array_count_paths = set()
     wildcard_array_count_paths = {("includes", "*")}
     object_presence_paths = set()
+    value_presence_paths = set()
 
     extractor = JsonSelectiveExtractor(
         scalar_fields=scalar_fields,
         array_count_paths=array_count_paths,
         wildcard_array_count_paths=wildcard_array_count_paths,
         object_presence_paths=object_presence_paths,
+        value_presence_paths=value_presence_paths,
     )
     scalar_fields[("model",)] = ScalarField("string")
     array_count_paths.add(("data",))
     wildcard_array_count_paths.add(("extras", "*"))
     object_presence_paths.add(("data",))
+    value_presence_paths.add(("errors",))
 
     extractor.feed(b'{"model":"claude","data":[],"includes":{"users":[]},"extras":{"items":[]}}')
     result = extractor.finish()
@@ -134,6 +154,7 @@ def test_constructor_copies_observation_config():
     assert result.array_counts == {}
     assert result.wildcard_array_counts == {("includes", "*"): {"users": 0}}
     assert result.object_present == set()
+    assert result.value_present == set()
 
 
 def test_rejects_wildcard_pattern_without_exactly_one_wildcard():

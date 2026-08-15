@@ -1,6 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-email";
+import { zeroEmailInboundContract } from "@okouai/api-contracts/contracts/zero-email";
 import {
   webhookBuiltInGenerationBytePlusContract,
   webhookBuiltInGenerationFalContract,
@@ -16,7 +16,7 @@ import {
   webhookStripeContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
-} from "@vm0/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
 import type StripeSDK from "stripe";
 import { Webhook } from "svix";
@@ -28,12 +28,33 @@ import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import { generateSandboxToken } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { registerKnownSessionHistoryBlob } from "./api-bdd-session-history";
+import { webhooksAgentCheckpointsRoutes } from "../../webhooks-agent-checkpoints";
+import { webhooksAgentCompleteRoutes } from "../../webhooks-agent-complete";
+import { webhooksAgentEventsRoutes } from "../../webhooks-agent-events";
+import { webhooksAgentHealthUsageTelemetryRoutes } from "../../webhooks-agent-health-usage-telemetry";
+import { webhooksAgentStorageRoutes } from "../../webhooks-agent-storage";
+import { webhooksBuiltInGenerationRoutes } from "../../webhooks-built-in-generations";
+import { webhooksClerkRoutes } from "../../webhooks-clerk";
+import { webhooksGithubRoutes } from "../../webhooks-github";
+import { webhooksStripeRoutes } from "../../webhooks-stripe";
+import { zeroEmailInboundRoutes } from "../../zero-email-inbound";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksAgentCheckpointsRoutes,
+  ...webhooksAgentCompleteRoutes,
+  ...webhooksAgentEventsRoutes,
+  ...webhooksAgentHealthUsageTelemetryRoutes,
+  ...webhooksAgentStorageRoutes,
+  ...webhooksBuiltInGenerationRoutes,
+  ...webhooksClerkRoutes,
+  ...webhooksGithubRoutes,
+  ...webhooksStripeRoutes,
+  ...zeroEmailInboundRoutes,
+]);
 
 type AgentEventsBody = z.infer<(typeof webhookEventsContract.send)["body"]>;
 type AgentCompleteBody = z.infer<
@@ -170,17 +191,17 @@ async function requestRawGithubWebhook(
   body: string,
   headers: Record<string, string>,
 ): Promise<GithubWebhookResponse> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/github",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...headers,
-      },
-      body,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/github", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
     },
-  );
+    body,
+  });
   const result = {
     body: await parseRawResponseBody(response),
     headers: response.headers,
@@ -263,14 +284,14 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 500)[],
     ): Promise<StripeWebhookResponse> {
       context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
-      const response = await createApp({ signal: context.signal }).request(
-        "/api/webhooks/stripe",
-        {
-          method: "POST",
-          headers: { "stripe-signature": "t=1,v1=bdd" },
-          body: serializedContractBody(event),
-        },
-      );
+      const response = await createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      }).request("/api/webhooks/stripe", {
+        method: "POST",
+        headers: { "stripe-signature": "t=1,v1=bdd" },
+        body: serializedContractBody(event),
+      });
       const body = await parseRawResponseBody(response);
       const status = response.status;
       if ((status !== 200 && status !== 500) || !statuses.includes(status)) {
@@ -299,7 +320,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 401 | 503)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookStripeContract).post({
+        setupApp({ context, routes: webhooksStripeRoutes })(
+          webhookStripeContract,
+        ).post({
           body,
           extraHeaders: headers,
         }),
@@ -324,10 +347,12 @@ export function createWebhookCallbackApi(context: TestContext) {
     async requestClerkWebhook(
       body: string,
       headers: Record<string, string>,
-      statuses: readonly (200 | 401)[],
+      statuses: readonly (200 | 401 | 503)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookClerkContract).post({
+        setupApp({ context, routes: webhooksClerkRoutes })(
+          webhookClerkContract,
+        ).post({
           body,
           extraHeaders: headers,
         }),
@@ -379,7 +404,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 401)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroEmailInboundContract).post({
+        setupApp({ context, routes: zeroEmailInboundRoutes })(
+          zeroEmailInboundContract,
+        ).post({
           headers,
           body,
         }),
@@ -417,7 +444,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       readonly statuses: readonly (200 | 400 | 401 | 503)[];
     }) {
       return await accept(
-        setupApp({ context })(webhookBuiltInGenerationFalContract).post({
+        setupApp({ context, routes: webhooksBuiltInGenerationRoutes })(
+          webhookBuiltInGenerationFalContract,
+        ).post({
           params: { generationId: args.generationId },
           query: { token: args.token, visualKey: args.visualKey },
           body: args.body as string,
@@ -434,7 +463,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       readonly statuses: readonly (200 | 400 | 401 | 503)[];
     }) {
       return await accept(
-        setupApp({ context })(webhookBuiltInGenerationBytePlusContract).post({
+        setupApp({ context, routes: webhooksBuiltInGenerationRoutes })(
+          webhookBuiltInGenerationBytePlusContract,
+        ).post({
           params: { generationId: args.generationId },
           query: { token: args.token, visualKey: args.visualKey },
           body: args.body as string,
@@ -484,7 +515,10 @@ export function createWebhookCallbackApi(context: TestContext) {
       if (overrides.signature !== undefined) {
         headers["x-vm0-signature"] = overrides.signature;
       }
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       return await app.request(path, {
         method: "POST",
         headers,
@@ -507,7 +541,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 500 | 503)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookEventsContract).send({
+        setupApp({ context, routes: webhooksAgentEventsRoutes })(
+          webhookEventsContract,
+        ).send({
           headers,
           body,
         }),
@@ -521,7 +557,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 500 | 503)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookEventsContract).send({
+        setupApp({ context, routes: webhooksAgentEventsRoutes })(
+          webhookEventsContract,
+        ).send({
           headers,
           body: body as AgentEventsBody,
         }),
@@ -533,9 +571,19 @@ export function createWebhookCallbackApi(context: TestContext) {
       body: AgentCompleteBody,
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+      signal?: AbortSignal,
     ) {
+      const client = signal
+        ? setupAppWithRoutes({
+            context,
+            routes: webhooksAgentCompleteRoutes,
+            signal,
+          })(webhookCompleteContract)
+        : setupApp({ context, routes: webhooksAgentCompleteRoutes })(
+            webhookCompleteContract,
+          );
       return await accept(
-        setupApp({ context })(webhookCompleteContract).complete({
+        client.complete({
           headers,
           body,
         }),
@@ -549,7 +597,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookCompleteContract).complete({
+        setupApp({ context, routes: webhooksAgentCompleteRoutes })(
+          webhookCompleteContract,
+        ).complete({
           headers,
           body: body as AgentCompleteBody,
         }),
@@ -562,30 +612,35 @@ export function createWebhookCallbackApi(context: TestContext) {
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
-      const sessionHistoryBlob = registerKnownSessionHistoryBlob(
-        context,
-        body.runId,
-        body.cliAgentSessionHistoryHash,
-      );
-      if (sessionHistoryBlob && statuses.includes(200)) {
-        await accept(
-          setupApp({ context })(
-            webhookCheckpointsPrepareHistoryContract,
-          ).prepare({
-            headers,
-            body: {
-              runId: body.runId,
-              hash: body.cliAgentSessionHistoryHash,
-              rawSize: sessionHistoryBlob.byteLength,
-              encodedSize: sessionHistoryBlob.byteLength,
-              encoding: "identity",
-            },
-          }),
-          [200],
+      const historyHash = body.cliAgentSessionHistoryHash;
+      if (historyHash !== undefined) {
+        const sessionHistoryBlob = registerKnownSessionHistoryBlob(
+          context,
+          body.runId,
+          historyHash,
         );
+        if (sessionHistoryBlob && statuses.includes(200)) {
+          await accept(
+            setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(
+              webhookCheckpointsPrepareHistoryContract,
+            ).prepare({
+              headers,
+              body: {
+                runId: body.runId,
+                hash: historyHash,
+                rawSize: sessionHistoryBlob.byteLength,
+                encodedSize: sessionHistoryBlob.byteLength,
+                encoding: "identity",
+              },
+            }),
+            [200],
+          );
+        }
       }
       return await accept(
-        setupApp({ context })(webhookCheckpointsContract).create({
+        setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(
+          webhookCheckpointsContract,
+        ).create({
           headers,
           body,
         }),
@@ -599,7 +654,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookCheckpointsContract).create({
+        setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(
+          webhookCheckpointsContract,
+        ).create({
           headers,
           body: body as AgentCheckpointBody,
         }),
@@ -613,12 +670,12 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookCheckpointsPrepareHistoryContract).prepare(
-          {
-            headers,
-            body,
-          },
-        ),
+        setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(
+          webhookCheckpointsPrepareHistoryContract,
+        ).prepare({
+          headers,
+          body,
+        }),
         statuses,
       );
     },
@@ -629,12 +686,12 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookCheckpointsPrepareHistoryContract).prepare(
-          {
-            headers,
-            body: body as AgentCheckpointPrepareHistoryBody,
-          },
-        ),
+        setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(
+          webhookCheckpointsPrepareHistoryContract,
+        ).prepare({
+          headers,
+          body: body as AgentCheckpointPrepareHistoryBody,
+        }),
         statuses,
       );
     },
@@ -645,7 +702,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookHeartbeatContract).send({
+        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+          webhookHeartbeatContract,
+        ).send({
           headers,
           body,
         }),
@@ -659,7 +718,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookHeartbeatContract).send({
+        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+          webhookHeartbeatContract,
+        ).send({
           headers,
           body: body as AgentHeartbeatBody,
         }),
@@ -673,7 +734,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookTelemetryContract).send({
+        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+          webhookTelemetryContract,
+        ).send({
           headers,
           body,
         }),
@@ -687,7 +750,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookTelemetryContract).send({
+        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+          webhookTelemetryContract,
+        ).send({
           headers,
           body: body as AgentTelemetryBody,
         }),
@@ -701,7 +766,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookUsageEventContract).send({
+        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+          webhookUsageEventContract,
+        ).send({
           headers,
           body,
         }),
@@ -715,7 +782,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookUsageEventContract).send({
+        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+          webhookUsageEventContract,
+        ).send({
           headers,
           body: body as AgentUsageEventBody,
         }),
@@ -729,7 +798,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookModelUsageObservationContract).send({
+        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+          webhookModelUsageObservationContract,
+        ).send({
           headers,
           body,
         }),
@@ -743,7 +814,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookModelUsageObservationContract).send({
+        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+          webhookModelUsageObservationContract,
+        ).send({
           headers,
           body: body as AgentModelUsageObservationV2Body,
         }),
@@ -757,7 +830,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 413 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookStoragesPrepareContract).prepare({
+        setupApp({ context, routes: webhooksAgentStorageRoutes })(
+          webhookStoragesPrepareContract,
+        ).prepare({
           headers,
           body,
         }),
@@ -771,7 +846,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 413 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookStoragesPrepareContract).prepare({
+        setupApp({ context, routes: webhooksAgentStorageRoutes })(
+          webhookStoragesPrepareContract,
+        ).prepare({
           headers,
           body: body as AgentStoragePrepareBody,
         }),
@@ -785,7 +862,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 409 | 413 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookStoragesCommitContract).commit({
+        setupApp({ context, routes: webhooksAgentStorageRoutes })(
+          webhookStoragesCommitContract,
+        ).commit({
           headers,
           body,
         }),
@@ -799,7 +878,9 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (400 | 401 | 404 | 409 | 413 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookStoragesCommitContract).commit({
+        setupApp({ context, routes: webhooksAgentStorageRoutes })(
+          webhookStoragesCommitContract,
+        ).commit({
           headers,
           body: body as AgentStorageCommitBody,
         }),

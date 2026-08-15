@@ -13,8 +13,8 @@ import { sql } from "drizzle-orm";
 import type {
   ComposeJobContent,
   ComposeJobResult,
-} from "@vm0/db/jsonb-contracts/compose-job";
-export type { ComposeJobResult } from "@vm0/db/jsonb-contracts/compose-job";
+} from "@okouai/db/jsonb-contracts/compose-job";
+export type { ComposeJobResult } from "@okouai/db/jsonb-contracts/compose-job";
 
 /**
  * Compose job source — where the job was initiated from

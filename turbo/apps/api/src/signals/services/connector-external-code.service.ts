@@ -5,23 +5,23 @@ import type {
   ConnectorExternalCodeSessionCompleteResponse,
   ConnectorExternalCodeSessionStartResponse,
   ConnectorResponse,
-} from "@vm0/api-contracts/contracts/connector-schemas";
+} from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   resolveConnectorAuthClient,
   type ConnectorAuthClient,
-} from "@vm0/connectors/connector-auth-method";
+} from "@okouai/connectors/connector-auth-method";
 import {
   completeConnectorExternalCodeAuthorizationWithMethod,
   startConnectorExternalCodeAuthorizationWithMethod,
   type ConnectorAuthProviderGrantResult,
-} from "@vm0/connectors/auth-providers";
-import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/error";
-import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
+} from "@okouai/connectors/auth-providers";
+import { isOAuthProviderHttpError } from "@okouai/connectors/auth-providers/oauth/error";
+import { connectorExternalCodeSessions } from "@okouai/db/schema/connector-external-code-session";
 import { command } from "ccstate";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 
@@ -110,6 +110,18 @@ const connectorExternalCodeDisabled = Object.freeze({
   }),
 });
 
+function connectorExternalCodeUnavailable(connectorSlug: ConnectorSlug) {
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: `${connectorSlug} connector is not available`,
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
 function externalCodeResolutionError(
   resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
   args: {
@@ -144,7 +156,7 @@ function externalCodeResolutionError(
       return connectorExternalCodeDisabled;
     }
     case "missing_executable_capability": {
-      return internalServerError("Connector execution is not configured");
+      return connectorExternalCodeUnavailable(args.connectorSlug);
     }
   }
 }
@@ -213,7 +225,7 @@ async function resolveStoredExternalCodeMethod(args: {
     expectedGrantKind: "external-code",
   });
   if (!resolved.ok) {
-    return internalServerError("Invalid external-code authorization session");
+    return connectorExternalCodeUnavailable(args.connectorSlug);
   }
   return resolved;
 }
@@ -256,15 +268,17 @@ async function markPendingSessionsSuperseded(
     );
 }
 
-async function loadOwnedSession(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorSlug: ConnectorSlug;
-  readonly sessionId: string;
-  readonly sessionToken: string;
-  readonly signal: AbortSignal;
-}): Promise<ExternalCodeSessionRow | null> {
+async function loadOwnedSession(
+  args: {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: ConnectorSlug;
+    readonly sessionId: string;
+    readonly sessionToken: string;
+  },
+  signal: AbortSignal,
+): Promise<ExternalCodeSessionRow | null> {
   const [session] = await args.writeDb
     .select(externalCodeSessionSelection)
     .from(connectorExternalCodeSessions)
@@ -281,7 +295,7 @@ async function loadOwnedSession(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return session ?? null;
 }
 
@@ -303,12 +317,14 @@ async function parseEncryptedProviderState(args: {
   }).providerState;
 }
 
-async function expireSession(args: {
-  readonly writeDb: Db;
-  readonly session: ExternalCodeSessionRow;
-  readonly now: Date;
-  readonly signal: AbortSignal;
-}) {
+async function expireSession(
+  args: {
+    readonly writeDb: Db;
+    readonly session: ExternalCodeSessionRow;
+    readonly now: Date;
+  },
+  signal: AbortSignal,
+) {
   await args.writeDb
     .update(connectorExternalCodeSessions)
     .set({
@@ -327,7 +343,7 @@ async function expireSession(args: {
         ),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return badRequestMessage("External-code authorization session expired");
 }
 
@@ -345,12 +361,14 @@ function isCompletingSessionStale(
   );
 }
 
-async function claimSession(args: {
-  readonly writeDb: Db;
-  readonly session: ExternalCodeSessionRow;
-  readonly claimStartedAt: Date;
-  readonly signal: AbortSignal;
-}): Promise<ExternalCodeSessionRow | null> {
+async function claimSession(
+  args: {
+    readonly writeDb: Db;
+    readonly session: ExternalCodeSessionRow;
+    readonly claimStartedAt: Date;
+  },
+  signal: AbortSignal,
+): Promise<ExternalCodeSessionRow | null> {
   const [claimedSession] = await args.writeDb
     .update(connectorExternalCodeSessions)
     .set({ status: "completing", updatedAt: args.claimStartedAt })
@@ -361,16 +379,18 @@ async function claimSession(args: {
       ),
     )
     .returning(externalCodeSessionSelection);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return claimedSession ?? null;
 }
 
-async function claimStillCurrent(args: {
-  readonly writeDb: Db;
-  readonly sessionId: string;
-  readonly claimStartedAt: Date;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+async function claimStillCurrent(
+  args: {
+    readonly writeDb: Db;
+    readonly sessionId: string;
+    readonly claimStartedAt: Date;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const [currentClaim] = await args.writeDb
     .select({
       status: connectorExternalCodeSessions.status,
@@ -379,7 +399,7 @@ async function claimStillCurrent(args: {
     .from(connectorExternalCodeSessions)
     .where(eq(connectorExternalCodeSessions.id, args.sessionId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return (
     currentClaim?.status === "completing" &&
@@ -387,13 +407,15 @@ async function claimStillCurrent(args: {
   );
 }
 
-async function markClaimPending(args: {
-  readonly writeDb: Db;
-  readonly session: ExternalCodeSessionRow;
-  readonly claimStartedAt: Date;
-  readonly errorMessage?: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function markClaimPending(
+  args: {
+    readonly writeDb: Db;
+    readonly session: ExternalCodeSessionRow;
+    readonly claimStartedAt: Date;
+    readonly errorMessage?: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   await args.writeDb
     .update(connectorExternalCodeSessions)
     .set({
@@ -409,16 +431,18 @@ async function markClaimPending(args: {
         eq(connectorExternalCodeSessions.updatedAt, args.claimStartedAt),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function markClaimError(args: {
-  readonly writeDb: Db;
-  readonly session: ExternalCodeSessionRow;
-  readonly claimStartedAt: Date;
-  readonly errorMessage: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function markClaimError(
+  args: {
+    readonly writeDb: Db;
+    readonly session: ExternalCodeSessionRow;
+    readonly claimStartedAt: Date;
+    readonly errorMessage: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const completedAt = nowDate();
   await args.writeDb
     .update(connectorExternalCodeSessions)
@@ -436,16 +460,18 @@ async function markClaimError(args: {
         eq(connectorExternalCodeSessions.updatedAt, args.claimStartedAt),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function markClaimComplete(args: {
-  readonly writeDb: Db;
-  readonly session: ExternalCodeSessionRow;
-  readonly claimStartedAt: Date;
-  readonly connector: ConnectorResponse;
-  readonly signal: AbortSignal;
-}): Promise<CompleteSuccess> {
+async function markClaimComplete(
+  args: {
+    readonly writeDb: Db;
+    readonly session: ExternalCodeSessionRow;
+    readonly claimStartedAt: Date;
+    readonly connector: ConnectorResponse;
+  },
+  signal: AbortSignal,
+): Promise<CompleteSuccess> {
   const completedAt = nowDate();
   const [completedSession] = await args.writeDb
     .update(connectorExternalCodeSessions)
@@ -464,7 +490,7 @@ async function markClaimComplete(args: {
       ),
     )
     .returning({ id: connectorExternalCodeSessions.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!completedSession) {
     throw new Error("External-code authorization session is no longer active");
@@ -483,12 +509,12 @@ async function persistClaimedConnector(
     readonly session: ExternalCodeSessionRow;
     readonly claimStartedAt: Date;
     readonly token: ConnectorAuthProviderGrantResult;
-    readonly signal: AbortSignal;
-    readonly persistConnector: (args: {
-      readonly token: ConnectorAuthProviderGrantResult;
-      readonly signal: AbortSignal;
-    }) => Promise<ConnectorResponse>;
+    readonly persistConnector: (
+      args: { readonly token: ConnectorAuthProviderGrantResult },
+      signal: AbortSignal,
+    ) => Promise<ConnectorResponse>;
   },
+  signal: AbortSignal,
 ): Promise<CompleteSuccess> {
   return await args.writeDb.transaction(async (tx) => {
     await lockExternalCodeSessionOwner({
@@ -496,31 +522,35 @@ async function persistClaimedConnector(
       writeDb: tx,
     });
     if (
-      !(await claimStillCurrent({
-        writeDb: tx,
-        sessionId: args.session.id,
-        claimStartedAt: args.claimStartedAt,
-        signal: args.signal,
-      }))
+      !(await claimStillCurrent(
+        {
+          writeDb: tx,
+          sessionId: args.session.id,
+          claimStartedAt: args.claimStartedAt,
+        },
+        signal,
+      ))
     ) {
       throw new Error(
         "External-code authorization session is no longer active",
       );
     }
 
-    const connector = await args.persistConnector({
-      token: args.token,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const connector = await args.persistConnector(
+      { token: args.token },
+      signal,
+    );
+    signal.throwIfAborted();
 
-    return await markClaimComplete({
-      writeDb: tx,
-      session: args.session,
-      claimStartedAt: args.claimStartedAt,
-      connector,
-      signal: args.signal,
-    });
+    return await markClaimComplete(
+      {
+        writeDb: tx,
+        session: args.session,
+        claimStartedAt: args.claimStartedAt,
+        connector,
+      },
+      signal,
+    );
   });
 }
 
@@ -544,12 +574,14 @@ function terminalErrorResponse(session: ExternalCodeSessionRow) {
   }
 }
 
-async function completeSessionResponse(args: {
-  readonly connectorLoader: () => Promise<ConnectorResponse | null>;
-  readonly signal: AbortSignal;
-}): Promise<CompleteSuccess> {
+async function completeSessionResponse(
+  args: {
+    readonly connectorLoader: () => Promise<ConnectorResponse | null>;
+  },
+  signal: AbortSignal,
+): Promise<CompleteSuccess> {
   const connector = await args.connectorLoader();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!connector) {
     throw new Error("Completed external-code connector not found");
   }
@@ -597,19 +629,21 @@ const completedExternalCodeSessionResponse$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const response = await completeSessionResponse({
-      connectorLoader: () => {
-        return get(
-          zeroConnectorBySlug({
-            orgId: args.orgId,
-            userId: args.userId,
-            connectorSlug: args.method.connectorSlug,
-            snapshot: args.method.snapshot,
-          }),
-        );
+    const response = await completeSessionResponse(
+      {
+        connectorLoader: () => {
+          return get(
+            zeroConnectorBySlug({
+              orgId: args.orgId,
+              userId: args.userId,
+              connectorSlug: args.method.connectorSlug,
+              snapshot: args.method.snapshot,
+            }),
+          );
+        },
       },
       signal,
-    });
+    );
     const error = await set(
       authorizeExternalCodeSessionConnector$,
       { ...args, connectorSlug: args.method.connectorSlug },
@@ -627,12 +661,12 @@ async function completeClaimedExternalCodeSession(
     readonly code: string;
     readonly session: ExternalCodeSessionRow;
     readonly claimStartedAt: Date;
-    readonly signal: AbortSignal;
-    readonly persistConnector: (args: {
-      readonly token: ConnectorAuthProviderGrantResult;
-      readonly signal: AbortSignal;
-    }) => Promise<ConnectorResponse>;
+    readonly persistConnector: (
+      args: { readonly token: ConnectorAuthProviderGrantResult },
+      signal: AbortSignal,
+    ) => Promise<ConnectorResponse>;
   },
+  signal: AbortSignal,
 ) {
   const providerResult = await settle(
     (async () => {
@@ -640,39 +674,45 @@ async function completeClaimedExternalCodeSession(
         session: args.session,
         method: args.resolvedMethod,
       });
-      return await completeConnectorExternalCodeAuthorizationWithMethod({
-        connectorSlug: args.resolvedMethod.connectorSlug,
-        authMethodId: args.resolvedMethod.authMethodId,
-        method: args.resolvedMethod.method,
-        authClient: args.authClient,
-        code: args.code,
-        providerState,
-        signal: args.signal,
-      });
+      return await completeConnectorExternalCodeAuthorizationWithMethod(
+        {
+          connectorSlug: args.resolvedMethod.connectorSlug,
+          authMethodId: args.resolvedMethod.authMethodId,
+          method: args.resolvedMethod.method,
+          authClient: args.authClient,
+          code: args.code,
+          providerState,
+        },
+        signal,
+      );
     })(),
-    args.signal,
+    signal,
   );
   if (!providerResult.ok) {
     if (shouldRestorePendingAfterProviderError(providerResult.error)) {
-      await markClaimPending({
-        writeDb: args.writeDb,
-        session: args.session,
-        claimStartedAt: args.claimStartedAt,
-        errorMessage: errorMessage(providerResult.error),
-        signal: args.signal,
-      });
+      await markClaimPending(
+        {
+          writeDb: args.writeDb,
+          session: args.session,
+          claimStartedAt: args.claimStartedAt,
+          errorMessage: errorMessage(providerResult.error),
+        },
+        signal,
+      );
       const badRequest = providerBadRequest(providerResult.error);
       if (badRequest) {
         return badRequest;
       }
     } else {
-      await markClaimError({
-        writeDb: args.writeDb,
-        session: args.session,
-        claimStartedAt: args.claimStartedAt,
-        errorMessage: errorMessage(providerResult.error),
-        signal: args.signal,
-      });
+      await markClaimError(
+        {
+          writeDb: args.writeDb,
+          session: args.session,
+          claimStartedAt: args.claimStartedAt,
+          errorMessage: errorMessage(providerResult.error),
+        },
+        signal,
+      );
     }
     throw providerResult.error;
   }
@@ -681,27 +721,31 @@ async function completeClaimedExternalCodeSession(
   // client disconnects after provider success.
   const commitSignal = new AbortController().signal;
   const persistedConnector = await onRejection(
-    persistClaimedConnector({
-      connectorSlug: args.resolvedMethod.connectorSlug,
-      authMethod: args.resolvedMethod.authMethodId,
-      writeDb: args.writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      session: args.session,
-      claimStartedAt: args.claimStartedAt,
-      persistConnector: args.persistConnector,
-      token: providerResult.value,
-      signal: commitSignal,
-    }),
-    async (error) => {
-      throwIfAbort(error);
-      await markClaimError({
+    persistClaimedConnector(
+      {
+        connectorSlug: args.resolvedMethod.connectorSlug,
+        authMethod: args.resolvedMethod.authMethodId,
         writeDb: args.writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
         session: args.session,
         claimStartedAt: args.claimStartedAt,
-        errorMessage: errorMessage(error),
-        signal: commitSignal,
-      });
+        persistConnector: args.persistConnector,
+        token: providerResult.value,
+      },
+      commitSignal,
+    ),
+    async (error) => {
+      throwIfAbort(error);
+      await markClaimError(
+        {
+          writeDb: args.writeDb,
+          session: args.session,
+          claimStartedAt: args.claimStartedAt,
+          errorMessage: errorMessage(error),
+        },
+        commitSignal,
+      );
     },
   );
   return persistedConnector;
@@ -875,15 +919,17 @@ export const completeConnectorExternalCodeSession$ = command(
     signal: AbortSignal,
   ) => {
     const writeDb = set(writeDb$);
-    const session = await loadOwnedSession({
-      writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorSlug: args.connectorSlug,
-      sessionId: args.sessionId,
-      sessionToken: args.sessionToken,
+    const session = await loadOwnedSession(
+      {
+        writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug: args.connectorSlug,
+        sessionId: args.sessionId,
+        sessionToken: args.sessionToken,
+      },
       signal,
-    });
+    );
     if (!session) {
       return notFound("External-code authorization session not found");
     }
@@ -924,57 +970,61 @@ export const completeConnectorExternalCodeSession$ = command(
         isSessionExpired(session, now) &&
         isCompletingSessionStale(session, now)
       ) {
-        return await expireSession({ writeDb, session, now, signal });
+        return await expireSession({ writeDb, session, now }, signal);
       }
       return badRequestMessage(
         "External-code authorization session is already completing",
       );
     }
     if (isSessionExpired(session, now)) {
-      return await expireSession({ writeDb, session, now, signal });
+      return await expireSession({ writeDb, session, now }, signal);
     }
 
     const claimStartedAt = now;
-    const claimedSession = await claimSession({
-      writeDb,
-      session,
-      claimStartedAt,
+    const claimedSession = await claimSession(
+      {
+        writeDb,
+        session,
+        claimStartedAt,
+      },
       signal,
-    });
+    );
     if (!claimedSession) {
       return badRequestMessage(
         "External-code authorization session is no longer active",
       );
     }
 
-    const response = await completeClaimedExternalCodeSession({
-      ...resolvedClient,
-      writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      code: args.code,
-      session: claimedSession,
-      claimStartedAt,
-      signal,
-      persistConnector: async ({ token, signal: persistSignal }) => {
-        const connectorResult = await set(
-          upsertConnectorTokenConnection$,
-          {
-            orgId: args.orgId,
-            userId: args.userId,
-            runtimeMethod: resolvedMethod.runtimeMethod,
-            snapshot: resolvedMethod.snapshot,
-            outputs: token.outputs,
-            userInfo: token.userInfo,
-            oauthScopes: token.scopes,
-            expiresIn: token.expiresIn,
-            extraConnectorSecrets: token.extraConnectorSecrets,
-          },
-          persistSignal,
-        );
-        return connectorResult.connector;
+    const response = await completeClaimedExternalCodeSession(
+      {
+        ...resolvedClient,
+        writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
+        code: args.code,
+        session: claimedSession,
+        claimStartedAt,
+        persistConnector: async ({ token }, persistSignal: AbortSignal) => {
+          const connectorResult = await set(
+            upsertConnectorTokenConnection$,
+            {
+              orgId: args.orgId,
+              userId: args.userId,
+              runtimeMethod: resolvedMethod.runtimeMethod,
+              snapshot: resolvedMethod.snapshot,
+              outputs: token.outputs,
+              userInfo: token.userInfo,
+              oauthScopes: token.scopes,
+              expiresIn: token.expiresIn,
+              extraConnectorSecrets: token.extraConnectorSecrets,
+            },
+            persistSignal,
+          );
+          return connectorResult.connector;
+        },
       },
-    });
+      signal,
+    );
     if (response.status !== 200) {
       return response;
     }

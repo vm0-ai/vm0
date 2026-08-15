@@ -1,9 +1,10 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { cn } from "@vm0/ui";
+import { Textarea, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { completeOnboarding$ } from "../../signals/onboarding/onboarding-actions.ts";
 import {
+  ONBOARDING_CHECKOUT_STATE_PARAM,
   onboardingDraft$,
   updateOnboardingDraft$,
   type OnboardingChoice,
@@ -15,7 +16,11 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { OnboardingConnectorSetup } from "./onboarding-connectors.tsx";
 import { onboardingMakeOptions } from "./onboarding-data.ts";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
-import { OnboardingFooter, OnboardingShell } from "./onboarding-shell.tsx";
+import {
+  ONBOARDING_TEXTAREA_CLASS,
+  OnboardingFooter,
+  OnboardingShell,
+} from "./onboarding-shell.tsx";
 
 const BRANCH_STATE_PARAMS = [
   "category",
@@ -25,6 +30,7 @@ const BRANCH_STATE_PARAMS = [
   "onboarding_billing_session_id",
   "onboarding_note",
   "onboarding_template",
+  ONBOARDING_CHECKOUT_STATE_PARAM,
 ] as const;
 
 function choicePath(choice: OnboardingChoice) {
@@ -55,6 +61,7 @@ function PromptOnboarding() {
   const searchParams = useGet(searchParams$);
   const pageSignal = useGet(pageSignal$);
   const { runPrompt } = useOnboardingNavigation();
+  const template = searchParams.get("template")?.trim() || undefined;
   const connectorSlugs = (searchParams.get("connector") ?? "")
     .split(",")
     .map((value) => {
@@ -66,7 +73,7 @@ function PromptOnboarding() {
     const redeemCode = searchParams.get("redeemCode")?.trim() || null;
     const completeAndRun = async (): Promise<void> => {
       await complete(redeemCode, pageSignal);
-      runPrompt(draft.prompt);
+      runPrompt(draft.prompt, template);
     };
     detach(completeAndRun(), Reason.DomCallback);
   };
@@ -96,7 +103,7 @@ function PromptOnboarding() {
         connectorSlugs={connectorSlugs}
         variant="prompt"
       />
-      <textarea
+      <Textarea
         id="onboarding-prompt"
         aria-label={t(($) => {
           return $.onboarding.make.promptLabel;
@@ -105,7 +112,10 @@ function PromptOnboarding() {
         onChange={(event) => {
           setDraft({ prompt: event.target.value });
         }}
-        className="mt-6 min-h-28 w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm leading-[1.625] outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+        className={cn(
+          ONBOARDING_TEXTAREA_CLASS,
+          "mt-6 min-h-28 resize-none px-4 py-3 leading-[1.625]",
+        )}
       />
     </OnboardingShell>
   );

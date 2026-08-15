@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.4.75](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.74...nbd-cow-v0.4.75) (2026-08-14)
+
+
+### Bug Fixes
+
+* **nbd-cow:** remove benchmark dependency on which executable ([#27119](https://github.com/vm0-ai/vm0/issues/27119)) ([d7f6f38](https://github.com/vm0-ai/vm0/commit/d7f6f38660606d777f3d17d0d0a5c91d00510685))
+
+## [0.4.74](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.73...nbd-cow-v0.4.74) (2026-08-13)
+
+
+### Refactoring
+
+* **rust:** centralize nbd orphan cleanup ownership ([#26880](https://github.com/vm0-ai/vm0/issues/26880)) ([0690874](https://github.com/vm0-ai/vm0/commit/069087456bdaf89f4ee8586ee1f5c1497c956f94))
+
+
+### Performance Improvements
+
+* **nbd-cow:** coalesce contiguous flush writes ([#26875](https://github.com/vm0-ai/vm0/issues/26875)) ([b574968](https://github.com/vm0-ai/vm0/commit/b5749682d32a907238135d83f4bc8de4015a560b))
+
+## [0.4.73](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.72...nbd-cow-v0.4.73) (2026-08-06)
+
+
+### Documentation
+
+* **nbd-cow:** document pooled snapshot restore ([#25407](https://github.com/vm0-ai/vm0/issues/25407)) ([70e168a](https://github.com/vm0-ai/vm0/commit/70e168adb652e259bb727feb7b0e45c92adcb951))
+
+## [0.4.72](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.71...nbd-cow-v0.4.72) (2026-08-06)
+
+
+### Documentation
+
+* **nbd-cow:** document cow io cancellation semantics ([#25338](https://github.com/vm0-ai/vm0/issues/25338)) ([51502fb](https://github.com/vm0-ai/vm0/commit/51502fbe14b0fc76a5dbce4b369aa5c06d8316f5))
+
 ## [0.4.71](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.70...nbd-cow-v0.4.71) (2026-08-03)
 
 

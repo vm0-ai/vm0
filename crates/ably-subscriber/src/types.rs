@@ -116,10 +116,19 @@ impl fmt::Debug for TokenDetails {
 pub struct Message {
     /// Event name (e.g. "job", "events", "status").
     pub name: Option<String>,
-    /// Message payload.
+    /// Message payload after MessagePack normalization and supported Ably
+    /// `encoding` processing.
     ///
-    /// Binary payloads are exposed as base64 strings because this public API
-    /// uses `serde_json::Value`, which has no raw binary representation.
+    /// Missing, `nil`, and non-finite root wire values are exposed as JSON
+    /// `null`; those values nested inside arrays or maps are also JSON `null`.
+    /// Binary and extension payload bytes become standard-base64 strings, and
+    /// an extension's type tag is not retained. Invalid UTF-8 strings and map
+    /// keys become empty strings. Other non-string map keys are formatted as
+    /// strings, and duplicate converted keys use last-wins semantics.
+    ///
+    /// Supported `json` and `utf-8` encoding layers are processed after wire
+    /// normalization. An encoding stack containing a `base64` layer stays in
+    /// its normalized JSON form instead of being decoded to raw bytes.
     pub data: serde_json::Value,
     /// Unique message ID.
     pub id: Option<String>,
@@ -186,9 +195,14 @@ pub struct TimingConfig {
     // -- Connection ----------------------------------------------------------
     /// Timeout for WebSocket connect, HTTP requests, and token operations.
     pub connect_timeout: Duration,
-    /// Timeout for best-effort protocol/WebSocket close during shutdown.
+    /// Timeout for protocol/WebSocket close operations and the total wait in
+    /// [`Subscription::close_and_wait`](crate::Subscription::close_and_wait).
     pub close_timeout: Duration,
-    /// Timeout wrapping each individual reconnect attempt.
+    /// Timeout for reconnect setup through sending the channel `ATTACH`.
+    ///
+    /// Waiting for the attach outcome is separately bounded by
+    /// [`realtime_request_timeout`](Self::realtime_request_timeout), so a
+    /// complete reconnect attempt can approach the sum of both timeouts.
     pub reconnect_timeout: Duration,
     /// Fallback `max_idle_interval` when the server omits connection details.
     /// If connection details are present but `maxIdleInterval` is zero or
@@ -237,6 +251,14 @@ pub struct TimingConfig {
     // -- Backpressure --------------------------------------------------------
     /// Bounded capacity of the internal event channel (mpsc). Values below 1
     /// are treated as 1 because Tokio channels do not support zero capacity.
+    ///
+    /// [`Event::Message`] delivery is non-blocking and may drop messages when
+    /// this channel is full. Delivery of [`Event::Connected`],
+    /// [`Event::Disconnected`], and [`Event::Error`] instead waits for capacity,
+    /// which can delay reconnect and post-reconnect receive progress until the
+    /// caller drains an event or closes or drops the
+    /// [`Subscription`](crate::Subscription). See that type for the complete
+    /// backpressure and close behavior.
     pub event_channel_capacity: usize,
 }
 

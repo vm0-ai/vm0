@@ -6,14 +6,14 @@ import chalk from "chalk";
 import type {
   SlackUploadInitResponse,
   SlackUploadMaterializeResponse,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 import {
   completeSlackFileUpload,
-  inferWebUploadContentType,
   initSlackFileUpload,
   materializeSlackFileUpload,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/integrations-slack";
+import { inferWebUploadContentType } from "../../../lib/api/domains/web";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface UploadFileOptions {
   readonly file: string;
@@ -224,7 +224,6 @@ async function uploadFile(options: UploadFileOptions): Promise<void> {
   const initialized = await initSlackFileUpload({
     filename,
     length: file.size,
-    supportsUploadHeaders: true,
     canonical: {
       operationId,
       contentType,
@@ -257,13 +256,13 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:           zero slack upload-file -f /tmp/report.pdf -c C01234
-  Upload to thread:        zero slack upload-file -f /tmp/log.txt -c C01234 --thread 1234567890.123456
-  With title and comment:  zero slack upload-file -f /tmp/data.csv -c C01234 --title "Daily Report" --comment "Here's the report"
+  Upload a file:           okou slack upload-file -f /tmp/report.pdf -c C01234
+  Upload to thread:        okou slack upload-file -f /tmp/log.txt -c C01234 --thread 1234567890.123456
+  With title and comment:  okou slack upload-file -f /tmp/data.csv -c C01234 --title "Daily Report" --comment "Here's the report"
 
 Notes:
   - Uses the bot token (not user SLACK_TOKEN), so no files:write permission is needed
-  - Run-scoped calls publish to VM0 storage before Slack delivery
+  - Run-scoped calls publish to Okou storage before Slack delivery
   - Returns canonical asset details and Slack delivery status`,
   )
   .action(withErrorHandler(uploadFile));

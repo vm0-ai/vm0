@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
+import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";

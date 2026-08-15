@@ -47,6 +47,10 @@ use std::path::{Path, PathBuf};
 use nix::fcntl::Flock;
 use serde::{Deserialize, Serialize};
 
+use guest_contracts::process_containment::{
+    MIN_PROFILE_MEMORY_MB, MIN_PROFILE_VCPU, WorkloadResourcePolicy,
+};
+
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
 use crate::paths::{HomePaths, RootfsPaths, SnapshotPaths};
@@ -118,9 +122,9 @@ pub struct ProfileConfig {
     /// Host-local snapshot identity, covering rootfs identity plus VM shape,
     /// workspace disk size, and provider/runtime inputs.
     pub snapshot_hash: String,
-    /// Guest vCPU count. Must be non-zero and ≤ 1024.
+    /// Guest vCPU count. Must support Guest workload containment and be ≤ 1024.
     pub vcpu: u32,
-    /// Guest RAM in MiB. Must be non-zero and ≤ 1 TiB.
+    /// Guest RAM in MiB. Must support Guest workload containment and be ≤ 1 TiB.
     pub memory_mb: u32,
     /// Rootfs disk in MiB. Used to size the bootable rootfs image.
     /// Must be non-zero and ≤ 1 TiB.
@@ -275,7 +279,7 @@ pub(crate) fn validate_concurrency_factor(value: f64) -> RunnerResult<()> {
 /// The URL is later copied into guest-visible config and log-adjacent paths,
 /// so reject components that can carry credentials or other sensitive values.
 pub(crate) fn normalize_api_base_url(value: &str) -> RunnerResult<String> {
-    let parsed = url::Url::parse(value)
+    let mut parsed = url::Url::parse(value)
         .map_err(|_| RunnerError::Config("server.url must be an absolute http(s) URL".into()))?;
 
     if !matches!(parsed.scheme(), "http" | "https") {
@@ -300,6 +304,24 @@ pub(crate) fn normalize_api_base_url(value: &str) -> RunnerResult<String> {
         return Err(RunnerError::Config(
             "server.url must not include a fragment".into(),
         ));
+    }
+
+    let raw_authority = crate::firewall_hostname_policy::raw_url_authority(value)
+        .ok_or_else(|| RunnerError::Config("server.url must include a host".into()))?;
+    crate::firewall_hostname_policy::validate_raw_url_host(
+        crate::firewall_hostname_policy::raw_host_from_authority(raw_authority),
+        "server.url",
+    )
+    .map_err(RunnerError::Config)?;
+
+    let host_without_trailing_dot = parsed
+        .host_str()
+        .and_then(|host| host.strip_suffix('.'))
+        .map(str::to_owned);
+    if let Some(host) = host_without_trailing_dot {
+        parsed
+            .set_host(Some(&host))
+            .map_err(|_| RunnerError::Config("server.url has an invalid host".into()))?;
     }
 
     Ok(parsed.as_str().trim_end_matches('/').to_string())
@@ -336,19 +358,6 @@ async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
     Ok(())
 }
 
-async fn check_snapshot_complete_marker(path: &Path, label: &str) -> RunnerResult<()> {
-    let content = tokio::fs::read(path)
-        .await
-        .map_err(|e| RunnerError::Config(format!("read {label}: {e}")))?;
-    if content != sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT {
-        return Err(RunnerError::Config(format!(
-            "{label} is invalid: {}",
-            path.display()
-        )));
-    }
-    Ok(())
-}
-
 // This intentionally does not acquire resource locks. Runtime callers that
 // consume image files must use `lock_and_validate_*_image_artifacts` instead.
 async fn validate_profile_image_artifacts(
@@ -379,15 +388,15 @@ async fn validate_profile_snapshot_artifacts(
     rootfs_paths: &RootfsPaths,
 ) -> RunnerResult<SnapshotPaths> {
     let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
-    for path in snapshot_paths.expected_files() {
-        check_path_exists(&path, &format!("profile {name} snapshot")).await?;
+    match sandbox_fc::validate_snapshot_output(&snapshot_paths).await {
+        Ok(sandbox_fc::SnapshotOutputValidation::Complete) => Ok(snapshot_paths),
+        Ok(validation) => Err(RunnerError::Config(format!(
+            "profile {name} snapshot is incomplete: {validation}"
+        ))),
+        Err(error) => Err(RunnerError::Config(format!(
+            "validate profile {name} snapshot: {error}"
+        ))),
     }
-    check_snapshot_complete_marker(
-        &snapshot_paths.complete_marker(),
-        &format!("profile {name} snapshot complete marker"),
-    )
-    .await?;
-    Ok(snapshot_paths)
 }
 
 pub(crate) struct LockedProfileImageArtifacts {
@@ -554,12 +563,29 @@ async fn validate(
                 profile.vcpu
             )));
         }
+        if profile.vcpu < MIN_PROFILE_VCPU {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: vcpu ({}) is below workload-containment minimum ({MIN_PROFILE_VCPU})",
+                profile.vcpu
+            )));
+        }
         if profile.memory_mb > MAX_MEMORY_MB {
             return Err(RunnerError::Config(format!(
                 "profile {name}: memory_mb ({}) exceeds maximum ({MAX_MEMORY_MB})",
                 profile.memory_mb
             )));
         }
+        if profile.memory_mb < MIN_PROFILE_MEMORY_MB {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: memory_mb ({}) is below workload-containment minimum ({MIN_PROFILE_MEMORY_MB})",
+                profile.memory_mb
+            )));
+        }
+        WorkloadResourcePolicy::for_guest_capacity(
+            profile.vcpu,
+            u64::from(profile.memory_mb) * 1024 * 1024,
+        )
+        .map_err(|error| RunnerError::Config(format!("profile {name}: {error}")))?;
         if profile.rootfs_disk_mb > MAX_DISK_MB {
             return Err(RunnerError::Config(format!(
                 "profile {name}: rootfs_disk_mb ({}) exceeds maximum ({MAX_DISK_MB})",

@@ -2,144 +2,110 @@
 
 ## Scope
 
-E2E tests verify deployed API, runner, sandbox, storage, and agent-framework
-integration. They do not recreate the retired `vm0` CLI.
+Deployed E2E tests exercise the product exactly through supported user-facing
+entry points. The current suite covers:
 
-Use the `zero` binary in E2E only for unauthenticated package smoke checks such
-as `zero --help` and `zero --version`. Host-side fixture setup and inspection
-must call the API through the shared Bash helpers.
+- the packaged canonical `okou` binary through unauthenticated command-boundary
+  smoke checks, including rejection of the retired executable name;
+- Clerk sign-up and sign-in through the hosted form UI;
+- onboarding, chat submission, runner dispatch, and the assistant result through
+  the deployed web application;
+- real Claude BYOK, vm0-managed Codex, and vm0-managed Pi execution, including
+  public usage attribution;
+- active-run cancellation through the public run and chat-events APIs;
+- ordinary and empty chat attachments across continuation, plus runner-mounted
+  workflow files and agent instructions;
+- connector firewall placeholder and authentication behavior through the
+  deployed preview API, runner, sandbox, and proxy.
+- raw network protocol, DNS, connector diagnostic, browser classification, and
+  opt-in body-capture telemetry through the deployed runner and public run API.
 
-## E2E-only credentials
+An E2E test must not call `/api/test/*`, mint a test-only API token, write the
+database directly, or use an internal fixture endpoint to construct or inspect
+state. Create state through the same product UI or supported public API that a
+user would use.
 
-CI provides two explicit variables:
+If a behavior needs precise database state or an external-service mock, cover it
+in an API integration test instead. API tests may mount the narrow fixture routes
+they need by passing them explicitly to `setupApp({ routes })` or
+`setupAppWithRoutes`. Test routes must never be added to the deployed `ROUTES`
+registry.
 
-- `E2E_API_TOKEN`: a user-scoped PAT issued only for test infrastructure
-- `E2E_API_URL`: the deployed API endpoint used by the test
+## Test boundaries
 
-These credentials are confined to CI and `e2e/helpers`.
+Keep each layer focused:
 
-- Do not expose them as `ZERO_TOKEN`.
-- Do not write them to `~/.vm0/config.json`.
-- Do not pass them to the `zero` binary.
-- Do not fall back to `VM0_TOKEN` or another product credential.
-- Missing credentials must fail the test immediately.
+- CLI smoke checks verify that the shipped package exposes the supported binary
+  surface without authenticating.
+- Browser E2E verifies third-party Clerk form integration.
+- Playwright verifies the deployed product journey, including the real preview
+  API and runner fleet.
+- API integration tests own deterministic error cases, state matrices, provider
+  mocks, and fixture-only setup.
+- Crates tests own runner and sandbox behavior that does not require the product
+  journey.
 
-`ZERO_TOKEN` is reserved for the genuine run-scoped sandbox token issued to a
-Zero agent. Its capabilities and lifecycle differ from the E2E PAT.
+## Adding deployed E2E coverage
 
-## Shared Bash API boundary
+Before adding a case, verify that it:
 
-Load `e2e/helpers/setup.bash` and use its shared functions:
+- begins at a supported product entry point;
+- creates prerequisites through product behavior;
+- asserts user-visible output rather than internal rows or logs;
+- uses unique user-visible names when parallel execution can collide;
+- leaves cleanup to the product lifecycle or an idempotent public operation;
+- does not depend on a route, credential, environment flag, or database table
+  that exists only for tests.
 
-- `e2e_api_curl`: authenticated API requests
-- `seed_storage_fixture`: prepare and commit storage fixtures
-- `seed_compose_fixture`: create compose fixtures
-- `create_run_fixture`: create a run and return structured JSON
-- `continue_run_fixture`: continue a saved session
-- `cancel_run_fixture`: cancel a run
-- `wait_for_run_fixture`: poll to a terminal status
-- `run_compose_fixture`: create, wait, and print structured run output
-- `fetch_run_log`: retrieve structured agent events or telemetry logs
+When those constraints make a scenario impractical, place the scenario at the
+API integration or crates layer rather than introducing a deployed test hook.
 
-The helpers own authentication, Vercel bypass headers, pagination, response
-validation, and retry behavior. Tests should not duplicate that transport
-logic.
+## Running runner E2E tests
 
-## Basic runner test
+The BATS files under `e2e/tests/03-runner` are CI-only and cannot be run from a
+local checkout. They depend on temporary Clerk organizations and API tokens,
+the pull request's deployed API and app previews, and the preview runner fleet
+provisioned by the `cli-e2e-03-runner-*` jobs in `.github/workflows/turbo.yml`.
+There is no supported local setup for those credentials and services.
 
-```bash
-#!/usr/bin/env bats
+Push runner E2E changes to a branch and use the pull request pipeline to run
+and validate this suite. Do not treat a local `./e2e/run.sh` invocation as
+validation for `03-runner`; running the script without file arguments also
+selects the CI-only runner tests.
 
-load '../../helpers/setup'
+## Adding runner BATS tests
 
-setup_file() {
-    export TEST_DIR="$(mktemp -d)"
-    export AGENT_NAME="e2e-example-$(date +%s%3N)-$RANDOM"
+Runner BATS files live in `e2e/tests/03-runner`. They share the accounts and
+public device-flow tokens prepared by the runner E2E workflow, then create and
+clean up their own agents, threads, and connector connections through public
+`/api/okou/*` endpoints.
 
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-agents:
-  $AGENT_NAME:
-    description: "Runner E2E example"
-    framework: claude-code
-EOF
+Name runner BATS files `run-tNN-<behavior>.bats`, using the next unused `NN`.
+The number is a stable file identifier, not an execution order. Test titles
+should describe behavior without repeating the file identifier.
 
-    seed_compose_fixture "$TEST_DIR/vm0.yaml" >/dev/null
-}
+The workflow also prepares dedicated real-Codex and real-Claude identities.
+Use the Codex identity for vm0-managed model billing coverage and the Claude
+identity for BYOK coverage so provider policy and usage assertions remain
+isolated. The shared mock-runner identity starts with `UTC` as its timezone.
+Runner BATS must not mutate shared account-level preferences from parallel
+shards. Coverage that needs mutable account-level state requires a dedicated
+identity or a serialized lane.
 
-teardown_file() {
-    rm -rf "$TEST_DIR"
-}
+Use a different organization-scoped connector slug in each file that can run in
+parallel. Assert sandbox-visible output and vm0-owned telemetry; do not treat an
+external provider's exact response status or body as the test oracle.
 
-@test "agent completes through the structured API driver" {
-    run run_compose_fixture "$AGENT_NAME" "echo hello"
+For active-run connector refresh cases, coordinate through a run-scoped output
+message in the public chat-events API. Network telemetry is uploaded after the
+run completes, so use it only as the final ordered policy assertion, not as a
+live synchronization point.
 
-    assert_success
-    assert_equal "$(run_fixture_field "$output" '.status')" "completed"
-    assert_output --partial "hello"
-    assert_output --partial '"subtype":"success"'
-}
-```
+Body capture must be enabled on the individual chat run. Do not mutate the
+shared runner account's next-run capture preference: runner files execute in
+parallel, so user-scoped mutable preferences are not isolated between shards.
 
-The first output line from `run_compose_fixture` is compact metadata JSON with
-the run, session, checkpoint, conversation, status, and error fields. Remaining
-lines are structured event payloads from the agent-event API. Assert on stable
-fields and content rather than terminal rendering symbols.
-
-## Continuation and state-sharing
-
-Keep one remote run per BATS case when possible. When a behavior genuinely
-depends on shared session state, keep the related turns in the same test or
-persist the session ID explicitly:
-
-```bash
-run run_compose_fixture "$AGENT_NAME" "first turn"
-assert_success
-session_id=$(run_fixture_field "$output" '.sessionId')
-
-run continue_run_fixture "$session_id" "second turn"
-assert_success
-```
-
-Independent cases should create unique names and avoid relying on execution
-order. Use `setup_file` only when the state is immutable or intentionally shared
-by every case in that file.
-
-## Log assertions
-
-Use `wait_for_log` when telemetry is eventually consistent:
-
-```bash
-wait_for_log "$RUN_ID" --agent -- '"subtype":"init"'
-wait_for_log "$RUN_ID" --system -- "Complete webhook acknowledged"
-wait_for_log "$RUN_ID" --network -- "[github]"
-```
-
-Agent mode returns structured event payloads. System, metrics, and network modes
-use their dedicated API routes and normalized helper output.
-
-## Fixture setup
-
-Use explicit helper functions for model providers, connectors, agents, secrets,
-variables, and other prerequisites. Fixture setup is not a reason to invoke the
-product CLI with an E2E PAT.
-
-## Anti-patterns
-
-- Mapping `E2E_API_TOKEN` to `ZERO_TOKEN`
-- Reading `VM0_TOKEN` or `~/.vm0/config.json`
-- Calling a retired `vm0` command
-- Parsing human CLI prose for run identifiers
-- Reimplementing authentication fallback in a test file
-- Silently skipping when credentials are absent
-- Stacking unrelated remote runs in one test
-
-## Checklist
-
-- The test exercises a deployed integration boundary.
-- Shared API helpers perform all host-side authenticated operations.
-- Assertions use structured response fields or stable event content.
-- Names are unique under parallel execution.
-- Cleanup is idempotent.
-- Credential absence fails fast.
-- No E2E PAT reaches the `zero` binary.
+The workflow discovers the checked-in BATS files, weighs each file by its test
+count, and assigns whole files to at most twelve non-empty shards. New files are
+included automatically. Keep setup and teardown self-contained within a file so
+the shard planner can move it without introducing cross-file ordering.

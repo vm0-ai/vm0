@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 
 export function InlineSettingsRow({
   label,

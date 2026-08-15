@@ -45,14 +45,14 @@ export const cloudflareProvider: AuthCodeConnectorAuthProvider<"cloudflare"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId, clientSecret } = args.authClient;
       return oauthRefreshResultToProviderResult(
         await refreshCloudflareToken(
           clientId,
           clientSecret,
           args.inputs.refreshToken,
-          args.signal,
+          signal,
         ),
       );
     },

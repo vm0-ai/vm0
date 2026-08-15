@@ -1,11 +1,18 @@
 import { command, computed, state } from "ccstate";
+import { timeout } from "signal-timers";
 import {
-  zeroVoiceIoQuotaContract,
+  voiceIoQuotaContract,
   type AudioInputQuotaResponse,
-} from "@vm0/api-contracts/contracts/zero-voice-io-quota";
+} from "@okouai/api-contracts/contracts/voice-io-quota";
 import { fetch$ } from "../fetch.ts";
 import { pageSignal$ } from "../page-signal.ts";
+import { isOrgAdmin$ } from "../org.ts";
 import { zeroClient$ } from "../api-client.ts";
+import {
+  apiTierToBillingTier,
+  billingStatusAsync$,
+  type BillingTier,
+} from "../zero-page/billing.ts";
 import { setBillingSubPage$ } from "../zero-page/settings/workspace-settings-state.ts";
 import { openSettingsDialogAt$ } from "../zero-page/settings/settings-dialog.ts";
 import { logger } from "../log.ts";
@@ -14,10 +21,11 @@ import {
   createDeferredPromise,
   jsonParseOr,
   resetSignal,
+  settle,
   tapError,
   withCleanup,
 } from "../utils.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import { now as currentTimeMs } from "../../lib/time.ts";
@@ -27,6 +35,7 @@ import { i18n } from "../../i18n/index.ts";
 const L = logger("VoiceIO:STT");
 
 const resetRecord$ = resetSignal();
+const resetVoiceSilenceTimer$ = resetSignal();
 // ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
@@ -44,6 +53,9 @@ const internalStream$ = state<MediaStream | null>(null);
 const internalRecorder$ = state<MediaRecorder | null>(null);
 const internalRecordingSession$ = state<VoiceRecordingSession | null>(null);
 const internalAudioActivityMonitor$ = state<AudioActivityMonitor | null>(null);
+const internalStartingPromise$ =
+  state<Promise<VoiceRecordingStartup | null> | null>(null);
+const internalStopAndTranscribePromise$ = state<Promise<void> | null>(null);
 const audioInputQuotaReload$ = state(0);
 
 // ---------------------------------------------------------------------------
@@ -80,7 +92,7 @@ export const audioInputQuota$ = computed(
   async (get): Promise<AudioInputQuotaResponse> => {
     get(audioInputQuotaReload$);
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceIoQuotaContract);
+    const client = createClient(voiceIoQuotaContract);
     const result = await accept(client.get(), [200]);
     return result.body;
   },
@@ -122,10 +134,46 @@ function transcriptionFailedMessage(): string {
   });
 }
 
+function reportMicStartFailure(error: unknown): void {
+  L.error("Microphone start failed", error);
+  toast.error(microphoneAccessDeniedMessage());
+}
+
+function reportAudioActivityMonitorStartFailure(error: unknown): void {
+  L.error("Audio activity monitor start failed", error);
+}
+
 function microphoneAccessDeniedMessage(): string {
   return i18n.t(($) => {
     return $.chat.voice.microphoneAccessDenied;
   });
+}
+
+function audioInputQuotaLimitMessage(
+  tier: BillingTier,
+  isAdmin: boolean,
+): string {
+  if (tier === "team" || tier === "custom") {
+    return i18n.t(($) => {
+      return $.chat.voice.inputLimitReachedReset;
+    });
+  }
+  if (tier === "pro") {
+    return isAdmin
+      ? i18n.t(($) => {
+          return $.chat.voice.inputLimitReachedPro;
+        })
+      : i18n.t(($) => {
+          return $.chat.voice.inputLimitReachedProMember;
+        });
+  }
+  return isAdmin
+    ? i18n.t(($) => {
+        return $.chat.voice.inputLimitReached;
+      })
+    : i18n.t(($) => {
+        return $.chat.voice.inputLimitReachedMember;
+      });
 }
 
 interface VoiceActivity {
@@ -140,7 +188,13 @@ interface VoiceRecordingSession {
   readonly cancel: () => void;
   readonly handleActivity: (activity: VoiceActivity) => void;
   readonly startSilenceTimeout: () => void;
-  readonly stopAndTranscribe: (signal: AbortSignal) => Promise<string>;
+  readonly stopAndTranscribe: (signal: AbortSignal) => Promise<void>;
+}
+
+interface VoiceRecordingStartup {
+  readonly stream: MediaStream;
+  readonly session: VoiceRecordingSession;
+  readonly recordingStartedAt: number;
 }
 
 interface AudioActivityTracker {
@@ -186,6 +240,7 @@ interface VoiceSilenceTimer {
 }
 
 interface VoiceSilenceTimerOptions {
+  readonly resetTimerSignal: () => AbortSignal;
   readonly isStopped: () => boolean;
   readonly markStopped: () => void;
   readonly isVoiceActivityReliable: () => boolean;
@@ -430,6 +485,8 @@ const resetState$ = command(({ set }) => {
   set(internalRecorder$, null);
   set(internalRecordingSession$, null);
   set(internalAudioActivityMonitor$, null);
+  set(internalStartingPromise$, null);
+  set(internalStopAndTranscribePromise$, null);
   set(internalStream$, null);
 });
 
@@ -466,15 +523,19 @@ const refreshAudioInputQuota$ = command(({ set }) => {
 export const openAudioInputQuotaRecovery$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    toast.error(
-      i18n.t(($) => {
-        return $.chat.voice.inputLimitReached;
-      }),
-      {
-        id: AUDIO_INPUT_QUOTA_TOAST_ID,
-      },
-    );
+    const isAdmin = await get(isOrgAdmin$);
+    signal.throwIfAborted();
+    const billingStatus = await get(billingStatusAsync$);
+    signal.throwIfAborted();
+    const tier = apiTierToBillingTier(billingStatus.tier);
+    const waitsForReset = tier === "team" || tier === "custom";
+    toast.error(audioInputQuotaLimitMessage(tier, isAdmin), {
+      id: AUDIO_INPUT_QUOTA_TOAST_ID,
+    });
     set(refreshAudioInputQuota$);
+    if (!isAdmin || waitsForReset) {
+      return;
+    }
     set(setBillingSubPage$, true);
     await set(openSettingsDialogAt$, "billing", get(pageSignal$));
   },
@@ -542,19 +603,18 @@ async function readSttApiResponse(
 async function openMedia(signal: AbortSignal) {
   const audioConfig = await resolveAudioConfig();
   signal.throwIfAborted();
-  // confirmed by ethan@vm0.ai
-  // eslint-disable-next-line no-restricted-syntax -- getUserMedia rejects on permission denied
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: audioConfig.constraints,
-    });
-    signal.throwIfAborted();
-    return stream;
-  } catch (error) {
-    L.error("Microphone access denied", error);
+  // getUserMedia rejects on permission denied and does not accept a signal, so
+  // settle() supplies the cancellation check the raw rejection cannot.
+  const opened = await settle(
+    navigator.mediaDevices.getUserMedia({ audio: audioConfig.constraints }),
+    signal,
+  );
+  if (!opened.ok) {
+    L.error("Microphone access denied", opened.error);
     toast.error(microphoneAccessDeniedMessage());
     return;
   }
+  return opened.value;
 }
 
 async function captureRecorderData(
@@ -637,7 +697,7 @@ const transcribeAudioBlob$ = command(
     });
 
     const response = await tapError(
-      fetchFn("/api/zero/voice-io/stt", {
+      fetchFn("/api/okou/voice-io/stt", {
         method: "POST",
         body: formData,
         signal,
@@ -674,7 +734,6 @@ const transcribeAudioBlob$ = command(
 interface VoiceSegmentSessionOptions {
   readonly initialRecorder: MediaRecorder;
   readonly stream: MediaStream;
-  readonly signal: AbortSignal;
   readonly autoSegment: boolean;
   readonly onSegmentTranscribed: VoiceSegmentTranscribedCallback;
   readonly transcribeBlob: (
@@ -682,6 +741,7 @@ interface VoiceSegmentSessionOptions {
     signal: AbortSignal,
   ) => Promise<SttSegmentResult>;
   readonly isVoiceActivityReliable: () => boolean;
+  readonly resetSilenceTimerSignal: () => AbortSignal;
   readonly onLongSilence: () => void;
   readonly onQuotaExceeded: () => void;
   readonly onRecorderChanged: (recorder: MediaRecorder) => void;
@@ -689,18 +749,18 @@ interface VoiceSegmentSessionOptions {
 
 async function uploadCapturedBlob(
   options: VoiceSegmentSessionOptions,
-  blob: Blob | null,
-  mimeType: string,
+  segment: RecordedVoiceSegment,
   captureReason: VoiceSegmentReason,
   upload: boolean,
+  signal: AbortSignal,
 ): Promise<string> {
-  if (!blob || !upload) {
+  if (!segment.blob || !upload) {
     return "";
   }
 
   const result = await options.transcribeBlob(
-    { blob, mimeType, captureReason },
-    options.signal,
+    { blob: segment.blob, mimeType: segment.mimeType, captureReason },
+    signal,
   );
   if (!result.ok) {
     if (result.quotaExceeded) {
@@ -716,12 +776,13 @@ function createVoiceSegmentCapture(
     readonly activeRecorder: () => MediaRecorder;
     readonly startNextRecorder: () => void;
   },
+  signal: AbortSignal,
 ): CaptureVoiceSegment {
   let captureQueue: Promise<void> = Promise.resolve();
 
   return async (reason, upload): Promise<RecordedVoiceSegment> => {
     const previousCapture = captureQueue;
-    const nextCapture = createDeferredPromise<void>(options.signal);
+    const nextCapture = createDeferredPromise<void>(signal);
     captureQueue = nextCapture.promise;
 
     await previousCapture;
@@ -732,13 +793,13 @@ function createVoiceSegmentCapture(
         const recorder = options.activeRecorder();
         mimeType = recorder.mimeType;
         if (reason === "stop") {
-          blob = await stopRecorderAndCaptureData(recorder, options.signal);
+          blob = await stopRecorderAndCaptureData(recorder, signal);
         } else if (upload && recorder.state !== "inactive") {
-          blob = await stopRecorderAndCaptureData(recorder, options.signal);
-          options.signal.throwIfAborted();
+          blob = await stopRecorderAndCaptureData(recorder, signal);
+          signal.throwIfAborted();
           options.startNextRecorder();
         }
-        options.signal.throwIfAborted();
+        signal.throwIfAborted();
       })(),
       () => {
         nextCapture.resolve(undefined);
@@ -753,6 +814,7 @@ function createVoiceSegmentTranscriber(
   options: VoiceSegmentSessionOptions,
   captureSegment: CaptureVoiceSegment,
   clearCurrentSegmentVoice: () => void,
+  signal: AbortSignal,
 ): VoiceSegmentTranscriber {
   const pendingTranscriptions: Promise<string>[] = [];
   let uploadQueue: Promise<void> = Promise.resolve();
@@ -763,18 +825,12 @@ function createVoiceSegmentTranscriber(
     upload: boolean,
   ): Promise<string> => {
     const previousUpload = uploadQueue;
-    const nextUpload = createDeferredPromise<void>(options.signal);
+    const nextUpload = createDeferredPromise<void>(signal);
     uploadQueue = nextUpload.promise;
 
     await previousUpload;
     return await withCleanup(
-      uploadCapturedBlob(
-        options,
-        segment.blob,
-        segment.mimeType,
-        reason,
-        upload,
-      ),
+      uploadCapturedBlob(options, segment, reason, upload, signal),
       () => {
         if (!nextUpload.settled()) {
           nextUpload.resolve(undefined);
@@ -823,7 +879,7 @@ function createVoiceSegmentTranscriber(
         captureAndUploadSegment(reason, upload),
       ]);
       if (result.status === "rejected") {
-        if (!options.signal.aborted) {
+        if (!signal.aborted) {
           L.error("Voice segment transcription failed", result.reason);
           toast.error(transcriptionFailedMessage());
         }
@@ -847,12 +903,12 @@ function createVoiceSegmentTranscriber(
 function createVoiceSilenceTimer(
   options: VoiceSilenceTimerOptions,
 ): VoiceSilenceTimer {
-  let timerId: number | null = null;
+  let timerSignal: AbortSignal | null = null;
 
   const clear = (): void => {
-    if (timerId !== null) {
-      window.clearTimeout(timerId);
-      timerId = null;
+    if (timerSignal) {
+      options.resetTimerSignal();
+      timerSignal = null;
     }
   };
 
@@ -861,14 +917,23 @@ function createVoiceSilenceTimer(
     if (options.isStopped() || !options.isVoiceActivityReliable()) {
       return;
     }
-    timerId = window.setTimeout(() => {
-      timerId = null;
-      if (options.isStopped() || !options.isVoiceActivityReliable()) {
-        return;
-      }
-      options.markStopped();
-      options.onLongSilence();
-    }, VOICE_ACTIVITY_AUTO_STOP_MS);
+    const signal = options.resetTimerSignal();
+    timerSignal = signal;
+    timeout(
+      () => {
+        if (timerSignal !== signal) {
+          return;
+        }
+        timerSignal = null;
+        if (options.isStopped() || !options.isVoiceActivityReliable()) {
+          return;
+        }
+        options.markStopped();
+        options.onLongSilence();
+      },
+      VOICE_ACTIVITY_AUTO_STOP_MS,
+      { signal },
+    );
   };
 
   return { clear, start };
@@ -876,28 +941,33 @@ function createVoiceSilenceTimer(
 
 function createVoiceSegmentSession(
   options: VoiceSegmentSessionOptions,
+  signal: AbortSignal,
 ): VoiceRecordingSession {
   let currentSegmentHasVoice = false;
   let stopped = false;
   let activeRecorder = options.initialRecorder;
-  const captureSegment = createVoiceSegmentCapture({
-    ...options,
-    activeRecorder: () => {
-      return activeRecorder;
+  const captureSegment = createVoiceSegmentCapture(
+    {
+      ...options,
+      activeRecorder: () => {
+        return activeRecorder;
+      },
+      startNextRecorder: () => {
+        const recorder = createMediaRecorder(options.stream);
+        recorder.start();
+        activeRecorder = recorder;
+        options.onRecorderChanged(recorder);
+      },
     },
-    startNextRecorder: () => {
-      const recorder = createMediaRecorder(options.stream);
-      recorder.start();
-      activeRecorder = recorder;
-      options.onRecorderChanged(recorder);
-    },
-  });
+    signal,
+  );
   const transcriber = createVoiceSegmentTranscriber(
     options,
     captureSegment,
     () => {
       currentSegmentHasVoice = false;
     },
+    signal,
   );
 
   const shouldUploadStopSegment = () => {
@@ -905,6 +975,7 @@ function createVoiceSegmentSession(
   };
 
   const silenceTimer = createVoiceSilenceTimer({
+    resetTimerSignal: options.resetSilenceTimerSignal,
     isStopped: () => {
       return stopped;
     },
@@ -938,19 +1009,16 @@ function createVoiceSegmentSession(
       }
     },
     startSilenceTimeout(): void {
-      silenceTimer.start();
+      if (!currentSegmentHasVoice) {
+        silenceTimer.start();
+      }
     },
-    async stopAndTranscribe(stopSignal: AbortSignal): Promise<string> {
+    async stopAndTranscribe(stopSignal: AbortSignal): Promise<void> {
       stopped = true;
       silenceTimer.clear();
-      const finalText = await transcriber.enqueueSegment(
-        "stop",
-        shouldUploadStopSegment(),
-        false,
-      );
+      await transcriber.enqueueSegment("stop", shouldUploadStopSegment(), true);
       stopSignal.throwIfAborted();
       await transcriber.waitForPending();
-      return finalText;
     },
   };
 }
@@ -979,67 +1047,77 @@ export const startRecording$ = command(
       { once: true },
     );
     set(prepareRecordingStart$);
-
-    await waitForBrowserPaint(signal);
-    signal.throwIfAborted();
-
-    const stream = await tapError(openMedia(signal), (error) => {
-      L.error("Microphone start failed", error);
-      toast.error(microphoneAccessDeniedMessage());
-    });
-    if (stream === undefined) {
-      set(internalStarting$, false);
-      return;
-    }
-    if (!stream) {
-      set(internalStarting$, false);
-      return;
-    }
-
-    const recorder = createMediaRecorder(stream);
     let audioActivityMonitor: AudioActivityMonitor | null = null;
     let voiceActivityReliable = false;
-    let longSilenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
+    let silenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
       null;
-    const recordingSession = createVoiceSegmentSession({
-      initialRecorder: recorder,
-      stream,
-      signal,
-      autoSegment,
-      onSegmentTranscribed,
-      transcribeBlob: (input, uploadSignal) => {
-        return set(transcribeAudioBlob$, input, uploadSignal);
-      },
-      isVoiceActivityReliable: () => {
-        return voiceActivityReliable;
-      },
-      onLongSilence: () => {
-        if (longSilenceStop && !longSilenceStop.settled()) {
-          longSilenceStop.resolve(undefined);
+    const starting = withCleanup(
+      (async (): Promise<VoiceRecordingStartup | null> => {
+        await waitForBrowserPaint(signal);
+        signal.throwIfAborted();
+
+        const stream = await tapError(openMedia(signal), reportMicStartFailure);
+        if (!stream) {
+          return null;
+        }
+
+        const recorder = createMediaRecorder(stream);
+        const sessionOptions: VoiceSegmentSessionOptions = {
+          initialRecorder: recorder,
+          stream,
+          autoSegment,
+          onSegmentTranscribed,
+          transcribeBlob: (input, uploadSignal) => {
+            return set(transcribeAudioBlob$, input, uploadSignal);
+          },
+          isVoiceActivityReliable: () => {
+            return voiceActivityReliable;
+          },
+          resetSilenceTimerSignal: () => {
+            return set(resetVoiceSilenceTimer$, signal);
+          },
+          onLongSilence: () => {
+            if (silenceStop && !silenceStop.settled()) {
+              silenceStop.resolve(undefined);
+            }
+          },
+          onQuotaExceeded: () => {
+            set(resetRecord$);
+          },
+          onRecorderChanged: (nextRecorder) => {
+            set(internalRecorder$, nextRecorder);
+          },
+        };
+        const session = createVoiceSegmentSession(sessionOptions, signal);
+
+        signal.addEventListener("abort", () => {
+          session.cancel();
+          if (audioActivityMonitor) {
+            stopAudioActivityMonitor(audioActivityMonitor);
+          }
+          stopAllTracks(stream);
+          set(resetState$);
+        });
+
+        const recordingStartedAt = set(startMediaRecorder$, recorder);
+        set(internalStream$, stream);
+        set(internalRecorder$, recorder);
+        set(internalRecordingSession$, session);
+        return { stream, session, recordingStartedAt };
+      })(),
+      () => {
+        if (get(internalStartingPromise$) === starting) {
+          set(internalStartingPromise$, null);
+          set(internalStarting$, false);
         }
       },
-      onQuotaExceeded: () => {
-        set(resetRecord$);
-      },
-      onRecorderChanged: (nextRecorder) => {
-        set(internalRecorder$, nextRecorder);
-      },
-    });
-
-    signal.addEventListener("abort", () => {
-      recordingSession.cancel();
-      if (audioActivityMonitor) {
-        stopAudioActivityMonitor(audioActivityMonitor);
-      }
-      stopAllTracks(stream);
-      set(resetState$);
-    });
-
-    set(internalStarting$, false);
-    const recordingStartedAt = set(startMediaRecorder$, recorder);
-    set(internalStream$, stream);
-    set(internalRecorder$, recorder);
-    set(internalRecordingSession$, recordingSession);
+    );
+    set(internalStartingPromise$, starting);
+    const startup = await starting;
+    if (!startup) {
+      return;
+    }
+    const { stream, session: recordingSession, recordingStartedAt } = startup;
     const startedAudioActivityMonitor = await tapError(
       startAudioActivityMonitor(
         stream,
@@ -1053,9 +1131,7 @@ export const startRecording$ = command(
         },
         signal,
       ),
-      (error) => {
-        L.error("Audio activity monitor start failed", error);
-      },
+      reportAudioActivityMonitorStartFailure,
     );
     signal.throwIfAborted();
     if (startedAudioActivityMonitor === undefined) {
@@ -1071,51 +1147,67 @@ export const startRecording$ = command(
     set(internalVoiceActivityAvailable$, audioActivityMonitor !== null);
     set(internalVoiceActivityCoversRecording$, voiceActivityReliable);
     if (voiceActivityReliable) {
-      longSilenceStop = createDeferredPromise<void>(signal);
+      silenceStop = createDeferredPromise<void>(signal);
       recordingSession.startSilenceTimeout();
     } else {
       return;
     }
 
-    await longSilenceStop.promise;
+    await silenceStop.promise;
     signal.throwIfAborted();
-    const text = await set(stopAndTranscribe$, signal);
-    if (text) {
-      onSegmentTranscribed(text);
-    }
+    await set(stopAndTranscribe$, signal);
   },
 );
 
 export const stopAndTranscribe$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<string> => {
-    if (!get(internalRecording$)) {
-      return "";
-    }
-
-    const recorder = get(internalRecorder$);
-    const session = get(internalRecordingSession$);
-    const audioActivityMonitor = get(internalAudioActivityMonitor$);
-    if (audioActivityMonitor) {
-      stopAudioActivityMonitor(audioActivityMonitor);
-      await closeAudioContextQuietly(audioActivityMonitor.audioContext);
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const activeCompletion = get(internalStopAndTranscribePromise$);
+    if (activeCompletion) {
+      await activeCompletion;
       signal.throwIfAborted();
-      set(internalAudioActivityMonitor$, null);
-      set(internalSpeechDetected$, false);
-      set(internalVoiceLevel$, 0);
+      return;
+    }
+    const starting = get(internalStartingPromise$);
+    if (starting) {
+      await starting;
+      signal.throwIfAborted();
+      await set(stopAndTranscribe$, signal);
+      return;
+    }
+    if (!get(internalRecording$)) {
+      return;
     }
 
-    if (!session) {
-      if (recorder && recorder.state !== "inactive") {
-        recorder.stop();
-      }
-      set(resetRecord$);
-      return "";
-    }
+    const completion = withCleanup(
+      (async () => {
+        const recorder = get(internalRecorder$);
+        const session = get(internalRecordingSession$);
+        const audioActivityMonitor = get(internalAudioActivityMonitor$);
+        if (audioActivityMonitor) {
+          stopAudioActivityMonitor(audioActivityMonitor);
+          await closeAudioContextQuietly(audioActivityMonitor.audioContext);
+          signal.throwIfAborted();
+          set(internalAudioActivityMonitor$, null);
+          set(internalSpeechDetected$, false);
+          set(internalVoiceLevel$, 0);
+        }
 
-    set(internalRecording$, false);
-    set(internalTranscribing$, true);
-    return await withCleanup(session.stopAndTranscribe(signal), () => {
-      set(resetRecord$);
-    });
+        if (!session) {
+          if (recorder && recorder.state !== "inactive") {
+            recorder.stop();
+          }
+          return;
+        }
+
+        set(internalRecording$, false);
+        set(internalTranscribing$, true);
+        await session.stopAndTranscribe(signal);
+      })(),
+      () => {
+        set(resetRecord$);
+      },
+    );
+    set(internalStopAndTranscribePromise$, completion);
+    await completion;
   },
 );

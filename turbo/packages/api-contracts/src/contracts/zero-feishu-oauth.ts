@@ -22,7 +22,7 @@ export const zeroFeishuOauthCallbackQuerySchema = z.object({
 export const zeroFeishuOauthContract = c.router({
   connect: {
     method: "GET",
-    path: "/api/zero/feishu/oauth/connect",
+    path: "/api/okou/feishu/oauth/connect",
     query: zeroFeishuOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),
@@ -32,7 +32,7 @@ export const zeroFeishuOauthContract = c.router({
   },
   callback: {
     method: "GET",
-    path: "/api/zero/feishu/oauth/callback",
+    path: "/api/okou/feishu/oauth/callback",
     query: zeroFeishuOauthCallbackQuerySchema,
     responses: {
       200: z.object({ redirectUrl: z.url() }),

@@ -20,6 +20,7 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         "beta-multiline-secret-fragment\n",
         "-----END VM0 TEST KEY-----\n",
     );
+    let short_unicode_multiline_secret = "密ab\n钥cd\n";
     let tail_only_secret = [
         "tail-boundary-start",
         "dropped-tail-fragment-zero",
@@ -72,6 +73,11 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     stderr_payload.push_str("\nbeta-multiline-secret-fragment\r");
     stderr_payload.push_str("\n-----END VM0 TEST KEY-----");
     stderr_payload.push_str("\nafter-multiline-secret");
+    stderr_payload.push_str("\nshort unicode multiline fragments begin");
+    stderr_payload.push_str("\n密ab");
+    stderr_payload.push_str("\nnon-secret separator");
+    stderr_payload.push_str("\n钥cd");
+    stderr_payload.push_str("\nshort unicode multiline fragments end");
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &format!("@fail:{stderr_payload}"), 3, 1)?;
@@ -82,9 +88,10 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     let engine = base64::engine::general_purpose::STANDARD;
     let encoded_secret = engine.encode(secret);
     let encoded_multiline_secret = engine.encode(multiline_secret);
+    let encoded_short_unicode_multiline_secret = engine.encode(short_unicode_multiline_secret);
     let encoded_tail_only_secret = engine.encode(&tail_only_secret);
     let masker = SecretMasker::from_raw(&format!(
-        "{encoded_secret},{encoded_multiline_secret},{encoded_tail_only_secret}"
+        "{encoded_secret},{encoded_multiline_secret},{encoded_short_unicode_multiline_secret},{encoded_tail_only_secret}"
     ));
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
@@ -158,6 +165,8 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         "retained-tail-fragment-one",
         "retained-tail-fragment-two",
         "retained-tail-fragment-three",
+        "密ab",
+        "钥cd",
     ] {
         assert!(
             !stderr.contains(leaked_fragment),

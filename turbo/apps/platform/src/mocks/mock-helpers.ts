@@ -11,13 +11,3 @@ import { triggerAblyEvent } from "./ably.ts";
 export function createChatEvent(threadId: string): void {
   triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
 }
-
-/** Simulate a new run being created in a thread. */
-export function createChatRun(threadId: string): void {
-  triggerAblyEvent(`chatThreadRunCreated:${threadId}`);
-}
-
-/** Simulate a run status update in a thread (e.g. completed, failed, cancelled). */
-export function updateChatRun(threadId: string): void {
-  triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
-}

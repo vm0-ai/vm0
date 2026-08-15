@@ -10,8 +10,9 @@ describe("getModelDisplayName", () => {
     expect(getModelDisplayName("gpt-5.5")).toBe("GPT 5.5");
   });
 
-  it("uses a friendly label for Kimi K3", () => {
-    expect(getModelDisplayName("kimi-k3")).toBe("Kimi K3");
+  it("falls back to raw IDs for historical retired models", () => {
+    expect(getModelDisplayName("kimi-k3")).toBe("kimi-k3");
+    expect(getModelDisplayName("claude-opus-4-7")).toBe("claude-opus-4-7");
   });
 
   it("uses friendly labels for Claude Opus 5 model IDs", () => {
@@ -19,6 +20,11 @@ describe("getModelDisplayName", () => {
     expect(getModelDisplayName("anthropic/claude-opus-5")).toBe(
       "Claude Opus 5",
     );
+  });
+
+  it("uses friendly labels for DeepSeek V4 models", () => {
+    expect(getModelDisplayName("deepseek-v4-flash")).toBe("DeepSeek V4 Flash");
+    expect(getModelDisplayName("deepseek-v4-pro")).toBe("DeepSeek V4 Pro");
   });
 
   it("falls back to the raw model ID when no display name is defined", () => {

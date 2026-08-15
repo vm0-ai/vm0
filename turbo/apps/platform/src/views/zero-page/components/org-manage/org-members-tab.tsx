@@ -1,18 +1,19 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
-  IconSearch,
-  IconShieldCheck,
-  IconDots,
-  IconPlus,
-  IconClock,
-  IconCheck,
-  IconX,
-  IconUserPlus,
-} from "@tabler/icons-react";
+  Search,
+  ShieldCheck,
+  Ellipsis,
+  Plus,
+  Clock,
+  Check,
+  X,
+  UserPlus,
+  AlertTriangle,
+} from "lucide-react";
 import {
   cn,
   Input,
@@ -33,11 +34,16 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   orgRoleSchema,
   type OrgRole,
-} from "@vm0/api-contracts/contracts/org-members";
+} from "@okouai/api-contracts/contracts/org-members";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type {
+  UsagePackManagementResponse,
+  UsagePackUsd,
+} from "@okouai/api-contracts/contracts/zero-billing";
 import {
   orgMembers$,
   orgPendingInvitations$,
@@ -50,6 +56,8 @@ import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { user$ } from "../../../../signals/auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { orgPlanCapabilities$ } from "../../../../signals/zero-page/org-plan-capabilities.ts";
 import {
   memberSearch$,
   setMemberSearch$,
@@ -61,6 +69,10 @@ import {
   setInviteDialogOpen$,
   inviteRole$,
   setInviteRole$,
+  memberUsagePackManagement$,
+  invitationUsagePackCatalog$,
+  inviteUsagePackUsd$,
+  setInviteUsagePackUsd$,
   selfDemoteDialogOpen$,
   setSelfDemoteDialogOpen$,
   removeMemberDialogTarget$,
@@ -68,6 +80,9 @@ import {
   revokeInvitationDialogTarget$,
   setRevokeInvitationDialogTarget$,
   inviteMember$,
+  invitePurchasePreview$,
+  closeInvitePurchasePreview$,
+  confirmInvitePurchase$,
   changeRole$,
   selfDemote$,
   removeMember$,
@@ -75,8 +90,64 @@ import {
   acceptRequest$,
   rejectRequest$,
 } from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
+import {
+  openSettingsBillingPlans$,
+  openSettingsMemberUsagePacks$,
+} from "../../../../signals/zero-page/settings/settings-dialog.ts";
+import { formatUsd } from "../../../../i18n/format.ts";
+import { UserAvatar } from "../../../components/avatar.tsx";
+import {
+  parseUsagePackOption,
+  usagePackOptionLabel,
+} from "./usage-pack-options.ts";
+import { UsagePackPaymentSummary } from "./usage-pack-pricing-page.tsx";
 
-const ROW_GRID = "grid grid-cols-[1fr_6rem_5.5rem_2rem] gap-x-4 items-center";
+const ROW_GRID = "grid gap-x-4 items-center";
+
+function memberRowGrid(showUsagePack: boolean): string {
+  return cn(
+    ROW_GRID,
+    showUsagePack
+      ? "grid-cols-[minmax(0,1fr)_6rem_7rem_5.5rem_2rem]"
+      : "grid-cols-[minmax(0,1fr)_6rem_5.5rem_2rem]",
+  );
+}
+
+function MembersTableHeader({ showUsagePack }: { showUsagePack: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className={cn(
+        memberRowGrid(showUsagePack),
+        "sticky top-0 z-10 px-5 py-2.5 text-[13px] font-medium text-foreground bg-card",
+      )}
+    >
+      <div>
+        {t(($) => {
+          return $.settings.workspace.members.user;
+        })}
+      </div>
+      <div>
+        {t(($) => {
+          return $.settings.workspace.members.joined;
+        })}
+      </div>
+      {showUsagePack && (
+        <div>
+          {t(($) => {
+            return $.settings.workspace.members.usagePack;
+          })}
+        </div>
+      )}
+      <div>
+        {t(($) => {
+          return $.settings.workspace.members.role;
+        })}
+      </div>
+      <div />
+    </div>
+  );
+}
 
 function displayName(m: OrgMember): string {
   const parts = [m.firstName, m.lastName].filter(Boolean);
@@ -94,6 +165,7 @@ export function OrgMembersTab() {
   const requestsLoadable = useLoadable(orgMembershipRequests$);
   const userLoadable = useLoadable(user$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const usagePackManagementLoadable = useLoadable(memberUsagePackManagement$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
 
@@ -108,6 +180,16 @@ export function OrgMembersTab() {
     requestsLoadable.state === "hasData" ? requestsLoadable.data : [];
   const currentUserId =
     userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
+  const usagePackManagement =
+    usagePackManagementLoadable.state === "hasData"
+      ? usagePackManagementLoadable.data
+      : null;
+  const showUsagePack = usagePackManagement !== null;
+  const usagePackByMemberId = new Map(
+    usagePackManagement?.allocations.map((allocation) => {
+      return [allocation.memberId, allocation.usagePackUsd] as const;
+    }),
+  );
   const isLoading = membersLoadable.state === "loading";
 
   const adminCount = members.filter((m) => {
@@ -141,9 +223,8 @@ export function OrgMembersTab() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
-          <IconSearch
+          <Search
             size={15}
-            stroke={1.5}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
           />
           <Input
@@ -158,40 +239,23 @@ export function OrgMembersTab() {
             className="pl-9"
           />
         </div>
-        {isAdmin && <InviteDialog />}
+        {isAdmin && (
+          <>
+            <InviteDialog />
+            <InvitePurchaseConfirmationDialog />
+          </>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl bg-card zero-border">
-        <div
-          className={cn(
-            ROW_GRID,
-            "sticky top-0 z-10 px-5 py-2.5 text-[13px] font-medium text-foreground bg-card",
-          )}
-        >
-          <div>
-            {t(($) => {
-              return $.settings.workspace.members.user;
-            })}
-          </div>
-          <div>
-            {t(($) => {
-              return $.settings.workspace.members.joined;
-            })}
-          </div>
-          <div>
-            {t(($) => {
-              return $.settings.workspace.members.role;
-            })}
-          </div>
-          <div />
-        </div>
+        <MembersTableHeader showUsagePack={showUsagePack} />
         <div className="h-0 zero-border-t mx-5" />
 
         {isLoading && (
           <>
-            <MemberRowSkeleton />
-            <MemberRowSkeleton />
-            <MemberRowSkeleton />
+            <MemberRowSkeleton showUsagePack={showUsagePack} />
+            <MemberRowSkeleton showUsagePack={showUsagePack} />
+            <MemberRowSkeleton showUsagePack={showUsagePack} />
           </>
         )}
 
@@ -216,7 +280,7 @@ export function OrgMembersTab() {
           <>
             <div className="px-5 pt-3 pb-1">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                <IconUserPlus size={13} stroke={1.8} />
+                <UserPlus size={13} />
                 {t(($) => {
                   return $.settings.workspace.members.joinRequests;
                 })}
@@ -226,7 +290,10 @@ export function OrgMembersTab() {
               return (
                 <div key={req.id}>
                   {i > 0 && <div className="h-0 zero-border-t mx-5" />}
-                  <MembershipRequestRow request={req} />
+                  <MembershipRequestRow
+                    request={req}
+                    showUsagePack={showUsagePack}
+                  />
                 </div>
               );
             })}
@@ -246,6 +313,9 @@ export function OrgMembersTab() {
                   isCurrentUser={m.userId === currentUserId}
                   isAdmin={isAdmin}
                   isOnlyAdmin={adminCount < 2}
+                  showUsagePack={showUsagePack}
+                  usagePackManagement={usagePackManagement}
+                  usagePackUsd={usagePackByMemberId.get(m.userId) ?? null}
                 />
               </div>
             );
@@ -260,7 +330,11 @@ export function OrgMembersTab() {
                   membershipRequests.length > 0) && (
                   <div className="h-0 zero-border-t mx-5" />
                 )}
-                <PendingInvitationRow invitation={inv} isAdmin={isAdmin} />
+                <PendingInvitationRow
+                  invitation={inv}
+                  isAdmin={isAdmin}
+                  showUsagePack={showUsagePack}
+                />
               </div>
             );
           })}
@@ -277,6 +351,21 @@ function InviteDialog() {
   const setOpen = useSet(setInviteDialogOpen$);
   const role = useGet(inviteRole$);
   const setRole = useSet(setInviteRole$);
+  const usagePackUsd = useGet(inviteUsagePackUsd$);
+  const setUsagePackUsd = useSet(setInviteUsagePackUsd$);
+  const featureSwitches = useGet(featureSwitch$);
+  const capabilities = useLastResolved(orgPlanCapabilities$);
+  const openBillingPlans = useSet(openSettingsBillingPlans$);
+  const catalogLoadable = useLoadable(invitationUsagePackCatalog$);
+  const usagePacks =
+    catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
+  const requiresUsagePack = usagePacks !== null;
+  const usagePackContextLoading = catalogLoadable.state === "loading";
+  const usagePackContextError = catalogLoadable.state === "hasError";
+  const upgradeRequired =
+    featureSwitches[FeatureSwitchKey.UsagePackPlans] &&
+    capabilities !== undefined &&
+    !capabilities.memberInvitationAllowed;
   const [loadable, doInvite] = useLoadableSet(inviteMember$);
   const sending = loadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
@@ -288,7 +377,20 @@ function InviteDialog() {
   const setTouched = useSet(setInviteTouched$);
 
   const handleSend = () => {
-    detach(doInvite(trimmed, role, pageSignal), Reason.DomCallback);
+    detach(
+      doInvite(
+        trimmed,
+        role,
+        requiresUsagePack ? usagePackUsd : null,
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleUpgrade = () => {
+    setOpen(false);
+    openBillingPlans();
   };
 
   return (
@@ -297,15 +399,12 @@ function InviteDialog() {
       onOpenChange={(v) => {
         if (!sending) {
           setOpen(v);
-          if (!v) {
-            setRole(orgRoleSchema.parse("member"));
-          }
         }
       }}
     >
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5 rounded-lg">
-          <IconPlus size={14} stroke={2} />
+          <Plus size={14} />
           {t(($) => {
             return $.settings.workspace.members.addMember;
           })}
@@ -318,72 +417,122 @@ function InviteDialog() {
       >
         <DialogHeader>
           <DialogTitle>
-            {t(($) => {
-              return $.settings.workspace.members.invite.title;
-            })}
+            {upgradeRequired
+              ? t(($) => {
+                  return $.settings.workspace.members.invite.upgrade.title;
+                })
+              : t(($) => {
+                  return $.settings.workspace.members.invite.title;
+                })}
           </DialogTitle>
-          <DialogDescription>
+          {!upgradeRequired && (
+            <DialogDescription>
+              {t(($) => {
+                return $.settings.workspace.members.invite.description;
+              })}
+            </DialogDescription>
+          )}
+        </DialogHeader>
+        {upgradeRequired && (
+          <DialogDescription className="py-2 leading-6">
             {t(($) => {
-              return $.settings.workspace.members.invite.description;
+              return $.settings.workspace.members.invite.upgrade.description;
             })}
           </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Input
-              placeholder={t(($) => {
-                return $.settings.workspace.members.invite.emailPlaceholder;
-              })}
-              type="email"
-              value={email}
-              disabled={sending}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setTouched(false);
-              }}
-              onBlur={() => {
-                return setTouched(true);
-              }}
-            />
-            {touched && trimmed && !isValid && (
-              <p className="text-[13px] text-destructive">
-                {t(($) => {
-                  return $.settings.workspace.members.invite.invalidEmail;
+        )}
+        {!upgradeRequired && (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Input
+                placeholder={t(($) => {
+                  return $.settings.workspace.members.invite.emailPlaceholder;
                 })}
-              </p>
+                type="email"
+                value={email}
+                disabled={sending}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setTouched(false);
+                }}
+                onBlur={() => {
+                  return setTouched(true);
+                }}
+              />
+              {touched && trimmed && !isValid && (
+                <p className="text-[13px] text-destructive">
+                  {t(($) => {
+                    return $.settings.workspace.members.invite.invalidEmail;
+                  })}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">
+                {t(($) => {
+                  return $.settings.workspace.members.invite.roleLabel;
+                })}
+              </label>
+              <Select
+                value={role}
+                onValueChange={(v) => {
+                  return setRole(orgRoleSchema.parse(v));
+                }}
+                disabled={sending}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">
+                    {t(($) => {
+                      return $.settings.workspace.members.member;
+                    })}
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    {t(($) => {
+                      return $.settings.workspace.members.admin;
+                    })}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {usagePacks && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">
+                  {t(($) => {
+                    return $.billing.plans.usagePacks.memberPackages;
+                  })}
+                </label>
+                <Select
+                  value={String(usagePackUsd)}
+                  onValueChange={(value) => {
+                    return setUsagePackUsd(
+                      parseUsagePackOption(value, usagePacks),
+                    );
+                  }}
+                  disabled={sending}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
+                    {usagePacks.map((usagePack) => {
+                      return (
+                        <SelectItem
+                          key={usagePack.usagePackUsd}
+                          value={String(usagePack.usagePackUsd)}
+                          className="whitespace-nowrap"
+                        >
+                          {usagePackOptionLabel(usagePack)}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium">
-              {t(($) => {
-                return $.settings.workspace.members.invite.roleLabel;
-              })}
-            </label>
-            <Select
-              value={role}
-              onValueChange={(v) => {
-                return setRole(orgRoleSchema.parse(v));
-              }}
-              disabled={sending}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="member">
-                  {t(($) => {
-                    return $.settings.workspace.members.member;
-                  })}
-                </SelectItem>
-                <SelectItem value="admin">
-                  {t(($) => {
-                    return $.settings.workspace.members.admin;
-                  })}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        )}
         <DialogFooter>
           <Button
             variant="outline"
@@ -397,13 +546,161 @@ function InviteDialog() {
               return $.settings.shared.cancel;
             })}
           </Button>
-          <Button size="sm" disabled={!isValid || sending} onClick={handleSend}>
-            {sending
+          <Button
+            size="sm"
+            disabled={
+              !upgradeRequired &&
+              (!isValid ||
+                sending ||
+                usagePackContextLoading ||
+                usagePackContextError)
+            }
+            onClick={upgradeRequired ? handleUpgrade : handleSend}
+          >
+            {upgradeRequired
               ? t(($) => {
-                  return $.settings.workspace.members.invite.progress;
+                  return $.settings.workspace.members.invite.upgrade.action;
+                })
+              : sending
+                ? t(($) => {
+                    return $.settings.workspace.members.invite.progress;
+                  })
+                : requiresUsagePack
+                  ? t(($) => {
+                      return $.chat.actions.continue;
+                    })
+                  : t(($) => {
+                      return $.settings.workspace.members.invite.send;
+                    })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function InvitePurchaseConfirmationDialog() {
+  const { t } = useTranslation();
+  const preview = useGet(invitePurchasePreview$);
+  const close = useSet(closeInvitePurchasePreview$);
+  const [confirmationLoadable, confirm] = useLoadableSet(
+    confirmInvitePurchase$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const confirming = confirmationLoadable.state === "loading";
+  const error = confirmationLoadable.state === "hasError";
+
+  return (
+    <Dialog
+      open={preview !== null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !confirming) {
+          close();
+        }
+      }}
+    >
+      <DialogContent
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
+        <DialogHeader>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.invite.purchase.title;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {t(($) => {
+              return $.settings.workspace.members.invite.purchase.description;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        {preview && (
+          <>
+            <UsagePackPaymentSummary
+              preview={{
+                immediateAmountCents: preview.payment.immediateAmountCents,
+                immediateCreditGrant: {
+                  purchasedCredits: preview.payment.purchasedCredits,
+                  bonusCredits: preview.payment.bonusCredits,
+                  totalCredits: preview.payment.totalCredits,
+                  expiresAt: preview.payment.currentPeriodEnd,
+                },
+              }}
+            />
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 pt-1 text-sm">
+              <span className="text-muted-foreground">
+                {t(($) => {
+                  return $.settings.workspace.members.invite.purchase.invitee;
+                })}
+              </span>
+              <span className="max-w-64 truncate text-right font-medium text-foreground">
+                {preview.email}
+              </span>
+              <span className="text-muted-foreground">
+                {t(($) => {
+                  return $.settings.workspace.members.invite.roleLabel;
+                })}
+              </span>
+              <span className="text-right font-medium text-foreground">
+                {preview.role === "admin"
+                  ? t(($) => {
+                      return $.settings.workspace.members.admin;
+                    })
+                  : t(($) => {
+                      return $.settings.workspace.members.member;
+                    })}
+              </span>
+              <span className="text-muted-foreground">
+                {t(($) => {
+                  return $.billing.plans.usagePacks.memberPackages;
+                })}
+              </span>
+              <span className="text-right font-medium text-foreground">
+                {t(
+                  ($) => {
+                    return $.billing.plans.pricePerMonth;
+                  },
+                  { price: formatUsd(preview.payment.usagePackUsd, 0) },
+                )}
+              </span>
+            </div>
+          </>
+        )}
+        {error && (
+          <p className="text-xs text-destructive">
+            {t(($) => {
+              return $.settings.workspace.members.invite.purchase.error;
+            })}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={confirming}
+            onClick={close}
+          >
+            {t(($) => {
+              return $.settings.shared.cancel;
+            })}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={confirming || !preview}
+            onClick={() => {
+              detach(confirm(pageSignal), Reason.DomCallback);
+            }}
+          >
+            {confirming
+              ? t(($) => {
+                  return $.billing.common.updating;
                 })
               : t(($) => {
-                  return $.settings.workspace.members.invite.send;
+                  return $.billing.common.confirm;
                 })}
           </Button>
         </DialogFooter>
@@ -417,11 +714,17 @@ function MemberRow({
   isCurrentUser,
   isAdmin,
   isOnlyAdmin,
+  showUsagePack,
+  usagePackManagement,
+  usagePackUsd,
 }: {
   member: OrgMember;
   isCurrentUser: boolean;
   isAdmin: boolean;
   isOnlyAdmin: boolean;
+  showUsagePack: boolean;
+  usagePackManagement: UsagePackManagementResponse | null;
+  usagePackUsd: UsagePackUsd | null;
 }) {
   const { i18n, t } = useTranslation();
   const name = displayName(member);
@@ -431,9 +734,9 @@ function MemberRow({
     isAdmin && isCurrentUser && member.role === "admin" && !isOnlyAdmin;
 
   return (
-    <div className={cn(ROW_GRID, "py-3 px-5")}>
+    <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
-        <MemberAvatar
+        <UserAvatar
           imageUrl={member.imageUrl}
           initial={initial}
           name={name || member.email}
@@ -462,11 +765,22 @@ function MemberRow({
       <div className="text-[13px] text-muted-foreground tabular-nums">
         {formatDate(member.joinedAt, i18n.resolvedLanguage ?? i18n.language)}
       </div>
+      {showUsagePack && (
+        <div className="text-[13px] text-muted-foreground tabular-nums">
+          {usagePackUsd === null
+            ? "—"
+            : t(
+                ($) => {
+                  return $.billing.plans.pricePerMonth;
+                },
+                { price: formatUsd(usagePackUsd, 0) },
+              )}
+        </div>
+      )}
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconShieldCheck
+          <ShieldCheck
             size={12}
-            stroke={1.8}
             className={
               member.role === "admin"
                 ? "text-blue-500"
@@ -483,14 +797,57 @@ function MemberRow({
         </span>
       </div>
       <div className="flex justify-end">
-        {canManage && <MemberActions member={member} />}
-        {canSelfDemote && <SelfDemoteAction email={member.email} />}
+        {canManage && (
+          <MemberActions
+            member={member}
+            usagePackManagement={usagePackManagement}
+          />
+        )}
+        {isAdmin &&
+          isCurrentUser &&
+          (canSelfDemote || usagePackManagement !== null) && (
+            <SelfDemoteAction
+              canSelfDemote={canSelfDemote}
+              email={member.email}
+              usagePackManagement={usagePackManagement}
+            />
+          )}
       </div>
     </div>
   );
 }
 
-function SelfDemoteAction({ email }: { email: string }) {
+function AdjustUsagePackMenuItem({
+  management,
+}: {
+  management: UsagePackManagementResponse;
+}) {
+  const { t } = useTranslation();
+  const openMemberUsagePacks = useSet(openSettingsMemberUsagePacks$);
+  return (
+    <DropdownMenuItem
+      className="whitespace-nowrap"
+      onSelect={(event) => {
+        event.preventDefault();
+        return openMemberUsagePacks(management);
+      }}
+    >
+      {t(($) => {
+        return $.billing.plans.usagePacks.configurePackages;
+      })}
+    </DropdownMenuItem>
+  );
+}
+
+function SelfDemoteAction({
+  canSelfDemote,
+  email,
+  usagePackManagement,
+}: {
+  canSelfDemote: boolean;
+  email: string;
+  usagePackManagement: UsagePackManagementResponse | null;
+}) {
   const { t } = useTranslation();
   const open = useGet(selfDemoteDialogOpen$);
   const setOpen = useSet(setSelfDemoteDialogOpen$);
@@ -513,7 +870,7 @@ function SelfDemoteAction({ email }: { email: string }) {
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             aria-label={t(
               ($) => {
                 return $.settings.workspace.members.actionsFor;
@@ -522,25 +879,33 @@ function SelfDemoteAction({ email }: { email: string }) {
                 email,
               },
             )}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
+            variant="quiet"
+            size="icon-xs"
           >
-            <IconDots size={15} stroke={1.5} />
-          </button>
+            <Ellipsis size={15} />
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-48"
+          className="w-max min-w-48 max-w-[calc(100vw-2rem)]"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
         >
-          <DialogTrigger asChild>
-            <DropdownMenuItem>
+          {usagePackManagement && (
+            <AdjustUsagePackMenuItem management={usagePackManagement} />
+          )}
+          {canSelfDemote && (
+            <DropdownMenuItem
+              onSelect={() => {
+                setOpen(true);
+              }}
+            >
               {t(($) => {
                 return $.settings.workspace.members.selfDemote.action;
               })}
             </DropdownMenuItem>
-          </DialogTrigger>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -594,7 +959,13 @@ function SelfDemoteAction({ email }: { email: string }) {
   );
 }
 
-function MemberActions({ member }: { member: OrgMember }) {
+function MemberActions({
+  member,
+  usagePackManagement,
+}: {
+  member: OrgMember;
+  usagePackManagement: UsagePackManagementResponse | null;
+}) {
   const { t } = useTranslation();
   const newRole: OrgRole = member.role === "admin" ? "member" : "admin";
   const removeTarget = useGet(removeMemberDialogTarget$);
@@ -605,6 +976,10 @@ function MemberActions({ member }: { member: OrgMember }) {
   const changingRole = changeRoleLoadable.state === "loading";
   const removing = loadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
+  const hasUsagePack =
+    usagePackManagement?.allocations.some((allocation) => {
+      return allocation.memberId === member.userId;
+    }) ?? false;
 
   const handleRemove = () => {
     detach(doRemove(member.email, pageSignal), Reason.DomCallback);
@@ -621,7 +996,7 @@ function MemberActions({ member }: { member: OrgMember }) {
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             aria-label={t(
               ($) => {
                 return $.settings.workspace.members.actionsFor;
@@ -631,18 +1006,23 @@ function MemberActions({ member }: { member: OrgMember }) {
               },
             )}
             disabled={changingRole}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            variant="quiet"
+            size="icon-xs"
+            className="disabled:opacity-50"
           >
-            <IconDots size={15} stroke={1.5} />
-          </button>
+            <Ellipsis size={15} />
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-48"
+          className="w-max min-w-48 max-w-[calc(100vw-2rem)]"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
         >
+          {usagePackManagement && (
+            <AdjustUsagePackMenuItem management={usagePackManagement} />
+          )}
           <DropdownMenuItem
             onClick={() => {
               return detach(
@@ -659,13 +1039,16 @@ function MemberActions({ member }: { member: OrgMember }) {
                   return $.settings.workspace.members.roleActions.makeMember;
                 })}
           </DropdownMenuItem>
-          <DialogTrigger asChild>
-            <DropdownMenuItem className="text-destructive focus:text-destructive">
-              {t(($) => {
-                return $.settings.workspace.members.remove.action;
-              })}
-            </DropdownMenuItem>
-          </DialogTrigger>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onSelect={() => {
+              setRemoveTarget(member.email);
+            }}
+          >
+            {t(($) => {
+              return $.settings.workspace.members.remove.action;
+            })}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -691,6 +1074,31 @@ function MemberActions({ member }: { member: OrgMember }) {
             )}
           </DialogDescription>
         </DialogHeader>
+        {hasUsagePack && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2.5 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <div className="min-w-0 text-xs leading-relaxed">
+              <p className="font-semibold">
+                {t(($) => {
+                  return $.settings.workspace.members.remove
+                    .usagePackImpactTitle;
+                })}
+              </p>
+              <p className="mt-1">
+                {t(($) => {
+                  return $.settings.workspace.members.remove
+                    .usagePackImpactDescription;
+                })}
+              </p>
+              <p className="mt-1.5">
+                {t(($) => {
+                  return $.settings.workspace.members.remove
+                    .usagePackRefundDescription;
+                })}
+              </p>
+            </div>
+          </div>
+        )}
         <DialogFooter>
           <Button
             variant="outline"
@@ -727,9 +1135,11 @@ function MemberActions({ member }: { member: OrgMember }) {
 function PendingInvitationRow({
   invitation,
   isAdmin,
+  showUsagePack,
 }: {
   invitation: OrgPendingInvitation;
   isAdmin: boolean;
+  showUsagePack: boolean;
 }) {
   const { i18n, t } = useTranslation();
   const initial = invitation.email.charAt(0).toUpperCase();
@@ -745,9 +1155,9 @@ function PendingInvitationRow({
   };
 
   return (
-    <div className={cn(ROW_GRID, "py-3 px-5")}>
+    <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground border border-dashed border-border">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/50 text-xs font-medium text-muted-foreground border border-dashed border-border">
           {initial}
         </div>
         <div className="min-w-0">
@@ -760,9 +1170,21 @@ function PendingInvitationRow({
           i18n.resolvedLanguage ?? i18n.language,
         )}
       </div>
+      {showUsagePack && (
+        <div className="text-[13px] text-muted-foreground tabular-nums">
+          {invitation.usagePackUsd === undefined
+            ? "—"
+            : t(
+                ($) => {
+                  return $.billing.plans.pricePerMonth;
+                },
+                { price: formatUsd(invitation.usagePackUsd, 0) },
+              )}
+        </div>
+      )}
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconClock size={12} stroke={1.8} className="text-amber-500" />
+          <Clock size={12} className="text-amber-500" />
           {t(($) => {
             return $.settings.workspace.members.pending;
           })}
@@ -780,17 +1202,18 @@ function PendingInvitationRow({
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
+                <Button
                   aria-label={t(
                     ($) => {
                       return $.settings.workspace.members.actionsFor;
                     },
                     { email: invitation.email },
                   )}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
+                  variant="quiet"
+                  size="icon-xs"
                 >
-                  <IconDots size={15} stroke={1.5} />
-                </button>
+                  <Ellipsis size={15} />
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
@@ -799,13 +1222,16 @@ function PendingInvitationRow({
                   event.preventDefault();
                 }}
               >
-                <DialogTrigger asChild>
-                  <DropdownMenuItem className="text-destructive focus:text-destructive">
-                    {t(($) => {
-                      return $.settings.workspace.members.revoke.action;
-                    })}
-                  </DropdownMenuItem>
-                </DialogTrigger>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => {
+                    setRevokeTarget(invitation.id);
+                  }}
+                >
+                  {t(($) => {
+                    return $.settings.workspace.members.revoke.action;
+                  })}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -866,7 +1292,13 @@ function PendingInvitationRow({
   );
 }
 
-function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
+function MembershipRequestRow({
+  request,
+  showUsagePack,
+}: {
+  request: OrgMembershipRequest;
+  showUsagePack: boolean;
+}) {
   const { i18n, t } = useTranslation();
   const name = [request.firstName, request.lastName].filter(Boolean).join(" ");
   const initial = (name || request.email).charAt(0).toUpperCase();
@@ -885,9 +1317,9 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
   };
 
   return (
-    <div className={cn(ROW_GRID, "py-3 px-5")}>
+    <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
-        <MemberAvatar
+        <UserAvatar
           imageUrl={request.imageUrl}
           initial={initial}
           name={name || request.email}
@@ -906,9 +1338,12 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
       <div className="text-[13px] text-muted-foreground tabular-nums">
         {formatDate(request.createdAt, i18n.resolvedLanguage ?? i18n.language)}
       </div>
+      {showUsagePack && (
+        <div className="text-[13px] text-muted-foreground">—</div>
+      )}
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconUserPlus size={12} stroke={1.8} className="text-blue-500" />
+          <UserPlus size={12} className="text-blue-500" />
           {t(($) => {
             return $.settings.workspace.members.membershipRequest.role;
           })}
@@ -923,7 +1358,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
             return $.settings.workspace.members.membershipRequest.acceptTitle;
           })}
         >
-          <IconCheck size={15} stroke={2} />
+          <Check size={15} />
         </button>
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
@@ -933,47 +1368,27 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
             return $.settings.workspace.members.membershipRequest.rejectTitle;
           })}
         >
-          <IconX size={15} stroke={2} />
+          <X size={15} />
         </button>
       </div>
     </div>
   );
 }
 
-function MemberAvatar({
-  imageUrl,
-  initial,
-  name,
-}: {
-  imageUrl: string;
-  initial: string;
-  name: string;
-}) {
-  if (imageUrl) {
-    return (
-      <div className="h-8 w-8 shrink-0 rounded-lg overflow-hidden">
-        <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
-      </div>
-    );
-  }
+function MemberRowSkeleton({ showUsagePack }: { showUsagePack: boolean }) {
   return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground">
-      {initial}
-    </div>
-  );
-}
-
-function MemberRowSkeleton() {
-  return (
-    <div className={cn(ROW_GRID, "py-3 px-5 animate-pulse")}>
+    <div
+      className={cn(memberRowGrid(showUsagePack), "py-3 px-5 animate-pulse")}
+    >
       <div className="flex items-center gap-3">
-        <div className="h-8 w-8 shrink-0 rounded-lg bg-muted/50" />
+        <div className="h-8 w-8 shrink-0 rounded-full bg-muted/50" />
         <div className="flex flex-col gap-1">
           <div className="h-4 w-24 rounded bg-muted/50" />
           <div className="h-3 w-36 rounded bg-muted/30" />
         </div>
       </div>
       <div className="h-4 w-20 rounded bg-muted/30" />
+      {showUsagePack && <div className="h-4 w-16 rounded bg-muted/30" />}
       <div className="h-5 w-14 rounded bg-muted/30" />
       <div />
     </div>

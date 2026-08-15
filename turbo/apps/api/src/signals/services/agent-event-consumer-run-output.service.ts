@@ -1,18 +1,16 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
-import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 
 import type {
   AgentEvent,
   EventConsumerPayload,
 } from "../../lib/event-consumer/verify";
+import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishThreadListChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import {
   insertAssistantEventsInTransaction,
   type InsertAssistantEventsInput,
@@ -22,11 +20,11 @@ import {
   recordFirstAssistantEventAcknowledgementMetric,
 } from "./zero-chat-first-assistant-event-metric.service";
 import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
+import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 
 const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
 const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
-
 interface OutputCandidate {
   readonly sequenceNumber: number;
   readonly content: string;
@@ -140,7 +138,7 @@ function latestCandidate(
   return latest;
 }
 
-function eventMessageId(event: AgentEvent): string | undefined {
+function eventMessageId(event: AgentEvent): string {
   const message = recordOf(event.message);
   if (typeof message?.id === "string") {
     return message.id;
@@ -151,7 +149,7 @@ function eventMessageId(event: AgentEvent): string | undefined {
     return item.id;
   }
 
-  return undefined;
+  return `event:${event.sequenceNumber}`;
 }
 
 function nextProjectionSequenceState(
@@ -233,6 +231,24 @@ function assistantEventItems(
   });
 }
 
+async function lockRunOutputProjection(
+  tx: Tx,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT set_config('lock_timeout', ${RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT}, true)`,
+  );
+  await tx.execute(
+    sql`SELECT set_config('statement_timeout', ${RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT}, true)`,
+  );
+  const lockKey = `run_output_projection:${runId}`;
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+  );
+  signal.throwIfAborted();
+}
+
 async function materializeRunOutputEvents(
   writeDb: Db,
   payload: EventConsumerPayload,
@@ -241,19 +257,9 @@ async function materializeRunOutputEvents(
   const assistantItems = assistantEventItems(payload.events);
   const latestResult = latestCandidate(payload.events, resultText);
   const latestOutput = latestCandidate(payload.events, callbackOutputText);
-  const projectionLockKey = `run_output_projection:${payload.runId}`;
 
   return await writeDb.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT set_config('lock_timeout', ${RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT}, true)`,
-    );
-    await tx.execute(
-      sql`SELECT set_config('statement_timeout', ${RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT}, true)`,
-    );
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${projectionLockKey}, 0))`,
-    );
-    signal.throwIfAborted();
+    await lockRunOutputProjection(tx, payload.runId, signal);
 
     const thread = await chatThreadForRunFromDb(tx, payload.runId);
     signal.throwIfAborted();
@@ -334,19 +340,20 @@ async function materializeRunOutputEvents(
     }
 
     const acknowledgedAt = nowDate();
+    const firstAssistantClaimWhere = and(
+      eq(agentRuns.id, payload.runId),
+      isNotNull(agentRuns.apiStartedAt),
+      isNull(agentRuns.firstAssistantEventAcknowledgedAt),
+    );
+    if (!firstAssistantClaimWhere) {
+      throw new Error("First assistant acknowledgement predicate is empty");
+    }
     const [firstAssistantClaim] =
       insertedRowCount > 0 && shouldAttemptFirstAssistantEventClaim
-        ? await tx
-            .update(zeroRuns)
-            .set({ firstAssistantEventAcknowledgedAt: acknowledgedAt })
-            .where(
-              and(
-                eq(zeroRuns.id, payload.runId),
-                isNotNull(zeroRuns.apiStartedAt),
-                isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
-              ),
-            )
-            .returning({ apiStartedAt: zeroRuns.apiStartedAt })
+        ? await writeRunMetadataInTransaction(tx, {
+            patch: { firstAssistantEventAcknowledgedAt: acknowledgedAt },
+            where: firstAssistantClaimWhere,
+          })
         : [];
     signal.throwIfAborted();
 
@@ -387,7 +394,6 @@ export async function publishMaterializedChatProjection(
     await publishFirstAssistantEventCreatedSignalSafely({
       userId: projection.thread.userId,
       threadId: projection.thread.chatThreadId,
-      runId: payload.runId,
     });
     recordFirstAssistantEventAcknowledgementMetric({
       runId: payload.runId,
@@ -399,7 +405,5 @@ export async function publishMaterializedChatProjection(
       projection.thread.chatThreadId,
     );
   }
-  signal.throwIfAborted();
-  await publishThreadListChangedSafely(projection.thread.userId);
   signal.throwIfAborted();
 }

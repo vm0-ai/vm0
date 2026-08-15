@@ -1,9 +1,4 @@
-import {
-  IconCheck,
-  IconChevronDown,
-  IconFilter,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { Check, ChevronDown, Filter, Loader2 } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import {
   DropdownMenu,
@@ -16,8 +11,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@vm0/ui";
-import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+} from "@okouai/ui";
+import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import { useTranslation } from "react-i18next";
 import { type BadgeColor, formatSize, InlineBadge } from "./network-badge.tsx";
 import { CapturedBodySections } from "./captured-body-sections.tsx";
@@ -282,16 +277,13 @@ function TypeFilter({
           aria-label={t(($) => {
             return $.activity.network.filter.type;
           })}
-          className="flex h-8 min-w-[140px] items-center justify-between gap-1.5 rounded-md border border-border bg-input px-3 text-xs text-foreground outline-none transition-colors hover:bg-accent focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+          className="flex h-8 min-w-[140px] items-center justify-between gap-1.5 rounded-md border border-border bg-input px-3 text-xs text-foreground outline-none transition-colors hover:bg-input-hover focus:border-primary focus:ring-[3px] focus:ring-primary/10"
         >
           <span className="flex items-center gap-1.5">
-            <IconFilter size={14} stroke={1.5} className="shrink-0" />
+            <Filter size={14} className="shrink-0" />
             {typeFilterLabel(typeFilter)}
           </span>
-          <IconChevronDown
-            size={14}
-            className="shrink-0 text-muted-foreground"
-          />
+          <ChevronDown size={14} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
@@ -304,7 +296,7 @@ function TypeFilter({
           }}
         >
           <span className="flex h-4 w-4 items-center justify-center">
-            {typeFilter.mode === "all" && <IconCheck size={14} />}
+            {typeFilter.mode === "all" && <Check size={14} />}
           </span>
           {t(($) => {
             return $.activity.network.filter.allTypes;
@@ -323,7 +315,7 @@ function TypeFilter({
               }}
             >
               <span className="flex h-4 w-4 items-center justify-center">
-                {selected && <IconCheck size={14} />}
+                {selected && <Check size={14} />}
               </span>
               {type}
             </DropdownMenuItem>
@@ -744,6 +736,9 @@ const networkLogDetailFields = {
   action: detailField("action", "action"),
   method: detailField("method", "method"),
   url: detailField("url", "url"),
+  // The URL cell already displays the omission sentinel.
+  url_truncated: null,
+  url_original_char_count: null,
   host: detailField("host", "host"),
   port: detailField("port", "port"),
   status: detailField("status", "status"),
@@ -909,10 +904,12 @@ const networkLogDetailFields = {
   error: detailField("error", "error"),
   // CapturedBodySections renders these fields below the detail grid.
   request_headers: null,
+  request_headers_truncated: null,
   request_body: null,
   request_body_encoding: null,
   request_body_truncated: null,
   response_headers: null,
+  response_headers_truncated: null,
   response_body: null,
   response_body_encoding: null,
   response_body_truncated: null,
@@ -984,7 +981,7 @@ function NetworkLogRow({
   return (
     <>
       <TableRow
-        className="cursor-pointer hover:bg-muted/50"
+        className="cursor-pointer hover:bg-state-hover"
         onClick={() => {
           toggleExpanded(rowKey);
         }}
@@ -1133,7 +1130,7 @@ export function NetworkContent({
       {hasMore && onLoadMore && (
         <div className="flex justify-center py-4">
           {loading ? (
-            <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Loader2 className="h-5 w-5 animate-spin" />
           ) : (
             <button
               type="button"

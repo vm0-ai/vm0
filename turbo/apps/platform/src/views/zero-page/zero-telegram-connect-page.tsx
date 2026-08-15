@@ -1,13 +1,8 @@
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { JSX, ReactNode } from "react";
-import {
-  IconAlertCircle,
-  IconArrowLeft,
-  IconCircleCheck,
-  IconLoader2,
-} from "@tabler/icons-react";
-import { Button, CopyButton } from "@vm0/ui";
+import { AlertCircle, ArrowLeft, CircleCheck, Loader2 } from "lucide-react";
+import { Button, CopyButton } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import { clerk$, resolveAppAuthUrl } from "../../signals/auth.ts";
@@ -43,7 +38,7 @@ function BackLink() {
       pathname="/settings/telegram"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
-      <IconArrowLeft size={14} />
+      <ArrowLeft size={14} />
       {t(($) => {
         return $.connectors.providerConnect.telegram.back;
       })}
@@ -69,21 +64,19 @@ function TelegramMark({
   state?: "idle" | "success" | "error" | "loading" | "warning";
 }) {
   if (state === "success") {
-    return <IconCircleCheck size={40} className="text-emerald-500" />;
+    return <CircleCheck size={40} className="text-emerald-500" />;
   }
 
   if (state === "warning") {
-    return <IconAlertCircle size={40} className="text-amber-500" />;
+    return <AlertCircle size={40} className="text-amber-500" />;
   }
 
   if (state === "error") {
-    return <IconAlertCircle size={40} className="text-destructive" />;
+    return <AlertCircle size={40} className="text-destructive" />;
   }
 
   if (state === "loading") {
-    return (
-      <IconLoader2 size={40} className="animate-spin text-muted-foreground" />
-    );
+    return <Loader2 size={40} className="animate-spin" />;
   }
 
   return (
@@ -239,7 +232,7 @@ function DomainStatusPolling() {
     <>
       <span ref={domainStatusPollerRef} hidden />
       <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-        <IconLoader2 size={13} className="animate-spin" />
+        <Loader2 size={13} className="animate-spin" />
         {t(($) => {
           return $.connectors.providerConnect.telegram.checkingDomain;
         })}
@@ -312,7 +305,7 @@ function DomainSetupState({
           <code className="min-w-0 truncate font-mono text-xs">{domain}</code>
           <CopyButton
             text={domain}
-            className="shrink-0 p-1.5 hover:bg-accent"
+            className="shrink-0 p-1.5 hover:bg-state-hover"
           />
         </div>
         <p className="mt-3 text-muted-foreground">
@@ -327,7 +320,7 @@ function DomainSetupState({
           href="https://t.me/BotFather"
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           {t(($) => {
             return $.connectors.providerConnect.telegram.openBotFather;
@@ -355,9 +348,7 @@ function ConnectActions({
     return (
       <div className="flex w-full flex-col gap-3">
         <Button className="w-full" disabled={connecting} onClick={onConnect}>
-          {connecting ? (
-            <IconLoader2 size={16} className="animate-spin" />
-          ) : null}
+          {connecting ? <Loader2 size={16} className="animate-spin" /> : null}
           {connecting
             ? t(($) => {
                 return $.connectors.actions.connecting;
@@ -372,7 +363,7 @@ function ConnectActions({
 
   return (
     <Button className="w-full" disabled={connecting} onClick={onConnect}>
-      {connecting ? <IconLoader2 size={16} className="animate-spin" /> : null}
+      {connecting ? <Loader2 size={16} className="animate-spin" /> : null}
       {connecting
         ? t(($) => {
             return $.connectors.actions.connecting;
@@ -461,7 +452,7 @@ function TelegramSignInState({ brandName }: { brandName: string }) {
       />
       <a
         href={signInHref()}
-        className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
       >
         {t(
           ($) => {

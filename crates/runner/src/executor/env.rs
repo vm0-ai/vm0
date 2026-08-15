@@ -10,7 +10,9 @@ use super::cli_framework::{
 };
 use super::{JOB_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
-use crate::types::{CodexRuntimeConfig, ExecutionContext, SandboxReuseResult};
+use crate::types::{
+    CodexRuntimeConfig, ExecutionContext, SandboxReuseResult, WorkspaceReuseResult,
+};
 
 pub(super) struct ProtectedModelProviderEnvKey {
     name: &'static str,
@@ -103,7 +105,7 @@ pub(super) fn validate_execution_context_before_sandbox(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
-) -> Result<(), String> {
+) -> Result<PreparedRunPayload, String> {
     let host_env = HostEnv::from_process();
     validate_execution_context_before_sandbox_with_host_env(
         context,
@@ -120,16 +122,45 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
     host_env: &HostEnv,
-) -> Result<(), String> {
+) -> Result<PreparedRunPayload, String> {
     validate_resume_session_id(context)?;
     validate_model_provider_env_placeholders(context)?;
+    validate_pi_execution_context(context)?;
     validate_user_environment_for_guest(context)?;
-    validate_claude_tool_lists(context)?;
-    validate_run_payload_fields_before_sandbox(context)?;
+    let prepared_run_payload =
+        prepare_run_payload_for_run(context).map_err(|error| match error {
+            RunnerError::Internal(message) => message,
+            error => error.to_string(),
+        })?;
     let bootstrap_env =
         build_env_json_with_host_env(context, api_url, sandbox_id, reuse_result, host_env)
             .map_err(|error| error.to_string())?;
     validate_bootstrap_environment_for_guest(&bootstrap_env)?;
+    Ok(prepared_run_payload)
+}
+
+fn validate_pi_execution_context(context: &ExecutionContext) -> Result<(), String> {
+    if effective_cli_framework(&context.cli_agent_type) != EffectiveCliFramework::Pi {
+        return Ok(());
+    }
+    let session_id = context
+        .pi_session_id
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Pi execution context is missing pi_session_id".to_string())?;
+    uuid::Uuid::parse_str(session_id)
+        .map_err(|_| "Pi execution context has invalid pi_session_id".to_string())?;
+    if context.pi_launch_config.is_none() {
+        return Err("Pi execution context is missing pi_launch_config".to_string());
+    }
+    if context.pi_model_config.is_none() {
+        return Err("Pi execution context is missing pi_model_config".to_string());
+    }
+    if let Some(resume) = &context.resume_session
+        && resume.cli_agent_session_id != session_id
+    {
+        return Err("Pi resume session id does not match pi_session_id".to_string());
+    }
     Ok(())
 }
 
@@ -151,27 +182,6 @@ fn validate_user_environment_for_guest(context: &ExecutionContext) -> Result<(),
                 guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
             ));
         }
-    }
-
-    Ok(())
-}
-
-fn validate_run_payload_fields_before_sandbox(context: &ExecutionContext) -> Result<(), String> {
-    validate_run_payload_field(guest_contracts::env::PROMPT_ENV, &context.prompt)?;
-    validate_run_payload_field(
-        guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
-        context.append_system_prompt.as_deref().unwrap_or_default(),
-    )?;
-
-    if effective_cli_framework(&context.cli_agent_type) == EffectiveCliFramework::ClaudeCode
-        && let Some(settings) = &context.settings
-        && !settings.is_empty()
-    {
-        validate_run_payload_field(guest_contracts::env::SETTINGS_ENV, settings)?;
-    }
-
-    if let Some(config) = &context.codex_runtime_config {
-        validate_codex_runtime_config_field(config)?;
     }
 
     Ok(())
@@ -259,22 +269,14 @@ pub(crate) fn validate_resume_session_id(context: &ExecutionContext) -> Result<(
                 Err("invalid session_id".to_string())
             }
         }
+        EffectiveCliFramework::Pi => {
+            if is_valid_cli_agent_session_id(&session.cli_agent_session_id) {
+                Ok(())
+            } else {
+                Err("invalid pi session_id".to_string())
+            }
+        }
     }
-}
-
-pub(super) fn validate_claude_tool_lists(context: &ExecutionContext) -> Result<(), String> {
-    if effective_cli_framework(&context.cli_agent_type) != EffectiveCliFramework::ClaudeCode {
-        return Ok(());
-    }
-
-    if let Some(tools) = &context.disallowed_tools {
-        validate_claude_tool_env_entries(guest_contracts::env::DISALLOWED_TOOLS_ENV, tools)?;
-    }
-    if let Some(tools) = &context.tools {
-        validate_claude_tool_env_entries(guest_contracts::env::TOOLS_ENV, tools)?;
-    }
-
-    Ok(())
 }
 
 pub(super) fn build_user_env_json(context: &ExecutionContext) -> HashMap<String, String> {
@@ -361,14 +363,7 @@ pub(super) fn build_env_json_with_host_env(
     reuse_result: SandboxReuseResult,
     host_env: &HostEnv,
 ) -> RunnerResult<HashMap<String, String>> {
-    build_env_json_with_host_env_for_run(
-        context,
-        api_url,
-        sandbox_id,
-        reuse_result,
-        false,
-        host_env,
-    )
+    build_env_json_with_host_env_inner(context, api_url, sandbox_id, reuse_result, None, host_env)
 }
 
 /// Build the guest-agent bootstrap environment.
@@ -380,7 +375,7 @@ pub(super) fn build_env_json_for_run(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
-    has_active_input_source: bool,
+    workspace_reuse_result: WorkspaceReuseResult,
 ) -> RunnerResult<HashMap<String, String>> {
     let host_env = HostEnv::from_process();
     build_env_json_with_host_env_for_run(
@@ -388,7 +383,7 @@ pub(super) fn build_env_json_for_run(
         api_url,
         sandbox_id,
         reuse_result,
-        has_active_input_source,
+        workspace_reuse_result,
         &host_env,
     )
 }
@@ -398,7 +393,25 @@ pub(super) fn build_env_json_with_host_env_for_run(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
-    has_active_input_source: bool,
+    workspace_reuse_result: WorkspaceReuseResult,
+    host_env: &HostEnv,
+) -> RunnerResult<HashMap<String, String>> {
+    build_env_json_with_host_env_inner(
+        context,
+        api_url,
+        sandbox_id,
+        reuse_result,
+        Some(workspace_reuse_result),
+        host_env,
+    )
+}
+
+fn build_env_json_with_host_env_inner(
+    context: &ExecutionContext,
+    api_url: &str,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    workspace_reuse_result: Option<WorkspaceReuseResult>,
     host_env: &HostEnv,
 ) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
@@ -424,6 +437,12 @@ pub(super) fn build_env_json_with_host_env_for_run(
         guest_contracts::env::SANDBOX_REUSE_RESULT_ENV.into(),
         reuse_result.as_wire().into(),
     );
+    if let Some(workspace_reuse_result) = workspace_reuse_result {
+        env.insert(
+            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV.into(),
+            workspace_reuse_result.as_wire().into(),
+        );
+    }
     env.insert(
         guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
         JOB_TIMEOUT.as_secs().to_string(),
@@ -470,49 +489,79 @@ pub(super) fn build_env_json_with_host_env_for_run(
 
     match effective_cli_framework(&context.cli_agent_type) {
         EffectiveCliFramework::ClaudeCode => insert_claude_code_env(&mut env, context, host_env),
-        EffectiveCliFramework::Codex => {
-            insert_codex_env(&mut env, context, host_env, has_active_input_source);
-        }
+        EffectiveCliFramework::Codex => insert_codex_env(&mut env, context, host_env),
+        EffectiveCliFramework::Pi => {}
     }
 
     Ok(env)
 }
 
-pub(super) fn build_run_payload_for_run(
-    context: &ExecutionContext,
-) -> RunnerResult<guest_contracts::env::RunPayload> {
-    let mut payload = guest_contracts::env::RunPayload {
-        prompt: context.prompt.clone(),
-        append_system_prompt: context.append_system_prompt.clone().unwrap_or_default(),
-        secret_values: serialize_secret_values(context),
-        artifacts: serialize_artifacts_payload(context)?,
-        feature_flags: serialize_feature_flags_payload(context)?,
-        codex_runtime_config: serialize_codex_runtime_config_payload(context)?,
-        ..guest_contracts::env::RunPayload::default()
-    };
+pub(super) struct PreparedRunPayload {
+    payload: guest_contracts::env::RunPayload,
+}
 
+impl PreparedRunPayload {
+    pub(super) fn into_run_payload(
+        mut self,
+        context: &ExecutionContext,
+    ) -> RunnerResult<guest_contracts::env::RunPayload> {
+        self.payload.secret_values = serialize_secret_values(context);
+        validate_run_payload_for_guest(&self.payload).map_err(RunnerError::Internal)?;
+        Ok(self.payload)
+    }
+}
+
+pub(super) fn prepare_run_payload_for_run(
+    context: &ExecutionContext,
+) -> RunnerResult<PreparedRunPayload> {
+    if let Some(config) = &context.codex_runtime_config {
+        validate_codex_runtime_config_field(config).map_err(RunnerError::Internal)?;
+    }
+
+    let mut disallowed_tools = String::new();
+    let mut tools = String::new();
+    let mut settings = String::new();
     if effective_cli_framework(&context.cli_agent_type) == EffectiveCliFramework::ClaudeCode {
-        if let Some(tools) = &context.disallowed_tools
-            && let Some(serialized) =
-                serialize_claude_tool_env(guest_contracts::env::DISALLOWED_TOOLS_ENV, tools)?
-        {
-            payload.disallowed_tools = serialized;
+        if let Some(values) = &context.disallowed_tools {
+            disallowed_tools =
+                serialize_claude_tool_env(guest_contracts::env::DISALLOWED_TOOLS_ENV, values)?
+                    .unwrap_or_default();
         }
-        if let Some(tools) = &context.tools
-            && let Some(serialized) =
-                serialize_claude_tool_env(guest_contracts::env::TOOLS_ENV, tools)?
-        {
-            payload.tools = serialized;
+        if let Some(values) = &context.tools {
+            tools = serialize_claude_tool_env(guest_contracts::env::TOOLS_ENV, values)?
+                .unwrap_or_default();
         }
-        if let Some(settings) = &context.settings
-            && !settings.is_empty()
+        if let Some(value) = &context.settings
+            && !value.is_empty()
         {
-            payload.settings = settings.clone();
+            settings = value.clone();
         }
     }
 
+    let payload = guest_contracts::env::RunPayload {
+        prompt: context.prompt.clone(),
+        append_system_prompt: context.append_system_prompt.clone().unwrap_or_default(),
+        secret_values: String::new(),
+        disallowed_tools,
+        tools,
+        settings,
+        artifacts: serialize_artifacts_payload(context)?,
+        feature_flags: serialize_feature_flags_payload(context)?,
+        codex_runtime_config: serialize_codex_runtime_config_payload(context)?,
+        pi_launch_config: serialize_pi_launch_config_payload(context)?,
+        pi_model_config: serialize_pi_model_config_payload(context)?,
+        pi_session_id: context.pi_session_id.clone().unwrap_or_default(),
+    };
+
     validate_run_payload_for_guest(&payload).map_err(RunnerError::Internal)?;
-    Ok(payload)
+    Ok(PreparedRunPayload { payload })
+}
+
+#[cfg(test)]
+pub(super) fn build_run_payload_for_run(
+    context: &ExecutionContext,
+) -> RunnerResult<guest_contracts::env::RunPayload> {
+    prepare_run_payload_for_run(context)?.into_run_payload(context)
 }
 
 fn serialize_secret_values(context: &ExecutionContext) -> String {
@@ -579,6 +628,22 @@ fn serialize_codex_runtime_config_payload(context: &ExecutionContext) -> RunnerR
         .map_err(|e| RunnerError::Internal(format!("serialize Codex runtime config: {e}")))
 }
 
+fn serialize_pi_launch_config_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(config) = &context.pi_launch_config else {
+        return Ok(String::new());
+    };
+    serde_json::to_string(config)
+        .map_err(|e| RunnerError::Internal(format!("serialize Pi launch config: {e}")))
+}
+
+fn serialize_pi_model_config_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(config) = &context.pi_model_config else {
+        return Ok(String::new());
+    };
+    serde_json::to_string(config)
+        .map_err(|e| RunnerError::Internal(format!("serialize Pi model config: {e}")))
+}
+
 fn validate_run_payload_for_guest(
     payload: &guest_contracts::env::RunPayload,
 ) -> Result<(), String> {
@@ -622,7 +687,7 @@ impl HostEnv {
 
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
     // The entire VM0_ namespace is runner-owned, including retired keys such
-    // as VM0_WORKING_DIR. Non-VM0 keys must stay explicit.
+    // as VM0_WORKING_DIR. Canonical keys outside it must stay explicit.
     guest_contracts::env::is_runner_owned_env_key(key)
 }
 
@@ -690,15 +755,7 @@ pub(super) fn insert_codex_env(
     env: &mut HashMap<String, String>,
     context: &ExecutionContext,
     host_env: &HostEnv,
-    has_active_input_source: bool,
 ) {
-    if has_active_input_source {
-        env.insert(
-            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV.into(),
-            "1".into(),
-        );
-    }
-
     // Pass USE_MOCK_CODEX from host environment for testing unless preview
     // evaluation explicitly asks for the real agent runtime.
     if let Some(val) = &host_env.use_mock_codex

@@ -1,8 +1,7 @@
-import { command, computed, type Computed } from "ccstate";
-import type { ResolvedAttachFile } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { command } from "ccstate";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   and,
   eq,
@@ -15,17 +14,16 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-
 import { writeDb$, type Db } from "../external/db";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishThreadListChangedSafely,
-} from "../external/realtime";
-import { nowDate } from "../external/time";
-import { resolvedArtifactObject } from "./artifact-storage.service";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
+import { nowDate } from "../../lib/time";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
-import { insertChatEvents } from "./zero-chat-event.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { insertChatEvents } from "./chat-event.service";
+import {
+  chatEventTypeIn,
+  runOwnedChatEventCondition,
+} from "./chat-event-type.service";
+import { canonicalChatEventError } from "./canonical-chat-event-read.service";
 import { publishFirstAssistantEventCreatedSafely } from "./zero-chat-first-assistant-event-metric.service";
 import {
   appendChatThreadEvent,
@@ -58,6 +56,7 @@ const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   md: "text/markdown",
   html: "text/html",
   htm: "text/html",
+  har: "application/json",
   json: "application/json",
 };
 const revoker = alias(chatEvents, "revoker");
@@ -69,7 +68,7 @@ export interface InsertAssistantEventsInput {
   readonly items: readonly {
     readonly runEventSequenceNumber: number;
     readonly content: string;
-    readonly runEventId?: string;
+    readonly runEventId: string;
   }[];
 }
 
@@ -114,13 +113,17 @@ export async function touchChatThreadLastMessageAt(
 export function visibleChatEventCondition(
   db: Pick<Db, "select">,
 ): SQL | undefined {
-  const isCompatibilityUserEvent = chatEventTypeIn([
+  const isUserInputEvent = chatEventTypeIn([
     "input.prompt",
     "input.automation",
     "input.rejected",
     "control.interrupt",
     "control.revoke",
   ]);
+  const hasRunOwner = and(
+    isNotNull(chatEvents.runId),
+    runOwnedChatEventCondition(),
+  );
   return and(
     not(chatEventTypeIn(["input.goal"])),
     notExists(
@@ -130,79 +133,46 @@ export function visibleChatEventCondition(
         .where(eq(revoker.revokesEventId, chatEvents.id)),
     ),
     or(
-      not(isCompatibilityUserEvent),
-      isNotNull(chatEvents.runId),
+      not(isUserInputEvent),
+      hasRunOwner,
       isNull(chatEvents.revokesEventId),
-      isNotNull(chatEvents.content),
-      isNotNull(chatEvents.error),
+      isNotNull(canonicalChatEventError()),
     ),
-    or(
-      not(isCompatibilityUserEvent),
-      isNotNull(chatEvents.runId),
-      isNull(chatEvents.interruptsRunId),
-    ),
+    not(chatEventTypeIn(["control.interrupt"])),
   );
 }
 
-export function resolveAttachFileUrls(
-  userId: string,
-  fileIds: readonly string[],
-): Computed<Promise<readonly ResolvedAttachFile[]>> {
-  return computed(async (get): Promise<readonly ResolvedAttachFile[]> => {
-    const resolved = await Promise.all(
-      fileIds.map(async (fileId): Promise<ResolvedAttachFile | null> => {
-        const object = await get(resolvedArtifactObject(userId, fileId));
-        if (!object) {
-          return null;
-        }
-
-        return {
-          id: fileId,
-          filename: object.filename,
-          contentType: object.contentType,
-          size: object.size,
-          url: object.url,
-        };
-      }),
-    );
-
-    return resolved.filter((file): file is ResolvedAttachFile => {
-      return file !== null;
-    });
-  });
-}
-
-export async function runGroupIdForRun(
+export async function goalIdForRun(
   db: Db,
   runId: string,
 ): Promise<string | undefined> {
   const [run] = await db
-    .select({ runGroupId: zeroRuns.runGroupId })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ goalId: agentRuns.goalId })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
-  return run?.runGroupId ?? undefined;
+  return run?.goalId ?? undefined;
 }
 
 async function assistantEventRunContextForRun(
   db: ChatThreadEventTransaction,
   runId: string,
 ): Promise<{
-  readonly runGroupId: string | undefined;
+  readonly goalId: string | undefined;
   readonly shouldAttemptFirstAssistantEventClaim: boolean;
 }> {
   const [run] = await db
     .select({
-      runGroupId: zeroRuns.runGroupId,
-      apiStartedAt: zeroRuns.apiStartedAt,
+      goalId: agentRuns.goalId,
+      apiStartedAt: agentRuns.apiStartedAt,
       firstAssistantEventAcknowledgedAt:
-        zeroRuns.firstAssistantEventAcknowledgedAt,
+        agentRuns.firstAssistantEventAcknowledgedAt,
     })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return {
-    runGroupId: run?.runGroupId ?? undefined,
+    goalId: run?.goalId ?? undefined,
     shouldAttemptFirstAssistantEventClaim:
       run !== undefined &&
       run.apiStartedAt !== null &&
@@ -227,67 +197,28 @@ export async function insertAssistantEventsInTransaction(
     };
   }
 
-  const itemsWithRunEventId = args.items.filter(
-    (
-      item,
-    ): item is {
-      readonly runEventSequenceNumber: number;
-      readonly content: string;
-      readonly runEventId: string;
-    } => {
-      return item.runEventId !== undefined;
-    },
-  );
-  const legacyItems = args.items.filter((item) => {
-    return item.runEventId === undefined;
-  });
   const runContext = await assistantEventRunContextForRun(tx, args.runId);
   signal.throwIfAborted();
 
-  const deterministicRows =
-    itemsWithRunEventId.length === 0
-      ? []
-      : await insertChatEvents(
-          tx,
-          itemsWithRunEventId.map((item) => {
-            return {
-              id: assistantEventIdForRunEvent(args.runId, item.runEventId),
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId: runContext.runGroupId,
-              eventType: "output.message",
-              content: item.content,
-              runEventSequenceNumber: item.runEventSequenceNumber,
-              runEventId: item.runEventId,
-            };
-          }),
-          "any",
-        );
+  const insertedRows = await insertChatEvents(
+    tx,
+    args.items.map((item) => {
+      return {
+        id: assistantEventIdForRunEvent(args.runId, item.runEventId),
+        chatThreadId: args.threadId,
+        runId: args.runId,
+        runGroupId: runContext.goalId,
+        eventType: "output.message",
+        content: item.content,
+        runEventSequenceNumber: item.runEventSequenceNumber,
+        runEventId: item.runEventId,
+      };
+    }),
+  );
   signal.throwIfAborted();
 
-  const legacyRows =
-    legacyItems.length === 0
-      ? []
-      : await insertChatEvents(
-          tx,
-          legacyItems.map((item) => {
-            return {
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId: runContext.runGroupId,
-              eventType: "output.message",
-              content: item.content,
-              runEventSequenceNumber: item.runEventSequenceNumber,
-              runEventId: null,
-            };
-          }),
-          "run-sequence",
-        );
-  signal.throwIfAborted();
-
-  const insertedRowCount = deterministicRows.length + legacyRows.length;
   return {
-    insertedRowCount,
+    insertedRowCount: insertedRows.length,
     shouldAttemptFirstAssistantEventClaim:
       runContext.shouldAttemptFirstAssistantEventClaim,
   };
@@ -318,9 +249,6 @@ export async function insertAssistantEvents(
     } else {
       await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
     }
-    signal.throwIfAborted();
-
-    await publishThreadListChangedSafely(args.userId);
     signal.throwIfAborted();
   }
 

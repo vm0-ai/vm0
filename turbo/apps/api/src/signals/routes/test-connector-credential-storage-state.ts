@@ -2,20 +2,23 @@ import { command } from "ccstate";
 import {
   testConnectorCredentialStorageStateContract,
   type TestConnectorCredentialStorageStateActionBody,
-} from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray } from "drizzle-orm";
+} from "@okouai/api-contracts/contracts/test-connector-credential-storage-state";
+import { connectors } from "@okouai/db/schema/connector";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { parseCustomConnectorOAuthStateContext } from "../services/custom-connector-oauth2.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const actionBody$ = bodyResultOf(
   testConnectorCredentialStorageStateContract.action,
@@ -126,6 +129,154 @@ async function readState(
   });
 }
 
+async function readCustomParent(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"read-custom-parent">,
+  signal: AbortSignal,
+) {
+  const [connector] = await db
+    .select({
+      id: connectors.id,
+      storageVersion: connectors.storageVersion,
+    })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+        eq(connectors.customConnectorId, body.custom_connector_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  const secretRows = connector
+    ? await db
+        .select({
+          name: secrets.name,
+          connectorId: secrets.connectorId,
+          encryptedValue: secrets.encryptedValue,
+          description: secrets.description,
+        })
+        .from(secrets)
+        .where(eq(secrets.connectorId, connector.id))
+        .orderBy(asc(secrets.name))
+    : [];
+  signal.throwIfAborted();
+  const variableRows = connector
+    ? await db
+        .select({
+          name: variables.name,
+          connectorId: variables.connectorId,
+          value: variables.value,
+        })
+        .from(variables)
+        .where(eq(variables.connectorId, connector.id))
+        .orderBy(asc(variables.name))
+    : [];
+  signal.throwIfAborted();
+  return actionOk({
+    connector: connector
+      ? {
+          id: connector.id,
+          storage_version: connector.storageVersion,
+        }
+      : null,
+    secrets: secretRows.map((row) => {
+      return {
+        name: row.name,
+        connector_id: requiredConnectorCredentialOwnerId(row.connectorId),
+        encrypted_value: row.encryptedValue,
+        description: row.description,
+      };
+    }),
+    variables: variableRows.map((row) => {
+      return {
+        name: row.name,
+        connector_id: requiredConnectorCredentialOwnerId(row.connectorId),
+        value: row.value,
+      };
+    }),
+  });
+}
+
+async function readCustomOAuthState(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"read-custom-oauth-state">,
+  signal: AbortSignal,
+) {
+  const [state] = await db
+    .select({
+      storageVersion: connectorOauthStates.storageVersion,
+      oauthContext: connectorOauthStates.oauthContext,
+    })
+    .from(connectorOauthStates)
+    .where(eq(connectorOauthStates.state, body.state))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!state) {
+    return actionOk({ custom_oauth_state: null });
+  }
+  const context = parseCustomConnectorOAuthStateContext(state.oauthContext);
+  if (!context) {
+    throw new Error("Expected custom connector OAuth state context");
+  }
+  return actionOk({
+    custom_oauth_state: {
+      storage_version: state.storageVersion,
+      context_storage_version: context.storageVersion ?? null,
+    },
+  });
+}
+
+async function deleteCustomCredentialValues(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"delete-custom-credential-values">,
+  signal: AbortSignal,
+) {
+  const [connector] = await db
+    .select({ id: connectors.id })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+        eq(connectors.customConnectorId, body.custom_connector_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!connector) {
+    return {
+      status: 400 as const,
+      body: { error: "Custom connector storage test fixture was not found" },
+    };
+  }
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.connectorId, connector.id),
+          eq(secrets.orgId, body.org_id),
+          eq(secrets.userId, body.user_id),
+          eq(secrets.type, "connector"),
+        ),
+      );
+    await tx
+      .delete(variables)
+      .where(
+        and(
+          eq(variables.connectorId, connector.id),
+          eq(variables.orgId, body.org_id),
+          eq(variables.userId, body.user_id),
+          eq(variables.type, "connector"),
+        ),
+      );
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function seedOwnedSecret(
   db: Db,
   body: ConnectorCredentialStorageAction<"seed-owned-secret">,
@@ -182,6 +333,57 @@ async function seedConnector(
   return actionOk({ connector_id: connector.id });
 }
 
+async function seedCustomRuntimeConnectors(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"seed-custom-runtime-connectors">,
+  signal: AbortSignal,
+) {
+  await db.transaction(async (tx) => {
+    await tx.insert(orgCustomConnectors).values(
+      body.custom_connectors.map((connector) => {
+        return {
+          id: connector.id,
+          orgId: body.org_id,
+          slug: connector.slug,
+          displayName: connector.display_name,
+          prefixTemplates: [connector.prefix_template],
+          fields: [
+            {
+              key: "optional_secret",
+              label: "Optional secret",
+              kind: "secret" as const,
+              required: false,
+            },
+          ],
+          headerInjections: [
+            {
+              name: "X-Connector",
+              valueTemplate: "runtime-batch {{secrets.optional_secret}}",
+            },
+          ],
+          queryInjections: [],
+          authMode: "manual" as const,
+          storageVersion: 1,
+          createdBy: body.user_id,
+        };
+      }),
+    );
+    await tx.insert(connectors).values(
+      body.custom_connectors.map((connector) => {
+        return {
+          orgId: body.org_id,
+          userId: body.user_id,
+          customConnectorId: connector.id,
+          authMethod: "manual",
+          storageVersion: 1,
+        };
+      }),
+    );
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function setConnectorState(
   db: Db,
   body: ConnectorCredentialStorageAction<"set-connector-state">,
@@ -214,6 +416,37 @@ async function setConnectorState(
     : {
         status: 400 as const,
         body: { error: "Connector storage test fixture was not found" },
+      };
+}
+
+async function setCustomParentState(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-custom-parent-state">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(connectors)
+    .set({
+      authMethod: body.auth_method,
+      storageVersion: body.storage_version,
+      ...(body.needs_reconnect === undefined
+        ? {}
+        : { needsReconnect: body.needs_reconnect }),
+    })
+    .where(
+      and(
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+        eq(connectors.customConnectorId, body.custom_connector_id),
+      ),
+    )
+    .returning({ id: connectors.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk({ connector_id: updated.id })
+    : {
+        status: 400 as const,
+        body: { error: "Custom connector storage test fixture was not found" },
       };
 }
 
@@ -287,14 +520,29 @@ const mutateConnectorCredentialStorageState$ = command(
       case "read": {
         return await readState(db, body, signal);
       }
+      case "read-custom-parent": {
+        return await readCustomParent(db, body, signal);
+      }
+      case "read-custom-oauth-state": {
+        return await readCustomOAuthState(db, body, signal);
+      }
+      case "delete-custom-credential-values": {
+        return await deleteCustomCredentialValues(db, body, signal);
+      }
       case "seed-owned-secret": {
         return await seedOwnedSecret(db, body, signal);
       }
       case "seed-connector": {
         return await seedConnector(db, body, signal);
       }
+      case "seed-custom-runtime-connectors": {
+        return await seedCustomRuntimeConnectors(db, body, signal);
+      }
       case "set-connector-state": {
         return await setConnectorState(db, body, signal);
+      }
+      case "set-custom-parent-state": {
+        return await setCustomParentState(db, body, signal);
       }
       case "set-secret-owner": {
         return await setSecretOwner(db, body, signal);

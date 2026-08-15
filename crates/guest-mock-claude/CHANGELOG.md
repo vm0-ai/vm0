@@ -1,5 +1,66 @@
 # Changelog
 
+## [0.21.62](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.61...guest-mock-claude-v0.21.62) (2026-08-14)
+
+## [0.21.61](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.60...guest-mock-claude-v0.21.61) (2026-08-14)
+
+## [0.21.60](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.59...guest-mock-claude-v0.21.60) (2026-08-14)
+
+## [0.21.59](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.58...guest-mock-claude-v0.21.59) (2026-08-14)
+
+## [0.21.58](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.57...guest-mock-claude-v0.21.58) (2026-08-14)
+
+## [0.21.57](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.56...guest-mock-claude-v0.21.57) (2026-08-13)
+
+## [0.21.56](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.55...guest-mock-claude-v0.21.56) (2026-08-13)
+
+## [0.21.55](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.54...guest-mock-claude-v0.21.55) (2026-08-13)
+
+## [0.21.54](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.53...guest-mock-claude-v0.21.54) (2026-08-13)
+
+## [0.21.53](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.52...guest-mock-claude-v0.21.53) (2026-08-12)
+
+## [0.21.52](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.51...guest-mock-claude-v0.21.52) (2026-08-12)
+
+
+### Refactoring
+
+* **rust:** centralize guest stdout framing limits ([#26648](https://github.com/vm0-ai/vm0/issues/26648)) ([962e753](https://github.com/vm0-ai/vm0/commit/962e7532f4e8d319fb05b096bdbfca85431731ed))
+
+## [0.21.51](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.50...guest-mock-claude-v0.21.51) (2026-08-11)
+
+## [0.21.50](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.49...guest-mock-claude-v0.21.50) (2026-08-11)
+
+## [0.21.49](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.48...guest-mock-claude-v0.21.49) (2026-08-10)
+
+## [0.21.48](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.47...guest-mock-claude-v0.21.48) (2026-08-09)
+
+## [0.21.47](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.46...guest-mock-claude-v0.21.47) (2026-08-09)
+
+## [0.21.46](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.45...guest-mock-claude-v0.21.46) (2026-08-09)
+
+## [0.21.45](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.44...guest-mock-claude-v0.21.45) (2026-08-07)
+
+## [0.21.44](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.43...guest-mock-claude-v0.21.44) (2026-08-07)
+
+## [0.21.43](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.42...guest-mock-claude-v0.21.43) (2026-08-07)
+
+## [0.21.42](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.41...guest-mock-claude-v0.21.42) (2026-08-06)
+
+## [0.21.41](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.40...guest-mock-claude-v0.21.41) (2026-08-05)
+
+## [0.21.40](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.39...guest-mock-claude-v0.21.40) (2026-08-05)
+
+## [0.21.39](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.38...guest-mock-claude-v0.21.39) (2026-08-04)
+
+## [0.21.38](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.37...guest-mock-claude-v0.21.38) (2026-08-04)
+
+## [0.21.37](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.36...guest-mock-claude-v0.21.37) (2026-08-04)
+
+## [0.21.36](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.35...guest-mock-claude-v0.21.36) (2026-08-04)
+
+## [0.21.35](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.34...guest-mock-claude-v0.21.35) (2026-08-04)
+
 ## [0.21.34](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.33...guest-mock-claude-v0.21.34) (2026-08-03)
 
 ## [0.21.33](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.32...guest-mock-claude-v0.21.33) (2026-08-03)

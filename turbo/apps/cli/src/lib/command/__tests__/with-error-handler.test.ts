@@ -26,7 +26,7 @@ describe("withErrorHandler", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should show ZERO_TOKEN setup guidance when it is missing", async () => {
+  it("should show OKOU_TOKEN setup guidance when it is missing", async () => {
     const handler = withErrorHandler(async () => {
       throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
     });
@@ -39,12 +39,12 @@ describe("withErrorHandler", () => {
       })
       .join("\n");
     expect(output).toContain("Not authenticated");
-    expect(output).toContain("Set ZERO_TOKEN to a valid run token");
+    expect(output).toContain("Set OKOU_TOKEN to a valid run token");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should show ZERO_TOKEN guidance for UNAUTHORIZED with ZERO_TOKEN set", async () => {
-    vi.stubEnv("ZERO_TOKEN", "some-token");
+  it("should show OKOU_TOKEN guidance for UNAUTHORIZED with OKOU_TOKEN set", async () => {
+    vi.stubEnv("OKOU_TOKEN", "some-token");
 
     const handler = withErrorHandler(async () => {
       throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
@@ -58,7 +58,7 @@ describe("withErrorHandler", () => {
       })
       .join("\n");
     expect(output).toContain("Authentication failed");
-    expect(output).toContain("ZERO_TOKEN is invalid or expired");
+    expect(output).toContain("OKOU_TOKEN is invalid or expired");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -97,7 +97,7 @@ describe("withErrorHandler", () => {
       .join("\n");
     expect(output).toContain("Paid plan required");
     expect(output).toContain("Return the plan upgrade link");
-    expect(output).toContain("zero upgrade pro");
+    expect(output).toContain("okou upgrade pro");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 

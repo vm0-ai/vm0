@@ -1,25 +1,36 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { beforeEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   readBankingAuditEventsState,
   seedBankingState,
-} from "./helpers/zero-banking-state";
+} from "./helpers/banking-state";
+import { zeroBankingRoutes } from "../zero-banking";
 
 const context = testContext();
+
+const UNATTENDED_TRIGGER_SOURCES = [
+  "automation-schedule",
+  "automation-event",
+  "automation-schedule",
+  "automation-event",
+  "goal",
+] as const satisfies readonly TriggerSource[];
 
 const FINICITY_BASE_URL = "https://api.finicity.com";
 const FINICITY_AUTH_URL = `${FINICITY_BASE_URL}/aggregation/v2/partners/authentication`;
@@ -46,7 +57,7 @@ interface BankingFixture {
 }
 
 interface SeedBankingFixtureArgs {
-  readonly triggerSource?: "workflow-schedule" | "workflow-event";
+  readonly triggerSource?: (typeof UNATTENDED_TRIGGER_SOURCES)[number];
   readonly operationScopes?: readonly BankingOperationScope[];
   readonly allowAutomationRuns?: boolean;
   readonly connectionStatus?: BankingConnectionStatus;
@@ -104,8 +115,8 @@ async function seedBankingFixture(
         prompt: "banking automation precondition",
         modelProviderType: "anthropic-api-key",
         triggerSource: args.triggerSource,
-        vars: { ZERO_AGENT_ID: agent.agentId },
-        secrets: { ZERO_TOKEN: "bdd-banking-zero-token" },
+        vars: { OKOU_AGENT_ID: agent.agentId },
+        secrets: { OKOU_TOKEN: "bdd-banking-okou-token" },
       })
     : await api.createRun(actor, {
         agentId: agent.agentId,
@@ -197,7 +208,9 @@ describe("POST /api/zero/banking/*", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.accounts({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -248,7 +261,9 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.accounts({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -302,7 +317,9 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.balances({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -348,7 +365,9 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.balances({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -390,7 +409,9 @@ describe("POST /api/zero/banking/*", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.accounts({
         headers: {
@@ -410,7 +431,7 @@ describe("POST /api/zero/banking/*", () => {
     expect(authRequestCount).toBe(0);
   });
 
-  it.each(["workflow-schedule", "workflow-event"] as const)(
+  it.each(UNATTENDED_TRIGGER_SOURCES)(
     "denies %s runs unless the banking grant allows automations",
     async (triggerSource) => {
       const fixture = await seedBankingFixture({ triggerSource });
@@ -422,7 +443,9 @@ describe("POST /api/zero/banking/*", () => {
         }),
       );
 
-      const client = setupApp({ context })(zeroBankingContract);
+      const client = setupApp({ context, routes: zeroBankingRoutes })(
+        zeroBankingContract,
+      );
       const response = await accept(
         client.accounts({
           headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -445,7 +468,7 @@ describe("POST /api/zero/banking/*", () => {
     },
   );
 
-  it.each(["workflow-schedule", "workflow-event"] as const)(
+  it.each(UNATTENDED_TRIGGER_SOURCES)(
     "allows %s runs when the banking grant allows automations",
     async (triggerSource) => {
       const fixture = await seedBankingFixture({
@@ -462,7 +485,9 @@ describe("POST /api/zero/banking/*", () => {
         ),
       );
 
-      const client = setupApp({ context })(zeroBankingContract);
+      const client = setupApp({ context, routes: zeroBankingRoutes })(
+        zeroBankingContract,
+      );
       const response = await accept(
         client.accounts({
           headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -496,7 +521,9 @@ describe("POST /api/zero/banking/*", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.accounts({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
@@ -547,7 +574,9 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context })(zeroBankingContract);
+    const client = setupApp({ context, routes: zeroBankingRoutes })(
+      zeroBankingContract,
+    );
     const response = await accept(
       client.transactions({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },

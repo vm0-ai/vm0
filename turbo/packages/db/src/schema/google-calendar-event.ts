@@ -10,8 +10,8 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
-import { zeroWorkflowAutomations } from "./zero-workflow";
-import type { GoogleCalendarEventSnapshot } from "@vm0/db/jsonb-contracts/google-calendar-event";
+import { workflowAutomations } from "./workflow";
+import type { GoogleCalendarEventSnapshot } from "@okouai/db/jsonb-contracts/google-calendar-event";
 
 export const googleCalendarWatchStates = pgTable(
   "google_calendar_watch_states",
@@ -32,6 +32,9 @@ export const googleCalendarWatchStates = pgTable(
     channelToken: varchar("channel_token", { length: 255 }).notNull(),
     resourceId: varchar("resource_id", { length: 255 }).notNull(),
     resourceUri: text("resource_uri").notNull(),
+    previousChannelId: uuid("previous_channel_id"),
+    previousChannelToken: varchar("previous_channel_token", { length: 255 }),
+    previousResourceId: varchar("previous_resource_id", { length: 255 }),
     syncToken: text("sync_token"),
     watchExpirationAt: timestamp("watch_expiration_at").notNull(),
     lastWatchRenewedAt: timestamp("last_watch_renewed_at").notNull(),
@@ -110,7 +113,7 @@ export const googleCalendarProcessedEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

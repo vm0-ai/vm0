@@ -288,6 +288,9 @@ pub fn encode_write_file_result(success: bool, error: &str) -> Vec<u8> {
 }
 
 /// Encode write_files_result payload: `[1B success][2B error_len][error]`.
+///
+/// Like [`encode_write_file_result`], the error message is truncated to at most
+/// 65535 bytes at a UTF-8 boundary.
 pub fn encode_write_files_result(success: bool, error: &str) -> Vec<u8> {
     encode_write_file_result(success, error)
 }

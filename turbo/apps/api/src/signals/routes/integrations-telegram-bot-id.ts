@@ -3,10 +3,10 @@ import { eq } from "drizzle-orm";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -102,10 +102,7 @@ const updateOfficialBot$ = command(
       });
     signal.throwIfAborted();
 
-    await bestEffort(
-      publishUserSignal([args.auth.userId], "telegram:changed"),
-      signal,
-    );
+    await publishUserSignal([args.auth.userId], "telegram:changed");
     signal.throwIfAborted();
 
     const status = await get(

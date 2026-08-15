@@ -1,7 +1,7 @@
 import type {
   ChatEvent,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 
 type UserMessagePart = UserMessageDocument["parts"][number];
 type AutomationPart = Extract<UserMessagePart, { readonly type: "automation" }>;
@@ -20,7 +20,12 @@ export function chatEventAutomationPart(
 export function chatEventDisplayText(event: ChatEvent): string | null {
   switch (event.eventType) {
     case "input.prompt":
+    case "input.automation":
+    case "input.budget":
     case "input.rejected": {
+      if (!event.userMessage) {
+        return null;
+      }
       return event.userMessage.parts
         .flatMap((part) => {
           return part.type === "text" ? [part.text] : [];

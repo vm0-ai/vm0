@@ -1,16 +1,21 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import type {
   ChatRunFinishedRunStatus,
   GithubDeploymentState,
-  GithubLabelAppliedSubjectFilter,
+  GithubIssueCommentSubjectFilter,
+  GithubPullRequestAction,
   GithubPullRequestReviewState,
   GithubWorkflowRunConclusion,
+  StripeInvoiceBillingReason,
   ZeroWorkflowSchedule,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationSummary,
@@ -19,16 +24,16 @@ import {
   deleteWorkflowAutomation,
   disableWorkflowAutomation,
   enableWorkflowAutomation,
-  getZeroChatThread,
   getWorkflowAutomation,
   listWorkspaceWorkflowAutomations,
-  listZeroModelPolicies,
   listWorkflowAutomations,
   updateWorkflowAutomation,
-} from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+} from "../../../../lib/api/domains/zero-workflows";
+import { getZeroChatThread } from "../../../../lib/api/domains/zero-chat";
+import { listZeroModelPolicies } from "../../../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
-import { parseDurationSeconds } from "../../shared/duration";
+import { parseDurationSeconds } from "../../../shared/duration";
 import {
   resolveWorkflowRef,
   type WorkflowRefOptions,
@@ -55,6 +60,10 @@ interface AddOptions extends GmailAutomationOptions {
   readonly agent?: string;
   readonly subject?: string;
   readonly actor?: string;
+  readonly action?: string;
+  readonly merged?: string;
+  readonly author?: string;
+  readonly prNumber?: string;
   readonly repository?: string;
   readonly workflow?: string;
   readonly job?: string;
@@ -75,6 +84,7 @@ interface AddOptions extends GmailAutomationOptions {
   readonly app?: string;
   readonly commentPrefix?: string;
   readonly calendarId?: string;
+  readonly formUrl?: string;
   readonly pageUrl?: string;
   readonly parentPageUrl?: string;
   readonly databaseUrl?: string;
@@ -84,6 +94,7 @@ interface AddOptions extends GmailAutomationOptions {
   readonly chatThreadId?: string;
   readonly runStatus?: string;
   readonly outputPattern?: string;
+  readonly billingReason?: string;
 }
 
 interface UpdateOptions extends GmailAutomationOptions {
@@ -93,6 +104,10 @@ interface UpdateOptions extends GmailAutomationOptions {
   readonly timezone?: string;
   readonly subject?: string;
   readonly actor?: string;
+  readonly action?: string;
+  readonly merged?: string;
+  readonly author?: string;
+  readonly prNumber?: string;
   readonly repository?: string;
   readonly workflow?: string;
   readonly job?: string;
@@ -118,45 +133,43 @@ const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
 const EVENT_KINDS = [
   "gmail-new-message",
   "gmail-label-applied",
-  "github-label-applied",
   "github-workflow-run-completed",
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
+  "google-forms-response-submitted",
+  "google-meet-transcript-generated",
   "notion-child-page-created",
   "notion-database-item-created",
   "notion-page-content-updated",
   "webhook",
+  "chat-run-finished",
 ] as const;
 const GITHUB_WEBHOOK_EVENT_KINDS = [
+  "github-pull-request",
   "github-workflow-job-completed",
   "github-pull-request-review-submitted",
   "github-deployment-status-created",
   "github-issue-comment-created",
 ] as const;
 const STRAPI_EVENT_KINDS = ["strapi-entry-published"] as const;
-const CHAT_EVENT_KINDS = ["chat-run-finished"] as const;
+const STRIPE_EVENT_KINDS = ["stripe-invoice-paid"] as const;
 const CHAT_RUN_FINISHED_STATUSES = [
   "completed",
   "failed",
   "cancelled",
 ] as const;
-
-function githubWebhookAutomationsEnabled(): boolean {
-  const payload = decodeZeroTokenPayload();
-  return isFeatureEnabled(FeatureSwitchKey.GithubWebhookAutomations, {
-    userId: payload?.userId,
-    orgId: payload?.orgId,
-  });
-}
-
-function zeroChatMessagingEnabled(): boolean {
-  const payload = decodeZeroTokenPayload();
-  return isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {
-    userId: payload?.userId,
-    orgId: payload?.orgId,
-  });
-}
+const STRIPE_INVOICE_BILLING_REASONS: readonly StripeInvoiceBillingReason[] = [
+  "automatic_pending_invoice_item_invoice",
+  "manual",
+  "quote_accept",
+  "subscription",
+  "subscription_create",
+  "subscription_cycle",
+  "subscription_threshold",
+  "subscription_update",
+  "upcoming",
+];
 
 function strapiIntegrationEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
@@ -166,13 +179,29 @@ function strapiIntegrationEnabled(): boolean {
   });
 }
 
-function automationKinds(): readonly string[] {
+function stripeInvoicePaidWorkflowAutomationsEnabled(
+  overrides?: FeatureSwitchContext["overrides"],
+): boolean {
+  const payload = decodeZeroTokenPayload();
+  return isFeatureEnabled(
+    FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations,
+    {
+      userId: payload?.userId,
+      orgId: payload?.orgId,
+      overrides,
+    },
+  );
+}
+
+function automationKinds(
+  stripeInvoicePaidEnabled = stripeInvoicePaidWorkflowAutomationsEnabled(),
+): readonly string[] {
   return [
     ...SCHEDULE_KINDS,
     ...EVENT_KINDS,
-    ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
+    ...GITHUB_WEBHOOK_EVENT_KINDS,
     ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
-    ...(zeroChatMessagingEnabled() ? CHAT_EVENT_KINDS : []),
+    ...(stripeInvoicePaidEnabled ? STRIPE_EVENT_KINDS : []),
   ];
 }
 
@@ -198,6 +227,7 @@ async function loadWorkflowAutomationThreadModel(
   return {
     id: modelId,
     label: getModelDisplayName(modelId),
+    serviceTier: thread.serviceTier,
   };
 }
 
@@ -218,15 +248,8 @@ async function tryLoadWorkflowAutomationThreadModel(
   }
 }
 
-function githubWebhookEventKind(
-  kind: string,
-): kind is (typeof GITHUB_WEBHOOK_EVENT_KINDS)[number] {
-  return GITHUB_WEBHOOK_EVENT_KINDS.some((eventKind) => {
-    return eventKind === kind;
-  });
-}
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --page-url, --parent-page-url, or --database-url";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --form-url, --page-url, --parent-page-url, or --database-url";
 
 function addGmailAutomationOptions(command: Command): Command {
   return command
@@ -272,11 +295,27 @@ function addGithubAutomationOptions(command: Command): Command {
   return command
     .option(
       "--subject <subject>",
-      "GitHub subject filter for label/comment automations: both | issues | pull-requests",
+      "GitHub subject filter for issue comment automations: both | issues | pull-requests",
     )
     .option(
-      "--actor <actor>",
-      "GitHub actor filter: me | anyone for labels, or comma-separated logins for workflow runs",
+      "--actor <actors>",
+      "GitHub workflow run actors, comma-separated logins",
+    )
+    .option(
+      "--action <action>",
+      "GitHub pull request action for github-pull-request automations",
+    )
+    .option(
+      "--merged <merged>",
+      "GitHub pull request merged filter for the closed action: yes | no | any",
+    )
+    .option(
+      "--author <authors>",
+      "GitHub pull request authors, comma-separated logins",
+    )
+    .option(
+      "--pr-number <numbers>",
+      "GitHub pull request numbers, comma-separated",
     )
     .option(
       "--repository <repositories>",
@@ -513,27 +552,13 @@ function hasScheduleAddOptions(options: AddOptions): boolean {
   );
 }
 
-function hasGithubLabelAutomationOptions(
-  options: AddOptions | UpdateOptions,
-): boolean {
-  return options.subject !== undefined || options.actor !== undefined;
-}
-
-function hasGithubWorkflowRunSpecificOptions(
-  options: AddOptions | UpdateOptions,
-): boolean {
-  return (
-    options.repository !== undefined ||
-    options.workflow !== undefined ||
-    options.conclusion !== undefined ||
-    options.branch !== undefined ||
-    options.triggeringEvent !== undefined
-  );
-}
-
 type GithubAutomationOptionKey =
   | "subject"
   | "actor"
+  | "action"
+  | "merged"
+  | "author"
+  | "prNumber"
   | "repository"
   | "workflow"
   | "job"
@@ -557,6 +582,10 @@ type GithubAutomationOptionKey =
 const GITHUB_AUTOMATION_OPTION_KEYS: readonly GithubAutomationOptionKey[] = [
   "subject",
   "actor",
+  "action",
+  "merged",
+  "author",
+  "prNumber",
   "repository",
   "workflow",
   "job",
@@ -594,11 +623,7 @@ function hasGithubWebhookOptions(options: AddOptions | UpdateOptions): boolean {
 function hasGithubAutomationOptions(
   options: AddOptions | UpdateOptions,
 ): boolean {
-  return (
-    hasGithubLabelAutomationOptions(options) ||
-    hasGithubWorkflowRunSpecificOptions(options) ||
-    hasGithubWebhookOptions(options)
-  );
+  return hasGithubWebhookOptions(options);
 }
 
 function assertOnlyGithubAutomationOptions(
@@ -632,6 +657,10 @@ function hasCalendarAutomationOptions(options: AddOptions): boolean {
   return options.calendarId !== undefined;
 }
 
+function hasGoogleFormsAutomationOptions(options: AddOptions): boolean {
+  return options.formUrl !== undefined;
+}
+
 function hasNotionAutomationOptions(options: AddOptions): boolean {
   return (
     options.pageUrl !== undefined ||
@@ -662,6 +691,7 @@ function hasEventAddOptions(options: AddOptions): boolean {
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasNotionAutomationOptions(options) ||
     hasStrapiAutomationOptions(options) ||
     hasChatRunFinishedAutomationOptions(options)
@@ -689,6 +719,14 @@ function assertNoCalendarAutomationOptions(options: AddOptions): void {
   if (hasCalendarAutomationOptions(options)) {
     throw new Error(
       "Google Calendar automation flags only apply to Google Calendar event automations",
+    );
+  }
+}
+
+function assertNoGoogleFormsAutomationOptions(options: AddOptions): void {
+  if (hasGoogleFormsAutomationOptions(options)) {
+    throw new Error(
+      "--form-url only applies to google-forms-response-submitted automations",
     );
   }
 }
@@ -721,8 +759,8 @@ function hasScheduleUpdateOptions(options: UpdateOptions): boolean {
 
 function parseGithubSubject(
   value: string | undefined,
-  fallback: GithubLabelAppliedSubjectFilter = "both",
-): GithubLabelAppliedSubjectFilter {
+  fallback: GithubIssueCommentSubjectFilter = "both",
+): GithubIssueCommentSubjectFilter {
   if (value === undefined) {
     return fallback;
   }
@@ -737,52 +775,6 @@ function parseGithubSubject(
         `Invalid --subject "${value}". Use one of: both, issues, pull-requests`,
       );
   }
-}
-
-function parseGithubActor(
-  value: string | undefined,
-  fallback: "me" | "anyone" = "me",
-): "me" | "anyone" {
-  if (value === undefined) {
-    return fallback;
-  }
-  if (value === "me" || value === "anyone") {
-    return value;
-  }
-  throw new Error(`Invalid --actor "${value}". Use one of: me, anyone`);
-}
-
-function buildGithubLabelAppliedEventConfig(
-  options: AddOptions | UpdateOptions,
-  existing?: Extract<
-    ZeroWorkflowAutomationSummary,
-    { readonly kind: "event"; readonly eventType: "github-label-applied" }
-  >,
-) {
-  const labelName = options.label?.trim() ?? existing?.eventConfig.labelName;
-  if (!labelName) {
-    throw new Error(
-      'github-label-applied automations require --label "Label name"',
-    );
-  }
-
-  return {
-    provider: "github" as const,
-    event: "label_applied" as const,
-    labelName,
-    filters: {
-      subject: parseGithubSubject(
-        options.subject,
-        existing?.eventConfig.filters.subject ?? "both",
-      ),
-      actor: {
-        type: parseGithubActor(
-          options.actor,
-          existing?.eventConfig.filters.actor.type ?? "me",
-        ),
-      },
-    },
-  };
 }
 
 const GITHUB_WORKFLOW_RUN_CONCLUSIONS: readonly GithubWorkflowRunConclusion[] =
@@ -844,6 +836,115 @@ function parseGithubWorkflowRunConclusions(
       `Invalid --conclusion "${conclusion}". Use one of: ${GITHUB_WORKFLOW_RUN_CONCLUSIONS.join(", ")}, any`,
     );
   });
+}
+
+const GITHUB_PULL_REQUEST_ACTIONS: readonly GithubPullRequestAction[] = [
+  "opened",
+  "reopened",
+  "closed",
+  "ready_for_review",
+  "converted_to_draft",
+  "synchronize",
+  "enqueued",
+  "dequeued",
+  "labeled",
+  "unlabeled",
+];
+
+function parseGithubPullRequestAction(
+  value: string | undefined,
+  fallback: GithubPullRequestAction | undefined,
+): GithubPullRequestAction {
+  if (value === undefined) {
+    if (fallback !== undefined) {
+      return fallback;
+    }
+    throw new Error(
+      `github-pull-request automations require --action <action>. Use one of: ${GITHUB_PULL_REQUEST_ACTIONS.join(", ")}`,
+    );
+  }
+  const action = GITHUB_PULL_REQUEST_ACTIONS.find((candidate) => {
+    return candidate === value.trim();
+  });
+  if (!action) {
+    throw new Error(
+      `Invalid --action "${value}". Use one of: ${GITHUB_PULL_REQUEST_ACTIONS.join(", ")}`,
+    );
+  }
+  return action;
+}
+
+function parseGithubPullRequestMerged(
+  value: string | undefined,
+  fallback: boolean | undefined,
+): boolean | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+  switch (value.trim().toLowerCase()) {
+    case "any":
+      return undefined;
+    case "yes":
+    case "true":
+      return true;
+    case "no":
+    case "false":
+      return false;
+    default:
+      throw new Error(`Invalid --merged "${value}". Use yes, no, or any`);
+  }
+}
+
+function buildGithubPullRequestEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowAutomationSummary,
+    { readonly kind: "event"; readonly eventType: "github-pull-request" }
+  >,
+) {
+  const repository =
+    options.repository?.trim() ?? existing?.eventConfig.repository;
+  if (!repository) {
+    throw new Error(
+      'github-pull-request automations require --repository "owner/name"',
+    );
+  }
+  if (repository.includes(",")) {
+    throw new Error(
+      "github-pull-request automations accept exactly one --repository",
+    );
+  }
+  const action = parseGithubPullRequestAction(
+    options.action,
+    existing?.eventConfig.action,
+  );
+  const merged = parseGithubPullRequestMerged(
+    options.merged,
+    existing?.eventConfig.merged,
+  );
+  if (merged !== undefined && action !== "closed") {
+    throw new Error("--merged only applies to the closed action");
+  }
+  const filters = existing?.eventConfig.filters;
+  return {
+    provider: "github" as const,
+    event: "pull_request" as const,
+    repository,
+    action,
+    ...(merged === undefined ? {} : { merged }),
+    filters: {
+      baseBranches: parseGithubWorkflowRunFilter(
+        options.baseBranch,
+        filters?.baseBranches,
+      ),
+      authors: parseGithubWorkflowRunFilter(options.author, filters?.authors),
+      pullRequestNumbers: parseGithubWorkflowRunFilter(
+        options.prNumber,
+        filters?.pullRequestNumbers,
+      ),
+      labels: parseGithubWorkflowRunFilter(options.label, filters?.labels),
+    },
+  };
 }
 
 const GITHUB_PULL_REQUEST_REVIEW_STATES: readonly GithubPullRequestReviewState[] =
@@ -1120,6 +1221,7 @@ function buildGmailNewMessageCreateRequest(
   }
   assertNoGithubAutomationOptions(options);
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
   return {
@@ -1140,6 +1242,7 @@ function buildGmailLabelAppliedCreateRequest(
   }
   assertNoGithubAutomationOptions(options);
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
   return {
@@ -1149,7 +1252,7 @@ function buildGmailLabelAppliedCreateRequest(
   };
 }
 
-function buildGithubLabelAppliedCreateRequest(
+function buildGithubPullRequestCreateRequest(
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
@@ -1159,18 +1262,21 @@ function buildGithubLabelAppliedCreateRequest(
     );
   }
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
-  if (hasGithubWorkflowRunSpecificOptions(options)) {
-    throw new Error(
-      "Workflow run filter flags only apply to github-workflow-run-completed automations",
-    );
-  }
-  assertOnlyGithubAutomationOptions(options, ["subject", "actor"]);
+  assertOnlyGithubAutomationOptions(options, [
+    "repository",
+    "action",
+    "merged",
+    "baseBranch",
+    "author",
+    "prNumber",
+  ]);
   return {
     kind: "event",
-    eventType: "github-label-applied",
-    eventConfig: buildGithubLabelAppliedEventConfig(options),
+    eventType: "github-pull-request",
+    eventConfig: buildGithubPullRequestEventConfig(options),
   };
 }
 
@@ -1185,7 +1291,7 @@ function buildGithubWorkflowRunCompletedCreateRequest(
   }
   if (options.subject !== undefined) {
     throw new Error(
-      "--subject only applies to github-label-applied automations",
+      "--subject only applies to github-issue-comment-created automations",
     );
   }
   assertOnlyGithubAutomationOptions(options, [
@@ -1197,6 +1303,7 @@ function buildGithubWorkflowRunCompletedCreateRequest(
     "actor",
   ]);
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
   return {
@@ -1217,6 +1324,7 @@ function assertGithubWebhookCreateOptions(
     );
   }
   assertNoCalendarAutomationOptions(options);
+  assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
   assertOnlyGithubAutomationOptions(options, allowed);
@@ -1305,6 +1413,7 @@ function buildGoogleCalendarEventCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasNotionAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
@@ -1346,6 +1455,60 @@ function buildGoogleCalendarEventCreateRequest(
   };
 }
 
+function buildGoogleFormsResponseSubmittedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasCalendarAutomationOptions(options) ||
+    hasNotionAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options) ||
+    hasChatRunFinishedAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Only --form-url applies to google-forms-response-submitted automations",
+    );
+  }
+  const formUrl = options.formUrl?.trim();
+  if (!formUrl) {
+    throw new Error(
+      'google-forms-response-submitted automations require --form-url "https://docs.google.com/forms/d/.../edit"',
+    );
+  }
+  return {
+    kind: "event",
+    eventType: "google-forms-response-submitted",
+    eventConfig: {
+      provider: "google-forms",
+      event: "response_submitted",
+      formUrl,
+    },
+  };
+}
+
+function buildGoogleMeetTranscriptGeneratedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasEventAddOptions(options)) {
+    throw new Error(
+      "Google Meet transcript automations do not accept event filter options",
+    );
+  }
+  return {
+    kind: "event",
+    eventType: "google-meet-transcript-generated",
+    eventConfig: {
+      provider: "google-meet",
+      event: "transcript_generated",
+      scope: { type: "organizer_user" },
+    },
+  };
+}
+
 function buildNotionChildPageCreatedCreateRequest(
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -1355,10 +1518,11 @@ function buildNotionChildPageCreatedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, Google Forms, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1394,10 +1558,11 @@ function buildNotionDatabaseItemCreatedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, Google Forms, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1433,10 +1598,11 @@ function buildNotionPageContentUpdatedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, Google Forms, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1516,6 +1682,7 @@ function buildChatRunFinishedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasNotionAutomationOptions(options) ||
     hasStrapiAutomationOptions(options)
   ) {
@@ -1574,6 +1741,7 @@ function buildStrapiEntryPublishedCreateRequest(
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
+    hasGoogleFormsAutomationOptions(options) ||
     hasNotionAutomationOptions(options)
   ) {
     throw new Error(
@@ -1601,6 +1769,61 @@ function buildStrapiEntryPublishedCreateRequest(
   };
 }
 
+function parseStripeInvoiceBillingReasons(
+  value: string,
+): StripeInvoiceBillingReason[] {
+  const values = value.split(",").map((billingReason) => {
+    return billingReason.trim();
+  });
+  if (
+    values.some((billingReason) => {
+      return billingReason.length === 0;
+    })
+  ) {
+    throw new Error("--billing-reason cannot contain empty values");
+  }
+
+  const billingReasons: StripeInvoiceBillingReason[] = [];
+  for (const value of values) {
+    const billingReason = STRIPE_INVOICE_BILLING_REASONS.find((candidate) => {
+      return candidate === value;
+    });
+    if (!billingReason) {
+      throw new Error(
+        `Invalid --billing-reason value "${value}"; expected one of: ${STRIPE_INVOICE_BILLING_REASONS.join(", ")}`,
+      );
+    }
+    if (!billingReasons.includes(billingReason)) {
+      billingReasons.push(billingReason);
+    }
+  }
+  return billingReasons;
+}
+
+function buildStripeInvoicePaidCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasEventAddOptions(options)) {
+    throw new Error(
+      "Only --billing-reason applies to stripe-invoice-paid automations",
+    );
+  }
+  const billingReasons =
+    options.billingReason === undefined
+      ? undefined
+      : parseStripeInvoiceBillingReasons(options.billingReason);
+  return {
+    kind: "event",
+    eventType: "stripe-invoice-paid",
+    eventConfig: {
+      provider: "stripe",
+      event: "invoice_paid",
+      ...(billingReasons ? { billingReasons } : {}),
+    },
+  };
+}
+
 function buildScheduleCreateRequest(
   kind: string,
   options: AddOptions,
@@ -1611,7 +1834,7 @@ function buildScheduleCreateRequest(
   return { schedule: buildSchedule(kind, options) };
 }
 
-function buildCreateRequest(
+function buildNonStripeCreateRequest(
   kind: string,
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -1620,8 +1843,8 @@ function buildCreateRequest(
       return buildGmailNewMessageCreateRequest(options);
     case "gmail-label-applied":
       return buildGmailLabelAppliedCreateRequest(options);
-    case "github-label-applied":
-      return buildGithubLabelAppliedCreateRequest(options);
+    case "github-pull-request":
+      return buildGithubPullRequestCreateRequest(options);
     case "github-workflow-run-completed":
       return buildGithubWorkflowRunCompletedCreateRequest(options);
     case "github-workflow-job-completed":
@@ -1638,6 +1861,10 @@ function buildCreateRequest(
       return buildGoogleCalendarEventCreateRequest(kind, options);
     case "google-calendar-event-cancelled":
       return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "google-forms-response-submitted":
+      return buildGoogleFormsResponseSubmittedCreateRequest(options);
+    case "google-meet-transcript-generated":
+      return buildGoogleMeetTranscriptGeneratedCreateRequest(options);
     case "notion-child-page-created":
       return buildNotionChildPageCreatedCreateRequest(options);
     case "notion-database-item-created":
@@ -1655,11 +1882,53 @@ function buildCreateRequest(
   }
 }
 
-function buildGithubWorkflowEventUpdate(
+function buildCreateRequest(
+  kind: string,
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  if (kind === "stripe-invoice-paid") {
+    return buildStripeInvoicePaidCreateRequest(options);
+  }
+  if (options.billingReason !== undefined) {
+    throw new Error(
+      "--billing-reason only applies to stripe-invoice-paid automations",
+    );
+  }
+  return buildNonStripeCreateRequest(kind, options);
+}
+
+function buildGithubAutomationEventUpdate(
   options: UpdateOptions,
   existing: Extract<ZeroWorkflowAutomationSummary, { readonly kind: "event" }>,
 ): ZeroWorkflowAutomationUpdateRequest | undefined {
   switch (existing.eventType) {
+    case "github-pull-request": {
+      if (hasGmailAutomationOptions(options)) {
+        throw new Error(
+          "Gmail match flags only apply to Gmail event automations",
+        );
+      }
+      const allowed = [
+        "repository",
+        "action",
+        "merged",
+        "baseBranch",
+        "author",
+        "prNumber",
+      ] as const;
+      assertOnlyGithubAutomationOptions(options, allowed);
+      if (
+        !hasAnyGithubAutomationOption(options, allowed) &&
+        !hasGmailLabelOption(options)
+      ) {
+        throw new Error(
+          "Provide a github-pull-request filter flag; use any to clear a filter",
+        );
+      }
+      return {
+        eventConfig: buildGithubPullRequestEventConfig(options, existing),
+      };
+    }
     case "github-workflow-run-completed": {
       if (
         hasGmailAutomationOptions(options) ||
@@ -1798,29 +2067,19 @@ function buildEventUpdate(
     throw new Error("Google Calendar event automations cannot be updated");
   }
 
-  if (existing.eventType === "github-label-applied") {
-    if (hasGmailOptions) {
-      throw new Error(
-        "Gmail match flags only apply to Gmail event automations",
-      );
-    }
-    if (hasGithubWorkflowRunSpecificOptions(options)) {
-      throw new Error(
-        "Workflow run filter flags only apply to github-workflow-run-completed automations",
-      );
-    }
-    assertOnlyGithubAutomationOptions(options, ["subject", "actor"]);
-    if (!hasLabelOption && !hasGithubOptions) {
-      throw new Error(
-        "Provide --label, --subject, or --actor for github-label-applied automations",
-      );
-    }
-    return {
-      eventConfig: buildGithubLabelAppliedEventConfig(options, existing),
-    };
+  if (existing.eventType === "google-forms-response-submitted") {
+    throw new Error(
+      "this trigger has no updatable fields; delete it and create a new one",
+    );
   }
 
-  const githubWorkflowUpdate = buildGithubWorkflowEventUpdate(
+  if (existing.eventType === "stripe-invoice-paid") {
+    throw new Error(
+      "Stripe billing reasons cannot be updated; delete and recreate the automation",
+    );
+  }
+
+  const githubWorkflowUpdate = buildGithubAutomationEventUpdate(
     options,
     existing,
   );
@@ -1910,142 +2169,181 @@ function buildUpdate(
   return buildScheduleUpdate(options);
 }
 
-const addCommand = addGithubAutomationOptions(
-  addGmailAutomationOptions(
-    new Command()
-      .name("add")
-      .description("Add an automation to a workflow")
-      .argument("<workflow>", "Workflow ID or name")
-      .argument("<kind>", `Automation type: ${automationKinds().join(" | ")}`)
-      .option("--expr <expression>", 'Cron expression for kind "cron"')
-      .option("--at <iso-time>", 'Fire time for kind "once"')
-      .option(
-        "--every <duration>",
-        'Interval for kind "loop" (e.g. 15m, 1h, 90s)',
-      )
-      .option(
-        "-z, --timezone <tz>",
-        "IANA timezone for cron/once (default: UTC)",
-      ),
-  ),
-)
-  .option(
-    "--calendar-id <id>",
-    "Google Calendar ID for Google Calendar event automations (default: primary)",
+function stripeBillingReasonOption(stripeInvoicePaidEnabled: boolean): Option {
+  const option = new Option(
+    "--billing-reason <reasons>",
+    "Comma-separated Stripe invoice billing reasons (default: any)",
+  );
+  if (!stripeInvoicePaidEnabled) {
+    option.hideHelp();
+  }
+  return option;
+}
+
+export function createAutomationAddCommand(
+  commandOptions: {
+    readonly featureSwitchOverrides?: FeatureSwitchContext["overrides"];
+  } = {},
+): Command {
+  const stripeInvoicePaidEnabledForHelp =
+    stripeInvoicePaidWorkflowAutomationsEnabled(
+      commandOptions.featureSwitchOverrides,
+    );
+  const stripeExample = stripeInvoicePaidEnabledForHelp
+    ? "  okou workflow automation add invoice-follow-up --agent <agent-id> stripe-invoice-paid --billing-reason subscription_create,subscription_cycle\n"
+    : "";
+
+  return addGithubAutomationOptions(
+    addGmailAutomationOptions(
+      new Command()
+        .name("add")
+        .description("Add an automation to a workflow")
+        .argument("<workflow>", "Workflow ID or name")
+        .argument(
+          "<kind>",
+          `Automation type: ${automationKinds(stripeInvoicePaidEnabledForHelp).join(" | ")}`,
+        )
+        .option("--expr <expression>", 'Cron expression for kind "cron"')
+        .option("--at <iso-time>", 'Fire time for kind "once"')
+        .option(
+          "--every <duration>",
+          'Interval for kind "loop" (e.g. 15m, 1h, 90s)',
+        )
+        .option(
+          "-z, --timezone <tz>",
+          "IANA timezone for cron/once (default: UTC)",
+        ),
+    ),
   )
-  .option(
-    "--page-url <url>",
-    "Notion page URL for notion-page-content-updated automations",
-  )
-  .option(
-    "--parent-page-url <url>",
-    "Parent Notion page URL for notion-child-page-created automations",
-  )
-  .option(
-    "--database-url <url>",
-    "Notion database URL for notion-database-item-created or notion-page-content-updated automations",
-  )
-  .option(
-    "--integration-id <uuid>",
-    "Strapi integration ID for Strapi event automations",
-  )
-  .option(
-    "--content-type-uid <uid>",
-    "Optional Strapi content type UID, for example api::article.article",
-  )
-  .option("--locale <locale>", "Optional Strapi locale filter")
-  .option(
-    "--chat-thread-id <uuid>",
-    "Watched chat thread ID for chat-run-finished automations",
-  )
-  .option(
-    "--run-status <statuses>",
-    "Comma-separated finish statuses for chat-run-finished automations: completed, failed, cancelled (default: all)",
-  )
-  .option(
-    "--output-pattern <pattern>",
-    "Optional * wildcard matched against the finished run's final assistant text",
-  )
-  .option("--agent <id>", "Agent ID for resolving a workflow name")
-  .addHelpText(
-    "after",
-    `
+    .option(
+      "--calendar-id <id>",
+      "Google Calendar ID for Google Calendar event automations (default: primary)",
+    )
+    .option(
+      "--form-url <url>",
+      "Google Form edit-page URL or bare form ID for response automations",
+    )
+    .option(
+      "--page-url <url>",
+      "Notion page URL for notion-page-content-updated automations",
+    )
+    .option(
+      "--parent-page-url <url>",
+      "Parent Notion page URL for notion-child-page-created automations",
+    )
+    .option(
+      "--database-url <url>",
+      "Notion database URL for notion-database-item-created or notion-page-content-updated automations",
+    )
+    .option(
+      "--integration-id <uuid>",
+      "Strapi integration ID for Strapi event automations",
+    )
+    .option(
+      "--content-type-uid <uid>",
+      "Optional Strapi content type UID, for example api::article.article",
+    )
+    .option("--locale <locale>", "Optional Strapi locale filter")
+    .option(
+      "--chat-thread-id <uuid>",
+      "Watched chat thread ID for chat-run-finished automations",
+    )
+    .option(
+      "--run-status <statuses>",
+      "Comma-separated finish statuses for chat-run-finished automations: completed, failed, cancelled (default: all)",
+    )
+    .option(
+      "--output-pattern <pattern>",
+      "Optional * wildcard matched against the finished run's final assistant text",
+    )
+    .addOption(stripeBillingReasonOption(stripeInvoicePaidEnabledForHelp))
+    .option("--agent <id>", "Agent ID for resolving a workflow name")
+    .addHelpText(
+      "after",
+      `
 Examples:
-  zero workflow automation add tell-a-joke --agent <agent-id> cron --expr "0 9 * * *" -z Asia/Shanghai
-  zero workflow automation add tell-a-joke --agent <agent-id> once --at "2026-06-10T09:00" -z Asia/Shanghai
-  zero workflow automation add tell-a-joke --agent <agent-id> loop --every 15m
-  zero workflow automation add triage --agent <agent-id> gmail-new-message --from-contains "@example.com"
-  zero workflow automation add triage --agent <agent-id> gmail-new-message --config ./gmail-automation.json
-  zero workflow automation add triage --agent <agent-id> gmail-label-applied --label "Support"
-  zero workflow automation add triage --agent <agent-id> github-label-applied --label "triage" --subject both --actor me
-  zero workflow automation add ci-triage --agent <agent-id> github-workflow-run-completed --repository vm0-ai/vm0 --workflow Turbo --conclusion failure,timed_out --branch main --triggering-event push --actor dependabot[bot]
-  zero workflow automation add triage --agent <agent-id> google-calendar-event-created
-  zero workflow automation add triage --agent <agent-id> google-calendar-event-updated
-  zero workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
-  zero workflow automation add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
-  zero workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
-  zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
-  zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
-  zero workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
-  zero workflow automation add triage --agent <agent-id> webhook
-  zero workflow automation add follow-up --agent <agent-id> chat-run-finished --chat-thread-id <thread-uuid> --run-status completed,failed --output-pattern "*deploy failed*"
+  okou workflow automation add tell-a-joke --agent <agent-id> cron --expr "0 9 * * *" -z Asia/Shanghai
+  okou workflow automation add tell-a-joke --agent <agent-id> once --at "2026-06-10T09:00" -z Asia/Shanghai
+  okou workflow automation add tell-a-joke --agent <agent-id> loop --every 15m
+  okou workflow automation add triage --agent <agent-id> gmail-new-message --from-contains "@example.com"
+  okou workflow automation add triage --agent <agent-id> gmail-new-message --config ./gmail-automation.json
+  okou workflow automation add triage --agent <agent-id> gmail-label-applied --label "Support"
+  okou workflow automation add merge-follow-up --agent <agent-id> github-pull-request --repository vm0-ai/vm0 --action closed --merged yes --base-branch main
+  okou workflow automation add pr-triage --agent <agent-id> github-pull-request --repository vm0-ai/vm0 --action labeled --label "triage"
+  okou workflow automation add ci-triage --agent <agent-id> github-workflow-run-completed --repository vm0-ai/vm0 --workflow Turbo --conclusion failure,timed_out --branch main --triggering-event push --actor dependabot[bot]
+  okou workflow automation add triage --agent <agent-id> google-calendar-event-created
+  okou workflow automation add triage --agent <agent-id> google-calendar-event-updated
+  okou workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
+  okou workflow trigger add triage --agent <agent-id> google-forms-response-submitted --form-url "https://docs.google.com/forms/d/<form-id>/edit"
+  okou workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated
+  okou workflow automation add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  okou workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  okou workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  okou workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  okou workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
+${stripeExample}  okou workflow automation add triage --agent <agent-id> webhook
+  okou workflow automation add follow-up --agent <agent-id> chat-run-finished --chat-thread-id <thread-uuid> --run-status completed,failed --output-pattern "*deploy failed*"
 
 Notes:
-  - Workflow names resolve under --agent, then ZERO_AGENT_ID
+  - Workflow names resolve under --agent, then OKOU_AGENT_ID
   - Gmail automations match all inbound messages when no text match rules are provided
   - GitHub automations require the GitHub App installation in the workspace
   - GitHub workflow run filters accept comma-separated values; omit a filter to match any value
+  - Google Meet automations run only when a meeting you organize generates a transcript
   - Webhook automations print the signing secret only once after creation
   - Use the workflow ID when a name is ambiguous`,
-  )
-  .action(
-    withErrorHandler(
-      async (workflowRef: string, kind: string, options: AddOptions) => {
-        if (
-          githubWebhookEventKind(kind) &&
-          !githubWebhookAutomationsEnabled()
-        ) {
-          throw new Error(
-            "GitHub webhook automations are not enabled for this workspace",
-          );
-        }
-        if (kind === "strapi-entry-published" && !strapiIntegrationEnabled()) {
-          throw new Error(
-            "Strapi workflow automations are not enabled for this workspace",
-          );
-        }
-        if (kind === "chat-run-finished" && !zeroChatMessagingEnabled()) {
-          throw new Error(
-            "Chat run finished automations are not enabled for this workspace",
-          );
-        }
-        if (
-          options.timezone &&
-          kind !== "cron" &&
-          kind !== "once" &&
-          kind !== "gmail-new-message"
-        ) {
-          throw new Error(
-            "--timezone only applies to cron and once automations",
-          );
-        }
-        const workflowId = await resolveWorkflowRef(workflowRef, options);
-        const body = buildCreateRequest(kind, options);
-        const automation = await createWorkflowAutomation(workflowId, body);
+    )
+    .action(
+      withErrorHandler(
+        async (workflowRef: string, kind: string, options: AddOptions) => {
+          if (
+            kind === "strapi-entry-published" &&
+            !strapiIntegrationEnabled()
+          ) {
+            throw new Error(
+              "Strapi workflow automations are not enabled for this workspace",
+            );
+          }
+          if (
+            kind === "stripe-invoice-paid" &&
+            !stripeInvoicePaidWorkflowAutomationsEnabled(
+              commandOptions.featureSwitchOverrides,
+            )
+          ) {
+            throw new Error(
+              "Stripe invoice-paid workflow automations are not enabled for this workspace",
+            );
+          }
+          if (
+            options.timezone &&
+            kind !== "cron" &&
+            kind !== "once" &&
+            kind !== "gmail-new-message"
+          ) {
+            throw new Error(
+              "--timezone only applies to cron and once automations",
+            );
+          }
+          const workflowId = await resolveWorkflowRef(workflowRef, options);
+          const body = buildCreateRequest(kind, options);
+          const automation = await createWorkflowAutomation(workflowId, body);
 
-        console.log(
-          chalk.green(`✓ Automation added to workflow "${workflowRef}"`),
-        );
-        const threadModel =
-          await tryLoadWorkflowAutomationThreadModel(automation);
-        printWorkflowAutomationDetails(automation, {
-          workflowRef,
-          workflowId,
-          threadModel,
-        });
-      },
-    ),
-  );
+          console.log(
+            chalk.green(`✓ Automation added to workflow "${workflowRef}"`),
+          );
+          const threadModel =
+            await tryLoadWorkflowAutomationThreadModel(automation);
+          printWorkflowAutomationDetails(automation, {
+            workflowRef,
+            workflowId,
+            threadModel,
+          });
+        },
+      ),
+    );
+}
+
+const addCommand = createAutomationAddCommand();
 
 const updateCommand = addGithubAutomationOptions(
   addGmailAutomationOptions(
@@ -2065,15 +2363,15 @@ const updateCommand = addGithubAutomationOptions(
     "after",
     `
 Examples:
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --expr "0 9 * * *" -z Asia/Shanghai
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --at "2026-06-10T09:00" -z UTC
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --every 10m
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --config ./gmail-automation.json
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --label "Support"
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --conclusion failure,timed_out --branch main
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor any`,
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --expr "0 9 * * *" -z Asia/Shanghai
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --at "2026-06-10T09:00" -z UTC
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --every 10m
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --config ./gmail-automation.json
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --label "Support"
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --conclusion failure,timed_out --branch main
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --actor any`,
   )
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {
@@ -2098,8 +2396,8 @@ const listCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow automation list tell-a-joke --agent <agent-id>
-  zero workflow automation list <workflow-id>`,
+  okou workflow automation list tell-a-joke --agent <agent-id>
+  okou workflow automation list <workflow-id>`,
   )
   .action(
     withErrorHandler(
@@ -2111,13 +2409,15 @@ Examples:
           console.log(chalk.dim("No automations"));
           console.log(
             chalk.dim(
-              `  Add one with: zero workflow automation add ${workflowRef} cron --expr "0 9 * * *"`,
+              `  Add one with: okou workflow automation add ${workflowRef} cron --expr "0 9 * * *"`,
             ),
           );
           return;
         }
 
-        printWorkflowAutomationsTable(automations);
+        printWorkflowAutomationsTable(automations, {
+          showStripeDetails: true,
+        });
       },
     ),
   );
@@ -2190,6 +2490,7 @@ const disableCommand = new Command()
 
 export const automationCommand = new Command()
   .name("automation")
+  .alias("trigger")
   .description("Manage a workflow's automations")
   .addCommand(addCommand)
   .addCommand(updateCommand)
@@ -2202,11 +2503,11 @@ export const automationCommand = new Command()
     "after",
     `
 Examples:
-  Add an automation:     zero workflow automation add <workflow-id> cron --expr "0 9 * * *"
-  Add a Notion page:     zero workflow automation add <workflow-id> notion-child-page-created --parent-page-url "https://www.notion.so/..."
-  Add a webhook:         zero workflow automation add <workflow-id> webhook
-  Update a schedule:     zero workflow automation update <automation-id> --every 10m
-  List automations:      zero workflow automation list <workflow-id>
-  Inspect an automation: zero workflow automation show <automation-id>
-  Pause one automation:  zero workflow automation disable <automation-id>`,
+  Add an automation:     okou workflow automation add <workflow-id> cron --expr "0 9 * * *"
+  Add a Notion page:     okou workflow automation add <workflow-id> notion-child-page-created --parent-page-url "https://www.notion.so/..."
+  Add a webhook:         okou workflow automation add <workflow-id> webhook
+  Update a schedule:     okou workflow automation update <automation-id> --every 10m
+  List automations:      okou workflow automation list <workflow-id>
+  Inspect an automation: okou workflow automation show <automation-id>
+  Pause one automation:  okou workflow automation disable <automation-id>`,
   );

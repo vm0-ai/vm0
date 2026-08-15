@@ -1,5 +1,5 @@
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { and, eq } from "drizzle-orm";
 
 import { badRequestMessage } from "../../lib/error";
@@ -8,7 +8,7 @@ import {
   publishChatThreadDetailChangedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
@@ -16,10 +16,12 @@ import {
 import {
   isCodexFastServiceTierSupported,
   resolveDefaultModelFirstPin,
+  type DefaultModelFirstPin,
   resolveModelFirstProviderAdmission,
   resolvePersistedModelFirstRoute,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
+import type { Tx } from "../../lib/db-types";
 
 export function chatThreadModelPinColumns(pin: ModelFirstPin): {
   readonly modelProviderId: null;
@@ -38,9 +40,7 @@ export function chatThreadModelPinColumns(pin: ModelFirstPin): {
 type ModelFirstProviderAdmission = Awaited<
   ReturnType<typeof resolveModelFirstProviderAdmission>
 >;
-type ChatThreadModelTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+type ChatThreadModelTransaction = Tx;
 
 interface ResolvePersistedChatThreadModelParams {
   readonly db: Db;
@@ -48,7 +48,6 @@ interface ResolvePersistedChatThreadModelParams {
   readonly userId: string;
   readonly threadId: string;
   readonly threadSnapshot?: PersistedChatThreadModelSnapshot;
-  readonly fallbackSelectedModel?: string | null;
   readonly requestedCodexServiceTier?: CodexServiceTier;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
@@ -287,28 +286,55 @@ async function evaluatePersistedChatThreadModel(
   params: ResolvePersistedChatThreadModelParams,
   thread: PersistedChatThreadModelSnapshot,
 ): Promise<PersistedChatThreadModelEvaluationResult> {
-  const modelResolution = await resolvePersistedModelFirstRoute({
-    db,
-    orgId: params.orgId,
-    userId: params.userId,
-    selectedModel: thread.selectedModel ?? params.fallbackSelectedModel ?? null,
-  });
-  if (!modelResolution.route) {
-    return {
-      kind: "error",
-      error: badRequestMessage(
-        "No valid model route is configured for this workspace",
-      ),
+  let pin: ModelFirstPin;
+  let selectedModelChanged: boolean;
+  if (thread.selectedModel === null) {
+    const defaultPin = await resolveDefaultModelFirstPin(
+      db,
+      params.orgId,
+      params.userId,
+    );
+    if (!defaultPin.selectedModel) {
+      return {
+        kind: "error",
+        error: badRequestMessage(
+          "No valid model route is configured for this workspace",
+        ),
+      };
+    }
+    pin = {
+      modelProviderId: defaultPin.modelProviderId,
+      modelProviderType: defaultPin.modelProviderType,
+      modelProviderCredentialScope: defaultPin.modelProviderCredentialScope,
+      selectedModel: defaultPin.selectedModel,
     };
+    selectedModelChanged = true;
+  } else {
+    const modelResolution = await resolvePersistedModelFirstRoute({
+      db,
+      orgId: params.orgId,
+      userId: params.userId,
+      selectedModel: thread.selectedModel,
+    });
+    if (!modelResolution.route) {
+      return {
+        kind: "error",
+        error: badRequestMessage(
+          "No valid model route is configured for this workspace",
+        ),
+      };
+    }
+    pin = {
+      modelProviderId: modelResolution.route.modelProviderId,
+      modelProviderType: modelResolution.route.modelProviderType,
+      modelProviderCredentialScope:
+        modelResolution.route.modelProviderCredentialScope,
+      selectedModel: modelResolution.route.selectedModel,
+    };
+    selectedModelChanged =
+      modelResolution.selectedModelChanged ||
+      thread.selectedModel !== pin.selectedModel;
   }
-
-  const pin: ModelFirstPin = {
-    modelProviderId: modelResolution.route.modelProviderId,
-    modelProviderType: modelResolution.route.modelProviderType,
-    modelProviderCredentialScope:
-      modelResolution.route.modelProviderCredentialScope,
-    selectedModel: modelResolution.route.selectedModel,
-  };
   const providerAdmission = await resolveModelFirstProviderAdmission({
     db,
     orgId: params.orgId,
@@ -316,16 +342,12 @@ async function evaluatePersistedChatThreadModel(
     modelPin: pin,
     requestedModelProvider: undefined,
   });
-  const selectedModelChanged =
-    modelResolution.selectedModelChanged ||
-    thread.selectedModel !== pin.selectedModel;
   const tier = resolveCodexTier({
     persistedTier: thread.codexServiceTier,
     requestedTier: params.requestedCodexServiceTier,
     persistRequestedTier: params.persistRequestedCodexServiceTier,
     fastSupported: isCodexFastServiceTierSupported({
       selectedModel: pin.selectedModel,
-      effectiveModelProvider: providerAdmission.effectiveModelProvider,
       codexFastModeEnabled: params.codexFastModeEnabled,
     }),
     selectedModelChanged,
@@ -447,7 +469,7 @@ export async function resolveRequiredDefaultChatThreadModelPin(
     readonly orgId: string;
     readonly userId: string;
   },
-): Promise<ModelFirstPin> {
+): Promise<DefaultModelFirstPin> {
   const pin = await resolveDefaultModelFirstPin(db, args.orgId, args.userId);
   if (!pin.selectedModel) {
     throw new Error("A model selection is required");

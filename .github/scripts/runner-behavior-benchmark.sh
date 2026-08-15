@@ -22,7 +22,7 @@ echo "=== Running benchmark (default) ==="
 ssh "$REMOTE" "sudo ${BIN_DIR}/runner benchmark \
   --config ${RUNNER_DIR}/runner.yaml \
   --profile vm0/default \
-  'curl -sf --max-time 10 https://www.vm0.ai'"
+  'curl -sf --max-time 10 --output /dev/null https://www.vm0.ai'"
 
 echo "=== Running benchmark (browser automation) ==="
 # Retry once — snapshot restore can trigger transient Chromium

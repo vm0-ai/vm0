@@ -7,26 +7,24 @@ import {
   getSecretsForAuthMethod,
   hasAuthMethods,
   MODEL_PROVIDER_TYPES,
-  type ModelProviderFramework,
   type ModelProviderListResponse,
   type ModelProviderResponse,
-  type ModelProviderType,
   modelProviderTypeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { modelProviderConnections } from "@vm0/db/schema/model-provider-gateway";
-import { secrets } from "@vm0/db/schema/secret";
+  type ModelProviderFramework,
+  type ModelProviderType,
+} from "@okouai/api-contracts/contracts/model-providers";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { modelProviderConnections } from "@okouai/db/schema/model-provider-gateway";
+import { secrets } from "@okouai/db/schema/secret";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-
 import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { encryptStoredSecretValue } from "./crypto.utils";
 import { lockModelProviderState } from "./auth-state-lock.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
-import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 
 const L = logger("zero-model-provider.service");
 
@@ -162,9 +160,6 @@ export const deleteUserModelProvider$ = command(
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
-    const gatewaySchemaAvailable =
-      await modelProviderGatewaySchemaAvailable(writeDb);
-    signal.throwIfAborted();
 
     return await writeDb.transaction(async (tx) => {
       await lockModelProviderState(tx, {
@@ -197,13 +192,11 @@ export const deleteUserModelProvider$ = command(
       }
 
       if (provider.secretId) {
-        const [gatewayReference] = gatewaySchemaAvailable
-          ? await tx
-              .select({ id: modelProviderConnections.id })
-              .from(modelProviderConnections)
-              .where(eq(modelProviderConnections.secretId, provider.secretId))
-              .limit(1)
-          : [];
+        const [gatewayReference] = await tx
+          .select({ id: modelProviderConnections.id })
+          .from(modelProviderConnections)
+          .where(eq(modelProviderConnections.secretId, provider.secretId))
+          .limit(1);
         if (gatewayReference) {
           await tx
             .delete(modelProviders)

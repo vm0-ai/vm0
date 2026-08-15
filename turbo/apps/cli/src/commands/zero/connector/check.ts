@@ -1,18 +1,19 @@
 import { Command, Option } from "commander";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type {
+  ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/connector-check";
 
 import { getApiUrl } from "../../../lib/api/config";
 import {
-  diagnoseZeroConnectorCheck,
+  diagnoseConnectorCheck,
   getZeroConnector,
-  type ZeroConnectorCheckDiagnosticResult,
 } from "../../../lib/api/domains/zero-connectors";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../../lib/okou-env";
 import { toPlatformUrl } from "../doctor/platform-url";
 import {
   isComputerUsePermissionTarget,
@@ -40,7 +41,7 @@ type ValidatedCheckConnectorOptions = CheckConnectorOptions &
   );
 
 export type ResolvedDiagnostic = Extract<
-  ZeroConnectorCheckDiagnosticResult,
+  ConnectorCheckDiagnosticResult,
   { readonly outcome: "resolved" }
 >;
 type ResolvedUrlDiagnostic = Extract<
@@ -107,7 +108,7 @@ function connectorSelectionCommand(
   if (method !== "GET") {
     args.push(`--method ${shellQuoteArg(method)}`);
   }
-  return `zero connector check ${args.join(" ")}`;
+  return `okou connector check ${args.join(" ")}`;
 }
 
 function rawPathFromUrl(url: string): string | undefined {
@@ -227,7 +228,7 @@ function requestedEnvironmentName(request: ConnectorCheckRequest): string {
 
 function unsafeInputError(
   reason: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "unsafe-input" }
   >["reason"],
 ): Error {
@@ -250,7 +251,7 @@ function unsafeInputError(
 function ambiguousConnectorError(
   request: UrlDiagnosticRequest,
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "ambiguous" }
   >,
 ): Error {
@@ -272,7 +273,7 @@ function ambiguousConnectorError(
 function unknownConnectorError(request: ConnectorCheckRequest): Error {
   if (request.mode === "url" && request.connectorSlug !== undefined) {
     return new Error(
-      `Unknown connector slug: ${request.connectorSlug}\nRun: zero connector search ${shellQuoteArg(request.connectorSlug)}`,
+      `Unknown connector slug: ${request.connectorSlug}\nRun: okou connector search ${shellQuoteArg(request.connectorSlug)}`,
     );
   }
   return new Error("The requested connector is unknown.");
@@ -280,7 +281,7 @@ function unknownConnectorError(request: ConnectorCheckRequest): Error {
 
 function noMatchError(
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "no-match" }
   >,
 ): Error {
@@ -294,7 +295,7 @@ function noMatchError(
 function connectorMismatchError(
   request: UrlDiagnosticRequest,
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "connector-mismatch" }
   >,
 ): Error {
@@ -307,7 +308,7 @@ function connectorMismatchError(
 function environmentNotOwnedError(
   request: ConnectorCheckRequest,
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "environment-not-owned" }
   >,
 ): Error {
@@ -320,7 +321,7 @@ function environmentNotOwnedError(
 function environmentNotUsedError(
   request: ConnectorCheckRequest,
   result: Extract<
-    ZeroConnectorCheckDiagnosticResult,
+    ConnectorCheckDiagnosticResult,
     { readonly outcome: "environment-not-used" }
   >,
 ): Error {
@@ -332,7 +333,7 @@ function environmentNotUsedError(
 
 export function resolveConnectorCheckDiagnostic(
   request: ConnectorCheckRequest,
-  result: ZeroConnectorCheckDiagnosticResult,
+  result: ConnectorCheckDiagnosticResult,
 ): ResolvedDiagnostic {
   switch (result.outcome) {
     case "resolved":
@@ -455,7 +456,7 @@ function printAgentAuthorizationStatus(
   hasPermission: boolean,
 ): void {
   if (!ctx.agentId) {
-    console.log("ZERO_AGENT_ID is not set — cannot check agent authorization.");
+    console.log("OKOU_AGENT_ID is not set — cannot check agent authorization.");
   } else if (isExpired) {
     console.log(
       `Skipped — agent authorization can only be checked once the ${ctx.label} connector is reconnected (see 2a).`,
@@ -713,7 +714,7 @@ function permissionRequestCommand(
   permission: string,
   request: UrlDiagnosticRequest,
 ): string {
-  return `zero connector permission-request ${shellQuoteArg(connectorSlug)} --permission ${shellQuoteArg(permission)} --url ${shellQuoteArg(request.url)} --method ${shellQuoteArg(request.method)}`;
+  return `okou connector permission-request ${shellQuoteArg(connectorSlug)} --permission ${shellQuoteArg(permission)} --url ${shellQuoteArg(request.url)} --method ${shellQuoteArg(request.method)}`;
 }
 
 function printPermissionRequestCommands(
@@ -725,7 +726,7 @@ function printPermissionRequestCommands(
 ): void {
   if (request === undefined) {
     console.log(
-      "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD> before requesting this permission.",
+      "Diagnose the failed request with okou connector check --url <FAILED_URL> --method <METHOD> before requesting this permission.",
     );
     return;
   }
@@ -737,7 +738,7 @@ function printPermissionRequestCommands(
 
   console.log("");
   console.log(
-    "Or, if this is the only connector or permission action needed, run the callback command below. After the user completes this action, Zero will automatically start the next round with the callback prompt:",
+    "Or, if this is the only connector or permission action needed, run the callback command below. After the user completes this action, Okou will automatically start the next round with the callback prompt:",
   );
   console.log(`${command} --callback-prompt "${CALLBACK_PROMPT_PLACEHOLDER}"`);
 }
@@ -883,7 +884,7 @@ function printRediagnoseHint(
     args.push(`--check-permission ${shellQuoteArg(opts.checkPermission)}`);
   }
   console.log(
-    `To re-diagnose after changes, run: zero connector check ${args.join(" ")}`,
+    `To re-diagnose after changes, run: okou connector check ${args.join(" ")}`,
   );
 }
 
@@ -926,11 +927,11 @@ export const checkConnectorCommand = new Command()
     "after",
     `
 Examples:
-  zero connector check --env-name GITHUB_TOKEN
-  zero connector check --url https://api.github.com/repos/owner/repo
-  zero connector check --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
-  zero connector check --url https://slack.com/api/chat.postMessage --method POST
-  zero connector check --env-name SLACK_TOKEN --check-permission chat:write
+  okou connector check --env-name GITHUB_TOKEN
+  okou connector check --url https://api.github.com/repos/owner/repo
+  okou connector check --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
+  okou connector check --url https://slack.com/api/chat.postMessage --method POST
+  okou connector check --env-name SLACK_TOKEN --check-permission chat:write
 
 How connectors work:
   A Connector holds the real credentials for an external service. These credentials
@@ -949,7 +950,7 @@ How connectors work:
       }
       const method = opts.method.toUpperCase();
       const request = buildDiagnosticRequest(opts, method);
-      const diagnostic = await diagnoseZeroConnectorCheck(request);
+      const diagnostic = await diagnoseConnectorCheck(request);
       const result = resolveConnectorCheckDiagnostic(request, diagnostic);
 
       printDiagnosticSummary(request, result);
@@ -964,7 +965,7 @@ How connectors work:
         credentialResolution: result.connector.credentialResolution,
         run: result.run,
         platformOrigin: platformUrl.origin,
-        agentId: process.env.ZERO_AGENT_ID || undefined,
+        agentId: getOkouAgentId(),
       };
 
       checkEnvironmentNames(ctx);

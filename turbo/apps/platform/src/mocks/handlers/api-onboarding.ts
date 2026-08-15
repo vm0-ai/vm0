@@ -2,7 +2,7 @@ import {
   onboardingCompleteContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
-} from "@vm0/api-contracts/contracts/onboarding";
+} from "@okouai/api-contracts/contracts/onboarding";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_ONBOARDING_STATUS: OnboardingStatusResponse = {
@@ -30,12 +30,12 @@ export function resetMockOnboardingStatus(): void {
 }
 
 export const apiOnboardingHandlers = [
-  // GET /api/zero/onboarding/status
+  // GET /api/okou/onboarding/status
   mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
     return respond(200, mockOnboardingStatus);
   }),
 
-  // POST /api/zero/onboarding/complete
+  // POST /api/okou/onboarding/complete
   mockApi(onboardingCompleteContract.complete, ({ respond }) => {
     mockOnboardingStatus = {
       ...mockOnboardingStatus,

@@ -1,6 +1,6 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
   and,
   desc,
@@ -21,16 +21,21 @@ import { publishUserSignal } from "../external/realtime";
 import { tapError } from "../utils";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import {
-  runGroupIdForRun,
+  goalIdForRun,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
-import { insertChatEvent } from "./zero-chat-event.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { insertChatEvent } from "./chat-event.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
+} from "./chat-user-message.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventError,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 const log = logger("api:zero:chat-initial-thinking");
 
@@ -84,8 +89,8 @@ async function loadThinkingContextMessages(args: {
   const rows = await args.db
     .select({
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
     })
@@ -102,11 +107,11 @@ async function loadThinkingContextMessages(args: {
         or(
           and(
             chatEventTypeIn(["input.prompt", "input.rejected"]),
-            isNotNull(chatEvents.userMessage),
+            isNotNull(canonicalChatEventUserMessage()),
           ),
           and(
             not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-            isNotNull(chatEvents.content),
+            isNotNull(canonicalChatEventContent()),
           ),
         ),
         visibleChatEventCondition(args.db),
@@ -174,7 +179,10 @@ async function runCanReceiveThinkingMessage(args: {
           "run.failed",
           "run.cancelled",
         ]),
-        or(isNotNull(chatEvents.content), isNotNull(chatEvents.error)) as SQL,
+        or(
+          isNotNull(canonicalChatEventContent()),
+          isNotNull(canonicalChatEventError()),
+        ) as SQL,
       ),
     )
     .limit(1);
@@ -198,11 +206,12 @@ async function generateInitialThinkingText(args: {
       {
         role: "system",
         content: [
-          "Write user-visible progress copy for a chat UI while the assistant is preparing its response.",
-          "Use the current user message and recent thread history to describe what is being prepared. It can be a few short paragraphs when useful, and should feel concrete, relevant, and specific rather than generic.",
+          "Write user-visible progress copy for a chat UI while the assistant is preparing its separate response.",
+          "The UI shows one paragraph at a time, then replaces it with the next. On a typical mobile screen, a paragraph visibly holds about 30 characters, excluding punctuation; overflow is ellipsized and never shown later. A few distinct paragraphs give the animation enough material to rotate.",
+          "Use the current user message and recent thread history as context for around four short paragraphs about what is being prepared. Keep each paragraph close to the visible mobile width, concrete, relevant, and specific rather than generic or repetitive.",
           "Do not answer the user. Do not reveal hidden reasoning, chain-of-thought, private analysis, or internal steps. Do not mention tools unless the user explicitly asked for a tool-like task.",
           "Match the current user's language.",
-          "Return plain text only, with no markdown, headings, bullets, or quotes.",
+          "Return plain text only. Separate paragraphs with a single newline. Do not use markdown, headings, bullets, or quotes.",
         ].join("\n"),
       },
       {
@@ -218,6 +227,7 @@ async function generateInitialThinkingText(args: {
       },
     ],
     THINKING_MAX_TOKENS,
+    { reasoning: { effort: "none" } },
   );
 
   return sanitizeThinkingText(text);
@@ -261,7 +271,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
     return false;
   }
 
-  const runGroupId = await runGroupIdForRun(args.db, args.runId);
+  const goalId = await goalIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertChatEvent(
       tx,
@@ -272,7 +282,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
         ),
         chatThreadId: args.threadId,
         runId: args.runId,
-        runGroupId,
+        runGroupId: goalId,
         eventType: "output.thinking",
         content: null,
         thinking,

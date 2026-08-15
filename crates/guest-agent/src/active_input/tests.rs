@@ -9,32 +9,40 @@ fn enabled_runtime() -> ActiveInputRuntime {
 }
 
 fn enabled_runtime_with_initial_prompt(initial_prompt: &str) -> ActiveInputRuntime {
-    ActiveInputRuntime::new_with_initial_prompt(TEST_RUN_ID, true, initial_prompt)
+    ActiveInputRuntime::new_for_test(TEST_RUN_ID, initial_prompt)
 }
 
-fn active_input_payload(text: &str) -> Vec<u8> {
-    serde_json::to_vec(&json!({
-        "type": ACTIVE_INPUT_TYPE,
-        "text": text,
-    }))
-    .expect("active input payload should serialize")
+fn active_input_uuid(sequence: u64) -> String {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!("vm0:{TEST_RUN_ID}:active-input-test:{sequence}").as_bytes(),
+    )
+    .to_string()
 }
 
-fn active_input_uuid(sequence: u64, message_id: &str) -> String {
-    claude_active_input_uuid(TEST_RUN_ID, sequence, message_id)
+fn active_input_payload(sequence: u64, text: &str) -> Vec<u8> {
+    guest_contracts::active_input::encode_active_input(&active_input_uuid(sequence), text)
+        .expect("active input payload should serialize")
 }
 
-fn accept_active_input(
-    controller: &ActiveInputController,
-    sequence: u64,
-    message_id: &str,
-    text: &str,
-) -> String {
+fn accept_active_input(controller: &ActiveInputController, sequence: u64, text: &str) -> String {
     assert_eq!(
-        controller.handle_control_payload(message_id, &active_input_payload(text)),
+        controller.handle_control_payload(&active_input_payload(sequence, text)),
         ActiveInputControlOutcome::Accepted
     );
-    active_input_uuid(sequence, message_id)
+    active_input_uuid(sequence)
+}
+
+fn mark_accepted(controller: &ActiveInputController, uuid: &str, expects_replay: bool) {
+    controller
+        .mark_backend_accepted(
+            &ActiveInputFrame {
+                uuid: uuid.to_owned(),
+                text: String::new(),
+            },
+            expects_replay,
+        )
+        .expect("test receipt acceptance should persist");
 }
 
 fn user_event(uuid: &str, text: &str) -> Value {
@@ -81,22 +89,18 @@ fn assert_not_pending(controller: &ActiveInputController, uuid: &str) {
 }
 
 #[test]
-fn active_input_accepts_valid_payload_once() {
+fn active_input_accepts_each_valid_payload() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
 
     assert_eq!(
-        controller.handle_control_payload("msg-1", br#"{"type":"active-input","text":"hello"}"#),
+        controller.handle_control_payload(&active_input_payload(0, "hello")),
         ActiveInputControlOutcome::Accepted
     );
-    assert!(matches!(
-        controller.handle_control_payload(
-            "msg-1",
-            br#"{"type":"active-input","text":"hello again"}"#
-        ),
-        ActiveInputControlOutcome::Rejected { diagnostic }
-            if diagnostic == "active input message id is duplicate"
-    ));
+    assert_eq!(
+        controller.handle_control_payload(&active_input_payload(1, "hello again")),
+        ActiveInputControlOutcome::Accepted
+    );
 }
 
 #[test]
@@ -104,28 +108,61 @@ fn active_input_rejects_invalid_payloads() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
 
-    for (message_id, payload) in [
-        ("bad-json", br#"{"type":"active-input""#.as_slice()),
-        ("bad-type", br#"{"type":"other","text":"hello"}"#.as_slice()),
-        ("empty", br#"{"type":"active-input","text":""}"#.as_slice()),
+    for (case, payload, expected_diagnostic) in [
+        (
+            "bad-json",
+            br#"{"type":"active-input""#.as_slice(),
+            "active input payload is invalid",
+        ),
+        (
+            "bad-type",
+            br#"{"type":"other","deliveryId":"223f8797-a456-4eea-98f7-f7ab88c43c00","text":"hello"}"#.as_slice(),
+            "active input payload type is unsupported",
+        ),
+        (
+            "empty",
+            br#"{"type":"active-input","deliveryId":"223f8797-a456-4eea-98f7-f7ab88c43c00","text":""}"#.as_slice(),
+            "active input text is empty",
+        ),
+        (
+            "missing-delivery-id",
+            br#"{"type":"active-input","text":"hello"}"#.as_slice(),
+            "active input payload is invalid",
+        ),
+        (
+            "null-delivery-id",
+            br#"{"type":"active-input","deliveryId":null,"text":"hello"}"#.as_slice(),
+            "active input payload is invalid",
+        ),
+        (
+            "malformed-delivery-id",
+            br#"{"type":"active-input","deliveryId":"invalid","text":"hello"}"#.as_slice(),
+            "active input delivery id is invalid",
+        ),
+        (
+            "noncanonical-delivery-id",
+            br#"{"type":"active-input","deliveryId":"223F8797-A456-4EEA-98F7-F7AB88C43C00","text":"hello"}"#.as_slice(),
+            "active input delivery id is not canonical",
+        ),
     ] {
         assert!(
             matches!(
-                controller.handle_control_payload(message_id, payload),
-                ActiveInputControlOutcome::Rejected { .. }
+                controller.handle_control_payload(payload),
+                ActiveInputControlOutcome::Rejected { diagnostic }
+                    if diagnostic == expected_diagnostic
             ),
-            "payload should reject: {message_id}"
+            "payload should reject: {case}"
         );
     }
 }
 
 #[test]
 fn active_input_rejects_when_disabled_or_closed() {
-    let disabled = ActiveInputRuntime::new_disabled("run-1");
+    let disabled = ActiveInputRuntime::new_disabled("run-1", "initial");
     assert!(matches!(
         disabled
             .controller()
-            .handle_control_payload("msg-1", br#"{"type":"active-input","text":"hello"}"#),
+            .handle_control_payload(br#"{"type":"active-input","text":"hello"}"#),
         ActiveInputControlOutcome::Rejected { diagnostic }
             if diagnostic == "active input is not supported for this agent"
     ));
@@ -134,7 +171,7 @@ fn active_input_rejects_when_disabled_or_closed() {
     let controller = runtime.controller();
     assert!(controller.close_for_result_if_idle());
     assert!(matches!(
-        controller.handle_control_payload("msg-1", br#"{"type":"active-input","text":"hello"}"#),
+        controller.handle_control_payload(&active_input_payload(0, "hello")),
         ActiveInputControlOutcome::Rejected { diagnostic } if diagnostic == "active input is closed"
     ));
 }
@@ -145,16 +182,14 @@ fn active_input_capacity_counts_pending_inputs() {
     let controller = runtime.controller();
 
     for index in 0..ACTIVE_INPUT_QUEUE_CAPACITY {
-        let message_id = format!("msg-{index}");
         assert_eq!(
-            controller
-                .handle_control_payload(&message_id, br#"{"type":"active-input","text":"hello"}"#),
+            controller.handle_control_payload(&active_input_payload(index as u64, "hello")),
             ActiveInputControlOutcome::Accepted
         );
     }
 
     assert!(matches!(
-        controller.handle_control_payload("overflow", br#"{"type":"active-input","text":"hello"}"#),
+        controller.handle_control_payload(&active_input_payload(100, "hello")),
         ActiveInputControlOutcome::QueueFull { diagnostic } if diagnostic == "active input queue is full"
     ));
 }
@@ -166,10 +201,8 @@ async fn active_input_can_release_capacity_for_sink_without_replay() {
     let mut writer = runtime.into_writer();
 
     for index in 0..ACTIVE_INPUT_QUEUE_CAPACITY {
-        let message_id = format!("msg-{index}");
         assert_eq!(
-            controller
-                .handle_control_payload(&message_id, br#"{"type":"active-input","text":"hello"}"#),
+            controller.handle_control_payload(&active_input_payload(index as u64, "hello")),
             ActiveInputControlOutcome::Accepted
         );
         let frame = writer
@@ -177,110 +210,27 @@ async fn active_input_can_release_capacity_for_sink_without_replay() {
             .await
             .expect("active input frame should be queued");
         writer.mark_writing(&frame.uuid);
-        writer.mark_written_without_replay(&frame.uuid);
+        writer
+            .mark_backend_accepted_without_replay(&frame)
+            .expect("test receipt acceptance should persist");
         assert_not_pending(&controller, &frame.uuid);
     }
 
-    assert!(matches!(
-        controller.handle_control_payload("msg-0", br#"{"type":"active-input","text":"duplicate"}"#),
-        ActiveInputControlOutcome::Rejected { diagnostic }
-            if diagnostic == "active input message id is duplicate"
-    ));
     assert_eq!(
-        controller.handle_control_payload("msg-next", br#"{"type":"active-input","text":"next"}"#),
+        controller.handle_control_payload(&active_input_payload(100, "next")),
         ActiveInputControlOutcome::Accepted
     );
-    let frame = writer
+    let _frame = writer
         .next_frame()
         .await
         .expect("new active input frame should be queued after delivered frames release capacity");
-    assert_eq!(frame.message_id, "msg-next");
-}
-
-#[tokio::test]
-async fn active_input_bounds_seen_message_id_cache() {
-    let runtime = enabled_runtime();
-    let controller = runtime.controller();
-    let mut writer = runtime.into_writer();
-    let mut first_message_uuid = None;
-
-    for index in 0..=ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY {
-        let message_id = format!("msg-{index}");
-        let text = format!("follow-up-{index}");
-        let payload = serde_json::to_vec(&json!({
-            "type": ACTIVE_INPUT_TYPE,
-            "text": &text,
-        }))
-        .expect("active input payload should serialize");
-        assert_eq!(
-            controller.handle_control_payload(&message_id, &payload),
-            ActiveInputControlOutcome::Accepted
-        );
-        let frame = writer
-            .next_frame()
-            .await
-            .expect("active input frame should be queued");
-        assert_eq!(frame.message_id, message_id);
-        if index == 0 {
-            first_message_uuid = Some(frame.uuid.clone());
-        }
-        controller.mark_written(&frame.uuid);
-
-        let active = json!({
-            "type": "user",
-            "uuid": frame.uuid,
-            "message": {"role": "user", "content": text}
-        });
-        assert_eq!(
-            controller.replay_user_event_action(&active),
-            ReplayUserEventAction::InternalActiveInput
-        );
-    }
-
-    {
-        let state = controller
-            .inner
-            .state
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        assert_eq!(
-            state.seen_message_ids.len(),
-            ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY
-        );
-        assert!(!state.has_seen_message_id("msg-0"));
-        assert!(
-            state.has_seen_message_id(&format!("msg-{}", ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY))
-        );
-    }
-
-    assert!(matches!(
-        controller.handle_control_payload(
-            &format!("msg-{}", ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY),
-            br#"{"type":"active-input","text":"duplicate"}"#
-        ),
-        ActiveInputControlOutcome::Rejected { diagnostic }
-            if diagnostic == "active input message id is duplicate"
-    ));
-    assert_eq!(
-        controller.handle_control_payload("msg-0", br#"{"type":"active-input","text":"old"}"#),
-        ActiveInputControlOutcome::Accepted
-    );
-    let frame = writer
-        .next_frame()
-        .await
-        .expect("reused active input frame should be queued");
-    assert_eq!(frame.message_id, "msg-0");
-    assert_ne!(
-        frame.uuid,
-        first_message_uuid.expect("first active input uuid should be captured")
-    );
 }
 
 #[test]
 fn replay_filter_consumes_initial_and_active_input_user_events() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "hello");
+    let active_uuid = accept_active_input(&controller, 0, "hello");
 
     let initial = json!({
         "type": "user",
@@ -291,7 +241,7 @@ fn replay_filter_consumes_initial_and_active_input_user_events() {
         controller.replay_user_event_action(&initial),
         ReplayUserEventAction::InternalInitialPrompt
     );
-    controller.mark_written(&active_uuid);
+    mark_accepted(&controller, &active_uuid, true);
 
     let active = user_event(&active_uuid, "follow-up");
     assert_eq!(
@@ -362,7 +312,7 @@ fn replay_filter_filters_mixed_text_and_tool_result_user_events() {
 fn replay_filter_consumes_matching_uuid_even_with_non_string_content() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "hello");
+    let active_uuid = accept_active_input(&controller, 0, "hello");
 
     let initial = json!({
         "type": "user",
@@ -376,7 +326,7 @@ fn replay_filter_consumes_matching_uuid_even_with_non_string_content() {
         controller.replay_user_event_action(&initial),
         ReplayUserEventAction::InternalInitialPrompt
     );
-    controller.mark_written(&active_uuid);
+    mark_accepted(&controller, &active_uuid, true);
 
     let active = json!({
         "type": "user",
@@ -397,7 +347,7 @@ fn replay_filter_consumes_matching_uuid_even_with_non_string_content() {
 fn replay_filter_does_not_consume_accepted_uuid_before_writer_owns_input() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
     let stale = user_event(&active_uuid, "follow-up");
 
     assert_eq!(
@@ -430,8 +380,8 @@ fn replay_filter_treats_text_block_user_events_without_uuid_as_unknown_prompt() 
 fn replay_filter_consumes_uuidless_active_input_replay_by_text() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
     assert!(!controller.close_for_result_if_idle());
 
     let event = uuidless_user_event("follow-up");
@@ -447,19 +397,16 @@ fn replay_filter_consumes_oldest_uuidless_text_match() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
 
-    for message_id in ["msg-1", "msg-2"] {
+    for sequence in 0..2 {
         assert_eq!(
-            controller.handle_control_payload(
-                message_id,
-                br#"{"type":"active-input","text":"same-text"}"#
-            ),
+            controller.handle_control_payload(&active_input_payload(sequence, "same-text")),
             ActiveInputControlOutcome::Accepted
         );
     }
-    let first_uuid = active_input_uuid(0, "msg-1");
-    let second_uuid = active_input_uuid(1, "msg-2");
-    controller.mark_written(&first_uuid);
-    controller.mark_written(&second_uuid);
+    let first_uuid = active_input_uuid(0);
+    let second_uuid = active_input_uuid(1);
+    mark_accepted(&controller, &first_uuid, true);
+    mark_accepted(&controller, &second_uuid, true);
     assert!(!controller.close_for_result_if_idle());
 
     let event = uuidless_user_event("same-text");
@@ -481,7 +428,7 @@ fn replay_filter_consumes_oldest_uuidless_text_match() {
 fn replay_filter_defers_uuidless_text_match_while_writing_until_written() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
     controller.mark_writing(&active_uuid);
     assert!(!controller.close_for_result_if_idle());
 
@@ -492,7 +439,7 @@ fn replay_filter_defers_uuidless_text_match_while_writing_until_written() {
     );
     assert_pending(&controller, &active_uuid);
 
-    controller.mark_written(&active_uuid);
+    mark_accepted(&controller, &active_uuid, true);
     assert!(controller.close_for_result_if_idle());
 }
 
@@ -501,19 +448,15 @@ fn replay_filter_clears_multiple_uuidless_writing_replays_after_writes() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
 
-    for (message_id, text) in [("msg-1", "first"), ("msg-2", "second")] {
-        let payload = serde_json::to_vec(&json!({
-            "type": ACTIVE_INPUT_TYPE,
-            "text": text,
-        }))
-        .expect("active input payload should serialize");
+    for (sequence, text) in [(0, "first"), (1, "second")] {
+        let payload = active_input_payload(sequence, text);
         assert_eq!(
-            controller.handle_control_payload(message_id, &payload),
+            controller.handle_control_payload(&payload),
             ActiveInputControlOutcome::Accepted
         );
     }
-    let first_uuid = active_input_uuid(0, "msg-1");
-    let second_uuid = active_input_uuid(1, "msg-2");
+    let first_uuid = active_input_uuid(0);
+    let second_uuid = active_input_uuid(1);
     assert!(!controller.close_for_result_if_idle());
 
     for (uuid, text) in [(&first_uuid, "first"), (&second_uuid, "second")] {
@@ -526,17 +469,17 @@ fn replay_filter_clears_multiple_uuidless_writing_replays_after_writes() {
             controller.replay_user_event_action(&event),
             ReplayUserEventAction::InternalActiveInput
         );
-        controller.mark_written(uuid);
+        mark_accepted(&controller, uuid, true);
     }
 
     assert!(controller.close_for_result_if_idle());
 }
 
 #[test]
-fn followup_result_can_close_after_uuidless_replay_before_mark_written() {
+fn followup_result_can_close_after_uuidless_replay_before_backend_acceptance() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
     assert!(!controller.close_for_result_if_idle());
 
     controller.mark_writing(&active_uuid);
@@ -547,9 +490,9 @@ fn followup_result_can_close_after_uuidless_replay_before_mark_written() {
     );
 
     assert!(controller.close_for_result_if_idle());
-    controller.mark_written(&active_uuid);
+    mark_accepted(&controller, &active_uuid, true);
     assert!(matches!(
-        controller.handle_control_payload("msg-2", br#"{"type":"active-input","text":"late"}"#),
+        controller.handle_control_payload(&active_input_payload(1, "late")),
         ActiveInputControlOutcome::Rejected { diagnostic } if diagnostic == "active input is closed"
     ));
 }
@@ -558,7 +501,7 @@ fn followup_result_can_close_after_uuidless_replay_before_mark_written() {
 fn mark_writing_does_not_regress_replay_observed_pending_input() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
     assert!(!controller.close_for_result_if_idle());
 
     controller.mark_writing(&active_uuid);
@@ -577,8 +520,7 @@ fn replay_filter_does_not_consume_unwritten_uuidless_text_match() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
     assert_eq!(
-        controller
-            .handle_control_payload("msg-1", br#"{"type":"active-input","text":"same-text"}"#),
+        controller.handle_control_payload(&active_input_payload(0, "same-text")),
         ActiveInputControlOutcome::Accepted
     );
 
@@ -594,8 +536,8 @@ fn replay_filter_does_not_consume_unwritten_uuidless_text_match() {
 fn replay_filter_does_not_consume_uuidless_text_match_before_first_result() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "same-text");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "same-text");
+    mark_accepted(&controller, &active_uuid, true);
 
     let event = uuidless_user_event("same-text");
     assert_eq!(
@@ -609,13 +551,13 @@ fn replay_filter_does_not_consume_uuidless_text_match_before_first_result() {
 fn followup_result_closes_writer_owned_pending_input_without_replay() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
 
     assert!(!controller.close_for_result_if_idle());
     assert!(controller.close_for_result_if_idle());
     assert!(matches!(
-        controller.handle_control_payload("msg-2", br#"{"type":"active-input","text":"late"}"#),
+        controller.handle_control_payload(&active_input_payload(1, "late")),
         ActiveInputControlOutcome::Rejected { diagnostic } if diagnostic == "active input is closed"
     ));
 }
@@ -625,19 +567,16 @@ fn followup_result_without_replay_completes_one_written_pending_input_at_a_time(
     let runtime = enabled_runtime();
     let controller = runtime.controller();
 
-    for message_id in ["msg-1", "msg-2"] {
+    for sequence in 0..2 {
         assert_eq!(
-            controller.handle_control_payload(
-                message_id,
-                br#"{"type":"active-input","text":"follow-up"}"#
-            ),
+            controller.handle_control_payload(&active_input_payload(sequence, "follow-up")),
             ActiveInputControlOutcome::Accepted
         );
     }
-    let first_uuid = active_input_uuid(0, "msg-1");
-    let second_uuid = active_input_uuid(1, "msg-2");
-    controller.mark_written(&first_uuid);
-    controller.mark_written(&second_uuid);
+    let first_uuid = active_input_uuid(0);
+    let second_uuid = active_input_uuid(1);
+    mark_accepted(&controller, &first_uuid, true);
+    mark_accepted(&controller, &second_uuid, true);
 
     assert!(!controller.close_for_result_if_idle());
     assert!(!controller.close_for_result_if_idle());
@@ -651,18 +590,15 @@ fn followup_result_without_replay_keeps_later_unwritten_pending_input_open() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
 
-    for message_id in ["msg-1", "msg-2"] {
+    for sequence in 0..2 {
         assert_eq!(
-            controller.handle_control_payload(
-                message_id,
-                br#"{"type":"active-input","text":"follow-up"}"#
-            ),
+            controller.handle_control_payload(&active_input_payload(sequence, "follow-up")),
             ActiveInputControlOutcome::Accepted
         );
     }
-    let first_uuid = active_input_uuid(0, "msg-1");
-    let second_uuid = active_input_uuid(1, "msg-2");
-    controller.mark_written(&first_uuid);
+    let first_uuid = active_input_uuid(0);
+    let second_uuid = active_input_uuid(1);
+    mark_accepted(&controller, &first_uuid, true);
 
     assert!(!controller.close_for_result_if_idle());
     assert!(!controller.close_for_result_if_idle());
@@ -670,7 +606,7 @@ fn followup_result_without_replay_keeps_later_unwritten_pending_input_open() {
     assert_pending(&controller, &second_uuid);
     assert!(!controller.close_for_result_if_idle());
 
-    controller.mark_written(&second_uuid);
+    mark_accepted(&controller, &second_uuid, true);
     assert!(controller.close_for_result_if_idle());
 }
 
@@ -678,12 +614,12 @@ fn followup_result_without_replay_keeps_later_unwritten_pending_input_open() {
 fn followup_result_keeps_writing_pending_input_open_without_replay() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
     controller.mark_writing(&active_uuid);
 
     assert!(!controller.close_for_result_if_idle());
     assert!(!controller.close_for_result_if_idle());
-    controller.mark_written(&active_uuid);
+    mark_accepted(&controller, &active_uuid, true);
     assert!(controller.close_for_result_if_idle());
 }
 
@@ -692,16 +628,14 @@ fn followup_result_keeps_unwritten_pending_input_open_without_replay() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
     assert_eq!(
-        controller
-            .handle_control_payload("msg-1", br#"{"type":"active-input","text":"follow-up"}"#),
+        controller.handle_control_payload(&active_input_payload(0, "follow-up")),
         ActiveInputControlOutcome::Accepted
     );
 
     assert!(!controller.close_for_result_if_idle());
     assert!(!controller.close_for_result_if_idle());
     assert_eq!(
-        controller
-            .handle_control_payload("msg-2", br#"{"type":"active-input","text":"still-open"}"#),
+        controller.handle_control_payload(&active_input_payload(1, "still-open")),
         ActiveInputControlOutcome::Accepted
     );
 }
@@ -710,8 +644,8 @@ fn followup_result_keeps_unwritten_pending_input_open_without_replay() {
 fn replay_filter_consumes_uuidless_text_match_after_initial_replay_before_first_result() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
 
     let initial = uuidless_user_event("initial");
     assert_eq!(
@@ -731,8 +665,8 @@ fn replay_filter_consumes_uuidless_text_match_after_initial_replay_before_first_
 fn replay_filter_does_not_consume_text_match_with_unknown_uuid() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
     assert!(!controller.close_for_result_if_idle());
 
     let unknown_uuid = json!({
@@ -757,8 +691,8 @@ fn replay_filter_does_not_consume_text_match_with_unknown_uuid() {
 fn replay_filter_does_not_consume_text_match_with_non_string_uuid() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
     assert!(!controller.close_for_result_if_idle());
 
     for uuid in [json!(123), Value::Null] {
@@ -785,8 +719,8 @@ fn replay_filter_does_not_consume_text_match_with_non_string_uuid() {
 fn replay_filter_does_not_unlock_initial_prompt_from_unknown_uuid() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
 
     let unknown_uuid_initial_text = json!({
         "type": "user",
@@ -826,8 +760,8 @@ fn replay_filter_does_not_unlock_initial_prompt_from_unknown_uuid() {
 fn replay_filter_does_not_unlock_initial_prompt_from_non_string_uuid() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
 
     let malformed_initial = json!({
         "type": "user",
@@ -863,8 +797,8 @@ fn replay_filter_does_not_unlock_initial_prompt_from_non_string_uuid() {
 fn replay_filter_waits_for_second_uuidless_same_text_before_first_result() {
     let runtime = enabled_runtime_with_initial_prompt("same-text");
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "same-text");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "same-text");
+    mark_accepted(&controller, &active_uuid, true);
 
     let initial = uuidless_user_event("same-text");
     assert_eq!(
@@ -884,8 +818,8 @@ fn replay_filter_waits_for_second_uuidless_same_text_before_first_result() {
 fn replay_filter_consumes_uuidless_text_block_active_input_replay() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
     assert!(!controller.close_for_result_if_idle());
 
     let event = uuidless_text_block_user_event("follow-up");
@@ -924,8 +858,8 @@ fn replay_filter_filters_unknown_user_content_blocks() {
 fn replay_filter_keeps_non_user_role_events_external_without_advancing_prompt_replay() {
     let runtime = enabled_runtime_with_initial_prompt("follow-up");
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
 
     let malformed = json!({
         "type": "user",
@@ -954,8 +888,8 @@ fn replay_filter_keeps_non_user_role_events_external_without_advancing_prompt_re
 fn replay_filter_keeps_non_user_role_uuid_matches_external() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
 
     let malformed = json!({
         "type": "user",
@@ -969,7 +903,7 @@ fn replay_filter_keeps_non_user_role_uuid_matches_external() {
 
     let replay = json!({
         "type": "user",
-        "uuid": active_input_uuid(0, "msg-1"),
+        "uuid": active_input_uuid(0),
         "message": {"role": "user", "content": "follow-up"}
     });
     assert_eq!(
@@ -983,8 +917,8 @@ fn replay_filter_keeps_non_user_role_uuid_matches_external() {
 fn replay_filter_keeps_non_string_role_events_external() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
 
     let malformed = json!({
         "type": "user",
@@ -998,7 +932,7 @@ fn replay_filter_keeps_non_string_role_events_external() {
 
     let replay = json!({
         "type": "user",
-        "uuid": active_input_uuid(0, "msg-1"),
+        "uuid": active_input_uuid(0),
         "message": {"role": "user", "content": "follow-up"}
     });
     assert_eq!(
@@ -1012,8 +946,8 @@ fn replay_filter_keeps_non_string_role_events_external() {
 fn replay_filter_keeps_child_user_events_external() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
 
     let child = json!({
         "type": "user",
@@ -1028,7 +962,7 @@ fn replay_filter_keeps_child_user_events_external() {
 
     let replay = json!({
         "type": "user",
-        "uuid": active_input_uuid(0, "msg-1"),
+        "uuid": active_input_uuid(0),
         "parent_tool_use_id": null,
         "message": {"role": "user", "content": "follow-up"}
     });
@@ -1043,8 +977,8 @@ fn replay_filter_keeps_child_user_events_external() {
 fn replay_filter_does_not_unlock_uuidless_match_from_non_initial_prompt_like_event() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();
-    let active_uuid = accept_active_input(&controller, 0, "msg-1", "follow-up");
-    controller.mark_written(&active_uuid);
+    let active_uuid = accept_active_input(&controller, 0, "follow-up");
+    mark_accepted(&controller, &active_uuid, true);
 
     let historical = uuidless_user_event("historical");
     assert_eq!(

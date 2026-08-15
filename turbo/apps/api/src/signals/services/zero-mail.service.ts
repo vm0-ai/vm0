@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
-
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 import {
@@ -10,21 +9,13 @@ import {
   type ZeroMailDraft,
   type ZeroMailDraftStatus,
   type ZeroMailInlineImage,
-} from "@vm0/api-contracts/contracts/zero-mail";
-import type { GmailNewMessageEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
-import { getCustomSkillStorageName } from "@vm0/core/storage-names";
-import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
-import { connectorAuthMethodHasRequiredScopes } from "@vm0/connectors/connector-auth-method";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { connectors } from "@vm0/db/schema/connector";
-import { mailDrafts } from "@vm0/db/schema/mail-draft";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import {
-  workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+} from "@okouai/api-contracts/contracts/zero-mail";
+import { connectorAuthMethodHasRequiredScopes } from "@okouai/connectors/connector-auth-method";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { connectors } from "@okouai/db/schema/connector";
+import { mailDrafts } from "@okouai/db/schema/mail-draft";
+import { userConnectors } from "@okouai/db/schema/user-connector";
 import { convert } from "html-to-text";
 import { z } from "zod";
 
@@ -32,10 +23,8 @@ import { pgTextDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { settle } from "../utils";
-import { insertChatEvent } from "./zero-chat-event.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
@@ -47,12 +36,6 @@ import {
   refreshConnectorCredentialAccess,
   type ConnectorCredentialConnection,
 } from "./connector-credential-runtime.service";
-import { uploadVolumeServerSide$ } from "./storage-volume-upload.service";
-import {
-  createWorkflowAutomation$,
-  enableWorkflowAutomation$,
-  type AutomationResult,
-} from "./zero-workflow-automation.service";
 
 const L = logger("api:zero-mail");
 
@@ -61,17 +44,6 @@ const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS = 60 * 60 * 1000;
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 const GMAIL_ACCESS_TOKEN_ENV = "GMAIL_TOKEN";
 const oauthScopesSchema = z.array(z.string());
-const MAIL_FOLLOW_UP_WORKFLOW_DISPLAY_NAME = "Mail reply follow-ups";
-const MAIL_FOLLOW_UP_WORKFLOW_DESCRIPTION =
-  "Summarize tracked email replies in their originating chat.";
-const MAIL_FOLLOW_UP_WORKFLOW_INSTRUCTION = [
-  "A reply to an email the user asked to track has arrived.",
-  "Read the Gmail thread to understand the new reply, summarize it in this chat, and highlight decisions or next steps.",
-  "If a response is warranted, prepare a linked Gmail draft for the user to review.",
-  "Never send an email automatically.",
-].join(" ");
-const MAIL_FOLLOW_UP_CONFIRMATION =
-  "Reply tracking is on. When a reply arrives, I’ll let you know in this chat.";
 
 interface GmailMessagePart {
   readonly partId: string;
@@ -171,25 +143,6 @@ export type ZeroMailDraftLinkMutationResult =
   | MailDraftLinkResult
   | MailDraftErrorResult;
 
-type MailFollowUpSetupErrorResult = {
-  readonly kind: "not_found" | "conflict" | "forbidden" | "bad_request";
-  readonly message: string;
-};
-
-type MailFollowUpWorkflowResult =
-  | { readonly kind: "ok"; readonly workflowId: string }
-  | MailFollowUpSetupErrorResult;
-
-export type ZeroMailFollowUpSetupResult =
-  | {
-      readonly kind: "ok";
-      readonly mailDraftId: string;
-      readonly automationId: string;
-      readonly chatThreadId: string;
-      readonly messageSeqId: number | undefined;
-    }
-  | MailFollowUpSetupErrorResult;
-
 type ZeroMailDraftAttachmentResult =
   | MailDraftAttachmentResult
   | MailDraftErrorResult;
@@ -197,10 +150,6 @@ type ZeroMailDraftAttachmentResult =
 const reconnectMailError = Object.freeze({
   kind: "conflict" as const,
   message: "Reconnect Gmail before continuing",
-});
-const noMailFollowUpRecipientsError = Object.freeze({
-  kind: "conflict" as const,
-  message: "The sent email has no recipients to track",
 });
 
 interface MailDraftRow {
@@ -212,8 +161,6 @@ interface MailDraftRow {
   readonly gmailThreadId: string;
   readonly gmailMessageId: string;
   readonly sentGmailMessageId: string | null;
-  readonly followUpAutomationId: string | null;
-  readonly followUpAutomationEnabled: boolean | null;
   readonly status: ZeroMailDraftStatus;
   readonly senderName: string | null;
   readonly senderAddress: string;
@@ -222,19 +169,6 @@ interface MailDraftRow {
   readonly updatedAt: Date;
   readonly sentAt: Date | null;
 }
-
-interface MailFollowUpAutomationRow {
-  readonly id: string;
-  readonly enabled: boolean;
-}
-
-type MailFollowUpAutomationResolution =
-  | {
-      readonly kind: "existing";
-      readonly automation: MailFollowUpAutomationRow;
-    }
-  | { readonly kind: "create"; readonly workflowId: string }
-  | MailFollowUpSetupErrorResult;
 
 interface StoredMailDraftRow {
   readonly id: string;
@@ -245,8 +179,6 @@ interface StoredMailDraftRow {
   readonly gmailThreadId: string | null;
   readonly gmailMessageId: string | null;
   readonly sentGmailMessageId: string | null;
-  readonly followUpAutomationId: string | null;
-  readonly followUpAutomationEnabled: boolean | null;
   readonly status: ZeroMailDraftStatus | null;
   readonly senderName: string | null;
   readonly senderAddress: string | null;
@@ -454,8 +386,6 @@ async function loadOwnedMailDraft(args: {
       gmailThreadId: mailDrafts.gmailThreadId,
       gmailMessageId: mailDrafts.gmailMessageId,
       sentGmailMessageId: mailDrafts.sentGmailMessageId,
-      followUpAutomationId: mailDrafts.followUpAutomationId,
-      followUpAutomationEnabled: zeroWorkflowAutomations.enabled,
       status: mailDrafts.status,
       senderName: mailDrafts.senderName,
       senderAddress: mailDrafts.senderAddress,
@@ -467,10 +397,6 @@ async function loadOwnedMailDraft(args: {
     .from(mailDrafts)
     .innerJoin(chatThreads, eq(chatThreads.id, mailDrafts.chatThreadId))
     .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
-    .leftJoin(
-      zeroWorkflowAutomations,
-      eq(zeroWorkflowAutomations.id, mailDrafts.followUpAutomationId),
-    )
     .where(
       and(
         eq(mailDrafts.id, args.mailDraftId),
@@ -527,14 +453,16 @@ async function loadLinkedDraft(args: {
   return row?.chatThreadId ? { ...row, chatThreadId: row.chatThreadId } : null;
 }
 
-async function resolveMailAccessToken(args: {
-  readonly connection: MailConnection;
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-  readonly writeDb: Db;
-}): Promise<MailAccessTokenResult> {
+async function resolveMailAccessToken(
+  args: {
+    readonly connection: MailConnection;
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly writeDb: Db;
+  },
+  signal: AbortSignal,
+): Promise<MailAccessTokenResult> {
   if (args.connection.needsReconnect || !args.connection.scopesReady) {
     return { kind: "error", message: "Reconnect Gmail before continuing" };
   }
@@ -558,18 +486,20 @@ async function resolveMailAccessToken(args: {
   ) {
     return { kind: "ok", accessToken };
   }
-  const refreshed = await refreshConnectorCredentialAccess({
-    connection: args.connection,
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    runtimeEnvironmentName: GMAIL_ACCESS_TOKEN_ENV,
-    signal: args.signal,
-    persist: {
-      db: args.writeDb,
-      defaultExpiresInMs: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
+  const refreshed = await refreshConnectorCredentialAccess(
+    {
+      connection: args.connection,
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      runtimeEnvironmentName: GMAIL_ACCESS_TOKEN_ENV,
+      persist: {
+        db: args.writeDb,
+        defaultExpiresInMs: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
+      },
     },
-  });
+    signal,
+  );
   if (refreshed.kind === "configuration-unavailable") {
     return { kind: "error", message: "Gmail OAuth is not configured" };
   }
@@ -825,15 +755,17 @@ function findAttachmentPart(
   return null;
 }
 
-async function gmailGetDraftResource(args: {
-  readonly accessToken: string;
-  readonly gmailDraftId: string;
-  readonly signal: AbortSignal;
-}): Promise<z.infer<typeof gmailDraftResourceSchema> | null> {
+async function gmailGetDraftResource(
+  args: {
+    readonly accessToken: string;
+    readonly gmailDraftId: string;
+  },
+  signal: AbortSignal,
+): Promise<z.infer<typeof gmailDraftResourceSchema> | null> {
   const response = await fetch(
     `${GMAIL_API_BASE}/drafts/${encodeURIComponent(args.gmailDraftId)}?format=full`,
     {
-      signal: args.signal,
+      signal,
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
@@ -849,16 +781,18 @@ async function gmailGetDraftResource(args: {
   return gmailDraftResourceSchema.parse(await response.json());
 }
 
-async function gmailGetDraft(args: {
-  readonly accessToken: string;
-  readonly gmailDraftId: string;
-  readonly fallbackSender: {
-    readonly address: string;
-    readonly name: string | null;
-  };
-  readonly signal: AbortSignal;
-}): Promise<GmailDraftValue | null> {
-  const draft = await gmailGetDraftResource(args);
+async function gmailGetDraft(
+  args: {
+    readonly accessToken: string;
+    readonly gmailDraftId: string;
+    readonly fallbackSender: {
+      readonly address: string;
+      readonly name: string | null;
+    };
+  },
+  signal: AbortSignal,
+): Promise<GmailDraftValue | null> {
+  const draft = await gmailGetDraftResource(args, signal);
   if (!draft) {
     return null;
   }
@@ -870,14 +804,16 @@ async function gmailGetDraft(args: {
   };
 }
 
-async function gmailSendLinkedDraft(args: {
-  readonly accessToken: string;
-  readonly gmailDraftId: string;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly messageId: string; readonly threadId: string } | null> {
+async function gmailSendLinkedDraft(
+  args: {
+    readonly accessToken: string;
+    readonly gmailDraftId: string;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly messageId: string; readonly threadId: string } | null> {
   const response = await fetch(`${GMAIL_API_BASE}/drafts/send`, {
     method: "POST",
-    signal: args.signal,
+    signal,
     headers: {
       Authorization: `Bearer ${args.accessToken}`,
       "Content-Type": "application/json",
@@ -897,15 +833,17 @@ async function gmailSendLinkedDraft(args: {
   return { messageId: message.id, threadId: message.threadId };
 }
 
-async function gmailGetMessageResource(args: {
-  readonly accessToken: string;
-  readonly gmailMessageId: string;
-  readonly signal: AbortSignal;
-}): Promise<z.infer<typeof gmailMessageResourceSchema> | null> {
+async function gmailGetMessageResource(
+  args: {
+    readonly accessToken: string;
+    readonly gmailMessageId: string;
+  },
+  signal: AbortSignal,
+): Promise<z.infer<typeof gmailMessageResourceSchema> | null> {
   const response = await fetch(
     `${GMAIL_API_BASE}/messages/${encodeURIComponent(args.gmailMessageId)}?format=full`,
     {
-      signal: args.signal,
+      signal,
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
@@ -923,16 +861,18 @@ async function gmailGetMessageResource(args: {
   return gmailMessageResourceSchema.parse(await response.json());
 }
 
-async function gmailGetMessage(args: {
-  readonly accessToken: string;
-  readonly gmailMessageId: string;
-  readonly fallbackSender: {
-    readonly address: string;
-    readonly name: string | null;
-  };
-  readonly signal: AbortSignal;
-}): Promise<GmailSentValue | null> {
-  const message = await gmailGetMessageResource(args);
+async function gmailGetMessage(
+  args: {
+    readonly accessToken: string;
+    readonly gmailMessageId: string;
+    readonly fallbackSender: {
+      readonly address: string;
+      readonly name: string | null;
+    };
+  },
+  signal: AbortSignal,
+): Promise<GmailSentValue | null> {
+  const message = await gmailGetMessageResource(args, signal);
   if (!message) {
     return null;
   }
@@ -943,16 +883,18 @@ async function gmailGetMessage(args: {
   };
 }
 
-async function gmailGetAttachment(args: {
-  readonly accessToken: string;
-  readonly gmailMessageId: string;
-  readonly attachmentId: string;
-  readonly signal: AbortSignal;
-}): Promise<Uint8Array | null> {
+async function gmailGetAttachment(
+  args: {
+    readonly accessToken: string;
+    readonly gmailMessageId: string;
+    readonly attachmentId: string;
+  },
+  signal: AbortSignal,
+): Promise<Uint8Array | null> {
   const response = await fetch(
     `${GMAIL_API_BASE}/messages/${encodeURIComponent(args.gmailMessageId)}/attachments/${encodeURIComponent(args.attachmentId)}`,
     {
-      signal: args.signal,
+      signal,
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
@@ -971,16 +913,18 @@ async function gmailGetAttachment(args: {
   return new Uint8Array(Buffer.from(attachment.data, "base64url"));
 }
 
-async function gmailDeleteDraft(args: {
-  readonly accessToken: string;
-  readonly gmailDraftId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function gmailDeleteDraft(
+  args: {
+    readonly accessToken: string;
+    readonly gmailDraftId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const response = await fetch(
     `${GMAIL_API_BASE}/drafts/${encodeURIComponent(args.gmailDraftId)}`,
     {
       method: "DELETE",
-      signal: args.signal,
+      signal,
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
@@ -1041,14 +985,6 @@ function responseDraft(args: {
     gmailThreadId: args.row.gmailThreadId,
     gmailMessageId: args.row.gmailMessageId,
     sentGmailMessageId: args.row.sentGmailMessageId ?? undefined,
-    followUp:
-      args.row.followUpAutomationId === null
-        ? undefined
-        : {
-            status:
-              args.row.followUpAutomationEnabled === true ? "active" : "paused",
-            automationId: args.row.followUpAutomationId,
-          },
     createdAt: args.row.createdAt.toISOString(),
     updatedAt: args.row.updatedAt.toISOString(),
     sentAt: args.row.sentAt?.toISOString(),
@@ -1068,18 +1004,20 @@ async function markGmailNeedsReconnect(args: {
     .where(eq(connectors.id, args.connectorId));
 }
 
-async function runGmailOperation<T>(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly operation: () => Promise<T>;
-  readonly signal: AbortSignal;
-}): Promise<
+async function runGmailOperation<T>(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly operation: () => Promise<T>;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly kind: "ok"; readonly value: T }
   | { readonly kind: "reconnect" }
   | { readonly kind: "error"; readonly error: unknown }
 > {
-  const result = await settle(args.operation(), args.signal);
-  args.signal.throwIfAborted();
+  const result = await settle(args.operation(), signal);
+  signal.throwIfAborted();
   if (result.ok) {
     return { kind: "ok", value: result.value };
   }
@@ -1087,7 +1025,7 @@ async function runGmailOperation<T>(args: {
     return { kind: "error", error: result.error };
   }
   await markGmailNeedsReconnect(args);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "reconnect" };
 }
 
@@ -1131,27 +1069,31 @@ async function connectionForRow(args: {
   );
 }
 
-async function accessForRow(args: {
-  readonly db: ReadonlyDb;
-  readonly writeDb: Db;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly row: MailDraftRow;
-  readonly signal: AbortSignal;
-}): Promise<MailAccess | MailDraftErrorResult> {
+async function accessForRow(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly writeDb: Db;
+    readonly snapshot: ConnectorRuntimeSnapshot;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly row: MailDraftRow;
+  },
+  signal: AbortSignal,
+): Promise<MailAccess | MailDraftErrorResult> {
   const connection = await connectionForRow(args);
   if (!connection) {
     return { kind: "conflict", message: "Reconnect Gmail before continuing" };
   }
-  const access = await resolveMailAccessToken({
-    connection,
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    signal: args.signal,
-    writeDb: args.writeDb,
-  });
+  const access = await resolveMailAccessToken(
+    {
+      connection,
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      writeDb: args.writeDb,
+    },
+    signal,
+  );
   return access.kind === "ok"
     ? { ...access, connection }
     : { kind: "conflict", message: access.message };
@@ -1256,22 +1198,24 @@ async function updateRowFromDraft(args: {
   };
 }
 
-async function getMailDraft(args: {
-  readonly db: ReadonlyDb;
-  readonly writeDb: Db;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly row: MailDraftRow;
-  readonly signal: AbortSignal;
-}): Promise<ZeroMailDraftMutationResult> {
+async function getMailDraft(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly writeDb: Db;
+    readonly snapshot: ConnectorRuntimeSnapshot;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly row: MailDraftRow;
+  },
+  signal: AbortSignal,
+): Promise<ZeroMailDraftMutationResult> {
   if (args.row.status === "deleted") {
     return okResult(
       args.row.id,
       responseDraft({ row: args.row, details: null, detailAvailable: false }),
     );
   }
-  const access = await accessForRow(args);
+  const access = await accessForRow(args, signal);
   if (args.row.status === "sent") {
     const sentGmailMessageId = args.row.sentGmailMessageId;
     const stored = okResult(
@@ -1282,23 +1226,27 @@ async function getMailDraft(args: {
       return access.kind === "ok" ? stored : reconnectDraftResult(args.row);
     }
     let sent: GmailSentValue | null = null;
-    const sentResult = await runGmailOperation({
-      db: args.writeDb,
-      connectorId: access.connection.connectorId,
-      operation: async () => {
-        return await gmailGetMessage({
-          accessToken: access.accessToken,
-          gmailMessageId: sentGmailMessageId,
-          fallbackSender: {
-            address: access.connection.externalEmail,
-            name: access.connection.externalUsername,
-          },
-          signal: args.signal,
-        });
+    const sentResult = await runGmailOperation(
+      {
+        db: args.writeDb,
+        connectorId: access.connection.connectorId,
+        operation: async () => {
+          return await gmailGetMessage(
+            {
+              accessToken: access.accessToken,
+              gmailMessageId: sentGmailMessageId,
+              fallbackSender: {
+                address: access.connection.externalEmail,
+                name: access.connection.externalUsername,
+              },
+            },
+            signal,
+          );
+        },
       },
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+      signal,
+    );
+    signal.throwIfAborted();
     if (sentResult.kind === "reconnect") {
       return reconnectDraftResult(args.row);
     }
@@ -1325,23 +1273,27 @@ async function getMailDraft(args: {
   if (access.kind !== "ok") {
     return reconnectDraftResult(args.row);
   }
-  const gmailResult = await runGmailOperation({
-    db: args.writeDb,
-    connectorId: access.connection.connectorId,
-    operation: async () => {
-      return await gmailGetDraft({
-        accessToken: access.accessToken,
-        gmailDraftId: args.row.gmailDraftId,
-        fallbackSender: {
-          address: access.connection.externalEmail,
-          name: access.connection.externalUsername,
-        },
-        signal: args.signal,
-      });
+  const gmailResult = await runGmailOperation(
+    {
+      db: args.writeDb,
+      connectorId: access.connection.connectorId,
+      operation: async () => {
+        return await gmailGetDraft(
+          {
+            accessToken: access.accessToken,
+            gmailDraftId: args.row.gmailDraftId,
+            fallbackSender: {
+              address: access.connection.externalEmail,
+              name: access.connection.externalUsername,
+            },
+          },
+          signal,
+        );
+      },
     },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+    signal,
+  );
+  signal.throwIfAborted();
   if (gmailResult.kind === "reconnect") {
     return reconnectDraftResult(args.row);
   }
@@ -1371,12 +1323,14 @@ async function getMailDraft(args: {
   );
 }
 
-async function gmailAttachmentSource(args: {
-  readonly accessToken: string;
-  readonly row: MailDraftRow;
-  readonly partId: string;
-  readonly signal: AbortSignal;
-}): Promise<{
+async function gmailAttachmentSource(
+  args: {
+    readonly accessToken: string;
+    readonly row: MailDraftRow;
+    readonly partId: string;
+  },
+  signal: AbortSignal,
+): Promise<{
   readonly messageId: string;
   readonly part: GmailMessagePart;
 } | null> {
@@ -1387,11 +1341,13 @@ async function gmailAttachmentSource(args: {
     if (!args.row.sentGmailMessageId) {
       return null;
     }
-    const message = await gmailGetMessageResource({
-      accessToken: args.accessToken,
-      gmailMessageId: args.row.sentGmailMessageId,
-      signal: args.signal,
-    });
+    const message = await gmailGetMessageResource(
+      {
+        accessToken: args.accessToken,
+        gmailMessageId: args.row.sentGmailMessageId,
+      },
+      signal,
+    );
     const part = message
       ? findAttachmentPart(message.payload, args.partId)
       : null;
@@ -1404,11 +1360,13 @@ async function gmailAttachmentSource(args: {
         }
       : null;
   }
-  const draft = await gmailGetDraftResource({
-    accessToken: args.accessToken,
-    gmailDraftId: args.row.gmailDraftId,
-    signal: args.signal,
-  });
+  const draft = await gmailGetDraftResource(
+    {
+      accessToken: args.accessToken,
+      gmailDraftId: args.row.gmailDraftId,
+    },
+    signal,
+  );
   const part = draft
     ? findAttachmentPart(draft.message.payload, args.partId)
     : null;
@@ -1422,12 +1380,14 @@ async function gmailAttachmentSource(args: {
     : null;
 }
 
-async function gmailAttachmentContent(args: {
-  readonly accessToken: string;
-  readonly messageId: string;
-  readonly part: GmailMessagePart;
-  readonly signal: AbortSignal;
-}): Promise<Uint8Array | null> {
+async function gmailAttachmentContent(
+  args: {
+    readonly accessToken: string;
+    readonly messageId: string;
+    readonly part: GmailMessagePart;
+  },
+  signal: AbortSignal,
+): Promise<Uint8Array | null> {
   if (args.part.body.data !== undefined) {
     return new Uint8Array(Buffer.from(args.part.body.data, "base64url"));
   }
@@ -1435,20 +1395,24 @@ async function gmailAttachmentContent(args: {
   if (!attachmentId) {
     return null;
   }
-  return await gmailGetAttachment({
-    accessToken: args.accessToken,
-    gmailMessageId: args.messageId,
-    attachmentId,
-    signal: args.signal,
-  });
+  return await gmailGetAttachment(
+    {
+      accessToken: args.accessToken,
+      gmailMessageId: args.messageId,
+      attachmentId,
+    },
+    signal,
+  );
 }
 
-async function sendGmailDraftWithAccess(args: {
-  readonly access: MailAccess;
-  readonly db: Db;
-  readonly row: MailDraftRow;
-  readonly signal: AbortSignal;
-}): Promise<
+async function sendGmailDraftWithAccess(
+  args: {
+    readonly access: MailAccess;
+    readonly db: Db;
+    readonly row: MailDraftRow;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly kind: "ok";
       readonly current: GmailDraftValue;
@@ -1457,23 +1421,27 @@ async function sendGmailDraftWithAccess(args: {
   | { readonly kind: "missing" }
   | { readonly kind: "reconnect" }
 > {
-  const currentResult = await runGmailOperation({
-    db: args.db,
-    connectorId: args.access.connection.connectorId,
-    operation: async () => {
-      return await gmailGetDraft({
-        accessToken: args.access.accessToken,
-        gmailDraftId: args.row.gmailDraftId,
-        fallbackSender: {
-          address: args.access.connection.externalEmail,
-          name: args.access.connection.externalUsername,
-        },
-        signal: args.signal,
-      });
+  const currentResult = await runGmailOperation(
+    {
+      db: args.db,
+      connectorId: args.access.connection.connectorId,
+      operation: async () => {
+        return await gmailGetDraft(
+          {
+            accessToken: args.access.accessToken,
+            gmailDraftId: args.row.gmailDraftId,
+            fallbackSender: {
+              address: args.access.connection.externalEmail,
+              name: args.access.connection.externalUsername,
+            },
+          },
+          signal,
+        );
+      },
     },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+    signal,
+  );
+  signal.throwIfAborted();
   if (currentResult.kind === "reconnect") {
     return currentResult;
   }
@@ -1483,19 +1451,23 @@ async function sendGmailDraftWithAccess(args: {
   if (!currentResult.value) {
     return { kind: "missing" };
   }
-  const sentResult = await runGmailOperation({
-    db: args.db,
-    connectorId: args.access.connection.connectorId,
-    operation: async () => {
-      return await gmailSendLinkedDraft({
-        accessToken: args.access.accessToken,
-        gmailDraftId: args.row.gmailDraftId,
-        signal: args.signal,
-      });
+  const sentResult = await runGmailOperation(
+    {
+      db: args.db,
+      connectorId: args.access.connection.connectorId,
+      operation: async () => {
+        return await gmailSendLinkedDraft(
+          {
+            accessToken: args.access.accessToken,
+            gmailDraftId: args.row.gmailDraftId,
+          },
+          signal,
+        );
+      },
     },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+    signal,
+  );
+  signal.throwIfAborted();
   if (sentResult.kind === "reconnect") {
     return sentResult;
   }
@@ -1563,33 +1535,39 @@ export const linkZeroMailDraft$ = command(
             message: "This Gmail draft is already linked to another chat",
           };
     }
-    const access = await resolveMailAccessToken({
-      connection,
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
+    const access = await resolveMailAccessToken(
+      {
+        connection,
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        writeDb: set(writeDb$),
+      },
       signal,
-      writeDb: set(writeDb$),
-    });
+    );
     if (access.kind !== "ok") {
       return { kind: "conflict", message: access.message };
     }
-    const gmailResult = await runGmailOperation({
-      db: set(writeDb$),
-      connectorId: connection.connectorId,
-      operation: async () => {
-        return await gmailGetDraft({
-          accessToken: access.accessToken,
-          gmailDraftId: args.gmailDraftId,
-          fallbackSender: {
-            address: connection.externalEmail,
-            name: connection.externalUsername,
-          },
-          signal,
-        });
+    const gmailResult = await runGmailOperation(
+      {
+        db: set(writeDb$),
+        connectorId: connection.connectorId,
+        operation: async () => {
+          return await gmailGetDraft(
+            {
+              accessToken: access.accessToken,
+              gmailDraftId: args.gmailDraftId,
+              fallbackSender: {
+                address: connection.externalEmail,
+                name: connection.externalUsername,
+              },
+            },
+            signal,
+          );
+        },
       },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (gmailResult.kind === "reconnect") {
       return reconnectMailError;
@@ -1639,15 +1617,17 @@ export const getZeroMailDraft$ = command(
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    return await getMailDraft({
-      db,
-      writeDb: set(writeDb$),
-      snapshot,
-      orgId: args.orgId,
-      userId: args.userId,
-      row,
+    return await getMailDraft(
+      {
+        db,
+        writeDb: set(writeDb$),
+        snapshot,
+        orgId: args.orgId,
+        userId: args.userId,
+        row,
+      },
       signal,
-    });
+    );
   },
 );
 
@@ -1670,31 +1650,37 @@ export const getZeroMailDraftAttachment$ = command(
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const access = await accessForRow({
-      db,
-      writeDb: set(writeDb$),
-      snapshot,
-      orgId: args.orgId,
-      userId: args.userId,
-      row,
+    const access = await accessForRow(
+      {
+        db,
+        writeDb: set(writeDb$),
+        snapshot,
+        orgId: args.orgId,
+        userId: args.userId,
+        row,
+      },
       signal,
-    });
+    );
     if (access.kind !== "ok") {
       return access;
     }
-    const sourceResult = await runGmailOperation({
-      db: set(writeDb$),
-      connectorId: access.connection.connectorId,
-      operation: async () => {
-        return await gmailAttachmentSource({
-          accessToken: access.accessToken,
-          row,
-          partId: args.partId,
-          signal,
-        });
+    const sourceResult = await runGmailOperation(
+      {
+        db: set(writeDb$),
+        connectorId: access.connection.connectorId,
+        operation: async () => {
+          return await gmailAttachmentSource(
+            {
+              accessToken: access.accessToken,
+              row,
+              partId: args.partId,
+            },
+            signal,
+          );
+        },
       },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (sourceResult.kind === "reconnect") {
       return reconnectMailError;
@@ -1709,19 +1695,23 @@ export const getZeroMailDraftAttachment$ = command(
         message: "Mail draft attachment not found",
       };
     }
-    const contentResult = await runGmailOperation({
-      db: set(writeDb$),
-      connectorId: access.connection.connectorId,
-      operation: async () => {
-        return await gmailAttachmentContent({
-          accessToken: access.accessToken,
-          messageId: source.messageId,
-          part: source.part,
-          signal,
-        });
+    const contentResult = await runGmailOperation(
+      {
+        db: set(writeDb$),
+        connectorId: access.connection.connectorId,
+        operation: async () => {
+          return await gmailAttachmentContent(
+            {
+              accessToken: access.accessToken,
+              messageId: source.messageId,
+              part: source.part,
+            },
+            signal,
+          );
+        },
       },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (contentResult.kind === "reconnect") {
       return reconnectMailError;
@@ -1769,30 +1759,36 @@ export const deleteZeroMailDraft$ = command(
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const access = await accessForRow({
-      db,
-      writeDb: set(writeDb$),
-      snapshot,
-      orgId: args.orgId,
-      userId: args.userId,
-      row,
+    const access = await accessForRow(
+      {
+        db,
+        writeDb: set(writeDb$),
+        snapshot,
+        orgId: args.orgId,
+        userId: args.userId,
+        row,
+      },
       signal,
-    });
+    );
     if (access.kind !== "ok") {
       return access;
     }
-    const deletion = await runGmailOperation({
-      db: set(writeDb$),
-      connectorId: access.connection.connectorId,
-      operation: async () => {
-        await gmailDeleteDraft({
-          accessToken: access.accessToken,
-          gmailDraftId: row.gmailDraftId,
-          signal,
-        });
+    const deletion = await runGmailOperation(
+      {
+        db: set(writeDb$),
+        connectorId: access.connection.connectorId,
+        operation: async () => {
+          await gmailDeleteDraft(
+            {
+              accessToken: access.accessToken,
+              gmailDraftId: row.gmailDraftId,
+            },
+            signal,
+          );
+        },
       },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (deletion.kind === "reconnect") {
       return reconnectMailError;
@@ -1833,24 +1829,28 @@ export const sendZeroMailDraft$ = command(
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const access = await accessForRow({
-      db,
-      writeDb: set(writeDb$),
-      snapshot,
-      orgId: args.orgId,
-      userId: args.userId,
-      row,
+    const access = await accessForRow(
+      {
+        db,
+        writeDb: set(writeDb$),
+        snapshot,
+        orgId: args.orgId,
+        userId: args.userId,
+        row,
+      },
       signal,
-    });
+    );
     if (access.kind !== "ok") {
       return access;
     }
-    const gmail = await sendGmailDraftWithAccess({
-      access,
-      db: set(writeDb$),
-      row,
+    const gmail = await sendGmailDraftWithAccess(
+      {
+        access,
+        db: set(writeDb$),
+        row,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (gmail.kind === "reconnect") {
       return reconnectMailError;
@@ -1898,548 +1898,6 @@ export const sendZeroMailDraft$ = command(
         details: gmail.current.details,
         detailAvailable: true,
       }),
-    );
-  },
-);
-
-function mailFollowUpWorkflowName(chatThreadId: string): string {
-  return `mail-reply-follow-up-${chatThreadId}`;
-}
-
-function mailFollowUpAutomationFailure(
-  result: Exclude<AutomationResult, { readonly kind: "ok" }>,
-): MailFollowUpSetupErrorResult {
-  switch (result.kind) {
-    case "not-found": {
-      return {
-        kind: "not_found",
-        message: "Mail follow-up workflow not found",
-      };
-    }
-    case "forbidden": {
-      return { kind: "forbidden", message: result.message };
-    }
-    case "conflict": {
-      return { kind: "conflict", message: result.message };
-    }
-    case "team-required":
-    case "bad-request": {
-      return { kind: "bad_request", message: result.message };
-    }
-    case "deleted": {
-      throw new Error("Mail follow-up automation was deleted during setup");
-    }
-  }
-}
-
-const ensureMailFollowUpAutomationEnabled$ = command(
-  async (
-    { set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly memberRole: string;
-      readonly automationId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<MailFollowUpSetupErrorResult | null> => {
-    const enabled = await set(
-      enableWorkflowAutomation$,
-      {
-        orgId: args.orgId,
-        member: { userId: args.userId, role: args.memberRole },
-        automationId: args.automationId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    return enabled.kind === "ok"
-      ? null
-      : mailFollowUpAutomationFailure(enabled);
-  },
-);
-
-const ensureMailFollowUpWorkflow$ = command(
-  async (
-    { set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly agentId: string;
-      readonly chatThreadId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<MailFollowUpWorkflowResult> => {
-    const writeDb = set(writeDb$);
-    const name = mailFollowUpWorkflowName(args.chatThreadId);
-    const currentTime = nowDate();
-    const result = await writeDb.transaction(async (tx) => {
-      const [existing] = await tx
-        .select({ id: zeroWorkflows.id })
-        .from(zeroWorkflows)
-        .where(
-          and(
-            eq(zeroWorkflows.orgId, args.orgId),
-            eq(zeroWorkflows.agentId, args.agentId),
-            eq(zeroWorkflows.ownerUserId, args.userId),
-            eq(zeroWorkflows.visibility, "private"),
-            eq(zeroWorkflows.name, name),
-          ),
-        )
-        .limit(1);
-
-      if (existing) {
-        const [binding] = await tx
-          .select({
-            chatThreadId: workflowUserAutomationThreads.chatThreadId,
-          })
-          .from(workflowUserAutomationThreads)
-          .where(
-            and(
-              eq(workflowUserAutomationThreads.orgId, args.orgId),
-              eq(workflowUserAutomationThreads.userId, args.userId),
-              eq(workflowUserAutomationThreads.workflowId, existing.id),
-            ),
-          )
-          .limit(1);
-        if (
-          binding?.chatThreadId &&
-          binding.chatThreadId !== args.chatThreadId
-        ) {
-          return {
-            kind: "conflict" as const,
-            message: "Mail follow-up workflow is bound to another chat",
-          };
-        }
-        await tx
-          .insert(workflowUserAutomationThreads)
-          .values({
-            orgId: args.orgId,
-            userId: args.userId,
-            workflowId: existing.id,
-            chatThreadId: args.chatThreadId,
-            createdAt: currentTime,
-            updatedAt: currentTime,
-          })
-          .onConflictDoUpdate({
-            target: [
-              workflowUserAutomationThreads.orgId,
-              workflowUserAutomationThreads.userId,
-              workflowUserAutomationThreads.workflowId,
-            ],
-            set: {
-              chatThreadId: args.chatThreadId,
-              updatedAt: currentTime,
-            },
-          });
-        return {
-          kind: "ok" as const,
-          workflowId: existing.id,
-        };
-      }
-
-      const workflowId = randomUUID();
-      await tx.insert(zeroWorkflows).values({
-        id: workflowId,
-        orgId: args.orgId,
-        agentId: args.agentId,
-        name,
-        visibility: "private",
-        instruction: MAIL_FOLLOW_UP_WORKFLOW_INSTRUCTION,
-        ownerUserId: args.userId,
-        displayName: MAIL_FOLLOW_UP_WORKFLOW_DISPLAY_NAME,
-        description: MAIL_FOLLOW_UP_WORKFLOW_DESCRIPTION,
-        createdBy: args.userId,
-        updatedBy: args.userId,
-        createdAt: currentTime,
-        updatedAt: currentTime,
-      });
-      await tx.insert(workflowUserAutomationThreads).values({
-        orgId: args.orgId,
-        userId: args.userId,
-        workflowId,
-        chatThreadId: args.chatThreadId,
-        createdAt: currentTime,
-        updatedAt: currentTime,
-      });
-      return { kind: "ok" as const, workflowId };
-    });
-    signal.throwIfAborted();
-    if (result.kind !== "ok") {
-      return result;
-    }
-
-    // Keep the fixed workflow executable and repair a prior partial setup if
-    // storage upload failed after its database row was created.
-    await set(
-      uploadVolumeServerSide$,
-      {
-        orgId: args.orgId,
-        storageName: getCustomSkillStorageName(result.workflowId),
-        files: [
-          {
-            path: "SKILL.md",
-            content: synthesizeWorkflowSkillMd({
-              name,
-              description: MAIL_FOLLOW_UP_WORKFLOW_DESCRIPTION,
-              instruction: MAIL_FOLLOW_UP_WORKFLOW_INSTRUCTION,
-            }),
-          },
-        ],
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    return { kind: "ok", workflowId: result.workflowId };
-  },
-);
-
-function mailFollowUpEventConfig(
-  draft: ZeroMailDraft,
-): GmailNewMessageEventConfig | null {
-  const recipients = Array.from(
-    new Set([...draft.to, ...draft.cc, ...draft.bcc]),
-  );
-  if (recipients.length === 0) {
-    return null;
-  }
-  return {
-    provider: "gmail",
-    event: "new_message",
-    threadId: draft.gmailThreadId,
-    match: {
-      from: { containsAny: recipients },
-    },
-  };
-}
-
-async function loadMatchingMailFollowUpAutomation(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly chatThreadId: string;
-  readonly eventConfig: GmailNewMessageEventConfig;
-}): Promise<MailFollowUpAutomationRow | null> {
-  const [existing] = await args.db
-    .select({
-      id: zeroWorkflowAutomations.id,
-      enabled: zeroWorkflowAutomations.enabled,
-    })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      workflowUserAutomationThreads,
-      and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
-        eq(
-          workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
-        ),
-        eq(
-          workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
-        ),
-      ),
-    )
-    .where(
-      and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(zeroWorkflowAutomations.eventType, "gmail-new-message"),
-        eq(zeroWorkflowAutomations.eventConfig, args.eventConfig),
-        eq(workflowUserAutomationThreads.chatThreadId, args.chatThreadId),
-      ),
-    )
-    .limit(1);
-  return existing ?? null;
-}
-
-const resolveMailFollowUpAutomation$ = command(
-  async (
-    { set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly agentId: string;
-      readonly chatThreadId: string;
-      readonly eventConfig: GmailNewMessageEventConfig;
-    },
-    signal: AbortSignal,
-  ): Promise<MailFollowUpAutomationResolution> => {
-    const writeDb = set(writeDb$);
-    const existing = await loadMatchingMailFollowUpAutomation({
-      db: writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      chatThreadId: args.chatThreadId,
-      eventConfig: args.eventConfig,
-    });
-    signal.throwIfAborted();
-    if (existing) {
-      return { kind: "existing", automation: existing };
-    }
-
-    const workflow = await set(
-      ensureMailFollowUpWorkflow$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: args.agentId,
-        chatThreadId: args.chatThreadId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (workflow.kind !== "ok") {
-      return workflow;
-    }
-
-    const createdConcurrently = await loadMatchingMailFollowUpAutomation({
-      db: writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      chatThreadId: args.chatThreadId,
-      eventConfig: args.eventConfig,
-    });
-    signal.throwIfAborted();
-    return createdConcurrently
-      ? { kind: "existing", automation: createdConcurrently }
-      : { kind: "create", workflowId: workflow.workflowId };
-  },
-);
-
-function existingMailFollowUpResult(
-  row: MailDraftRow,
-): Extract<ZeroMailFollowUpSetupResult, { readonly kind: "ok" }> | null {
-  if (!row.followUpAutomationId) {
-    return null;
-  }
-  return {
-    kind: "ok",
-    mailDraftId: row.id,
-    automationId: row.followUpAutomationId,
-    chatThreadId: row.chatThreadId,
-    messageSeqId: undefined,
-  };
-}
-
-const linkMailFollowUp$ = command(
-  async (
-    { set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly mailDraftId: string;
-      readonly automationId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<ZeroMailFollowUpSetupResult> => {
-    const result = await set(writeDb$).transaction(async (tx) => {
-      const [source] = await tx
-        .select({
-          mailDraftId: mailDrafts.id,
-          chatThreadId: chatThreads.id,
-          followUpAutomationId: mailDrafts.followUpAutomationId,
-        })
-        .from(mailDrafts)
-        .innerJoin(chatThreads, eq(chatThreads.id, mailDrafts.chatThreadId))
-        .innerJoin(
-          agentComposes,
-          eq(agentComposes.id, chatThreads.agentComposeId),
-        )
-        .where(
-          and(
-            eq(mailDrafts.id, args.mailDraftId),
-            eq(chatThreads.userId, args.userId),
-            eq(agentComposes.orgId, args.orgId),
-            eq(mailDrafts.status, "sent"),
-          ),
-        )
-        .limit(1)
-        .for("update");
-      if (!source) {
-        return {
-          kind: "not_found" as const,
-          message: "Sent email not found",
-        };
-      }
-      if (
-        source.followUpAutomationId !== null &&
-        source.followUpAutomationId !== args.automationId
-      ) {
-        return {
-          kind: "conflict" as const,
-          message: "Mail follow-up is already linked to another automation",
-        };
-      }
-      if (source.followUpAutomationId === args.automationId) {
-        return {
-          kind: "ok" as const,
-          mailDraftId: source.mailDraftId,
-          automationId: args.automationId,
-          chatThreadId: source.chatThreadId,
-          messageSeqId: undefined,
-        };
-      }
-
-      await tx
-        .update(mailDrafts)
-        .set({
-          followUpAutomationId: args.automationId,
-          updatedAt: sql`clock_timestamp()`,
-        })
-        .where(eq(mailDrafts.id, source.mailDraftId));
-      const message = await insertChatEvent(tx, {
-        chatThreadId: source.chatThreadId,
-        eventType: "output.message",
-        content: MAIL_FOLLOW_UP_CONFIRMATION,
-      });
-      if (!message) {
-        throw new Error("Failed to append mail follow-up confirmation");
-      }
-      await touchChatThreadLastMessageAt(
-        tx,
-        source.chatThreadId,
-        message.createdAt,
-      );
-      return {
-        kind: "ok" as const,
-        mailDraftId: source.mailDraftId,
-        automationId: args.automationId,
-        chatThreadId: source.chatThreadId,
-        messageSeqId: message.seqId,
-      };
-    });
-    signal.throwIfAborted();
-    return result;
-  },
-);
-
-export const setupZeroMailFollowUp$ = command(
-  async (
-    { get, set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly memberRole: string;
-      readonly mailDraftId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<ZeroMailFollowUpSetupResult> => {
-    const row = await loadOwnedMailDraft({
-      db: get(db$),
-      orgId: args.orgId,
-      userId: args.userId,
-      mailDraftId: args.mailDraftId,
-    });
-    signal.throwIfAborted();
-    if (!row || row.status !== "sent") {
-      return { kind: "not_found", message: "Sent email not found" };
-    }
-    const existingFollowUp = existingMailFollowUpResult(row);
-    if (existingFollowUp) {
-      if (row.followUpAutomationEnabled === false) {
-        const error = await set(
-          ensureMailFollowUpAutomationEnabled$,
-          {
-            orgId: args.orgId,
-            userId: args.userId,
-            memberRole: args.memberRole,
-            automationId: existingFollowUp.automationId,
-          },
-          signal,
-        );
-        if (error) {
-          return error;
-        }
-      }
-      return existingFollowUp;
-    }
-
-    const draftResult = await set(
-      getZeroMailDraft$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        mailDraftId: args.mailDraftId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (draftResult.kind !== "ok") {
-      return draftResult;
-    }
-    if (draftResult.mailDraft.accessStatus === "reconnect") {
-      return reconnectMailError;
-    }
-    const eventConfig = mailFollowUpEventConfig(draftResult.mailDraft);
-    if (!eventConfig) {
-      return noMailFollowUpRecipientsError;
-    }
-
-    const resolution = await set(
-      resolveMailFollowUpAutomation$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: row.agentId,
-        chatThreadId: row.chatThreadId,
-        eventConfig,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (resolution.kind !== "existing" && resolution.kind !== "create") {
-      return resolution;
-    }
-
-    let automationId: string;
-    if (resolution.kind === "existing") {
-      if (!resolution.automation.enabled) {
-        const error = await set(
-          ensureMailFollowUpAutomationEnabled$,
-          {
-            orgId: args.orgId,
-            userId: args.userId,
-            memberRole: args.memberRole,
-            automationId: resolution.automation.id,
-          },
-          signal,
-        );
-        if (error) {
-          return error;
-        }
-      }
-      automationId = resolution.automation.id;
-    } else {
-      const created = await set(
-        createWorkflowAutomation$,
-        {
-          orgId: args.orgId,
-          member: { userId: args.userId, role: args.memberRole },
-          workflowId: resolution.workflowId,
-          eventType: "gmail-new-message",
-          eventConfig,
-          enabled: true,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      if (created.kind !== "ok") {
-        return mailFollowUpAutomationFailure(created);
-      }
-      automationId = created.summary.id;
-    }
-
-    return await set(
-      linkMailFollowUp$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        mailDraftId: args.mailDraftId,
-        automationId,
-      },
-      signal,
     );
   },
 );

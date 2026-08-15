@@ -45,14 +45,14 @@ export const neonProvider: AuthCodeConnectorAuthProvider<"neon"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId, clientSecret } = args.authClient;
       return oauthRefreshResultToProviderResult(
         await refreshNeonToken(
           clientId,
           clientSecret,
           args.inputs.refreshToken,
-          args.signal,
+          signal,
         ),
       );
     },

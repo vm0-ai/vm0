@@ -1,10 +1,8 @@
 import { command, computed } from "ccstate";
-import type { ArtifactDetail } from "@vm0/api-contracts/contracts/artifact-catalog";
+import type { ArtifactDetail } from "@okouai/api-contracts/contracts/artifact-catalog";
 
-import {
-  downloadAttachmentUrl,
-  publicAttachmentUrl,
-} from "../../views/zero-page/zero-attachment-url.ts";
+import { publicAttachmentUrl } from "../../views/zero-page/zero-attachment-url.ts";
+import { downloadAttachment$ } from "../attachment-download.ts";
 import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
 import {
   classifyChatAttachment,
@@ -34,14 +32,21 @@ export const artifactCatalog$ = pageCatalog.catalog$;
 
 export const loadMoreArtifactCatalog$ = pageCatalog.loadMore$;
 
-export const subscribeArtifactCatalogChanged$ =
-  pageCatalog.subscribeCatalogChanged$;
-
 export function artifactDetailPreview(detail: ArtifactDetail): {
   readonly kind: BodyPreviewKind;
   readonly url: string;
   readonly filename: string;
 } {
+  if (detail.kind === "shared-thread") {
+    return {
+      kind: "html",
+      url: new URL(
+        `/share/threads/${encodeURIComponent(detail.sharedThread.id)}`,
+        window.location.origin,
+      ).toString(),
+      filename: detail.title,
+    };
+  }
   if (detail.kind === "hosted-site" || detail.kind === "presentation") {
     return { kind: "html", url: detail.site.url, filename: detail.title };
   }
@@ -56,19 +61,17 @@ export function artifactDetailPreview(detail: ArtifactDetail): {
   };
 }
 
-const selectedArtifactText$ = computed(
-  async (get, { signal }): Promise<string> => {
-    const detail = await get(pageCatalog.selectedArtifactDetail$);
-    if (!detail) {
-      throw new Error("Selected artifact is unavailable");
-    }
-    const preview = artifactDetailPreview(detail);
-    if (!isTextPreviewKind(preview.kind)) {
-      throw new Error("Selected artifact is not a text preview");
-    }
-    return fetchPreviewText(preview.url, signal);
-  },
-);
+const selectedArtifactText$ = computed(async (get): Promise<string> => {
+  const detail = await get(pageCatalog.selectedArtifactDetail$);
+  if (!detail) {
+    throw new Error("Selected artifact is unavailable");
+  }
+  const preview = artifactDetailPreview(detail);
+  if (!isTextPreviewKind(preview.kind)) {
+    throw new Error("Selected artifact is not a text preview");
+  }
+  return fetchPreviewText(preview.url);
+});
 
 /**
  * Open a card. The kind entity is fetched here rather than with the list, so
@@ -80,6 +83,13 @@ export const openArtifact$ = command(
     const detail = await get(pageCatalog.selectedArtifactDetail$);
     signal.throwIfAborted();
     if (!detail) {
+      return;
+    }
+
+    if (detail.kind === "shared-thread") {
+      window.location.assign(
+        `/share/threads/${encodeURIComponent(detail.sharedThread.id)}`,
+      );
       return;
     }
 
@@ -103,7 +113,11 @@ export const openArtifact$ = command(
       return;
     }
     if (preview.kind === "file") {
-      await downloadAttachmentUrl(preview.url, signal, preview.filename);
+      await set(
+        downloadAttachment$,
+        { filename: preview.filename, url: preview.url },
+        signal,
+      );
       signal.throwIfAborted();
       return;
     }

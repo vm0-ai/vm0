@@ -1,30 +1,30 @@
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, eq, lte } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { calculateNextRun } from "./time-automation";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import {
-  runWorkflowAutomationNow$,
   scheduleTriggerContext,
   type DueWorkflowAutomation,
   type RunFailure,
   type AutomationRow,
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-run.service";
+} from "./zero-workflow-automation-launch.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
-import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import { buildWorkflowScheduleAutomationBrief } from "./workflow-automation-brief.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const log = logger("api:zero-workflow-automation-poller");
@@ -44,6 +44,41 @@ interface DueWorkflowAutomationRow {
   readonly workflowDisplayName: string | null;
   readonly chatThreadId: string | null;
   readonly userTimezone: string | null;
+}
+
+async function startDueWorkflowAutomation(
+  args: {
+    readonly startRun: (
+      input: RunWorkflowAutomationNowArgs,
+      signal: AbortSignal,
+    ) => Promise<RunWorkflowAutomationResult>;
+    readonly due: DueWorkflowAutomation;
+    readonly row: DueWorkflowAutomationRow;
+    readonly currentTime: Date;
+    readonly scheduleContext: ReturnType<typeof scheduleTriggerContext>;
+  },
+  signal: AbortSignal,
+): Promise<RunWorkflowAutomationResult> {
+  const { automation } = args.due;
+  return await args.startRun(
+    {
+      due: args.due,
+      automationContext: args.scheduleContext,
+      apiStartTime: now(),
+      triggerBrief:
+        buildWorkflowScheduleAutomationBrief({
+          createdAt: args.currentTime,
+          scheduleType: automation.scheduleType,
+          cronExpression: automation.cronExpression,
+          intervalSeconds: automation.intervalSeconds,
+          atTime: automation.atTime,
+          automationTimezone: automation.timezone,
+          userTimezone: args.row.userTimezone,
+        }) ?? undefined,
+      dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+    },
+    signal,
+  );
 }
 
 function isRunFailure(error: unknown): error is RunFailure {
@@ -107,7 +142,7 @@ async function claimAutomation(
     return null;
   }
   const [claimed] = await db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       nextRunAt: null,
       lastRunAt: currentTime,
@@ -115,11 +150,11 @@ async function claimAutomation(
     })
     .where(
       and(
-        eq(zeroWorkflowAutomations.id, automation.id),
-        eq(zeroWorkflowAutomations.nextRunAt, automation.nextRunAt),
+        eq(workflowAutomations.id, automation.id),
+        eq(workflowAutomations.nextRunAt, automation.nextRunAt),
       ),
     )
-    .returning();
+    .returning(workflowAutomationColumns());
   return claimed ?? null;
 }
 
@@ -174,14 +209,14 @@ async function recordPreRunFailure(
   );
   const automationIsStillEligible =
     automation.scheduleType === "once"
-      ? eq(zeroWorkflowAutomations.id, automation.id)
+      ? eq(workflowAutomations.id, automation.id)
       : and(
-          eq(zeroWorkflowAutomations.id, automation.id),
-          eq(zeroWorkflowAutomations.enabled, true),
+          eq(workflowAutomations.id, automation.id),
+          eq(workflowAutomations.enabled, true),
         );
 
   await db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       consecutiveFailures: newFailureCount,
       ...(shouldDisable ? { enabled: false } : {}),
@@ -227,47 +262,44 @@ async function dueWorkflowAutomationRows(
 ): Promise<DueWorkflowAutomationRow[]> {
   const rows = await db
     .select({
-      automation: zeroWorkflowAutomations,
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      automation: workflowAutomationColumns(),
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
       userTimezone: orgMembersMetadata.timezone,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .leftJoin(
       orgMembersMetadata,
       and(
-        eq(orgMembersMetadata.orgId, zeroWorkflowAutomations.orgId),
-        eq(orgMembersMetadata.userId, zeroWorkflowAutomations.ownerUserId),
+        eq(orgMembersMetadata.orgId, workflowAutomations.orgId),
+        eq(orgMembersMetadata.userId, workflowAutomations.ownerUserId),
       ),
     )
     .where(
       and(
         automationId === undefined
           ? undefined
-          : eq(zeroWorkflowAutomations.id, automationId),
-        eq(zeroWorkflowAutomations.enabled, true),
-        eq(zeroWorkflowAutomations.kind, "schedule"),
-        lte(zeroWorkflowAutomations.nextRunAt, currentTime),
+          : eq(workflowAutomations.id, automationId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "schedule"),
+        lte(workflowAutomations.nextRunAt, currentTime),
       ),
     )
     .limit(DUE_BATCH_LIMIT);
@@ -275,20 +307,22 @@ async function dueWorkflowAutomationRows(
   return rows;
 }
 
-async function executeDueWorkflowAutomations(args: {
-  readonly db: Db;
-  readonly signal: AbortSignal;
-  readonly automationId?: string;
-  readonly startRun: (
-    input: RunWorkflowAutomationNowArgs,
-    signal: AbortSignal,
-  ) => Promise<RunWorkflowAutomationResult>;
-}): Promise<ExecuteResult> {
+async function executeDueWorkflowAutomations(
+  args: {
+    readonly db: Db;
+    readonly automationId?: string;
+    readonly startRun: (
+      input: RunWorkflowAutomationNowArgs,
+      signal: AbortSignal,
+    ) => Promise<RunWorkflowAutomationResult>;
+  },
+  signal: AbortSignal,
+): Promise<ExecuteResult> {
   const currentTime = nowDate();
   const rows = await dueWorkflowAutomationRows(
     args.db,
     currentTime,
-    args.signal,
+    signal,
     args.automationId,
   );
   let executed = 0;
@@ -299,7 +333,7 @@ async function executeDueWorkflowAutomations(args: {
       orgId: row.automation.orgId,
       userId: row.automation.ownerUserId,
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!ownerIsMember) {
       log.warn(
         "Disabling workflow automation: owner is no longer an org member",
@@ -310,20 +344,23 @@ async function executeDueWorkflowAutomations(args: {
         },
       );
       await args.db
-        .update(zeroWorkflowAutomations)
+        .update(workflowAutomations)
         .set({ enabled: false, nextRunAt: null, updatedAt: currentTime })
-        .where(eq(zeroWorkflowAutomations.id, row.automation.id));
-      args.signal.throwIfAborted();
+        .where(eq(workflowAutomations.id, row.automation.id));
+      signal.throwIfAborted();
       skipped++;
       continue;
     }
 
-    const canFire = await workflowAutomationCanFire(args.db, {
-      automation: row.automation,
-      agentId: row.agentId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const canFire = await workflowAutomationCanFire(
+      args.db,
+      {
+        automation: row.automation,
+        agentId: row.agentId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (!canFire) {
       log.debug("Workflow automation skipped: automation is paused", {
         automationId: row.automation.id,
@@ -337,7 +374,7 @@ async function executeDueWorkflowAutomations(args: {
     }
 
     const claimed = await claimAutomation(args.db, row.automation, currentTime);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!claimed) {
       skipped++;
       continue;
@@ -348,7 +385,7 @@ async function executeDueWorkflowAutomations(args: {
       row,
       currentTime,
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     const due: DueWorkflowAutomation = {
       automation: claimed,
@@ -364,31 +401,16 @@ async function executeDueWorkflowAutomations(args: {
       firedAt: currentTime,
     });
     const result = await tapError(
-      args.startRun(
-        {
-          due,
-          automationContext: scheduleContext,
-          apiStartTime: now(),
-          triggerBrief:
-            buildWorkflowScheduleAutomationBrief({
-              createdAt: currentTime,
-              scheduleType: claimed.scheduleType,
-              cronExpression: claimed.cronExpression,
-              intervalSeconds: claimed.intervalSeconds,
-              atTime: claimed.atTime,
-              automationTimezone: claimed.timezone,
-              userTimezone: row.userTimezone,
-            }) ?? undefined,
-          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        },
-        args.signal,
+      startDueWorkflowAutomation(
+        { startRun: args.startRun, due, row, currentTime, scheduleContext },
+        signal,
       ),
       async (error) => {
-        await recordPreRunFailure(args.db, claimed, error, args.signal);
+        await recordPreRunFailure(args.db, claimed, error, signal);
         skipped++;
       },
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!result) {
       continue;
     }
@@ -397,7 +419,7 @@ async function executeDueWorkflowAutomations(args: {
       continue;
     }
     if (result.kind !== "ok") {
-      await recordPreRunFailure(args.db, claimed, result, args.signal);
+      await recordPreRunFailure(args.db, claimed, result, signal);
       skipped++;
       continue;
     }
@@ -422,13 +444,15 @@ async function executeDueWorkflowAutomations(args: {
  */
 export const executeDueWorkflowAutomations$ = command(
   async ({ set }, signal: AbortSignal): Promise<ExecuteResult> => {
-    return await executeDueWorkflowAutomations({
-      db: set(writeDb$),
-      signal,
-      startRun: (input, childSignal) => {
-        return set(runWorkflowAutomationNow$, input, childSignal);
+    return await executeDueWorkflowAutomations(
+      {
+        db: set(writeDb$),
+        startRun: (input, childSignal) => {
+          return set(runWorkflowAutomationNow$, input, childSignal);
+        },
       },
-    });
+      signal,
+    );
   },
 );
 
@@ -438,13 +462,15 @@ export const executeDueWorkflowAutomationsForAutomation$ = command(
     automationId: string,
     signal: AbortSignal,
   ): Promise<ExecuteResult> => {
-    return await executeDueWorkflowAutomations({
-      db: set(writeDb$),
-      automationId,
-      signal,
-      startRun: (input, childSignal) => {
-        return set(runWorkflowAutomationNow$, input, childSignal);
+    return await executeDueWorkflowAutomations(
+      {
+        db: set(writeDb$),
+        automationId,
+        startRun: (input, childSignal) => {
+          return set(runWorkflowAutomationNow$, input, childSignal);
+        },
       },
-    });
+      signal,
+    );
   },
 );

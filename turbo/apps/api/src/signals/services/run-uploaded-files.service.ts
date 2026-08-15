@@ -1,12 +1,12 @@
 import { command } from "ccstate";
-import type { HostedArtifactKind } from "@vm0/api-contracts/contracts/zero-host";
-import { eq, sql } from "drizzle-orm";
+import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/zero-host";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   RUN_UPLOADED_FILE_SOURCES,
   runUploadedFiles,
   type RunUploadedFileSource,
-} from "@vm0/db/schema/run-uploaded-file";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/run-uploaded-file";
 
 import { logger } from "../../lib/log";
 import { isForeignKeyViolation } from "../../lib/pg-errors";
@@ -15,8 +15,8 @@ import { settle } from "../utils";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import {
-  scheduleVideoArtifactPreviewRender$,
-  type VideoArtifactPreviewRenderArgs,
+  scheduleArtifactPreviewRender$,
+  type RenderArtifactPreviewArgs,
 } from "./artifact-preview.service";
 
 interface RecordWebUploadedFileArgs {
@@ -68,9 +68,9 @@ export async function sourceForRun(
   signal: AbortSignal,
 ): Promise<RunUploadedFileSource> {
   const [run] = await writeDb
-    .select({ triggerSource: zeroRuns.triggerSource })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ triggerSource: agentRuns.triggerSource })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   signal.throwIfAborted();
   return isRunUploadedFileSource(run?.triggerSource)
@@ -110,7 +110,7 @@ function videoArtifactPreviewArgs(
     readonly contentType: string | null;
   },
   row: RecordedUploadedFile | undefined,
-): VideoArtifactPreviewRenderArgs | null {
+): RenderArtifactPreviewArgs | null {
   if (
     !row ||
     row.previewImageUrl ||
@@ -312,7 +312,7 @@ export const recordWebUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -406,7 +406,7 @@ export const recordTelegramUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -538,7 +538,7 @@ export const recordGithubUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -610,7 +610,7 @@ export const recordFeishuUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -682,7 +682,7 @@ export const recordTeamsUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -765,7 +765,7 @@ export const recordAgentPhoneUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -848,7 +848,7 @@ export const recordSlackUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,

@@ -1,9 +1,10 @@
 import { command, computed, state, type Command, type State } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
-  zeroClaudeCodeDeviceAuthContract,
+  claudeCodeDeviceAuthContract,
+  type ClaudeCodeDeviceAuthMode,
   type ClaudeCodeDeviceAuthScope,
-} from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
+} from "@okouai/api-contracts/contracts/claude-code-device-auth";
 
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
@@ -18,7 +19,15 @@ type ClaudeCodeDeviceAuthDialogMode = "connect" | "reconnect";
 interface ClaudeCodeDeviceAuthDialogState {
   open: boolean;
   mode: ClaudeCodeDeviceAuthDialogMode;
+  modelProviderId: string | null;
 }
+
+type OpenClaudeCodeDeviceAuthArgs =
+  | ClaudeCodeDeviceAuthDialogMode
+  | {
+      readonly mode: ClaudeCodeDeviceAuthDialogMode;
+      readonly modelProviderId?: string;
+    };
 
 type ActiveClaudeCodeDeviceAuthFlowState = {
   readonly status: "pending";
@@ -42,6 +51,7 @@ function createInitialDialogState(): ClaudeCodeDeviceAuthDialogState {
   return {
     open: false,
     mode: "connect",
+    modelProviderId: null,
   };
 }
 
@@ -87,13 +97,21 @@ function isActive(
 }
 
 const startClaudeCodeDeviceAuth$ = command(
-  async ({ get }, scope: ClaudeCodeDeviceAuthScope, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroClaudeCodeDeviceAuthContract, {
+  async (
+    { get },
+    args: {
+      readonly scope: ClaudeCodeDeviceAuthScope;
+      readonly mode?: ClaudeCodeDeviceAuthMode;
+      readonly modelProviderId?: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(claudeCodeDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
       client.start({
-        body: { scope },
+        body: args,
         fetchOptions: { signal },
       }),
       [200],
@@ -110,7 +128,7 @@ const completeClaudeCodeDeviceAuth$ = command(
     authorizationCode: string,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroClaudeCodeDeviceAuthContract, {
+    const client = get(zeroClient$)(claudeCodeDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -130,7 +148,7 @@ const completeClaudeCodeDeviceAuth$ = command(
 
 const cancelClaudeCodeDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroClaudeCodeDeviceAuthContract, {
+    const client = get(zeroClient$)(claudeCodeDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -159,8 +177,24 @@ function createClaudeCodeRunFlow$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       const requestId = createRequestId(ctx.scope);
       set(ctx.internalFlowState$, { status: "starting", requestId });
 
+      const dialog = get(ctx.internalDialogState$);
+      const startArgs: {
+        readonly scope: ClaudeCodeDeviceAuthScope;
+        readonly mode?: ClaudeCodeDeviceAuthMode;
+        readonly modelProviderId?: string;
+      } =
+        ctx.scope === "personal"
+          ? {
+              scope: ctx.scope,
+              mode: dialog.mode === "reconnect" ? "reconnect" : "add",
+              ...(dialog.modelProviderId
+                ? { modelProviderId: dialog.modelProviderId }
+                : {}),
+            }
+          : { scope: ctx.scope };
+
       const started = await tapError(
-        set(startClaudeCodeDeviceAuth$, ctx.scope, signal),
+        set(startClaudeCodeDeviceAuth$, startArgs, signal),
       );
       signal.throwIfAborted();
 
@@ -220,10 +254,15 @@ function createClaudeCodeOpen$(
   return command(
     async (
       { set },
-      mode: ClaudeCodeDeviceAuthDialogMode,
+      args: OpenClaudeCodeDeviceAuthArgs,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      set(ctx.internalDialogState$, { open: true, mode });
+      const normalized = typeof args === "string" ? { mode: args } : args;
+      set(ctx.internalDialogState$, {
+        open: true,
+        mode: normalized.mode,
+        modelProviderId: normalized.modelProviderId ?? null,
+      });
       return await set(run$, signal);
     },
   );

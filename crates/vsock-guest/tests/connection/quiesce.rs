@@ -1,8 +1,10 @@
 use std::io::Write;
 
 use vsock_proto::{
-    self, ExecOutputPolicy, ExecTermination, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_WRITE_FILE,
+    self, ExecOutputPolicy, ExecTermination, MSG_EXEC_START, MSG_MEMORY_SNAPSHOT,
+    MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
+    MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_WRITE_FILE, MSG_WRITE_FILES,
+    WriteFileBatchEntry,
 };
 
 use super::support::*;
@@ -73,41 +75,135 @@ fn quiesce_busy_fences_new_exec_operations_until_pending_exec_finishes() {
 }
 
 #[test]
-fn quiesced_connection_rejects_write_file_without_creating_file() {
+fn memory_snapshot_requires_fully_quiesced_connection() {
     let (handle, mut host_stream) = start_guest_connection();
-    let path = unique_tmp_path("quiesce-write-file", ".txt");
+
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 207, &[]);
+    assert_error_contains(
+        &mut host_stream,
+        207,
+        "guest operations are not fully quiesced",
+    );
+
+    send_exec_start(
+        &mut host_stream,
+        208,
+        "sleep 60",
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
+        ExecOutputPolicy::Capture { limit_bytes: 64 },
+        ExecOutputPolicy::Discard,
+    );
+    send_quiesce_operations(&mut host_stream, 209);
+    assert_error_contains(&mut host_stream, 209, "guest operations still pending: 1");
+
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 210, &[]);
+    assert_error_contains(
+        &mut host_stream,
+        210,
+        "guest operations are not fully quiesced",
+    );
+
+    send_exec_cancel(&mut host_stream, 208);
+    let (_chunks, cancelled) = read_exec_result(&mut host_stream, 208);
+    assert_eq!(cancelled.termination, ExecTermination::Cancelled);
 
     send_quiesce_operations(&mut host_stream, 211);
     let quiesced = read_message(&mut host_stream);
     assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
 
-    let payload = vsock_proto::encode_write_file(path.as_str(), b"blocked", false, false).unwrap();
-    let msg = vsock_proto::encode(MSG_WRITE_FILE, 212, &payload).unwrap();
-    host_stream.write_all(&msg).unwrap();
-
-    assert_error_contains(&mut host_stream, 212, "guest operations are quiescing");
-    assert!(!std::path::Path::new(path.as_str()).exists());
-
-    send_resume_operations(&mut host_stream, 213);
-    let resumed = read_message(&mut host_stream);
-    assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 212, &[]);
+    let response = read_message(&mut host_stream);
+    assert_eq!(response.msg_type, MSG_MEMORY_SNAPSHOT_RESULT);
+    assert_eq!(response.seq, 212);
+    let snapshot = vsock_proto::decode_memory_snapshot(&response.payload).unwrap();
+    assert!(snapshot.mem_total_bytes > 0);
+    assert!(snapshot.mem_available_bytes <= snapshot.mem_total_bytes);
+    assert!(snapshot.swap_free_bytes <= snapshot.swap_total_bytes);
 
     finish_guest_connection(handle, host_stream);
 }
 
 #[test]
-fn quiesced_connection_rejects_write_file_seq_zero_before_quiesce_state() {
+fn malformed_memory_snapshot_request_preserves_quiesced_state() {
     let (handle, mut host_stream) = start_guest_connection();
 
-    send_quiesce_operations(&mut host_stream, 214);
+    send_quiesce_operations(&mut host_stream, 213);
     let quiesced = read_message(&mut host_stream);
     assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
 
-    send_control_payload(&mut host_stream, MSG_WRITE_FILE, 0, b"bad");
-    let error = read_error_response(&mut host_stream, 0);
-    assert_eq!(error, "write_file requires non-zero sequence");
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 214, b"unexpected");
+    assert_error_contains(
+        &mut host_stream,
+        214,
+        "memory_snapshot payload must be empty",
+    );
+
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 215, &[]);
+    let response = read_message(&mut host_stream);
+    assert_eq!(response.msg_type, MSG_MEMORY_SNAPSHOT_RESULT);
+    assert_eq!(response.seq, 215);
+    vsock_proto::decode_memory_snapshot(&response.payload).unwrap();
 
     finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn quiesced_connection_rejects_file_write_variants_without_creating_files() {
+    for (variant, msg_type) in [
+        ("write-file", MSG_WRITE_FILE),
+        ("write-files", MSG_WRITE_FILES),
+    ] {
+        let (handle, mut host_stream) = start_guest_connection();
+        let path = unique_tmp_path(&format!("quiesce-{variant}"), ".txt");
+
+        send_quiesce_operations(&mut host_stream, 211);
+        let quiesced = read_message(&mut host_stream);
+        assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+
+        let payload = if msg_type == MSG_WRITE_FILE {
+            vsock_proto::encode_write_file(path.as_str(), b"blocked", false, false).unwrap()
+        } else {
+            vsock_proto::encode_write_files(&[WriteFileBatchEntry {
+                path: path.as_str(),
+                content: b"blocked",
+            }])
+            .unwrap()
+        };
+        let msg = vsock_proto::encode(msg_type, 212, &payload).unwrap();
+        host_stream.write_all(&msg).unwrap();
+
+        assert_error_contains(&mut host_stream, 212, "guest operations are quiescing");
+        assert!(!std::path::Path::new(path.as_str()).exists());
+
+        send_resume_operations(&mut host_stream, 213);
+        let resumed = read_message(&mut host_stream);
+        assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
+
+        finish_guest_connection(handle, host_stream);
+    }
+}
+
+#[test]
+fn quiesced_connection_rejects_file_write_zero_sequences_before_quiesce_state() {
+    for (msg_type, operation_label) in [
+        (MSG_WRITE_FILE, "write_file"),
+        (MSG_WRITE_FILES, "write_files"),
+    ] {
+        let (handle, mut host_stream) = start_guest_connection();
+
+        send_quiesce_operations(&mut host_stream, 214);
+        let quiesced = read_message(&mut host_stream);
+        assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+
+        send_control_payload(&mut host_stream, msg_type, 0, b"bad");
+        let error = read_error_response(&mut host_stream, 0);
+        assert_eq!(
+            error,
+            format!("{operation_label} requires non-zero sequence")
+        );
+
+        finish_guest_connection(handle, host_stream);
+    }
 }
 
 #[test]
@@ -254,7 +350,7 @@ fn malformed_quiesce_resume_payloads_do_not_change_state() {
 }
 
 #[test]
-fn resume_operations_reopens_after_busy_quiesce_with_pending_operation() {
+fn resume_operations_reopens_without_losing_pending_operation() {
     let (handle, mut host_stream) = start_guest_connection();
 
     send_exec_start(
@@ -289,9 +385,18 @@ fn resume_operations_reopens_after_busy_quiesce_with_pending_operation() {
     );
     assert_eq!(reopened.stdout, Some(b"reopened".to_vec()));
 
+    send_quiesce_operations(&mut host_stream, 245);
+    assert_error_contains(&mut host_stream, 245, "guest operations still pending: 1");
+
     send_exec_cancel(&mut host_stream, 241);
     let (_chunks, cancelled) = read_exec_result(&mut host_stream, 241);
     assert_eq!(cancelled.termination, ExecTermination::Cancelled);
+
+    send_quiesce_operations(&mut host_stream, 246);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 246);
+    assert!(quiesced.payload.is_empty());
 
     finish_guest_connection(handle, host_stream);
 }

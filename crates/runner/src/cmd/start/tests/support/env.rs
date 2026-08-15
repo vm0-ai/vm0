@@ -34,8 +34,7 @@ pub(in super::super) struct MockRunEnv {
     pub(in super::super) handle: MockProviderHandle,
     pub(in super::super) provider: Arc<MockJobProvider>,
     pub(in super::super) idle_pool: SharedIdlePool,
-    pub(in super::super) active_reuse_keys: ActiveReuseKeys,
-    pub(in super::super) reuse_state_notify: Arc<tokio::sync::Notify>,
+    pub(in super::super) active_runs: ActiveRuns,
     pub(in super::super) lifecycle: LifecycleController,
     pub(in super::super) parking_gate: ParkingGate,
     pub(in super::super) start_observer: StartLoopTestObserver,
@@ -203,8 +202,8 @@ fn build_mock_run_config_with_runtime(
             },
             parking_gate.clone(),
         )));
-    let active_reuse_keys = new_active_reuse_keys();
     let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
+    let active_runs = ActiveRuns::new(Arc::clone(&reuse_state_notify));
 
     let config = RunConfig {
         runner: RunnerInfo {
@@ -245,7 +244,7 @@ fn build_mock_run_config_with_runtime(
                 None,
                 None,
             )),
-            active_reuse_keys: active_reuse_keys.clone(),
+            active_runs: active_runs.clone(),
             reuse_state_notify: Arc::clone(&reuse_state_notify),
         },
         provider: ProviderState {
@@ -270,7 +269,7 @@ fn build_mock_run_config_with_runtime(
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             mitm_jsonl_flush: None,
-            network_policy_refresh: None,
+            connector_runtime_sync: None,
             session_history_cpu: executor::SessionHistoryCpuPool::with_capacity(1),
             session_history_probe: executor::SessionHistoryProbe::default(),
             fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
@@ -297,6 +296,8 @@ fn build_mock_run_config_with_runtime(
         test_hooks: RunTestHooks {
             outer_job_panic: None,
             test_observer: start_observer.clone(),
+            before_initial_workspace_cache_scan: None,
+            after_initial_workspace_cache_scan: None,
         },
     };
 
@@ -304,8 +305,7 @@ fn build_mock_run_config_with_runtime(
         handle,
         provider: provider_ref,
         idle_pool,
-        active_reuse_keys,
-        reuse_state_notify,
+        active_runs,
         lifecycle: lifecycle.clone(),
         parking_gate,
         start_observer,

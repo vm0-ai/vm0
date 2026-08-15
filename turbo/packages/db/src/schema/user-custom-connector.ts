@@ -1,8 +1,5 @@
 import {
-  boolean,
-  check,
   foreignKey,
-  integer,
   pgTable,
   uuid,
   text,
@@ -17,9 +14,9 @@ import { orgCustomConnectors } from "./org-custom-connector";
 /**
  * Per-agent authorization for org custom connectors.
  * Sparse model: presence of a row = user has explicitly authorized this agent
- * to use this custom connector at one connector revision. A user's manual
- * values or OAuth connection alone are not enough; the mitm firewall is only
- * synthesized while a matching grant is listed here.
+ * to use this custom connector. A user's manual values or OAuth connection
+ * alone are not enough; the mitm firewall is only synthesized while a matching
+ * grant is listed here.
  *
  * Unlike `user_connectors` (which has no FK to `org_custom_connectors`), both
  * FKs carry DB-level ON DELETE CASCADE so deleting a connector or an agent
@@ -40,13 +37,7 @@ export const userCustomConnectors = pgTable(
         { onDelete: "cascade" },
       ),
     customConnectorId: uuid("custom_connector_id").notNull(),
-    connectorRevision: integer("connector_revision").notNull().default(1),
     permissionNames: text("permission_names")
-      .array()
-      .notNull()
-      .default(sql`'{}'::text[]`),
-    allowAllMcpTools: boolean("allow_all_mcp_tools").notNull().default(false),
-    mcpToolNames: text("mcp_tool_names")
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
@@ -69,10 +60,6 @@ export const userCustomConnectors = pgTable(
         columns: [table.customConnectorId, table.orgId],
         foreignColumns: [orgCustomConnectors.id, orgCustomConnectors.orgId],
       }).onDelete("cascade"),
-      check(
-        "chk_user_custom_connectors_mcp_grant",
-        sql`NOT ${table.allowAllMcpTools} OR cardinality(${table.mcpToolNames}) = 0`,
-      ),
     ];
   },
 );

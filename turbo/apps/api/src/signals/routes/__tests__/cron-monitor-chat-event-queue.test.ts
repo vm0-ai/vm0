@@ -1,16 +1,18 @@
-import { cronMonitorChatEventQueueContract } from "@vm0/api-contracts/contracts/cron";
+import { cronMonitorChatEventQueueContract } from "@okouai/api-contracts/contracts/cron";
 import {
   testCronMonitorChatEventQueueStateContract,
   type TestCronMonitorChatEventQueueStateActionBody,
   type TestCronMonitorChatEventQueueStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
+} from "@okouai/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { testCronMonitorChatEventQueueStateRoutes } from "../test-cron-monitor-chat-event-queue-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { cronMonitorChatEventQueueRoutes } from "../cron-monitor-chat-event-queue";
 
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
@@ -22,7 +24,9 @@ interface MonitorFixture {
 }
 
 function apiClient() {
-  return setupApp({ context })(cronMonitorChatEventQueueContract);
+  return setupApp({ context, routes: cronMonitorChatEventQueueRoutes })(
+    cronMonitorChatEventQueueContract,
+  );
 }
 
 function stateClient() {
@@ -116,11 +120,28 @@ describe("cron monitor chat event queue", () => {
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
+  it("does not alert for web or agent-run prompts", async () => {
+    const fixture = await trackFixture(seedFixture("orphan"));
+
+    const response = await accept(
+      stateClient().monitor({
+        body: { event_ids: fixture.eventIds.slice(0, 2) },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      orphanedMessages: 0,
+    });
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
   it("raises a grouped alert for every source with a missing context row", async () => {
     const fixture = await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
-      stateClient().monitor({ body: { event_ids: [...fixture.eventIds] } }),
+      stateClient().monitor({ body: { event_ids: fixture.eventIds.slice(2) } }),
       [500],
     );
 
@@ -172,6 +193,41 @@ describe("cron monitor chat event queue", () => {
 
   it("does not flag input.automation without legacy encrypted params", async () => {
     const fixture = await trackFixture(seedFixture("orphaned-automation"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      orphanedMessages: 0,
+    });
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("alerts when a pending goal event has lost its goal row", async () => {
+    const fixture = await trackFixture(seedFixture("orphaned-goal"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: "Internal server error",
+    });
+    expect(
+      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      code: "ORPHANED_QUEUED_CHAT_MESSAGES",
+      orphanedMessages: 1,
+      orphanedMessagesBySource: { goal: 1 },
+    });
+  });
+
+  it("does not alert for a paused canonical goal continuation", async () => {
+    const fixture = await trackFixture(seedFixture("paused-goal"));
 
     const response = await accept(
       stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),

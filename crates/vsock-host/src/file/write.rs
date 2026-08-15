@@ -10,6 +10,7 @@ use vsock_proto::{ExecTermination, MSG_ERROR, MSG_WRITE_FILE_RESULT, MSG_WRITE_F
 use crate::{
     CompositeNormalOperation, ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput,
     FrameWriteObserver, Shared, VsockHost, exec_operation,
+    exec_operation::ExecOperationWaitOutcome,
     normal_request_on_shared_with_write_observer_frame_builder,
     request_on_shared_with_composite_operation_and_observer_frame_builder,
 };
@@ -144,7 +145,7 @@ impl ChunkedWriteCleanupGuard {
         }
 
         let result = if let Some(shared) = self.shared.as_ref() {
-            cleanup_timeout(
+            cleanup_outcome_timeout(
                 exec_operation::exec_operation_cleanup_with_composite_on_shared_and_observer(
                     shared,
                     &self.command,
@@ -157,7 +158,8 @@ impl ChunkedWriteCleanupGuard {
                 CLEANUP_EXEC_TIMEOUT_MS,
             )
             .await
-            .and_then(|result| validate_cleanup_result(result).map_err(|err| err.error))
+            .and_then(validate_cleanup_result)
+            .into_result()
         } else {
             Ok(())
         };
@@ -165,6 +167,22 @@ impl ChunkedWriteCleanupGuard {
             self.disarm();
         }
         result
+    }
+}
+
+async fn cleanup_outcome_timeout<F>(
+    cleanup: F,
+    timeout_ms: u32,
+) -> ExecOperationWaitOutcome<ExecOperationResult>
+where
+    F: Future<Output = ExecOperationWaitOutcome<ExecOperationResult>>,
+{
+    match tokio::time::timeout(Duration::from_millis(timeout_ms as u64), cleanup).await {
+        Ok(outcome) => outcome,
+        Err(_) => ExecOperationWaitOutcome::unproven(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "cleanup command timed out",
+        )),
     }
 }
 
@@ -177,44 +195,15 @@ where
         .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "cleanup command timed out"))?
 }
 
-struct WriteHelperExecError {
-    error: io::Error,
-    terminal_proven: bool,
-}
-
-impl WriteHelperExecError {
-    fn terminal(error: io::Error) -> Self {
-        Self {
-            error,
-            terminal_proven: true,
-        }
-    }
-
-    fn unproven(error: io::Error) -> Self {
-        Self {
-            error,
-            terminal_proven: false,
-        }
-    }
-
-    fn from_exec_wait(error: io::Error) -> Self {
-        if exec_operation::error_is_exec_operation_guest_error(&error) {
-            Self::terminal(error)
-        } else {
-            Self::unproven(error)
-        }
-    }
-}
-
 fn write_helper_exec_output(
     context: &str,
     result: ExecOperationResult,
-) -> Result<(ExecTermination, Vec<u8>, String), WriteHelperExecError> {
+) -> io::Result<(ExecTermination, Vec<u8>, String)> {
     if result.stream_overflowed {
-        return Err(WriteHelperExecError::unproven(io::Error::new(
+        return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("{context} exec operation unexpectedly overflowed a stream queue"),
-        )));
+        ));
     }
 
     let ExecOperationResult {
@@ -238,13 +227,13 @@ fn write_helper_exec_captured_output(
     context: &str,
     name: &str,
     output: ExecOwnedCapturedOutput,
-) -> Result<(Vec<u8>, bool), WriteHelperExecError> {
+) -> io::Result<(Vec<u8>, bool)> {
     match output {
         ExecOwnedCapturedOutput::Captured { bytes, truncated } => Ok((bytes, truncated)),
-        ExecOwnedCapturedOutput::Discarded => Err(WriteHelperExecError::unproven(io::Error::new(
+        ExecOwnedCapturedOutput::Discarded => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("{context} exec result discarded {name} for capture request"),
-        ))),
+        )),
     }
 }
 
@@ -263,89 +252,70 @@ fn write_helper_terminal_message(prefix: String, stderr: &[u8], diagnostic: &str
     }
 }
 
-fn validate_cleanup_result(result: ExecOperationResult) -> Result<(), WriteHelperExecError> {
+fn validate_cleanup_result(result: ExecOperationResult) -> io::Result<()> {
     let (termination, stderr, diagnostic) = write_helper_exec_output("cleanup command", result)?;
     match termination {
         ExecTermination::Exited { exit_code: 0 } => Ok(()),
-        ExecTermination::Exited { exit_code } => {
-            Err(WriteHelperExecError::terminal(io::Error::other(format!(
-                "cleanup command failed with exit code {exit_code}: {}",
-                String::from_utf8_lossy(&stderr)
-            ))))
-        }
-        ExecTermination::TimedOut => Err(WriteHelperExecError::terminal(io::Error::new(
+        ExecTermination::Exited { exit_code } => Err(io::Error::other(format!(
+            "cleanup command failed with exit code {exit_code}: {}",
+            String::from_utf8_lossy(&stderr)
+        ))),
+        ExecTermination::TimedOut => Err(io::Error::new(
             io::ErrorKind::TimedOut,
             write_helper_terminal_message(
                 "cleanup command timed out".to_string(),
                 &stderr,
                 &diagnostic,
             ),
+        )),
+        ExecTermination::Cancelled => Err(io::Error::other(write_helper_terminal_message(
+            "cleanup command was cancelled".to_string(),
+            &stderr,
+            &diagnostic,
         ))),
-        ExecTermination::Cancelled => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                "cleanup command was cancelled".to_string(),
-                &stderr,
-                &diagnostic,
-            ),
+        ExecTermination::StartFailed => Err(io::Error::other(write_helper_terminal_message(
+            "cleanup command exec start failed".to_string(),
+            &stderr,
+            &diagnostic,
         ))),
-        ExecTermination::StartFailed => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                "cleanup command exec start failed".to_string(),
-                &stderr,
-                &diagnostic,
-            ),
-        ))),
-        ExecTermination::WaitFailed => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                "cleanup command exec wait failed".to_string(),
-                &stderr,
-                &diagnostic,
-            ),
+        ExecTermination::WaitFailed => Err(io::Error::other(write_helper_terminal_message(
+            "cleanup command exec wait failed".to_string(),
+            &stderr,
+            &diagnostic,
         ))),
     }
 }
 
-fn validate_rename_result(
-    path: &str,
-    result: ExecOperationResult,
-) -> Result<(), WriteHelperExecError> {
+fn validate_rename_result(path: &str, result: ExecOperationResult) -> io::Result<()> {
     let (termination, stderr, diagnostic) = write_helper_exec_output("rename command", result)?;
     match termination {
         ExecTermination::Exited { exit_code: 0 } => Ok(()),
-        ExecTermination::Exited { exit_code } => {
-            Err(WriteHelperExecError::terminal(io::Error::other(format!(
-                "failed to rename temp file to {path} with exit code {exit_code}: {}",
-                String::from_utf8_lossy(&stderr)
-            ))))
-        }
-        ExecTermination::TimedOut => Err(WriteHelperExecError::terminal(io::Error::new(
+        ExecTermination::Exited { exit_code } => Err(io::Error::other(format!(
+            "failed to rename temp file to {path} with exit code {exit_code}: {}",
+            String::from_utf8_lossy(&stderr)
+        ))),
+        ExecTermination::TimedOut => Err(io::Error::new(
             io::ErrorKind::TimedOut,
             write_helper_terminal_message(
                 format!("rename command timed out while moving temp file to {path}"),
                 &stderr,
                 &diagnostic,
             ),
+        )),
+        ExecTermination::Cancelled => Err(io::Error::other(write_helper_terminal_message(
+            format!("rename command was cancelled while moving temp file to {path}"),
+            &stderr,
+            &diagnostic,
         ))),
-        ExecTermination::Cancelled => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                format!("rename command was cancelled while moving temp file to {path}"),
-                &stderr,
-                &diagnostic,
-            ),
+        ExecTermination::StartFailed => Err(io::Error::other(write_helper_terminal_message(
+            format!("rename command exec start failed while moving temp file to {path}"),
+            &stderr,
+            &diagnostic,
         ))),
-        ExecTermination::StartFailed => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                format!("rename command exec start failed while moving temp file to {path}"),
-                &stderr,
-                &diagnostic,
-            ),
-        ))),
-        ExecTermination::WaitFailed => Err(WriteHelperExecError::terminal(io::Error::other(
-            write_helper_terminal_message(
-                format!("rename command exec wait failed while moving temp file to {path}"),
-                &stderr,
-                &diagnostic,
-            ),
+        ExecTermination::WaitFailed => Err(io::Error::other(write_helper_terminal_message(
+            format!("rename command exec wait failed while moving temp file to {path}"),
+            &stderr,
+            &diagnostic,
         ))),
     }
 }
@@ -402,6 +372,39 @@ impl VsockHost {
     /// truncated file at the destination.
     ///
     /// Non-sudo writes create missing parent directories on the guest.
+    ///
+    /// # Cancellation
+    ///
+    /// This contract applies to every public file-write future on [`VsockHost`]:
+    /// this method, [`write_files`](Self::write_files),
+    /// [`write_private_file`](Self::write_private_file),
+    /// [`write_file_with_write_observer`](Self::write_file_with_write_observer),
+    /// [`write_files_with_write_observer`](Self::write_files_with_write_observer),
+    /// and [`write_private_file_with_write_observer`](Self::write_private_file_with_write_observer).
+    ///
+    /// Dropping one of these futures before any request frame starts writing
+    /// sends no file-write request and leaves the connection reusable for later
+    /// normal operations. Once a frame starts writing, cancellation cannot prove
+    /// the guest-side file outcome or safe connection reuse. An interrupted frame
+    /// write poisons the connection because the guest may have received a partial
+    /// frame. If a complete frame was written but its terminal response is
+    /// abandoned, the socket may remain open while later normal operations become
+    /// unavailable. In either post-boundary case, discard the connection instead
+    /// of reusing it or returning it to a pool.
+    ///
+    /// The methods without a [`FrameWriteObserver`] do not generally reveal which
+    /// side of that boundary cancellation occurred on. Unless other
+    /// synchronization proves that no frame started writing, callers must
+    /// conservatively discard the connection after cancelling one of those
+    /// futures.
+    ///
+    /// Cancelling a large standard write after staging begins attempts
+    /// best-effort removal of its temporary file. Cleanup is not guaranteed and
+    /// does not prove the destination outcome or restore connection reuse. A
+    /// chunked private write modifies the final path directly, can leave partial
+    /// content, and has no rollback cleanup. The effects of a cancelled
+    /// [`write_files`](Self::write_files) batch are likewise unproven once its
+    /// frame starts writing.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
         self.write_file_with_write_observer(path, content, sudo, FrameWriteObserver::default())
             .await
@@ -409,10 +412,15 @@ impl VsockHost {
 
     /// Write multiple ordinary files on the guest in one request.
     ///
-    /// Every file uses non-sudo create-parent and truncate semantics. The
-    /// caller must use [`write_file`](Self::write_file) for private, sudo,
-    /// append, or larger individual writes. Empty batches are accepted as a
-    /// no-op to match the higher-level sandbox trait default.
+    /// Every file uses non-sudo create-parent and truncate semantics. Use
+    /// [`write_private_file`](Self::write_private_file) for private runtime
+    /// files and [`write_file`](Self::write_file) for sudo or individual writes
+    /// that exceed the batch content limit. No public [`VsockHost`] write method
+    /// exposes caller-requested append semantics. Empty batches are accepted as
+    /// a no-op to match the higher-level sandbox trait default.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file).
     pub async fn write_files(&self, files: &[WriteFileEntry<'_>]) -> io::Result<()> {
         self.write_files_with_write_observer(files, FrameWriteObserver::default())
             .await
@@ -430,6 +438,9 @@ impl VsockHost {
     /// the call finishes. This does not coordinate guest processes, other
     /// connections, hard links, or aliases that depend on guest filesystem
     /// state.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file).
     pub async fn write_private_file(&self, path: &str, content: &[u8]) -> io::Result<()> {
         self.write_private_file_with_write_observer(path, content, FrameWriteObserver::default())
             .await
@@ -440,14 +451,34 @@ impl VsockHost {
     ///
     /// This uses the destination-isolation semantics documented on
     /// [`write_private_file`](Self::write_private_file).
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file); the observer
+    /// reports the frame-write boundary described there.
     pub async fn write_private_file_with_write_observer(
         &self,
         path: &str,
         content: &[u8],
         write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
+        self.write_private_file_with_write_observer_and_chunk_limit(
+            path,
+            content,
+            write_observer,
+            WRITE_FILE_CHUNK_LIMIT,
+        )
+        .await
+    }
+
+    pub(super) async fn write_private_file_with_write_observer_and_chunk_limit(
+        &self,
+        path: &str,
+        content: &[u8],
+        write_observer: FrameWriteObserver,
+        chunk_limit: usize,
+    ) -> io::Result<()> {
         validate_guest_file_path(path)?;
-        if content.len() <= WRITE_FILE_CHUNK_LIMIT {
+        if content.len() <= chunk_limit {
             let request = WriteFileChunkRequest::private(path, content, false);
             validate_write_file_chunk_request(request)?;
             let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
@@ -456,13 +487,13 @@ impl VsockHost {
                 .await;
         }
 
-        for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
+        for (i, chunk) in content.chunks(chunk_limit).enumerate() {
             validate_write_file_chunk_request(WriteFileChunkRequest::private(path, chunk, i > 0))?;
         }
         let _path_guard = self.file_write_path_locks.acquire_exclusive(path).await;
         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
         let result = async {
-            for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
+            for (i, chunk) in content.chunks(chunk_limit).enumerate() {
                 self.write_file_chunk(
                     WriteFileChunkRequest::private(path, chunk, i > 0),
                     WriteFileChunkTracking::Composite(&mut normal_operation),
@@ -486,6 +517,10 @@ impl VsockHost {
 
     /// Write a file on the guest and report before each helper frame is
     /// written to the guest.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file); the observer
+    /// reports the frame-write boundary described there.
     pub async fn write_file_with_write_observer(
         &self,
         path: &str,
@@ -493,8 +528,26 @@ impl VsockHost {
         sudo: bool,
         write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
+        self.write_file_with_write_observer_and_chunk_limit(
+            path,
+            content,
+            sudo,
+            write_observer,
+            WRITE_FILE_CHUNK_LIMIT,
+        )
+        .await
+    }
+
+    pub(super) async fn write_file_with_write_observer_and_chunk_limit(
+        &self,
+        path: &str,
+        content: &[u8],
+        sudo: bool,
+        write_observer: FrameWriteObserver,
+        chunk_limit: usize,
+    ) -> io::Result<()> {
         validate_guest_file_path(path)?;
-        if content.len() <= WRITE_FILE_CHUNK_LIMIT {
+        if content.len() <= chunk_limit {
             let request = WriteFileChunkRequest::standard(path, content, sudo, false);
             validate_write_file_chunk_request(request)?;
             let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
@@ -509,7 +562,7 @@ impl VsockHost {
         // Write chunks to a per-call temp file, then atomic rename. The
         // suffix prevents concurrent large writes to the same destination
         // from appending to or cleaning up each other's staging file.
-        let tmp = format!("{path}.vm0tmp-{}", self.shared.next_seq());
+        let tmp = format!("{path}.vm0tmp-{}", self.shared.next_temp_seq());
         let quoted_tmp = quote_shell_arg(&tmp);
         let rm_tmp = format!("rm -f -- {quoted_tmp}");
         let cleanup_armed = Arc::new(AtomicBool::new(false));
@@ -524,7 +577,7 @@ impl VsockHost {
         );
 
         let result = async {
-            for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
+            for (i, chunk) in content.chunks(chunk_limit).enumerate() {
                 self.write_file_chunk(
                     WriteFileChunkRequest::standard(&tmp, chunk, sudo, i > 0),
                     WriteFileChunkTracking::Composite(&mut normal_operation),
@@ -567,28 +620,35 @@ impl VsockHost {
                 write_observer,
             )
             .await
-            .map_err(WriteHelperExecError::from_exec_wait)
             .and_then(|result| validate_rename_result(path, result));
         match rename_result {
-            Ok(()) => {
+            ExecOperationWaitOutcome::Terminal(Ok(())) => {
                 cleanup_guard.disarm();
                 normal_operation.complete()?;
                 Ok(())
             }
-            Err(err) => {
+            ExecOperationWaitOutcome::Terminal(Err(error)) => {
                 // Terminal proof only releases the tracker after cleanup also
                 // succeeds; unproven helper failures remain fail-closed.
                 let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
-                if err.terminal_proven && cleanup_result.is_ok() {
+                if cleanup_result.is_ok() {
                     normal_operation.complete()?;
                 }
-                Err(err.error)
+                Err(error)
+            }
+            ExecOperationWaitOutcome::Unproven(error) => {
+                let _ = cleanup_guard.cleanup_now(&mut normal_operation).await;
+                Err(error)
             }
         }
     }
 
     /// Write multiple ordinary files on the guest and report before the batch
     /// frame is written.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file); the observer
+    /// reports the frame-write boundary described there.
     pub async fn write_files_with_write_observer(
         &self,
         files: &[WriteFileEntry<'_>],

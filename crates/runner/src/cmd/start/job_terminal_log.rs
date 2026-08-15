@@ -7,6 +7,7 @@
 use guest_contracts::diagnostics::{
     CliObservedExitDiagnostic, CliObservedExitKind, CliTerminationDiagnostic,
     EventDeliveryDiagnostic, FailureClass, FailureDiagnostic, FailureReason,
+    WorkloadResourceLimitDiagnostic,
 };
 use tracing::info;
 
@@ -47,6 +48,9 @@ fn log_job_execution_failed(
     );
     let event_delivery_fields = JobEventDeliveryLogFields::from(
         diagnostic.and_then(|diagnostic| diagnostic.event_delivery.as_ref()),
+    );
+    let workload_resource_fields = JobWorkloadResourceLogFields::from(
+        diagnostic.and_then(|diagnostic| diagnostic.workload_resource_limit.as_ref()),
     );
     let resource_fields = JobResourceLogFields::from(failure.resource_diagnostics);
     let (timeout_ms, elapsed_ms, guest_duration_ms) = match failure.kind {
@@ -151,6 +155,13 @@ fn log_job_execution_failed(
                     event_delivery_fields.drain_active_attempt_elapsed_ms,
                 event_delivery_drain_active_outcome =
                     event_delivery_fields.drain_active_outcome,
+                workload_memory_max_events = workload_resource_fields.memory_max_events,
+                workload_memory_oom_events = workload_resource_fields.memory_oom_events,
+                workload_memory_oom_kill_events =
+                    workload_resource_fields.memory_oom_kill_events,
+                workload_memory_oom_group_kill_events =
+                    workload_resource_fields.memory_oom_group_kill_events,
+                workload_pids_max_events = workload_resource_fields.pids_max_events,
                 resource_failure_kind = resource_fields.resource_failure_kind,
                 guest_root_fs_used_percent = resource_fields.guest_root_fs_used_percent,
                 guest_root_fs_available_kb = resource_fields.guest_root_fs_available_kb,
@@ -166,7 +177,10 @@ fn log_job_execution_failed(
 
     match failure.kind {
         ExecutionFailureKind::RunnerJobTimeout { .. } => {
-            emit_job_execution_failed!(tracing::Level::ERROR, "runner job timed out");
+            emit_job_execution_failed!(
+                tracing::Level::ERROR,
+                "runner job reached execution time limit"
+            );
         }
         ExecutionFailureKind::Generic if diagnostic.is_some_and(is_info_level_job_failure) => {
             emit_job_execution_failed!(tracing::Level::INFO, "job execution failed");
@@ -185,6 +199,14 @@ struct JobResourceLogFields {
     guest_root_fs_available_inodes: Option<u64>,
     guest_workspace_fs_used_percent: Option<u64>,
     guest_memory_available_mb: Option<u64>,
+}
+
+struct JobWorkloadResourceLogFields {
+    memory_max_events: Option<u64>,
+    memory_oom_events: Option<u64>,
+    memory_oom_kill_events: Option<u64>,
+    memory_oom_group_kill_events: Option<u64>,
+    pids_max_events: Option<u64>,
 }
 
 struct JobCliTerminationLogFields {
@@ -352,6 +374,19 @@ impl From<Option<executor::ResourceFailureDiagnostics>> for JobResourceLogFields
     }
 }
 
+impl From<Option<&WorkloadResourceLimitDiagnostic>> for JobWorkloadResourceLogFields {
+    fn from(diagnostic: Option<&WorkloadResourceLimitDiagnostic>) -> Self {
+        Self {
+            memory_max_events: diagnostic.map(|diagnostic| diagnostic.memory_max_events),
+            memory_oom_events: diagnostic.map(|diagnostic| diagnostic.memory_oom_events),
+            memory_oom_kill_events: diagnostic.map(|diagnostic| diagnostic.memory_oom_kill_events),
+            memory_oom_group_kill_events: diagnostic
+                .map(|diagnostic| diagnostic.memory_oom_group_kill_events),
+            pids_max_events: diagnostic.map(|diagnostic| diagnostic.pids_max_events),
+        }
+    }
+}
+
 fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
     match diagnostic.failure_class {
         FailureClass::CliNonzero => matches!(
@@ -386,7 +421,7 @@ mod tests {
         EventDeliveryActiveBatchDiagnostic, EventDeliveryAttemptFailureKind,
         EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
         EventDeliveryDrainTimeoutDiagnostic, EventDeliveryFailedBatchDiagnostic, FailureClass,
-        FailureDetailSource, PromptMetadata, SessionHistoryStatus,
+        FailureDetailSource, PromptMetadata, SessionHistoryStatus, WorkloadResourceLimitDiagnostic,
     };
     use tracing::Level;
     use tracing_subscriber::prelude::*;
@@ -928,6 +963,32 @@ mod tests {
     }
 
     #[test]
+    fn workload_resource_limit_logs_structured_counters() {
+        let diagnostic = job_failure_diagnostic(None).with_workload_resource_limit(
+            WorkloadResourceLimitDiagnostic {
+                memory_max_events: 5,
+                memory_oom_events: 2,
+                memory_oom_kill_events: 1,
+                memory_oom_group_kill_events: 0,
+                pids_max_events: 3,
+            },
+        );
+        let failure = executor::ExecutionFailure::new(
+            137,
+            "Agent workload reached its memory limit",
+            Some(diagnostic),
+        );
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_field_eq(&event, "workload_memory_max_events", "5");
+        assert_field_eq(&event, "workload_memory_oom_events", "2");
+        assert_field_eq(&event, "workload_memory_oom_kill_events", "1");
+        assert_field_eq(&event, "workload_memory_oom_group_kill_events", "0");
+        assert_field_eq(&event, "workload_pids_max_events", "3");
+    }
+
+    #[test]
     fn oom_resource_failure_logs_resource_kind() {
         let failure =
             executor::ExecutionFailure::new(1, "Agent process killed by OOM killer", None)
@@ -965,7 +1026,7 @@ mod tests {
         assert_eq!(event.level, Level::ERROR);
         assert_eq!(
             event.fields.get("message").map(String::as_str),
-            Some("runner job timed out")
+            Some("runner job reached execution time limit")
         );
         assert_field_eq(&event, "exit_code", "124");
         assert_field_eq(&event, "reused", "false");
@@ -1017,7 +1078,7 @@ mod tests {
         );
         assert_eq!(
             timeout_event.fields.get("message").map(String::as_str),
-            Some("runner job timed out")
+            Some("runner job reached execution time limit")
         );
         assert_field_eq(&timeout_event, "timeout_ms", "7200000");
         assert_field_eq(&timeout_event, "elapsed_ms", "7200100");

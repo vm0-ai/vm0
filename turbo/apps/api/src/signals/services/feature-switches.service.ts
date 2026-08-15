@@ -2,20 +2,19 @@ import { command, computed, type Computed } from "ccstate";
 import {
   filterFeatureSwitchOverrides,
   type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+} from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { userFeatureSwitches } from "@okouai/db/schema/user-feature-switches";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 export const ORG_SENTINEL_USER_ID = "__org__";
 
 const ORG_SCOPED_FEATURE_SWITCH_KEYS: readonly string[] = [
   FeatureSwitchKey.ChatErrorRecovery,
-  FeatureSwitchKey.ChatThreadUnifiedSearch,
-  FeatureSwitchKey.ArtifactKeyV2,
+  FeatureSwitchKey.PiLoop,
 ];
 
 function isOrgScopedFeatureSwitchKey(key: string): boolean {

@@ -1,26 +1,25 @@
-import type { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { getOkouToken } from "../okou-env.js";
 
 export interface ZeroTokenPayload {
   userId: string;
   runId: string;
   orgId: string;
-  scope: string;
+  scope: "okou";
   capabilities: string[];
-  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   iat: number;
   exp: number;
 }
 
 /**
- * Decode a ZERO_TOKEN JWT payload.
+ * Decode an OKOU_TOKEN JWT payload.
  * Only decodes — does NOT verify signature (server does that).
- * If no token is provided, reads from process.env.ZERO_TOKEN.
- * Returns undefined if token is missing, malformed, or not a zero-scoped token.
+ * If no token is provided, reads OKOU_TOKEN.
+ * Returns undefined if the token is missing, malformed, or has an unsupported scope.
  */
 export function decodeZeroTokenPayload(
   token?: string,
 ): ZeroTokenPayload | undefined {
-  const raw = token ?? process.env.ZERO_TOKEN;
+  const raw = token ?? getOkouToken();
   if (!raw) return undefined;
 
   const prefix = "vm0_sandbox_";
@@ -34,7 +33,7 @@ export function decodeZeroTokenPayload(
     const payload = JSON.parse(
       Buffer.from(parts[1]!, "base64url").toString(),
     ) as ZeroTokenPayload;
-    if (payload.scope === "zero" && Array.isArray(payload.capabilities)) {
+    if (payload.scope === "okou" && Array.isArray(payload.capabilities)) {
       return payload;
     }
   } catch {

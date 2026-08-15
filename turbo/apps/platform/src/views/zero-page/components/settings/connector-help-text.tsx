@@ -1,4 +1,4 @@
-import { cn } from "@vm0/ui";
+import { cn } from "@okouai/ui";
 import type { ReactNode } from "react";
 
 const DEFAULT_CONNECTOR_HELP_TEXT_CLASS =

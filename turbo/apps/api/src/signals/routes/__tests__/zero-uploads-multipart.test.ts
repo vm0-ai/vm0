@@ -8,16 +8,28 @@ import {
   ListObjectsV2Command,
   ListPartsCommand,
 } from "@aws-sdk/client-s3";
-import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroUploadsCompleteRoutes } from "../zero-uploads-complete";
+import { zeroUploadsMultipartRoutes } from "../zero-uploads-multipart";
+import { zeroUploadsPrepareRoutes } from "../zero-uploads-prepare";
+
+const zeroUploadsTestRoutes = Object.freeze([
+  ...zeroUploadsCompleteRoutes,
+  ...zeroUploadsMultipartRoutes,
+  ...zeroUploadsPrepareRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 
 function apiClient() {
-  return setupApp({ context })(zeroUploadsContract);
+  return setupApp({ context, routes: zeroUploadsTestRoutes })(
+    zeroUploadsContract,
+  );
 }
 
 function authHeaders() {
@@ -162,9 +174,10 @@ describe("multipart user artifact uploads", () => {
       return Promise.resolve({});
     });
 
-    const response = await setupApp({ context: ownerContext })(
-      zeroUploadsContract,
-    ).prepare({
+    const response = await setupApp({
+      context: ownerContext,
+      routes: zeroUploadsTestRoutes,
+    })(zeroUploadsContract).prepare({
       body: {
         filename: "cancelled.mp4",
         contentType: "video/mp4",

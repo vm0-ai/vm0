@@ -1,9 +1,325 @@
 import { describe, expect, it } from "vitest";
 
 import { SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT } from "../runners";
-import { webhookTelemetryContract } from "../webhooks";
+import {
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
+  storageManifestFilesSchema,
+} from "../storages";
+import {
+  ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS,
+  webhookCheckpointsContract,
+  webhookCompleteContract,
+  webhookStoragesCommitContract,
+  webhookStoragesPrepareContract,
+  webhookTelemetryContract,
+} from "../webhooks";
+
+const storageId = "00000000-0000-4000-8000-000000000000";
+const manifestHash = "a".repeat(64);
+
+describe("agent checkpoint session history", () => {
+  const baseBody = {
+    runId: "00000000-0000-4000-8000-000000000000",
+    cliAgentType: "codex",
+    cliAgentSessionId: "00000000-0000-4000-8000-000000000001",
+  };
+
+  it("accepts exactly one uploaded hash or discarded disposition", () => {
+    expect(
+      webhookCheckpointsContract.create.body.safeParse({
+        ...baseBody,
+        cliAgentSessionHistoryHash: manifestHash,
+      }).success,
+    ).toBe(true);
+    expect(
+      webhookCheckpointsContract.create.body.safeParse({
+        ...baseBody,
+        cliAgentSessionHistoryDisposition: "discarded_oversized",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects missing, conflicting, and unknown history dispositions", () => {
+    const invalidBodies = [
+      baseBody,
+      {
+        ...baseBody,
+        cliAgentSessionHistoryHash: manifestHash,
+        cliAgentSessionHistoryDisposition: "discarded_oversized",
+      },
+      {
+        ...baseBody,
+        cliAgentSessionHistoryDisposition: "unknown",
+      },
+    ];
+
+    for (const body of invalidBodies) {
+      expect(
+        webhookCheckpointsContract.create.body.safeParse(body).success,
+      ).toBe(false);
+    }
+  });
+});
+
+function manifestFile(path: string) {
+  return { path, hash: manifestHash, size: 0 };
+}
+
+describe("storage webhook manifest limits", () => {
+  it("accepts the exact file-count boundary and rejects one more file", () => {
+    const exactFiles = Array.from(
+      { length: STORAGE_MANIFEST_MAX_FILES },
+      (_, index) => {
+        return manifestFile(`f-${index}`);
+      },
+    );
+    const overFiles = [...exactFiles, manifestFile("over-limit")];
+
+    expect(storageManifestFilesSchema.safeParse(exactFiles).success).toBe(true);
+    expect(
+      webhookStoragesPrepareContract.prepare.body.safeParse({
+        runId: "run-id",
+        storageId,
+        files: overFiles,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts the exact path-byte boundary and rejects one more byte", () => {
+    const exactFiles = [
+      manifestFile("é".repeat(STORAGE_MANIFEST_MAX_PATH_BYTES / 2)),
+    ];
+    const overFiles = [
+      manifestFile(`${"é".repeat(STORAGE_MANIFEST_MAX_PATH_BYTES / 2)}a`),
+    ];
+
+    expect(storageManifestFilesSchema.safeParse(exactFiles).success).toBe(true);
+    expect(
+      webhookStoragesCommitContract.commit.body.safeParse({
+        runId: "run-id",
+        storageId,
+        versionId: manifestHash,
+        files: overFiles,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("agent completion reuse outcomes", () => {
+  const baseBody = {
+    runId: "00000000-0000-4000-8000-000000000000",
+    exitCode: 0,
+  };
+
+  it("accepts legacy sandbox-only completion payloads", () => {
+    for (const sandboxReuseResult of ["reused", "noSessionId"] as const) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          sandboxReuseResult,
+        }).success,
+      ).toBe(true);
+    }
+  });
+
+  it("accepts coherent final sandbox and workspace outcomes", () => {
+    const workspaceMisses = [
+      "cacheMiss",
+      "noReuseKey",
+      "invalidWorkingDir",
+      "lockBusy",
+      "invalidMetadata",
+      "diskPressure",
+      "notConfigured",
+      "sandboxPrepareFallback",
+    ] as const;
+    const coherentPairs = [
+      ["reused", "sandboxReused"],
+      ["noReuseKey", "reused"],
+      ...workspaceMisses.map((workspaceResult) => {
+        return ["poolMiss", workspaceResult] as const;
+      }),
+    ] as const;
+
+    for (const [sandboxReuseResult, workspaceReuseResult] of coherentPairs) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          sandboxReuseResult,
+          workspaceReuseResult,
+        }).success,
+      ).toBe(true);
+    }
+  });
+
+  it("rejects missing, legacy, or contradictory sandbox context", () => {
+    const incoherentBodies = [
+      { workspaceReuseResult: "cacheMiss" },
+      {
+        sandboxReuseResult: "reused",
+        workspaceReuseResult: "cacheMiss",
+      },
+      {
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "sandboxReused",
+      },
+      {
+        sandboxReuseResult: "noSessionId",
+        workspaceReuseResult: "cacheMiss",
+      },
+    ] as const;
+
+    for (const body of incoherentBodies) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          ...body,
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe("agent completion active input receipts", () => {
+  const baseBody = {
+    runId: "00000000-0000-4000-8000-000000000000",
+    exitCode: 0,
+  };
+  const deliveryId = "00000000-0000-4000-8000-000000000001";
+
+  it("accepts optional unique canonical delivery IDs", () => {
+    expect(
+      webhookCompleteContract.complete.body.parse({
+        ...baseBody,
+        activeInputDeliveryIds: [deliveryId],
+      }),
+    ).toMatchObject({ activeInputDeliveryIds: [deliveryId] });
+    expect(
+      webhookCompleteContract.complete.body.safeParse(baseBody).success,
+    ).toBe(true);
+  });
+
+  it("rejects duplicate, malformed, non-canonical, and oversized IDs", () => {
+    const invalidLists = [
+      [deliveryId, deliveryId],
+      ["not-a-uuid"],
+      ["AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"],
+      Array.from(
+        { length: ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS + 1 },
+        (_, index) => {
+          return `00000000-0000-4000-8000-${index
+            .toString(16)
+            .padStart(12, "0")}`;
+        },
+      ),
+    ];
+
+    for (const activeInputDeliveryIds of invalidLists) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          activeInputDeliveryIds,
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
 
 describe("webhook telemetry contract", () => {
+  it("accepts bounded sandbox operation outcome dimensions", () => {
+    const result = webhookTelemetryContract.send.body.parse({
+      runId: "00000000-0000-4000-8000-000000000000",
+      sandboxOperations: [
+        {
+          ts: "2026-01-15T10:00:00.000Z",
+          action_type: "session_history_prune",
+          duration_ms: 10,
+          success: true,
+          outcome: "ineligible",
+          reason: "source_within_guard",
+        },
+      ],
+    });
+
+    expect(result.sandboxOperations?.[0]).toMatchObject({
+      outcome: "ineligible",
+      reason: "source_within_guard",
+    });
+    expect(
+      webhookTelemetryContract.send.body.safeParse({
+        runId: "00000000-0000-4000-8000-000000000000",
+        sandboxOperations: [
+          {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "session_history_prune",
+            duration_ms: 10,
+            success: true,
+            outcome: "x".repeat(65),
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts bounded startup outcomes and keeps them optional", () => {
+    const startupOutcomes = [
+      ["sandbox", "reused"],
+      ["workspace", "noReuseKey"],
+      ["cold", "poolMiss"],
+      ["cold", "profileMismatch"],
+      ["cold", "deviceLimitMismatch"],
+      ["cold", "unparkFailed"],
+    ] as const;
+    const result = webhookTelemetryContract.send.body.parse({
+      runId: "00000000-0000-4000-8000-000000000000",
+      sandboxOperations: [
+        ...startupOutcomes.map(([runnerStartupPath, sandboxReuseResult]) => {
+          return {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "api_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_startup_path: runnerStartupPath,
+            sandbox_reuse_result: sandboxReuseResult,
+          };
+        }),
+        {
+          ts: "2026-01-15T10:00:00.000Z",
+          action_type: "vm_create",
+          duration_ms: 5,
+          success: true,
+        },
+      ],
+    });
+
+    expect(
+      result.sandboxOperations?.slice(0, startupOutcomes.length).map((op) => {
+        return [op.runner_startup_path, op.sandbox_reuse_result];
+      }),
+    ).toStrictEqual(startupOutcomes);
+    expect(result.sandboxOperations?.at(-1)).not.toHaveProperty(
+      "runner_startup_path",
+    );
+  });
+
+  it("rejects unknown startup outcomes", () => {
+    expect(
+      webhookTelemetryContract.send.body.safeParse({
+        runId: "00000000-0000-4000-8000-000000000000",
+        sandboxOperations: [
+          {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "api_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_startup_path: "warm",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts known session history download sources", () => {
     const result = webhookTelemetryContract.send.body.safeParse({
       runId: "00000000-0000-4000-8000-000000000000",

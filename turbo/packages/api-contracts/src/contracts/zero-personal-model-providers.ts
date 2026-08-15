@@ -3,6 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   modelProviderListResponseSchema,
+  modelProviderResponseSchema,
   upsertModelProviderRequestSchema,
   upsertModelProviderResponseSchema,
   modelProviderTypeSchema,
@@ -25,7 +26,7 @@ export type ResetPersonalModelProviderSubscriptionUsageResponse = z.infer<
 >;
 
 /**
- * Zero personal (user-level) model providers main contract for /api/zero/me/model-providers
+ * Zero personal (user-level) model providers main contract for /api/okou/me/model-providers
  *
  * Personal-tier per Epic #11868: providers scoped to the authenticated user
  * within an org, no admin gate. List/upsert are gated on model-first provider
@@ -37,7 +38,7 @@ export type ResetPersonalModelProviderSubscriptionUsageResponse = z.infer<
 export const zeroPersonalModelProvidersMainContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/me/model-providers",
+    path: "/api/okou/me/model-providers",
     headers: authHeadersSchema,
     responses: {
       200: modelProviderListResponseSchema,
@@ -49,7 +50,7 @@ export const zeroPersonalModelProvidersMainContract = c.router({
   },
   upsert: {
     method: "POST",
-    path: "/api/zero/me/model-providers",
+    path: "/api/okou/me/model-providers",
     headers: authHeadersSchema,
     body: upsertModelProviderRequestSchema,
     responses: {
@@ -69,14 +70,14 @@ export type ZeroPersonalModelProvidersMainContract =
   typeof zeroPersonalModelProvidersMainContract;
 
 /**
- * Zero personal model providers by type contract for /api/zero/me/model-providers/:type
+ * Zero personal model providers by type contract for /api/okou/me/model-providers/:type
  *
  * DELETE: Delete one of the requesting user's personal model providers
  */
 export const zeroPersonalModelProvidersByTypeContract = c.router({
   delete: {
     method: "DELETE",
-    path: "/api/zero/me/model-providers/:type",
+    path: "/api/okou/me/model-providers/:type",
     headers: authHeadersSchema,
     pathParams: z.object({
       type: modelProviderTypeSchema,
@@ -91,7 +92,7 @@ export const zeroPersonalModelProvidersByTypeContract = c.router({
   },
   resetSubscriptionUsage: {
     method: "POST",
-    path: "/api/zero/me/model-providers/:type/subscription-reset",
+    path: "/api/okou/me/model-providers/:type/subscription-reset",
     headers: authHeadersSchema,
     pathParams: z.object({
       type: modelProviderTypeSchema,
@@ -110,3 +111,52 @@ export const zeroPersonalModelProvidersByTypeContract = c.router({
 
 export type ZeroPersonalModelProvidersByTypeContract =
   typeof zeroPersonalModelProvidersByTypeContract;
+
+/** Concrete personal subscription account mutations. */
+export const zeroPersonalModelProviderAccountsByIdContract = c.router({
+  activate: {
+    method: "POST",
+    path: "/api/okou/me/model-provider-accounts/:id/activate",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    body: z.object({}),
+    responses: {
+      200: modelProviderResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Activate a personal subscription account",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/okou/me/model-provider-accounts/:id",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Delete a personal subscription account",
+  },
+  resetSubscriptionUsage: {
+    method: "POST",
+    path: "/api/okou/me/model-provider-accounts/:id/subscription-reset",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    body: resetPersonalModelProviderSubscriptionUsageRequestSchema,
+    responses: {
+      200: resetPersonalModelProviderSubscriptionUsageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Reset one personal subscription account usage window",
+  },
+});
+
+export type ZeroPersonalModelProviderAccountsByIdContract =
+  typeof zeroPersonalModelProviderAccountsByIdContract;

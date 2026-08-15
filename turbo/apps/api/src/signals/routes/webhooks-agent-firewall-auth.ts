@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookFirewallAuthContract } from "@okouai/api-contracts/contracts/webhooks";
 
 import { badRequestMessage } from "../../lib/error";
 import { authorization$ } from "../context/hono";

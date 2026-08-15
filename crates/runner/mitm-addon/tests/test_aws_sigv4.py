@@ -7,8 +7,11 @@ import pytest
 
 import runtime_url_parsing
 from aws_sigv4 import (
+    MAX_AWS_SIGV4_QUERY_PAIRS,
     AwsSigV4Credentials,
     AwsSigV4SigningError,
+    hash_request_body,
+    inspect_request,
     request_requires_body_for_signing,
     sign_request,
 )
@@ -47,6 +50,22 @@ def _aws_s3_example_credentials() -> AwsSigV4Credentials:
     return AwsSigV4Credentials(
         "AKIAIOSFODNN7EXAMPLE",
         "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    )
+
+
+def _aws_s3_example_presigned_url() -> str:
+    placeholder_scope = urllib.parse.quote(
+        "PLACEHOLDER/20130524/us-east-1/s3/aws4_request",
+        safe="",
+    )
+    return (
+        f"https://{_AWS_S3_EXAMPLE_HOST}/test.txt"
+        "?X-Amz-Algorithm=AWS4-HMAC-SHA256"
+        f"&X-Amz-Credential={placeholder_scope}"
+        f"&X-Amz-Date={_AWS_S3_EXAMPLE_TIMESTAMP}"
+        "&X-Amz-Expires=86400"
+        "&X-Amz-SignedHeaders=host"
+        "&X-Amz-Signature=placeholder"
     )
 
 
@@ -116,6 +135,15 @@ def _presigned_url(
     timestamp: str = DEFAULT_SIGV4_TIMESTAMP,
 ) -> str:
     return aws_sigv4_presigned_url(host, date=timestamp[:8], timestamp=timestamp)
+
+
+def _presigned_url_with_query_pair_count(pair_count: int) -> str:
+    base_url = aws_sigv4_presigned_url(STS_HOST, leading_query="")
+    base_query = urllib.parse.urlsplit(base_url).query
+    base_pair_count = len(base_query.split("&"))
+    assert pair_count >= base_pair_count
+    leading_query = "&".join(("a=",) * (pair_count - base_pair_count))
+    return aws_sigv4_presigned_url(STS_HOST, leading_query=leading_query)
 
 
 _REJECTED_SIGNING_CONTEXTS = (
@@ -297,6 +325,82 @@ def test_sign_request_splits_input_url_once(
     urlsplit.assert_called_once_with(url)
 
 
+def test_sign_request_reuses_matching_inspection_without_changing_output() -> None:
+    url = f"https://{STS_HOST}/?Action=GetCallerIdentity"
+    headers = _header_auth_headers()
+    inspection = inspect_request(url=url, headers=headers)
+
+    real_urlsplit = runtime_url_parsing._uncached_urlsplit
+    with patch.object(
+        runtime_url_parsing,
+        "_uncached_urlsplit",
+        wraps=real_urlsplit,
+    ) as urlsplit:
+        prepared_result = sign_request(
+            method="POST",
+            url=url,
+            headers=headers,
+            body=b"request-body",
+            credentials=_credentials(),
+            inspection=inspection,
+        )
+
+    urlsplit.assert_not_called()
+    ordinary_result = sign_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        body=b"request-body",
+        credentials=_credentials(),
+    )
+
+    assert prepared_result == ordinary_result
+
+
+@pytest.mark.parametrize(
+    ("changed_url", "changed_headers"),
+    [
+        pytest.param(
+            f"https://{STS_HOST}/?Action=GetCallerIdentity&Version=2011-06-15",
+            _header_auth_headers(),
+            id="query",
+        ),
+        pytest.param(
+            f"https://{STS_HOST}/?Action=GetCallerIdentity",
+            _header_auth_headers(
+                authorization=aws_sigv4_authorization(service="iam"),
+            ),
+            id="authorization",
+        ),
+    ],
+)
+def test_sign_request_reinspects_changed_representation(
+    changed_url: str,
+    changed_headers: list[tuple[str, str]],
+) -> None:
+    original_url = f"https://{STS_HOST}/?Action=GetCallerIdentity"
+    original_headers = _header_auth_headers()
+    inspection = inspect_request(url=original_url, headers=original_headers)
+
+    prepared_result = sign_request(
+        method="POST",
+        url=changed_url,
+        headers=changed_headers,
+        body=b"request-body",
+        credentials=_credentials(),
+        inspection=inspection,
+    )
+    ordinary_result = sign_request(
+        method="POST",
+        url=changed_url,
+        headers=changed_headers,
+        body=b"request-body",
+        credentials=_credentials(),
+    )
+
+    assert prepared_result == ordinary_result
+
+
 def test_presigned_query_preserves_ordinary_pairs() -> None:
     url = aws_sigv4_presigned_url(
         STS_HOST,
@@ -320,6 +424,109 @@ def test_presigned_query_preserves_ordinary_pairs() -> None:
         "&X-Amz-SignedHeaders=host"
         "&X-Amz-Signature=9245f52c735ed2e7286981a0013837d6c69b227b74cee0a9611b3f0257fc1c68"
     )
+
+
+@pytest.mark.parametrize(
+    ("pair_count", "accepted"),
+    [
+        (MAX_AWS_SIGV4_QUERY_PAIRS, True),
+        (MAX_AWS_SIGV4_QUERY_PAIRS + 1, False),
+    ],
+    ids=["exact-limit", "over-limit"],
+)
+def test_query_pair_count_boundary(pair_count: int, accepted: bool) -> None:
+    url = _presigned_url_with_query_pair_count(pair_count)
+    if not accepted:
+        assert "?a=" in url
+        # %FF has valid percent syntax but invalid UTF-8, so this also proves
+        # the pair-count preflight runs before query-component decoding.
+        url = url.replace("?a=", "?invalid=%FF", 1)
+    parts = urllib.parse.urlsplit(url)
+    assert len(f"{parts.path}?{parts.query}".encode()) < 64 * 1024
+    headers = [("Host", STS_HOST)]
+
+    if accepted:
+        inspection = inspect_request(url=url, headers=headers)
+        signed_url, _signed_headers = sign_request(
+            method="GET",
+            url=url,
+            headers=headers,
+            body=None,
+            credentials=_credentials(),
+            inspection=inspection,
+        )
+        signed_query = urllib.parse.urlsplit(signed_url).query
+        assert len(signed_query.split("&")) == MAX_AWS_SIGV4_QUERY_PAIRS
+        return
+
+    with pytest.raises(
+        AwsSigV4SigningError,
+        match=r"^AWS request has too many query parameters$",
+    ):
+        inspect_request(url=url, headers=headers)
+    with pytest.raises(
+        AwsSigV4SigningError,
+        match=r"^AWS request has too many query parameters$",
+    ):
+        sign_request(
+            method="GET",
+            url=url,
+            headers=headers,
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+def test_query_pair_count_ignores_empty_segments() -> None:
+    url = aws_sigv4_presigned_url(
+        STS_HOST,
+        leading_query="&" * (MAX_AWS_SIGV4_QUERY_PAIRS + 1),
+    )
+    raw_query = urllib.parse.urlsplit(url).query
+    assert raw_query.count("&") > MAX_AWS_SIGV4_QUERY_PAIRS
+
+    inspection = inspect_request(url=url, headers=[("Host", STS_HOST)])
+    assert inspection.requires_body is True
+
+
+@pytest.mark.parametrize(
+    ("url", "headers"),
+    [
+        pytest.param(
+            f"https://{STS_HOST}/",
+            _header_auth_headers(),
+            id="header",
+        ),
+        pytest.param(
+            _presigned_url(STS_HOST),
+            [("Host", STS_HOST)],
+            id="presigned",
+        ),
+    ],
+)
+def test_precomputed_body_hash_matches_direct_body_signing(
+    url: str,
+    headers: list[tuple[str, str]],
+) -> None:
+    body = b"expected body"
+    expected = sign_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        body=body,
+        credentials=_credentials(),
+    )
+
+    actual = sign_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        body=b"body ignored by the precomputed path",
+        credentials=_credentials(),
+        precomputed_body_hash=hash_request_body(body),
+    )
+
+    assert actual == expected
 
 
 @pytest.mark.parametrize("amz_date", _INVALID_SEMANTIC_SIGV4_TIMESTAMPS)
@@ -749,6 +956,7 @@ def test_header_auth_content_hash_controls_aws_reference_signature(
         headers=_aws_s3_header_auth_headers(header_value),
         body=body,
         credentials=_aws_s3_example_credentials(),
+        precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
     )
 
     authorization = {name.lower(): value for name, value in headers}["authorization"]
@@ -772,6 +980,7 @@ def test_header_auth_unsigned_payload_controls_reference_signature(
         headers=_aws_s3_header_auth_headers(header_value),
         body=body,
         credentials=_aws_s3_example_credentials(),
+        precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
     )
 
     authorization = {name.lower(): value for name, value in headers}["authorization"]
@@ -784,26 +993,13 @@ def test_header_auth_unsigned_payload_controls_reference_signature(
 
 
 def test_presigned_s3_unsigned_payload_matches_aws_reference_signature() -> None:
-    placeholder_scope = urllib.parse.quote(
-        "PLACEHOLDER/20130524/us-east-1/s3/aws4_request",
-        safe="",
-    )
-    presigned_url = (
-        f"https://{_AWS_S3_EXAMPLE_HOST}/test.txt"
-        "?X-Amz-Algorithm=AWS4-HMAC-SHA256"
-        f"&X-Amz-Credential={placeholder_scope}"
-        f"&X-Amz-Date={_AWS_S3_EXAMPLE_TIMESTAMP}"
-        "&X-Amz-Expires=86400"
-        "&X-Amz-SignedHeaders=host"
-        "&X-Amz-Signature=placeholder"
-    )
-
     signed_url, _headers = sign_request(
         method="GET",
-        url=presigned_url,
+        url=_aws_s3_example_presigned_url(),
         headers=[("Host", _AWS_S3_EXAMPLE_HOST)],
         body=None,
         credentials=_aws_s3_example_credentials(),
+        precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
     )
 
     query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(signed_url).query))
@@ -811,6 +1007,28 @@ def test_presigned_s3_unsigned_payload_matches_aws_reference_signature() -> None
         query["X-Amz-Signature"]
         == "aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404"
     )
+
+
+def test_presigned_s3_content_hash_controls_signature() -> None:
+    signatures: list[str] = []
+    for content_hash in ("a" * 64, "b" * 64):
+        signed_url, _headers = sign_request(
+            method="GET",
+            url=_aws_s3_example_presigned_url(),
+            headers=[
+                ("Host", _AWS_S3_EXAMPLE_HOST),
+                ("X-Amz-Content-Sha256", content_hash),
+            ],
+            body=b"same body",
+            credentials=_aws_s3_example_credentials(),
+            precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
+        )
+
+        query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(signed_url).query))
+        assert query["X-Amz-SignedHeaders"] == "host"
+        signatures.append(query["X-Amz-Signature"])
+
+    assert signatures[0] != signatures[1]
 
 
 def test_presigned_query_invalid_content_hash_header_raises_signing_error() -> None:

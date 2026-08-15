@@ -1,4 +1,4 @@
-import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 
 import { env } from "../../lib/env";
 

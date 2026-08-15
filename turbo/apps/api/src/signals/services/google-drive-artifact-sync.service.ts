@@ -4,18 +4,18 @@ import { command, computed, type Computed } from "ccstate";
 import type {
   ChatThreadArtifactGoogleDriveSync,
   ChatThreadArtifactRun,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { hostedDeployments } from "@vm0/db/schema/hosted-site";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { hostedDeployments } from "@okouai/db/schema/hosted-site";
 import {
   CANONICAL_ASSET_VERSION,
   runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, exists, or } from "drizzle-orm";
+} from "@okouai/db/schema/run-uploaded-file";
+import { userConnectors } from "@okouai/db/schema/user-connector";
+import { and, eq, exists, isNotNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { ZipArchive } from "archiver";
 
@@ -42,6 +42,7 @@ import {
   type ConnectorCredentialConnection,
 } from "./connector-credential-runtime.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const GOOGLE_DRIVE_UPLOAD_URL =
@@ -162,23 +163,27 @@ async function loadDriveTokens(
   };
 }
 
-async function refreshDriveAccessToken(args: {
-  readonly connection: ConnectorCredentialConnection;
-  readonly db: ReadonlyDb;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-  readonly userId: string;
-}): Promise<string | null> {
-  const refreshed = await refreshConnectorCredentialAccess({
-    connection: args.connection,
-    db: args.db,
-    featureSwitchContext: args.featureSwitchContext,
-    orgId: args.orgId,
-    userId: args.userId,
-    runtimeEnvironmentName: GOOGLE_DRIVE_ACCESS_TOKEN_ENVIRONMENT_NAME,
-    signal: args.signal,
-  });
+async function refreshDriveAccessToken(
+  args: {
+    readonly connection: ConnectorCredentialConnection;
+    readonly db: ReadonlyDb;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
+  const refreshed = await refreshConnectorCredentialAccess(
+    {
+      connection: args.connection,
+      db: args.db,
+      featureSwitchContext: args.featureSwitchContext,
+      orgId: args.orgId,
+      userId: args.userId,
+      runtimeEnvironmentName: GOOGLE_DRIVE_ACCESS_TOKEN_ENVIRONMENT_NAME,
+    },
+    signal,
+  );
   return refreshed.kind === "ok" ? refreshed.accessToken : null;
 }
 
@@ -186,11 +191,13 @@ type DriveListResult =
   | { readonly type: "ok"; readonly files: z.infer<typeof driveFileSchema>[] }
   | { readonly type: "unauthorized" };
 
-async function listArtifactFiles(args: {
-  readonly accessToken: string;
-  readonly threadId: string;
-  readonly signal: AbortSignal;
-}): Promise<DriveListResult> {
+async function listArtifactFiles(
+  args: {
+    readonly accessToken: string;
+    readonly threadId: string;
+  },
+  signal: AbortSignal,
+): Promise<DriveListResult> {
   const url = new URL(GOOGLE_DRIVE_FILES_URL);
   url.searchParams.set(
     "q",
@@ -205,7 +212,7 @@ async function listArtifactFiles(args: {
 
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${args.accessToken}` },
-    signal: args.signal,
+    signal,
   });
   if (response.status === 401) {
     return { type: "unauthorized" };
@@ -219,39 +226,47 @@ async function listArtifactFiles(args: {
   return { type: "ok", files: parsed.files };
 }
 
-async function listArtifactFilesWithRefresh(args: {
-  readonly db: ReadonlyDb;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly orgId: string;
-  readonly tokens: ConnectorTokens;
-  readonly threadId: string;
-  readonly signal: AbortSignal;
-  readonly userId: string;
-}): Promise<z.infer<typeof driveFileSchema>[] | "unauthorized"> {
-  const first = await listArtifactFiles({
-    accessToken: args.tokens.accessToken,
-    threadId: args.threadId,
-    signal: args.signal,
-  });
+async function listArtifactFilesWithRefresh(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly orgId: string;
+    readonly tokens: ConnectorTokens;
+    readonly threadId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<z.infer<typeof driveFileSchema>[] | "unauthorized"> {
+  const first = await listArtifactFiles(
+    {
+      accessToken: args.tokens.accessToken,
+      threadId: args.threadId,
+    },
+    signal,
+  );
   if (first.type === "ok") {
     return first.files;
   }
-  const refreshedAccessToken = await refreshDriveAccessToken({
-    connection: args.tokens.connection,
-    db: args.db,
-    featureSwitchContext: args.featureSwitchContext,
-    orgId: args.orgId,
-    signal: args.signal,
-    userId: args.userId,
-  });
+  const refreshedAccessToken = await refreshDriveAccessToken(
+    {
+      connection: args.tokens.connection,
+      db: args.db,
+      featureSwitchContext: args.featureSwitchContext,
+      orgId: args.orgId,
+      userId: args.userId,
+    },
+    signal,
+  );
   if (!refreshedAccessToken) {
     return "unauthorized";
   }
-  const second = await listArtifactFiles({
-    accessToken: refreshedAccessToken,
-    threadId: args.threadId,
-    signal: args.signal,
-  });
+  const second = await listArtifactFiles(
+    {
+      accessToken: refreshedAccessToken,
+      threadId: args.threadId,
+    },
+    signal,
+  );
   if (second.type === "unauthorized") {
     return "unauthorized";
   }
@@ -366,15 +381,17 @@ export function googleDriveArtifactStatusLookup(args: {
     // 2s timeout intentionally propagates under the project-wide ban on
     // swallowing aborts.
     const files = await tapError(
-      listArtifactFilesWithRefresh({
-        db,
-        featureSwitchContext,
-        orgId: args.orgId,
-        tokens,
-        threadId: args.threadId,
-        signal: AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
-        userId: args.userId,
-      }),
+      listArtifactFilesWithRefresh(
+        {
+          db,
+          featureSwitchContext,
+          orgId: args.orgId,
+          tokens,
+          threadId: args.threadId,
+          userId: args.userId,
+        },
+        AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
+      ),
     );
     if (files === undefined) {
       return { type: "unknown" };
@@ -576,9 +593,10 @@ async function loadArtifactFile(
       metadata: runUploadedFiles.metadata,
     })
     .from(runUploadedFiles)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
+    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
     .where(
       and(
+        isNotNull(agentRuns.triggerSource),
         eq(runUploadedFiles.userId, args.userId),
         eq(runUploadedFiles.runId, args.runId),
         or(
@@ -591,16 +609,16 @@ async function loadArtifactFile(
           ),
         ),
         or(
-          eq(zeroRuns.chatThreadId, args.threadId),
+          eq(agentRuns.chatThreadId, args.threadId),
           exists(
             db
               .select({ one: chatEvents.id })
               .from(chatEvents)
               .where(
-                and(
-                  eq(chatEvents.runId, runUploadedFiles.runId),
-                  eq(chatEvents.chatThreadId, args.threadId),
-                ),
+                runOwnedChatEventForRunCondition({
+                  runId: runUploadedFiles.runId,
+                  chatThreadId: args.threadId,
+                }),
               ),
           ),
         ),
@@ -1098,14 +1116,16 @@ export const syncArtifactToGoogleDrive$ = command(
     signal.throwIfAborted();
 
     if (result.type === "unauthorized") {
-      const refreshed = await refreshDriveAccessToken({
-        connection: tokens.connection,
-        db,
-        featureSwitchContext,
-        orgId: args.orgId,
+      const refreshed = await refreshDriveAccessToken(
+        {
+          connection: tokens.connection,
+          db,
+          featureSwitchContext,
+          orgId: args.orgId,
+          userId: args.userId,
+        },
         signal,
-        userId: args.userId,
-      });
+      );
       signal.throwIfAborted();
       if (refreshed) {
         result = await uploadArtifactWithToken({

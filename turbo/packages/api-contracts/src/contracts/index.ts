@@ -24,7 +24,10 @@ export {
   type HealthRouteResponse,
 } from "./health";
 export {
+  CHAT_EVENT_CONTENT_TEXT_TYPES,
   CHAT_EVENT_TYPES,
+  CHAT_EVENT_USER_MESSAGE_TEXT_TYPES,
+  CHAT_GOAL_MARKER_EVENT_TYPES,
   chatEventCompatibilityRole,
   chatEventTypeSchema,
   foldActiveChatGoalObjective,
@@ -32,6 +35,9 @@ export {
   foldRunnableChatQueueEvents,
   foldChatRunStates,
   foldLatestChatUsageByRunId,
+  isChatEventContentTextType,
+  isChatEventUserMessageTextType,
+  isChatGoalMarkerEventType,
   isChatInputEventType,
   isChatOutputEventType,
   isPendingChatQueueEvent,
@@ -88,10 +94,6 @@ export {
   type ArtifactConfig,
 } from "./composes";
 export {
-  testAgentComposesContract,
-  type TestAgentComposesContract,
-} from "./test-agent-composes";
-export {
   ALL_RUN_STATUSES,
   runStatusSchema,
   unifiedRunRequestSchema,
@@ -100,36 +102,22 @@ export {
   runListItemSchema,
   runsListResponseSchema,
   cancelRunResponseSchema,
-  runEventSchema,
   runResultSchema,
   runStateSchema,
-  telemetryMetricSchema,
-  systemLogResponseSchema,
-  metricsResponseSchema,
-  agentEventsResponseSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
-  searchResultSchema,
-  logsSearchResponseSchema,
   // Inferred types
   type RunStatus,
   type RunResult,
   type RunState,
-  type RunEvent,
   type CreateRunResponse,
   type GetRunResponse,
   type RunListItem,
   type RunsListResponse,
   type CancelRunResponse,
-  type TelemetryMetric,
-  type SystemLogResponse,
-  type MetricsResponse,
-  type AgentEventsResponse,
   type NetworkLogEntry,
   type AxiomNetworkEvent,
   type NetworkLogsResponse,
-  type SearchResult,
-  type LogsSearchResponse,
   queueEntrySchema,
   runningTaskSchema,
   concurrencyInfoSchema,
@@ -140,22 +128,30 @@ export {
   type QueueResponse,
 } from "./runs";
 export {
-  testAgentRunsContract,
-  type TestAgentRunsContract,
-} from "./test-agent-runs";
+  IMAGE_RECOGNITION_MAX_FILE_BYTES,
+  IMAGE_RECOGNITION_MAX_PROMPT_CHARS,
+  IMAGE_RECOGNITION_MAX_TEXT_CHARS,
+  imageRecognitionContract,
+  imageRecognitionMimeTypeSchema,
+  imageRecognitionRequestSchema,
+  imageRecognitionResponseSchema,
+  type ImageRecognitionContract,
+  type ImageRecognitionMimeType,
+  type ImageRecognitionRequest,
+  type ImageRecognitionResponse,
+} from "./image-recognition";
 export {
-  ZERO_RECOGNITION_MAX_FILE_BYTES,
-  ZERO_RECOGNITION_MAX_PROMPT_CHARS,
-  ZERO_RECOGNITION_MAX_TEXT_CHARS,
-  zeroRecognitionContract,
-  zeroRecognitionImageMimeTypeSchema,
-  zeroRecognitionRequestSchema,
-  zeroRecognitionResponseSchema,
-  type ZeroRecognitionContract,
-  type ZeroRecognitionImageMimeType,
-  type ZeroRecognitionRequest,
-  type ZeroRecognitionResponse,
-} from "./zero-recognition";
+  TRANSLATION_MAX_LANGUAGE_CHARS,
+  TRANSLATION_MAX_RESULT_TEXT_CHARS,
+  TRANSLATION_MAX_SOURCE_TEXT_CHARS,
+  translationContract,
+  translationLanguageSchema,
+  translationRequestSchema,
+  translationResponseSchema,
+  type TranslationContract,
+  type TranslationRequest,
+  type TranslationResponse,
+} from "./translation";
 export {
   zeroModelPoliciesMainContract,
   type ZeroModelPoliciesMainContract,
@@ -179,14 +175,17 @@ export {
 export {
   userModelPreferenceResponseSchema,
   updateUserModelPreferenceRequestSchema,
-  zeroUserModelPreferenceContract,
+  userModelPreferenceContract,
   type UserModelPreferenceResponse,
   type UpdateUserModelPreferenceRequest,
-  type ZeroUserModelPreferenceContract,
-} from "./zero-user-model-preference";
+  type UserModelPreferenceContract,
+} from "./user-model-preference";
 export {
   MAX_FILE_SIZE_BYTES,
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
   fileEntryWithHashSchema,
+  storageManifestFilesSchema,
   storageChangesSchema,
   presignedUploadSchema,
 } from "./storages";
@@ -222,17 +221,21 @@ export {
 export { zeroEmailInboundContract } from "./zero-email";
 export {
   sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
   webhookClerkContract,
   webhookEventsContract,
   webhookFirewallAuthContract,
   webhookGithubContract,
   webhookGmailContract,
+  webhookGoogleFormsContract,
   webhookGoogleCalendarContract,
   webhookGoogleWorkspaceEventsContract,
   webhookWorkflowAutomationContract,
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationBytePlusContract,
+  webhookBuiltInGenerationMiniMaxContract,
+  webhookBuiltInGenerationJoggAiContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
@@ -242,6 +245,7 @@ export {
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
   type SandboxReuseResult,
+  type WorkspaceReuseResult,
   type WebhookWorkflowAutomationContract,
   type WebhookEventsContract,
   type WebhookFirewallAuthContract,
@@ -258,10 +262,13 @@ export {
   type WebhookUsageEventContract,
   type WebhookGithubContract,
   type WebhookGmailContract,
+  type WebhookGoogleFormsContract,
   type WebhookGoogleCalendarContract,
   type WebhookGoogleWorkspaceEventsContract,
   type WebhookStripeContract,
   type WebhookBuiltInGenerationFalContract,
+  type WebhookBuiltInGenerationMiniMaxContract,
+  type WebhookBuiltInGenerationJoggAiContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,
@@ -289,9 +296,9 @@ export {
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
 export {
-  zeroMorningBriefContract,
-  type ZeroMorningBriefContract,
-} from "./zero-morning-brief";
+  morningBriefContract,
+  type MorningBriefContract,
+} from "./morning-brief";
 export {
   emailMorningBriefUnsubscribeContract,
   type EmailMorningBriefUnsubscribeContract,
@@ -300,41 +307,6 @@ export {
   connectorsSlugCallbackContract,
   type ConnectorsSlugCallbackContract,
 } from "./connectors-slug-callback";
-export {
-  testOAuthProviderAuthorizeContract,
-  testOAuthProviderAuthorizeErrorSchema,
-  testOAuthProviderAuthorizeQuerySchema,
-  type TestOAuthProviderAuthorizeContract,
-  type TestOAuthProviderAuthorizeQuery,
-} from "./test-oauth-provider-authorize";
-export {
-  testOAuthProviderEchoContract,
-  testOAuthProviderEchoErrorSchema,
-  testOAuthProviderEchoResponseSchema,
-  type TestOAuthProviderEchoContract,
-  type TestOAuthProviderEchoResponse,
-} from "./test-oauth-provider-echo";
-export {
-  testOAuthProviderTokenContract,
-  testOAuthProviderTokenErrorSchema,
-  testOAuthProviderTokenResponseSchema,
-  type TestOAuthProviderTokenContract,
-  type TestOAuthProviderTokenResponse,
-} from "./test-oauth-provider-token";
-export {
-  testOAuthProviderDeviceAuthContract,
-  testOAuthProviderDeviceAuthErrorSchema,
-  testOAuthProviderDeviceAuthResponseSchema,
-  type TestOAuthProviderDeviceAuthContract,
-  type TestOAuthProviderDeviceAuthResponse,
-} from "./test-oauth-provider-device-auth";
-export {
-  testOAuthProviderUserinfoContract,
-  testOAuthProviderUserinfoErrorSchema,
-  testOAuthProviderUserinfoResponseSchema,
-  type TestOAuthProviderUserinfoContract,
-  type TestOAuthProviderUserinfoResponse,
-} from "./test-oauth-provider-userinfo";
 export {
   testComputerUseStateContract,
   testComputerUseStateDeleteResponseSchema,
@@ -347,6 +319,18 @@ export {
   type TestComputerUseStatePostResponse,
 } from "./test-computer-use-state";
 export {
+  testBrowserReconcileBodySchema,
+  testBrowserReconcileContract,
+  type TestBrowserReconcileBody,
+  type TestBrowserReconcileContract,
+} from "./test-browser-reconcile";
+export {
+  testChatEventSearchProjectionBodySchema,
+  testChatEventSearchProjectionContract,
+  type TestChatEventSearchProjectionBody,
+  type TestChatEventSearchProjectionContract,
+} from "./test-chat-event-search-projection";
+export {
   testRuntimeStateActionBodySchema,
   testRuntimeStateActionResponseSchema,
   testRuntimeStateContract,
@@ -354,15 +338,6 @@ export {
   type TestRuntimeStateActionResponse,
   type TestRuntimeStateContract,
 } from "./test-runtime-state";
-export {
-  testZeroAgentStateActionBodySchema,
-  testZeroAgentStateActionResponseSchema,
-  testZeroAgentStateContract,
-  testZeroAgentStateErrorSchema,
-  type TestZeroAgentStateActionBody,
-  type TestZeroAgentStateActionResponse,
-  type TestZeroAgentStateContract,
-} from "./test-zero-agent-state";
 export {
   testModelProviderStateActionBodySchema,
   testModelProviderStateActionResponseSchema,
@@ -377,15 +352,29 @@ export {
   type TestMailDraftStateContract,
 } from "./test-mail-draft-state";
 export {
-  testUsageInsightStateActionBodySchema,
-  testUsageInsightStateActionResponseSchema,
-  testUsageInsightStateContract,
-  testUsageInsightStateFixtureSchema,
-  type TestUsageInsightStateActionBody,
-  type TestUsageInsightStateActionResponse,
-  type TestUsageInsightStateContract,
-  type TestUsageInsightStateFixture,
-} from "./test-usage-insight-state";
+  testEmailOutboxStateActionBodySchema,
+  testEmailOutboxStateActionResponseSchema,
+  testEmailOutboxStateCleanupBodySchema,
+  testEmailOutboxStateCleanupResponseSchema,
+  testEmailOutboxStateContract,
+  testEmailOutboxStateDrainBodySchema,
+  testEmailOutboxStateDrainResponseSchema,
+  testEmailOutboxStateItemSchema,
+  type TestEmailOutboxStateActionBody,
+  type TestEmailOutboxStateActionResponse,
+  type TestEmailOutboxStateContract,
+  type TestEmailOutboxStateItem,
+} from "./test-email-outbox-state";
+export {
+  testUsageStateActionBodySchema,
+  testUsageStateActionResponseSchema,
+  testUsageStateContract,
+  testUsageStateFixtureSchema,
+  type TestUsageStateActionBody,
+  type TestUsageStateActionResponse,
+  type TestUsageStateContract,
+  type TestUsageStateFixture,
+} from "./test-usage-state";
 export {
   testUsageSettlementContract,
   testUsageSettlementRequestSchema,
@@ -404,38 +393,21 @@ export {
   type TestCronCleanupSandboxesStateContract,
 } from "./test-cron-cleanup-sandboxes-state";
 export {
+  testChatEventSnapshotBodySchema,
+  testChatEventSnapshotContract,
+  type TestChatEventSnapshotContract,
+} from "./test-chat-event-snapshot";
+export {
+  testChatEventRetentionContract,
+  type TestChatEventRetentionContract,
+} from "./test-chat-event-retention";
+export {
   testSlackStateContract,
   testSlackStateErrorSchema,
   testSlackStateResponseSchema,
   type TestSlackStateContract,
   type TestSlackStateResponse,
 } from "./test-slack-state";
-export {
-  SLACK_E2E_FIXTURES,
-  SLACK_E2E_SCOPES,
-  testSlackMockAuthTestResponseSchema,
-  testSlackMockChatPostEphemeralResponseSchema,
-  testSlackMockChatPostMessageResponseSchema,
-  testSlackMockContract,
-  testSlackMockConversationMessagesResponseSchema,
-  testSlackMockConversationsOpenResponseSchema,
-  testSlackMockOauthAccessResponseSchema,
-  testSlackMockOkResponseSchema,
-  testSlackMockUsersInfoResponseSchema,
-  type TestSlackMockContract,
-  type TestSlackMockUsersInfoResponse,
-} from "./test-slack-mock";
-export {
-  testTelegramMockContract,
-  testTelegramMockErrorResponseSchema,
-  testTelegramMockPathParamsSchema,
-  testTelegramMockSuccessResponseSchema,
-  type TestTelegramMockContract,
-} from "./test-telegram-mock";
-export {
-  testTeamsMockContract,
-  type TestTeamsMockContract,
-} from "./test-teams-mock";
 export {
   testTeamsStateContract,
   testTeamsStateErrorSchema,
@@ -451,12 +423,8 @@ export {
   type TestTelegramStateResponse,
 } from "./test-telegram-state";
 export {
-  cronAggregateInsightsContract,
-  cronAggregateInsightsResponseSchema,
   cronAggregateModelStatsContract,
   cronAggregateModelStatsResponseSchema,
-  cronAggregateUsageContract,
-  cronAggregateUsageResponseSchema,
   cronCompactChatThreadSnapshotsContract,
   cronCompactChatThreadSnapshotsResponseSchema,
   cronCleanupSandboxesContract,
@@ -468,6 +436,8 @@ export {
   cronExecuteWorkflowAutomationsContract,
   cronRenewGmailWatchesContract,
   cronRenewGmailWatchesResponseSchema,
+  cronRenewGoogleFormsWatchesContract,
+  cronRenewGoogleFormsWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesContract,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsContract,
@@ -482,9 +452,7 @@ export {
   cronTelegramCleanupResponseSchema,
   cleanupResultSchema,
   cleanupResponseSchema,
-  type CronAggregateInsightsContract,
   type CronAggregateModelStatsContract,
-  type CronAggregateUsageContract,
   type CronCompactChatThreadSnapshotsContract,
   type CronCleanupSandboxesContract,
   type CronConnectorOauthStateCleanupContract,
@@ -492,13 +460,13 @@ export {
   type CronProcessUsageEventsContract,
   type CronReconcileBillingEntitlementsContract,
   type CronRenewGmailWatchesContract,
+  type CronRenewGoogleFormsWatchesContract,
   type CronRenewGoogleCalendarWatchesContract,
   type CronRenewGoogleWorkspaceEventSubscriptionsContract,
   type CronSyncSkillsContract,
   type CronTelegramCleanupContract,
 } from "./cron";
 export {
-  orgSlugSchema,
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,
@@ -508,24 +476,15 @@ export {
   type OrgTier,
 } from "./orgs";
 export {
-  secretNameSchema,
   secretTypeSchema,
   secretResponseSchema,
-  secretListResponseSchema,
-  setSecretRequestSchema,
   type SecretResponse,
-  type SecretListResponse,
-  type SetSecretRequest,
   type SecretType,
 } from "./secrets";
 export {
-  variableNameSchema,
   variableResponseSchema,
   variableListResponseSchema,
-  setVariableRequestSchema,
-  type VariableResponse,
   type VariableListResponse,
-  type SetVariableRequest,
 } from "./variables";
 export {
   modelProviderTypeSchema,
@@ -540,9 +499,9 @@ export {
   orgModelPoliciesResponseSchema,
   updateOrgModelPoliciesRequestSchema,
   supportedRunModelSchema,
-  requestedRunModelSchema,
   modelProviderCredentialScopeSchema,
   MODEL_PROVIDER_TYPES,
+  MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
@@ -598,7 +557,6 @@ export {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderFirewall,
   // VM0 managed provider
-  VM0_ORG_SLUG,
   VM0_MODEL_TO_PROVIDER,
   VM0_MODEL_ALIAS_TO_MODEL,
   getVm0ConcreteProviderType,
@@ -627,7 +585,6 @@ export {
   chatEventsContract,
   chatThreadEventsContract,
   chatThreadArtifactsContract,
-  artifactsContract,
   chatSearchContract,
   chatThreadSnapshotProjectionSchema,
   chatThreadEventSchema,
@@ -644,10 +601,6 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
-  artifactItemSchema,
-  artifactsListResponseSchema,
-  imageArtifactEditSnapshotSchema,
-  imageArtifactEditSnapshotStateSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
@@ -666,7 +619,6 @@ export {
   type ChatEventsContract,
   type ChatThreadEventsContract,
   type ChatThreadArtifactsContract,
-  type ArtifactsContract,
   type ChatSearchContract,
   type ChatSearchResponse,
   type ChatSearchResult,
@@ -687,10 +639,6 @@ export {
   type PersistedAttachment,
   type AttachFile,
   type ResolvedAttachFile,
-  type ArtifactItem,
-  type ArtifactsListResponse,
-  type ImageArtifactEditSnapshot,
-  type ImageArtifactEditSnapshotState,
   type ChatThreadArtifactFile,
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
@@ -698,7 +646,7 @@ export {
 export {
   runnersPollContract,
   runnersJobClaimContract,
-  runnersNetworkPolicyRefreshContract,
+  runnersConnectorRuntimeSyncContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   heartbeatBodySchema,
@@ -711,9 +659,14 @@ export {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   CANONICAL_GUEST_HOME_DIR,
+  CANONICAL_PI_SESSION_DIR,
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
+  PI_AGENT_DIR,
+  PI_MEMORY_ROOT,
+  PI_SKILLS_ROOT,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
   storageMountEntrySchema,
@@ -723,13 +676,18 @@ export {
   resumeSessionSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
-  type RunnersNetworkPolicyRefreshContract,
+  type RunnersConnectorRuntimeSyncContract,
   type RunnersBuiltinFirewallsResolveContract,
   type RunnersHeartbeatContract,
   type Job,
   type ExecutionContext,
   type StoredExecutionContext,
   type NetworkPolicyRefresh,
+  type ConnectorRuntimeTarget,
+  type ConnectorRuntimeTargetRegistration,
+  type ConnectorRuntimeCustomUnresolvedReason,
+  type ConnectorRuntimeCustomAbsentReason,
+  type ConnectorRuntimeSyncResult,
   type SecretConnectorMetadata,
   type CanonicalStorageManifest,
   type StorageMountEntry,
@@ -833,17 +791,17 @@ export {
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
   validateBaseUrl,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 export {
   collectAndValidatePermissions,
   validateRule,
-} from "@vm0/connectors/firewall-expander";
+} from "@okouai/connectors/firewall-expander";
 
 export {
   matchFirewallPath,
   findMatchingPermissions,
-} from "@vm0/connectors/firewall-rule-matcher";
+} from "@okouai/connectors/firewall-rule-matcher";
 
 export {
   userPreferencesResponseSchema,
@@ -854,19 +812,13 @@ export {
   type SendMode,
   userLocaleSchema,
   type UserLocale,
-} from "./zero-user-preferences";
+} from "./user-preferences";
 export {
   featureSwitchesResponseSchema,
   updateFeatureSwitchesRequestSchema,
   type FeatureSwitchesResponse,
   type UpdateFeatureSwitchesRequest,
 } from "./zero-feature-switches";
-export {
-  orgListItemSchema,
-  orgListResponseSchema,
-  type OrgListItem,
-  type OrgListResponse,
-} from "./org-list";
 export {
   orgRoleSchema,
   orgMemberSchema,
@@ -901,28 +853,30 @@ export {
 } from "./onboarding";
 export { skillFrontmatterSchema } from "./skills";
 export {
+  agentDraftContract,
+  agentDraftResponseSchema,
+  agentDraftRequestSchema,
+  type AgentDraftContract,
+  type AgentDraftResponse,
+  type AgentDraftRequest,
+} from "./agent-draft";
+export {
   zeroAgentsMainContract,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroAgentDraftContract,
   zeroAgentResponseSchema,
   zeroAgentRequestSchema,
   zeroAgentMetadataRequestSchema,
   zeroAgentInstructionsResponseSchema,
   zeroAgentInstructionsRequestSchema,
-  zeroAgentDraftResponseSchema,
-  zeroAgentDraftRequestSchema,
   type ZeroAgentsMainContract,
   type ZeroAgentsByIdContract,
   type ZeroAgentInstructionsContract,
-  type ZeroAgentDraftContract,
   type ZeroAgentResponse,
   type ZeroAgentRequest,
   type ZeroAgentMetadataRequest,
   type ZeroAgentInstructionsResponse,
   type ZeroAgentInstructionsRequest,
-  type ZeroAgentDraftResponse,
-  type ZeroAgentDraftRequest,
 } from "./zero-agents";
 export {
   zeroWorkflowVisibilitySchema,
@@ -932,11 +886,14 @@ export {
   workflowFileMetadataSchema,
   workflowInstructionSchema,
   zeroWorkflowAutomationKindSchema,
-  zeroWorkflowEventTypeSchema,
+  zeroAutomationEventTypeSchema,
   zeroWorkflowScheduleTypeSchema,
   gmailNewMessageEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
-  gmailWorkflowEventConfigSchema,
+  gmailAutomationEventConfigSchema,
+  googleFormsFormReferenceSchema,
+  googleFormsResponseSubmittedEventConfigSchema,
+  googleFormsResponseSubmittedEventCreateConfigSchema,
   githubDeploymentStatusCreatedEventConfigSchema,
   githubDeploymentStateSchema,
   githubIssueCommentCreatedEventConfigSchema,
@@ -946,6 +903,9 @@ export {
   githubWorkflowJobCompletedEventConfigSchema,
   githubWorkflowRunCompletedEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
+  stripeInvoiceBillingReasonSchema,
+  stripeInvoicePaidEventCreateConfigSchema,
+  stripeInvoicePaidEventConfigSchema,
   zeroWorkflowScheduleSchema,
   zeroWorkflowAutomationSummarySchema,
   chatThreadWorkflowAutomationSchema,
@@ -964,15 +924,19 @@ export {
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
   zeroWorkflowAutomationsContract,
-  type ZeroWorkflowVisibility,
+  type WorkflowVisibility,
   type WorkflowFileEntry,
   type WorkflowFileMetadata,
-  type ZeroWorkflowAutomationKind,
-  type ZeroWorkflowEventType,
-  type ZeroWorkflowScheduleType,
+  type WorkflowAutomationKind,
+  type WorkflowAutomationEventType,
+  type WorkflowScheduleType,
   type GmailNewMessageEventConfig,
   type GmailLabelAppliedEventConfig,
-  type GmailWorkflowEventConfig,
+  type GmailAutomationEventConfig,
+  type GoogleFormsFormReference,
+  type GoogleFormsResponseSubmittedEventConfig,
+  type GoogleFormsResponseSubmittedEventCreateConfig,
+  type GoogleFormsAutomationEventConfig,
   type GithubDeploymentStatusCreatedEventConfig,
   type GithubDeploymentState,
   type GithubIssueCommentCreatedEventConfig,
@@ -982,7 +946,10 @@ export {
   type GithubWorkflowJobCompletedEventConfig,
   type GithubWorkflowRunCompletedEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
-  type GoogleCalendarWorkflowEventConfig,
+  type GoogleCalendarAutomationEventConfig,
+  type StripeInvoiceBillingReason,
+  type StripeInvoicePaidEventCreateConfig,
+  type StripeInvoicePaidEventConfig,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowAutomationSummary,
   type ChatThreadWorkflowAutomation,
@@ -1062,15 +1029,15 @@ export {
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
 export {
+  connectorCheckContract,
   connectorCheckDiagnosticResultSchema,
   connectorCheckPolicySchema,
   connectorCheckRequestSchema,
-  zeroConnectorCheckContract,
+  type ConnectorCheckContract,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckPolicy,
   type ConnectorCheckRequest,
-  type ZeroConnectorCheckContract,
-} from "./zero-connector-check";
+} from "./connector-check";
 export {
   connectorAuthMethodIdSchema,
   connectorSlugSchema,
@@ -1079,16 +1046,16 @@ export {
 } from "./connector-identity";
 export {
   codexDeviceAuthScopeSchema,
-  zeroCodexDeviceAuthContract,
+  codexDeviceAuthContract,
   type CodexDeviceAuthScope,
-  type ZeroCodexDeviceAuthContract,
-} from "./zero-codex-device-auth";
+  type CodexDeviceAuthContract,
+} from "./codex-device-auth";
 export {
   claudeCodeDeviceAuthScopeSchema,
-  zeroClaudeCodeDeviceAuthContract,
+  claudeCodeDeviceAuthContract,
   type ClaudeCodeDeviceAuthScope,
-  type ZeroClaudeCodeDeviceAuthContract,
-} from "./zero-claude-code-device-auth";
+  type ClaudeCodeDeviceAuthContract,
+} from "./claude-code-device-auth";
 export {
   zeroOrgContract,
   zeroOrgLeaveContract,
@@ -1098,12 +1065,11 @@ export {
   type ZeroOrgDeleteContract,
 } from "./zero-org";
 export {
-  zeroOrgLogoContract,
-  zeroOrgLogoResponseSchema,
-  type ZeroOrgLogoContract,
-  type ZeroOrgLogoResponse,
-} from "./zero-org-logo";
-export { zeroOrgListContract, type ZeroOrgListContract } from "./zero-org-list";
+  orgLogoContract,
+  orgLogoResponseSchema,
+  type OrgLogoContract,
+  type OrgLogoResponse,
+} from "./org-logo";
 export {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
@@ -1120,23 +1086,15 @@ export {
   zeroRunsByIdContract,
   zeroRunsCancelContract,
   zeroRunsQueueContract,
-  zeroRunAgentEventsContract,
-  zeroRunSystemLogContract,
-  zeroRunMetricsContract,
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
   zeroRunRunnerContract,
-  zeroLogsSearchContract,
   type ZeroRunsByIdContract,
   type ZeroRunsCancelContract,
   type ZeroRunsQueueContract,
-  type ZeroRunAgentEventsContract,
-  type ZeroRunSystemLogContract,
-  type ZeroRunMetricsContract,
   type ZeroRunContextContract,
   type ZeroRunNetworkLogsContract,
   type ZeroRunRunnerContract,
-  type ZeroLogsSearchContract,
   type RunContextResponse,
   type RunRunnerResponse,
 } from "./zero-runs";
@@ -1149,47 +1107,37 @@ export {
 export {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProviderAccountsByIdContract,
   type ZeroPersonalModelProvidersMainContract,
   type ZeroPersonalModelProvidersByTypeContract,
+  type ZeroPersonalModelProviderAccountsByIdContract,
 } from "./zero-personal-model-providers";
 export {
-  zeroUserPreferencesContract,
-  type ZeroUserPreferencesContract,
-} from "./zero-user-preferences";
+  userPreferencesContract,
+  type UserPreferencesContract,
+} from "./user-preferences";
 export {
   zeroFeatureSwitchesContract,
   type ZeroFeatureSwitchesContract,
 } from "./zero-feature-switches";
 export {
-  zeroSecretsContract,
-  zeroSecretsByNameContract,
-  zeroVariablesContract,
-  zeroVariablesByNameContract,
-  type ZeroSecretsContract,
-  type ZeroSecretsByNameContract,
-  type ZeroVariablesContract,
-  type ZeroVariablesByNameContract,
-} from "./zero-secrets";
-export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorOAuth2Contract,
   customConnectorResponseSchema,
   customConnectorListResponseSchema,
   createCustomConnectorBodySchema,
-  setCustomConnectorSecretBodySchema,
   setCustomConnectorValuesBodySchema,
   startCustomConnectorOAuth2BodySchema,
   startCustomConnectorOAuth2ResponseSchema,
-  patchCustomConnectorBodySchema,
   customConnectorAuthModeSchema,
   customConnectorOAuthConfigSchema,
   customConnectorOAuthConfigInputSchema,
   type ZeroCustomConnectorsContract,
   type ZeroCustomConnectorByIdContract,
-  type ZeroCustomConnectorSecretContract,
+  type ZeroCustomConnectorConnectionContract,
   type ZeroCustomConnectorValuesContract,
   type ZeroCustomConnectorOAuth2Contract,
   type CustomConnectorResponse,
@@ -1200,13 +1148,14 @@ export {
   type CustomConnectorValueInput,
   type SetCustomConnectorValuesBody,
   type UpdateCustomConnectorBody,
-  type PatchCustomConnectorBody,
 } from "./zero-custom-connectors";
 export {
   zeroAgentCustomConnectorsContract,
-  agentCustomConnectorEnabledIdsSchema,
+  agentCustomConnectorGrantSchema,
+  agentCustomConnectorGrantsSchema,
   agentCustomConnectorUpdateSchema,
-  type AgentCustomConnectorEnabledIds,
+  type AgentCustomConnectorGrant,
+  type AgentCustomConnectorGrants,
   type AgentCustomConnectorUpdate,
   type ZeroAgentCustomConnectorsContract,
 } from "./zero-agent-custom-connectors";
@@ -1296,12 +1245,12 @@ export {
 } from "./github-oauth";
 export {
   adAttributionMetadataSchema,
-  zeroAttributionContract,
+  acquisitionAttributionContract,
   type AdAttributionMetadata,
   type RecordSignupAttributionRequest,
   type RecordSignupAttributionResponse,
-  type ZeroAttributionContract,
-} from "./zero-attribution";
+  type AcquisitionAttributionContract,
+} from "./acquisition-attribution";
 export {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
@@ -1334,90 +1283,121 @@ export {
   type RedeemResponse,
 } from "./zero-billing";
 export {
-  zeroScrapeContract,
-  zeroScrapeBillingCategorySchema,
-  zeroScrapeFormatSchema,
-  zeroScrapeLinksResponseSchema,
-  zeroScrapeMarkdownResponseSchema,
-  zeroScrapeModeSchema,
-  zeroScrapeRequestSchema,
-  zeroScrapeResponseSchema,
-  type ZeroScrapeBillingCategory,
-  type ZeroScrapeContract,
-  type ZeroScrapeFormat,
-  type ZeroScrapeMode,
-  type ZeroScrapeRequest,
-  type ZeroScrapeResponse,
-} from "./zero-scrape";
+  scrapeContract,
+  scrapeBillingCategorySchema,
+  scrapeFormatSchema,
+  scrapeLinksResponseSchema,
+  scrapeMarkdownResponseSchema,
+  scrapeModeSchema,
+  scrapeRequestSchema,
+  scrapeResponseSchema,
+  type ScrapeBillingCategory,
+  type ScrapeContract,
+  type ScrapeFormat,
+  type ScrapeMode,
+  type ScrapeRequest,
+  type ScrapeResponse,
+} from "./scrape";
 export {
-  ZERO_FINANCE_DEFAULT_INTERVAL,
-  ZERO_FINANCE_DEFAULT_RANGE,
-  ZERO_FINANCE_MAX_QUERY_CHARS,
-  ZERO_FINANCE_MAX_SYMBOL_CHARS,
-  zeroFinanceChartRequestSchema,
-  zeroFinanceContract,
-  zeroFinanceIntervalSchema,
-  zeroFinanceOperationSchema,
-  zeroFinanceProfileRequestSchema,
-  zeroFinanceQuoteRequestSchema,
-  zeroFinanceRangeSchema,
-  zeroFinanceResponseSchema,
-  zeroFinanceSearchRequestSchema,
-  type ZeroFinanceChartRequest,
-  type ZeroFinanceContract,
-  type ZeroFinanceInterval,
-  type ZeroFinanceOperation,
-  type ZeroFinanceProfileRequest,
-  type ZeroFinanceQuoteRequest,
-  type ZeroFinanceRange,
-  type ZeroFinanceResponse,
-  type ZeroFinanceSearchRequest,
-} from "./zero-finance";
+  FINANCE_DEFAULT_INTERVAL,
+  FINANCE_DEFAULT_RANGE,
+  FINANCE_MAX_QUERY_CHARS,
+  FINANCE_MAX_SYMBOL_CHARS,
+  financeChartRequestSchema,
+  financeContract,
+  financeIntervalSchema,
+  financeOperationSchema,
+  financeProfileRequestSchema,
+  financeQuoteRequestSchema,
+  financeRangeSchema,
+  financeResponseSchema,
+  financeSearchRequestSchema,
+  type FinanceChartRequest,
+  type FinanceContract,
+  type FinanceInterval,
+  type FinanceOperation,
+  type FinanceProfileRequest,
+  type FinanceQuoteRequest,
+  type FinanceRange,
+  type FinanceResponse,
+  type FinanceSearchRequest,
+} from "./finance";
 export {
-  ZERO_PEOPLE_SEARCH_DEFAULT_LIMIT,
-  ZERO_PEOPLE_SEARCH_MAX_COMPANY_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_LIMIT,
-  ZERO_PEOPLE_SEARCH_MAX_LOCATION_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_NAME_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_QUERY_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SOURCES,
-  ZERO_PEOPLE_SEARCH_MAX_SOURCE_TITLE_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
-  ZERO_PEOPLE_SEARCH_MAX_TITLE_CHARS,
-  zeroPeopleSearchContract,
-  zeroPeopleSearchProfileSchema,
-  zeroPeopleSearchRequestSchema,
-  zeroPeopleSearchResponseSchema,
-  zeroPeopleSearchSourceSchema,
-  type ZeroPeopleSearchContract,
-  type ZeroPeopleSearchProfile,
-  type ZeroPeopleSearchRequest,
-  type ZeroPeopleSearchResponse,
-  type ZeroPeopleSearchSource,
-} from "./zero-people-search";
+  SEO_DEFAULT_ANALYSIS_LIMIT,
+  SEO_DEFAULT_LANGUAGE_CODE,
+  SEO_DEFAULT_LOCATION,
+  SEO_DEFAULT_SERP_LIMIT,
+  SEO_MAX_ANALYSIS_LIMIT,
+  SEO_MAX_KEYWORD_CHARS,
+  SEO_MAX_LOCATION_CHARS,
+  SEO_MAX_QUERY_CHARS,
+  SEO_MAX_SERP_LIMIT,
+  SEO_MAX_TARGET_CHARS,
+  seoBacklinksSummaryRequestSchema,
+  seoContract,
+  seoDeviceSchema,
+  seoEngineSchema,
+  seoKeywordIdeasRequestSchema,
+  seoLanguageCodeSchema,
+  seoOperationSchema,
+  seoRankedKeywordsRequestSchema,
+  seoResponseSchema,
+  seoSerpRequestSchema,
+  type SeoBacklinksSummaryRequest,
+  type SeoContract,
+  type SeoDevice,
+  type SeoEngine,
+  type SeoKeywordIdeasRequest,
+  type SeoOperation,
+  type SeoRankedKeywordsRequest,
+  type SeoResponse,
+  type SeoSerpRequest,
+} from "./seo";
 export {
-  ZERO_WEB_SEARCH_DEFAULT_LIMIT,
-  ZERO_WEB_SEARCH_MAX_DATE_CHARS,
-  ZERO_WEB_SEARCH_MAX_DOMAIN_CHARS,
-  ZERO_WEB_SEARCH_MAX_DOMAINS,
-  ZERO_WEB_SEARCH_MAX_LIMIT,
-  ZERO_WEB_SEARCH_MAX_QUERY_CHARS,
-  ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
-  ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
-  ZERO_WEB_SEARCH_MAX_URL_CHARS,
-  zeroWebSearchContract,
-  zeroWebSearchDomainSchema,
-  zeroWebSearchRecencySchema,
-  zeroWebSearchRequestSchema,
-  zeroWebSearchResponseSchema,
-  zeroWebSearchResultSchema,
-  type ZeroWebSearchContract,
-  type ZeroWebSearchRecency,
-  type ZeroWebSearchRequest,
-  type ZeroWebSearchResponse,
-  type ZeroWebSearchResult,
-} from "./zero-web-search";
+  PEOPLE_SEARCH_DEFAULT_LIMIT,
+  PEOPLE_SEARCH_MAX_COMPANY_CHARS,
+  PEOPLE_SEARCH_MAX_LIMIT,
+  PEOPLE_SEARCH_MAX_LOCATION_CHARS,
+  PEOPLE_SEARCH_MAX_NAME_CHARS,
+  PEOPLE_SEARCH_MAX_QUERY_CHARS,
+  PEOPLE_SEARCH_MAX_SOURCES,
+  PEOPLE_SEARCH_MAX_SOURCE_TITLE_CHARS,
+  PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS,
+  PEOPLE_SEARCH_MAX_SUMMARY_CHARS,
+  PEOPLE_SEARCH_MAX_TITLE_CHARS,
+  peopleSearchContract,
+  peopleSearchProfileSchema,
+  peopleSearchRequestSchema,
+  peopleSearchResponseSchema,
+  peopleSearchSourceSchema,
+  type PeopleSearchContract,
+  type PeopleSearchProfile,
+  type PeopleSearchRequest,
+  type PeopleSearchResponse,
+  type PeopleSearchSource,
+} from "./people-search";
+export {
+  WEB_SEARCH_DEFAULT_LIMIT,
+  WEB_SEARCH_MAX_DATE_CHARS,
+  WEB_SEARCH_MAX_DOMAIN_CHARS,
+  WEB_SEARCH_MAX_DOMAINS,
+  WEB_SEARCH_MAX_LIMIT,
+  WEB_SEARCH_MAX_QUERY_CHARS,
+  WEB_SEARCH_MAX_SNIPPET_CHARS,
+  WEB_SEARCH_MAX_TITLE_CHARS,
+  WEB_SEARCH_MAX_URL_CHARS,
+  webSearchContract,
+  webSearchDomainSchema,
+  webSearchRecencySchema,
+  webSearchRequestSchema,
+  webSearchResponseSchema,
+  webSearchResultSchema,
+  type WebSearchContract,
+  type WebSearchRecency,
+  type WebSearchRequest,
+  type WebSearchResponse,
+  type WebSearchResult,
+} from "./web-search";
 export {
   zeroUsageMembersContract,
   type ZeroUsageMembersContract,
@@ -1426,39 +1406,19 @@ export {
   type UsageMembersResponse,
 } from "./zero-usage";
 export {
-  zeroUsageRunsContract,
-  type ZeroUsageRunsContract,
-  type UsageRun,
-  type UsageRunsResponse,
-} from "./zero-usage-daily";
-export {
-  zeroUsageInsightContract,
-  type ZeroUsageInsightContract,
-  type UsageInsightResponse,
-  type UsageInsightBucket,
-  type UsageInsightAutomationRow,
-  type UsageInsightChatRow,
-} from "./zero-usage-insight";
-export {
-  zeroUsageRecordContract,
+  usageRecordContract,
   usageRecordKindSchema,
   usageRecordRangeSchema,
   usageRecordScopeSchema,
   usageRecordSourceSchema,
-  type ZeroUsageRecordContract,
+  type UsageRecordContract,
   type UsageRecordKind,
   type UsageRecordRange,
   type UsageRecordResponse,
   type UsageRecordRow,
   type UsageRecordScope,
   type UsageRecordSource,
-} from "./zero-usage-record";
-export {
-  usageContract,
-  type UsageContract,
-  type DailyUsage,
-  type UsageResponse,
-} from "./usage";
+} from "./usage-record";
 export {
   zeroTeamContract,
   teamComposeItemSchema,
@@ -1476,13 +1436,10 @@ export {
   type ZeroSlackConnectContract,
 } from "./zero-slack-connect";
 export {
-  zeroSlackCommandsContract,
-  type ZeroSlackCommandsContract,
-} from "./zero-slack-commands";
-export {
-  zeroSlackEventsContract,
-  type ZeroSlackEventsContract,
-} from "./zero-slack-events";
+  slackCommandsContract,
+  type SlackCommandsContract,
+} from "./slack-commands";
+export { slackEventsContract, type SlackEventsContract } from "./slack-events";
 export {
   zeroTeamsBotContract,
   teamsInboundActivitySchema,
@@ -1514,9 +1471,9 @@ export {
   type ZeroTeamsOauthContract,
 } from "./zero-teams-oauth";
 export {
-  zeroSlackInteractiveContract,
-  type ZeroSlackInteractiveContract,
-} from "./zero-slack-interactive";
+  slackInteractiveContract,
+  type SlackInteractiveContract,
+} from "./slack-interactive";
 export {
   zeroSlackOauthContract,
   zeroSlackOauthInstallQuerySchema,
@@ -1528,28 +1485,15 @@ export {
   type ZeroSlackOauthCallbackQuery,
 } from "./zero-slack-oauth";
 export {
-  zeroSlackChannelsContract,
+  slackChannelsContract,
   slackChannelSchema,
-  type ZeroSlackChannelsContract,
+  type SlackChannelsContract,
   type SlackChannel,
-} from "./zero-slack-channels";
+} from "./slack-channels";
 export {
-  zeroQueuePositionContract,
-  type ZeroQueuePositionContract,
-} from "./zero-queue-position";
-export {
-  zeroDeveloperSupportContract,
-  developerSupportBodySchema,
-  consentCodeResponseSchema,
-  submitResponseSchema,
-  type ZeroDeveloperSupportContract,
-} from "./zero-developer-support";
-export {
-  zeroReportErrorContract,
-  reportErrorBodySchema,
-  reportErrorResponseSchema,
-  type ZeroReportErrorContract,
-} from "./zero-report-error";
+  queuePositionContract,
+  type QueuePositionContract,
+} from "./queue-position";
 export {
   zeroComputerUseAuditEventsContract,
   zeroComputerUseAuthorizationRequestsContract,
@@ -1621,17 +1565,32 @@ export {
   type ComputerUsePluginCallBody,
   type ComputerUsePluginCallPayload,
   type ComputerUsePluginName,
-} from "./zero-computer-use-plugins";
-export {
-  zeroInsightsContract,
-  type ZeroInsightsContract,
-  type InsightsResponse,
-  type DayInsight,
-} from "./zero-insights";
+} from "./computer-use-plugins";
 export {
   pushSubscriptionsContract,
   type PushSubscriptionsContract,
 } from "./push-subscriptions";
+export {
+  avatarVideoAspectRatioSchema,
+  avatarVideoScreenStyleSchema,
+  avatarVideoVoiceIdSchema,
+  zeroAvatarVideoAvatarSchema,
+  zeroAvatarVideoAvatarsQuerySchema,
+  zeroAvatarVideoAvatarsResponseSchema,
+  zeroAvatarVideoContract,
+  zeroAvatarVideoGenerateRequestSchema,
+  zeroAvatarVideoGenerateResponseSchema,
+  zeroAvatarVideoVoiceSchema,
+  zeroAvatarVideoVoicesQuerySchema,
+  zeroAvatarVideoVoicesResponseSchema,
+  type ZeroAvatarVideoAvatar,
+  type ZeroAvatarVideoAvatarsQuery,
+  type ZeroAvatarVideoContract,
+  type ZeroAvatarVideoGenerateRequest,
+  type ZeroAvatarVideoGenerateResponse,
+  type ZeroAvatarVideoVoice,
+  type ZeroAvatarVideoVoicesQuery,
+} from "./zero-avatar-video";
 export {
   zeroImageIoGenerateContract,
   zeroImageIoGenerateRequestSchema,
@@ -1641,27 +1600,13 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
-  ZERO_IMAGE_INTERPRET_MARKS_MAX_REGIONS,
-  ZERO_IMAGE_INTERPRET_MARKS_MAX_INSTRUCTION_LENGTH,
-  zeroImageIoInterpretMarksContract,
-  zeroImageIoInterpretMarksRegionSchema,
-  zeroImageIoInterpretMarksRequestSchema,
-  zeroImageIoInterpretMarksResultSchema,
-  zeroImageIoInterpretMarksResponseSchema,
-  type ZeroImageIoInterpretMarksContract,
-  type ZeroImageIoInterpretMarksRegion,
-  type ZeroImageIoInterpretMarksRequest,
-  type ZeroImageIoInterpretMarksResult,
-  type ZeroImageIoInterpretMarksResponse,
-} from "./zero-image-io-interpret-marks";
-export {
-  zeroImageShareXContract,
-  zeroImageShareXRequestSchema,
-  zeroImageShareXResponseSchema,
-  type ZeroImageShareXContract,
-  type ZeroImageShareXRequest,
-  type ZeroImageShareXResponse,
-} from "./zero-image-share-x";
+  imageShareXContract,
+  imageShareXRequestSchema,
+  imageShareXResponseSchema,
+  type ImageShareXContract,
+  type ImageShareXRequest,
+  type ImageShareXResponse,
+} from "./image-share-x";
 export {
   zeroMailContract,
   zeroMailDraftSchema,
@@ -1694,46 +1639,46 @@ export {
   type ZeroBankingTransactionsResponse,
 } from "./zero-banking";
 export {
-  zeroMapsContract,
-  zeroMapsOperationSchema,
-  zeroMapsResponseSchema,
-  zeroMapsGeocodeRequestSchema,
-  zeroMapsReverseGeocodeRequestSchema,
-  zeroMapsDirectionsRequestSchema,
-  zeroMapsPlacesSearchRequestSchema,
-  zeroMapsPlacesDetailsRequestSchema,
-  type ZeroMapsContract,
-  type ZeroMapsResponse,
-  type ZeroMapsGeocodeRequest,
-  type ZeroMapsReverseGeocodeRequest,
-  type ZeroMapsDirectionsRequest,
-  type ZeroMapsPlacesSearchRequest,
-  type ZeroMapsPlacesDetailsRequest,
-} from "./zero-maps";
+  mapsContract,
+  mapsOperationSchema,
+  mapsResponseSchema,
+  mapsGeocodeRequestSchema,
+  mapsReverseGeocodeRequestSchema,
+  mapsDirectionsRequestSchema,
+  mapsPlacesSearchRequestSchema,
+  mapsPlacesDetailsRequestSchema,
+  type MapsContract,
+  type MapsResponse,
+  type MapsGeocodeRequest,
+  type MapsReverseGeocodeRequest,
+  type MapsDirectionsRequest,
+  type MapsPlacesSearchRequest,
+  type MapsPlacesDetailsRequest,
+} from "./maps";
 export {
-  ZERO_AIR_QUALITY_ATTRIBUTION,
-  ZERO_WEATHER_ATTRIBUTION,
-  zeroWeatherContract,
-  zeroWeatherOperationSchema,
-  zeroWeatherUnitsSchema,
-  zeroWeatherResponseSchema,
-  zeroWeatherConditionsResponseSchema,
-  zeroAirQualityResponseSchema,
-  zeroWeatherCurrentRequestSchema,
-  zeroWeatherForecastHourlyRequestSchema,
-  zeroWeatherForecastDailyRequestSchema,
-  zeroWeatherHistoryHourlyRequestSchema,
-  zeroAirQualityCurrentRequestSchema,
-  type ZeroWeatherContract,
-  type ZeroWeatherResponse,
-  type ZeroWeatherConditionsResponse,
-  type ZeroAirQualityResponse,
-  type ZeroWeatherCurrentRequest,
-  type ZeroWeatherForecastHourlyRequest,
-  type ZeroWeatherForecastDailyRequest,
-  type ZeroWeatherHistoryHourlyRequest,
-  type ZeroAirQualityCurrentRequest,
-} from "./zero-weather";
+  AIR_QUALITY_ATTRIBUTION,
+  WEATHER_ATTRIBUTION,
+  weatherContract,
+  weatherOperationSchema,
+  weatherUnitsSchema,
+  weatherResponseSchema,
+  weatherConditionsResponseSchema,
+  airQualityResponseSchema,
+  weatherCurrentRequestSchema,
+  weatherForecastHourlyRequestSchema,
+  weatherForecastDailyRequestSchema,
+  weatherHistoryHourlyRequestSchema,
+  airQualityCurrentRequestSchema,
+  type WeatherContract,
+  type WeatherResponse,
+  type WeatherConditionsResponse,
+  type AirQualityResponse,
+  type WeatherCurrentRequest,
+  type WeatherForecastHourlyRequest,
+  type WeatherForecastDailyRequest,
+  type WeatherHistoryHourlyRequest,
+  type AirQualityCurrentRequest,
+} from "./weather";
 export {
   zeroVideoIoGenerateContract,
   zeroVideoIoGenerateRequestSchema,
@@ -1743,45 +1688,44 @@ export {
   type ZeroVideoIoGenerateResponse,
 } from "./zero-video-io-generate";
 export {
-  zeroBuiltInGenerationContract,
-  zeroBuiltInGenerationTypeSchema,
-  zeroBuiltInGenerationStatusSchema,
-  zeroBuiltInGenerationRealtimeSubscriptionSchema,
-  zeroBuiltInGenerationAcceptedResponseSchema,
-  zeroBuiltInGenerationResponseSchema,
-  type ZeroBuiltInGenerationContract,
-  type ZeroBuiltInGenerationType,
-  type ZeroBuiltInGenerationStatus,
-  type ZeroBuiltInGenerationRealtimeSubscription,
-  type ZeroBuiltInGenerationAcceptedResponse,
-  type ZeroBuiltInGenerationResponse,
-} from "./zero-built-in-generation";
+  builtInGenerationContract,
+  builtInGenerationTypeSchema,
+  builtInGenerationStatusSchema,
+  builtInGenerationRealtimeSubscriptionSchema,
+  builtInGenerationAcceptedResponseSchema,
+  builtInGenerationResponseSchema,
+  type BuiltInGenerationContract,
+  type BuiltInGenerationType,
+  type BuiltInGenerationStatus,
+  type BuiltInGenerationRealtimeSubscription,
+  type BuiltInGenerationAcceptedResponse,
+  type BuiltInGenerationResponse,
+} from "./built-in-generation";
 export {
-  zeroVoiceIoQuotaContract,
+  voiceIoQuotaContract,
   audioInputQuotaResponseSchema,
-  type ZeroVoiceIoQuotaContract,
+  type VoiceIoQuotaContract,
   type AudioInputQuotaResponse,
-} from "./zero-voice-io-quota";
+} from "./voice-io-quota";
 export {
-  zeroVoiceIoSpeechContract,
-  zeroVoiceIoSpeechRequestSchema,
-  zeroVoiceIoSpeechResponseSchema,
-  type ZeroVoiceIoSpeechContract,
-  type ZeroVoiceIoSpeechRequest,
-  type ZeroVoiceIoSpeechResponse,
-} from "./zero-voice-io-speech";
+  voiceIoSpeechContract,
+  voiceIoSpeechRequestSchema,
+  voiceIoSpeechResponseSchema,
+  type VoiceIoSpeechContract,
+  type VoiceIoSpeechRequest,
+  type VoiceIoSpeechResponse,
+} from "./voice-io-speech";
 export {
-  zeroVoiceIoSttContract,
-  zeroVoiceIoSttResponseSchema,
-  zeroVoiceIoSttQuotaErrorSchema,
-  type ZeroVoiceIoSttContract,
-  type ZeroVoiceIoSttResponse,
-} from "./zero-voice-io-stt";
+  voiceIoSttContract,
+  voiceIoSttResponseSchema,
+  voiceIoSttQuotaErrorSchema,
+  type VoiceIoSttContract,
+  type VoiceIoSttResponse,
+} from "./voice-io-stt";
 export {
   zeroUploadsContract,
   type ZeroUploadsContract,
   type UploadPrepareResponse,
-  type UploadImportImageResponse,
 } from "./zero-uploads";
 export {
   zeroGoalsContract,
@@ -1825,3 +1769,10 @@ export {
   type AgentPhoneLinkStatusResponse,
   type AgentPhoneStartLinkResponse,
 } from "./zero-integrations-agentphone";
+export {
+  sharedMessageSchema,
+  sharedThreadsContract,
+  type SharedMessage,
+  type SharedThreadResponse,
+  type SharedThreadsContract,
+} from "./shared-threads";

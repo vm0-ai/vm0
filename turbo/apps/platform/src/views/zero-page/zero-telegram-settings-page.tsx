@@ -5,27 +5,28 @@ import {
   useSet,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { ReactNode } from "react";
 import {
-  IconAlertTriangle,
-  IconArrowLeft,
-  IconArrowRight,
-  IconCircleCheck,
-  IconDotsVertical,
-  IconExternalLink,
-  IconKey,
-  IconLoader2,
-  IconPlus,
-  IconRefresh,
-  IconRobot,
-} from "@tabler/icons-react";
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  CircleCheck,
+  EllipsisVertical,
+  ExternalLink,
+  Key,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Bot,
+} from "lucide-react";
 import {
   type TelegramBot,
   type TelegramBotStatus,
   type TelegramSetupStatus,
   OFFICIAL_TELEGRAM_BOT_ID,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { Button } from "@vm0/ui/components/ui/button";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import { Button } from "@okouai/ui/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -34,21 +35,21 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@vm0/ui/components/ui/dialog";
-import { Input } from "@vm0/ui/components/ui/input";
+} from "@okouai/ui/components/ui/dialog";
+import { Input } from "@okouai/ui/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@vm0/ui/components/ui/select";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+} from "@okouai/ui/components/ui/select";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
+} from "@okouai/ui/components/ui/popover";
 import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -62,6 +63,9 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   advanceTelegramAddSetupStep$,
   checkTelegramAddSetupStatus$,
+  closeTelegramAddDialogAfterRegistration$,
+  completeTelegramAddDialogClose$,
+  completeTelegramReinstallDialogClose$,
   copyTelegramValue$,
   disconnectTelegramAccount$,
   goBackTelegramAddSetupStep$,
@@ -87,6 +91,7 @@ import {
   telegramCopiedValue$,
   telegramFailedAvatarKeys$,
   telegramReinstallDialogBotId$,
+  telegramReinstallDialogOpen$,
   telegramReinstallingBotId$,
   telegramReinstallTokenForm$,
   telegramSavingBotId$,
@@ -119,7 +124,7 @@ interface DefaultAgentLabel {
 }
 
 const TELEGRAM_COMMAND_CLASS =
-  "cursor-pointer rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-accent active:bg-accent/80";
+  "cursor-pointer rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-state-hover active:bg-state-pressed";
 const BOT_FATHER_HANDLE = "@BotFather";
 
 function isOfficialTelegramBot(bot: TelegramBot): boolean {
@@ -240,7 +245,7 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
   if (bot.tokenStatus === "invalid") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
-        <IconAlertTriangle className="h-3.5 w-3.5" />
+        <AlertTriangle className="h-3.5 w-3.5" />
         {t(($) => {
           return $.connectors.providerSettings.telegram.tokenInvalid;
         })}
@@ -263,7 +268,7 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
         });
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-secondary-foreground">
-        <IconCircleCheck className="h-3.5 w-3.5 text-green-600" />
+        <CircleCheck className="h-3.5 w-3.5 text-green-600" />
         <span
           className="min-w-0 truncate"
           title={connectedUserLabel ?? undefined}
@@ -276,7 +281,7 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
-      <IconAlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+      <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
       {t(($) => {
         return $.connectors.providerSettings.telegram.notConnected;
       })}
@@ -290,7 +295,7 @@ function TelegramBotIconFallback({ botId }: { botId: string }) {
       className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#2AABEE]/10 text-[#2AABEE]"
       data-testid={`telegram-bot-avatar-fallback-${botId}`}
     >
-      <IconRobot className="h-5 w-5" stroke={1.75} />
+      <Bot className="h-5 w-5" />
     </div>
   );
 }
@@ -457,7 +462,7 @@ function TelegramSetupStatusLine({
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
       <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-        <IconCircleCheck className="h-4 w-4 text-green-600" />
+        <CircleCheck className="h-4 w-4 text-green-600" />
         {t(($) => {
           return $.connectors.providerSettings.telegram.token.verified;
         })}
@@ -490,7 +495,7 @@ function AddTelegramBotTokenField({
         })}
       </label>
       <div className="relative">
-        <IconKey
+        <Key
           size={16}
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
@@ -607,7 +612,7 @@ function AddTelegramTokenStep({
             className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline"
           >
             {BOT_FATHER_HANDLE}
-            <IconExternalLink className="h-3.5 w-3.5" />
+            <ExternalLink className="h-3.5 w-3.5" />
           </a>
           {t(($) => {
             return $.connectors.providerSettings.telegram.token.send;
@@ -669,7 +674,7 @@ function AddTelegramDomainStep({
       </div>
       {confirmed ? (
         <div className="flex items-center gap-2 rounded-lg border border-green-600/20 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
-          <IconCircleCheck className="h-4 w-4" />
+          <CircleCheck className="h-4 w-4" />
           {t(($) => {
             return $.connectors.providerSettings.telegram.domain.detected;
           })}
@@ -713,7 +718,7 @@ function AddTelegramPrivacyStep({
       </div>
       {confirmed ? (
         <div className="flex items-center gap-2 rounded-lg border border-green-600/20 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
-          <IconCircleCheck className="h-4 w-4" />
+          <CircleCheck className="h-4 w-4" />
           {t(($) => {
             return $.connectors.providerSettings.telegram.privacy.off;
           })}
@@ -940,15 +945,12 @@ interface AddTelegramBotDialogInnerProps {
   setBotToken: (value: string) => void;
   setAgentId: (value: string | null) => void;
   setOpen: (open: boolean) => void;
-  navigate: (
-    pathname: typeof ROUTES.telegramConnect,
-    options: { searchParams: URLSearchParams },
-  ) => void;
+  closeAfterRegistration: (botId: string) => void;
+  onCloseComplete: (botId: string) => void;
   registerBot: (
     input: { botToken: string; defaultAgentId?: string },
     signal: AbortSignal,
   ) => Promise<TelegramBotStatus>;
-  pageSignal: AbortSignal;
   adding: boolean;
 }
 
@@ -964,6 +966,7 @@ interface AddTelegramBotDialogFrameProps {
   agentId: string | undefined;
   selectedAgentLabel: string;
   onOpenChange: (open: boolean) => void;
+  onCloseComplete: (botId: string) => void;
   onAddBot: () => void;
   onCancel: () => void;
   onAgentChange: (value: string | null) => void;
@@ -981,16 +984,29 @@ function AddTelegramBotDialogFrame({
   agentId,
   selectedAgentLabel,
   onOpenChange,
+  onCloseComplete,
   onAddBot,
   onCancel,
   onAgentChange,
 }: AddTelegramBotDialogFrameProps) {
   const { t } = useTranslation();
+  const completeClose = useSet(completeTelegramAddDialogClose$);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          const registeredBotId = completeClose();
+          if (registeredBotId) {
+            onCloseComplete(registeredBotId);
+          }
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button type="button" size="sm" disabled={disabled}>
-          <IconPlus size={16} />
+          <Plus size={16} />
           {t(($) => {
             return $.connectors.providerSettings.telegram.addBot;
           })}
@@ -1059,11 +1075,12 @@ function AddTelegramBotDialogInner({
   setBotToken,
   setAgentId,
   setOpen,
-  navigate,
+  closeAfterRegistration,
+  onCloseComplete,
   registerBot,
-  pageSignal,
   adding,
 }: AddTelegramBotDialogInnerProps) {
+  const pageSignal = useGet(pageSignal$);
   const setupState = useGet(telegramAddSetupState$);
   const [checkSetupLoadable, checkSetup] = useLoadableSet(
     checkTelegramAddSetupStatus$,
@@ -1120,12 +1137,7 @@ function AddTelegramBotDialogInner({
   };
 
   const handleRegisteredBot = (bot: TelegramBotStatus) => {
-    setBotToken("");
-    setAgentId(null);
-    setOpen(false);
-    navigate(ROUTES.telegramConnect, {
-      searchParams: new URLSearchParams({ bot: bot.id }),
-    });
+    closeAfterRegistration(bot.id);
   };
 
   const handleAddBot = () => {
@@ -1178,6 +1190,7 @@ function AddTelegramBotDialogInner({
       agentId={agentId}
       selectedAgentLabel={selectedAgentLabel}
       onOpenChange={handleOpenChange}
+      onCloseComplete={onCloseComplete}
       onAddBot={handleAddBot}
       onCancel={handleCancel}
       onAgentChange={setAgentId}
@@ -1293,7 +1306,7 @@ function AddTelegramBotDialogFooter({
           })
         ) : (
           <span className="inline-flex items-center gap-2">
-            <IconArrowLeft size={16} />
+            <ArrowLeft size={16} />
             {t(($) => {
               return $.connectors.providerSettings.telegram.steps.back;
             })}
@@ -1308,9 +1321,9 @@ function AddTelegramBotDialogFooter({
           onClick={onAddBot}
         >
           {adding ? (
-            <IconLoader2 size={16} className="animate-spin" />
+            <Loader2 size={16} className="animate-spin" />
           ) : (
-            <IconPlus size={16} />
+            <Plus size={16} />
           )}
           {adding
             ? t(($) => {
@@ -1329,7 +1342,7 @@ function AddTelegramBotDialogFooter({
         >
           {checkingTarget ? (
             <>
-              <IconLoader2 size={16} className="animate-spin" />
+              <Loader2 size={16} className="animate-spin" />
               {t(($) => {
                 return $.connectors.providerSettings.telegram.checking;
               })}
@@ -1339,7 +1352,7 @@ function AddTelegramBotDialogFooter({
               {t(($) => {
                 return $.connectors.providerSettings.telegram.steps.next;
               })}
-              <IconArrowRight size={16} />
+              <ArrowRight size={16} />
             </>
           )}
         </Button>
@@ -1369,16 +1382,17 @@ function AddTelegramBotDialog({
   const setBotToken = useSet(setTelegramBotTokenForm$);
   const setAgentId = useSet(setTelegramBotAgentForm$);
   const setOpen = useSet(setTelegramAddDialogOpen$);
+  const closeAfterRegistration = useSet(
+    closeTelegramAddDialogAfterRegistration$,
+  );
   const navigate = useSet(detachedNavigateTo$);
-  const pageSignal = useGet(pageSignal$);
   const [registerLoadable, registerBot] = useLoadableSet(registerTelegramBot$);
   const adding = registerLoadable.state === "loading";
 
-  const wrappedNavigate = (
-    pathname: typeof ROUTES.telegramConnect,
-    options: { searchParams: URLSearchParams },
-  ) => {
-    navigate(pathname, options);
+  const navigateToRegisteredBot = (botId: string) => {
+    navigate(ROUTES.telegramConnect, {
+      searchParams: new URLSearchParams({ bot: botId }),
+    });
   };
 
   return (
@@ -1394,9 +1408,9 @@ function AddTelegramBotDialog({
       setBotToken={setBotToken}
       setAgentId={setAgentId}
       setOpen={setOpen}
-      navigate={wrappedNavigate}
+      closeAfterRegistration={closeAfterRegistration}
+      onCloseComplete={navigateToRegisteredBot}
       registerBot={registerBot}
-      pageSignal={pageSignal}
       adding={adding}
     />
   );
@@ -1424,7 +1438,7 @@ function TelegramBotAgentSelect({
     <Select
       value={selectedValue}
       disabled={disabled || options.length === 0}
-      onValueChange={onDomEventFn(async (nextAgentId) => {
+      onValueChange={onDomEventFn(async (nextAgentId: string) => {
         if (nextAgentId === selectedValue) {
           return;
         }
@@ -1500,9 +1514,9 @@ function TelegramReinstallAction({
       }}
     >
       {reinstalling ? (
-        <IconLoader2 size={15} className="animate-spin" />
+        <Loader2 size={15} className="animate-spin" />
       ) : (
-        <IconRefresh size={15} />
+        <RefreshCw size={15} />
       )}
       {reinstalling
         ? t(($) => {
@@ -1589,10 +1603,12 @@ function TelegramMoreActions({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
           disabled={disabled}
-          className="shrink-0 rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          variant="quiet"
+          size="icon-sm"
+          className="shrink-0 disabled:opacity-50"
           aria-label={t(
             ($) => {
               return $.connectors.providerSettings.telegram.moreOptions;
@@ -1600,8 +1616,8 @@ function TelegramMoreActions({
             { bot: botLabel },
           )}
         >
-          <IconDotsVertical size={16} stroke={1.5} />
-        </button>
+          <EllipsisVertical size={16} />
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
         {bot.isConnected ? (
@@ -1614,7 +1630,7 @@ function TelegramMoreActions({
               { bot: botLabel },
             )}
             disabled={unlinking}
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={onDomEventFn(async () => {
               setUnlinkingBotId(bot.id);
               await bestEffort(disconnectAccount(bot.id, pageSignal));
@@ -1640,7 +1656,7 @@ function TelegramMoreActions({
               { bot: botLabel },
             )}
             disabled={uninstalling}
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-state-hover hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={() => {
               setUninstallDialogBotId(bot.id);
             }}
@@ -1816,8 +1832,39 @@ function TelegramBotRow({
   );
 }
 
+function TelegramReinstallDialogRoot({
+  children,
+  open,
+  reinstalling,
+}: {
+  readonly children: ReactNode;
+  readonly open: boolean;
+  readonly reinstalling: boolean;
+}) {
+  const close = useSet(setTelegramReinstallDialogBotId$);
+  const completeClose = useSet(completeTelegramReinstallDialogClose$);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !reinstalling) {
+          close(null);
+        }
+      }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
+        }
+      }}
+    >
+      {children}
+    </Dialog>
+  );
+}
+
 function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
   const { t } = useTranslation();
+  const open = useGet(telegramReinstallDialogOpen$);
   const token = useGet(telegramReinstallTokenForm$);
   const reinstallingBotId = useGet(telegramReinstallingBotId$);
   const setToken = useSet(setTelegramReinstallTokenForm$);
@@ -1834,14 +1881,7 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
       });
 
   return (
-    <Dialog
-      open={!!bot}
-      onOpenChange={(open) => {
-        if (!open && !reinstalling) {
-          setReinstallDialogBotId(null);
-        }
-      }}
-    >
+    <TelegramReinstallDialogRoot open={open} reinstalling={reinstalling}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
@@ -1892,7 +1932,7 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
               })}
             </label>
             <div className="relative">
-              <IconKey
+              <Key
                 size={16}
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
               />
@@ -1928,9 +1968,9 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
             </Button>
             <Button type="submit" disabled={!canSubmit} className="gap-2">
               {reinstalling ? (
-                <IconLoader2 size={16} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin" />
               ) : (
-                <IconRefresh size={16} />
+                <RefreshCw size={16} />
               )}
               {reinstalling
                 ? t(($) => {
@@ -1943,7 +1983,7 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
+    </TelegramReinstallDialogRoot>
   );
 }
 
@@ -2191,7 +2231,7 @@ export function ZeroTelegramSettingsPage() {
                     .backToIntegrations;
                 })}
               >
-                <IconArrowLeft size={17} stroke={1.8} />
+                <ArrowLeft size={17} />
                 {t(($) => {
                   return $.connectors.providerSettings.telegram
                     .backToIntegrations;

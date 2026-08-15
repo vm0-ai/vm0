@@ -7,7 +7,10 @@ use tokio::sync::oneshot;
 use tokio::time::Instant;
 use vsock_proto::{ExecControlStatus, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
-use crate::{ConnectionState, FrameWriteObserver, Shared, normal_operation_transition_error};
+use crate::{
+    ConnectionState, FrameWriteObserver, RouteId, RouteReservation, Shared,
+    normal_operation_transition_error,
+};
 
 use super::diagnostics::{ExecOperationDiagnostic, ExecOperationFrameDiagnostic};
 use super::types::exec_control_status_error;
@@ -47,32 +50,46 @@ impl Drop for ExecOperationFrameWriteGuard {
     }
 }
 
-pub(in crate::exec_operation) fn exec_cancel_write_observer(
+pub(in crate::exec_operation) fn admit_exec_cancel_frame(
     shared: &Arc<Shared>,
-    seq: u32,
-) -> FrameWriteObserver {
-    let shared = Arc::clone(shared);
-    FrameWriteObserver::new(move || {
-        mark_exec_operation_host_cancel_requested(&shared, seq);
-        Ok(())
-    })
+    route_id: RouteId,
+) -> io::Result<Option<RouteReservation>> {
+    shared.reserve_exec_route_for_frame(route_id)
 }
 
-fn mark_exec_operation_host_cancel_requested(shared: &Arc<Shared>, seq: u32) {
+pub(in crate::exec_operation) fn exec_cancel_write_observer(
+    shared: &Arc<Shared>,
+    route_id: RouteId,
+) -> FrameWriteObserver {
+    let shared = Arc::clone(shared);
+    FrameWriteObserver::new(move || mark_exec_operation_host_cancel_requested(&shared, route_id))
+}
+
+fn mark_exec_operation_host_cancel_requested(
+    shared: &Arc<Shared>,
+    route_id: RouteId,
+) -> io::Result<()> {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-    if let ConnectionState::Connected { operations, .. } = &mut *guard {
-        operations.mark_host_cancel_requested(seq);
+    match &mut *guard {
+        ConnectionState::Connected { operations, .. } => {
+            operations.mark_host_cancel_requested(route_id);
+            Ok(())
+        }
+        ConnectionState::Closed => Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "connection closed",
+        )),
     }
 }
 
 fn mark_exec_operation_host_cancel_requested_for_wait(
     shared: &Arc<Shared>,
-    seq: u32,
+    route_id: RouteId,
 ) -> io::Result<ExecCancelFrameWriteOutcome> {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     match &mut *guard {
         ConnectionState::Connected { operations, .. } => {
-            if operations.mark_host_cancel_requested(seq) {
+            if operations.mark_host_cancel_requested(route_id) {
                 Ok(ExecCancelFrameWriteOutcome::Sent)
             } else {
                 Ok(ExecCancelFrameWriteOutcome::AlreadyTerminal)
@@ -87,19 +104,23 @@ fn mark_exec_operation_host_cancel_requested_for_wait(
 
 pub(in crate::exec_operation) async fn send_exec_cancel_frame_for_wait_with_write_start(
     shared: &Arc<Shared>,
-    seq: u32,
+    route_id: RouteId,
     diagnostic: &ExecOperationDiagnostic,
     write_started_tx: Option<oneshot::Sender<()>>,
 ) -> io::Result<ExecCancelFrameWriteOutcome> {
+    let Some(_reservation) = shared.reserve_exec_route_for_frame(route_id)? else {
+        return Ok(ExecCancelFrameWriteOutcome::AlreadyTerminal);
+    };
     let payload = vsock_proto::encode_exec_cancel();
     let mut write_started_tx = write_started_tx;
+    let seq = route_id.wire_seq();
     let decision = write_frame_with_pre_write_decision(
         shared,
         MSG_EXEC_CANCEL,
         seq,
         &payload,
         Some(diagnostic.frame("cancel")),
-        || match mark_exec_operation_host_cancel_requested_for_wait(shared, seq)? {
+        || match mark_exec_operation_host_cancel_requested_for_wait(shared, route_id)? {
             ExecCancelFrameWriteOutcome::Sent => {
                 if let Some(write_started_tx) = write_started_tx.take() {
                     let _ = write_started_tx.send(());
@@ -117,11 +138,14 @@ pub(in crate::exec_operation) async fn send_exec_cancel_frame_for_wait_with_writ
     })
 }
 
-fn mark_exec_operation_possible_guest_write(shared: &Arc<Shared>, seq: u32) -> io::Result<()> {
+fn mark_exec_operation_possible_guest_write(
+    shared: &Arc<Shared>,
+    route_id: RouteId,
+) -> io::Result<()> {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     match &mut *guard {
         ConnectionState::Connected { operations, .. } => {
-            let Some(operation) = operations.get_mut(seq) else {
+            let Some(operation) = operations.get_mut(route_id) else {
                 return Err(io::Error::new(
                     io::ErrorKind::ConnectionReset,
                     "exec operation closed before frame write",
@@ -142,11 +166,11 @@ fn mark_exec_operation_possible_guest_write(shared: &Arc<Shared>, seq: u32) -> i
 
 pub(in crate::exec_operation) fn clear_exec_operation_stream_sender(
     shared: &Arc<Shared>,
-    seq: u32,
+    route_id: RouteId,
 ) {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { operations, .. } = &mut *guard
-        && let Some(operation) = operations.get_mut(seq)
+        && let Some(operation) = operations.get_mut(route_id)
     {
         operation.stream_tx = None;
     }
@@ -154,34 +178,41 @@ pub(in crate::exec_operation) fn clear_exec_operation_stream_sender(
 
 pub(in crate::exec_operation) fn remove_pending_exec_control(
     shared: &Arc<Shared>,
-    request_seq: u32,
+    request_route_id: RouteId,
 ) {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { operations, .. } = &mut *guard {
-        operations.remove_pending_control(request_seq);
+        operations.remove_pending_control(request_route_id);
     }
 }
 
 pub(in crate::exec_operation) fn mark_pending_exec_control_possible_guest_write(
     shared: &Arc<Shared>,
-    target_seq: u32,
-    request_seq: u32,
+    target_route_id: RouteId,
+    request_route_id: RouteId,
 ) -> io::Result<()> {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     match &mut *guard {
         ConnectionState::Connected { operations, .. } => {
-            let Some(operation) = operations.get_mut(target_seq) else {
+            let Some(operation) = operations.get_mut(target_route_id) else {
                 return Err(exec_control_status_error(
                     ExecControlStatus::Inactive,
                     "exec operation is not active",
                 ));
             };
+            let request_seq = request_route_id.wire_seq();
             let Some(pending) = operation.pending_controls.get_mut(&request_seq) else {
                 return Err(io::Error::new(
                     io::ErrorKind::ConnectionReset,
                     "exec control request closed before frame write",
                 ));
             };
+            if pending.route_id != request_route_id {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "exec control route was replaced before frame write",
+                ));
+            }
             pending
                 .normal_operation
                 .mark_possible_guest_write_started()
@@ -200,12 +231,12 @@ pub(in crate::exec_operation) async fn write_frame(
     seq: u32,
     payload: &[u8],
     diagnostic: Option<ExecOperationFrameDiagnostic>,
-    normal_operation_seq: Option<u32>,
+    normal_operation_route_id: Option<RouteId>,
     write_observer: FrameWriteObserver,
 ) -> io::Result<()> {
     write_frame_with_pre_write(shared, msg_type, seq, payload, diagnostic, || {
-        if let Some(normal_operation_seq) = normal_operation_seq {
-            mark_exec_operation_possible_guest_write(shared, normal_operation_seq)?;
+        if let Some(normal_operation_route_id) = normal_operation_route_id {
+            mark_exec_operation_possible_guest_write(shared, normal_operation_route_id)?;
         }
         write_observer.record_write_start()
     })
@@ -214,13 +245,14 @@ pub(in crate::exec_operation) async fn write_frame(
 
 pub(in crate::exec_operation) async fn write_exec_start_frame(
     shared: &Arc<Shared>,
-    seq: u32,
+    route_id: RouteId,
     payload: &[u8],
     diagnostic: &ExecOperationDiagnostic,
     tracks_normal_operation: bool,
     write_admission: FrameWriteObserver,
     write_observer: FrameWriteObserver,
 ) -> io::Result<()> {
+    let seq = route_id.wire_seq();
     write_frame_with_pre_write(
         shared,
         MSG_EXEC_START,
@@ -230,7 +262,7 @@ pub(in crate::exec_operation) async fn write_exec_start_frame(
         || {
             write_admission.record_write_start()?;
             if tracks_normal_operation {
-                mark_exec_operation_possible_guest_write(shared, seq)?;
+                mark_exec_operation_possible_guest_write(shared, route_id)?;
             }
             write_observer.record_write_start()
         },
@@ -255,6 +287,20 @@ pub(in crate::exec_operation) async fn write_frame_with_pre_write(
     Ok(())
 }
 
+pub(in crate::exec_operation) async fn write_encoded_frame_with_pre_write(
+    shared: &Arc<Shared>,
+    data: &[u8],
+    diagnostic: Option<ExecOperationFrameDiagnostic>,
+    pre_write: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let _decision = write_encoded_frame_with_pre_write_decision(shared, data, diagnostic, || {
+        pre_write()?;
+        Ok(FrameWriteDecision::Write)
+    })
+    .await?;
+    Ok(())
+}
+
 async fn write_frame_with_pre_write_decision(
     shared: &Arc<Shared>,
     msg_type: u8,
@@ -265,6 +311,15 @@ async fn write_frame_with_pre_write_decision(
 ) -> io::Result<FrameWriteDecision> {
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    write_encoded_frame_with_pre_write_decision(shared, &data, diagnostic, pre_write).await
+}
+
+async fn write_encoded_frame_with_pre_write_decision(
+    shared: &Arc<Shared>,
+    data: &[u8],
+    diagnostic: Option<ExecOperationFrameDiagnostic>,
+    pre_write: impl FnOnce() -> io::Result<FrameWriteDecision>,
+) -> io::Result<FrameWriteDecision> {
     let state = Arc::new(AtomicU8::new(EXEC_OPERATION_FRAME_WRITE_NOT_STARTED));
     let guard = ExecOperationFrameWriteGuard::new(Arc::clone(shared), Arc::clone(&state));
 
@@ -277,7 +332,7 @@ async fn write_frame_with_pre_write_decision(
     }
     state.store(EXEC_OPERATION_FRAME_WRITE_STARTED, Ordering::Release);
     let write_started_at = Instant::now();
-    let result = writer.write_all(&data).await;
+    let result = writer.write_all(data).await;
     let write_elapsed_ms = write_started_at.elapsed().as_millis();
     if result.is_ok() {
         state.store(EXEC_OPERATION_FRAME_WRITE_COMPLETED, Ordering::Release);

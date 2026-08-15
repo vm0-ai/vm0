@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import type { RoutePath } from "../../types/route.ts";
+import type { RoutePath } from "../route-paths";
 import { isWorkflowDetailRouteKey, ROUTES } from "../route-paths.ts";
 import { pathParams$, type RouterPathParams } from "../route.ts";
 import { activeRoute$ } from "../active-route.ts";
@@ -11,14 +11,14 @@ import {
 } from "../agent-chat.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { currentWorkflowDetail$ } from "../workflows-page/workflows-signals.ts";
 import { i18n } from "../../i18n/index.ts";
 import { locale$ } from "../locale.ts";
 
 interface MobileBreadcrumb {
   section: string;
-  sectionPath: RoutePath;
+  sectionPath?: RoutePath;
   sectionOptions?: {
     pathParams?: RouterPathParams;
     searchParams?: URLSearchParams;
@@ -67,7 +67,7 @@ const activityDetailBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
     get(locale$);
     const section = i18n.t(($) => {
-      return $.appShell.sidebar.navigation.activity;
+      return $.activity.detail.activity;
     });
     const features = await get(featureSwitch$);
     if (!features?.[FeatureSwitchKey.ZeroDebug]) {
@@ -80,12 +80,11 @@ const activityDetailBreadcrumb$ = computed(
       if (detail && detail.id === activityRunId) {
         return {
           section,
-          sectionPath: ROUTES.activities,
           name: detail.displayName ?? undefined,
         };
       }
     }
-    return { section, sectionPath: ROUTES.activities };
+    return { section };
   },
 );
 
@@ -167,7 +166,7 @@ export const mobileBreadcrumb$ = computed(
       return await get(teamDetailBreadcrumb$);
     }
 
-    if (route === "activities" || route === "activityDetail") {
+    if (route === "activityDetail") {
       return await get(activityDetailBreadcrumb$);
     }
 

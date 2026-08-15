@@ -1,17 +1,14 @@
 import { command } from "ccstate";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import {
   publishCancelToRunnerGroup,
   publishChatThreadDetailChangedSafely,
-  publishOrgSignal,
-  publishUserSignal,
   type RunnerCancellationMode,
 } from "../external/realtime";
 import { logger } from "../../lib/log";
@@ -91,6 +88,7 @@ export const cancelRun$ = command(
           orgId: agentRuns.orgId,
           sandboxId: agentRuns.sandboxId,
           runnerGroup: agentRuns.runnerGroup,
+          chatThreadId: agentRuns.chatThreadId,
           cancellationRecoveryCompleted:
             agentRuns.cancellationRecoveryCompleted,
         })
@@ -107,12 +105,6 @@ export const cancelRun$ = command(
         return notFound(`No such run: '${args.runId}'`);
       }
 
-      const [zeroRun] = await tx
-        .select({ chatThreadId: zeroRuns.chatThreadId })
-        .from(zeroRuns)
-        .where(eq(zeroRuns.id, args.runId))
-        .limit(1);
-
       if (run.status === "cancelled") {
         return {
           apiStartTime,
@@ -122,7 +114,7 @@ export const cancelRun$ = command(
           orgId: run.orgId,
           sandboxId: run.sandboxId,
           runnerGroup: run.runnerGroup,
-          chatThreadId: zeroRun?.chatThreadId ?? null,
+          chatThreadId: run.chatThreadId,
           cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
           runnerCancellationMode: args.runnerCancellationMode,
           alreadyCancelled: true,
@@ -162,7 +154,7 @@ export const cancelRun$ = command(
         orgId: run.orgId,
         sandboxId: run.sandboxId,
         runnerGroup: run.runnerGroup,
-        chatThreadId: zeroRun?.chatThreadId ?? null,
+        chatThreadId: run.chatThreadId,
         cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
         runnerCancellationMode: args.runnerCancellationMode,
         alreadyCancelled: false,
@@ -251,7 +243,6 @@ async function publishRunnerCancellation(
  * Post-cancel side effects:
  *  - Notify the runner group to halt the cancelled run (if it was
  *    running on a runner).
- *  - Publish org-level `queue:changed` and user-level `run:changed`.
  *  - Drain the org queue: promote one queued run to pending. The
  *    runner picks up pending runs on its existing poll loop.
  *  - Reconcile credits via `processOrgUsageEvents$` when the cancelled
@@ -280,32 +271,6 @@ export const dispatchCancelSideEffects$ = command(
     const db = set(writeDb$);
     await publishCancellationRecoveryEntered(result, signal);
     await publishRunnerCancellation(result, signal);
-    if (!recoveryRedrive) {
-      await tapError(
-        publishOrgSignal(result.orgId, "queue:changed"),
-        (error) => {
-          L.error("Failed to publish queue changed after run cancellation", {
-            runId: result.runId,
-            orgId: result.orgId,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-      await tapError(
-        publishUserSignal([result.userId], `run:changed:${result.runId}`, {
-          status: "cancelled",
-        }),
-        (error) => {
-          L.error("Failed to publish cancelled run changed signal", {
-            runId: result.runId,
-            userId: result.userId,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-    }
 
     const chatCallbackId = await chatCallbackIdForRun(db, result.runId);
     signal.throwIfAborted();

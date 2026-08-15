@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { IconX } from "@tabler/icons-react";
+import { X } from "lucide-react";
 import type { DesktopComputerUseState } from "../../computer-use-types";
 import {
   KeyValueList,
@@ -18,9 +18,11 @@ const RUNTIME_ERROR_SOURCE_LABELS = {
 } as const satisfies Record<RuntimeErrorEntry["source"], string>;
 
 export function RuntimeErrorDetailsModal({
+  latestError,
   onClose,
   state,
 }: {
+  readonly latestError: string;
   readonly onClose: () => void;
   readonly state: DesktopComputerUseState;
 }) {
@@ -36,8 +38,6 @@ export function RuntimeErrorDetailsModal({
     };
   }, [onClose]);
 
-  const latestError =
-    state.host.lastError ?? state.host.errorLog[0]?.message ?? "Unknown error";
   const rawDiagnostics = {
     status: state.host.status,
     hostId: state.host.hostId,
@@ -70,7 +70,7 @@ export function RuntimeErrorDetailsModal({
             aria-label="Close error details"
             onClick={onClose}
           >
-            <IconX size={18} />
+            <X size={18} />
           </button>
         </div>
         <div className="runtime-error-body">

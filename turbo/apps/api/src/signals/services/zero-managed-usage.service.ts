@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { command } from "ccstate";
 import { and, eq, gt, lte, sql, sum } from "drizzle-orm";
 
@@ -12,8 +12,13 @@ import {
   nullableDriverValueDecoder,
   pgInt8ToBigIntDecoder,
 } from "../../lib/db-structured-result";
+import {
+  resolveUsagePricingProvider,
+  usagePricingResolution$,
+} from "../context/usage-pricing-resolution";
 import { writeDb$ } from "../external/db";
 import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
+import { getSpendableUsagePackCredits } from "./usage-pack-credit.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
 export interface ManagedUsageErrorResponse {
@@ -82,15 +87,21 @@ function estimatedCredits(
 
 export const checkManagedCredits$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
+      readonly userId: string;
       readonly resource: ManagedUsageResource;
       readonly label: string;
     },
     signal: AbortSignal,
   ): Promise<ManagedUsageErrorResponse | null> => {
     const writeDb = set(writeDb$);
+    const pricingProvider = resolveUsagePricingProvider(
+      get(usagePricingResolution$),
+      args.resource.kind,
+      args.resource.provider,
+    );
     const expired = writeDb.$with("expired").as(
       writeDb
         .select({
@@ -127,7 +138,7 @@ export const checkManagedCredits$ = command(
         usagePricing,
         and(
           eq(usagePricing.kind, args.resource.kind),
-          eq(usagePricing.provider, args.resource.provider),
+          eq(usagePricing.provider, pricingProvider),
           eq(usagePricing.category, args.resource.category),
         ),
       );
@@ -150,7 +161,17 @@ export const checkManagedCredits$ = command(
       quantity,
     );
     const spendableCredits = credits - row.unsettledExpired;
-    if (spendableCredits >= requiredCredits) {
+    const usagePackCredits = BigInt(
+      await getSpendableUsagePackCredits(writeDb, {
+        orgId: args.orgId,
+        userId: args.userId,
+      }),
+    );
+    signal.throwIfAborted();
+    if (
+      usagePackCredits + (spendableCredits > 0n ? spendableCredits : 0n) >=
+      requiredCredits
+    ) {
       return null;
     }
 
@@ -159,10 +180,13 @@ export const checkManagedCredits$ = command(
       args.orgId,
     );
     signal.throwIfAborted();
-    const spendableUnits =
+    const sharedSpendableUnits =
       (spendableCredits > 0n ? spendableCredits : 0n) +
       BigInt(allowance?.remainingUnits ?? 0) -
       (spendableCredits < 0n ? -spendableCredits : 0n);
+    const spendableUnits =
+      usagePackCredits +
+      (sharedSpendableUnits > 0n ? sharedSpendableUnits : 0n);
     return spendableUnits >= requiredCredits ? null : insufficientCredits();
   },
 );

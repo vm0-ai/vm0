@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   integrationsPhoneMessageContract,
   integrationsPhoneUploadCompleteContract,
@@ -12,7 +12,7 @@ import {
   type PhoneUploadInitResponse,
   type SendPhoneMessageBody,
   type SendPhoneMessageResponse,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 import {
   ApiRequestError,
   getBaseUrl,
@@ -86,7 +86,7 @@ export async function downloadPhoneFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/zero/integrations/phone/download-file", baseUrl);
+  const url = new URL("/api/okou/integrations/phone/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
 
   const headers: Record<string, string> = {

@@ -1,11 +1,11 @@
 import { Buffer } from "node:buffer";
 
-import { webhookWorkflowAutomationContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookWorkflowAutomationContract } from "@okouai/api-contracts/contracts/webhooks";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
   dispatchWorkflowWebhook$,

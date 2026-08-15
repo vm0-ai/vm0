@@ -1,22 +1,21 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
 
 import {
   createZeroCreditCheckout,
   getZeroBillingStatus,
-  getZeroOrgMembers,
-} from "../../lib/api";
-import { withErrorHandler } from "../../lib/command";
+} from "../../lib/api/domains/zero-billing";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { decodeZeroTokenPayload } from "../../lib/api/zero-token";
 import { getPlatformOrigin } from "./doctor/platform-url";
 import {
   currentPlanAllowsVideo,
   currentPlanCanBuyCredits,
   currentTokenCanReadBilling,
-} from "./shared/billing-capabilities";
-import { planUpgradeUrl } from "./shared/billing-links";
+} from "../shared/billing-capabilities";
+import { planUpgradeUrl } from "../shared/billing-links";
 
 function parseCredits(value: string): number {
   const credits = Number(value.replaceAll(",", ""));
@@ -136,16 +135,7 @@ async function buyCredits(
     "buying credits requires billing:write capability",
   );
   const autoRecharge = autoRechargeConfiguration(options);
-  const members = await getZeroOrgMembers();
-  if (members.role !== "admin") {
-    console.log(
-      chalk.yellow(
-        "Only organization admins can buy credits. Run `zero doctor credit` to see the current credit status and org admins.",
-      ),
-    );
-    return;
-  }
-
+  // Only workspace admins can buy credits; the checkout route enforces it.
   const billing = currentTokenCanReadBilling()
     ? await getZeroBillingStatus()
     : null;

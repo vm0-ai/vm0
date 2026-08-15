@@ -1,22 +1,21 @@
 import { command, computed, type Computed } from "ccstate";
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { z } from "zod";
-import type { View } from "@slack/web-api";
 import {
   slackOrgStatusSchema,
   zeroIntegrationsSlackContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
-import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
-import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
-import { extractAndGroupVariables } from "@vm0/core/variable-expander";
+} from "@okouai/api-contracts/contracts/zero-integrations-slack";
+import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
+import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
+import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
+import { extractAndGroupVariables } from "@okouai/core/variable-expander";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+} from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -33,11 +32,12 @@ import {
   isSlackFileFetchError,
   MAX_SLACK_FILE_SIZE_BYTES,
 } from "../external/slack-file-fetcher";
+import type { SlackView } from "../external/slack-block-kit";
 import { createSlackClient } from "../external/slack-message-client";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { zeroConnectorList } from "../services/zero-connector-data.service";
-import { userSecrets, userVariables } from "../services/zero-user-data.service";
+import { userSecrets, userVariables } from "../services/user-data.service";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { env } from "../../lib/env";
@@ -49,7 +49,7 @@ const c = initContract();
 const slackDownloadFileContract = c.router({
   download: {
     method: "GET",
-    path: "/api/zero/integrations/slack/download-file",
+    path: "/api/okou/integrations/slack/download-file",
     headers: authHeadersSchema,
     query: z.object({
       file_id: z.string().optional(),
@@ -182,7 +182,6 @@ const getSlackStatusInner$ = computed(async (get) => {
     ? {
         workspaceName: status.workspaceName,
         defaultAgentName: status.defaultAgentName,
-        agentOrgSlug: status.agentOrgSlug,
         environment: await get(getSlackEnvironment$),
       }
     : {
@@ -214,14 +213,6 @@ function contractErrorResponse(
   };
 }
 
-async function publishAppHome(
-  client: ReturnType<typeof createSlackClient>,
-  userId: string,
-  view: View,
-): Promise<void> {
-  await client.views.publish({ user_id: userId, view });
-}
-
 function buildConnectUrl(workspaceId: string, slackUserId: string): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
   return `${env("APP_URL")}/settings/slack?${params.toString()}`;
@@ -230,7 +221,7 @@ function buildConnectUrl(workspaceId: string, slackUserId: string): string {
 function buildDisconnectedAppHomeView(args: {
   readonly workspaceId: string;
   readonly slackUserId: string;
-}): View {
+}): SlackView {
   return {
     type: "home",
     blocks: [
@@ -266,7 +257,7 @@ function buildDisconnectedAppHomeView(args: {
   };
 }
 
-function buildUninstalledAppHomeView(): View {
+function buildUninstalledAppHomeView(): SlackView {
   return {
     type: "home",
     blocks: [
@@ -371,7 +362,7 @@ const uninstallSlackIntegration$ = command(
       const view = buildUninstalledAppHomeView();
       await Promise.allSettled(
         connections.map((connection) => {
-          return publishAppHome(client, connection.slackUserId, view);
+          return client.publishAppHome(connection.slackUserId, view);
         }),
       );
       signal.throwIfAborted();
@@ -401,19 +392,16 @@ const uninstallSlackIntegration$ = command(
     );
     signal.throwIfAborted();
 
-    await bestEffort(
-      publishUserSignal(
-        Array.from(
-          new Set([
-            args.userId,
-            ...connections.map((connection) => {
-              return connection.vm0UserId;
-            }),
-          ]),
-        ),
-        "slack:changed",
+    await publishUserSignal(
+      Array.from(
+        new Set([
+          args.userId,
+          ...connections.map((connection) => {
+            return connection.vm0UserId;
+          }),
+        ]),
       ),
-      signal,
+      "slack:changed",
     );
     signal.throwIfAborted();
 
@@ -487,8 +475,7 @@ const disconnectSlackIntegration$ = command(
       ),
     );
     await bestEffort(
-      publishAppHome(
-        client,
+      client.publishAppHome(
         connection.slackUserId,
         buildDisconnectedAppHomeView({
           workspaceId: installation.slackWorkspaceId,
@@ -498,7 +485,7 @@ const disconnectSlackIntegration$ = command(
     );
     signal.throwIfAborted();
 
-    await bestEffort(publishUserSignal([args.userId], "slack:changed"), signal);
+    await publishUserSignal([args.userId], "slack:changed");
     signal.throwIfAborted();
 
     return { status: 200 as const, body: { ok: true } };

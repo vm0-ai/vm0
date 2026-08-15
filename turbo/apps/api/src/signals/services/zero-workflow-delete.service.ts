@@ -1,15 +1,16 @@
 import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { storages } from "@vm0/db/schema/storage";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+} from "@okouai/core/storage-names";
+import { storages } from "@okouai/db/schema/storage";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
+import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
 interface DeleteZeroWorkflowInput {
   readonly orgId: string;
@@ -26,12 +27,12 @@ export const deleteZeroWorkflow$ = command(
 
     const result = await writeDb.transaction(async (tx) => {
       const [workflow] = await tx
-        .select({ id: zeroWorkflows.id })
-        .from(zeroWorkflows)
+        .select({ id: workflows.id })
+        .from(workflows)
         .where(
           and(
-            eq(zeroWorkflows.orgId, args.orgId),
-            eq(zeroWorkflows.id, args.workflowId),
+            eq(workflows.orgId, args.orgId),
+            eq(workflows.id, args.workflowId),
           ),
         )
         .limit(1);
@@ -40,7 +41,17 @@ export const deleteZeroWorkflow$ = command(
         return { deleted: false as const };
       }
 
-      await tx.delete(zeroWorkflows).where(eq(zeroWorkflows.id, workflow.id));
+      const automations = await tx
+        .select({
+          orgId: workflowAutomations.orgId,
+          ownerUserId: workflowAutomations.ownerUserId,
+          eventType: workflowAutomations.eventType,
+          eventConfig: workflowAutomations.eventConfig,
+        })
+        .from(workflowAutomations)
+        .where(eq(workflowAutomations.workflowId, workflow.id));
+
+      await tx.delete(workflows).where(eq(workflows.id, workflow.id));
 
       const storageName = getCustomSkillStorageName(workflow.id);
       const [storage] = await tx
@@ -62,6 +73,7 @@ export const deleteZeroWorkflow$ = command(
       return {
         deleted: true as const,
         s3Prefix: storage?.s3Prefix ?? null,
+        automations,
       };
     });
     signal.throwIfAborted();
@@ -69,6 +81,15 @@ export const deleteZeroWorkflow$ = command(
     if (!result.deleted) {
       return false;
     }
+
+    await reconcileAutomationEventWatches(
+      {
+        db: writeDb,
+        automations: result.automations,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
 
     if (result.s3Prefix) {
       const bucket = env("R2_USER_STORAGES_BUCKET_NAME");

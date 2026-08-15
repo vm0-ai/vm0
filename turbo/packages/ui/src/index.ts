@@ -45,6 +45,7 @@ export {
 } from "./components/ui/command";
 export {
   DropdownMenu,
+  DropdownMenuPortal,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -59,7 +60,6 @@ export {
   PopoverContent,
   PopoverAnchor,
   PopoverClose,
-  PopoverOverlay,
 } from "./components/ui/popover";
 export {
   Select,
@@ -73,6 +73,12 @@ export {
   SelectScrollUpButton,
   SelectScrollDownButton,
 } from "./components/ui/select";
+export {
+  SegmentControl,
+  SegmentControlItem,
+  type SegmentControlProps,
+  type SegmentControlItemProps,
+} from "./components/ui/segment-control";
 export {
   Sheet,
   SheetPortal,
@@ -90,6 +96,7 @@ export {
   type RunningIndicatorProps,
 } from "./components/ui/running-indicator";
 export { Skeleton } from "./components/ui/skeleton";
+export { Slider } from "./components/ui/slider";
 export { Switch } from "./components/ui/switch";
 export {
   Table,
@@ -99,7 +106,8 @@ export {
   TableRow,
   TableCell,
 } from "./components/ui/table";
-export { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
+export { Textarea } from "./components/ui/textarea";
 export {
   Tooltip,
   TooltipTrigger,
@@ -109,6 +117,14 @@ export {
 
 // Utilities
 export { cn } from "./lib/utils";
+export {
+  BrandGithub,
+  BrandGoogleDrive,
+  BrandNotion,
+  BrandSlack,
+  BrandStripe,
+  BrandTelegram,
+} from "./components/icons/brand-icons";
 export {
   createCompositionGate,
   type CompositionGate,

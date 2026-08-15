@@ -6,38 +6,37 @@ import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthTokenContract,
-} from "@vm0/api-contracts/contracts/cli-auth";
+} from "@okouai/api-contracts/contracts/cli-auth";
 import {
   agentComposeApiContentSchema,
   type ZeroCapability,
-} from "@vm0/api-contracts/contracts/composes";
-import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/composes";
+import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   zeroUserPermissionGrantsContract,
   type ApplyUserPermissionGrant,
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  cronAggregateInsightsContract,
-  cronAggregateUsageContract,
   cronProcessUsageEventsContract,
-  cronReconcileBillingEntitlementsContract,
   cronTelegramCleanupContract,
-} from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/cron";
+import { testBillingReconciliationStateContract } from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
 import {
-  runnersNetworkPolicyRefreshContract,
+  runnersActiveInputsContract,
+  runnersConnectorRuntimeSyncContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
   type CanonicalStorageManifest,
   type StorageManifest,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import {
   zeroRunsCancelContract,
   zeroRunCreateBodySchema,
@@ -45,14 +44,14 @@ import {
   zeroRunRunnerContract,
   zeroRunsByIdContract,
   zeroRunsQueueContract,
-} from "@vm0/api-contracts/contracts/zero-runs";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-runs";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
-import { now } from "../../../../lib/time";
+import { now, withNowScopeForTest } from "../../../../lib/time";
 import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import {
   createDirectRunFixture,
@@ -65,10 +64,7 @@ import {
 } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
 import { cliAuthRoutes } from "../../cli-auth";
-import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
-import { cronAggregateUsageRoutes } from "../../cron-aggregate-usage";
 import { cronProcessUsageEventsRoutes } from "../../cron-process-usage-events";
-import { cronReconcileBillingEntitlementsRoutes } from "../../cron-reconcile-billing-entitlements";
 import { cronTelegramCleanupRoutes } from "../../cron-telegram-cleanup";
 import { runnersRoutes } from "../../runners";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
@@ -83,6 +79,7 @@ import {
   zeroRunFixtureContract,
   zeroRunFixtureRoutes,
 } from "../../test-zero-run-fixture";
+import { testBillingReconciliationStateRoutes } from "../../test-billing-reconciliation-state";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -100,10 +97,11 @@ interface RunsListQuery {
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
 >;
-type RunnerNetworkPolicyRefreshRequest = z.input<
-  (typeof runnersNetworkPolicyRefreshContract.refresh)["body"]
+type RunnerConnectorRuntimeSyncRequest = z.input<
+  (typeof runnersConnectorRuntimeSyncContract.sync)["body"]
 >;
-type RunnerNetworkPolicyRefreshStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
+type RunnerConnectorRuntimeSyncStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
+type RunnerActiveInputDeliveryStatus = 200 | 400 | 401 | 403 | 500;
 type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
@@ -150,14 +148,10 @@ interface ClerkOrganizationMembership {
 
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 
 const runRoutes = [
   ...cliAuthRoutes,
-  ...cronAggregateInsightsRoutes,
-  ...cronAggregateUsageRoutes,
   ...cronProcessUsageEventsRoutes,
-  ...cronReconcileBillingEntitlementsRoutes,
   ...cronTelegramCleanupRoutes,
   ...runnersRoutes,
   ...webhooksStripeRoutes,
@@ -222,10 +216,6 @@ function authenticate(
     },
   );
   return { authorization: "Bearer clerk-session" };
-}
-
-function cronHeaders(valid: boolean): AuthHeaders {
-  return valid ? { authorization: CRON_AUTHORIZATION } : {};
 }
 
 function runnerHeaders(valid: boolean): AuthHeaders {
@@ -385,6 +375,8 @@ export function createRunsApi(context: TestContext) {
       const customerId = options.customerId ?? `cus_bdd_${suffix}`;
       const subscriptionId = options.subscriptionId ?? `sub_bdd_${suffix}`;
       const invoiceId = `in_bdd_${suffix}`;
+      const periodEndUnix =
+        options.periodEndUnix ?? Math.floor(now() / 1000) + 30 * 86_400;
       context.mocks.stripe.customers.retrieve.mockResolvedValue({
         id: customerId,
         metadata: { orgId: actor.orgId },
@@ -420,13 +412,16 @@ export function createRunsApi(context: TestContext) {
             metadata: {},
             parent: { subscription_details: { subscription: subscriptionId } },
             lines: {
+              has_more: false,
               data: [
                 {
+                  price: {
+                    id: tier === "team" ? "price_bdd_team" : "price_bdd_pro",
+                  },
                   parent: { type: "subscription_item_details" },
                   period: {
-                    end:
-                      options.periodEndUnix ??
-                      Math.floor(now() / 1000) + 30 * 86_400,
+                    start: periodEndUnix - 30 * 86_400,
+                    end: periodEndUnix,
                   },
                 },
               ],
@@ -498,59 +493,100 @@ export function createRunsApi(context: TestContext) {
       return response.body;
     },
 
-    async refreshRunnerNetworkPolicy(runId: string, connectorSlug: string) {
-      const response = await accept(
-        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
-          headers: runnerHeaders(true),
-          params: { runId },
-          body: {
-            connectorSlugs: [connectorSlug],
-          },
-        }),
-        [200],
-      );
-      const [refresh] = response.body.refreshes;
-      if (!refresh) {
-        throw new Error(
-          `Expected refreshed network policy for ${connectorSlug}`,
-        );
-      }
-      return refresh;
-    },
-
-    async requestRefreshRunnerNetworkPolicy<
-      TStatus extends RunnerNetworkPolicyRefreshStatus,
+    async requestReserveRunnerActiveInputsAs<
+      TStatus extends RunnerActiveInputDeliveryStatus,
     >(
+      authorization: string | undefined,
       runId: string,
-      body: RunnerNetworkPolicyRefreshRequest,
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
-          headers: runnerHeaders(true),
+        runApp(context)(runnersActiveInputsContract).reserve({
+          headers: authorization === undefined ? {} : { authorization },
           params: { runId },
-          body,
+          body: {},
         }),
         statuses,
       );
     },
 
-    async requestRefreshRunnerNetworkPolicyAs<
-      TStatus extends RunnerNetworkPolicyRefreshStatus,
+    async reserveRunnerActiveInputs(sandboxToken: string, runId: string) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).reserve({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId },
+          body: {},
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestRecordRunnerActiveInputDeliveryAs<
+      TStatus extends RunnerActiveInputDeliveryStatus,
     >(
       authorization: string | undefined,
       runId: string,
-      body: RunnerNetworkPolicyRefreshRequest,
+      deliveryId: string,
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
+        runApp(context)(runnersActiveInputsContract).receipt({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { runId, deliveryId },
+          body: {},
+        }),
+        statuses,
+      );
+    },
+
+    async recordRunnerActiveInputDelivery(
+      sandboxToken: string,
+      runId: string,
+      deliveryId: string,
+    ) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).receipt({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId, deliveryId },
+          body: {},
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestSyncConnectorRuntimeAs<
+      TStatus extends RunnerConnectorRuntimeSyncStatus,
+    >(
+      authorization: string | undefined,
+      runId: string,
+      body: RunnerConnectorRuntimeSyncRequest,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        runApp(context)(runnersConnectorRuntimeSyncContract).sync({
           headers: authorization === undefined ? {} : { authorization },
           params: { runId },
           body,
         }),
         statuses,
       );
+    },
+
+    async syncConnectorRuntime(
+      runId: string,
+      body: RunnerConnectorRuntimeSyncRequest,
+    ) {
+      const response = await accept(
+        runApp(context)(runnersConnectorRuntimeSyncContract).sync({
+          headers: runnerHeaders(true),
+          params: { runId },
+          body,
+        }),
+        [200],
+      );
+      return response.body.results;
     },
 
     async createCliToken(actor: ApiTestUser): Promise<{
@@ -889,7 +925,7 @@ export function createRunsApi(context: TestContext) {
       const providerId = providerResponse.body.provider.id;
       const policies: OrgModelPolicyRequest["policies"] = [
         {
-          model: "claude-sonnet-4-6",
+          model: "claude-sonnet-5",
           isDefault: true,
           defaultProviderType: "anthropic-api-key",
           credentialScope: "org",
@@ -1071,13 +1107,17 @@ export function createRunsApi(context: TestContext) {
     },
 
     async heartbeatRunner(group?: string) {
-      return await accept(
-        runApp(context)(runnersHeartbeatContract).heartbeat({
-          headers: runnerHeaders(true),
-          body: runnerHeartbeatBody({ group }),
-        }),
-        [200],
-      );
+      // Claim setup must not let a feature-specific mocked clock prune runner
+      // rows owned by parallel files in the shared test database.
+      return await withNowScopeForTest(async () => {
+        return await accept(
+          runApp(context)(runnersHeartbeatContract).heartbeat({
+            headers: runnerHeaders(true),
+            body: runnerHeartbeatBody({ group }),
+          }),
+          [200],
+        );
+      });
     },
 
     async requestHeartbeatRunner(
@@ -1212,19 +1252,7 @@ export function createRunsApi(context: TestContext) {
     // This helper only checks auth rejection, so route handlers never scan the
     // shared test database.
     async requestSharedCronRoutesWithoutAuth() {
-      const headers = cronHeaders(false);
-      const aggregateUsage = await accept(
-        runApp(context)(cronAggregateUsageContract).aggregate({
-          headers,
-        }),
-        [401],
-      );
-      const aggregateInsights = await accept(
-        runApp(context)(cronAggregateInsightsContract).aggregate({
-          headers,
-        }),
-        [401],
-      );
+      const headers: AuthHeaders = {};
       const processUsageEvents = await accept(
         runApp(context)(cronProcessUsageEventsContract).process({
           headers,
@@ -1239,23 +1267,21 @@ export function createRunsApi(context: TestContext) {
       );
 
       return {
-        aggregateUsage,
-        aggregateInsights,
         processUsageEvents,
         telegramCleanup,
       };
     },
 
-    // Valid reconciliation coverage belongs in its owner file: the sweep
-    // retrieves every org needing reconciliation, and stale orgs created by the
-    // BILL-01 chains in run-lifecycle.bdd.test.ts must only be swept by that
-    // file's own Stripe mocks.
-    async reconcileBillingCron(validAuth: boolean) {
+    async reconcileBillingOrganizations(orgIds: readonly string[]) {
+      const client = setupAppWithRoutes({
+        context,
+        routes: testBillingReconciliationStateRoutes,
+      })(testBillingReconciliationStateContract);
       return await accept(
-        runApp(context)(cronReconcileBillingEntitlementsContract).reconcile({
-          headers: cronHeaders(validAuth),
+        client.reconcile({
+          body: { orgIds: [...orgIds] },
         }),
-        [200, 401],
+        [200],
       );
     },
   };

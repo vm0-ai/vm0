@@ -2,9 +2,10 @@ import { command } from "ccstate";
 import type {
   ModelProviderListResponse,
   ModelProviderResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { secrets } from "@vm0/db/schema/secret";
+} from "@okouai/api-contracts/contracts/model-providers";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { secrets } from "@okouai/db/schema/secret";
+import { modelProviderAccountSecrets } from "@okouai/db/schema/model-provider-account";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -47,29 +48,48 @@ type SerializedSubscriptionUsage = NonNullable<
   ModelProviderResponse["subscriptionUsage"]
 >;
 
-async function modelProviderSecretValues(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly names: readonly string[];
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<ReadonlyMap<string, string>> {
+async function modelProviderSecretValues(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly names: readonly string[];
+    readonly modelProviderAccountId?: string;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, string>> {
   if (args.names.length === 0) {
     return new Map();
   }
 
-  const rows = await args.db
-    .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, args.orgId),
-        eq(secrets.userId, args.userId),
-        eq(secrets.type, "model-provider"),
-        inArray(secrets.name, [...args.names]),
-      ),
-    );
+  const rows = args.modelProviderAccountId
+    ? await args.db
+        .select({
+          name: modelProviderAccountSecrets.name,
+          encryptedValue: modelProviderAccountSecrets.encryptedValue,
+        })
+        .from(modelProviderAccountSecrets)
+        .where(
+          and(
+            eq(
+              modelProviderAccountSecrets.modelProviderAccountId,
+              args.modelProviderAccountId,
+            ),
+            inArray(modelProviderAccountSecrets.name, [...args.names]),
+          ),
+        )
+    : await args.db
+        .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
+        .from(secrets)
+        .where(
+          and(
+            eq(secrets.orgId, args.orgId),
+            eq(secrets.userId, args.userId),
+            eq(secrets.type, "model-provider"),
+            inArray(secrets.name, [...args.names]),
+          ),
+        );
 
   const values = new Map<string, string>();
   for (const row of rows) {
@@ -80,7 +100,7 @@ async function modelProviderSecretValues(args: {
         args.featureSwitchContext,
       ),
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
   return values;
 }
@@ -142,22 +162,29 @@ function withSubscriptionMetadata(
   };
 }
 
-async function refreshCodexProvider(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly provider: ModelProviderResponse;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<ModelProviderResponse> {
-  const secretValues = await modelProviderSecretValues({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    names: CODEX_USAGE_SECRET_NAMES,
-    featureSwitchContext: args.featureSwitchContext,
-    signal: args.signal,
-  });
+async function refreshCodexProvider(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly provider: ModelProviderResponse;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<ModelProviderResponse> {
+  const secretValues = await modelProviderSecretValues(
+    {
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      names: CODEX_USAGE_SECRET_NAMES,
+      ...(args.provider.modelProviderId
+        ? { modelProviderAccountId: args.provider.id }
+        : {}),
+      featureSwitchContext: args.featureSwitchContext,
+    },
+    signal,
+  );
   const accessToken = secretValues.get("CHATGPT_ACCESS_TOKEN");
   const accountId = secretValues.get("CHATGPT_ACCOUNT_ID");
   const idToken = secretValues.get("CHATGPT_ID_TOKEN");
@@ -165,62 +192,75 @@ async function refreshCodexProvider(args: {
     return args.provider;
   }
 
-  const metadata = await fetchCodexUsageMetadata({
-    accessToken,
-    accountId,
-    idToken,
-    signal: args.signal,
-  });
+  const metadata = await fetchCodexUsageMetadata(
+    {
+      accessToken,
+      accountId,
+      idToken,
+    },
+    signal,
+  );
 
   return withSubscriptionMetadata(args.provider, metadata);
 }
 
-async function refreshClaudeCodeProvider(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly provider: ModelProviderResponse;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<ModelProviderResponse> {
-  const secretValues = await modelProviderSecretValues({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    names: [CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME],
-    featureSwitchContext: args.featureSwitchContext,
-    signal: args.signal,
-  });
+async function refreshClaudeCodeProvider(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly provider: ModelProviderResponse;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<ModelProviderResponse> {
+  const secretValues = await modelProviderSecretValues(
+    {
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      names: [CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME],
+      ...(args.provider.modelProviderId
+        ? { modelProviderAccountId: args.provider.id }
+        : {}),
+      featureSwitchContext: args.featureSwitchContext,
+    },
+    signal,
+  );
   const accessToken = secretValues.get(CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME);
   if (!accessToken) {
     return args.provider;
   }
 
-  const metadata = await fetchClaudeCodeSubscriptionMetadata({
-    accessToken,
-    signal: args.signal,
-  });
+  const metadata = await fetchClaudeCodeSubscriptionMetadata(
+    {
+      accessToken,
+    },
+    signal,
+  );
 
   return withSubscriptionMetadata(args.provider, metadata);
 }
 
-async function refreshProvider(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly provider: ModelProviderResponse;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<ModelProviderResponse> {
+async function refreshProvider(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly provider: ModelProviderResponse;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<ModelProviderResponse> {
   if (args.provider.needsReconnect) {
     return args.provider;
   }
 
   if (args.provider.type === "codex-oauth-token") {
-    return await refreshCodexProvider(args);
+    return await refreshCodexProvider(args, signal);
   }
   if (args.provider.type === "claude-code-oauth-token") {
-    return await refreshClaudeCodeProvider(args);
+    return await refreshClaudeCodeProvider(args, signal);
   }
   return args.provider;
 }
@@ -249,14 +289,16 @@ export const refreshPersonalModelProviderSubscriptionUsage$ = command(
       args.result.modelProviders.map(async (provider) => {
         return (
           (await tapError(
-            refreshProvider({
-              db: database,
-              orgId: args.orgId,
-              userId: args.userId,
-              provider,
-              featureSwitchContext,
+            refreshProvider(
+              {
+                db: database,
+                orgId: args.orgId,
+                userId: args.userId,
+                provider,
+                featureSwitchContext,
+              },
               signal,
-            }),
+            ),
             (error) => {
               L.warn(
                 "failed to refresh personal model provider subscription usage",
@@ -289,6 +331,7 @@ export const consumePersonalCodexRateLimitResetCredit$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly idempotencyKey: string;
+      readonly modelProviderAccountId?: string;
     },
     signal: AbortSignal,
   ): Promise<
@@ -303,25 +346,30 @@ export const consumePersonalCodexRateLimitResetCredit$ = command(
     );
     signal.throwIfAborted();
 
-    const secretValues = await modelProviderSecretValues({
-      db: database,
-      orgId: args.orgId,
-      userId: args.userId,
-      names: CODEX_USAGE_SECRET_NAMES,
-      featureSwitchContext,
+    const secretValues = await modelProviderSecretValues(
+      {
+        db: database,
+        orgId: args.orgId,
+        userId: args.userId,
+        names: CODEX_USAGE_SECRET_NAMES,
+        modelProviderAccountId: args.modelProviderAccountId,
+        featureSwitchContext,
+      },
       signal,
-    });
+    );
     const accessToken = secretValues.get("CHATGPT_ACCESS_TOKEN");
     const accountId = secretValues.get("CHATGPT_ACCOUNT_ID");
     if (!accessToken || !accountId) {
       return notFound("Resource not found");
     }
 
-    return await consumeCodexRateLimitResetCredit({
-      accessToken,
-      accountId,
-      idempotencyKey: args.idempotencyKey,
+    return await consumeCodexRateLimitResetCredit(
+      {
+        accessToken,
+        accountId,
+        idempotencyKey: args.idempotencyKey,
+      },
       signal,
-    });
+    );
   },
 );

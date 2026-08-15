@@ -3,8 +3,8 @@ import chalk from "chalk";
 import {
   hostedArtifactKindSchema,
   type HostedArtifactKind,
-} from "@vm0/api-contracts/contracts/zero-host";
-import { withErrorHandler } from "../../../lib/command";
+} from "@okouai/api-contracts/contracts/zero-host";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { publishStaticSite } from "../../../lib/host/publish-static-site";
 import { cloneHostedSiteCommand } from "./clone";
 import { versionsHostedSiteCommand } from "./versions";
@@ -46,15 +46,15 @@ export const zeroHostCommand = new Command()
     "after",
     `
 Examples:
-  Publish a Vite build:  zero host ./dist --site my-product-demo --spa
-  Publish next version:  zero host ./dist --site my-product-demo --spa
-  Reuse a legacy URL:    zero host ./dist --site my-product-demo --slug-suffix release-01 --spa
-  List site versions:    zero host versions my-product-demo
-  Clone a hosted site:   zero host clone my-product-demo ./site
-  Machine readable:     zero host ./dist --site my-product-demo --spa --json
+  Publish a Vite build:  okou host ./dist --site my-product-demo --spa
+  Publish next version:  okou host ./dist --site my-product-demo --spa
+  Reuse a legacy URL:    okou host ./dist --site my-product-demo --slug-suffix release-01 --spa
+  List site versions:    okou host versions my-product-demo
+  Clone a hosted site:   okou host clone my-product-demo ./site
+  Machine readable:     okou host ./dist --site my-product-demo --spa --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN (publish requires host:write; clone requires host:read)
+  - Authenticates via OKOU_TOKEN (publish requires host:write; clone requires host:read)
   - With hosted artifact versions enabled, reusing --site publishes behind the same alias
   - Otherwise, reuse both --site and --slug-suffix to keep a legacy URL
   - The directory must include index.html

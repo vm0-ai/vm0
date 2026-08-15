@@ -298,12 +298,14 @@ function subscriptionUsageFromRateLimit(
   };
 }
 
-export async function fetchCodexUsageMetadata(args: {
-  readonly accessToken: string;
-  readonly accountId: string;
-  readonly idToken?: string | null;
-  readonly signal: AbortSignal;
-}): Promise<CodexUsageMetadata | null> {
+export async function fetchCodexUsageMetadata(
+  args: {
+    readonly accessToken: string;
+    readonly accountId: string;
+    readonly idToken?: string | null;
+  },
+  signal: AbortSignal,
+): Promise<CodexUsageMetadata | null> {
   const response = await fetch(CHATGPT_USAGE_URL, {
     method: "GET",
     headers: {
@@ -312,7 +314,7 @@ export async function fetchCodexUsageMetadata(args: {
       originator: CODEX_ORIGINATOR,
       "user-agent": CODEX_USER_AGENT,
     },
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -358,12 +360,14 @@ function codexResetCreditOutcome(
   }
 }
 
-export async function consumeCodexRateLimitResetCredit(args: {
-  readonly accessToken: string;
-  readonly accountId: string;
-  readonly idempotencyKey: string;
-  readonly signal: AbortSignal;
-}): Promise<{
+export async function consumeCodexRateLimitResetCredit(
+  args: {
+    readonly accessToken: string;
+    readonly accountId: string;
+    readonly idempotencyKey: string;
+  },
+  signal: AbortSignal,
+): Promise<{
   readonly outcome: CodexRateLimitResetCreditOutcome;
 }> {
   const response = await fetch(CHATGPT_RESET_CREDITS_CONSUME_URL, {
@@ -378,7 +382,7 @@ export async function consumeCodexRateLimitResetCredit(args: {
     body: JSON.stringify({
       redeem_request_id: args.idempotencyKey,
     }),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {

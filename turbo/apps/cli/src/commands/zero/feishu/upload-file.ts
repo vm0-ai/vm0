@@ -2,13 +2,13 @@ import { readFileSync, statSync } from "node:fs";
 import { basename, extname } from "node:path";
 
 import { Command } from "commander";
-import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/integrations";
+import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@okouai/api-contracts/contracts/integrations";
 
 import {
   completeFeishuFileUpload,
   initFeishuFileUpload,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/integrations-feishu";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   ".csv": "text/csv",
@@ -58,10 +58,10 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload to a chat:    zero feishu upload-file -f /tmp/report.pdf -c oc_xxx
-  Send a DM:           zero feishu upload-file -f /tmp/report.pdf -u ou_xxx
-  Reply with a file:   zero feishu upload-file -f /tmp/report.pdf -r om_xxx --thread
-  Select a custom app: zero feishu upload-file -f /tmp/report.pdf -i <installation-id> -c oc_xxx
+  Upload to a chat:    okou feishu upload-file -f /tmp/report.pdf -c oc_xxx
+  Send a DM:           okou feishu upload-file -f /tmp/report.pdf -u ou_xxx
+  Reply with a file:   okou feishu upload-file -f /tmp/report.pdf -r om_xxx --thread
+  Select a custom app: okou feishu upload-file -f /tmp/report.pdf -i <installation-id> -c oc_xxx
 
 Output:
   Prints a JSON object to stdout on success:
@@ -114,7 +114,6 @@ Notes:
         filename,
         contentType,
         length: fileSize,
-        supportsUploadHeaders: true,
       });
       const uploadResponse = await fetch(prepared.uploadUrl, {
         method: "PUT",

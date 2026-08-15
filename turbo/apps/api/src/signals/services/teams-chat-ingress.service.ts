@@ -1,9 +1,11 @@
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import { teamsChatThreadRoutes } from "@okouai/db/schema/teams-chat-thread-route";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import type { Tx } from "../../lib/db-types";
 
 interface TeamsChatThreadRouteKey {
   readonly connectionId: string;
@@ -20,12 +22,11 @@ interface TeamsChatThreadRouteBinding extends TeamsChatThreadRouteKey {
 interface LoadedTeamsChatThreadRoute extends TeamsChatThreadRouteBinding {
   readonly agentComposeId: string;
   readonly selectedModel: string | null;
+  readonly codexServiceTier: "fast" | null;
   readonly computerUseHostId: string | null;
 }
 
-type TeamsChatThreadTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
+type TeamsChatThreadTransaction = Tx;
 
 function routeWhere(key: TeamsChatThreadRouteKey) {
   return and(
@@ -50,6 +51,7 @@ async function loadRoute(
       chatThreadId: teamsChatThreadRoutes.chatThreadId,
       agentComposeId: chatThreads.agentComposeId,
       selectedModel: chatThreads.selectedModel,
+      codexServiceTier: chatThreads.codexServiceTier,
       computerUseHostId: chatThreads.computerUseHostId,
     })
     .from(teamsChatThreadRoutes)
@@ -69,6 +71,7 @@ async function createCanonicalTeamsChatThread(
     readonly orgId: string;
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
+    readonly serviceTier: ChatThreadServiceTier | null;
     readonly currentTime: Date;
   },
   computerUseHostId: string | null = null,
@@ -80,6 +83,7 @@ async function createCanonicalTeamsChatThread(
       agentComposeId: args.agentComposeId,
       computerUseHostId,
       selectedModel: args.selectedModel,
+      codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
       title: null,
       lastReadAt: args.currentTime,
       lastMessageAt: args.currentTime,
@@ -99,6 +103,7 @@ async function appendCanonicalTeamsChatThreadCreatedEvent(
     readonly orgId: string;
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
+    readonly serviceTier: ChatThreadServiceTier | null;
   },
   thread: { readonly id: string; readonly createdAt: Date },
   computerUseHostId: string | null | undefined,
@@ -111,6 +116,7 @@ async function appendCanonicalTeamsChatThreadCreatedEvent(
     agentComposeId: args.agentComposeId,
     title: null,
     selectedModel: args.selectedModel,
+    serviceTier: args.serviceTier,
     computerUseHostId,
     createdAt: thread.createdAt,
   });
@@ -122,6 +128,7 @@ async function reconcileExistingRoute(
     readonly orgId: string;
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
+    readonly serviceTier: ChatThreadServiceTier | null;
     readonly currentTime: Date;
   },
   existing: LoadedTeamsChatThreadRoute,
@@ -161,14 +168,22 @@ async function reconcileExistingRoute(
     return route;
   }
 
-  if (existing.selectedModel !== args.selectedModel) {
+  const selectedModelChanged = existing.selectedModel !== args.selectedModel;
+  const codexServiceTier = args.serviceTier === "priority" ? "fast" : null;
+  const serviceTierChanged = existing.codexServiceTier !== codexServiceTier;
+  if (selectedModelChanged || serviceTierChanged) {
     const [thread] = await tx
       .update(chatThreads)
       .set({
-        modelProviderId: null,
-        modelProviderType: null,
-        modelProviderCredentialScope: null,
-        selectedModel: args.selectedModel,
+        ...(selectedModelChanged
+          ? {
+              modelProviderId: null,
+              modelProviderType: null,
+              modelProviderCredentialScope: null,
+              selectedModel: args.selectedModel,
+            }
+          : {}),
+        codexServiceTier,
         updatedAt: args.currentTime,
       })
       .where(eq(chatThreads.id, existing.chatThreadId))
@@ -176,15 +191,28 @@ async function reconcileExistingRoute(
     if (!thread) {
       throw new Error("Failed to update canonical Teams chat thread model");
     }
-    await appendChatThreadEvent(tx, {
-      kind: "model_selection_updated",
-      userId: args.userId,
-      orgId: args.orgId,
-      chatThreadId: existing.chatThreadId,
-      agentComposeId: existing.agentComposeId,
-      selectedModel: args.selectedModel,
-      createdAt: args.currentTime,
-    });
+    if (selectedModelChanged) {
+      await appendChatThreadEvent(tx, {
+        kind: "model_selection_updated",
+        userId: args.userId,
+        orgId: args.orgId,
+        chatThreadId: existing.chatThreadId,
+        agentComposeId: existing.agentComposeId,
+        selectedModel: args.selectedModel,
+        createdAt: args.currentTime,
+      });
+    }
+    if (serviceTierChanged) {
+      await appendChatThreadEvent(tx, {
+        kind: "service_tier_updated",
+        userId: args.userId,
+        orgId: args.orgId,
+        chatThreadId: existing.chatThreadId,
+        agentComposeId: existing.agentComposeId,
+        serviceTier: args.serviceTier,
+        createdAt: args.currentTime,
+      });
+    }
   }
   return existing;
 }
@@ -195,6 +223,7 @@ export async function ensureTeamsChatThreadRoute(
     readonly orgId: string;
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
+    readonly serviceTier: ChatThreadServiceTier | null;
     readonly currentTime: Date;
   },
 ): Promise<TeamsChatThreadRouteBinding> {

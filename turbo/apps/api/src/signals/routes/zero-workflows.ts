@@ -3,23 +3,23 @@ import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getAllFeatureStates,
   isFeatureEnabled,
-} from "@vm0/core/feature-switch";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
-import { getCustomSkillStorageName } from "@vm0/core/storage-names";
-import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/core/feature-switch";
+import { SEED_SKILLS } from "@okouai/core/seed-skills";
+import { getCustomSkillStorageName } from "@okouai/core/storage-names";
+import { synthesizeWorkflowSkillMd } from "@okouai/core/skill-document";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflowWebhookAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
+  workflowAutomations,
+  workflowWebhookAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { and, eq, ne } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -32,6 +32,7 @@ import {
   measureApiDispatchTiming,
 } from "../services/api-dispatch-timing.service";
 import {
+  autonomyBudgetExhausted,
   conflict,
   connectorReadinessTimeout,
   notFound,
@@ -50,8 +51,8 @@ import {
 } from "../services/zero-workflow-user-automation-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { detectWorkflowConnectorReadiness$ } from "../services/zero-workflow-connector-readiness.service";
-import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
-import { loadWorkflowVolumeFiles } from "../services/zero-workflow-volume.service";
+import { createUserMessageDocument } from "../services/chat-user-message.service";
+import { loadWorkflowVolumeFiles } from "../services/workflow-volume.service";
 import {
   encryptWorkflowWebhookSecret,
   encryptWorkflowWebhookToken,
@@ -60,6 +61,14 @@ import {
   mintWorkflowWebhookToken,
 } from "../services/workflow-webhook-automation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import {
+  insertWorkflowAutomation,
+  workflowAutomationColumns,
+} from "../services/autonomy-budget-schema.service";
+import {
+  childAutonomyBudget,
+  loadOwnedRunAutonomyBudget,
+} from "../services/autonomy-budget.service";
 import { settle } from "../utils";
 import {
   loadVisibleWorkflowById,
@@ -71,7 +80,8 @@ import {
   type WorkflowRow,
 } from "../services/zero-workflow-data.service";
 import type { RouteEntry } from "../route-entry";
-import { sendNormalEvent$ } from "./zero-chat-events";
+import { sendNormalEvent$ } from "../services/zero-chat-events.command";
+import type { Tx } from "../../lib/db-types";
 
 const log = logger("api:zero:workflow-connector-readiness");
 
@@ -170,16 +180,16 @@ async function publicWorkflowSlugExists(
   },
 ): Promise<boolean> {
   const [existing] = await db
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
+    .select({ id: workflows.id })
+    .from(workflows)
     .where(
       and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.agentId),
-        eq(zeroWorkflows.name, args.name),
-        eq(zeroWorkflows.visibility, "public"),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.agentId, args.agentId),
+        eq(workflows.name, args.name),
+        eq(workflows.visibility, "public"),
         args.excludeWorkflowId
-          ? ne(zeroWorkflows.id, args.excludeWorkflowId)
+          ? ne(workflows.id, args.excludeWorkflowId)
           : undefined,
       ),
     )
@@ -216,17 +226,17 @@ async function privateWorkflowSlugExists(
   },
 ): Promise<boolean> {
   const [existing] = await db
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
+    .select({ id: workflows.id })
+    .from(workflows)
     .where(
       and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.agentId),
-        eq(zeroWorkflows.ownerUserId, args.ownerUserId),
-        eq(zeroWorkflows.name, args.name),
-        eq(zeroWorkflows.visibility, "private"),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.agentId, args.agentId),
+        eq(workflows.ownerUserId, args.ownerUserId),
+        eq(workflows.name, args.name),
+        eq(workflows.visibility, "private"),
         args.excludeWorkflowId
-          ? ne(zeroWorkflows.id, args.excludeWorkflowId)
+          ? ne(workflows.id, args.excludeWorkflowId)
           : undefined,
       ),
     )
@@ -381,7 +391,7 @@ const createWorkflowInner$ = command(
     const currentTime = nowDate();
     const inserted = await writeDb.transaction(async (tx) => {
       const [workflow] = await tx
-        .insert(zeroWorkflows)
+        .insert(workflows)
         .values({
           orgId: auth.orgId,
           agentId: agent.id,
@@ -396,7 +406,7 @@ const createWorkflowInner$ = command(
           createdAt: currentTime,
           updatedAt: currentTime,
         })
-        .returning({ id: zeroWorkflows.id });
+        .returning({ id: workflows.id });
 
       if (!workflow) {
         return null;
@@ -697,7 +707,7 @@ const deleteWorkflowInner$ = command(
   },
 );
 
-type WorkflowCopyTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WorkflowCopyTransaction = Tx;
 
 interface CopyWorkflowRuntimeArgs {
   readonly orgId: string;
@@ -705,6 +715,7 @@ interface CopyWorkflowRuntimeArgs {
   readonly sourceWorkflow: WorkflowRow;
   readonly targetAgentId: string;
   readonly currentTime: Date;
+  readonly inheritedAutonomyBudget?: number;
 }
 
 interface CopyWorkflowScopedRowsArgs {
@@ -713,6 +724,7 @@ interface CopyWorkflowScopedRowsArgs {
   readonly sourceWorkflowId: string;
   readonly targetWorkflowId: string;
   readonly currentTime: Date;
+  readonly inheritedAutonomyBudget?: number;
 }
 
 interface CopyWorkflowAutomationRowsArgs extends CopyWorkflowScopedRowsArgs {
@@ -725,7 +737,7 @@ async function insertCopiedWorkflowRow(
   args: CopyWorkflowRuntimeArgs,
 ): Promise<{ readonly id: string } | undefined> {
   const [workflow] = await tx
-    .insert(zeroWorkflows)
+    .insert(workflows)
     .values({
       orgId: args.orgId,
       agentId: args.targetAgentId,
@@ -740,7 +752,7 @@ async function insertCopiedWorkflowRow(
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
     })
-    .returning({ id: zeroWorkflows.id });
+    .returning({ id: workflows.id });
   return workflow;
 }
 
@@ -756,13 +768,11 @@ async function copyWorkflowWebhookAutomationConfig(
 ): Promise<void> {
   const [sourceWebhook] = await tx
     .select({
-      encryptedSecret: zeroWorkflowWebhookAutomations.encryptedSecret,
-      secretLastFour: zeroWorkflowWebhookAutomations.secretLastFour,
+      encryptedSecret: workflowWebhookAutomations.encryptedSecret,
+      secretLastFour: workflowWebhookAutomations.secretLastFour,
     })
-    .from(zeroWorkflowWebhookAutomations)
-    .where(
-      eq(zeroWorkflowWebhookAutomations.automationId, args.sourceAutomationId),
-    )
+    .from(workflowWebhookAutomations)
+    .where(eq(workflowWebhookAutomations.automationId, args.sourceAutomationId))
     .limit(1);
   const token = mintWorkflowWebhookToken();
   let encryptedSecret: string;
@@ -779,7 +789,7 @@ async function copyWorkflowWebhookAutomationConfig(
     secretLastFour = secret.slice(-4);
   }
 
-  await tx.insert(zeroWorkflowWebhookAutomations).values({
+  await tx.insert(workflowWebhookAutomations).values({
     automationId: args.targetAutomationId,
     tokenHash: hashWorkflowWebhookToken(token),
     encryptedToken: await encryptWorkflowWebhookToken(token, {
@@ -796,32 +806,31 @@ async function copyWorkflowWebhookAutomationConfig(
 async function copyWorkflowAutomationRow(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowScopedRowsArgs & {
-    readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
+    readonly automation: typeof workflowAutomations.$inferSelect;
   },
 ): Promise<void> {
-  const [copiedAutomation] = await tx
-    .insert(zeroWorkflowAutomations)
-    .values({
-      orgId: args.orgId,
-      workflowId: args.targetWorkflowId,
-      ownerUserId: args.userId,
-      kind: args.automation.kind,
-      eventType: args.automation.eventType,
-      eventConfig: args.automation.eventConfig,
-      scheduleType: args.automation.scheduleType,
-      cronExpression: args.automation.cronExpression,
-      intervalSeconds: args.automation.intervalSeconds,
-      atTime: args.automation.atTime,
-      timezone: args.automation.timezone,
-      enabled: args.automation.enabled,
-      nextRunAt: args.automation.nextRunAt,
-      lastRunAt: null,
-      lastRunId: null,
-      consecutiveFailures: 0,
-      createdAt: args.currentTime,
-      updatedAt: args.currentTime,
-    })
-    .returning({ id: zeroWorkflowAutomations.id });
+  const copiedAutomation = await insertWorkflowAutomation(tx, {
+    orgId: args.orgId,
+    workflowId: args.targetWorkflowId,
+    ownerUserId: args.userId,
+    kind: args.automation.kind,
+    eventType: args.automation.eventType,
+    eventConfig: args.automation.eventConfig,
+    scheduleType: args.automation.scheduleType,
+    cronExpression: args.automation.cronExpression,
+    intervalSeconds: args.automation.intervalSeconds,
+    atTime: args.automation.atTime,
+    timezone: args.automation.timezone,
+    enabled: args.automation.enabled,
+    nextRunAt: args.automation.nextRunAt,
+    lastRunAt: null,
+    lastRunId: null,
+    consecutiveFailures: 0,
+    autonomyBudget:
+      args.inheritedAutonomyBudget ?? args.automation.autonomyBudget,
+    createdAt: args.currentTime,
+    updatedAt: args.currentTime,
+  });
   if (!copiedAutomation) {
     throw new Error("Failed to copy workflow automation");
   }
@@ -845,13 +854,13 @@ async function copyWorkflowUserAutomations(
   args: CopyWorkflowAutomationRowsArgs,
 ): Promise<void> {
   const rows = await tx
-    .select()
-    .from(zeroWorkflowAutomations)
+    .select(workflowAutomationColumns())
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
-        eq(zeroWorkflowAutomations.workflowId, args.sourceWorkflowId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.workflowId, args.sourceWorkflowId),
       ),
     );
   if (rows.length === 0) {
@@ -886,6 +895,9 @@ async function copyWorkflowRuntimeConfiguration(
     sourceWorkflowId: args.sourceWorkflow.id,
     targetWorkflowId: workflow.id,
     currentTime: args.currentTime,
+    ...(args.inheritedAutonomyBudget === undefined
+      ? {}
+      : { inheritedAutonomyBudget: args.inheritedAutonomyBudget }),
   };
   await copyWorkflowUserAutomations(tx, {
     ...scopedRowsArgs,
@@ -907,6 +919,23 @@ const copyWorkflowInner$ = command(
     }
 
     const writeDb = set(writeDb$);
+    let inheritedAutonomyBudget: number | undefined;
+    if (auth.tokenType === "zero") {
+      const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(writeDb, {
+        runId: auth.runId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      });
+      signal.throwIfAborted();
+      if (sourceAutonomyBudget === null) {
+        return notFound("Source run not found");
+      }
+      const derived = childAutonomyBudget(sourceAutonomyBudget);
+      if (derived.kind === "exhausted") {
+        return autonomyBudgetExhausted();
+      }
+      inheritedAutonomyBudget = derived.autonomyBudget;
+    }
     const source = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
       member,
@@ -957,6 +986,9 @@ const copyWorkflowInner$ = command(
         sourceWorkflow: source.workflow,
         targetAgentId: targetAgent.id,
         currentTime,
+        ...(inheritedAutonomyBudget === undefined
+          ? {}
+          : { inheritedAutonomyBudget }),
       });
     });
     signal.throwIfAborted();
@@ -1132,6 +1164,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const body = {
     prompt,
     userMessage: createUserMessageDocument({ text: prompt }),
+    hasTextContent: true,
     agentId: agent.id,
     threadId: chatThreadId,
   };
@@ -1183,13 +1216,13 @@ async function applyVisibilityUpdate(
   },
 ): Promise<void> {
   await db
-    .update(zeroWorkflows)
+    .update(workflows)
     .set({
       ...args.patch,
       updatedBy: args.updatedByUserId,
       updatedAt: nowDate(),
     })
-    .where(eq(zeroWorkflows.id, args.workflowId));
+    .where(eq(workflows.id, args.workflowId));
 }
 
 function summaryFrom(

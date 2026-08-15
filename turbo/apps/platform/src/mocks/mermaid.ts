@@ -1,52 +1,26 @@
 /**
- * Mock mermaid library for tests.
+ * Mermaid stub for tests.
  *
- * The real library measures text with SVG APIs that happy-dom does not
- * implement (`getBBox`, `getComputedTextLength`), so tests render a stub SVG
- * instead. `parse` recognizes the diagram keywords mermaid supports, which is
- * enough to exercise the invalid-syntax fallback path.
+ * Parsing is delegated to the real mermaid module (through the `mermaid-real`
+ * alias), so source validity in tests is decided by the same parser as in
+ * production. Rendering lays text out with the SVG measurement APIs of a real
+ * browser layout engine (`getBBox`), which happy-dom does not implement, so
+ * `render` returns a stub SVG carrying the active theme.
  */
-
-const DIAGRAM_KEYWORDS = [
-  "architecture-beta",
-  "block-beta",
-  "classDiagram",
-  "erDiagram",
-  "flowchart",
-  "gantt",
-  "gitGraph",
-  "graph",
-  "journey",
-  "mindmap",
-  "pie",
-  "quadrantChart",
-  "requirementDiagram",
-  "sequenceDiagram",
-  "stateDiagram",
-  "timeline",
-  "xychart-beta",
-];
-
-function isSupportedDiagram(text: string): boolean {
-  const firstLine = text.trim().split("\n")[0] ?? "";
-  return DIAGRAM_KEYWORDS.some((keyword) => {
-    return firstLine.startsWith(keyword);
-  });
-}
 
 type MermaidInitializeConfig = { readonly theme?: string };
 
 let activeTheme = "";
 
+const realMermaid = import("mermaid-real");
+
 const mermaid = {
   initialize: (config: MermaidInitializeConfig) => {
     activeTheme = config.theme ?? "";
   },
-  parse: (text: string) => {
-    if (!isSupportedDiagram(text)) {
-      return Promise.resolve(false as const);
-    }
-    return Promise.resolve({ diagramType: "mock" });
+  parse: async (text: string, options?: { readonly suppressErrors?: true }) => {
+    const { default: real } = await realMermaid;
+    return real.parse(text, options);
   },
   render: (id: string) => {
     return Promise.resolve({

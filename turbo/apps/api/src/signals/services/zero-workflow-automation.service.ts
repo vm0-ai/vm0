@@ -6,64 +6,75 @@ import {
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
+  googleFormsResponseSubmittedEventConfigSchema,
   googleMeetTranscriptGeneratedEventConfigSchema,
   githubDeploymentStatusCreatedEventConfigSchema,
   githubIssueCommentCreatedEventConfigSchema,
-  githubLabelAppliedEventConfigSchema,
+  githubPullRequestEventConfigSchema,
   githubPullRequestReviewSubmittedEventConfigSchema,
   githubWorkflowJobCompletedEventConfigSchema,
   githubWorkflowRunCompletedEventConfigSchema,
   notionChildPageCreatedEventConfigSchema,
   notionDatabaseItemCreatedEventConfigSchema,
   notionPageContentUpdatedEventConfigSchema,
+  stripeInvoicePaidEventConfigSchema,
   strapiEntryPublishedEventConfigSchema,
   webhookReceivedEventConfigSchema,
   type ChatRunFinishedEventConfig,
   type ChatThreadWorkflowAutomation,
-  type GmailWorkflowEventConfig,
-  type GoogleCalendarWorkflowEventConfig,
-  type GoogleMeetWorkflowEventConfig,
-  type GithubWorkflowEventConfig,
+  type GmailAutomationEventConfig,
+  type GoogleCalendarAutomationEventConfig,
+  type GoogleMeetAutomationEventConfig,
+  type GoogleFormsResponseSubmittedEventConfig,
+  type GoogleFormsResponseSubmittedEventCreateConfig,
+  type GithubAutomationEventConfig,
   type NotionChildPageCreatedEventConfig,
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
   type NotionPageContentUpdatedEventConfig,
   type NotionPageContentUpdatedEventCreateConfig,
-  type NotionWorkflowEventConfig,
+  type NotionAutomationEventConfig,
+  type StripeInvoicePaidEventConfig,
+  type StripeInvoicePaidEventCreateConfig,
+  type StripeWorkflowAutomationHealth,
   type StrapiEntryPublishedEventConfig,
   type WebhookReceivedEventConfig,
-  type ZeroWorkflowEventType,
+  type WorkflowAutomationEventType,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { parseScheduledAtTime } from "@vm0/core/timezone";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { parseScheduledAtTime } from "@okouai/core/timezone";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { stripeWorkflowAutomationHealth } from "@okouai/db/schema/stripe-automation-event";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   strapiIntegrations,
-  zeroWorkflowStrapiAutomations,
-} from "@vm0/db/schema/strapi-integration";
+  strapiWorkflowAutomations,
+} from "@okouai/db/schema/strapi-integration";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflowWebhookAutomations,
-  zeroWorkflows,
-  type ZeroWorkflowScheduleType,
-} from "@vm0/db/schema/zero-workflow";
+  workflowAutomations,
+  workflowWebhookAutomations,
+  workflows,
+  type WorkflowScheduleType,
+} from "@okouai/db/schema/workflow";
 import { and, asc, eq } from "drizzle-orm";
 
-import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
-import { isValidTimeZone, safeSync } from "../utils";
+import { isValidTimeZone, onRejection, safeSync } from "../utils";
 import { calculateNextRun } from "./time-automation";
+import {
+  insertWorkflowAutomation,
+  workflowAutomationColumns,
+} from "./autonomy-budget-schema.service";
 import {
   loadVisibleWorkflowById,
   visibleWorkflowCondition,
@@ -72,19 +83,33 @@ import {
 } from "./zero-workflow-data.service";
 import {
   ensureGmailWatchForUser,
+  hasEnabledGmailConsumer,
   resolveGmailLabelForUser,
-} from "./gmail-workflow-event.service";
-import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-event.service";
-import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
-import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
+} from "./gmail-automation-event.service";
+import {
+  ensureGoogleCalendarWatchForUser,
+  hasEnabledGoogleCalendarConsumer,
+} from "./google-calendar-automation-event.service";
+import {
+  ensureGoogleFormsWatchForUser,
+  hasEnabledGoogleFormsConsumer,
+  prepareGoogleFormsResponseEventConfigForPersist,
+} from "./google-forms-automation-event.service";
+import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-automation-event.service";
 import { prepareGithubWebhookEventConfigForPersist } from "./github-webhook-automation-event.service";
 import { prepareGithubWorkflowRunEventConfigForPersist } from "./github-workflow-run-event.service";
 import {
   prepareNotionChildPageEventConfigForPersist,
   prepareNotionDatabaseItemEventConfigForPersist,
   prepareNotionPageContentUpdatedEventConfigForPersist,
-} from "./notion-workflow-event.service";
+} from "./notion-automation-event.service";
 import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
+import { googleFormsWorkflowAutomationCreationEnabledForOwner } from "./google-forms-workflow-automation-feature-switch.service";
+import {
+  resolveStripeInvoicePaidAutomationBinding,
+  validateStripeInvoicePaidAutomationBinding,
+} from "./stripe-invoice-paid-workflow-automation.service";
+import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -97,62 +122,71 @@ import {
   revealWorkflowWebhookSecretFields,
 } from "./workflow-webhook-automation.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import {
-  runWorkflowAutomationNow$,
-  type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { RunWorkflowAutomationResult } from "./zero-workflow-automation-launch.service";
+import { manualTriggerSource } from "./workflow-automation-trigger-source";
 import {
   ensureWorkflowUserAutomationThread,
   loadWorkflowUserAutomationThreadId,
 } from "./zero-workflow-user-automation-thread.service";
-import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import { buildWorkflowScheduleAutomationBrief } from "./workflow-automation-brief.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
+import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
-type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
-type WorkflowRow = typeof zeroWorkflows.$inferSelect;
-type ChatRunFinishedWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type AutomationRow = typeof workflowAutomations.$inferSelect;
+type WorkflowRow = typeof workflows.$inferSelect;
+type ChatRunFinishedAutomationEventType = Extract<
+  WorkflowAutomationEventType,
   "chat-run-finished"
 >;
-type GmailWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GmailAutomationEventType = Extract<
+  WorkflowAutomationEventType,
   "gmail-new-message" | "gmail-label-applied"
 >;
-type GithubWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GithubAutomationEventType = Extract<
+  WorkflowAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
-  | "github-label-applied"
+  | "github-pull-request"
   | "github-pull-request-review-submitted"
   | "github-workflow-job-completed"
   | "github-workflow-run-completed"
 >;
-type GithubWebhookWorkflowEventType = Extract<
-  GithubWorkflowEventType,
+type GithubWebhookAutomationEventType = Extract<
+  GithubAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
+  | "github-pull-request"
   | "github-pull-request-review-submitted"
   | "github-workflow-job-completed"
 >;
-type GoogleCalendarWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GoogleCalendarAutomationEventType = Extract<
+  WorkflowAutomationEventType,
   | "google-calendar-event-created"
   | "google-calendar-event-updated"
   | "google-calendar-event-cancelled"
 >;
-type GoogleMeetWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GoogleMeetAutomationEventType = Extract<
+  WorkflowAutomationEventType,
   "google-meet-transcript-generated"
 >;
-type NotionWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GoogleFormsAutomationEventType = Extract<
+  WorkflowAutomationEventType,
+  "google-forms-response-submitted"
+>;
+type NotionAutomationEventType = Extract<
+  WorkflowAutomationEventType,
   | "notion-child-page-created"
   | "notion-database-item-created"
   | "notion-page-content-updated"
 >;
-type StrapiWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type StrapiAutomationEventType = Extract<
+  WorkflowAutomationEventType,
   "strapi-entry-published"
+>;
+type StripeInvoicePaidAutomationEventType = Extract<
+  WorkflowAutomationEventType,
+  "stripe-invoice-paid"
 >;
 
 /**
@@ -187,6 +221,26 @@ function notionWorkflowAutomationsDisabledResult(): {
   };
 }
 
+function googleFormsWorkflowAutomationsDisabledResult(): {
+  readonly kind: "bad-request";
+  readonly message: string;
+} {
+  return {
+    kind: "bad-request",
+    message: "Google Forms workflow automations are not enabled",
+  };
+}
+
+function stripeInvoicePaidWorkflowAutomationsDisabledResult(): {
+  readonly kind: "bad-request";
+  readonly message: string;
+} {
+  return {
+    kind: "bad-request",
+    message: "Stripe invoice-paid workflow automations are not enabled",
+  };
+}
+
 type AutomationActionFailure = Exclude<
   AutomationResult,
   { readonly kind: "ok" } | { readonly kind: "deleted" }
@@ -215,7 +269,7 @@ interface CreateEventAutomationWorkflowContext {
 }
 
 interface ScheduleColumns {
-  readonly scheduleType: ZeroWorkflowScheduleType;
+  readonly scheduleType: WorkflowScheduleType;
   readonly cronExpression: string | null;
   readonly intervalSeconds: number | null;
   readonly atTime: Date | null;
@@ -391,40 +445,42 @@ function rowToSchedule(row: AutomationRow): ZeroWorkflowSchedule {
   };
 }
 
-function supportedWorkflowEventType(
+function supportedAutomationEventType(
   eventType: string | null,
-): eventType is ZeroWorkflowEventType {
+): eventType is WorkflowAutomationEventType {
   return (
     eventType === "chat-run-finished" ||
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied" ||
-    eventType === "github-label-applied" ||
     eventType === "github-deployment-status-created" ||
     eventType === "github-issue-comment-created" ||
+    eventType === "github-pull-request" ||
     eventType === "github-pull-request-review-submitted" ||
     eventType === "github-workflow-job-completed" ||
     eventType === "github-workflow-run-completed" ||
     eventType === "google-calendar-event-created" ||
     eventType === "google-calendar-event-updated" ||
     eventType === "google-calendar-event-cancelled" ||
+    eventType === "google-forms-response-submitted" ||
     eventType === "google-meet-transcript-generated" ||
     eventType === "notion-child-page-created" ||
     eventType === "notion-database-item-created" ||
     eventType === "notion-page-content-updated" ||
     eventType === "strapi-entry-published" ||
+    eventType === "stripe-invoice-paid" ||
     eventType === "webhook-received"
   );
 }
 
 function supportedChatRunFinishedEventType(
   eventType: string | null,
-): eventType is ChatRunFinishedWorkflowEventType {
+): eventType is ChatRunFinishedAutomationEventType {
   return eventType === "chat-run-finished";
 }
 
 function supportedGmailEventType(
   eventType: string | null,
-): eventType is GmailWorkflowEventType {
+): eventType is GmailAutomationEventType {
   return (
     eventType === "gmail-new-message" || eventType === "gmail-label-applied"
   );
@@ -432,11 +488,11 @@ function supportedGmailEventType(
 
 function supportedGithubEventType(
   eventType: string | null,
-): eventType is GithubWorkflowEventType {
+): eventType is GithubAutomationEventType {
   return (
-    eventType === "github-label-applied" ||
     eventType === "github-deployment-status-created" ||
     eventType === "github-issue-comment-created" ||
+    eventType === "github-pull-request" ||
     eventType === "github-pull-request-review-submitted" ||
     eventType === "github-workflow-job-completed" ||
     eventType === "github-workflow-run-completed"
@@ -445,10 +501,11 @@ function supportedGithubEventType(
 
 function supportedGithubWebhookEventType(
   eventType: string | null,
-): eventType is GithubWebhookWorkflowEventType {
+): eventType is GithubWebhookAutomationEventType {
   return (
     eventType === "github-deployment-status-created" ||
     eventType === "github-issue-comment-created" ||
+    eventType === "github-pull-request" ||
     eventType === "github-pull-request-review-submitted" ||
     eventType === "github-workflow-job-completed"
   );
@@ -456,7 +513,7 @@ function supportedGithubWebhookEventType(
 
 function supportedGoogleCalendarEventType(
   eventType: string | null,
-): eventType is GoogleCalendarWorkflowEventType {
+): eventType is GoogleCalendarAutomationEventType {
   return (
     eventType === "google-calendar-event-created" ||
     eventType === "google-calendar-event-updated" ||
@@ -466,13 +523,19 @@ function supportedGoogleCalendarEventType(
 
 function supportedGoogleMeetEventType(
   eventType: string | null,
-): eventType is GoogleMeetWorkflowEventType {
+): eventType is GoogleMeetAutomationEventType {
   return eventType === "google-meet-transcript-generated";
+}
+
+function supportedGoogleFormsEventType(
+  eventType: string | null,
+): eventType is GoogleFormsAutomationEventType {
+  return eventType === "google-forms-response-submitted";
 }
 
 function supportedNotionEventType(
   eventType: string | null,
-): eventType is NotionWorkflowEventType {
+): eventType is NotionAutomationEventType {
   return (
     eventType === "notion-child-page-created" ||
     eventType === "notion-database-item-created" ||
@@ -482,8 +545,14 @@ function supportedNotionEventType(
 
 function supportedStrapiEventType(
   eventType: string | null,
-): eventType is StrapiWorkflowEventType {
+): eventType is StrapiAutomationEventType {
   return eventType === "strapi-entry-published";
+}
+
+function supportedStripeInvoicePaidEventType(
+  eventType: string | null,
+): eventType is StripeInvoicePaidAutomationEventType {
+  return eventType === "stripe-invoice-paid";
 }
 
 function rowSummaryBase(row: AutomationRow, chatThreadId: string | null) {
@@ -501,6 +570,7 @@ interface RowToSummaryOptions {
   readonly chatThreadId?: string | null;
   readonly webhookToken?: string;
   readonly webhookSecret?: string;
+  readonly warning?: string;
 }
 
 async function resolveAutomationChatThreadId(
@@ -575,11 +645,11 @@ function githubEventRowToSummary(
     scheduleSummary: null,
   };
   switch (row.eventType) {
-    case "github-label-applied": {
+    case "github-pull-request": {
       return {
         ...summaryBase,
-        eventType: "github-label-applied",
-        eventConfig: githubLabelAppliedEventConfigSchema.parse(row.eventConfig),
+        eventType: "github-pull-request",
+        eventConfig: githubPullRequestEventConfigSchema.parse(row.eventConfig),
       };
     }
     case "github-workflow-run-completed": {
@@ -633,9 +703,50 @@ function githubEventRowToSummary(
   }
 }
 
+function stripeInvoicePaidRowToSummary(
+  row: AutomationRow,
+  chatThreadId: string | null,
+  health: StripeWorkflowAutomationHealth,
+): ZeroWorkflowAutomationSummary {
+  return {
+    ...rowSummaryBase(row, chatThreadId),
+    kind: "event",
+    eventType: "stripe-invoice-paid",
+    eventConfig: stripeInvoicePaidEventConfigSchema.parse(row.eventConfig),
+    schedule: null,
+    scheduleSummary: null,
+    health,
+  };
+}
+
+async function loadStripeWorkflowAutomationHealth(
+  db: ReadonlyDb,
+  automationId: string,
+): Promise<StripeWorkflowAutomationHealth> {
+  const [health] = await db
+    .select({
+      lastMatchingEventReceivedAt:
+        stripeWorkflowAutomationHealth.lastMatchingEventReceivedAt,
+      lastDeliveryStatus: stripeWorkflowAutomationHealth.latestDeliveryStatus,
+      lastDeliveryStatusAt:
+        stripeWorkflowAutomationHealth.latestDeliveryStatusAt,
+    })
+    .from(stripeWorkflowAutomationHealth)
+    .where(eq(stripeWorkflowAutomationHealth.automationId, automationId))
+    .limit(1);
+  return {
+    lastMatchingEventReceivedAt:
+      health?.lastMatchingEventReceivedAt?.toISOString() ?? null,
+    lastDeliveryStatus: health?.lastDeliveryStatus ?? null,
+    lastDeliveryStatusAt: health?.lastDeliveryStatusAt?.toISOString() ?? null,
+    warning: health?.lastDeliveryStatus === "failed" ? "delivery_failed" : null,
+  };
+}
+
 function eventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
+  warning?: string,
 ): ZeroWorkflowAutomationSummary | null {
   if (row.eventType === "chat-run-finished") {
     return {
@@ -707,6 +818,19 @@ function eventRowToSummary(
       scheduleSummary: null,
     };
   }
+  if (row.eventType === "google-forms-response-submitted") {
+    return {
+      ...rowSummaryBase(row, chatThreadId),
+      kind: "event",
+      eventType: "google-forms-response-submitted",
+      eventConfig: googleFormsResponseSubmittedEventConfigSchema.parse(
+        row.eventConfig,
+      ),
+      schedule: null,
+      scheduleSummary: null,
+      ...(warning === undefined ? {} : { warning }),
+    };
+  }
   if (row.eventType === "google-meet-transcript-generated") {
     return {
       ...rowSummaryBase(row, chatThreadId),
@@ -748,6 +872,13 @@ async function rowToSummary(
 ): Promise<ZeroWorkflowAutomationSummary> {
   const chatThreadId = await resolveAutomationChatThreadId(db, row, options);
   if (row.kind === "event") {
+    if (row.eventType === "stripe-invoice-paid") {
+      return stripeInvoicePaidRowToSummary(
+        row,
+        chatThreadId,
+        await loadStripeWorkflowAutomationHealth(db, row.id),
+      );
+    }
     if (row.eventType === "webhook-received") {
       return {
         ...rowSummaryBase(row, chatThreadId),
@@ -763,7 +894,7 @@ async function rowToSummary(
         })),
       };
     }
-    const eventSummary = eventRowToSummary(row, chatThreadId);
+    const eventSummary = eventRowToSummary(row, chatThreadId, options.warning);
     if (eventSummary) {
       return eventSummary;
     }
@@ -782,7 +913,7 @@ async function rowToPublicSummary(
   row: AutomationRow,
   options: { readonly chatThreadId?: string | null } = {},
 ): Promise<ZeroWorkflowAutomationSummary | null> {
-  if (row.kind === "event" && !supportedWorkflowEventType(row.eventType)) {
+  if (row.kind === "event" && !supportedAutomationEventType(row.eventType)) {
     return null;
   }
   if (
@@ -838,13 +969,10 @@ async function loadAutomationWorkflowAgentId(
   args: { readonly orgId: string; readonly workflowId: string },
 ): Promise<string | null> {
   const [workflow] = await db
-    .select({ agentId: zeroWorkflows.agentId })
-    .from(zeroWorkflows)
+    .select({ agentId: workflows.agentId })
+    .from(workflows)
     .where(
-      and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.id, args.workflowId),
-      ),
+      and(eq(workflows.orgId, args.orgId), eq(workflows.id, args.workflowId)),
     )
     .limit(1);
   return workflow?.agentId ?? null;
@@ -860,16 +988,13 @@ async function loadAutomationWorkflowRunTarget(
 } | null> {
   const [workflow] = await db
     .select({
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
     })
-    .from(zeroWorkflows)
+    .from(workflows)
     .where(
-      and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.id, args.workflowId),
-      ),
+      and(eq(workflows.orgId, args.orgId), eq(workflows.id, args.workflowId)),
     )
     .limit(1);
   if (!workflow) {
@@ -887,12 +1012,12 @@ async function loadAutomationRow(
   args: { readonly orgId: string; readonly automationId: string },
 ): Promise<AutomationRow | null> {
   const [row] = await db
-    .select()
-    .from(zeroWorkflowAutomations)
+    .select(workflowAutomationColumns())
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.id, args.automationId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.id, args.automationId),
       ),
     )
     .limit(1);
@@ -931,16 +1056,16 @@ export async function loadWorkflowAutomations(
   },
 ): Promise<readonly ZeroWorkflowAutomationSummary[]> {
   const rows = await db
-    .select()
-    .from(zeroWorkflowAutomations)
+    .select(workflowAutomationColumns())
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.workflowId, args.workflowId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.workflowId, args.workflowId),
+        eq(workflowAutomations.ownerUserId, args.userId),
       ),
     )
-    .orderBy(asc(zeroWorkflowAutomations.createdAt));
+    .orderBy(asc(workflowAutomations.createdAt));
   const chatThreadId = await loadWorkflowUserAutomationThreadId(db, {
     orgId: args.orgId,
     userId: args.userId,
@@ -970,8 +1095,8 @@ export async function listWorkspaceWorkflowAutomations(
 ): Promise<readonly ZeroWorkflowAutomationsListEntry[]> {
   const rows = await db
     .select({
-      automation: zeroWorkflowAutomations,
-      workflow: zeroWorkflows,
+      automation: workflowAutomationColumns(),
+      workflow: workflows,
       agent: {
         id: zeroAgents.id,
         owner: zeroAgents.owner,
@@ -981,37 +1106,31 @@ export async function listWorkspaceWorkflowAutomations(
       },
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowAutomations)
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
-    .innerJoin(zeroAgents, eq(zeroAgents.id, zeroWorkflows.agentId))
+    .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
+    .innerJoin(zeroAgents, eq(zeroAgents.id, workflows.agentId))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.member.userId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.member.userId),
         visibleWorkflowCondition(args.member),
       ),
     )
-    .orderBy(
-      asc(zeroWorkflowAutomations.createdAt),
-      asc(zeroWorkflowAutomations.id),
-    );
+    .orderBy(asc(workflowAutomations.createdAt), asc(workflowAutomations.id));
 
   const entries = await Promise.all(
     rows.map(async (row): Promise<ZeroWorkflowAutomationsListEntry | null> => {
@@ -1074,37 +1193,34 @@ export async function listThreadBoundWorkflowAutomations(
 ): Promise<readonly ChatThreadWorkflowAutomation[]> {
   const rows = await db
     .select({
-      automation: zeroWorkflowAutomations,
-      workflow: zeroWorkflows,
+      automation: workflowAutomationColumns(),
+      workflow: workflows,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowAutomations)
+    .from(workflowAutomations)
     .innerJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
         eq(workflowUserAutomationThreads.chatThreadId, args.threadId),
       ),
     )
-    .orderBy(asc(zeroWorkflowAutomations.createdAt));
+    .orderBy(asc(workflowAutomations.createdAt));
 
   const summaries = await Promise.all(
     rows.map(async ({ automation, workflow, chatThreadId }) => {
@@ -1187,15 +1303,17 @@ interface CreateScheduleAutomationInput {
   readonly workflowId: string;
   readonly schedule: ZeroWorkflowSchedule;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGmailEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: GmailWorkflowEventType;
-  readonly eventConfig: GmailWorkflowEventConfig;
+  readonly eventType: GmailAutomationEventType;
+  readonly eventConfig: GmailAutomationEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGithubEventAutomationInputBase {
@@ -1203,47 +1321,48 @@ interface CreateGithubEventAutomationInputBase {
   readonly member: WorkflowMember;
   readonly workflowId: string;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 type CreateGithubEventAutomationInput =
   | (CreateGithubEventAutomationInputBase & {
-      readonly eventType: "github-label-applied";
+      readonly eventType: "github-pull-request";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
-        { readonly event: "label_applied" }
+        GithubAutomationEventConfig,
+        { readonly event: "pull_request" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-workflow-run-completed";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "workflow_run_completed" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-workflow-job-completed";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "workflow_job_completed" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-pull-request-review-submitted";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "pull_request_review_submitted" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-deployment-status-created";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "deployment_status_created" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-issue-comment-created";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "issue_comment_created" }
       >;
     });
@@ -1252,34 +1371,49 @@ interface CreateChatRunFinishedEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: ChatRunFinishedWorkflowEventType;
+  readonly eventType: ChatRunFinishedAutomationEventType;
   readonly eventConfig: ChatRunFinishedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGoogleCalendarEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: GoogleCalendarWorkflowEventType;
-  readonly eventConfig: GoogleCalendarWorkflowEventConfig;
+  readonly eventType: GoogleCalendarAutomationEventType;
+  readonly eventConfig: GoogleCalendarAutomationEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
+}
+
+interface CreateGoogleFormsEventAutomationInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: GoogleFormsAutomationEventType;
+  readonly eventConfig:
+    | GoogleFormsResponseSubmittedEventCreateConfig
+    | GoogleFormsResponseSubmittedEventConfig;
+  readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGoogleMeetEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: GoogleMeetWorkflowEventType;
-  readonly eventConfig: GoogleMeetWorkflowEventConfig;
+  readonly eventType: GoogleMeetAutomationEventType;
+  readonly eventConfig: GoogleMeetAutomationEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateNotionEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: NotionWorkflowEventType;
+  readonly eventType: NotionAutomationEventType;
   readonly eventConfig:
     | NotionChildPageCreatedEventCreateConfig
     | NotionChildPageCreatedEventConfig
@@ -1288,15 +1422,27 @@ interface CreateNotionEventAutomationInput {
     | NotionPageContentUpdatedEventCreateConfig
     | NotionPageContentUpdatedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateStrapiEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: StrapiWorkflowEventType;
+  readonly eventType: StrapiAutomationEventType;
   readonly eventConfig: StrapiEntryPublishedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
+}
+
+interface CreateStripeInvoicePaidEventAutomationInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: StripeInvoicePaidAutomationEventType;
+  readonly eventConfig: StripeInvoicePaidEventCreateConfig;
+  readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateWebhookEventAutomationInput {
@@ -1306,6 +1452,7 @@ interface CreateWebhookEventAutomationInput {
   readonly eventType: "webhook-received";
   readonly eventConfig?: WebhookReceivedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 type CreateAutomationInput =
@@ -1314,9 +1461,11 @@ type CreateAutomationInput =
   | CreateGmailEventAutomationInput
   | CreateGithubEventAutomationInput
   | CreateGoogleCalendarEventAutomationInput
+  | CreateGoogleFormsEventAutomationInput
   | CreateGoogleMeetEventAutomationInput
   | CreateNotionEventAutomationInput
   | CreateStrapiEventAutomationInput
+  | CreateStripeInvoicePaidEventAutomationInput
   | CreateWebhookEventAutomationInput;
 type CreateEventAutomationInput = Exclude<
   CreateAutomationInput,
@@ -1345,7 +1494,7 @@ function automationCreateInputIsGithubWebhook(
   args: CreateEventAutomationInput,
 ): args is Extract<
   CreateGithubEventAutomationInput,
-  { readonly eventType: GithubWebhookWorkflowEventType }
+  { readonly eventType: GithubWebhookAutomationEventType }
 > {
   return supportedGithubWebhookEventType(args.eventType);
 }
@@ -1354,6 +1503,12 @@ function automationCreateInputIsGoogleCalendar(
   args: CreateEventAutomationInput,
 ): args is CreateGoogleCalendarEventAutomationInput {
   return supportedGoogleCalendarEventType(args.eventType);
+}
+
+function automationCreateInputIsGoogleForms(
+  args: CreateEventAutomationInput,
+): args is CreateGoogleFormsEventAutomationInput {
+  return supportedGoogleFormsEventType(args.eventType);
 }
 
 function automationCreateInputIsGoogleMeet(
@@ -1374,7 +1529,13 @@ function automationCreateInputIsStrapi(
   return supportedStrapiEventType(args.eventType);
 }
 
-async function insertWorkflowEventAutomation(
+function automationCreateInputIsStripeInvoicePaid(
+  args: CreateEventAutomationInput,
+): args is CreateStripeInvoicePaidEventAutomationInput {
+  return supportedStripeInvoicePaidEventType(args.eventType);
+}
+
+async function insertEventAutomation(
   db: Db,
   args: {
     readonly input:
@@ -1382,9 +1543,15 @@ async function insertWorkflowEventAutomation(
       | CreateGmailEventAutomationInput
       | CreateGithubEventAutomationInput
       | CreateGoogleCalendarEventAutomationInput
+      | (CreateGoogleFormsEventAutomationInput & {
+          readonly eventConfig: GoogleFormsResponseSubmittedEventConfig;
+        })
       | CreateGoogleMeetEventAutomationInput
+      | (CreateStripeInvoicePaidEventAutomationInput & {
+          readonly eventConfig: StripeInvoicePaidEventConfig;
+        })
       | (CreateNotionEventAutomationInput & {
-          readonly eventConfig: NotionWorkflowEventConfig;
+          readonly eventConfig: NotionAutomationEventConfig;
         });
     readonly workflowId: string;
     readonly agentId: string;
@@ -1402,26 +1569,26 @@ async function insertWorkflowEventAutomation(
       currentTime: args.currentTime,
     });
 
-    const [row] = await tx
-      .insert(zeroWorkflowAutomations)
-      .values({
-        orgId: args.input.orgId,
-        workflowId: args.workflowId,
-        ownerUserId: args.input.member.userId,
-        kind: "event",
-        eventType: args.input.eventType,
-        eventConfig: args.input.eventConfig,
-        scheduleType: null,
-        cronExpression: null,
-        intervalSeconds: null,
-        atTime: null,
-        timezone: "UTC",
-        enabled: args.input.enabled,
-        nextRunAt: null,
-        createdAt: args.currentTime,
-        updatedAt: args.currentTime,
-      })
-      .returning();
+    const row = await insertWorkflowAutomation(tx, {
+      orgId: args.input.orgId,
+      workflowId: args.workflowId,
+      ownerUserId: args.input.member.userId,
+      kind: "event",
+      eventType: args.input.eventType,
+      eventConfig: args.input.eventConfig,
+      scheduleType: null,
+      cronExpression: null,
+      intervalSeconds: null,
+      atTime: null,
+      timezone: "UTC",
+      enabled: args.input.enabled,
+      nextRunAt: null,
+      ...(args.input.autonomyBudget === undefined
+        ? {}
+        : { autonomyBudget: args.input.autonomyBudget }),
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    });
     if (!row) {
       throw new Error("Failed to create workflow automation");
     }
@@ -1437,13 +1604,14 @@ async function insertWebhookEventAutomation(
     readonly agentId: string;
     readonly workflowTitle: string;
     readonly currentTime: Date;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<ZeroWorkflowAutomationSummary | null> {
   return await db.transaction(async (tx) => {
     const tierEligible = await lockWorkflowWebhookAutomationTierEligibleForOrg(
       tx,
-      { orgId: args.input.orgId, signal: args.signal },
+      { orgId: args.input.orgId },
+      signal,
     );
     if (!tierEligible) {
       return null;
@@ -1458,34 +1626,34 @@ async function insertWebhookEventAutomation(
       currentTime: args.currentTime,
     });
 
-    const [row] = await tx
-      .insert(zeroWorkflowAutomations)
-      .values({
-        orgId: args.input.orgId,
-        workflowId: args.workflowId,
-        ownerUserId: args.input.member.userId,
-        kind: "event",
-        eventType: args.input.eventType,
-        eventConfig:
-          args.input.eventConfig ?? defaultWebhookReceivedEventConfig(),
-        scheduleType: null,
-        cronExpression: null,
-        intervalSeconds: null,
-        atTime: null,
-        timezone: "UTC",
-        enabled: args.input.enabled,
-        nextRunAt: null,
-        createdAt: args.currentTime,
-        updatedAt: args.currentTime,
-      })
-      .returning();
+    const row = await insertWorkflowAutomation(tx, {
+      orgId: args.input.orgId,
+      workflowId: args.workflowId,
+      ownerUserId: args.input.member.userId,
+      kind: "event",
+      eventType: args.input.eventType,
+      eventConfig:
+        args.input.eventConfig ?? defaultWebhookReceivedEventConfig(),
+      scheduleType: null,
+      cronExpression: null,
+      intervalSeconds: null,
+      atTime: null,
+      timezone: "UTC",
+      enabled: args.input.enabled,
+      nextRunAt: null,
+      ...(args.input.autonomyBudget === undefined
+        ? {}
+        : { autonomyBudget: args.input.autonomyBudget }),
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    });
     if (!row) {
       throw new Error("Failed to create workflow automation");
     }
 
     const token = mintWorkflowWebhookToken();
     const secret = mintWorkflowWebhookSecret();
-    await tx.insert(zeroWorkflowWebhookAutomations).values({
+    await tx.insert(workflowWebhookAutomations).values({
       automationId: row.id,
       tokenHash: hashWorkflowWebhookToken(token),
       encryptedToken: await encryptWorkflowWebhookToken(token, {
@@ -1514,12 +1682,12 @@ async function prepareGmailEventConfigForPersist(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly eventType: ZeroWorkflowEventType;
-    readonly eventConfig: GmailWorkflowEventConfig;
-    readonly signal: AbortSignal;
+    readonly eventType: WorkflowAutomationEventType;
+    readonly eventConfig: GmailAutomationEventConfig;
   },
+  signal: AbortSignal,
 ): Promise<
-  | { readonly kind: "ok"; readonly eventConfig: GmailWorkflowEventConfig }
+  | { readonly kind: "ok"; readonly eventConfig: GmailAutomationEventConfig }
   | { readonly kind: "bad-request"; readonly message: string }
 > {
   if (args.eventType === "gmail-new-message") {
@@ -1527,12 +1695,6 @@ async function prepareGmailEventConfigForPersist(
       return {
         kind: "bad-request",
         message: "eventConfig must be a Gmail new message config",
-      };
-    }
-    if (args.eventConfig.threadId && !isZeroMailReplyFollowUpRolloutEnabled()) {
-      return {
-        kind: "bad-request",
-        message: "Gmail thread matching is not enabled",
       };
     }
     return { kind: "ok", eventConfig: args.eventConfig };
@@ -1545,14 +1707,16 @@ async function prepareGmailEventConfigForPersist(
     };
   }
 
-  const label = await resolveGmailLabelForUser({
-    db,
-    orgId: args.orgId,
-    userId: args.userId,
-    labelName: args.eventConfig.labelName,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const label = await resolveGmailLabelForUser(
+    {
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      labelName: args.eventConfig.labelName,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (label.kind !== "ok") {
     return { kind: "bad-request", message: label.message };
   }
@@ -1565,6 +1729,92 @@ async function prepareGmailEventConfigForPersist(
       resolvedLabelId: label.labelId,
     },
   };
+}
+
+async function createGmailEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: CreateGmailEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  const preparedConfig = await prepareGmailEventConfigForPersist(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      eventType: args.input.eventType,
+      eventConfig: args.input.eventConfig,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (preparedConfig.kind !== "ok") {
+    return preparedConfig;
+  }
+
+  const hadConsumer = args.input.enabled
+    ? await hasEnabledGmailConsumer(
+        {
+          db: args.context.db,
+          orgId: args.input.orgId,
+          userId: args.input.member.userId,
+        },
+        signal,
+      )
+    : false;
+  const summary = await insertEventAutomation(args.context.db, {
+    input: { ...args.input, eventConfig: preparedConfig.eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  if (!args.input.enabled) {
+    signal.throwIfAborted();
+    return { kind: "ok", summary };
+  }
+
+  signal.throwIfAborted();
+  const watchResult = await onRejection(
+    ensureGmailWatchForUser(
+      {
+        db: args.context.db,
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+        forceRefresh: !hadConsumer,
+      },
+      signal,
+    ),
+    async () => {
+      await args.context.db
+        .delete(workflowAutomations)
+        .where(eq(workflowAutomations.id, summary.id));
+    },
+  );
+  signal.throwIfAborted();
+  if (watchResult.kind === "ok") {
+    return { kind: "ok", summary };
+  }
+
+  await args.context.db
+    .delete(workflowAutomations)
+    .where(eq(workflowAutomations.id, summary.id));
+  await reconcileAutomationEventWatches(
+    {
+      db: args.context.db,
+      automations: [
+        {
+          orgId: args.input.orgId,
+          ownerUserId: args.input.member.userId,
+          eventType: args.input.eventType,
+          eventConfig: preparedConfig.eventConfig,
+        },
+      ],
+    },
+    signal,
+  );
+  return { kind: "bad-request", message: watchResult.message };
 }
 
 async function insertScheduleAutomation(
@@ -1589,26 +1839,26 @@ async function insertScheduleAutomation(
       currentTime: args.currentTime,
     });
 
-    const [row] = await tx
-      .insert(zeroWorkflowAutomations)
-      .values({
-        orgId: args.input.orgId,
-        workflowId: args.workflowId,
-        ownerUserId: args.input.member.userId,
-        kind: "schedule",
-        eventType: null,
-        eventConfig: null,
-        scheduleType: args.columns.scheduleType,
-        cronExpression: args.columns.cronExpression,
-        intervalSeconds: args.columns.intervalSeconds,
-        atTime: args.columns.atTime,
-        timezone: args.columns.timezone,
-        enabled: args.input.enabled,
-        nextRunAt: args.nextRunAt,
-        createdAt: args.currentTime,
-        updatedAt: args.currentTime,
-      })
-      .returning();
+    const row = await insertWorkflowAutomation(tx, {
+      orgId: args.input.orgId,
+      workflowId: args.workflowId,
+      ownerUserId: args.input.member.userId,
+      kind: "schedule",
+      eventType: null,
+      eventConfig: null,
+      scheduleType: args.columns.scheduleType,
+      cronExpression: args.columns.cronExpression,
+      intervalSeconds: args.columns.intervalSeconds,
+      atTime: args.columns.atTime,
+      timezone: args.columns.timezone,
+      enabled: args.input.enabled,
+      nextRunAt: args.nextRunAt,
+      ...(args.input.autonomyBudget === undefined
+        ? {}
+        : { autonomyBudget: args.input.autonomyBudget }),
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    });
     if (!row) {
       throw new Error("Failed to create workflow automation");
     }
@@ -1616,66 +1866,43 @@ async function insertScheduleAutomation(
   });
 }
 
-async function createWebhookEventAutomationForWorkflow(args: {
-  readonly context: CreateEventAutomationWorkflowContext;
-  readonly input: CreateWebhookEventAutomationInput;
-  readonly signal: AbortSignal;
-}): Promise<AutomationResult> {
-  const summary = await insertWebhookEventAutomation(args.context.db, {
-    input: args.input,
-    workflowId: args.context.workflowId,
-    agentId: args.context.agentId,
-    workflowTitle: args.context.workflowTitle,
-    currentTime: nowDate(),
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+async function createWebhookEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: CreateWebhookEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  const summary = await insertWebhookEventAutomation(
+    args.context.db,
+    {
+      input: args.input,
+      workflowId: args.context.workflowId,
+      agentId: args.context.agentId,
+      workflowTitle: args.context.workflowTitle,
+      currentTime: nowDate(),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (!summary) {
     return workflowWebhookTeamRequiredResult();
   }
   return { kind: "ok", summary };
 }
 
-async function createGithubLabelEventAutomationForWorkflow(args: {
-  readonly context: CreateEventAutomationWorkflowContext;
-  readonly input: Extract<
-    CreateGithubEventAutomationInput,
-    { readonly eventType: "github-label-applied" }
-  >;
-  readonly signal: AbortSignal;
-}): Promise<AutomationResult> {
-  const preparedConfig = await prepareGithubLabelEventConfigForPersist(
-    args.context.db,
-    {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      eventConfig: args.input.eventConfig,
-    },
-  );
-  args.signal.throwIfAborted();
-  if (preparedConfig.kind !== "ok") {
-    return preparedConfig;
-  }
-
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
-    input: { ...args.input, eventConfig: preparedConfig.eventConfig },
-    workflowId: args.context.workflowId,
-    agentId: args.context.agentId,
-    workflowTitle: args.context.workflowTitle,
-    currentTime: nowDate(),
-  });
-  args.signal.throwIfAborted();
-  return { kind: "ok", summary };
-}
-
-async function createGithubWorkflowRunEventAutomationForWorkflow(args: {
-  readonly context: CreateEventAutomationWorkflowContext;
-  readonly input: Extract<
-    CreateGithubEventAutomationInput,
-    { readonly eventType: "github-workflow-run-completed" }
-  >;
-  readonly signal: AbortSignal;
-}): Promise<AutomationResult> {
+async function createGithubWorkflowRunEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: Extract<
+      CreateGithubEventAutomationInput,
+      {
+        readonly eventType: "github-workflow-run-completed";
+      }
+    >;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
   const preparedConfig = await prepareGithubWorkflowRunEventConfigForPersist(
     args.context.db,
     {
@@ -1683,29 +1910,33 @@ async function createGithubWorkflowRunEventAutomationForWorkflow(args: {
       eventConfig: args.input.eventConfig,
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (preparedConfig.kind !== "ok") {
     return preparedConfig;
   }
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig.eventConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
     currentTime: nowDate(),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "ok", summary };
 }
 
-async function createGithubWebhookEventAutomationForWorkflow(args: {
-  readonly context: CreateEventAutomationWorkflowContext;
-  readonly input: Extract<
-    CreateGithubEventAutomationInput,
-    { readonly eventType: GithubWebhookWorkflowEventType }
-  >;
-  readonly signal: AbortSignal;
-}): Promise<AutomationResult> {
+async function createGithubWebhookEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: Extract<
+      CreateGithubEventAutomationInput,
+      {
+        readonly eventType: GithubWebhookAutomationEventType;
+      }
+    >;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
   const preparedConfig = await prepareGithubWebhookEventConfigForPersist(
     args.context.db,
     {
@@ -1714,25 +1945,25 @@ async function createGithubWebhookEventAutomationForWorkflow(args: {
       eventConfig: args.input.eventConfig,
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (preparedConfig.kind !== "ok") {
     return preparedConfig;
   }
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: args.input,
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
     currentTime: nowDate(),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "ok", summary };
 }
 
 function parseGoogleCalendarEventConfig(
-  eventType: GoogleCalendarWorkflowEventType,
+  eventType: GoogleCalendarAutomationEventType,
   eventConfig: unknown,
-): GoogleCalendarWorkflowEventConfig {
+): GoogleCalendarAutomationEventConfig {
   if (eventType === "google-calendar-event-created") {
     return googleCalendarEventCreatedEventConfigSchema.parse(eventConfig);
   }
@@ -1742,102 +1973,264 @@ function parseGoogleCalendarEventConfig(
   return googleCalendarEventCancelledEventConfigSchema.parse(eventConfig);
 }
 
-async function createGoogleCalendarEventAutomationForWorkflow(args: {
-  readonly context: CreateEventAutomationWorkflowContext;
-  readonly input: CreateGoogleCalendarEventAutomationInput;
-  readonly signal: AbortSignal;
-}): Promise<AutomationResult> {
+async function createGoogleCalendarEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: CreateGoogleCalendarEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
   const preparedConfig = parseGoogleCalendarEventConfig(
     args.input.eventType,
     args.input.eventConfig,
   );
-  const watchResult = await ensureGoogleCalendarWatchForUser({
-    db: args.context.db,
-    orgId: args.input.orgId,
-    userId: args.input.member.userId,
-    calendarId: preparedConfig.calendarId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  if (watchResult.kind !== "ok") {
-    return { kind: "bad-request", message: watchResult.message };
-  }
+  const hadConsumer = args.input.enabled
+    ? await hasEnabledGoogleCalendarConsumer(
+        {
+          db: args.context.db,
+          orgId: args.input.orgId,
+          userId: args.input.member.userId,
+          calendarId: preparedConfig.calendarId,
+        },
+        signal,
+      )
+    : false;
 
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
     currentTime: nowDate(),
   });
-  args.signal.throwIfAborted();
+  if (!args.input.enabled) {
+    signal.throwIfAborted();
+    return { kind: "ok", summary };
+  }
+
+  signal.throwIfAborted();
+  const watchResult = await onRejection(
+    ensureGoogleCalendarWatchForUser(
+      {
+        db: args.context.db,
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+        calendarId: preparedConfig.calendarId,
+        forceRefresh: !hadConsumer,
+      },
+      signal,
+    ),
+    async () => {
+      await args.context.db
+        .delete(workflowAutomations)
+        .where(eq(workflowAutomations.id, summary.id));
+    },
+  );
+  signal.throwIfAborted();
+  if (watchResult.kind !== "ok") {
+    await args.context.db
+      .delete(workflowAutomations)
+      .where(eq(workflowAutomations.id, summary.id));
+    await reconcileAutomationEventWatches(
+      {
+        db: args.context.db,
+        automations: [
+          {
+            orgId: args.input.orgId,
+            ownerUserId: args.input.member.userId,
+            eventType: args.input.eventType,
+            eventConfig: preparedConfig,
+          },
+        ],
+      },
+      signal,
+    );
+    return { kind: "bad-request", message: watchResult.message };
+  }
   return { kind: "ok", summary };
 }
 
-async function createGoogleMeetEventAutomationForWorkflow(args: {
-  readonly context: CreateEventAutomationWorkflowContext;
-  readonly input: CreateGoogleMeetEventAutomationInput;
-  readonly signal: AbortSignal;
-}): Promise<AutomationResult> {
+function googleFormsSummaryWithWarning(
+  summary: ZeroWorkflowAutomationSummary,
+  warning: string | undefined,
+): ZeroWorkflowAutomationSummary {
+  if (
+    summary.kind !== "event" ||
+    summary.eventType !== "google-forms-response-submitted"
+  ) {
+    throw new Error("Expected Google Forms workflow automation summary");
+  }
+  return warning === undefined ? summary : { ...summary, warning };
+}
+
+async function createGoogleFormsEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: CreateGoogleFormsEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  if (!("formUrl" in args.input.eventConfig)) {
+    return {
+      kind: "bad-request",
+      message: "formUrl is required for Google Forms response automations",
+    };
+  }
+  const prepared = await prepareGoogleFormsResponseEventConfigForPersist(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      eventConfig: args.input.eventConfig,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (prepared.kind !== "ok") {
+    return prepared;
+  }
+  const hadConsumer = args.input.enabled
+    ? await hasEnabledGoogleFormsConsumer(
+        {
+          db: args.context.db,
+          userId: args.input.member.userId,
+          formId: prepared.eventConfig.form.id,
+        },
+        signal,
+      )
+    : false;
+  const summary = await insertEventAutomation(args.context.db, {
+    input: { ...args.input, eventConfig: prepared.eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  const resultSummary = googleFormsSummaryWithWarning(
+    summary,
+    prepared.warning,
+  );
+  if (!args.input.enabled) {
+    return { kind: "ok", summary: resultSummary };
+  }
+  const watchResult = await onRejection(
+    ensureGoogleFormsWatchForUser(
+      {
+        db: args.context.db,
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+        formId: prepared.eventConfig.form.id,
+        connectorId: prepared.eventConfig.connectorId,
+        resetAutomationId: summary.id,
+        seedCursor: prepared.seedCursor,
+      },
+      signal,
+    ),
+    async () => {
+      await args.context.db
+        .delete(workflowAutomations)
+        .where(eq(workflowAutomations.id, summary.id));
+    },
+  );
+  signal.throwIfAborted();
+  if (watchResult.kind === "ok") {
+    return { kind: "ok", summary: resultSummary };
+  }
+  await args.context.db
+    .delete(workflowAutomations)
+    .where(eq(workflowAutomations.id, summary.id));
+  if (!hadConsumer) {
+    await reconcileAutomationEventWatches(
+      {
+        db: args.context.db,
+        automations: [
+          {
+            orgId: args.input.orgId,
+            ownerUserId: args.input.member.userId,
+            eventType: args.input.eventType,
+            eventConfig: prepared.eventConfig,
+          },
+        ],
+      },
+      signal,
+    );
+  }
+  return { kind: "bad-request", message: watchResult.message };
+}
+
+async function createGoogleMeetEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: CreateGoogleMeetEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
   const preparedConfig = googleMeetTranscriptGeneratedEventConfigSchema.parse(
     args.input.eventConfig,
   );
   const subscriptionResult =
-    await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser({
-      db: args.context.db,
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      signal: args.signal,
-    });
-  args.signal.throwIfAborted();
+    await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
+      {
+        db: args.context.db,
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+      },
+      signal,
+    );
+  signal.throwIfAborted();
   if (subscriptionResult.kind !== "ok") {
     return { kind: "bad-request", message: subscriptionResult.message };
   }
 
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
     currentTime: nowDate(),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "ok", summary };
 }
 
-async function createNotionEventAutomationForWorkflow(args: {
-  readonly context: CreateEventAutomationWorkflowContext;
-  readonly input: CreateNotionEventAutomationInput;
-  readonly signal: AbortSignal;
-}): Promise<AutomationResult> {
+async function createNotionEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: CreateNotionEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
   const eventConfig = args.input.eventConfig;
   let preparedConfig:
     | {
         readonly kind: "ok";
-        readonly eventConfig: NotionWorkflowEventConfig;
+        readonly eventConfig: NotionAutomationEventConfig;
       }
     | { readonly kind: "bad-request"; readonly message: string };
   if (args.input.eventType === "notion-child-page-created") {
     preparedConfig =
       eventConfig.event === "child_page_created"
-        ? await prepareNotionChildPageEventConfigForPersist(args.context.db, {
-            orgId: args.input.orgId,
-            userId: args.input.member.userId,
-            eventConfig:
-              "parentPageUrl" in eventConfig
-                ? eventConfig
-                : {
-                    provider: "notion",
-                    event: "child_page_created",
-                    parentPageUrl:
-                      eventConfig.parentPage.rawUrl ??
-                      eventConfig.parentPage.url,
-                  },
-            signal: args.signal,
-          })
+        ? await prepareNotionChildPageEventConfigForPersist(
+            args.context.db,
+            {
+              orgId: args.input.orgId,
+              userId: args.input.member.userId,
+              eventConfig:
+                "parentPageUrl" in eventConfig
+                  ? eventConfig
+                  : {
+                      provider: "notion",
+                      event: "child_page_created",
+                      parentPageUrl:
+                        eventConfig.parentPage.rawUrl ??
+                        eventConfig.parentPage.url,
+                    },
+            },
+            signal,
+          )
         : {
             kind: "bad-request",
-            message: "Unsupported Notion workflow event config",
+            message: "Unsupported Notion automation event config",
           };
   } else if (args.input.eventType === "notion-database-item-created") {
     preparedConfig =
@@ -1857,12 +2250,12 @@ async function createNotionEventAutomationForWorkflow(args: {
                         eventConfig.dataSource.rawUrl ??
                         eventConfig.dataSource.url,
                     },
-              signal: args.signal,
             },
+            signal,
           )
         : {
             kind: "bad-request",
-            message: "Unsupported Notion workflow event config",
+            message: "Unsupported Notion automation event config",
           };
   } else {
     preparedConfig =
@@ -1890,35 +2283,37 @@ async function createNotionEventAutomationForWorkflow(args: {
                           eventConfig.scope.dataSource.url,
                       }
                   : eventConfig,
-              signal: args.signal,
             },
+            signal,
           )
         : {
             kind: "bad-request",
-            message: "Unsupported Notion workflow event config",
+            message: "Unsupported Notion automation event config",
           };
   }
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (preparedConfig.kind !== "ok") {
     return preparedConfig;
   }
 
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig.eventConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
     currentTime: nowDate(),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "ok", summary };
 }
 
-async function createStrapiEventAutomationForWorkflow(args: {
-  readonly context: CreateEventAutomationWorkflowContext;
-  readonly input: CreateStrapiEventAutomationInput;
-  readonly signal: AbortSignal;
-}): Promise<AutomationResult> {
+async function createStrapiEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: CreateStrapiEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
   if (
     !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
       orgId: args.input.orgId,
@@ -1942,7 +2337,7 @@ async function createStrapiEventAutomationForWorkflow(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!integration) {
     return {
       kind: "bad-request",
@@ -1960,49 +2355,114 @@ async function createStrapiEventAutomationForWorkflow(args: {
       workflowTitle: args.context.workflowTitle,
       currentTime,
     });
-    const [row] = await tx
-      .insert(zeroWorkflowAutomations)
-      .values({
-        orgId: args.input.orgId,
-        workflowId: args.context.workflowId,
-        ownerUserId: args.input.member.userId,
-        kind: "event",
-        eventType: args.input.eventType,
-        eventConfig,
-        scheduleType: null,
-        cronExpression: null,
-        intervalSeconds: null,
-        atTime: null,
-        timezone: "UTC",
-        enabled: args.input.enabled,
-        nextRunAt: null,
-        createdAt: currentTime,
-        updatedAt: currentTime,
-      })
-      .returning();
+    const row = await insertWorkflowAutomation(tx, {
+      orgId: args.input.orgId,
+      workflowId: args.context.workflowId,
+      ownerUserId: args.input.member.userId,
+      kind: "event",
+      eventType: args.input.eventType,
+      eventConfig,
+      scheduleType: null,
+      cronExpression: null,
+      intervalSeconds: null,
+      atTime: null,
+      timezone: "UTC",
+      enabled: args.input.enabled,
+      nextRunAt: null,
+      ...(args.input.autonomyBudget === undefined
+        ? {}
+        : { autonomyBudget: args.input.autonomyBudget }),
+      createdAt: currentTime,
+      updatedAt: currentTime,
+    });
     if (!row) {
       throw new Error("Failed to create Strapi workflow automation");
     }
-    await tx.insert(zeroWorkflowStrapiAutomations).values({
+    await tx.insert(strapiWorkflowAutomations).values({
       automationId: row.id,
       integrationId: integration.id,
       createdAt: currentTime,
     });
     return await rowToSummary(tx, row, { chatThreadId });
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "ok", summary };
 }
 
-async function createChatRunFinishedEventAutomationForWorkflow(args: {
-  readonly context: {
-    readonly db: Db;
-    readonly workflowId: string;
-    readonly agentId: string;
-    readonly workflowTitle: string;
-  };
-  readonly input: CreateChatRunFinishedEventAutomationInput;
-}): Promise<AutomationResult> {
+async function createStripeInvoicePaidEventAutomationForWorkflow(
+  args: {
+    readonly context: CreateEventAutomationWorkflowContext;
+    readonly input: CreateStripeInvoicePaidEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  const readiness = await resolveStripeInvoicePaidAutomationBinding(
+    {
+      db: args.context.db,
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (readiness.kind === "bad_request") {
+    return { kind: "bad-request", message: readiness.message };
+  }
+  const eventConfig = stripeInvoicePaidEventConfigSchema.parse({
+    ...args.input.eventConfig,
+    ...readiness.binding,
+  });
+  const summary = await insertEventAutomation(args.context.db, {
+    input: { ...args.input, eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
+const createStripeInvoicePaidEventAutomation$ = command(
+  async (
+    { get },
+    args: {
+      readonly context: CreateEventAutomationWorkflowContext;
+      readonly input: CreateStripeInvoicePaidEventAutomationInput;
+    },
+    signal: AbortSignal,
+  ): Promise<AutomationResult> => {
+    const featureEnabled = await get(
+      stripeInvoicePaidWorkflowAutomationEnabledForOwner(
+        args.input.orgId,
+        args.input.member.userId,
+      ),
+    );
+    signal.throwIfAborted();
+    if (!featureEnabled) {
+      return stripeInvoicePaidWorkflowAutomationsDisabledResult();
+    }
+    return await createStripeInvoicePaidEventAutomationForWorkflow(
+      {
+        ...args,
+      },
+      signal,
+    );
+  },
+);
+
+async function createChatRunFinishedEventAutomationForWorkflow(
+  args: {
+    readonly context: {
+      readonly db: Db;
+      readonly workflowId: string;
+      readonly agentId: string;
+      readonly workflowTitle: string;
+    };
+    readonly input: CreateChatRunFinishedEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
   // The watched thread must belong to the automation owner: the run's final
   // output is surfaced to the workflow run, so cross-user watching would leak
   // another user's conversation.
@@ -2011,6 +2471,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(args: {
     .from(chatThreads)
     .where(eq(chatThreads.id, args.input.eventConfig.chatThreadId))
     .limit(1);
+  signal.throwIfAborted();
   if (!thread || thread.userId !== args.input.member.userId) {
     return {
       kind: "bad-request",
@@ -2018,19 +2479,37 @@ async function createChatRunFinishedEventAutomationForWorkflow(args: {
     };
   }
 
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const automationThreadId = await loadWorkflowUserAutomationThreadId(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      workflowId: args.context.workflowId,
+    },
+  );
+  signal.throwIfAborted();
+  if (automationThreadId === args.input.eventConfig.chatThreadId) {
+    return {
+      kind: "bad-request",
+      message:
+        "A workflow cannot watch run-finished events from its own chat thread",
+    };
+  }
+
+  const summary = await insertEventAutomation(args.context.db, {
     input: args.input,
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
     currentTime: nowDate(),
   });
+  signal.throwIfAborted();
   return { kind: "ok", summary };
 }
 
 const createEventAutomationForWorkflow$ = command(
   async (
-    { get },
+    { get, set },
     args: {
       readonly db: Db;
       readonly input: CreateEventAutomationInput;
@@ -2042,58 +2521,72 @@ const createEventAutomationForWorkflow$ = command(
   ): Promise<AutomationResult> => {
     const { input } = args;
     if (automationCreateInputIsChatRunFinished(input)) {
-      return await createChatRunFinishedEventAutomationForWorkflow({
-        context: args,
-        input,
-      });
+      return await createChatRunFinishedEventAutomationForWorkflow(
+        {
+          context: args,
+          input,
+        },
+        signal,
+      );
     }
 
     if (input.eventType === "webhook-received") {
-      return await createWebhookEventAutomationForWorkflow({
-        context: args,
-        input,
-        signal,
-      });
-    }
-
-    if (input.eventType === "github-label-applied") {
-      return await createGithubLabelEventAutomationForWorkflow({
-        context: args,
-        input,
-        signal,
-      });
+      const createArgs = { context: args, input };
+      return await createWebhookEventAutomationForWorkflow(createArgs, signal);
     }
 
     if (input.eventType === "github-workflow-run-completed") {
-      return await createGithubWorkflowRunEventAutomationForWorkflow({
-        context: args,
-        input,
+      const createArgs = { context: args, input };
+      return await createGithubWorkflowRunEventAutomationForWorkflow(
+        createArgs,
         signal,
-      });
+      );
     }
 
     if (automationCreateInputIsGithubWebhook(input)) {
-      return await createGithubWebhookEventAutomationForWorkflow({
-        context: args,
-        input,
+      return await createGithubWebhookEventAutomationForWorkflow(
+        {
+          context: args,
+          input,
+        },
         signal,
-      });
+      );
     }
 
     if (automationCreateInputIsGoogleCalendar(input)) {
-      return await createGoogleCalendarEventAutomationForWorkflow({
-        context: args,
-        input,
+      const createArgs = { context: args, input };
+      return await createGoogleCalendarEventAutomationForWorkflow(
+        createArgs,
         signal,
-      });
+      );
+    }
+
+    if (automationCreateInputIsGoogleForms(input)) {
+      const featureEnabled = await get(
+        googleFormsWorkflowAutomationCreationEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return googleFormsWorkflowAutomationsDisabledResult();
+      }
+      return await createGoogleFormsEventAutomationForWorkflow(
+        {
+          context: args,
+          input,
+        },
+        signal,
+      );
     }
 
     if (automationCreateInputIsGoogleMeet(input)) {
-      return await createGoogleMeetEventAutomationForWorkflow({
-        context: args,
-        input,
+      const createArgs = { context: args, input };
+      return await createGoogleMeetEventAutomationForWorkflow(
+        createArgs,
         signal,
-      });
+      );
     }
 
     if (automationCreateInputIsNotion(input)) {
@@ -2108,60 +2601,43 @@ const createEventAutomationForWorkflow$ = command(
         return notionWorkflowAutomationsDisabledResult();
       }
 
-      return await createNotionEventAutomationForWorkflow({
-        context: args,
-        input,
+      return await createNotionEventAutomationForWorkflow(
+        {
+          context: args,
+          input,
+        },
         signal,
-      });
+      );
     }
 
     if (automationCreateInputIsStrapi(input)) {
-      return await createStrapiEventAutomationForWorkflow({
-        context: args,
-        input,
+      const createArgs = { context: args, input };
+      return await createStrapiEventAutomationForWorkflow(createArgs, signal);
+    }
+
+    if (automationCreateInputIsStripeInvoicePaid(input)) {
+      const result = await set(
+        createStripeInvoicePaidEventAutomation$,
+        { context: args, input },
         signal,
-      });
+      );
+      signal.throwIfAborted();
+      return result;
     }
 
-    if (!automationCreateInputIsGmail(input)) {
-      return {
-        kind: "bad-request",
-        message: "Unsupported workflow event automation type",
-      };
+    if (automationCreateInputIsGmail(input)) {
+      return await createGmailEventAutomationForWorkflow(
+        {
+          context: args,
+          input,
+        },
+        signal,
+      );
     }
-
-    const preparedConfig = await prepareGmailEventConfigForPersist(args.db, {
-      orgId: input.orgId,
-      userId: input.member.userId,
-      eventType: input.eventType,
-      eventConfig: input.eventConfig,
-      signal,
-    });
-    signal.throwIfAborted();
-    if (preparedConfig.kind !== "ok") {
-      return preparedConfig;
-    }
-
-    const watchResult = await ensureGmailWatchForUser({
-      db: args.db,
-      orgId: input.orgId,
-      userId: input.member.userId,
-      signal,
-    });
-    signal.throwIfAborted();
-    if (watchResult.kind !== "ok") {
-      return { kind: "bad-request", message: watchResult.message };
-    }
-
-    const summary = await insertWorkflowEventAutomation(args.db, {
-      input: { ...input, eventConfig: preparedConfig.eventConfig },
-      workflowId: args.workflowId,
-      agentId: args.agentId,
-      workflowTitle: args.workflowTitle,
-      currentTime: nowDate(),
-    });
-    signal.throwIfAborted();
-    return { kind: "ok", summary };
+    return {
+      kind: "bad-request",
+      message: "Unsupported event automation type",
+    };
   },
 );
 
@@ -2286,7 +2762,7 @@ async function loadOwnedAutomation(
   }
   if (
     automation.kind === "event" &&
-    !supportedWorkflowEventType(automation.eventType)
+    !supportedAutomationEventType(automation.eventType)
   ) {
     return { kind: "not-found" };
   }
@@ -2312,26 +2788,30 @@ interface UpdateAutomationInput {
   readonly member: WorkflowMember;
   readonly automationId: string;
   readonly schedule?: ZeroWorkflowSchedule;
-  readonly eventConfig?: GmailWorkflowEventConfig | GithubWorkflowEventConfig;
+  readonly eventConfig?:
+    | GmailAutomationEventConfig
+    | GithubAutomationEventConfig;
 }
 
 async function updateAutomationEventConfig(
   db: Db,
   args: {
     readonly automationId: string;
-    readonly eventConfig: GmailWorkflowEventConfig | GithubWorkflowEventConfig;
-    readonly signal: AbortSignal;
+    readonly eventConfig:
+      | GmailAutomationEventConfig
+      | GithubAutomationEventConfig;
   },
+  signal: AbortSignal,
 ): Promise<ZeroWorkflowAutomationSummary> {
   const [row] = await db
-    .update(zeroWorkflowAutomations)
+    .update(workflowAutomations)
     .set({
       eventConfig: args.eventConfig,
       updatedAt: nowDate(),
     })
-    .where(eq(zeroWorkflowAutomations.id, args.automationId))
-    .returning();
-  args.signal.throwIfAborted();
+    .where(eq(workflowAutomations.id, args.automationId))
+    .returning(workflowAutomationColumns());
+  signal.throwIfAborted();
   if (!row) {
     throw new Error("Failed to update workflow automation");
   }
@@ -2339,12 +2819,12 @@ async function updateAutomationEventConfig(
 }
 
 function parseGithubAutomationEventConfig(
-  eventType: GithubWorkflowEventType,
+  eventType: GithubAutomationEventType,
   eventConfig: unknown,
-): GithubWorkflowEventConfig | null {
+): GithubAutomationEventConfig | null {
   const result =
-    eventType === "github-label-applied"
-      ? githubLabelAppliedEventConfigSchema.safeParse(eventConfig)
+    eventType === "github-pull-request"
+      ? githubPullRequestEventConfigSchema.safeParse(eventConfig)
       : eventType === "github-workflow-run-completed"
         ? githubWorkflowRunCompletedEventConfigSchema.safeParse(eventConfig)
         : eventType === "github-workflow-job-completed"
@@ -2367,8 +2847,7 @@ async function prepareGithubAutomationEventConfig(
   db: Db,
   args: {
     readonly orgId: string;
-    readonly userId: string;
-    readonly eventType: GithubWorkflowEventType;
+    readonly eventType: GithubAutomationEventType;
     readonly eventConfig: unknown;
   },
 ) {
@@ -2382,13 +2861,6 @@ async function prepareGithubAutomationEventConfig(
       message: "eventConfig must match the GitHub automation type",
     };
   }
-  if (args.eventType === "github-label-applied") {
-    return await prepareGithubLabelEventConfigForPersist(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      eventConfig: githubLabelAppliedEventConfigSchema.parse(parsed),
-    });
-  }
   if (args.eventType === "github-workflow-run-completed") {
     return await prepareGithubWorkflowRunEventConfigForPersist(db, {
       orgId: args.orgId,
@@ -2397,13 +2869,15 @@ async function prepareGithubAutomationEventConfig(
   }
 
   const eventConfig =
-    args.eventType === "github-workflow-job-completed"
-      ? githubWorkflowJobCompletedEventConfigSchema.parse(parsed)
-      : args.eventType === "github-pull-request-review-submitted"
-        ? githubPullRequestReviewSubmittedEventConfigSchema.parse(parsed)
-        : args.eventType === "github-deployment-status-created"
-          ? githubDeploymentStatusCreatedEventConfigSchema.parse(parsed)
-          : githubIssueCommentCreatedEventConfigSchema.parse(parsed);
+    args.eventType === "github-pull-request"
+      ? githubPullRequestEventConfigSchema.parse(parsed)
+      : args.eventType === "github-workflow-job-completed"
+        ? githubWorkflowJobCompletedEventConfigSchema.parse(parsed)
+        : args.eventType === "github-pull-request-review-submitted"
+          ? githubPullRequestReviewSubmittedEventConfigSchema.parse(parsed)
+          : args.eventType === "github-deployment-status-created"
+            ? githubDeploymentStatusCreatedEventConfigSchema.parse(parsed)
+            : githubIssueCommentCreatedEventConfigSchema.parse(parsed);
   return await prepareGithubWebhookEventConfigForPersist(db, {
     orgId: args.orgId,
     eventType: args.eventType,
@@ -2420,8 +2894,8 @@ const updateEventAutomationForWorkflow$ = command(
       readonly member: WorkflowMember;
       readonly automation: AutomationRow;
       readonly eventConfig?:
-        | GmailWorkflowEventConfig
-        | GithubWorkflowEventConfig;
+        | GmailAutomationEventConfig
+        | GithubAutomationEventConfig;
     },
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
@@ -2431,10 +2905,23 @@ const updateEventAutomationForWorkflow$ = command(
         message: "Webhook event automations cannot be updated",
       };
     }
+    if (args.automation.eventType === "stripe-invoice-paid") {
+      return {
+        kind: "bad-request",
+        message: "Stripe invoice-paid event automations cannot be updated",
+      };
+    }
     if (supportedGoogleCalendarEventType(args.automation.eventType)) {
       return {
         kind: "bad-request",
         message: "Google Calendar event automations cannot be updated",
+      };
+    }
+    if (supportedGoogleFormsEventType(args.automation.eventType)) {
+      return {
+        kind: "bad-request",
+        message:
+          "this trigger has no updatable fields; delete it and create a new one",
       };
     }
     if (supportedGoogleMeetEventType(args.automation.eventType)) {
@@ -2452,7 +2939,6 @@ const updateEventAutomationForWorkflow$ = command(
     if (supportedGithubEventType(args.automation.eventType)) {
       const eventConfig = await prepareGithubAutomationEventConfig(args.db, {
         orgId: args.orgId,
-        userId: args.member.userId,
         eventType: args.automation.eventType,
         eventConfig: args.eventConfig,
       });
@@ -2462,11 +2948,14 @@ const updateEventAutomationForWorkflow$ = command(
       }
       return {
         kind: "ok",
-        summary: await updateAutomationEventConfig(args.db, {
-          automationId: args.automation.id,
-          eventConfig: eventConfig.eventConfig,
+        summary: await updateAutomationEventConfig(
+          args.db,
+          {
+            automationId: args.automation.id,
+            eventConfig: eventConfig.eventConfig,
+          },
           signal,
-        }),
+        ),
       };
     }
     if (!supportedGmailEventType(args.automation.eventType)) {
@@ -2482,24 +2971,30 @@ const updateEventAutomationForWorkflow$ = command(
         message: "eventConfig must be a Gmail event config",
       };
     }
-    const preparedConfig = await prepareGmailEventConfigForPersist(args.db, {
-      orgId: args.orgId,
-      userId: args.member.userId,
-      eventType: args.automation.eventType,
-      eventConfig: parsedConfig.data,
+    const preparedConfig = await prepareGmailEventConfigForPersist(
+      args.db,
+      {
+        orgId: args.orgId,
+        userId: args.member.userId,
+        eventType: args.automation.eventType,
+        eventConfig: parsedConfig.data,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (preparedConfig.kind !== "ok") {
       return preparedConfig;
     }
     return {
       kind: "ok",
-      summary: await updateAutomationEventConfig(args.db, {
-        automationId: args.automation.id,
-        eventConfig: preparedConfig.eventConfig,
+      summary: await updateAutomationEventConfig(
+        args.db,
+        {
+          automationId: args.automation.id,
+          eventConfig: preparedConfig.eventConfig,
+        },
         signal,
-      }),
+      ),
     };
   },
 );
@@ -2557,7 +3052,7 @@ export const updateWorkflowAutomation$ = command(
 
     const row = await writeDb.transaction(async (tx) => {
       const [updated] = await tx
-        .update(zeroWorkflowAutomations)
+        .update(workflowAutomations)
         .set({
           scheduleType: cols.scheduleType,
           cronExpression: cols.cronExpression,
@@ -2567,8 +3062,8 @@ export const updateWorkflowAutomation$ = command(
           nextRunAt,
           updatedAt: now,
         })
-        .where(eq(zeroWorkflowAutomations.id, automation.id))
-        .returning();
+        .where(eq(workflowAutomations.id, automation.id))
+        .returning(workflowAutomationColumns());
       if (!updated) {
         throw new Error("Failed to update workflow automation");
       }
@@ -2583,10 +3078,8 @@ interface AutomationActionInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly automationId: string;
-}
-
-function manualTriggerSource(automation: AutomationRow) {
-  return automation.kind === "event" ? "workflow-event" : "workflow-schedule";
+  readonly sourceRunId?: string;
+  readonly inheritedAutonomyBudget?: number;
 }
 
 /**
@@ -2597,6 +3090,7 @@ function manualTriggerContext(args: {
   readonly automation: AutomationRow;
   readonly workflowName: string;
   readonly requestedAt: Date;
+  readonly sourceRunId?: string;
 }): WorkflowAutomationContext {
   const requestedAt = args.requestedAt.toISOString();
   return {
@@ -2607,6 +3101,9 @@ function manualTriggerContext(args: {
       automationId: args.automation.id,
       trigger: "manual",
       requestedAt,
+      ...(args.sourceRunId === undefined
+        ? {}
+        : { sourceRunId: args.sourceRunId }),
     },
   };
 }
@@ -2684,6 +3181,9 @@ export const runOwnedWorkflowAutomationNow$ = command(
       automation,
       workflowName: target.workflowName,
       requestedAt: currentTime,
+      ...(args.sourceRunId === undefined
+        ? {}
+        : { sourceRunId: args.sourceRunId }),
     });
     const result = await set(
       runWorkflowAutomationNow$,
@@ -2746,8 +3246,16 @@ export const deleteWorkflowAutomation$ = command(
     signal.throwIfAborted();
     // Delete the automation row only; the bound chat thread is kept.
     await writeDb
-      .delete(zeroWorkflowAutomations)
-      .where(eq(zeroWorkflowAutomations.id, owned.automation.id));
+      .delete(workflowAutomations)
+      .where(eq(workflowAutomations.id, owned.automation.id));
+    signal.throwIfAborted();
+    await reconcileAutomationEventWatches(
+      {
+        db: writeDb,
+        automations: [owned.automation],
+      },
+      signal,
+    );
     signal.throwIfAborted();
     await publishThreadBoundWorkflowAutomationChanged(
       args.member.userId,
@@ -2769,24 +3277,9 @@ const ensureEventAutomationCanBeEnabled$ = command(
     },
     signal: AbortSignal,
   ): Promise<AutomationActionFailure | null> => {
-    if (args.automation.eventType === "gmail-new-message") {
-      const watchResult = await ensureGmailWatchForUser({
-        db: args.db,
-        orgId: args.orgId,
-        userId: args.member.userId,
-        signal,
-      });
-      signal.throwIfAborted();
-      if (watchResult.kind !== "ok") {
-        return { kind: "bad-request", message: watchResult.message };
-      }
-      return null;
-    }
-
     if (supportedGithubEventType(args.automation.eventType)) {
       const preparedConfig = await prepareGithubAutomationEventConfig(args.db, {
         orgId: args.orgId,
-        userId: args.member.userId,
         eventType: args.automation.eventType,
         eventConfig: args.automation.eventConfig,
       });
@@ -2794,33 +3287,16 @@ const ensureEventAutomationCanBeEnabled$ = command(
       return preparedConfig.kind === "ok" ? null : preparedConfig;
     }
 
-    if (supportedGoogleCalendarEventType(args.automation.eventType)) {
-      const config = parseGoogleCalendarEventConfig(
-        args.automation.eventType,
-        args.automation.eventConfig,
-      );
-      const watchResult = await ensureGoogleCalendarWatchForUser({
-        db: args.db,
-        orgId: args.orgId,
-        userId: args.member.userId,
-        calendarId: config.calendarId,
-        signal,
-      });
-      signal.throwIfAborted();
-      if (watchResult.kind !== "ok") {
-        return { kind: "bad-request", message: watchResult.message };
-      }
-      return null;
-    }
-
     if (supportedGoogleMeetEventType(args.automation.eventType)) {
       const subscriptionResult =
-        await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser({
-          db: args.db,
-          orgId: args.orgId,
-          userId: args.member.userId,
+        await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
+          {
+            db: args.db,
+            orgId: args.orgId,
+            userId: args.member.userId,
+          },
           signal,
-        });
+        );
       signal.throwIfAborted();
       if (subscriptionResult.kind !== "ok") {
         return { kind: "bad-request", message: subscriptionResult.message };
@@ -2831,6 +3307,171 @@ const ensureEventAutomationCanBeEnabled$ = command(
   },
 );
 
+async function enabledWatchHadConsumer(
+  args: {
+    readonly db: Db;
+    readonly automation: AutomationRow;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (supportedGmailEventType(args.automation.eventType)) {
+    return await hasEnabledGmailConsumer(
+      {
+        db: args.db,
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
+      },
+      signal,
+    );
+  }
+  if (supportedGoogleFormsEventType(args.automation.eventType)) {
+    const config = googleFormsResponseSubmittedEventConfigSchema.parse(
+      args.automation.eventConfig,
+    );
+    return await hasEnabledGoogleFormsConsumer(
+      {
+        db: args.db,
+        userId: args.automation.ownerUserId,
+        formId: config.form.id,
+      },
+      signal,
+    );
+  }
+  if (!supportedGoogleCalendarEventType(args.automation.eventType)) {
+    return false;
+  }
+  const config = parseGoogleCalendarEventConfig(
+    args.automation.eventType,
+    args.automation.eventConfig,
+  );
+  return await hasEnabledGoogleCalendarConsumer(
+    {
+      db: args.db,
+      orgId: args.automation.orgId,
+      userId: args.automation.ownerUserId,
+      calendarId: config.calendarId,
+    },
+    signal,
+  );
+}
+
+async function ensureEnabledAutomationEventWatch(
+  args: {
+    readonly db: Db;
+    readonly automation: AutomationRow;
+    readonly hadConsumer: boolean;
+  },
+  signal: AbortSignal,
+): Promise<AutomationActionFailure | null> {
+  if (supportedGmailEventType(args.automation.eventType)) {
+    const result = await ensureGmailWatchForUser(
+      {
+        db: args.db,
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
+        forceRefresh: !args.hadConsumer,
+      },
+      signal,
+    );
+    return result.kind === "ok"
+      ? null
+      : { kind: "bad-request", message: result.message };
+  }
+  if (supportedGoogleFormsEventType(args.automation.eventType)) {
+    const config = googleFormsResponseSubmittedEventConfigSchema.parse(
+      args.automation.eventConfig,
+    );
+    const result = await ensureGoogleFormsWatchForUser(
+      {
+        db: args.db,
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
+        formId: config.form.id,
+        connectorId: config.connectorId,
+        resetAutomationId: args.automation.id,
+      },
+      signal,
+    );
+    return result.kind === "ok"
+      ? null
+      : { kind: "bad-request", message: result.message };
+  }
+  if (!supportedGoogleCalendarEventType(args.automation.eventType)) {
+    return null;
+  }
+  const config = parseGoogleCalendarEventConfig(
+    args.automation.eventType,
+    args.automation.eventConfig,
+  );
+  const result = await ensureGoogleCalendarWatchForUser(
+    {
+      db: args.db,
+      orgId: args.automation.orgId,
+      userId: args.automation.ownerUserId,
+      calendarId: config.calendarId,
+      forceRefresh: !args.hadConsumer,
+    },
+    signal,
+  );
+  return result.kind === "ok"
+    ? null
+    : { kind: "bad-request", message: result.message };
+}
+
+async function restoreDisabledWorkflowAutomation(
+  db: Db,
+  automation: AutomationRow,
+): Promise<void> {
+  await db
+    .update(workflowAutomations)
+    .set({
+      enabled: false,
+      nextRunAt: automation.nextRunAt,
+      updatedAt: nowDate(),
+    })
+    .where(eq(workflowAutomations.id, automation.id));
+}
+
+async function ensureEnabledAutomationEventWatchWithRollback(
+  args: {
+    readonly db: Db;
+    readonly previousAutomation: AutomationRow;
+    readonly enabledAutomation: AutomationRow;
+    readonly hadConsumer: boolean;
+  },
+  signal: AbortSignal,
+): Promise<AutomationActionFailure | null> {
+  const failure = await onRejection(
+    ensureEnabledAutomationEventWatch(
+      {
+        db: args.db,
+        automation: args.enabledAutomation,
+        hadConsumer: args.hadConsumer,
+      },
+      signal,
+    ),
+    async () => {
+      await restoreDisabledWorkflowAutomation(args.db, args.previousAutomation);
+    },
+  );
+  signal.throwIfAborted();
+  if (!failure) {
+    return null;
+  }
+
+  await restoreDisabledWorkflowAutomation(args.db, args.previousAutomation);
+  signal.throwIfAborted();
+  await reconcileAutomationEventWatches(
+    {
+      db: args.db,
+      automations: [args.enabledAutomation],
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return failure;
+}
+
 async function persistEnabledWorkflowAutomation(
   db: Db,
   args: {
@@ -2838,8 +3479,9 @@ async function persistEnabledWorkflowAutomation(
     readonly orgId: string;
     readonly nextRunAt: Date | null;
     readonly now: Date;
-    readonly signal: AbortSignal;
+    readonly inheritedAutonomyBudget?: number;
   },
+  signal: AbortSignal,
 ): Promise<
   | { readonly status: "team-required" }
   | { readonly status: "ok"; readonly row: AutomationRow | undefined }
@@ -2850,40 +3492,101 @@ async function persistEnabledWorkflowAutomation(
       args.automation.eventType === "webhook-received"
     ) {
       const tierEligible =
-        await lockWorkflowWebhookAutomationTierEligibleForOrg(tx, {
-          orgId: args.orgId,
-          signal: args.signal,
-        });
+        await lockWorkflowWebhookAutomationTierEligibleForOrg(
+          tx,
+          {
+            orgId: args.orgId,
+          },
+          signal,
+        );
       if (!tierEligible) {
         return { status: "team-required" };
       }
     }
 
     const [enabledRow] = await tx
-      .update(zeroWorkflowAutomations)
+      .update(workflowAutomations)
       .set({
         enabled: true,
         nextRunAt: args.nextRunAt,
         consecutiveFailures: 0,
         updatedAt: args.now,
+        ...(args.inheritedAutonomyBudget === undefined
+          ? {}
+          : { autonomyBudget: args.inheritedAutonomyBudget }),
       })
-      .where(eq(zeroWorkflowAutomations.id, args.automation.id))
-      .returning();
+      .where(eq(workflowAutomations.id, args.automation.id))
+      .returning(workflowAutomationColumns());
     if (
       enabledRow &&
       args.automation.kind === "event" &&
       args.automation.eventType === "webhook-received"
     ) {
       await tx
-        .update(zeroWorkflowWebhookAutomations)
+        .update(workflowWebhookAutomations)
         .set({ disabledReason: null, updatedAt: args.now })
-        .where(
-          eq(zeroWorkflowWebhookAutomations.automationId, args.automation.id),
-        );
+        .where(eq(workflowWebhookAutomations.automationId, args.automation.id));
     }
     return { status: "ok", row: enabledRow };
   });
 }
+
+async function validateEventAutomationEnableReadiness(
+  args: {
+    readonly automation: AutomationRow;
+    readonly db: Db;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult | null> {
+  if (args.automation.eventType === "stripe-invoice-paid") {
+    const readiness = await validateStripeInvoicePaidAutomationBinding(
+      {
+        db: args.db,
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
+        eventConfig: stripeInvoicePaidEventConfigSchema.parse(
+          args.automation.eventConfig,
+        ),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return readiness.kind === "bad_request"
+      ? { kind: "bad-request", message: readiness.message }
+      : null;
+  }
+  return args.automation.eventType === "strapi-entry-published" &&
+    !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
+      orgId: args.automation.orgId,
+    })
+    ? {
+        kind: "bad-request",
+        message: "Strapi workflow automations are not enabled",
+      }
+    : null;
+}
+
+const validateStripeFeature$ = command(
+  async (
+    { get },
+    automation: AutomationRow,
+    signal: AbortSignal,
+  ): Promise<AutomationResult | null> => {
+    if (automation.eventType !== "stripe-invoice-paid") {
+      return null;
+    }
+    const featureEnabled = await get(
+      stripeInvoicePaidWorkflowAutomationEnabledForOwner(
+        automation.orgId,
+        automation.ownerUserId,
+      ),
+    );
+    signal.throwIfAborted();
+    return featureEnabled
+      ? null
+      : stripeInvoicePaidWorkflowAutomationsDisabledResult();
+  },
+);
 
 export const enableWorkflowAutomation$ = command(
   async (
@@ -2898,20 +3601,23 @@ export const enableWorkflowAutomation$ = command(
       return owned;
     }
     const { automation } = owned;
-    if (
-      automation.eventType === "strapi-entry-published" &&
-      !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
-        orgId: automation.orgId,
-      })
-    ) {
-      return {
-        kind: "bad-request",
-        message: "Strapi workflow automations are not enabled",
-      };
+    const stripeFailure = await set(validateStripeFeature$, automation, signal);
+    signal.throwIfAborted();
+    if (stripeFailure) {
+      return stripeFailure;
     }
-
-    // The owning agent is derived from the workflow row (hard 1:N); it always
-    // exists. Re-confirm the owner can still run it before re-enabling.
+    const eventEnableFailure = await validateEventAutomationEnableReadiness(
+      {
+        automation,
+        db: writeDb,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (eventEnableFailure) {
+      return eventEnableFailure;
+    }
+    // Re-confirm the workflow's owning agent can still be used before re-enabling.
     const agentId = await loadAutomationWorkflowAgentId(writeDb, {
       orgId: args.orgId,
       workflowId: automation.workflowId,
@@ -2948,6 +3654,8 @@ export const enableWorkflowAutomation$ = command(
             automation.lastRunAt,
           )
         : automation.nextRunAt;
+    const watchArgs = { db: writeDb, automation };
+    const watchHadConsumer = await enabledWatchHadConsumer(watchArgs, signal);
     if (automation.kind === "event") {
       const failure = await set(
         ensureEventAutomationCanBeEnabled$,
@@ -2964,20 +3672,37 @@ export const enableWorkflowAutomation$ = command(
         return failure;
       }
     }
-    const enabled = await persistEnabledWorkflowAutomation(writeDb, {
-      automation,
-      orgId: args.orgId,
-      nextRunAt,
-      now,
+    const enabled = await persistEnabledWorkflowAutomation(
+      writeDb,
+      {
+        automation,
+        orgId: args.orgId,
+        nextRunAt,
+        now,
+        inheritedAutonomyBudget: args.inheritedAutonomyBudget,
+      },
       signal,
-    });
-    signal.throwIfAborted();
+    );
     if (enabled.status === "team-required") {
+      signal.throwIfAborted();
       return workflowWebhookTeamRequiredResult();
     }
     const row = enabled.row;
     if (!row) {
       throw new Error("Failed to enable workflow automation");
+    }
+    const watchFailure = await ensureEnabledAutomationEventWatchWithRollback(
+      {
+        db: writeDb,
+        previousAutomation: automation,
+        enabledAutomation: row,
+        hadConsumer: watchHadConsumer,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (watchFailure) {
+      return watchFailure;
     }
     const chatThreadId = await loadWorkflowUserAutomationThreadId(writeDb, {
       orgId: row.orgId,
@@ -2990,10 +3715,9 @@ export const enableWorkflowAutomation$ = command(
       chatThreadId,
     );
     signal.throwIfAborted();
-    return {
-      kind: "ok",
-      summary: await rowToSummary(writeDb, row, { chatThreadId }),
-    };
+    const summary = await rowToSummary(writeDb, row, { chatThreadId });
+    signal.throwIfAborted();
+    return { kind: "ok", summary };
   },
 );
 
@@ -3013,14 +3737,22 @@ export const disableWorkflowAutomation$ = command(
     const nextRunAt =
       owned.automation.kind === "schedule" ? null : owned.automation.nextRunAt;
     const [row] = await writeDb
-      .update(zeroWorkflowAutomations)
+      .update(workflowAutomations)
       .set({ enabled: false, nextRunAt, updatedAt: now })
-      .where(eq(zeroWorkflowAutomations.id, owned.automation.id))
-      .returning();
+      .where(eq(workflowAutomations.id, owned.automation.id))
+      .returning(workflowAutomationColumns());
     signal.throwIfAborted();
     if (!row) {
       throw new Error("Failed to disable workflow automation");
     }
+    await reconcileAutomationEventWatches(
+      {
+        db: writeDb,
+        automations: [owned.automation],
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     const chatThreadId = await loadWorkflowUserAutomationThreadId(writeDb, {
       orgId: row.orgId,
       userId: row.ownerUserId,

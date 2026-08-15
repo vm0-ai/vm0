@@ -1,17 +1,13 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  chatEventResponse,
-  chatThreadByIdContract,
-  chatThreadMarkReadContract,
-  chatThreadEventsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { click } from "../../../__tests__/page-helper.ts";
+import { describe, expect, it } from "vitest";
+import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
-import { mockChatLifecycle, mockSubagentThread } from "./chat-test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
+  billingStatus,
   buildModelPolicy,
   buildProvider,
 } from "./chat-composer-test-helpers.ts";
@@ -20,21 +16,62 @@ import {
   detachedSetupPage,
   SERVER_QUEUED_RUN_THREAD_ID,
   expectTextBefore,
-  makeEvent,
   mockServerQueuedThreadStories,
   buttonByText,
   buttonByLabel,
 } from "./chat-lifecycle-test-helpers.ts";
 
-afterEach(async () => {
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
-});
-
 describe("chat lifecycle", () => {
+  it("keeps budget inputs out of the visible transcript", async () => {
+    mockChatLifecycle(context, {
+      threadId: "e7000000-0000-4000-a000-000000000001",
+      chatEvents: [
+        {
+          id: "msg-budget-input-user",
+          role: "user",
+          eventType: "input.prompt",
+          content: "Start the long-running task",
+          runId: "run-budget-input",
+          createdAt: "2026-08-06T00:00:00Z",
+        },
+        {
+          id: "msg-budget-input-warning",
+          role: "user",
+          eventType: "input.budget",
+          content: "The runner has five minutes remaining",
+          runId: "run-budget-input",
+          createdAt: "2026-08-06T01:55:00Z",
+        },
+        {
+          id: "msg-budget-input-assistant",
+          role: "assistant",
+          eventType: "output.message",
+          content: "The task summary is ready",
+          runId: "run-budget-input",
+          createdAt: "2026-08-06T01:55:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/e7000000-0000-4000-a000-000000000001",
+    });
+
+    await expect(
+      screen.findByText("Start the long-running task"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("The task summary is ready"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("The runner has five minutes remaining"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows run credit usage with friendly popover details", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip",
+      threadId: "e7000000-0000-4000-a000-000000000002",
       chatEvents: [
         {
           id: "msg-usage-chip-user",
@@ -57,7 +94,7 @@ describe("chat lifecycle", () => {
           runId: "run-usage-chip",
           usage: {
             version: 1,
-            totalCredits: 24_734,
+            totalCredits: 24_234,
             settledAt: "2026-06-09T10:00:02Z",
             breakdown: [
               {
@@ -69,11 +106,6 @@ describe("chat lifecycle", () => {
                 kind: "model/kimi-k2.5/tokens.output",
                 credits: 1000,
                 providers: [{ provider: "moonshot", credits: 1000 }],
-              },
-              {
-                kind: "model/vm0-model/tokens.output",
-                credits: 500,
-                providers: [{ provider: "vm0-model", credits: 500 }],
               },
               {
                 kind: "image",
@@ -89,11 +121,11 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip",
+      path: "/chats/e7000000-0000-4000-a000-000000000002",
     });
 
     const credit = await waitFor(() => {
-      return buttonByLabel("Credit usage 24,734");
+      return buttonByLabel("Credit usage 24,234");
     });
     const actions = credit.closest('[data-testid="chat-event-actions"]');
     expect(actions).not.toBeNull();
@@ -108,10 +140,9 @@ describe("chat lifecycle", () => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
         1,
       );
-      expect(screen.getAllByText("24,734").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("24,234").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("kimi-k2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Auto").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
         1,
       );
@@ -134,14 +165,85 @@ describe("chat lifecycle", () => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
         1,
       );
-      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("kimi-k2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("shows run model names for limited-free-1 workspaces", async () => {
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(
+        200,
+        billingStatus("limited-free-1", {
+          supportByok: false,
+          restrictedVm0Models: true,
+        }),
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId: "e7000000-0000-4000-a000-000000000003",
+      chatEvents: [
+        {
+          id: "msg-limited-free-usage-user",
+          role: "user",
+          content: "Summarize usage",
+          runId: "run-limited-free-usage",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-limited-free-usage-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-limited-free-usage",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-limited-free-usage",
+          role: "assistant",
+          content: null,
+          runId: "run-limited-free-usage",
+          usage: {
+            version: 1,
+            totalCredits: 330,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/gpt-5.6-luna/tokens.output",
+                credits: 300,
+                providers: [{ provider: "openai", credits: 300 }],
+              },
+              {
+                kind: "image",
+                credits: 30,
+                providers: [{ provider: "gpt-image-2", credits: 30 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/e7000000-0000-4000-a000-000000000003",
+    });
+
+    click(await screen.findByLabelText("Credit usage 330"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("GPT 5.6 Luna").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
+        1,
+      );
     });
   });
 
   it("shows generation usage with model names only", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-generation-usage-model-names",
+      threadId: "e7000000-0000-4000-a000-000000000004",
       chatEvents: [
         {
           id: "msg-generation-usage-user",
@@ -164,7 +266,7 @@ describe("chat lifecycle", () => {
           runId: "run-generation-usage",
           usage: {
             version: 1,
-            totalCredits: 1976,
+            totalCredits: 2076,
             settledAt: "2026-06-09T10:00:02Z",
             breakdown: [
               {
@@ -174,11 +276,15 @@ describe("chat lifecycle", () => {
               },
               {
                 kind: "video",
-                credits: 1880,
+                credits: 1980,
                 providers: [
                   {
                     provider: "dreamina-seedance-2-0-260128",
                     credits: 1880,
+                  },
+                  {
+                    provider: "joggai-talking-avatar",
+                    credits: 100,
                   },
                 ],
               },
@@ -191,10 +297,10 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-generation-usage-model-names",
+      path: "/chats/e7000000-0000-4000-a000-000000000004",
     });
 
-    const credit = await screen.findByLabelText("Credit usage 1,976");
+    const credit = await screen.findByLabelText("Credit usage 2,076");
     click(credit);
 
     await waitFor(() => {
@@ -209,14 +315,20 @@ describe("chat lifecycle", () => {
         1,
       );
       expect(screen.getAllByText("1,880").length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText("Avatar").some((element) => {
+          return element.parentElement?.textContent === "Avatar100";
+        }),
+      ).toBeTruthy();
       expect(screen.queryByText(/fal\.? ?ai/iu)).not.toBeInTheDocument();
       expect(screen.queryByText(/dreamina/iu)).not.toBeInTheDocument();
+      expect(screen.queryByText(/joggai/iu)).not.toBeInTheDocument();
     });
   });
 
   it("shows the latest immutable run usage settlement", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip-settlements",
+      threadId: "e7000000-0000-4000-a000-000000000005",
       chatEvents: [
         {
           id: "msg-usage-settlement-user",
@@ -280,7 +392,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip-settlements",
+      path: "/chats/e7000000-0000-4000-a000-000000000005",
     });
 
     await expect(
@@ -293,7 +405,7 @@ describe("chat lifecycle", () => {
     document.documentElement.lang = "pt-BR";
     await initializeI18n("pt-BR");
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip-folded-managed-api",
+      threadId: "e7000000-0000-4000-a000-000000000006",
       chatEvents: [
         {
           id: "msg-usage-folded-user",
@@ -373,7 +485,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip-folded-managed-api",
+      path: "/chats/e7000000-0000-4000-a000-000000000006",
     });
 
     await expect(
@@ -406,7 +518,7 @@ describe("chat lifecycle", () => {
 
   it("keeps connector usage attached to consecutive assistant runs", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip-consecutive-runs",
+      threadId: "e7000000-0000-4000-a000-000000000007",
       chatEvents: [
         {
           id: "msg-usage-consecutive-user",
@@ -488,7 +600,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip-consecutive-runs",
+      path: "/chats/e7000000-0000-4000-a000-000000000007",
     });
 
     await expect(
@@ -529,7 +641,17 @@ describe("chat lifecycle", () => {
         {
           id: "msg-server-queued-followup",
           role: "user",
-          content: "Follow up when the queued run starts",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "text",
+                text: "Follow up when the queued run starts",
+              },
+              { type: "morning_brief", briefDate: "2026-06-09" },
+            ],
+          },
           runId: undefined,
           createdAt: "2026-06-09T10:00:02Z",
         },
@@ -579,7 +701,11 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Start queued deployment")).toBeInTheDocument();
-      expect(screen.getByText("queue...")).toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button").some((button) => {
+          return button.textContent === "queue...";
+        }),
+      ).toBeTruthy();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
@@ -589,14 +715,18 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Queued deployment is running now."),
       ).toBeInTheDocument();
-      expect(screen.queryByText("queue...")).not.toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button").some((button) => {
+          return button.textContent === "queue...";
+        }),
+      ).toBeFalsy();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
   });
 
   it("keeps chat work visible while the run is active", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-running",
+      threadId: "e7000000-0000-4000-a000-000000000008",
       activeRunIds: ["run-work-folding-running"],
       chatEvents: [
         {
@@ -616,7 +746,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-running",
+      path: "/chats/e7000000-0000-4000-a000-000000000008",
     });
 
     await waitFor(() => {
@@ -632,7 +762,7 @@ describe("chat lifecycle", () => {
 
   it("keeps completed chat work folded while a later run is active", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-completed-before-active",
+      threadId: "e7000000-0000-4000-a000-000000000009",
       activeRunIds: ["run-work-folding-active-later"],
       chatEvents: [
         {
@@ -671,7 +801,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-completed-before-active",
+      path: "/chats/e7000000-0000-4000-a000-000000000009",
     });
 
     const expandButtons = await screen.findAllByLabelText(
@@ -696,7 +826,7 @@ describe("chat lifecycle", () => {
 
   it("folds completed chat work and toggles the hidden history", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-completed",
+      threadId: "e7000000-0000-4000-a000-000000000010",
       chatEvents: [
         {
           role: "user",
@@ -722,7 +852,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-completed",
+      path: "/chats/e7000000-0000-4000-a000-000000000010",
     });
 
     const expandButton = await screen.findByLabelText("Expand work history");
@@ -783,6 +913,189 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it.each([
+    {
+      name: "splits one completed run into folds at user boundaries",
+      caseId: "two-folds",
+      threadId: "e7000000-0000-4000-a000-000000000023",
+      sequence: ["U1", "A2", "A3", "A4", "U2", "A5", "A6", "A7", "A8"],
+      visibleOrder: [
+        "U1",
+        "Worked for 30s",
+        "A4",
+        "U2",
+        "Worked for 40s",
+        "A8",
+      ],
+      usageAssistant: "A8",
+      folds: [
+        {
+          label: "Worked for 30s",
+          hidden: ["A2", "A3"],
+          final: "A4",
+        },
+        {
+          label: "Worked for 40s",
+          hidden: ["A5", "A6", "A7"],
+          final: "A8",
+        },
+      ],
+    },
+    {
+      name: "keeps one assistant before a trailing user unfolded",
+      caseId: "single-assistant-before-user",
+      threadId: "e7000000-0000-4000-a000-000000000024",
+      sequence: ["U1", "A2", "U2"],
+      visibleOrder: ["U1", "A2", "U2"],
+      usageAssistant: null,
+      folds: [],
+    },
+    {
+      name: "folds earlier assistant work before a trailing user",
+      caseId: "fold-before-user",
+      threadId: "e7000000-0000-4000-a000-000000000025",
+      sequence: ["U1", "A2", "A3", "U2"],
+      visibleOrder: ["U1", "Worked for 20s", "A3", "U2"],
+      usageAssistant: null,
+      folds: [
+        {
+          label: "Worked for 20s",
+          hidden: ["A2"],
+          final: "A3",
+        },
+      ],
+    },
+    {
+      name: "keeps one assistant in each user phase unfolded",
+      caseId: "single-assistant-per-phase",
+      threadId: "e7000000-0000-4000-a000-000000000026",
+      sequence: ["U1", "A2", "U2", "A3"],
+      visibleOrder: ["U1", "A2", "U2", "A3"],
+      usageAssistant: "A3",
+      folds: [],
+    },
+  ])(
+    "$name",
+    async ({
+      caseId,
+      threadId,
+      sequence,
+      visibleOrder,
+      usageAssistant,
+      folds,
+    }) => {
+      const runId = `run-work-folding-${caseId}`;
+      const chatEvents: MockChatEventInput[] = sequence.map(
+        (content, index) => {
+          const createdAt = new Date(
+            Date.UTC(2026, 7, 5, 10, 0, index * 10),
+          ).toISOString();
+          if (content.startsWith("U")) {
+            return { role: "user", content, runId, createdAt };
+          }
+          return {
+            role: "assistant",
+            content,
+            runId,
+            createdAt,
+            ...(index === sequence.length - 1
+              ? { runLifecycleEvent: "completed" as const }
+              : {}),
+          };
+        },
+      );
+      if (sequence.at(-1)?.startsWith("U")) {
+        chatEvents.push({
+          role: "assistant",
+          content: null,
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: new Date(
+            Date.UTC(2026, 7, 5, 10, 0, sequence.length * 10),
+          ).toISOString(),
+        });
+      }
+      chatEvents.push({
+        role: "assistant",
+        content: null,
+        runId,
+        usage: {
+          version: 1,
+          totalCredits: 12,
+          settledAt: new Date(
+            Date.UTC(2026, 7, 5, 10, 0, sequence.length * 10 + 1),
+          ).toISOString(),
+          breakdown: [],
+        },
+        createdAt: new Date(
+          Date.UTC(2026, 7, 5, 10, 0, sequence.length * 10 + 1),
+        ).toISOString(),
+      });
+      mockChatLifecycle(context, { threadId, chatEvents });
+
+      detachedSetupPage({
+        context,
+        path: `/chats/${threadId}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatRunContinuationPresentation]: true,
+        },
+      });
+
+      await screen.findByText(visibleOrder[0]!);
+      const expandButtons = screen.queryAllByLabelText("Expand work history");
+      expect(expandButtons).toHaveLength(folds.length);
+      for (const [index, fold] of folds.entries()) {
+        const expandButton = expandButtons[index]!;
+        expect(expandButton).toHaveTextContent(fold.label);
+        const assistantGroup = expandButton.closest(
+          '[data-role="assistant"]',
+        ) as HTMLElement | null;
+        expect(assistantGroup).not.toBeNull();
+        expect(
+          within(assistantGroup!).getByText(fold.final),
+        ).toBeInTheDocument();
+        for (const hidden of fold.hidden) {
+          expect(within(assistantGroup!).queryByText(hidden)).toBeNull();
+        }
+      }
+      for (let index = 1; index < visibleOrder.length; index++) {
+        expectTextBefore(
+          document.body,
+          visibleOrder[index - 1]!,
+          visibleOrder[index]!,
+        );
+      }
+      for (const [index, fold] of folds.entries()) {
+        const expandButton = expandButtons[index]!;
+        const assistantGroup = expandButton.closest(
+          '[data-role="assistant"]',
+        ) as HTMLElement;
+        click(expandButton);
+        await waitFor(() => {
+          for (const hidden of fold.hidden) {
+            expect(
+              within(assistantGroup).getByText(hidden),
+            ).toBeInTheDocument();
+          }
+        });
+      }
+
+      const usageButtons = screen.queryAllByLabelText("Credit usage 12");
+      if (usageAssistant === null) {
+        expect(usageButtons).toHaveLength(0);
+        return;
+      }
+      expect(usageButtons).toHaveLength(1);
+      const usageAssistantGroup = usageButtons[0]!.closest(
+        '[data-role="assistant"]',
+      ) as HTMLElement | null;
+      expect(usageAssistantGroup).not.toBeNull();
+      expect(
+        within(usageAssistantGroup!).getByText(usageAssistant),
+      ).toBeInTheDocument();
+    },
+  );
+
   it("keeps the established completed-run layout across container sizes", async () => {
     const finalReply = "The launch plan is ready.";
     const followupPrompt = "Turn it into a presentation";
@@ -795,7 +1108,7 @@ describe("chat lifecycle", () => {
     });
 
     mockChatLifecycle(context, {
-      threadId: "thread-completed-run-layout",
+      threadId: "e7000000-0000-4000-a000-000000000011",
       chatEvents: [
         {
           role: "user",
@@ -826,7 +1139,7 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           runId: "run-completed-run-layout",
-          recommendedFollowups: [
+          followups: [
             {
               prompt: followupPrompt,
               kind: "generate",
@@ -840,7 +1153,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-completed-run-layout",
+      path: "/chats/e7000000-0000-4000-a000-000000000011",
     });
 
     const expandButton = await screen.findByLabelText("Expand work history");
@@ -890,8 +1203,7 @@ describe("chat lifecycle", () => {
     expect(followupButton).not.toHaveClass("border", "bg-background");
 
     const finishedLabel = screen.getByText(`Keep going · ${completedAtLabel}`);
-    const finishedLabelRow = finishedLabel.parentElement;
-    const finishedDivider = finishedLabelRow!.parentElement;
+    const finishedDivider = finishedLabel.parentElement;
     const finishedRunRow = finishedDivider!.parentElement;
     expect(finishedRunRow).toHaveClass("flex", "flex-col", "gap-2");
     expect(finishedRunRow).not.toHaveClass(
@@ -900,18 +1212,23 @@ describe("chat lifecycle", () => {
       "p-3",
     );
     expect(followupList!.parentElement).toBe(finishedRunRow);
-    expect(finishedDivider!.firstElementChild).toHaveClass(
-      "h-px",
-      "w-full",
-      "bg-border/40",
+    expect(finishedDivider).toHaveClass(
+      "flex",
+      "min-h-5",
+      "items-center",
+      "gap-2",
     );
-    expect(finishedDivider!.firstElementChild).not.toHaveClass("hidden");
-    expect(finishedLabelRow!.lastElementChild).toHaveClass(
+    expect(finishedDivider).toHaveTextContent(
+      `Keep going · ${completedAtLabel}`,
+    );
+    expect(finishedDivider!.children).toHaveLength(2);
+    expect(finishedDivider!.firstElementChild).toBe(finishedLabel);
+    expect(finishedDivider!.lastElementChild).toHaveClass(
       "h-px",
       "flex-1",
       "bg-border/40",
     );
-    expect(finishedLabelRow!.lastElementChild).not.toHaveClass("hidden");
+    expect(finishedDivider!.querySelector(".w-full")).toBeNull();
   });
 
   it.each([
@@ -941,7 +1258,7 @@ describe("chat lifecycle", () => {
       });
       context.mocks.data.userPreferences({ locale });
       mockChatLifecycle(context, {
-        threadId: "thread-localized-completed-run",
+        threadId: "e7000000-0000-4000-a000-000000000012",
         chatEvents: [
           {
             role: "user",
@@ -966,7 +1283,7 @@ describe("chat lifecycle", () => {
             role: "assistant",
             content: null,
             runId: "run-localized-completed-run",
-            recommendedFollowups: [
+            followups: [
               {
                 prompt: followup,
                 kind: "generate",
@@ -980,7 +1297,7 @@ describe("chat lifecycle", () => {
 
       detachedSetupPage({
         context,
-        path: "/chats/thread-localized-completed-run",
+        path: "/chats/e7000000-0000-4000-a000-000000000012",
       });
 
       await expect(
@@ -1003,7 +1320,7 @@ describe("chat lifecycle", () => {
       supportedLocales: ["en-US", "ja-JP"],
     });
     mockChatLifecycle(context, {
-      threadId: "thread-japanese-completed-run",
+      threadId: "e7000000-0000-4000-a000-000000000013",
       chatEvents: [
         {
           role: "user",
@@ -1028,7 +1345,7 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           runId: "run-japanese-completed-run",
-          recommendedFollowups: [
+          followups: [
             {
               prompt: "プレゼンテーションに変換する",
               kind: "generate",
@@ -1042,7 +1359,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-japanese-completed-run",
+      path: "/chats/e7000000-0000-4000-a000-000000000013",
     });
 
     await expect(
@@ -1061,7 +1378,7 @@ describe("chat lifecycle", () => {
     });
     context.mocks.data.userPreferences({ locale: "es-ES" });
     mockChatLifecycle(context, {
-      threadId: "thread-spanish-completed-run",
+      threadId: "e7000000-0000-4000-a000-000000000014",
       chatEvents: [
         {
           role: "user",
@@ -1086,7 +1403,7 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           runId: "run-spanish-completed-run",
-          recommendedFollowups: [
+          followups: [
             {
               prompt: "Convertir en una presentación",
               kind: "generate",
@@ -1100,7 +1417,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-spanish-completed-run",
+      path: "/chats/e7000000-0000-4000-a000-000000000014",
     });
 
     await expect(
@@ -1109,77 +1426,9 @@ describe("chat lifecycle", () => {
     expect(document.documentElement.lang).toBe("es-ES");
   });
 
-  it("does not let an attached lifecycle marker hide the final answer", async () => {
-    mockChatLifecycle(context, {
-      threadId: "thread-work-folding-completion-marker",
-      chatEvents: [
-        {
-          role: "user",
-          content: "Summarize the production launch status",
-          runId: "run-work-folding-completion-marker",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "Checking production launch status.",
-          runId: "run-work-folding-completion-marker",
-          createdAt: "2026-06-09T10:00:25Z",
-        },
-        {
-          role: "assistant",
-          content: "The production launch status is ready.",
-          runId: "run-work-folding-completion-marker",
-          createdAt: "2026-06-09T10:00:55Z",
-        },
-        {
-          role: "assistant",
-          content: null,
-          runId: "run-work-folding-completion-marker",
-          runLifecycleEvent: "completed",
-          attachFiles: [
-            {
-              id: "legacy-completion-attachment",
-              filename: "launch-status.pdf",
-              contentType: "application/pdf",
-              size: 4096,
-              url: "https://example.com/launch-status.pdf",
-            },
-          ],
-          createdAt: "2026-06-09T10:00:56Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-work-folding-completion-marker",
-    });
-
-    const expandButton = await screen.findByLabelText("Expand work history");
-    expect(expandButton).toHaveTextContent("Worked for 56s");
-    expect(
-      screen.getByText("Summarize the production launch status"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Checking production launch status.")).toBeNull();
-    expect(
-      screen.getByText("The production launch status is ready."),
-    ).toBeInTheDocument();
-
-    click(expandButton);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Checking production launch status."),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("The production launch status is ready."),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("folds each completed run independently", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-each-run",
+      threadId: "e7000000-0000-4000-a000-000000000015",
       chatEvents: [
         {
           role: "user",
@@ -1224,7 +1473,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-each-run",
+      path: "/chats/e7000000-0000-4000-a000-000000000015",
     });
 
     const expandButtons = await screen.findAllByLabelText(
@@ -1285,7 +1534,7 @@ describe("chat lifecycle", () => {
 
   it("keeps chat work visible when the run was cancelled", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-cancelled",
+      threadId: "e7000000-0000-4000-a000-000000000016",
       chatEvents: [
         {
           role: "user",
@@ -1312,7 +1561,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-cancelled",
+      path: "/chats/e7000000-0000-4000-a000-000000000016",
     });
 
     await waitFor(() => {
@@ -1326,7 +1575,7 @@ describe("chat lifecycle", () => {
 
   it("does not fold a completed run with only a user message and final reply", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-user-final-only",
+      threadId: "e7000000-0000-4000-a000-000000000017",
       chatEvents: [
         {
           role: "user",
@@ -1346,7 +1595,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-user-final-only",
+      path: "/chats/e7000000-0000-4000-a000-000000000017",
     });
 
     await waitFor(() => {
@@ -1358,7 +1607,7 @@ describe("chat lifecycle", () => {
 
   it("does not fold a completed run when the only prior assistant message is thinking", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-thinking-only",
+      threadId: "e7000000-0000-4000-a000-000000000018",
       chatEvents: [
         {
           role: "user",
@@ -1385,7 +1634,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-thinking-only",
+      path: "/chats/e7000000-0000-4000-a000-000000000018",
     });
 
     await waitFor(() => {
@@ -1400,7 +1649,7 @@ describe("chat lifecycle", () => {
 
   it("does not fold a completed run with a single message", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-single-message",
+      threadId: "e7000000-0000-4000-a000-000000000019",
       chatEvents: [
         {
           role: "assistant",
@@ -1414,7 +1663,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-single-message",
+      path: "/chats/e7000000-0000-4000-a000-000000000019",
     });
 
     await waitFor(() => {
@@ -1425,7 +1674,7 @@ describe("chat lifecycle", () => {
 
   it("renders a server-corrected assistant message without the stale answer", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-corrected-answer",
+      threadId: "e7000000-0000-4000-a000-000000000020",
       threadTitle: "Corrected answer",
       chatEvents: [
         {
@@ -1455,7 +1704,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-corrected-answer",
+      path: "/chats/e7000000-0000-4000-a000-000000000020",
     });
 
     await waitFor(() => {
@@ -1470,7 +1719,7 @@ describe("chat lifecycle", () => {
 
   it("restores an interrupted run without duplicate cancellation rows", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-restored-interrupt",
+      threadId: "e7000000-0000-4000-a000-000000000021",
       threadTitle: "Restored interrupt",
       chatEvents: [
         {
@@ -1508,7 +1757,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-restored-interrupt",
+      path: "/chats/e7000000-0000-4000-a000-000000000021",
     });
 
     await waitFor(() => {
@@ -1519,148 +1768,132 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("catches up after a missed realtime burst on reconnect", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000748";
-    const baselineMessages = Array.from({ length: 5 }, (_, index) => {
-      return {
-        ...makeEvent(`base-${index}`, `Baseline ${index}`, threadId),
-        seqId: index + 1,
-      };
-    });
-    const burstMessages = Array.from({ length: 120 }, (_, index) => {
-      return {
-        ...makeEvent(`burst-${index}`, `Burst ${index}`, threadId),
-        seqId: baselineMessages.length + index + 1,
-      };
-    });
-    const finalPageGate = context.mocks.deferred<void>();
-    let burstEnabled = false;
-    let page = 0;
-    let finalForwardPageRequested = false;
-    const sinceSeqIds: number[] = [];
-
-    mockSubagentThread(context, threadId);
-    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, {
-        lastReadAt: null,
-      });
-    });
-    context.mocks.api(
-      chatThreadEventsContract.list,
-      async ({ query, respond }) => {
-        if (!query.sinceSeqId) {
-          return respond(200, {
-            events: baselineMessages.map(chatEventResponse),
-          });
-        }
-        sinceSeqIds.push(query.sinceSeqId);
-        if (!burstEnabled) {
-          return respond(200, { events: [] });
-        }
-        const startIndex = page * 50;
-        page += 1;
-        const messages = burstMessages.slice(startIndex, startIndex + 50);
-        if (messages.length < 50) {
-          finalForwardPageRequested = true;
-          await finalPageGate.promise;
-        }
-        return respond(200, { events: messages.map(chatEventResponse) });
-      },
-    );
-    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-      return respond(200, {
-        lastReadAt: null,
-        unreads: [],
-      });
-    });
-
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-      await waitFor(() => {
-        expect(screen.getByText("Baseline 0")).toBeInTheDocument();
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
-      expect(
-        context.mocks.ably.hasSubscription(
-          `chatThreadMessageCreated:${threadId}`,
-        ),
-      ).toBeFalsy();
-      expect(
-        context.mocks.ably.hasSubscription(`chatThreadRunCreated:${threadId}`),
-      ).toBeFalsy();
-      sinceSeqIds.length = 0;
-      burstEnabled = true;
-      context.mocks.ably.triggerReconnect();
-
-      await waitFor(() => {
-        expect(finalForwardPageRequested).toBeTruthy();
-      });
-      expect(screen.queryByText("Burst 119")).not.toBeInTheDocument();
-
-      finalPageGate.resolve();
-      await waitFor(() => {
-        expect(screen.getByText("Burst 119")).toBeInTheDocument();
-      });
-    } finally {
-      if (!finalPageGate.settled()) {
-        finalPageGate.resolve();
-      }
-    }
-    expect(sinceSeqIds).toStrictEqual([
-      baselineMessages.at(-1)!.seqId,
-      burstMessages[49]!.seqId,
-      burstMessages[99]!.seqId,
-    ]);
-  });
-
   it.each([
     {
       name: "Codex usage limit",
+      threadId: "e7000000-0000-4000-a000-000000000027",
       error:
         "You've hit your usage limit. Try again at 5:00 PM (Asia/Shanghai).",
       title: "Codex limit reached",
     },
     {
       name: "Claude Code session limit",
+      threadId: "e7000000-0000-4000-a000-000000000028",
       error: "You've hit your session limit · resets 5:00 PM (Asia/Shanghai)",
       title: "Claude Code limit reached",
     },
     {
       name: "Claude usage limit",
+      threadId: "e7000000-0000-4000-a000-000000000029",
       error:
         "Claude usage limit reached. Visit https://claude.ai/settings/usage or try again at 6:17 AM.",
       title: "Claude Code limit reached",
     },
     {
       name: "Codex model capacity",
+      threadId: "e7000000-0000-4000-a000-000000000030",
       error: "Selected model is at capacity. Please try a different model.",
       title: "Codex model is busy",
     },
     {
       name: "Claude Code model capacity",
+      threadId: "e7000000-0000-4000-a000-000000000031",
       error:
         "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
       title: "Claude Code model is busy",
     },
-  ])("recognizes the latest $name error", async ({ name, error, title }) => {
-    const threadId = `thread-recovery-${name.replaceAll(" ", "-")}`;
+  ])(
+    "recognizes the latest $name error",
+    async ({ threadId, error, title }) => {
+      mockChatLifecycle(context, {
+        threadId,
+        chatEvents: [
+          {
+            id: `${threadId}-user`,
+            role: "user",
+            content: "Continue",
+            runId: `${threadId}-run`,
+            createdAt: "2026-07-30T09:00:00Z",
+          },
+          {
+            id: `${threadId}-failure`,
+            role: "assistant",
+            content: null,
+            error,
+            runId: `${threadId}-run`,
+            runLifecycleEvent: "failed",
+            createdAt: "2026-07-30T09:00:01Z",
+          },
+        ],
+      });
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+        path: `/chats/${threadId}`,
+      });
+
+      const recoveryTitle = await screen.findByText(title);
+      expect(recoveryTitle).toBeInTheDocument();
+      expect(
+        screen.getByTestId("assistant-error-recovery"),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("shows limited-free recovery models with Pro gating", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000789";
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(
+        200,
+        billingStatus("limited-free-1", {
+          supportByok: false,
+          restrictedVm0Models: true,
+        }),
+      );
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000968",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000969",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000970",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+    ]);
     mockChatLifecycle(context, {
       threadId,
+      selectedModel: "deepseek-v4-flash",
       chatEvents: [
         {
-          id: `${threadId}-user`,
+          id: "limited-free-capacity-user",
           role: "user",
           content: "Continue",
-          runId: `${threadId}-run`,
+          runId: "limited-free-capacity-run",
           createdAt: "2026-07-30T09:00:00Z",
         },
         {
-          id: `${threadId}-failure`,
+          id: "limited-free-capacity-failure",
           role: "assistant",
           content: null,
-          error,
-          runId: `${threadId}-run`,
+          error:
+            "The selected model is at capacity. Please try a different model.",
+          runId: "limited-free-capacity-run",
           runLifecycleEvent: "failed",
           createdAt: "2026-07-30T09:00:01Z",
         },
@@ -1673,9 +1906,18 @@ describe("chat lifecycle", () => {
       path: `/chats/${threadId}`,
     });
 
-    const recoveryTitle = await screen.findByText(title);
-    expect(recoveryTitle).toBeInTheDocument();
-    expect(screen.getByTestId("assistant-error-recovery")).toBeInTheDocument();
+    const card = await screen.findByTestId("assistant-error-recovery");
+    click(within(card).getByRole("combobox", { name: "Switch model" }));
+
+    const deepseek = await screen.findByRole("option", {
+      name: /DeepSeek V4 Flash/u,
+    });
+    const luna = screen.getByRole("option", { name: /GPT 5\.6 Luna/u });
+    expect(deepseek).not.toHaveTextContent("Pro");
+    expect(luna).not.toHaveTextContent("Pro");
+    expect(
+      screen.getByRole("option", { name: /GPT 5\.6 Sol.*Pro/u }),
+    ).toBeInTheDocument();
   });
 
   it.each([
@@ -1839,6 +2081,7 @@ describe("chat lifecycle", () => {
   it("keeps the current model and alternatives for model capacity and retries", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000792";
     let retriedPrompt: string | undefined;
+    let retriedUserMessage: unknown;
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000976",
@@ -1848,8 +2091,8 @@ describe("chat lifecycle", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000977",
-        model: "claude-opus-4-7",
-        modelLabel: "Claude Opus 4.7",
+        model: "claude-opus-4-8",
+        modelLabel: "Claude Opus 4.8",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000978",
@@ -1882,6 +2125,7 @@ describe("chat lifecycle", () => {
       ],
       onRunCreate: (body) => {
         retriedPrompt = body.prompt;
+        retriedUserMessage = body.userMessage;
       },
     });
 
@@ -1894,7 +2138,7 @@ describe("chat lifecycle", () => {
     const card = await screen.findByTestId("assistant-error-recovery");
     click(within(card).getByRole("combobox", { name: "Switch model" }));
     const claudeOption = await screen.findByRole("option", {
-      name: /Claude Opus 4\.7/u,
+      name: /Claude Opus 4.8/u,
     });
     expect(claudeOption).toBeInTheDocument();
     expect(
@@ -1908,11 +2152,15 @@ describe("chat lifecycle", () => {
     click(buttonByText("Try again", card));
     await waitFor(() => {
       expect(retriedPrompt).toBe("try again");
+      expect(retriedUserMessage).toMatchObject({
+        version: 1,
+        parts: [{ type: "text", text: "try again" }],
+      });
     });
   });
 
   it("keeps the provider error unchanged when recovery is disabled", async () => {
-    const threadId = "thread-recovery-disabled";
+    const threadId = "e7000000-0000-4000-a000-000000000022";
     const error =
       "You've hit your usage limit. Try again at 5:00 PM (Asia/Shanghai).";
     mockChatLifecycle(context, {

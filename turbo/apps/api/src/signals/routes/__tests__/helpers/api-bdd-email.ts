@@ -1,21 +1,18 @@
 import { randomUUID } from "node:crypto";
 
-import { cronDrainEmailOutboxContract } from "@vm0/api-contracts/contracts/cron";
-import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
+import type { TestEmailOutboxStateItem } from "@okouai/api-contracts/contracts/test-email-outbox-state";
+import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../../context/wait-until";
+import { userExportRoutes } from "../../user-export";
 import type { ApiTestUser } from "./api-bdd";
+import { createEmailOutboxStateApi } from "./email-outbox-state";
 import { createZeroRouteMocks } from "./zero-route-test";
 
-const CRON_AUTHORIZATION = "Bearer test-cron-secret";
-
 function emailApp(context: TestContext) {
-  return setupApp({ context });
+  return setupApp({ context, routes: userExportRoutes });
 }
 
 function authenticate(context: TestContext, actor: ApiTestUser) {
@@ -40,6 +37,8 @@ function authenticate(context: TestContext, actor: ApiTestUser) {
 }
 
 export function createEmailApi(context: TestContext) {
+  const outbox = createEmailOutboxStateApi(context);
+
   return {
     async enqueueDataExportEmail(
       actor: ApiTestUser,
@@ -67,16 +66,32 @@ export function createEmailApi(context: TestContext) {
       ) {
         throw new Error("Expected the data export email job to complete");
       }
-      return { to: actor.email, subject: "Your data export is ready" };
+      const subject = "Your data export is ready";
+      return { to: actor.email, subject };
     },
 
-    async drainEmailOutboxCron(validAuth: boolean) {
-      return await accept(
-        emailApp(context)(cronDrainEmailOutboxContract).drain({
-          headers: validAuth ? { authorization: CRON_AUTHORIZATION } : {},
-        }),
-        [200, 401],
-      );
+    async findEmailOutboxItems(options: {
+      readonly to: string;
+      readonly subject: string;
+    }): Promise<readonly TestEmailOutboxStateItem[]> {
+      return await outbox.findItems({
+        toAddress: options.to,
+        subject: options.subject,
+      });
+    },
+
+    async findEmailOutboxItem(options: {
+      readonly to: string;
+      readonly subject: string;
+    }): Promise<TestEmailOutboxStateItem> {
+      return await outbox.findItem({
+        toAddress: options.to,
+        subject: options.subject,
+      });
+    },
+
+    async drainEmailOutboxItems(itemIds: readonly string[]): Promise<number> {
+      return await outbox.drainItems(itemIds);
     },
   };
 }

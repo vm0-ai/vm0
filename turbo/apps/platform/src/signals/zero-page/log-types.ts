@@ -2,28 +2,18 @@
 import type {
   LogStatus,
   TriggerSource,
-} from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/logs";
+import type {
+  AgentEventsResponse as ApiAgentEventsResponse,
+  RunEvent,
+} from "@okouai/api-contracts/contracts/runs";
 import { i18n } from "../../i18n/index.ts";
 
 // Re-export from core contract to stay in sync with the API schema
 export type { LogStatus, TriggerSource };
 
-/**
- * Build a display label for a trigger source.
- * For "agent" sources with a known parent agent name, returns "Agent (name)".
- */
-export function getTriggerSourceLabel(
-  source: TriggerSource,
-  triggerAgentName?: string | null,
-): string {
-  if (source === "agent" && triggerAgentName) {
-    return i18n.t(
-      ($) => {
-        return $.activity.sources.agentWithName;
-      },
-      { name: triggerAgentName },
-    );
-  }
+/** Build a display label for a trigger source. */
+export function getTriggerSourceLabel(source: TriggerSource): string {
   switch (source) {
     case "web": {
       return i18n.t(($) => {
@@ -80,33 +70,22 @@ export function getTriggerSourceLabel(
         return $.activity.sources.webhook;
       });
     }
-    case "workflow-schedule": {
+    case "automation-schedule": {
       return i18n.t(($) => {
-        return $.activity.sources.workflowSchedule;
+        return $.activity.sources.automationSchedule;
       });
     }
-    case "workflow-event": {
+    case "automation-event": {
       return i18n.t(($) => {
-        return $.activity.sources.workflowEvent;
+        return $.activity.sources.automationEvent;
+      });
+    }
+    case "goal": {
+      return i18n.t(($) => {
+        return $.activity.sources.goal;
       });
     }
   }
-}
-
-// List response - contains basic fields for list display
-export interface LogEntry {
-  id: string;
-  sessionId: string | null;
-  agentId: string | null;
-  displayName: string | null;
-  framework: string | null;
-  triggerSource: TriggerSource | null;
-  triggerAgentName: string | null;
-  status: LogStatus;
-  prompt: string;
-  createdAt: string;
-  startedAt: string | null;
-  completedAt: string | null;
 }
 
 // Detail response - full log information
@@ -124,7 +103,6 @@ export interface LogDetail {
   modelProvider: string | null;
   selectedModel: string | null;
   triggerSource: TriggerSource | null;
-  triggerAgentName: string | null;
   status: LogStatus;
   prompt: string;
   appendSystemPrompt: string | null;
@@ -135,18 +113,5 @@ export interface LogDetail {
   artifact: Artifact;
 }
 
-// Agent event from telemetry API
-export interface AgentEvent {
-  sequenceNumber: number;
-  eventType: string;
-  eventData: unknown;
-  createdAt: string;
-}
-
-// Agent events response from /api/zero/runs/[id]/telemetry/agent
-export interface AgentEventsResponse {
-  events: AgentEvent[];
-  hasMore: boolean;
-  nextCursor?: string | null;
-  framework: string;
-}
+export type AgentEvent = RunEvent;
+export type AgentEventsResponse = ApiAgentEventsResponse;

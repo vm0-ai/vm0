@@ -1,11 +1,11 @@
 import { command } from "ccstate";
-import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   compatibleStoredExecutionContextSchema,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
-  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
-  runnersNetworkPolicyRefreshContract,
+  runnersActiveInputsContract,
+  runnersConnectorRuntimeSyncContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
@@ -15,24 +15,26 @@ import {
   type ExecutionContext,
   type HeldSandboxState,
   type HeldWorkspaceState,
+  type RunnerPreference,
+  type RunnerPreferenceClaimState,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
-} from "@vm0/api-contracts/contracts/runners";
+} from "@okouai/api-contracts/contracts/runners";
 import {
   runStatusSchema,
   type RunStatus,
-} from "@vm0/api-contracts/contracts/runs";
-import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { blobs } from "@vm0/db/schema/blob";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+} from "@okouai/api-contracts/contracts/runs";
+import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { blobs } from "@okouai/db/schema/blob";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import {
   runnerState,
   type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
   type RunnerHeldWorkspaceState as PersistedRunnerHeldWorkspaceState,
-} from "@vm0/db/schema/runner-state";
+} from "@okouai/db/schema/runner-state";
 import {
   and,
   desc,
@@ -48,6 +50,8 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 
+import { authContext$ } from "../auth/auth-context";
+import { authRoute } from "../auth/auth-route";
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
@@ -61,10 +65,10 @@ import {
 } from "../external/s3";
 import {
   createRunnerGroupRealtimeToken,
-  publishRunChangedForUserSafely,
+  publishChatThreadMessageCreatedSafely,
 } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -77,8 +81,15 @@ import {
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
+import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
+import {
+  recordActiveInputDeliveryReceipt,
+  reserveActiveInputDelivery,
+} from "../services/active-input-delivery.service";
+import { notifyRunningChatRunOfPendingInput } from "../services/chat-thread-queue-drain.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
+import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-sync.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -94,11 +105,13 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
-  type RunnerPreferenceResolutionOutcome,
+  runnerPreferenceTelemetryResolution,
+  runnerPreferenceTelemetryDimensions,
   runnerReuseKeyTelemetryKind,
   runnerReusePreferenceLookupError,
   runnerReusePreferencePollPriority,
   resolveRunnerReusePreference,
+  type RunnerPreferenceTelemetryResolution,
 } from "../services/runner-reuse-preference";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
@@ -138,7 +151,6 @@ function mergeClaimVars(args: {
 
 interface ClaimFailedSideEffectArgs {
   readonly runId: string;
-  readonly userId: string;
   readonly orgId: string;
   readonly error: string;
 }
@@ -176,6 +188,7 @@ type ClaimRouteTimingActionType =
   | "claim_route_secret_materialization"
   | "claim_route_response_assembly"
   | "claim_route_response_network_policy_refresh"
+  | "claim_route_response_network_policy_refresh_baseline_database"
   | "claim_route_response_resume_session"
   | "claim_route_transition_running"
   | "claim_route_transition_execute";
@@ -527,8 +540,9 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
-  readonly runnerPreferenceResolution: RunnerPreferenceResolutionOutcome;
+  readonly runnerPreference: RunnerPreference;
   readonly reuseKeyKind: "thread" | "session" | "none";
+  readonly historyGenerationRunId: string | undefined;
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
   readonly pendingJobLookupStartedAtMs: number;
@@ -539,11 +553,14 @@ function recordPollTimingMetrics(args: {
     runner_group: args.runnerGroup,
     profile: args.profile,
     auth_type: args.authType,
-    runner_preference_resolution: args.runnerPreferenceResolution,
     reuse_key_kind: args.reuseKeyKind,
+    ...runnerPreferenceTelemetryDimensions(args.runnerPreference),
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
+  }
+  if (args.historyGenerationRunId) {
+    dimensions.history_generation_run_id = args.historyGenerationRunId;
   }
 
   recordSandboxOperations([
@@ -704,7 +721,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
-  const reusePreference = await resolvePollRunnerReusePreference(db, {
+  const runnerPreference = await resolvePollRunnerReusePreference(db, {
     runId: pendingJob.runId,
     runnerGroup: group,
     profile: pendingJob.profile,
@@ -720,8 +737,9 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     profile: pendingJob.profile,
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
-    runnerPreferenceResolution: reusePreference.outcome,
+    runnerPreference,
     reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
+    historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
     pendingJobLookupStartedAtMs,
@@ -742,15 +760,15 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        runnerPreference: reusePreference.runnerPreference ?? undefined,
+        runnerPreference,
       },
     },
   };
 });
 
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
-const networkPolicyRefreshBody$ = bodyResultOf(
-  runnersNetworkPolicyRefreshContract.refresh,
+const connectorRuntimeSyncBody$ = bodyResultOf(
+  runnersConnectorRuntimeSyncContract.sync,
 );
 const builtinFirewallsResolveBody$ = bodyResultOf(
   runnersBuiltinFirewallsResolveContract.resolve,
@@ -977,24 +995,13 @@ async function lockRunnerJob(
   return row;
 }
 
-async function transitionClaimedJobToRunning(
-  db: Db,
+function buildClaimTransitionSql(
   runId: string,
-  runnerIdentity: RunnerClaimIdentity | undefined,
-  signal: AbortSignal,
-  timing: ClaimRouteTimingCollector,
-): Promise<ClaimTransitionResult> {
-  const runnerId = runnerIdentity?.runnerId ?? null;
-  const runnerHeartbeatGeneration = runnerIdentity?.heartbeatGeneration ?? null;
-  return await db.transaction(async (tx) => {
-    const result = await timing.measure(
-      "claim_route_transition_execute",
-      "nested",
-      async () => {
-        // Materialized outputs make the row locks depend on run, then queue.
-        return await executeRawRows(
-          tx,
-          sql`
+  runnerId: string | null,
+  runnerHeartbeatGeneration: number | null,
+): SQL {
+  // Materialized outputs make the row locks depend on run, then queue.
+  return sql`
           WITH locked_run AS MATERIALIZED (
             SELECT
               ${agentRuns.id} AS "id",
@@ -1090,9 +1097,27 @@ async function transitionClaimedJobToRunning(
                 )::double precision
               FROM updated_run
             ) AS "claimedAtMs"
-          `,
-          claimTransitionSqlRowSchema,
-        );
+          `;
+}
+
+async function transitionClaimedJobToRunning(
+  db: Db,
+  runId: string,
+  runnerIdentity: RunnerClaimIdentity | undefined,
+  signal: AbortSignal,
+  timing: ClaimRouteTimingCollector,
+): Promise<ClaimTransitionResult> {
+  const query = buildClaimTransitionSql(
+    runId,
+    runnerIdentity?.runnerId ?? null,
+    runnerIdentity?.heartbeatGeneration ?? null,
+  );
+  return await db.transaction(async (tx) => {
+    const result = await timing.measure(
+      "claim_route_transition_execute",
+      "nested",
+      async () => {
+        return await executeRawRows(tx, query, claimTransitionSqlRowSchema);
       },
     );
     signal.throwIfAborted();
@@ -1274,11 +1299,8 @@ function connectorPermissionBaselineMatchesStoredContext(
 ): boolean {
   const baselineConnectorSlugs = Object.keys(baseline.connectors);
   const storedBuiltinConnectorSlugs = new Set(
-    (storedContext.firewalls ?? []).flatMap((firewall) => {
-      return firewall.kind === "builtin" &&
-        connectorSlugSchema.safeParse(firewall.name).success
-        ? [firewall.name]
-        : [];
+    storedContext.connectorRuntimeTargets.flatMap((target) => {
+      return target.kind === "builtin" ? [target.connectorSlug] : [];
     }),
   );
   const storedNetworkPolicies = storedContext.networkPolicies ?? {};
@@ -1359,6 +1381,13 @@ async function refreshClaimNetworkPolicies(args: {
         args.db,
         scope,
         baseline,
+        async <T>(operation: () => Promise<T>): Promise<T> => {
+          return await args.timing.measure(
+            "claim_route_response_network_policy_refresh_baseline_database",
+            "nested",
+            operation,
+          );
+        },
       );
       if (resolution.kind === "incompatible") {
         return await fullRefresh("full_incompatible_baseline");
@@ -1693,31 +1722,33 @@ async function resolveResumeSessionForClaim(args: {
   );
 }
 
-async function buildClaimResponseBody(args: {
-  readonly db: Db;
-  readonly run: ClaimedRun;
-  readonly reuseKey: string | null;
-  readonly storedContext: StoredExecutionContext;
-  readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
-  readonly timing: ClaimRouteTimingCollector;
-  readonly signal: AbortSignal;
-  readonly loadIdentityRepresentation: (
-    hash: string,
-  ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
-  readonly loadCompressedRepresentation: (
-    hash: string,
-    encoding: CompressedSessionHistoryBlobEncoding,
-  ) => Promise<CompressedResumeSessionHistoryRepresentation | undefined>;
-  readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
-  readonly generateResumeSessionHistoryObjectUrl: (
-    objectKey: string,
-  ) => Promise<string>;
-}): Promise<ExecutionContext> {
+async function buildClaimResponseBody(
+  args: {
+    readonly db: Db;
+    readonly run: ClaimedRun;
+    readonly reuseKey: string | null;
+    readonly storedContext: StoredExecutionContext;
+    readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
+    readonly timing: ClaimRouteTimingCollector;
+    readonly loadIdentityRepresentation: (
+      hash: string,
+    ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
+    readonly loadCompressedRepresentation: (
+      hash: string,
+      encoding: CompressedSessionHistoryBlobEncoding,
+    ) => Promise<CompressedResumeSessionHistoryRepresentation | undefined>;
+    readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
+    readonly generateResumeSessionHistoryObjectUrl: (
+      objectKey: string,
+    ) => Promise<string>;
+  },
+  signal: AbortSignal,
+): Promise<ExecutionContext> {
   const secretValues = await secretValuesForRunner(
     args.storedContext,
     args.timing,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return await args.timing.measure(
     "claim_route_response_assembly",
     "top_level",
@@ -1754,7 +1785,7 @@ async function buildClaimResponseBody(args: {
         throw error;
       }
       const resumeSession = resumeSessionResult.value;
-      args.signal.throwIfAborted();
+      signal.throwIfAborted();
       const sandboxToken = generateSandboxToken(
         args.run.userId,
         args.run.id,
@@ -1765,7 +1796,7 @@ async function buildClaimResponseBody(args: {
         throw error;
       }
       const refreshedPolicies = refreshedPoliciesResult.value;
-      args.signal.throwIfAborted();
+      signal.throwIfAborted();
       const {
         connectorPermissionBaseline: _connectorPermissionBaseline,
         secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
@@ -1792,6 +1823,7 @@ async function buildClaimResponseBody(args: {
         resumeSession,
         sandboxToken,
         secretValues,
+        connectorRuntimeTargets: args.storedContext.connectorRuntimeTargets,
         networkPolicies: refreshedPolicies.networkPolicies,
         networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
       };
@@ -1809,40 +1841,42 @@ const buildClaimResponseBodyForClaim$ = command(
       readonly storedContext: StoredExecutionContext;
       readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
       readonly timing: ClaimRouteTimingCollector;
-      readonly signal: AbortSignal;
     },
+    signal: AbortSignal,
   ): Promise<ExecutionContext> => {
-    return await buildClaimResponseBody({
-      db: args.db,
-      run: args.run,
-      reuseKey: args.reuseKey,
-      storedContext: args.storedContext,
-      connectorPermissionBaseline: args.connectorPermissionBaseline,
-      timing: args.timing,
-      signal: args.signal,
-      loadIdentityRepresentation(hash: string) {
-        return set(loadIdentityResumeSessionHistoryRepresentation$, {
-          db: args.db,
-          hash,
-        });
+    return await buildClaimResponseBody(
+      {
+        db: args.db,
+        run: args.run,
+        reuseKey: args.reuseKey,
+        storedContext: args.storedContext,
+        connectorPermissionBaseline: args.connectorPermissionBaseline,
+        timing: args.timing,
+        loadIdentityRepresentation(hash: string) {
+          return set(loadIdentityResumeSessionHistoryRepresentation$, {
+            db: args.db,
+            hash,
+          });
+        },
+        loadCompressedRepresentation(
+          hash: string,
+          encoding: CompressedSessionHistoryBlobEncoding,
+        ) {
+          return set(loadCompressedResumeSessionHistoryRepresentation$, {
+            db: args.db,
+            encoding,
+            hash,
+          });
+        },
+        generateResumeSessionHistoryUrl(hash: string) {
+          return set(generateResumeSessionHistoryUrl$, hash);
+        },
+        generateResumeSessionHistoryObjectUrl(objectKey: string) {
+          return set(generateResumeSessionHistoryObjectUrl$, objectKey);
+        },
       },
-      loadCompressedRepresentation(
-        hash: string,
-        encoding: CompressedSessionHistoryBlobEncoding,
-      ) {
-        return set(loadCompressedResumeSessionHistoryRepresentation$, {
-          db: args.db,
-          encoding,
-          hash,
-        });
-      },
-      generateResumeSessionHistoryUrl(hash: string) {
-        return set(generateResumeSessionHistoryUrl$, hash);
-      },
-      generateResumeSessionHistoryObjectUrl(objectKey: string) {
-        return set(generateResumeSessionHistoryObjectUrl$, objectKey);
-      },
-    });
+      signal,
+    );
   },
 );
 
@@ -1857,6 +1891,50 @@ interface ClaimTimingTelemetry {
   readonly pollDueToJobDiscoveredMs?: number;
   readonly pollHttpRequestMs?: number;
   readonly pollReason?: string;
+  readonly runnerPreference?: RunnerPreference;
+  readonly runnerPreferenceClaimState?: RunnerPreferenceClaimState;
+}
+
+type RunnerPreferenceTelemetryState = RunnerPreferenceClaimState | "absent";
+
+interface SuccessfulClaimPreferenceTelemetry {
+  readonly resolution: RunnerPreferenceTelemetryResolution | undefined;
+  readonly claimState: RunnerPreferenceTelemetryState | undefined;
+  readonly targetedSelf: boolean | undefined;
+}
+
+function successfulClaimPreferenceTelemetry(args: {
+  readonly telemetry: ClaimTimingTelemetry | undefined;
+  readonly runnerIdentity: RunnerClaimIdentity | undefined;
+}): SuccessfulClaimPreferenceTelemetry {
+  const preference = args.telemetry?.runnerPreference;
+  if (!preference) {
+    return {
+      resolution: undefined,
+      claimState: undefined,
+      targetedSelf: undefined,
+    };
+  }
+
+  if (preference.kind === "noPreference") {
+    return {
+      resolution: runnerPreferenceTelemetryResolution(preference),
+      claimState: "absent",
+      targetedSelf: undefined,
+    };
+  }
+
+  const claimState = args.telemetry?.runnerPreferenceClaimState;
+  return {
+    resolution: runnerPreferenceTelemetryResolution(preference),
+    claimState,
+    targetedSelf: args.runnerIdentity
+      ? preference.runnerIdentity.runnerId.toLowerCase() ===
+          args.runnerIdentity.runnerId.toLowerCase() &&
+        preference.runnerIdentity.heartbeatGeneration ===
+          args.runnerIdentity.heartbeatGeneration
+      : undefined,
+  };
 }
 
 function scheduleSuccessfulClaimSideEffects(args: {
@@ -1866,13 +1944,17 @@ function scheduleSuccessfulClaimSideEffects(args: {
   readonly claimRequestStartedAtMs: number;
   readonly claimResult: ClaimedTransitionResult;
   readonly telemetry: ClaimTimingTelemetry | undefined;
+  readonly runnerIdentity: RunnerClaimIdentity | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
   const { job, run } = args.jobWithRun;
   const queueCreatedAtMs = job.createdAt.getTime();
+  const preferenceTelemetry = successfulClaimPreferenceTelemetry({
+    telemetry: args.telemetry,
+    runnerIdentity: args.runnerIdentity,
+  });
   scheduleClaimSucceededSideEffects({
     runId: run.id,
-    userId: run.userId,
     runnerGroup: job.runnerGroup,
     profile: job.profile,
     authType: args.authType,
@@ -1912,13 +1994,18 @@ function scheduleSuccessfulClaimSideEffects(args: {
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
     pollReason: args.telemetry?.pollReason,
+    preferenceResolution: preferenceTelemetry.resolution,
+    preferenceClaimState: preferenceTelemetry.claimState,
+    preferenceTargetedSelf: preferenceTelemetry.targetedSelf,
+    historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
+      args.storedContext,
+    ),
     claimRouteTiming: args.claimRouteTiming,
   });
 }
 
 function scheduleClaimSucceededSideEffects(args: {
   readonly runId: string;
-  readonly userId: string;
   readonly runnerGroup: string;
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
@@ -1937,14 +2024,14 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly preferenceResolution:
+    | RunnerPreferenceTelemetryResolution
+    | undefined;
+  readonly preferenceClaimState: RunnerPreferenceTelemetryState | undefined;
+  readonly preferenceTargetedSelf: boolean | undefined;
+  readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
-  waitUntil(
-    publishRunChangedForUserSafely(args.userId, args.runId, {
-      status: "running",
-    }),
-  );
-
   waitUntil(
     tapError(recordClaimTimingMetrics(args), (error) => {
       L.warn("recordSandboxOperation failed", { runId: args.runId, error });
@@ -1972,6 +2059,12 @@ interface ClaimTimingMetricArgs {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly preferenceResolution:
+    | RunnerPreferenceTelemetryResolution
+    | undefined;
+  readonly preferenceClaimState: RunnerPreferenceTelemetryState | undefined;
+  readonly preferenceTargetedSelf: boolean | undefined;
+  readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }
 
@@ -2066,6 +2159,9 @@ function claimTimingDimensions(
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
   }
+  if (args.historyGenerationRunId) {
+    dimensions.history_generation_run_id = args.historyGenerationRunId;
+  }
   return dimensions;
 }
 
@@ -2073,16 +2169,52 @@ function claimTimingOperations(
   args: ClaimTimingMetricArgs,
   dimensions: Record<string, string>,
 ): SandboxOperationAttrs[] {
+  const successfulClaimDimensions = claimSuccessfulPreferenceDimensions(
+    args,
+    dimensions,
+  );
   return CLAIM_TIMING_METRIC_FIELDS.map(({ actionType, valueKey }) => {
     return claimTimingOperation(
       args.runId,
       actionType,
       args[valueKey],
-      dimensions,
+      actionType === "claim_request_to_running"
+        ? successfulClaimDimensions
+        : dimensions,
     );
   }).filter((operation): operation is SandboxOperationAttrs => {
     return operation !== undefined;
   });
+}
+
+function claimSuccessfulPreferenceDimensions(
+  args: ClaimTimingMetricArgs,
+  dimensions: Record<string, string>,
+): Record<string, string> {
+  if (
+    args.preferenceResolution === undefined &&
+    args.preferenceClaimState === undefined &&
+    args.preferenceTargetedSelf === undefined
+  ) {
+    return dimensions;
+  }
+
+  return {
+    ...dimensions,
+    ...(args.preferenceResolution
+      ? {
+          runner_preference_resolution: args.preferenceResolution,
+        }
+      : {}),
+    ...(args.preferenceClaimState
+      ? { runner_preference_claim_state: args.preferenceClaimState }
+      : {}),
+    ...(args.preferenceTargetedSelf !== undefined
+      ? {
+          runner_preference_targeted_self: String(args.preferenceTargetedSelf),
+        }
+      : {}),
+  };
 }
 
 function claimTimingOperation(
@@ -2108,11 +2240,6 @@ const scheduleClaimFailedSideEffects$ = command(
   ({ set }, args: ClaimFailedSideEffectArgs): void => {
     const backgroundSignal = new AbortController().signal;
     waitUntil(
-      publishRunChangedForUserSafely(args.userId, args.runId, {
-        status: "failed",
-      }),
-    );
-    waitUntil(
       tapError(
         set(
           dispatchCompleteSideEffects$,
@@ -2136,17 +2263,20 @@ const scheduleClaimFailedSideEffects$ = command(
   },
 );
 
-async function failClaimForResumeSessionHistoryLoad(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly hash: string;
-  readonly errorMessage: string;
-  readonly cause: unknown;
-  readonly signal: AbortSignal;
-  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
-}) {
+async function failClaimForResumeSessionHistoryLoad(
+  args: {
+    readonly db: Db;
+    readonly runId: string;
+    readonly orgId: string;
+    readonly hash: string;
+    readonly errorMessage: string;
+    readonly cause: unknown;
+    readonly scheduleFailedSideEffects: (
+      args: ClaimFailedSideEffectArgs,
+    ) => void;
+  },
+  signal: AbortSignal,
+) {
   L.warn("session history R2 object could not be loaded during claim", {
     runId: args.runId,
     hash: args.hash,
@@ -2157,68 +2287,74 @@ async function failClaimForResumeSessionHistoryLoad(args: {
     args.db,
     args.runId,
     args.errorMessage,
-    args.signal,
+    signal,
   );
   if (poisonResult.status !== "failed") {
     return poisonJobErrorResponse(poisonResult);
   }
   args.scheduleFailedSideEffects({
     runId: args.runId,
-    userId: args.userId,
     orgId: args.orgId,
     error: args.errorMessage,
   });
   return badRequestMessage(args.errorMessage);
 }
 
-async function failClaimForInvalidStoredExecutionContext(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
-}) {
+async function failClaimForInvalidStoredExecutionContext(
+  args: {
+    readonly db: Db;
+    readonly runId: string;
+    readonly orgId: string;
+    readonly scheduleFailedSideEffects: (
+      args: ClaimFailedSideEffectArgs,
+    ) => void;
+  },
+  signal: AbortSignal,
+) {
   const poisonResult = await failPoisonQueuedJob(
     args.db,
     args.runId,
     INVALID_EXECUTION_CONTEXT_ERROR,
-    args.signal,
+    signal,
   );
   if (poisonResult.status !== "failed") {
     return poisonJobErrorResponse(poisonResult);
   }
   args.scheduleFailedSideEffects({
     runId: args.runId,
-    userId: args.userId,
     orgId: args.orgId,
     error: INVALID_EXECUTION_CONTEXT_ERROR,
   });
   return badRequestMessage("Job missing execution context");
 }
 
-async function claimResponseBuildErrorResponse(args: {
-  readonly db: Db;
-  readonly run: ClaimedRun;
-  readonly runId: string;
-  readonly error: unknown;
-  readonly signal: AbortSignal;
-  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
-}) {
+async function claimResponseBuildErrorResponse(
+  args: {
+    readonly db: Db;
+    readonly run: ClaimedRun;
+    readonly runId: string;
+    readonly error: unknown;
+    readonly scheduleFailedSideEffects: (
+      args: ClaimFailedSideEffectArgs,
+    ) => void;
+  },
+  signal: AbortSignal,
+) {
   if (!isResumeSessionHistoryLoadError(args.error)) {
     throw args.error;
   }
-  return await failClaimForResumeSessionHistoryLoad({
-    db: args.db,
-    runId: args.runId,
-    hash: args.error.hash,
-    userId: args.run.userId,
-    orgId: args.run.orgId,
-    errorMessage: args.error.message,
-    cause: args.error.cause,
-    signal: args.signal,
-    scheduleFailedSideEffects: args.scheduleFailedSideEffects,
-  });
+  return await failClaimForResumeSessionHistoryLoad(
+    {
+      db: args.db,
+      runId: args.runId,
+      hash: args.error.hash,
+      orgId: args.run.orgId,
+      errorMessage: args.error.message,
+      cause: args.error.cause,
+      scheduleFailedSideEffects: args.scheduleFailedSideEffects,
+    },
+    signal,
+  );
 }
 
 const claimAuthorizedJob$ = command(
@@ -2233,10 +2369,10 @@ const claimAuthorizedJob$ = command(
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
-      readonly signal: AbortSignal;
     },
+    signal: AbortSignal,
   ) => {
-    const { db, runId, jobWithRun, claimRouteTiming, signal } = args;
+    const { db, runId, jobWithRun, claimRouteTiming } = args;
     const run = jobWithRun.run;
 
     const contextParseStartedAt = now();
@@ -2255,43 +2391,49 @@ const claimAuthorizedJob$ = command(
         runId,
         storedContextResult.error.issues,
       );
-      return await failClaimForInvalidStoredExecutionContext({
-        db,
-        runId,
-        userId: run.userId,
-        orgId: run.orgId,
-        signal,
-        scheduleFailedSideEffects(failedArgs) {
-          set(scheduleClaimFailedSideEffects$, failedArgs);
+      return await failClaimForInvalidStoredExecutionContext(
+        {
+          db,
+          runId,
+          orgId: run.orgId,
+          scheduleFailedSideEffects(failedArgs) {
+            set(scheduleClaimFailedSideEffects$, failedArgs);
+          },
         },
-      });
+        signal,
+      );
     }
     const { context: storedContext, connectorPermissionBaseline } =
       decodeCompatibleStoredExecutionContext(storedContextResult.data);
 
     const responseBodyResult = await settle(
-      set(buildClaimResponseBodyForClaim$, {
-        db,
-        run,
-        reuseKey: jobWithRun.job.reuseKey,
-        storedContext,
-        connectorPermissionBaseline,
-        timing: claimRouteTiming,
+      set(
+        buildClaimResponseBodyForClaim$,
+        {
+          db,
+          run,
+          reuseKey: jobWithRun.job.reuseKey,
+          storedContext,
+          connectorPermissionBaseline,
+          timing: claimRouteTiming,
+        },
         signal,
-      }),
+      ),
       signal,
     );
     if (!responseBodyResult.ok) {
-      return await claimResponseBuildErrorResponse({
-        db,
-        run,
-        runId,
-        error: responseBodyResult.error,
-        signal,
-        scheduleFailedSideEffects(failedArgs) {
-          set(scheduleClaimFailedSideEffects$, failedArgs);
+      return await claimResponseBuildErrorResponse(
+        {
+          db,
+          run,
+          runId,
+          error: responseBodyResult.error,
+          scheduleFailedSideEffects(failedArgs) {
+            set(scheduleClaimFailedSideEffects$, failedArgs);
+          },
         },
-      });
+        signal,
+      );
     }
     signal.throwIfAborted();
 
@@ -2331,6 +2473,7 @@ const claimAuthorizedJob$ = command(
       claimRequestStartedAtMs: args.claimRequestStartedAtMs,
       claimResult,
       telemetry: args.telemetry,
+      runnerIdentity: args.runnerIdentity,
       claimRouteTiming,
     });
 
@@ -2379,25 +2522,28 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return authError;
   }
 
-  return await set(claimAuthorizedJob$, {
-    db,
-    runId,
-    authType: auth.type,
-    runnerIdentity:
-      auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
-    jobWithRun,
-    telemetry: body.data.telemetry,
-    claimRequestStartedAtMs,
-    claimRouteTiming,
+  return await set(
+    claimAuthorizedJob$,
+    {
+      db,
+      runId,
+      authType: auth.type,
+      runnerIdentity:
+        auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
+      jobWithRun,
+      telemetry: body.data.telemetry,
+      claimRequestStartedAtMs,
+      claimRouteTiming,
+    },
     signal,
-  });
+  );
 });
 
 const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
 );
 
-const networkPolicyRefreshInner$ = command(
+const connectorRuntimeSyncInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = await set(runnerAuth$, get(authorization$), signal);
     signal.throwIfAborted();
@@ -2405,14 +2551,14 @@ const networkPolicyRefreshInner$ = command(
       return unauthorizedAuthenticationRequired;
     }
 
-    const body = await get(networkPolicyRefreshBody$);
+    const body = await get(connectorRuntimeSyncBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
 
     const runId = get(
-      pathParamsOf(runnersNetworkPolicyRefreshContract.refresh),
+      pathParamsOf(runnersConnectorRuntimeSyncContract.sync),
     ).runId;
     const db = set(writeDb$);
     const run = await getRunNetworkPolicyScope(db, runId, signal);
@@ -2429,7 +2575,7 @@ const networkPolicyRefreshInner$ = command(
         status: 409 as const,
         body: {
           error: {
-            code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+            code: CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
             message: "Run is terminal",
           },
         },
@@ -2439,32 +2585,19 @@ const networkPolicyRefreshInner$ = command(
       return authError;
     }
 
-    const { connectorSlugs } = body.data;
-    const refreshes = await resolveActiveNetworkPolicyRefreshes(
+    const results = await resolveConnectorRuntimeTargets({
       db,
-      {
+      scope: {
         orgId: run.orgId,
         userId: run.userId,
         agentId: run.agentId,
       },
-      connectorSlugs,
-    );
+      targets: body.data.targets,
+    });
     signal.throwIfAborted();
-    if (refreshes.length === 0) {
-      return notFound(`Connectors not found: ${connectorSlugs.join(", ")}`);
-    }
-
     return {
       status: 200 as const,
-      body: {
-        refreshes: refreshes.map((refresh) => {
-          return {
-            connectorSlug: refresh.connectorSlug,
-            networkPolicy: refresh.networkPolicy,
-            nextRefreshAt: refresh.nextRefreshAt,
-          };
-        }),
-      },
+      body: { results },
     };
   },
 );
@@ -2541,6 +2674,105 @@ const builtinFirewallsResolveInner$ = command(
   },
 );
 
+const activeInputReserveBody$ = bodyResultOf(
+  runnersActiveInputsContract.reserve,
+);
+const activeInputReceiptBody$ = bodyResultOf(
+  runnersActiveInputsContract.receipt,
+);
+
+const reserveActiveInputsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const { runId } = get(pathParamsOf(runnersActiveInputsContract.reserve));
+    if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
+      return forbidden("Active input delivery is not available");
+    }
+    const body = await get(activeInputReserveBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const result = await reserveActiveInputDelivery(
+      set(writeDb$),
+      {
+        runId,
+        userId: auth.userId,
+        orgId: auth.orgId,
+      },
+      signal,
+    );
+    if (result.outcome === "forbidden") {
+      return forbidden("Active input delivery is not available");
+    }
+    if (result.outcome === "reserved") {
+      return {
+        status: 200 as const,
+        body: {
+          outcome: result.outcome,
+          deliveryId: result.deliveryId,
+          eventIds: [result.sourceEventId],
+          prompt: result.prompt,
+        },
+      };
+    }
+    if (result.outcome === "held") {
+      return {
+        status: 200 as const,
+        body: {
+          outcome: result.outcome,
+          deliveryId: result.deliveryId,
+          eventIds: [result.sourceEventId],
+        },
+      };
+    }
+    return { status: 200 as const, body: result };
+  },
+);
+
+const recordActiveInputDeliveryReceiptInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const { runId, deliveryId } = get(
+      pathParamsOf(runnersActiveInputsContract.receipt),
+    );
+    if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
+      return forbidden("Active input delivery is not available");
+    }
+    const body = await get(activeInputReceiptBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const result = await recordActiveInputDeliveryReceipt(
+      set(writeDb$),
+      {
+        runId,
+        deliveryId,
+        userId: auth.userId,
+        orgId: auth.orgId,
+      },
+      signal,
+    );
+    if (result.outcome === "forbidden") {
+      return forbidden("Active input delivery is not available");
+    }
+    if (result.replacementsAppended) {
+      await publishChatThreadMessageCreatedSafely(
+        auth.userId,
+        result.chatThreadId,
+      );
+      signal.throwIfAborted();
+      await notifyRunningChatRunOfPendingInput(
+        set(writeDb$),
+        result.chatThreadId,
+      );
+      signal.throwIfAborted();
+    }
+    return { status: 200 as const, body: { outcome: result.outcome } };
+  },
+);
+
 export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersHeartbeatContract.heartbeat,
@@ -2555,8 +2787,22 @@ export const runnersRoutes: readonly RouteEntry[] = [
     handler: claimInner$,
   },
   {
-    route: runnersNetworkPolicyRefreshContract.refresh,
-    handler: networkPolicyRefreshInner$,
+    route: runnersActiveInputsContract.reserve,
+    handler: authRoute(
+      { accept: ["sandbox"], acceptAnySandboxCapability: true },
+      reserveActiveInputsInner$,
+    ),
+  },
+  {
+    route: runnersActiveInputsContract.receipt,
+    handler: authRoute(
+      { accept: ["sandbox"], acceptAnySandboxCapability: true },
+      recordActiveInputDeliveryReceiptInner$,
+    ),
+  },
+  {
+    route: runnersConnectorRuntimeSyncContract.sync,
+    handler: connectorRuntimeSyncInner$,
   },
   {
     route: runnersBuiltinFirewallsResolveContract.resolve,

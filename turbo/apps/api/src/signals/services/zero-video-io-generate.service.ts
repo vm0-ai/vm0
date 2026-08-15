@@ -1,11 +1,36 @@
 import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
+import {
+  DEFAULT_VIDEO_ASPECT_RATIO,
+  DEFAULT_VIDEO_DURATION,
+  DEFAULT_VIDEO_MODEL,
+  SEEDANCE_RESOLUTIONS,
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_DURATIONS,
+  VIDEO_MODEL_ALIASES,
+  VIDEO_MODEL_CONFIGS,
+  VIDEO_MODELS,
+  VIDEO_RESOLUTIONS,
+  type SeedanceResolution,
+  type VideoAspectRatio,
+  type VideoDuration,
+  type VideoModel,
+  type VideoModelConfig,
+  type VideoProvider,
+  type VideoResolution,
+} from "@okouai/core/video-model-catalog";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
+import {
+  canonicalUsagePricingProvider,
+  resolveUsagePricingProvider,
+  usagePricingResolution$,
+  type UsagePricingResolution,
+} from "../context/usage-pricing-resolution";
 import { db$, writeDb$ } from "../external/db";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
 import { storeGeneratedArtifactObject$ } from "./artifact-storage.service";
@@ -17,13 +42,15 @@ import {
   type BuiltInGenerationUsageIdempotency,
 } from "./built-in-generation-usage-idempotency";
 
-const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
 const BYTEPLUS_VIDEO_TASKS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
+const MINIMAX_VIDEO_GENERATION_URL =
+  "https://api.minimax.io/v2/video_generation";
 
 const L = logger("ZeroVideoIoGenerate");
 const VIDEO_IO_MAX_PROMPT_LENGTH = 32_000;
-const BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH = 4000;
+const MINIMAX_H3_MAX_PROMPT_LENGTH = 7000;
+const PROVIDER_ERROR_BODY_LOG_MAX_LENGTH = 4000;
 
 const USAGE_KIND = "video";
 const VIDEO_AUDIO_CATEGORY = "output_video_seconds.audio";
@@ -40,6 +67,18 @@ const VIDEO_TOKEN_1080_WITH_VIDEO_CATEGORY =
   "output_video_tokens.1080p.with_video";
 const VIDEO_TOKEN_AUDIO_CATEGORY = "output_video_tokens.audio";
 const VIDEO_TOKEN_SILENT_CATEGORY = "output_video_tokens.silent";
+const MINIMAX_OUTPUT_VIDEO_768P_CATEGORY = "output_video_seconds.768p";
+const MINIMAX_OUTPUT_VIDEO_2K_CATEGORY = "output_video_seconds.2k";
+const MINIMAX_INPUT_VIDEO_768P_CATEGORY = "input_video_seconds.768p";
+const MINIMAX_INPUT_VIDEO_2K_CATEGORY = "input_video_seconds.2k";
+const MINIMAX_ADDITIONAL_INPUT_IMAGE_CATEGORY = "input_image.additional";
+const MINIMAX_VIDEO_PRICING_CATEGORIES = [
+  MINIMAX_OUTPUT_VIDEO_768P_CATEGORY,
+  MINIMAX_OUTPUT_VIDEO_2K_CATEGORY,
+  MINIMAX_INPUT_VIDEO_768P_CATEGORY,
+  MINIMAX_INPUT_VIDEO_2K_CATEGORY,
+  MINIMAX_ADDITIONAL_INPUT_IMAGE_CATEGORY,
+] as const;
 const VIDEO_PRICING_CATEGORIES = [
   VIDEO_AUDIO_CATEGORY,
   VIDEO_SILENT_CATEGORY,
@@ -52,127 +91,36 @@ const VIDEO_PRICING_CATEGORIES = [
   VIDEO_TOKEN_1080_WITH_VIDEO_CATEGORY,
   VIDEO_TOKEN_AUDIO_CATEGORY,
   VIDEO_TOKEN_SILENT_CATEGORY,
+  ...MINIMAX_VIDEO_PRICING_CATEGORIES,
 ] as const;
 
-const VIDEO_ASPECT_RATIOS = [
-  "21:9",
-  "16:9",
-  "4:3",
-  "1:1",
-  "3:4",
-  "9:16",
-] as const;
-const STANDARD_VIDEO_ASPECT_RATIOS = ["16:9", "9:16"] as const;
-const VIDEO_DURATIONS = [
-  "2s",
-  "3s",
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-  "13s",
-  "14s",
-  "15s",
-] as const;
-const VEO_VIDEO_DURATIONS = ["4s", "6s", "8s"] as const;
-const KLING_VIDEO_DURATIONS = [
-  "3s",
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-  "13s",
-  "14s",
-  "15s",
-] as const;
-const SEEDANCE_2_DURATIONS = [
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-  "13s",
-  "14s",
-  "15s",
-] as const;
-const SEEDANCE_1_5_DURATIONS = [
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-] as const;
-const VIDEO_RESOLUTIONS = ["480p", "720p", "1080p", "4k"] as const;
-const SEEDANCE_RESOLUTIONS = ["480p", "720p", "1080p"] as const;
-const SEEDANCE_FAST_RESOLUTIONS = ["480p", "720p"] as const;
-const VEO_VIDEO_RESOLUTIONS = ["720p", "1080p", "4k"] as const;
-const KLING_4K_VIDEO_RESOLUTIONS = ["4k"] as const;
-
-type VideoAspectRatio = (typeof VIDEO_ASPECT_RATIOS)[number];
-type VideoDuration = (typeof VIDEO_DURATIONS)[number];
-type VideoResolution = (typeof VIDEO_RESOLUTIONS)[number];
-type SeedanceResolution = (typeof SEEDANCE_RESOLUTIONS)[number];
 type VideoPricingCategory = (typeof VIDEO_PRICING_CATEGORIES)[number];
-type VideoProvider = "byteplus" | "fal";
-type VideoModelFamily = "seedance-2" | "seedance-1-5";
-type FalRequestFormat = "veo" | "kling";
 type VideoDimensions = {
   readonly width: number;
   readonly height: number;
 };
-type DimensionTable = Record<
-  SeedanceResolution,
-  Record<VideoAspectRatio, VideoDimensions>
+type DimensionTable = Partial<
+  Record<SeedanceResolution, Record<VideoAspectRatio, VideoDimensions>>
 >;
 
-interface BaseVideoModelConfig {
-  readonly alias: string;
-  readonly aspectRatios: readonly VideoAspectRatio[];
-  readonly durations: readonly VideoDuration[];
-  readonly resolutions: readonly VideoResolution[];
-  readonly defaultResolution: VideoResolution;
-  readonly supportsGenerateAudio: boolean;
-  readonly supportsSeed: boolean;
-  readonly supportsNegativePrompt: boolean;
-  readonly supportsAutoFix: boolean;
-  readonly supportsSafetyTolerance: boolean;
-  readonly supportsReferenceImage: boolean;
-  readonly supportsReferenceVideo: boolean;
-  readonly supportsReferenceAudio: boolean;
-  readonly supportsFirstFrame: boolean;
-  readonly supportsLastFrame: boolean;
-  readonly public: boolean;
-}
-
-interface BytePlusVideoModelConfig extends BaseVideoModelConfig {
-  readonly provider: "byteplus";
-  readonly family: VideoModelFamily;
-}
-
-interface FalVideoModelConfig extends BaseVideoModelConfig {
-  readonly provider: "fal";
-  readonly requestFormat: FalRequestFormat;
-}
-
-type VideoModelConfig = BytePlusVideoModelConfig | FalVideoModelConfig;
+const SEEDANCE_2_5_DIMENSIONS = {
+  "480p": {
+    "21:9": { width: 992, height: 432 },
+    "16:9": { width: 854, height: 480 },
+    "4:3": { width: 752, height: 560 },
+    "1:1": { width: 640, height: 640 },
+    "3:4": { width: 560, height: 752 },
+    "9:16": { width: 480, height: 854 },
+  },
+  "720p": {
+    "21:9": { width: 1470, height: 630 },
+    "16:9": { width: 1280, height: 720 },
+    "4:3": { width: 1112, height: 834 },
+    "1:1": { width: 960, height: 960 },
+    "3:4": { width: 834, height: 1112 },
+    "9:16": { width: 720, height: 1280 },
+  },
+} as const satisfies DimensionTable;
 
 const SEEDANCE_2_DIMENSIONS = {
   "480p": {
@@ -201,126 +149,6 @@ const SEEDANCE_2_DIMENSIONS = {
   },
 } as const satisfies DimensionTable;
 
-const VIDEO_MODEL_CONFIGS = {
-  "dreamina-seedance-2-0-260128": {
-    provider: "byteplus",
-    alias: "dreamina-seedance-2.0",
-    family: "seedance-2",
-    aspectRatios: VIDEO_ASPECT_RATIOS,
-    durations: SEEDANCE_2_DURATIONS,
-    resolutions: SEEDANCE_RESOLUTIONS,
-    defaultResolution: "720p",
-    supportsGenerateAudio: true,
-    supportsSeed: true,
-    supportsNegativePrompt: false,
-    supportsAutoFix: false,
-    supportsSafetyTolerance: false,
-    supportsReferenceImage: true,
-    supportsReferenceVideo: true,
-    supportsReferenceAudio: true,
-    supportsFirstFrame: true,
-    supportsLastFrame: true,
-    public: true,
-  },
-  "dreamina-seedance-2-0-fast-260128": {
-    provider: "byteplus",
-    alias: "dreamina-seedance-2.0-fast",
-    family: "seedance-2",
-    aspectRatios: VIDEO_ASPECT_RATIOS,
-    durations: SEEDANCE_2_DURATIONS,
-    resolutions: SEEDANCE_FAST_RESOLUTIONS,
-    defaultResolution: "720p",
-    supportsGenerateAudio: true,
-    supportsSeed: true,
-    supportsNegativePrompt: false,
-    supportsAutoFix: false,
-    supportsSafetyTolerance: false,
-    supportsReferenceImage: true,
-    supportsReferenceVideo: true,
-    supportsReferenceAudio: true,
-    supportsFirstFrame: true,
-    supportsLastFrame: true,
-    public: true,
-  },
-  "seedance-1-5-pro-251215": {
-    provider: "byteplus",
-    alias: "seedance-1.5-pro",
-    family: "seedance-1-5",
-    aspectRatios: VIDEO_ASPECT_RATIOS,
-    durations: SEEDANCE_1_5_DURATIONS,
-    resolutions: SEEDANCE_RESOLUTIONS,
-    defaultResolution: "720p",
-    supportsGenerateAudio: true,
-    supportsSeed: true,
-    supportsNegativePrompt: false,
-    supportsAutoFix: false,
-    supportsSafetyTolerance: false,
-    supportsReferenceImage: true,
-    supportsReferenceVideo: false,
-    supportsReferenceAudio: false,
-    supportsFirstFrame: true,
-    supportsLastFrame: true,
-    public: true,
-  },
-  "fal-ai/veo3.1/fast": {
-    provider: "fal",
-    alias: "veo3.1-fast",
-    requestFormat: "veo",
-    aspectRatios: STANDARD_VIDEO_ASPECT_RATIOS,
-    durations: VEO_VIDEO_DURATIONS,
-    resolutions: VEO_VIDEO_RESOLUTIONS,
-    defaultResolution: "720p",
-    supportsGenerateAudio: true,
-    supportsSeed: true,
-    supportsNegativePrompt: true,
-    supportsAutoFix: true,
-    supportsSafetyTolerance: true,
-    supportsReferenceImage: false,
-    supportsReferenceVideo: false,
-    supportsReferenceAudio: false,
-    supportsFirstFrame: false,
-    supportsLastFrame: false,
-    public: true,
-  },
-  "fal-ai/kling-video/v3/4k/text-to-video": {
-    provider: "fal",
-    alias: "kling-v3-4k",
-    requestFormat: "kling",
-    aspectRatios: STANDARD_VIDEO_ASPECT_RATIOS,
-    durations: KLING_VIDEO_DURATIONS,
-    resolutions: KLING_4K_VIDEO_RESOLUTIONS,
-    defaultResolution: "4k",
-    supportsGenerateAudio: true,
-    supportsSeed: false,
-    supportsNegativePrompt: true,
-    supportsAutoFix: false,
-    supportsSafetyTolerance: false,
-    supportsReferenceImage: false,
-    supportsReferenceVideo: false,
-    supportsReferenceAudio: false,
-    supportsFirstFrame: false,
-    supportsLastFrame: false,
-    public: true,
-  },
-} as const satisfies Record<string, VideoModelConfig>;
-
-type VideoModel = keyof typeof VIDEO_MODEL_CONFIGS;
-
-const VIDEO_MODELS = Object.keys(VIDEO_MODEL_CONFIGS) as VideoModel[];
-
-const VIDEO_MODEL_ALIASES = {
-  "dreamina-seedance-2.0": "dreamina-seedance-2-0-260128",
-  "dreamina-seedance-2-0": "dreamina-seedance-2-0-260128",
-  "dreamina-seedance-2.0-fast": "dreamina-seedance-2-0-fast-260128",
-  "dreamina-seedance-2-0-fast": "dreamina-seedance-2-0-fast-260128",
-  "seedance-1.5-pro": "seedance-1-5-pro-251215",
-  "seedance-1-5-pro": "seedance-1-5-pro-251215",
-  "seedance2.0": "dreamina-seedance-2-0-260128",
-  "seedance2.0-fast": "dreamina-seedance-2-0-fast-260128",
-  "veo3.1-fast": "fal-ai/veo3.1/fast",
-  "kling-v3-4k": "fal-ai/kling-video/v3/4k/text-to-video",
-} as const satisfies Readonly<Record<string, VideoModel>>;
-
 type ErrorStatus = 400 | 402 | 500 | 502 | 503 | 504;
 
 interface ErrorBody {
@@ -342,7 +170,7 @@ export interface VideoPricingRow {
   readonly unitSize: number;
 }
 
-type VideoPricing = ReadonlyMap<string, VideoPricingRow>;
+export type VideoPricing = ReadonlyMap<string, VideoPricingRow>;
 
 export interface VideoOptions {
   readonly model: VideoModel;
@@ -366,6 +194,10 @@ export interface VideoOptions {
 interface BytePlusTaskHandle {
   readonly taskId: string;
   readonly status: string | undefined;
+}
+
+interface MiniMaxTaskHandle {
+  readonly taskId: string;
 }
 
 interface FalQueueHandle {
@@ -392,7 +224,17 @@ interface BytePlusVideoResult {
   readonly completionTokens: number | undefined;
 }
 
-interface BytePlusProviderError {
+interface MiniMaxVideoResult {
+  readonly requestId: string;
+  readonly sourceUrl: string;
+  readonly resolution: "768p" | "2k";
+  readonly aspectRatio: VideoAspectRatio | undefined;
+  readonly outputSeconds: number;
+  readonly inputSeconds: number;
+  readonly inputImageCount: number;
+}
+
+interface VideoProviderError {
   readonly message: string;
   readonly code: string;
 }
@@ -417,7 +259,12 @@ interface ParsedVideoGeneration {
   readonly referenceAudioUrls: readonly string[];
   readonly firstFrameImageUrl: string | undefined;
   readonly lastFrameImageUrl: string | undefined;
-  readonly billingQuantity: number;
+  readonly billing: readonly VideoBillingEntry[];
+}
+
+interface VideoBillingEntry {
+  readonly category: VideoPricingCategory;
+  readonly quantity: number;
 }
 
 interface RecordedVideo {
@@ -437,7 +284,7 @@ interface RecordedVideo {
   readonly requestId: string | undefined;
 }
 
-type BytePlusContent =
+type MultimodalVideoContent =
   | {
       readonly type: "text";
       readonly text: string;
@@ -497,7 +344,7 @@ function normalizeBytePlusErrorCode(value: string | undefined): string {
 }
 
 function bytePlusProviderErrorResponse(
-  providerError: BytePlusProviderError,
+  providerError: VideoProviderError,
   providerStatus: number,
 ): VideoErrorResponse {
   return {
@@ -505,6 +352,44 @@ function bytePlusProviderErrorResponse(
     body: errorBody(
       `BytePlus video generation failed: ${providerError.message}`,
       normalizeBytePlusErrorCode(providerError.code),
+    ),
+  };
+}
+
+function miniMaxErrorStatus(status: number): ErrorStatus {
+  if (status === 400 || status === 422) {
+    return 400;
+  }
+  if (status === 402) {
+    return 402;
+  }
+  if (status === 429) {
+    return 503;
+  }
+  return 502;
+}
+
+function normalizeMiniMaxErrorCode(value: string | undefined): string {
+  const normalized = value
+    ?.trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+  return normalized
+    ? `MINIMAX_${normalized}`
+    : "MINIMAX_VIDEO_GENERATION_FAILED";
+}
+
+function miniMaxProviderErrorResponse(
+  providerError: VideoProviderError,
+  providerStatus: number,
+): VideoErrorResponse {
+  return {
+    status: miniMaxErrorStatus(providerStatus),
+    body: errorBody(
+      `MiniMax video generation failed: ${providerError.message}`,
+      normalizeMiniMaxErrorCode(providerError.code),
     ),
   };
 }
@@ -566,9 +451,7 @@ function stringifyCompact(value: unknown): string | undefined {
   return "ok" in serialized ? serialized.ok : undefined;
 }
 
-function readBytePlusProviderError(
-  value: unknown,
-): BytePlusProviderError | null {
+function readVideoProviderError(value: unknown): VideoProviderError | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -607,13 +490,13 @@ function readBytePlusProviderError(
   return null;
 }
 
-function bytePlusProviderErrorFromText(
+function videoProviderErrorFromText(
   text: string | undefined,
   status: number,
   statusText: string,
-): BytePlusProviderError {
+): VideoProviderError {
   const parsed = text ? safeJsonParse(text) : undefined;
-  const providerError = readBytePlusProviderError(parsed);
+  const providerError = readVideoProviderError(parsed);
   if (providerError) {
     return providerError;
   }
@@ -625,9 +508,9 @@ function bytePlusProviderErrorFromText(
   };
 }
 
-function bytePlusProviderFailureError(payload: unknown): BytePlusProviderError {
+function videoProviderFailureError(payload: unknown): VideoProviderError {
   return (
-    readBytePlusProviderError(payload) ?? {
+    readVideoProviderError(payload) ?? {
       message: "Generation failed",
       code: "VIDEO_GENERATION_FAILED",
     }
@@ -638,10 +521,21 @@ export function bytePlusBuiltInGenerationError(payload: unknown): {
   readonly message: string;
   readonly code: string;
 } {
-  const providerError = bytePlusProviderFailureError(payload);
+  const providerError = videoProviderFailureError(payload);
   return {
     message: `BytePlus video generation failed: ${providerError.message}`,
     code: normalizeBytePlusErrorCode(providerError.code),
+  };
+}
+
+export function miniMaxBuiltInGenerationError(payload: unknown): {
+  readonly message: string;
+  readonly code: string;
+} {
+  const providerError = videoProviderFailureError(payload);
+  return {
+    message: `MiniMax video generation failed: ${providerError.message}`,
+    code: normalizeMiniMaxErrorCode(providerError.code),
   };
 }
 
@@ -776,16 +670,112 @@ function parseDurationSeconds(duration: VideoDuration): number {
   return Number(duration.replace("s", ""));
 }
 
+interface VideoReferenceOptions {
+  readonly alias: string;
+  readonly referenceImageUrls: readonly string[];
+  readonly inputVideoUrls: readonly string[];
+  readonly referenceAudioUrls: readonly string[];
+  readonly firstFrameImageUrl: string | undefined;
+  readonly lastFrameImageUrl: string | undefined;
+}
+
+function validateMiniMaxVideoReferences(
+  options: VideoReferenceOptions,
+): VideoErrorResponse | null {
+  if (options.referenceImageUrls.length > 9) {
+    return badRequest("reference image URLs cannot exceed 9 items");
+  }
+  const referenceFileCount =
+    options.referenceImageUrls.length +
+    options.inputVideoUrls.length +
+    options.referenceAudioUrls.length;
+  if (referenceFileCount > 12) {
+    return badRequest("reference media URLs cannot exceed 12 items");
+  }
+  if (
+    referenceFileCount > 0 &&
+    (options.firstFrameImageUrl || options.lastFrameImageUrl)
+  ) {
+    return badRequest(
+      "MiniMax H3 frame images and reference media cannot be combined",
+    );
+  }
+  return null;
+}
+
+function validateReferenceAudioDependency(
+  modelConfig: VideoModelConfig,
+  options: VideoReferenceOptions,
+): VideoErrorResponse | null {
+  if (
+    modelConfig.provider === "byteplus" &&
+    modelConfig.family === "seedance-2-5"
+  ) {
+    return null;
+  }
+  if (
+    options.referenceAudioUrls.length > 0 &&
+    options.referenceImageUrls.length === 0 &&
+    options.inputVideoUrls.length === 0 &&
+    !options.firstFrameImageUrl &&
+    !options.lastFrameImageUrl
+  ) {
+    return badRequest(
+      "reference audio requires at least one image or video reference",
+    );
+  }
+  return null;
+}
+
+function videoReferenceLimits(modelConfig: VideoModelConfig): {
+  readonly image: number | undefined;
+  readonly video: number;
+  readonly audio: number;
+} {
+  if (
+    modelConfig.provider === "byteplus" &&
+    modelConfig.family === "seedance-2-5"
+  ) {
+    return { image: 30, video: 10, audio: 10 };
+  }
+  return {
+    image: undefined,
+    video: 3,
+    audio: modelConfig.provider === "minimax" ? 3 : 1,
+  };
+}
+
+function validateVideoReferenceCounts(
+  modelConfig: VideoModelConfig,
+  options: VideoReferenceOptions,
+): VideoErrorResponse | null {
+  const limits = videoReferenceLimits(modelConfig);
+  if (
+    limits.image !== undefined &&
+    options.referenceImageUrls.length > limits.image
+  ) {
+    return badRequest(
+      `reference image URLs cannot exceed ${limits.image} items`,
+    );
+  }
+  if (options.inputVideoUrls.length > limits.video) {
+    return badRequest(
+      `reference video URLs cannot exceed ${limits.video} items`,
+    );
+  }
+  if (options.referenceAudioUrls.length > limits.audio) {
+    return badRequest(
+      `reference audio URLs cannot exceed ${limits.audio} ${
+        limits.audio === 1 ? "item" : "items"
+      }`,
+    );
+  }
+  return null;
+}
+
 function validateVideoReferences(
   modelConfig: VideoModelConfig,
-  options: {
-    readonly alias: string;
-    readonly referenceImageUrls: readonly string[];
-    readonly inputVideoUrls: readonly string[];
-    readonly referenceAudioUrls: readonly string[];
-    readonly firstFrameImageUrl: string | undefined;
-    readonly lastFrameImageUrl: string | undefined;
-  },
+  options: VideoReferenceOptions,
 ): VideoErrorResponse | null {
   if (
     options.referenceImageUrls.length > 0 &&
@@ -817,33 +807,40 @@ function validateVideoReferences(
   if (options.lastFrameImageUrl && !modelConfig.supportsLastFrame) {
     return badRequest(`Last frame image is not supported for ${options.alias}`);
   }
-  if (options.inputVideoUrls.length > 3) {
-    return badRequest("reference video URLs cannot exceed 3 items");
+  const referenceCountError = validateVideoReferenceCounts(
+    modelConfig,
+    options,
+  );
+  if (referenceCountError) {
+    return referenceCountError;
   }
-  if (options.referenceAudioUrls.length > 1) {
-    return badRequest("reference audio URLs cannot exceed 1 item");
+  if (modelConfig.provider === "minimax") {
+    const miniMaxError = validateMiniMaxVideoReferences(options);
+    if (miniMaxError) {
+      return miniMaxError;
+    }
   }
-  if (
-    options.referenceAudioUrls.length > 0 &&
-    options.referenceImageUrls.length === 0 &&
-    options.inputVideoUrls.length === 0 &&
-    !options.firstFrameImageUrl &&
-    !options.lastFrameImageUrl
-  ) {
-    return badRequest(
-      "reference audio requires at least one image or video reference",
-    );
-  }
-  return null;
+  return validateReferenceAudioDependency(modelConfig, options);
 }
 
-export function parseVideoOptions(
-  body: unknown,
-): VideoOptions | VideoErrorResponse {
-  if (!isRecord(body)) {
-    return badRequest("Invalid JSON body");
+function parseVideoGenerateAudio(
+  body: Record<string, unknown>,
+  modelConfig: VideoModelConfig,
+): boolean | VideoErrorResponse {
+  const requested = readBoolean(
+    body,
+    "generateAudio",
+    readBoolean(body, "generate_audio", true),
+  );
+  if (modelConfig.provider === "minimax" && !requested) {
+    return badRequest("MiniMax H3 always generates native audio");
   }
+  return modelConfig.supportsGenerateAudio ? requested : false;
+}
 
+function parseVideoPrompt(
+  body: Record<string, unknown>,
+): string | VideoErrorResponse {
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (prompt.length === 0) {
     return badRequest("prompt is required");
@@ -853,17 +850,18 @@ export function parseVideoOptions(
       `prompt exceeds ${VIDEO_IO_MAX_PROMPT_LENGTH} characters`,
     );
   }
+  return prompt;
+}
 
-  const rawModel = readString(body, "model", VIDEO_IO_MODEL);
-  const model = normalizeVideoModel(rawModel);
-  if (!model) {
-    return badRequest(
-      `Unsupported video model: ${rawModel}. Available models: ${videoModelList()}`,
-    );
-  }
-  const modelConfig = VIDEO_MODEL_CONFIGS[model];
-
-  const aspectRatio = readString(body, "aspectRatio", "16:9");
+function parseVideoAspectRatio(
+  body: Record<string, unknown>,
+  modelConfig: VideoModelConfig,
+): VideoAspectRatio | VideoErrorResponse {
+  const aspectRatio = readString(
+    body,
+    "aspectRatio",
+    DEFAULT_VIDEO_ASPECT_RATIO,
+  );
   if (!includesString(VIDEO_ASPECT_RATIOS, aspectRatio)) {
     return badRequest(`Unsupported video aspect ratio: ${aspectRatio}`);
   }
@@ -872,8 +870,44 @@ export function parseVideoOptions(
       `Unsupported video aspect ratio for ${modelConfig.alias}: ${aspectRatio}`,
     );
   }
+  return aspectRatio;
+}
 
-  const duration = readString(body, "duration", "8s");
+export function parseVideoOptions(
+  body: unknown,
+): VideoOptions | VideoErrorResponse {
+  if (!isRecord(body)) {
+    return badRequest("Invalid JSON body");
+  }
+
+  const prompt = parseVideoPrompt(body);
+  if (typeof prompt !== "string") {
+    return prompt;
+  }
+
+  const rawModel = readString(body, "model", DEFAULT_VIDEO_MODEL);
+  const model = normalizeVideoModel(rawModel);
+  if (!model) {
+    return badRequest(
+      `Unsupported video model: ${rawModel}. Available models: ${videoModelList()}`,
+    );
+  }
+  const modelConfig = VIDEO_MODEL_CONFIGS[model];
+  if (
+    modelConfig.provider === "minimax" &&
+    prompt.length > MINIMAX_H3_MAX_PROMPT_LENGTH
+  ) {
+    return badRequest(
+      `prompt exceeds ${MINIMAX_H3_MAX_PROMPT_LENGTH} characters for MiniMax H3`,
+    );
+  }
+
+  const aspectRatio = parseVideoAspectRatio(body, modelConfig);
+  if (typeof aspectRatio !== "string") {
+    return aspectRatio;
+  }
+
+  const duration = readString(body, "duration", DEFAULT_VIDEO_DURATION);
   if (!includesString(VIDEO_DURATIONS, duration)) {
     return badRequest(`Unsupported video duration: ${duration}`);
   }
@@ -946,11 +980,10 @@ export function parseVideoOptions(
     return referenceError;
   }
 
-  const requestedGenerateAudio = readBoolean(
-    body,
-    "generateAudio",
-    readBoolean(body, "generate_audio", true),
-  );
+  const generateAudio = parseVideoGenerateAudio(body, modelConfig);
+  if (typeof generateAudio !== "boolean") {
+    return generateAudio;
+  }
 
   return {
     model,
@@ -959,9 +992,7 @@ export function parseVideoOptions(
     duration,
     durationSeconds: parseDurationSeconds(duration),
     resolution,
-    generateAudio: modelConfig.supportsGenerateAudio
-      ? requestedGenerateAudio
-      : false,
+    generateAudio,
     negativePrompt:
       readOptionalString(body, "negativePrompt") ??
       readOptionalString(body, "negative_prompt"),
@@ -983,10 +1014,13 @@ function mapPricingRows(
     readonly unitPrice: number;
     readonly unitSize: number;
   }[],
+  resolution: UsagePricingResolution,
 ): VideoPricing {
   const pricing = new Map<string, VideoPricingRow>();
   for (const row of rows) {
-    const model = normalizeVideoModel(row.provider);
+    const model = normalizeVideoModel(
+      canonicalUsagePricingProvider(resolution, USAGE_KIND, row.provider),
+    );
     if (model && includesString(VIDEO_PRICING_CATEGORIES, row.category)) {
       pricing.set(videoPricingKey(model, row.category), {
         provider: model,
@@ -999,20 +1033,25 @@ function mapPricingRows(
   return pricing;
 }
 
-export function videoPricingKey(
+function videoPricingKey(
   model: VideoModel,
   category: VideoPricingCategory,
 ): string {
   return `${model}:${category}`;
 }
 
-export function videoPricingCategoryForOptions(
+function videoPricingCategoryForOptions(
   options: Pick<
     VideoOptions,
     "generateAudio" | "inputVideoUrls" | "model" | "resolution"
   >,
 ): VideoPricingCategory {
   const config = VIDEO_MODEL_CONFIGS[options.model];
+  if (config.provider === "minimax") {
+    return options.resolution === "2k"
+      ? MINIMAX_OUTPUT_VIDEO_2K_CATEGORY
+      : MINIMAX_OUTPUT_VIDEO_768P_CATEGORY;
+  }
   if (config.provider === "fal") {
     if (options.resolution === "4k") {
       return options.generateAudio
@@ -1021,7 +1060,7 @@ export function videoPricingCategoryForOptions(
     }
     return options.generateAudio ? VIDEO_AUDIO_CATEGORY : VIDEO_SILENT_CATEGORY;
   }
-  if (config.family === "seedance-2") {
+  if (config.family === "seedance-2-5" || config.family === "seedance-2") {
     const hasInputVideo = options.inputVideoUrls.length > 0;
     if (options.resolution === "1080p") {
       return hasInputVideo
@@ -1040,9 +1079,37 @@ export function videoPricingCategoryForOptions(
   return VIDEO_TOKEN_CATEGORY;
 }
 
+function videoPricingCategoriesForOptions(
+  options: Pick<
+    VideoOptions,
+    "generateAudio" | "inputVideoUrls" | "model" | "resolution"
+  >,
+): readonly VideoPricingCategory[] {
+  if (VIDEO_MODEL_CONFIGS[options.model].provider === "minimax") {
+    return MINIMAX_VIDEO_PRICING_CATEGORIES;
+  }
+  return [videoPricingCategoryForOptions(options)];
+}
+
+export function getMissingVideoPricing(
+  pricing: ReadonlyMap<string, VideoPricingRow>,
+  options: Pick<
+    VideoOptions,
+    "generateAudio" | "inputVideoUrls" | "model" | "resolution"
+  >,
+): readonly VideoPricingCategory[] {
+  return videoPricingCategoriesForOptions(options).filter((category) => {
+    return !pricing.has(videoPricingKey(options.model, category));
+  });
+}
+
 export const videoPricing$: Computed<Promise<VideoPricing>> = computed(
   async (get): Promise<VideoPricing> => {
     const db = get(db$);
+    const resolution = get(usagePricingResolution$);
+    const lookupProviders = VIDEO_MODELS.map((provider) => {
+      return resolveUsagePricingProvider(resolution, USAGE_KIND, provider);
+    });
     const rows = await db
       .select({
         provider: usagePricing.provider,
@@ -1054,19 +1121,19 @@ export const videoPricing$: Computed<Promise<VideoPricing>> = computed(
       .where(
         and(
           eq(usagePricing.kind, USAGE_KIND),
-          inArray(usagePricing.provider, [...VIDEO_MODELS]),
+          inArray(usagePricing.provider, lookupProviders),
           inArray(usagePricing.category, [...VIDEO_PRICING_CATEGORIES]),
         ),
       );
 
-    return mapPricingRows(rows);
+    return mapPricingRows(rows, resolution);
   },
 );
 
 export const checkVideoCredits$ = command(
   async (
     { set },
-    args: { readonly orgId: string },
+    args: { readonly orgId: string; readonly userId: string },
     signal: AbortSignal,
   ): Promise<boolean> => {
     return await set(checkBillableOperationCredits$, args, signal);
@@ -1167,7 +1234,7 @@ export async function submitFalVideoGeneration(
   return handle;
 }
 
-function bytePlusHeaders(apiKey: string): Record<string, string> {
+function bearerJsonHeaders(apiKey: string): Record<string, string> {
   return {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
@@ -1193,10 +1260,13 @@ function parseBytePlusTaskHandle(value: unknown): BytePlusTaskHandle | null {
   };
 }
 
-function bytePlusVideoContent(
+function multimodalVideoContent(
   options: VideoOptions,
-): readonly BytePlusContent[] {
-  const content: BytePlusContent[] = [
+): readonly MultimodalVideoContent[] {
+  const config = VIDEO_MODEL_CONFIGS[options.model];
+  const requiresExplicitFrameRole =
+    config.provider === "byteplus" && config.family === "seedance-2-5";
+  const content: MultimodalVideoContent[] = [
     {
       type: "text",
       text: options.prompt,
@@ -1208,7 +1278,9 @@ function bytePlusVideoContent(
     content.push({
       type: "image_url",
       image_url: { url: options.firstFrameImageUrl },
-      ...(hasFirstAndLastFrame ? { role: "first_frame" } : {}),
+      ...(hasFirstAndLastFrame || requiresExplicitFrameRole
+        ? { role: "first_frame" }
+        : {}),
     });
   }
   if (options.lastFrameImageUrl) {
@@ -1247,12 +1319,16 @@ function bytePlusVideoInput(
   webhookUrl: string,
 ): Record<string, unknown> {
   const config = VIDEO_MODEL_CONFIGS[options.model];
+  const usesAdaptiveFrameRatio =
+    config.provider === "byteplus" &&
+    config.family === "seedance-2-5" &&
+    Boolean(options.firstFrameImageUrl || options.lastFrameImageUrl);
   return compactObject({
     model: options.model,
-    content: bytePlusVideoContent(options),
+    content: multimodalVideoContent(options),
     callback_url: webhookUrl,
     resolution: options.resolution,
-    ratio: options.aspectRatio,
+    ratio: usesAdaptiveFrameRatio ? "adaptive" : options.aspectRatio,
     duration: options.durationSeconds,
     ...(config.supportsGenerateAudio
       ? { generate_audio: options.generateAudio }
@@ -1263,15 +1339,15 @@ function bytePlusVideoInput(
   });
 }
 
-async function readBytePlusErrorBodyForLog(
+async function readProviderErrorBodyForLog(
   response: Response,
 ): Promise<string | undefined> {
   const body = await tapError(response.text());
   if (!body) {
     return undefined;
   }
-  return body.length > BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH
-    ? `${body.slice(0, BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH)}...`
+  return body.length > PROVIDER_ERROR_BODY_LOG_MAX_LENGTH
+    ? `${body.slice(0, PROVIDER_ERROR_BODY_LOG_MAX_LENGTH)}...`
     : body;
 }
 
@@ -1283,14 +1359,14 @@ export async function submitBytePlusVideoGeneration(
 ): Promise<BytePlusTaskHandle | VideoErrorResponse> {
   const response = await fetch(BYTEPLUS_VIDEO_TASKS_URL, {
     method: "POST",
-    headers: bytePlusHeaders(apiKey),
+    headers: bearerJsonHeaders(apiKey),
     body: JSON.stringify(bytePlusVideoInput(options, webhookUrl)),
     signal,
   });
 
   if (!response.ok) {
-    const responseBody = await readBytePlusErrorBodyForLog(response);
-    const providerError = bytePlusProviderErrorFromText(
+    const responseBody = await readProviderErrorBodyForLog(response);
+    const providerError = videoProviderErrorFromText(
       responseBody,
       response.status,
       response.statusText,
@@ -1316,6 +1392,85 @@ export async function submitBytePlusVideoGeneration(
   const handle = parseBytePlusTaskHandle(body);
   if (!handle) {
     return badGateway("BytePlus returned no task handle", "NO_TASK_HANDLE");
+  }
+  return handle;
+}
+
+function miniMaxResolution(resolution: VideoResolution): "768P" | "2K" {
+  if (resolution === "768p") {
+    return "768P";
+  }
+  if (resolution === "2k") {
+    return "2K";
+  }
+  throw new Error("Unsupported MiniMax H3 video resolution");
+}
+
+function miniMaxVideoInput(
+  options: VideoOptions,
+  webhookUrl: string,
+): Record<string, unknown> {
+  const hasFrameImage = Boolean(
+    options.firstFrameImageUrl || options.lastFrameImageUrl,
+  );
+  return {
+    model: options.model,
+    content: multimodalVideoContent(options),
+    callback_url: webhookUrl,
+    resolution: miniMaxResolution(options.resolution),
+    duration: options.durationSeconds,
+    ratio: hasFrameImage ? "adaptive" : options.aspectRatio,
+  };
+}
+
+function parseMiniMaxTaskHandle(value: unknown): MiniMaxTaskHandle | null {
+  if (!isRecord(value) || typeof value.task_id !== "string") {
+    return null;
+  }
+  return { taskId: value.task_id };
+}
+
+export async function submitMiniMaxVideoGeneration(
+  options: VideoOptions,
+  apiKey: string,
+  signal: AbortSignal,
+  webhookUrl: string,
+): Promise<MiniMaxTaskHandle | VideoErrorResponse> {
+  const response = await fetch(MINIMAX_VIDEO_GENERATION_URL, {
+    method: "POST",
+    headers: bearerJsonHeaders(apiKey),
+    body: JSON.stringify(miniMaxVideoInput(options, webhookUrl)),
+    signal,
+  });
+
+  if (!response.ok) {
+    const responseBody = await readProviderErrorBodyForLog(response);
+    const providerError = videoProviderErrorFromText(
+      responseBody,
+      response.status,
+      response.statusText,
+    );
+    L.warn("MiniMax H3 video generation task creation failed", {
+      provider: "minimax",
+      model: options.model,
+      status: response.status,
+      statusText: response.statusText,
+      providerErrorCode: providerError.code,
+      providerErrorMessage: providerError.message,
+      responseBody,
+      hasFirstFrameImage: Boolean(options.firstFrameImageUrl),
+      hasLastFrameImage: Boolean(options.lastFrameImageUrl),
+      referenceImageCount: options.referenceImageUrls.length,
+      referenceVideoCount: options.inputVideoUrls.length,
+      referenceAudioCount: options.referenceAudioUrls.length,
+    });
+    return miniMaxProviderErrorResponse(providerError, response.status);
+  }
+
+  const body: unknown = await response.json();
+  const handle = parseMiniMaxTaskHandle(body);
+  if (!handle) {
+    return badGateway("MiniMax returned no task handle", "NO_TASK_HANDLE");
   }
   return handle;
 }
@@ -1406,6 +1561,13 @@ function readPositiveInteger(value: unknown): number | undefined {
   return Math.ceil(value);
 }
 
+function readNonNegativeInteger(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.ceil(value);
+}
+
 function readCompletionTokens(value: unknown): number | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -1475,6 +1637,64 @@ export function parseBytePlusVideoResult(
   };
 }
 
+export function parseMiniMaxVideoResult(
+  value: unknown,
+): MiniMaxVideoResult | VideoErrorResponse {
+  if (!isRecord(value)) {
+    return badGateway("Model returned no video data", "NO_VIDEO_RETURNED");
+  }
+  const task = isRecord(value.task) ? value.task : value;
+  const sourceUrl = readVideoUrl(task.content);
+  if (!sourceUrl) {
+    return badGateway("Model returned no video data", "NO_VIDEO_RETURNED");
+  }
+  if (typeof task.id !== "string" || task.id.length === 0) {
+    return badGateway("MiniMax returned no task ID", "NO_TASK_HANDLE");
+  }
+  const resolution =
+    task.resolution === "768P"
+      ? "768p"
+      : task.resolution === "2K"
+        ? "2k"
+        : undefined;
+  if (!resolution) {
+    return badGateway(
+      "MiniMax returned an invalid resolution",
+      "INVALID_VIDEO_RESULT",
+    );
+  }
+  if (!isRecord(task.usage)) {
+    return badGateway("MiniMax returned no usage data", "INVALID_VIDEO_USAGE");
+  }
+  const outputSeconds = readPositiveInteger(task.usage.output_seconds);
+  const inputSeconds = readNonNegativeInteger(task.usage.input_seconds);
+  const inputImageCount = readNonNegativeInteger(task.usage.input_image_count);
+  if (
+    outputSeconds === undefined ||
+    inputSeconds === undefined ||
+    inputImageCount === undefined
+  ) {
+    return badGateway(
+      "MiniMax returned invalid usage data",
+      "INVALID_VIDEO_USAGE",
+    );
+  }
+  const aspectRatio =
+    typeof task.ratio === "string" &&
+    includesString(VIDEO_ASPECT_RATIOS, task.ratio)
+      ? task.ratio
+      : undefined;
+  return {
+    requestId: task.id,
+    sourceUrl,
+    resolution,
+    aspectRatio,
+    outputSeconds,
+    inputSeconds,
+    inputImageCount,
+  };
+}
+
 export async function downloadFalVideo(
   result: FalVideoResult,
   options: VideoOptions,
@@ -1518,7 +1738,12 @@ export async function downloadFalVideo(
     referenceAudioUrls: options.referenceAudioUrls,
     firstFrameImageUrl: options.firstFrameImageUrl,
     lastFrameImageUrl: options.lastFrameImageUrl,
-    billingQuantity: videoBillingQuantityForOptions(options),
+    billing: [
+      {
+        category: videoPricingCategoryForOptions(options),
+        quantity: videoBillingQuantityForOptions(options),
+      },
+    ],
   };
 }
 
@@ -1565,8 +1790,92 @@ export async function downloadBytePlusVideo(
     referenceAudioUrls: options.referenceAudioUrls,
     firstFrameImageUrl: options.firstFrameImageUrl,
     lastFrameImageUrl: options.lastFrameImageUrl,
-    billingQuantity:
-      result.completionTokens ?? videoBillingQuantityForOptions(options),
+    billing: [
+      {
+        category: videoPricingCategoryForOptions(options),
+        quantity:
+          result.completionTokens ?? videoBillingQuantityForOptions(options),
+      },
+    ],
+  };
+}
+
+function miniMaxOutputVideoCategory(
+  resolution: "768p" | "2k",
+): VideoPricingCategory {
+  return resolution === "2k"
+    ? MINIMAX_OUTPUT_VIDEO_2K_CATEGORY
+    : MINIMAX_OUTPUT_VIDEO_768P_CATEGORY;
+}
+
+function miniMaxInputVideoCategory(
+  resolution: "768p" | "2k",
+): VideoPricingCategory {
+  return resolution === "2k"
+    ? MINIMAX_INPUT_VIDEO_2K_CATEGORY
+    : MINIMAX_INPUT_VIDEO_768P_CATEGORY;
+}
+
+function miniMaxBillingEntries(
+  result: MiniMaxVideoResult,
+): readonly VideoBillingEntry[] {
+  return [
+    {
+      category: miniMaxOutputVideoCategory(result.resolution),
+      quantity: result.outputSeconds,
+    },
+    {
+      category: miniMaxInputVideoCategory(result.resolution),
+      quantity: result.inputSeconds,
+    },
+    {
+      category: MINIMAX_ADDITIONAL_INPUT_IMAGE_CATEGORY,
+      quantity: Math.max(result.inputImageCount - 5, 0),
+    },
+  ];
+}
+
+export async function downloadMiniMaxVideo(
+  result: MiniMaxVideoResult,
+  options: VideoOptions,
+  signal: AbortSignal,
+): Promise<ParsedVideoGeneration | VideoErrorResponse> {
+  const response = await fetch(result.sourceUrl, { method: "GET", signal });
+  if (!response.ok) {
+    return badGateway(
+      "Could not download generated video",
+      "VIDEO_DOWNLOAD_FAILED",
+    );
+  }
+
+  const videoBytes = Buffer.from(await response.arrayBuffer());
+  if (videoBytes.byteLength === 0) {
+    return badGateway("Model returned empty video", "NO_VIDEO_RETURNED");
+  }
+
+  return {
+    model: options.model,
+    videoBytes,
+    contentType:
+      normalizeVideoContentType(response.headers.get("content-type")) ??
+      "video/mp4",
+    sourceUrl: result.sourceUrl,
+    requestId: result.requestId,
+    aspectRatio: result.aspectRatio ?? options.aspectRatio,
+    duration: options.duration,
+    durationSeconds: options.durationSeconds,
+    resolution: result.resolution,
+    generateAudio: true,
+    negativePrompt: undefined,
+    seed: undefined,
+    autoFix: false,
+    safetyTolerance: options.safetyTolerance,
+    referenceImageUrls: options.referenceImageUrls,
+    inputVideoUrls: options.inputVideoUrls,
+    referenceAudioUrls: options.referenceAudioUrls,
+    firstFrameImageUrl: options.firstFrameImageUrl,
+    lastFrameImageUrl: options.lastFrameImageUrl,
+    billing: miniMaxBillingEntries(result),
   };
 }
 
@@ -1598,7 +1907,15 @@ function seedanceDimensions(
   if (config.provider !== "byteplus") {
     throw new Error("Expected a BytePlus video model");
   }
-  return SEEDANCE_2_DIMENSIONS[resolution][aspectRatio];
+  const dimensionTable: DimensionTable =
+    config.family === "seedance-2-5"
+      ? SEEDANCE_2_5_DIMENSIONS
+      : SEEDANCE_2_DIMENSIONS;
+  const dimensions = dimensionTable[resolution];
+  if (!dimensions) {
+    throw new Error(`Unsupported Seedance resolution: ${resolution}`);
+  }
+  return dimensions[aspectRatio];
 }
 
 function seedanceOutputTokens(
@@ -1631,10 +1948,23 @@ function videoBillingQuantityForOptions(
 }
 
 function estimateVideoCredits(
-  billingQuantity: number,
-  pricing: VideoPricingRow,
+  model: VideoModel,
+  billing: readonly VideoBillingEntry[],
+  pricing: VideoPricing,
 ): number {
-  return Math.ceil((billingQuantity * pricing.unitPrice) / pricing.unitSize);
+  return billing.reduce((total, row) => {
+    if (row.quantity <= 0) {
+      return total;
+    }
+    const pricingRow = pricing.get(videoPricingKey(model, row.category));
+    if (!pricingRow) {
+      throw new Error(`Missing video pricing for ${model}:${row.category}`);
+    }
+    return (
+      total +
+      Math.ceil((row.quantity * pricingRow.unitPrice) / pricingRow.unitSize)
+    );
+  }, 0);
 }
 
 export const recordGeneratedVideo$ = command(
@@ -1644,7 +1974,7 @@ export const recordGeneratedVideo$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly runId: string | undefined;
-      readonly pricing: VideoPricingRow;
+      readonly pricing: VideoPricing;
       readonly generation: ParsedVideoGeneration;
       readonly usageIdempotency: BuiltInGenerationUsageIdempotency;
     },
@@ -1655,7 +1985,6 @@ export const recordGeneratedVideo$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
-        orgId: params.orgId,
         filenamePrefix: "video",
         extension: extensionForContentType(params.generation.contentType),
         body: params.generation.videoBytes,
@@ -1690,7 +2019,8 @@ export const recordGeneratedVideo$ = command(
           seed: params.generation.seed,
           autoFix: params.generation.autoFix,
           safetyTolerance: params.generation.safetyTolerance,
-          billingQuantity: params.generation.billingQuantity,
+          billingQuantity: params.generation.billing[0]?.quantity,
+          billing: params.generation.billing,
           referenceImageUrls:
             params.generation.referenceImageUrls.length > 0
               ? params.generation.referenceImageUrls
@@ -1711,21 +2041,29 @@ export const recordGeneratedVideo$ = command(
     );
     signal.throwIfAborted();
 
+    const usageRows = params.generation.billing.filter((row) => {
+      return row.quantity > 0;
+    });
+
     await writeDb
       .insert(usageEvent)
-      .values({
-        runId: params.runId ?? null,
-        idempotencyKey: builtInGenerationUsageIdempotencyKey({
-          ...params.usageIdempotency,
-          category: params.pricing.category,
+      .values(
+        usageRows.map((row) => {
+          return {
+            runId: params.runId ?? null,
+            idempotencyKey: builtInGenerationUsageIdempotencyKey({
+              ...params.usageIdempotency,
+              category: row.category,
+            }),
+            orgId: params.orgId,
+            userId: params.userId,
+            kind: USAGE_KIND,
+            provider: params.generation.model,
+            category: row.category,
+            quantity: row.quantity,
+          };
         }),
-        orgId: params.orgId,
-        userId: params.userId,
-        kind: USAGE_KIND,
-        provider: params.generation.model,
-        category: params.pricing.category,
-        quantity: params.generation.billingQuantity,
-      })
+      )
       .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
     signal.throwIfAborted();
 
@@ -1740,7 +2078,8 @@ export const recordGeneratedVideo$ = command(
       url,
       durationSeconds: params.generation.durationSeconds,
       creditsCharged: estimateVideoCredits(
-        params.generation.billingQuantity,
+        params.generation.model,
+        params.generation.billing,
         params.pricing,
       ),
       model: params.generation.model,

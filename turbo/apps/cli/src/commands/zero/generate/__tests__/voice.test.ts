@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate voice command
+ * Tests for okou generate voice command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -12,8 +12,9 @@ import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../mocks/server";
 import { generateCommand } from "../index";
+import { voiceCommand } from "../voice";
 
-const SPEECH_URL = "http://localhost:3000/api/zero/voice-io/speech";
+const SPEECH_URL = "http://localhost:3000/api/okou/voice-io/speech";
 const VOICE_RESULT = {
   id: "voice-file-id",
   filename: "voice-voice-fi.wav",
@@ -26,7 +27,7 @@ const VOICE_RESULT = {
   voice: "cedar",
 };
 
-describe("zero generate voice command", () => {
+describe("okou generate voice command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -38,12 +39,26 @@ describe("zero generate voice command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+  });
+
+  it("should use Okou branding in voice help", () => {
+    let helpOutput = "";
+    voiceCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    voiceCommand.outputHelp();
+
+    expect(helpOutput).toContain('--prompt "Hello from Okou"');
+    expect(helpOutput).toContain("Provider: 'built-in' to run Okou's pipeline");
   });
 
   it("should generate speech and print the /f file URL", async () => {

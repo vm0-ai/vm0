@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
-import { IconPencil, IconLoader2 } from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
+import { Pencil, Loader2 } from "lucide-react";
+import { Button } from "@okouai/ui";
 
 interface ZeroUnsavedBarProps {
   onDiscard: () => void;
@@ -19,18 +19,14 @@ export function ZeroUnsavedBar({
   discardLabel = "Discard",
   saveLabel = "Save",
 }: ZeroUnsavedBarProps) {
-  return createPortal(
+  const bar = (
     <div className="zero-app fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4">
       <div
         data-testid="unsaved-bar"
         className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
       >
         <div className="flex items-center gap-2 text-sm text-foreground">
-          <IconPencil
-            size={18}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <Pencil size={18} className="shrink-0" />
           <span>{message}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -47,15 +43,14 @@ export function ZeroUnsavedBar({
           <Button
             data-testid="save-button"
             size="sm"
-            className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+            className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary-hover"
             onClick={onSave}
             disabled={saving}
           >
             {saving ? (
-              <IconLoader2
+              <Loader2
                 data-testid="save-spinner"
                 size={14}
-                stroke={1.5}
                 className="animate-spin mr-1.5"
               />
             ) : null}
@@ -63,7 +58,12 @@ export function ZeroUnsavedBar({
           </Button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+  // Keep this app-local notice inside the isolated app stack. Modal and
+  // floating Base UI portals live outside it and therefore stay above it
+  // without coordinating z-index values with this component.
+  const appRoot =
+    typeof document === "undefined" ? null : document.getElementById("root");
+  return appRoot ? createPortal(bar, appRoot) : bar;
 }

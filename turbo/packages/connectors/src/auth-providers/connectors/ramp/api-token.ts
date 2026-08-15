@@ -4,12 +4,14 @@ import { ProviderHttpError, ProviderResponseError } from "../../provider-error";
 
 const TOKEN_URL = "https://api.ramp.com/developer/v1/token";
 
-export async function fetchRampAccessToken(args: {
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly scope: string;
-  readonly signal: AbortSignal;
-}) {
+export async function fetchRampAccessToken(
+  args: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly scope: string;
+  },
+  signal: AbortSignal,
+) {
   const response = await fetch(TOKEN_URL, {
     method: "POST",
     headers: {
@@ -20,7 +22,7 @@ export async function fetchRampAccessToken(args: {
       grant_type: "client_credentials",
       scope: args.scope,
     }),
-    signal: args.signal,
+    signal,
   });
   if (!response.ok) {
     throw new ProviderHttpError(

@@ -1,4 +1,4 @@
-import { MAX_EVENT_SEQUENCE_NUMBER } from "@vm0/api-contracts/contracts/runs";
+import { MAX_EVENT_SEQUENCE_NUMBER } from "@okouai/api-contracts/contracts/runs";
 
 import { safeUriComponentDecode } from "../utils";
 

@@ -1,9 +1,9 @@
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/connector-check";
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,7 +42,7 @@ function buildZeroToken(
     userId: "user-1",
     runId: "run-abc-123",
     orgId: "org-1",
-    scope: "zero",
+    scope: "okou",
     capabilities: ["connector:read", "agent-run:read"],
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
@@ -150,7 +150,7 @@ function connectorResponse(
 }
 
 function diagnosticEndpoint(baseUrl = API_BASE_URL): string {
-  return `${baseUrl}/api/zero/connectors/diagnostics/check`;
+  return `${baseUrl}/api/okou/connectors/diagnostics/check`;
 }
 
 function stubDiagnostic(
@@ -174,7 +174,7 @@ function stubConnector(
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
-    http.get(`${baseUrl}/api/zero/connectors/${connectorSlug}`, () => {
+    http.get(`${baseUrl}/api/okou/connectors/${connectorSlug}`, () => {
       onRequest?.();
       if (response === null) {
         return HttpResponse.json(
@@ -193,7 +193,7 @@ function stubAgentConnectors(
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
-    http.get(`${baseUrl}/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
+    http.get(`${baseUrl}/api/okou/agents/${AGENT_ID}/user-connectors`, () => {
       onRequest?.();
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,
@@ -226,7 +226,7 @@ function stubResolvedDependencies(
   );
 }
 
-describe("zero connector check command", () => {
+describe("okou connector check command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -240,9 +240,9 @@ describe("zero connector check command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", API_BASE_URL);
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-    vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("OKOU_TOKEN", buildZeroToken());
+    vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
     vi.stubEnv("GH_TOKEN", "");
     vi.stubEnv("GITHUB_TOKEN", "");
   });
@@ -306,7 +306,7 @@ describe("zero connector check command", () => {
         "URL https://service.example.com/api/items matches the Server Only connector",
       );
       expect(getOutput()).toContain(
-        "zero connector check --url 'https://service.example.com/api/items' --connector 'server-only' --env-name 'SERVER_ONLY_TOKEN' --method 'POST'",
+        "okou connector check --url 'https://service.example.com/api/items' --connector 'server-only' --env-name 'SERVER_ONLY_TOKEN' --method 'POST'",
       );
       expect(getOutput()).not.toContain("access_token=secret");
       expect(getOutput()).not.toContain("#private");
@@ -370,14 +370,14 @@ describe("zero connector check command", () => {
         'Result: "contents:write" is in the deny list — denied.',
       );
       expect(getOutput()).toContain(
-        "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
+        "Diagnose the failed request with okou connector check --url <FAILED_URL> --method <METHOD>",
       );
       expect(getOutput()).not.toContain("--callback-prompt");
     });
 
     it("requires a URL diagnostic before printing a callback permission command", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
-      vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", "thread-abc-123");
       stubDiagnostic(
         resolvedEnvironment({
           permission: { outcome: "ask", basis: "ask-list" },
@@ -395,7 +395,7 @@ describe("zero connector check command", () => {
       ]);
 
       expect(getOutput()).toContain(
-        "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
+        "Diagnose the failed request with okou connector check --url <FAILED_URL> --method <METHOD>",
       );
       expect(getOutput()).not.toContain("--callback-prompt");
       expect(getOutput()).not.toContain("automatically start the next round");
@@ -869,10 +869,10 @@ describe("zero connector check command", () => {
         expect(getOutput()).not.toContain("allow list: [");
         expect(getOutput()).not.toContain("deny list:  [");
         expect(getOutput()).not.toContain("ask list:   [");
-        const requestCommand = "zero connector permission-request";
+        const requestCommand = "okou connector permission-request";
         if (policy.outcome === "deny" || policy.outcome === "ask") {
           expect(getOutput()).toContain(
-            "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
+            "Diagnose the failed request with okou connector check --url <FAILED_URL> --method <METHOD>",
           );
           expect(getOutput()).not.toContain(requestCommand);
         } else {
@@ -915,7 +915,7 @@ describe("zero connector check command", () => {
       expect(getOutput()).toContain('"metadata:read" is in the ask list');
       expect(getOutput()).not.toContain("--permission contents:read");
       expect(getOutput()).toContain(
-        "zero connector permission-request 'github' --permission 'metadata:read' --url 'https://api.github.com/repos/vm0-ai/vm0' --method 'GET'",
+        "okou connector permission-request 'github' --permission 'metadata:read' --url 'https://api.github.com/repos/vm0-ai/vm0' --method 'GET'",
       );
     });
 
@@ -980,7 +980,7 @@ describe("zero connector check command", () => {
         expect(getOutput()).toContain(expected);
         if (expectsGuidance) {
           expect(getOutput()).toContain(
-            "zero connector permission-request 'github' --permission '__unknown__' --url 'https://api.github.com/not-a-known-endpoint' --method 'GET'",
+            "okou connector permission-request 'github' --permission '__unknown__' --url 'https://api.github.com/not-a-known-endpoint' --method 'GET'",
           );
         } else {
           expect(getOutput()).not.toContain("--permission __unknown__");

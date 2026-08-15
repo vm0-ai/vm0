@@ -236,8 +236,8 @@ assert_not_contains "$tmp/reconnect-window/stderr" "client-id"
 assert_line_count "$tmp/reconnect-window/ssh-invocations" 4 "-n -M -N -f metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/reconnect-window/ssh-invocations" 1 "-n -O check metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "1"
-assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "2"
-assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "3"
+assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "5"
+assert_line_count "$tmp/reconnect-window/sleep-invocations" 1 "15"
 if [ -e "$tmp/reconnect-window/outer-summary" ]; then
   echo "expected recovered attempts not to write the job summary" >&2
   cat "$tmp/reconnect-window/outer-summary" >&2
@@ -340,8 +340,8 @@ if [ "$(grep -c '^::error' "$tmp/exhaustion/stderr")" -ne 1 ]; then
 fi
 assert_line_count "$tmp/exhaustion/ssh-invocations" 4 "-n -M -N -f metal@dev-1.aws.vm3.ai"
 assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "1"
-assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "2"
-assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "3"
+assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "5"
+assert_line_count "$tmp/exhaustion/sleep-invocations" 1 "15"
 assert_runner_temp_empty "$tmp/exhaustion/runner-temp"
 
 run_case multiple success $' dev-1.aws.vm3.ai,dev-11.gcp.aws.vm3.ai\nDEV-1.AWS.VM3.AI '

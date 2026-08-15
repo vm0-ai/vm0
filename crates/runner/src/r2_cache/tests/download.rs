@@ -1,18 +1,128 @@
+use std::{
+    pin::Pin,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    task::{Context, Poll, Waker},
+    time::Duration,
+};
+
 use super::super::{
     R2DownloadError, R2Error,
+    archive::TEMPLATE_FILE,
     download::{file_staging_dir, finish_file_staging_error},
     io_other,
 };
 use super::fixtures::{
     archive_limits, archive_with_type, deterministic_bytes, empty_template_archive,
     excessive_sparse_metadata_archive, get_object_body, get_object_body_for_key,
-    get_object_body_with_content_length, mock_cache, nested_template_archive,
-    production_template_archive, regular_template_archive, sparse_template_archive,
-    template_archive_with_extra, template_archive_with_trailing_decompressed_data, zstd_bytes,
+    get_object_body_then_error, get_object_body_with_content_length, mock_cache,
+    nested_template_archive, production_template_archive, regular_template_archive,
+    sparse_template_archive, template_archive_with_extra,
+    template_archive_with_trailing_decompressed_data, zstd_bytes,
 };
+use aws_sdk_s3::primitives::ByteStream;
 use aws_smithy_mocks::mock;
+use bytes::Bytes;
+use http_body::{Body, Frame};
+use tokio::sync::Notify;
 
 const SMALL_TEMPLATE_BYTES: u64 = 5;
+const BODY_CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Default)]
+struct ControlledBodyState {
+    released: AtomicBool,
+    blocked: Notify,
+    dropped: Notify,
+    waker: Mutex<Option<Waker>>,
+}
+
+impl ControlledBodyState {
+    fn release(&self) {
+        self.released.store(true, Ordering::Release);
+        let waker = self.waker.lock().unwrap().take();
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+}
+
+struct ControlledBodyController {
+    state: Arc<ControlledBodyState>,
+}
+
+impl ControlledBodyController {
+    fn new() -> Self {
+        Self {
+            state: Arc::new(ControlledBodyState::default()),
+        }
+    }
+
+    async fn wait_until_blocked(&self) {
+        tokio::time::timeout(BODY_CONTROL_TIMEOUT, self.state.blocked.notified())
+            .await
+            .expect("timed out waiting for R2 body extraction to block");
+    }
+
+    async fn wait_until_dropped(&self) {
+        tokio::time::timeout(BODY_CONTROL_TIMEOUT, self.state.dropped.notified())
+            .await
+            .expect("timed out waiting for detached R2 extraction to release its body");
+    }
+
+    fn release(&self) {
+        self.state.release();
+    }
+}
+
+impl Drop for ControlledBodyController {
+    fn drop(&mut self) {
+        self.state.release();
+    }
+}
+
+struct ControlledBody {
+    bytes: Option<Bytes>,
+    state: Arc<ControlledBodyState>,
+}
+
+impl Body for ControlledBody {
+    type Data = Bytes;
+    type Error = std::io::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        if let Some(bytes) = self.bytes.take() {
+            return Poll::Ready(Some(Ok(Frame::data(bytes))));
+        }
+
+        // This post-frame poll proves that the real extraction worker consumed
+        // the R2 archive frame. Hold EOF so its async waiter can be cancelled.
+        self.state.blocked.notify_one();
+        if self.state.released.load(Ordering::Acquire) {
+            return Poll::Ready(None);
+        }
+
+        let mut waker = self.state.waker.lock().unwrap();
+        *waker = Some(cx.waker().clone());
+        if self.state.released.load(Ordering::Acquire) {
+            waker.take();
+            Poll::Ready(None)
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+impl Drop for ControlledBody {
+    fn drop(&mut self) {
+        self.state.dropped.notify_one();
+    }
+}
 
 #[tokio::test]
 async fn downloads_exact_regular_template_from_template_key() {
@@ -134,6 +244,108 @@ async fn cache_miss_cleans_stale_staging_without_touching_destination() {
 }
 
 #[tokio::test]
+async fn cancelled_download_recovers_staging_on_next_cache_miss() {
+    use aws_sdk_s3::Client;
+    use aws_sdk_s3::operation::get_object::{GetObjectError, GetObjectOutput};
+    use aws_sdk_s3::types::error::NoSuchKey;
+
+    let controller = ControlledBodyController::new();
+    let body_state = Arc::clone(&controller.state);
+    let archive = Bytes::from(regular_template_archive(b"hello"));
+    let dst = tempfile::tempdir().unwrap();
+    let destination = dst.path().join("template.ext4");
+    tokio::fs::write(&destination, b"existing-rootfs")
+        .await
+        .unwrap();
+    let staging = file_staging_dir(&destination);
+    let staging_at_request = staging.clone();
+    let get = mock!(Client::get_object)
+        .match_requests(move |_| {
+            assert!(
+                !staging_at_request.exists(),
+                "download must remove stale staging before its R2 request"
+            );
+            true
+        })
+        .sequence()
+        .output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from_body_1_x(ControlledBody {
+                    bytes: Some(archive.clone()),
+                    state: Arc::clone(&body_state),
+                }))
+                .build()
+        })
+        .error(|| GetObjectError::NoSuchKey(NoSuchKey::builder().build()))
+        .build();
+    let cache = mock_cache("test-bucket", &[&get]);
+
+    let mut downloads = tokio::task::JoinSet::new();
+    let cache_for_download = cache.clone();
+    let destination_for_download = destination.clone();
+    downloads.spawn(async move {
+        cache_for_download
+            .try_download_template_to_file("hash", &destination_for_download, SMALL_TEMPLATE_BYTES)
+            .await
+    });
+
+    controller.wait_until_blocked().await;
+    assert!(staging.is_dir());
+    assert_eq!(
+        tokio::fs::read(&destination).await.unwrap(),
+        b"existing-rootfs"
+    );
+
+    downloads.abort_all();
+    let cancelled = tokio::time::timeout(BODY_CONTROL_TIMEOUT, downloads.join_next())
+        .await
+        .expect("timed out joining cancelled R2 download")
+        .expect("R2 download task disappeared")
+        .expect_err("R2 download completed after its body blocked");
+    assert!(
+        cancelled.is_cancelled(),
+        "unexpected join error: {cancelled}"
+    );
+
+    controller.release();
+    controller.wait_until_dropped().await;
+    assert_eq!(
+        tokio::fs::read(&destination).await.unwrap(),
+        b"existing-rootfs"
+    );
+    assert_eq!(
+        tokio::fs::read(staging.join(TEMPLATE_FILE)).await.unwrap(),
+        b"hello"
+    );
+
+    let mut residue = Vec::new();
+    let mut entries = tokio::fs::read_dir(dst.path()).await.unwrap();
+    while let Some(entry) = entries.next_entry().await.unwrap() {
+        residue.push(entry.file_name());
+    }
+    residue.sort();
+    let mut expected_residue = vec![
+        destination.file_name().unwrap().to_os_string(),
+        staging.file_name().unwrap().to_os_string(),
+    ];
+    expected_residue.sort();
+    assert_eq!(residue, expected_residue);
+
+    let downloaded = cache
+        .try_download_template_to_file("hash", &destination, SMALL_TEMPLATE_BYTES)
+        .await
+        .unwrap();
+
+    assert!(!downloaded);
+    assert_eq!(get.num_calls(), 2);
+    assert_eq!(
+        tokio::fs::read(&destination).await.unwrap(),
+        b"existing-rootfs"
+    );
+    assert!(!staging.exists());
+}
+
+#[tokio::test]
 async fn request_failure_remains_distinct_from_invalid_object() {
     use aws_sdk_s3::Client;
 
@@ -156,6 +368,36 @@ async fn request_failure_remains_distinct_from_invalid_object() {
     assert!(matches!(error, R2DownloadError::Request(_)));
     assert!(!destination.exists());
     assert!(!file_staging_dir(&destination).exists());
+}
+
+#[tokio::test]
+async fn body_read_failure_is_request_but_same_prefix_clean_eof_is_invalid() {
+    const BODY_ERROR: &str = "injected R2 body transport failure";
+
+    let archive = regular_template_archive(b"hello");
+    let prefix = archive[..archive.len() / 2].to_vec();
+    let get = get_object_body_then_error(prefix.clone(), BODY_ERROR);
+    let cache = mock_cache("test-bucket", &[&get]);
+    let dst = tempfile::tempdir().unwrap();
+    let destination = dst.path().join("template.ext4");
+    tokio::fs::write(&destination, b"existing-rootfs")
+        .await
+        .unwrap();
+
+    let error = cache
+        .try_download_template_to_file("hash", &destination, SMALL_TEMPLATE_BYTES)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, R2DownloadError::Request(_)));
+    assert!(error.to_string().contains(BODY_ERROR));
+    assert_eq!(
+        tokio::fs::read(&destination).await.unwrap(),
+        b"existing-rootfs"
+    );
+    assert!(!file_staging_dir(&destination).exists());
+
+    assert_invalid_preserves_destination(get_object_body(prefix), SMALL_TEMPLATE_BYTES).await;
 }
 
 #[tokio::test]

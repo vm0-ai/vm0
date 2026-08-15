@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
 import { i18n } from "../../../../i18n/index.ts";

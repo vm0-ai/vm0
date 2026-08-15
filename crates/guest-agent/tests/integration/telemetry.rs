@@ -218,9 +218,11 @@ async fn final_flush_and_shutdown_uploads_log_emitted_immediately_before_it() {
     );
 
     guest_common::log_warn!("sandbox:guest-agent", "{marker}");
-    telemetry
-        .final_flush_and_shutdown()
+    tokio::time::timeout(Duration::from_secs(5), telemetry.final_flush_and_shutdown())
         .await
+        .expect(
+            "final telemetry upload and uploader task termination should complete within 5 seconds",
+        )
         .expect("final flush and shutdown should upload just-emitted log");
     drop(system_log_guard);
 

@@ -1,8 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { deleteWorkflow, getWorkflow } from "../../../lib/api";
+import {
+  deleteWorkflow,
+  getWorkflow,
+} from "../../../lib/api/domains/zero-workflows";
 import { isInteractive, promptConfirm } from "../../../lib/utils/prompt-utils";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   resolveWorkflowRef,
   type WorkflowRefOptions,
@@ -19,9 +22,9 @@ export const deleteCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow delete tell-a-joke --agent <agent-id> -y
-  zero workflow delete <workflow-id>
-  zero workflow delete <workflow-id> -y
+  okou workflow delete tell-a-joke --agent <agent-id> -y
+  okou workflow delete <workflow-id>
+  okou workflow delete <workflow-id> -y
 
 Notes:
   - Use -y to skip confirmation in non-interactive mode`,

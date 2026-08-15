@@ -1,13 +1,12 @@
 import { command, type Command } from "ccstate";
 import type {
   ChatThreadDraft,
-  GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { currentChatThreadId$ } from "../agent-chat.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import { activeRoute$ } from "../active-route.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { logger } from "../log.ts";
 import {
   detachedNavigateTo$,
@@ -21,25 +20,31 @@ import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
 } from "../zero-page/user-message-document-codec.ts";
-import {
-  createChatThreadComposerSignals,
-  createChatThreadSignals,
-  ensureDraft$,
-} from "./create-chat-thread.ts";
+import { createCachedChatPanelSignals$ } from "./create-chat-thread.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
-import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import type { ChatPanelSignals } from "./chat-panel-signals.ts";
+import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import {
+  type ChatThreadPaneState,
+  currentLeftPane$,
   currentLeftThread$,
+  currentRightPane$,
   currentRightThread$,
-  setCurrentLeftThread$,
-  setCurrentRightThread$,
+  setCurrentLeftPane$,
+  setCurrentRightPane$,
 } from "./chat-thread-pane-state.ts";
-import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
-import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
-import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
+import {
+  syncMissingPrimaryThread$,
+  syncPrimaryThread$,
+} from "./sync-primary-thread.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
-export { currentLeftThread$, currentRightThread$ };
+export {
+  currentLeftPane$,
+  currentLeftThread$,
+  currentRightPane$,
+  currentRightThread$,
+};
 
 const L = logger("ChatPanes");
 
@@ -62,7 +67,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
     set(currentRightThread.sidebar.close$);
   }
   set(resetRightSetupSignal$);
-  set(setCurrentRightThread$, null);
+  set(setCurrentRightPane$, null);
   const next = new URLSearchParams(get(searchParams$));
   if (next.has(SIDEBAR_PARAM)) {
     next.delete(SIDEBAR_PARAM);
@@ -71,14 +76,14 @@ export const unloadRightThread$ = command(({ get, set }) => {
 });
 
 interface PaneSpec {
-  setPaneThread$: Command<void, [ChatThreadSignals | null]>;
+  setPane$: Command<void, [ChatThreadPaneState]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
+  onReady$?: Command<void, [AbortSignal]>;
 }
 
 interface RestoredDraftState {
   readonly content: string;
   readonly userMessage: UserMessageDocument | null;
-  readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PersistedAttachment[];
 }
 
@@ -102,33 +107,18 @@ function userMessageDraftAttachments(
 
 function userMessageDraftState(
   threadDraft: ChatThreadDraft,
-  inlineTemplatesEnabled: boolean,
 ): RestoredDraftState | null {
   const document = threadDraft.draftUserMessage;
-  if (
-    !document ||
-    messageDocumentToEditorDoc(document, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }) === null
-  ) {
+  if (!document || messageDocumentToEditorDoc(document) === null) {
     return null;
   }
-  const content = messageDocumentToPrompt(document, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  const content = messageDocumentToPrompt(document);
   if (content === null) {
     return null;
   }
-  const generationTemplate = document.parts.find((part) => {
-    return part.type === "template";
-  });
   return {
     content,
     userMessage: document,
-    generationTemplate:
-      !inlineTemplatesEnabled && generationTemplate?.type === "template"
-        ? generationTemplate.template
-        : undefined,
     attachments: userMessageDraftAttachments(
       document,
       threadDraft.draftAttachments ?? [],
@@ -139,7 +129,7 @@ function userMessageDraftState(
 const loadDraft$ = command(
   async (
     { get, set },
-    thread: ChatThreadSignals,
+    thread: ChatPanelSignals,
     isNew: boolean,
     signal: AbortSignal,
   ) => {
@@ -150,13 +140,7 @@ const loadDraft$ = command(
       return;
     }
 
-    const features = get(featureSwitch$);
-    const inlineTemplatesEnabled =
-      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
-    const restoredDraft = userMessageDraftState(
-      threadDraft,
-      inlineTemplatesEnabled,
-    );
+    const restoredDraft = userMessageDraftState(threadDraft);
     if (!restoredDraft) {
       return;
     }
@@ -168,10 +152,10 @@ const loadDraft$ = command(
       const restoredAttachments = restoredDraft.attachments.map(
         createRestoredAttachment,
       );
-      set(thread.draft.seed$, {
+      set(thread.composer.draft.seed$, {
         content: restoredDraft.content,
         userMessage: restoredDraft.userMessage,
-        generationTemplate: restoredDraft.generationTemplate,
+        generationTemplate: undefined,
         attachments: restoredAttachments,
       });
     }
@@ -181,7 +165,7 @@ const resolvePaneThread$ = command(
   async (
     { set },
     args: {
-      thread: ChatThreadSignals;
+      thread: ChatPanelSignals;
       isNew: boolean;
     },
     signal: AbortSignal,
@@ -202,42 +186,47 @@ const resolvePaneThread$ = command(
   },
 );
 
+const beginPaneSetup$ = command(
+  ({ get, set }, spec: PaneSpec, parentSignal: AbortSignal): AbortSignal => {
+    const signal = set(spec.resetSetupSignal$, parentSignal);
+    signal.addEventListener(
+      "abort",
+      () => {
+        // A non-chat page must never inherit this pane on re-entry.
+        // Chat-to-chat setup keeps the reference so the outer thread section
+        // can preserve its established DOM identity until replacement.
+        if (get(activeRoute$) !== "chat") {
+          set(spec.setPane$, null);
+        }
+      },
+      { once: true },
+    );
+    return signal;
+  },
+);
+
 const setupPaneThread$ = command(
   async (
-    { get, set },
+    { set },
     spec: PaneSpec,
-    threadId: string,
+    meta: ThreadMeta,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    const signal = set(spec.resetSetupSignal$, parentSignal);
+    const signal = set(beginPaneSetup$, spec, parentSignal);
+    const threadId = meta.id;
 
     L.debug("setupPaneThread$ start", { threadId });
-
-    const { draft, isNew } = set(ensureDraft$, threadId);
-    const dataSource = createRemoteChatThreadDataSource(threadId);
-    const features = get(featureSwitch$);
-    const inlineTemplatesEnabled =
-      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
     const chatEvents = createChatEventSignals(threadId);
-    const feedback = createChatThreadFeedbackSignals(threadId);
-    const threadSignals = createChatThreadSignals(
-      threadId,
-      draft,
-      dataSource,
+    const { thread, isNew } = set(
+      createCachedChatPanelSignals$,
       chatEvents,
-      {
-        feedback: feedback.signals,
-      },
+      meta.agentId,
+      signal,
     );
-    const composer = createChatThreadComposerSignals({
-      thread: threadSignals,
-      chatEvents,
-      feedbackModel: feedback.composer,
-      inlineTemplatesEnabled,
-      cancellationRecoveryPending$: dataSource.cancellationRecoveryPending$,
-    });
-    const thread: ChatThreadSignals = { ...threadSignals, composer };
-    set(spec.setPaneThread$, thread);
+    set(spec.setPane$, { kind: "thread", thread });
+    if (spec.onReady$) {
+      set(spec.onReady$, signal);
+    }
 
     await set(
       resolvePaneThread$,
@@ -250,37 +239,91 @@ const setupPaneThread$ = command(
   },
 );
 
+const setupPaneNotFound$ = command(
+  (
+    { set },
+    spec: PaneSpec,
+    threadId: string,
+    parentSignal: AbortSignal,
+  ): void => {
+    const signal = set(beginPaneSetup$, spec, parentSignal);
+    set(spec.setPane$, { kind: "not-found", threadId });
+    if (spec.onReady$) {
+      set(spec.onReady$, signal);
+    }
+  },
+);
+
 export const setupLeftThread$ = command(
   async (
     { set },
-    threadId: string,
+    meta: ThreadMeta,
     parentSignal: AbortSignal,
   ): Promise<void> => {
     await Promise.all([
-      set(syncPrimaryThread$, threadId, parentSignal),
+      set(syncPrimaryThread$, meta, parentSignal),
       set(
         setupPaneThread$,
         {
-          setPaneThread$: setCurrentLeftThread$,
+          setPane$: setCurrentLeftPane$,
           resetSetupSignal$: resetLeftSetupSignal$,
+          onReady$: hideAppSkeleton$,
         },
-        threadId,
+        meta,
         parentSignal,
       ),
     ]);
   },
 );
 
+export const setupLeftThreadNotFound$ = command(
+  async (
+    { set },
+    threadId: string,
+    parentSignal: AbortSignal,
+  ): Promise<void> => {
+    set(syncMissingPrimaryThread$);
+    await set(
+      setupPaneNotFound$,
+      {
+        setPane$: setCurrentLeftPane$,
+        resetSetupSignal$: resetLeftSetupSignal$,
+        onReady$: hideAppSkeleton$,
+      },
+      threadId,
+      parentSignal,
+    );
+  },
+);
+
 export const setupRightThread$ = command(
+  async (
+    { set },
+    meta: ThreadMeta,
+    parentSignal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      setupPaneThread$,
+      {
+        setPane$: setCurrentRightPane$,
+        resetSetupSignal$: resetRightSetupSignal$,
+      },
+      meta,
+      parentSignal,
+    );
+  },
+);
+
+export const setupRightThreadNotFound$ = command(
   async (
     { set },
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
     await set(
-      setupPaneThread$,
+      setupPaneNotFound$,
       {
-        setPaneThread$: setCurrentRightThread$,
+        setPane$: setCurrentRightPane$,
         resetSetupSignal$: resetRightSetupSignal$,
       },
       threadId,

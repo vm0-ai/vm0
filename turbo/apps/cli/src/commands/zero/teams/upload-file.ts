@@ -1,8 +1,11 @@
 import { readFileSync, statSync } from "fs";
 import { basename, extname } from "path";
 import { Command } from "commander";
-import { completeTeamsFileUpload, initTeamsFileUpload } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  completeTeamsFileUpload,
+  initTeamsFileUpload,
+} from "../../../lib/api/domains/integrations-teams";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
@@ -40,16 +43,16 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:     zero teams upload-file -f /tmp/report.pdf -c 19:thread@thread.tacv2
-  Upload to thread:  zero teams upload-file -f /tmp/log.txt -c 19:thread@thread.tacv2 --activity-id root-activity
-  With message text: zero teams upload-file -f /tmp/data.csv -c 19:thread@thread.tacv2 -t "Daily report"
+  Upload a file:     okou teams upload-file -f /tmp/report.pdf -c 19:thread@thread.tacv2
+  Upload to thread:  okou teams upload-file -f /tmp/log.txt -c 19:thread@thread.tacv2 --activity-id root-activity
+  With message text: okou teams upload-file -f /tmp/data.csv -c 19:thread@thread.tacv2 -t "Daily report"
 
 Output:
   Prints a JSON object to stdout on success:
     {"activityId":"...","conversationId":"19:...","filename":"report.pdf","mimetype":"application/pdf","size":12345,"url":"https://..."}
 
 Notes:
-  - Uploads through VM0 storage first, then sends the Teams message with the file URL
+  - Uploads through Okou storage first, then sends the Teams message with the file URL
   - Use the Conversation ID and Activity ID from the current Teams run prompt`,
   )
   .action(
@@ -86,7 +89,6 @@ Notes:
           filename,
           contentType,
           length: fileSize,
-          supportsUploadHeaders: true,
         });
 
         const fileContent = readFileSync(options.file);

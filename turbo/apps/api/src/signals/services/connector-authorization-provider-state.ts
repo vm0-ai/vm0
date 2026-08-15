@@ -3,7 +3,7 @@ import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import { z } from "zod";
 
 const deviceProviderStateSchema = z

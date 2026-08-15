@@ -117,7 +117,7 @@ validate_hosts_csv() {
 host_uname_m() {
   local host=$1
   local remote_arch
-  remote_arch=$(ssh -n "${METAL_USER}@${host}" uname -m)
+  remote_arch=$(ssh -n "${METAL_USER}@${host}" uname -m) || return $?
   printf '%s\n' "$remote_arch" | tail -n1 | tr -d '\r'
 }
 
@@ -135,7 +135,11 @@ emit_groups() {
   local host host_lines uname_m target
   host_lines=$(printf '%s\n' "$hosts" | tr ',' '\n')
   while IFS= read -r host; do
-    uname_m=$(host_uname_m "$host")
+    uname_m=$(host_uname_m "$host") || return $?
+    if [ -z "$uname_m" ]; then
+      echo "missing runner host architecture for ${host}" >&2
+      return 2
+    fi
     if ! target=$(runner_image_target_for_uname_m "$uname_m" 2>/dev/null); then
       echo "unsupported runner host architecture for ${host}: ${uname_m}" >&2
       return 2

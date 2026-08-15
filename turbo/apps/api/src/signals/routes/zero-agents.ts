@@ -2,22 +2,22 @@ import { randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
 import { and, count, eq } from "drizzle-orm";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
   type ZeroAgentVisibility,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { randomPresetAvatar } from "@vm0/core/agent-avatar";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { randomPresetAvatar } from "@okouai/core/agent-avatar";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { conflict, notFound } from "../../lib/error";
 import {
   requireAdminPermission,
@@ -200,13 +200,15 @@ function visibilityOwnerError(
   return forbidden("Only the agent owner can update agent visibility");
 }
 
-async function publicVisibilitySlotError(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly currentVisibility: ZeroAgentVisibility | null;
-  readonly nextVisibility: ZeroAgentVisibility;
-  readonly signal: AbortSignal;
-}) {
+async function publicVisibilitySlotError(
+  args: {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly currentVisibility: ZeroAgentVisibility | null;
+    readonly nextVisibility: ZeroAgentVisibility;
+  },
+  signal: AbortSignal,
+) {
   if (args.nextVisibility !== "public" || args.currentVisibility === "public") {
     return null;
   }
@@ -220,22 +222,24 @@ async function publicVisibilitySlotError(args: {
         eq(zeroAgents.visibility, "public"),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return (publicAgentCount?.value ?? 0) >= PUBLIC_AGENT_LIMIT
     ? publicAgentLimitError()
     : null;
 }
 
-function validateAgentVisibilityUpdate(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly member: AgentMember;
-  readonly existing: ExistingAgentVisibility;
-  readonly requestedVisibility: ZeroAgentVisibility | undefined;
-  readonly nextVisibility: ZeroAgentVisibility;
-  readonly signal: AbortSignal;
-}) {
+function validateAgentVisibilityUpdate(
+  args: {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly member: AgentMember;
+    readonly existing: ExistingAgentVisibility;
+    readonly requestedVisibility: ZeroAgentVisibility | undefined;
+    readonly nextVisibility: ZeroAgentVisibility;
+  },
+  signal: AbortSignal,
+) {
   const ownerError = visibilityOwnerError(
     args.existing,
     args.member,
@@ -245,13 +249,15 @@ function validateAgentVisibilityUpdate(args: {
     return ownerError;
   }
 
-  return publicVisibilitySlotError({
-    writeDb: args.writeDb,
-    orgId: args.orgId,
-    currentVisibility: args.existing.visibility,
-    nextVisibility: args.nextVisibility,
-    signal: args.signal,
-  });
+  return publicVisibilitySlotError(
+    {
+      writeDb: args.writeDb,
+      orgId: args.orgId,
+      currentVisibility: args.existing.visibility,
+      nextVisibility: args.nextVisibility,
+    },
+    signal,
+  );
 }
 
 function requireExistingAgentVisibility(
@@ -530,9 +536,6 @@ const getAgentCustomConnectorsInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      enabledIds: grants.map((grant) => {
-        return grant.customConnectorId;
-      }),
       grants: [...grants],
     },
   };
@@ -568,15 +571,17 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const nextVisibility =
     body.data.visibility ?? requireExistingAgentVisibility(existing);
-  const visibilityError = await validateAgentVisibilityUpdate({
-    writeDb,
-    orgId: auth.orgId,
-    member,
-    existing,
-    requestedVisibility: body.data.visibility,
-    nextVisibility,
+  const visibilityError = await validateAgentVisibilityUpdate(
+    {
+      writeDb,
+      orgId: auth.orgId,
+      member,
+      existing,
+      requestedVisibility: body.data.visibility,
+      nextVisibility,
+    },
     signal,
-  });
+  );
   if (visibilityError) {
     return visibilityError;
   }
@@ -651,15 +656,17 @@ const updateAgentMetadataInner$ = command(
     }
 
     if (body.data.visibility !== undefined) {
-      const visibilityError = await validateAgentVisibilityUpdate({
-        writeDb,
-        orgId: auth.orgId,
-        member,
-        existing,
-        requestedVisibility: body.data.visibility,
-        nextVisibility: body.data.visibility,
+      const visibilityError = await validateAgentVisibilityUpdate(
+        {
+          writeDb,
+          orgId: auth.orgId,
+          member,
+          existing,
+          requestedVisibility: body.data.visibility,
+          nextVisibility: body.data.visibility,
+        },
         signal,
-      });
+      );
       if (visibilityError) {
         return visibilityError;
       }
@@ -752,21 +759,14 @@ const updateAgentCustomConnectorsInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const grants = "grants" in body.data ? body.data.grants : undefined;
-    const enabledIds =
-      "enabledIds" in body.data
-        ? Array.from(new Set(body.data.enabledIds))
-        : body.data.grants.map((grant) => {
-            return grant.customConnectorId;
-          });
     const operation = body.data.operation ?? "replace";
 
     const updated = await updateUserCustomConnectors(writeDb, {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
-      enabledIds,
-      ...(grants !== undefined ? { grants } : {}),
+      grants: body.data.grants,
+      permissionIntent: "exact",
       operation,
     });
     signal.throwIfAborted();
@@ -784,11 +784,6 @@ const updateAgentCustomConnectorsInner$ = command(
         },
       };
     }
-    if (updated.status === "customConnectorsNotConfigured") {
-      return validationError(
-        `Custom connector ids are not configured for this user: ${updated.unconfiguredIds.join(", ")}`,
-      );
-    }
     if (updated.status === "customConnectorPermissionSelectionRequired") {
       return validationError(
         `Permission selection is required for custom connector ids: ${updated.connectorIds.join(", ")}`,
@@ -797,11 +792,13 @@ const updateAgentCustomConnectorsInner$ = command(
     if (updated.status === "invalidCustomConnectorPermissions") {
       return validationError(updated.message);
     }
+    if (updated.status === "mcpFeatureDisabled") {
+      return forbidden("MCP custom connector management is not enabled");
+    }
 
     return {
       status: 200 as const,
       body: {
-        enabledIds: [...updated.enabledIds],
         grants: [...updated.grants],
       },
     };

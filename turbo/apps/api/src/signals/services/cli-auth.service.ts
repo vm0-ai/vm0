@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
+import { cliTokens } from "@okouai/db/schema/cli-tokens";
+import { orgCache } from "@okouai/db/schema/org-cache";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { userCache } from "@okouai/db/schema/user-cache";
 import { command, computed, type Computed } from "ccstate";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 
 import { generateCliToken } from "../auth/tokens";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 export const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const CLI_TOKEN_EXPIRES_IN_SECONDS = 90 * 24 * 60 * 60;
@@ -223,8 +223,7 @@ export const ensureTestOrg$ = command(
     if (!cached) {
       await writeDb.insert(orgCache).values({
         orgId: org.id,
-        slug: org.slug ?? org.id,
-        name: org.name ?? org.slug ?? org.id,
+        name: org.name,
         cachedAt: new Date(nowDate().getTime() + FAR_FUTURE_CACHE_MS),
       });
       signal.throwIfAborted();
@@ -316,15 +315,13 @@ export const resolveTestOrgId$ = command(
         .insert(orgCache)
         .values({
           orgId: org.id,
-          slug: org.slug ?? org.id,
-          name: org.name ?? org.slug ?? org.id,
+          name: org.name,
           cachedAt,
         })
         .onConflictDoUpdate({
           target: orgCache.orgId,
           set: {
-            slug: org.slug ?? org.id,
-            name: org.name ?? org.slug ?? org.id,
+            name: org.name,
             cachedAt,
           },
         });

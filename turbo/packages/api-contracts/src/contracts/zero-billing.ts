@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { adAttributionMetadataSchema } from "./zero-attribution";
+import { adAttributionMetadataSchema } from "./acquisition-attribution";
 
 const c = initContract();
 
@@ -53,6 +53,15 @@ const concurrencySubscriptionSchema = z.object({
   quantity: z.number().int().nonnegative(),
   currentPeriodEnd: z.string().nullable(),
   cancelAtPeriodEnd: z.boolean(),
+  canReduce: z.boolean().optional(),
+  // Old API responses omit this capability during the ~2-day web/app client
+  // version-skew window. Remove the optional field with #26152 after #26116
+  // has been deployed beyond that window.
+  canChangeInApp: z.boolean().optional(),
+  // Optional while older API deployments can still serve an already-loaded
+  // web/app client during rollout.
+  scheduledQuantity: z.number().int().positive().nullable().optional(),
+  scheduledChangeAt: z.string().nullable().optional(),
 });
 
 const usageAllowanceWindowSchema = z.object({
@@ -72,7 +81,10 @@ const usageAllowanceSchema = z.object({
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   canBuyConcurrency: z.boolean().optional(),
+  concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
+  memberInviteUsagePackRequired: z.boolean().optional(),
+  memberInvitationAllowed: z.boolean().optional(),
   autoRechargeAllowed: z.boolean().optional(),
   supportByok: z.boolean().optional(),
   restrictedVm0Models: z.boolean().optional(),
@@ -135,13 +147,246 @@ const redeemResponseSchema = z.discriminatedUnion("status", [
 // Request schemas
 // ---------------------------------------------------------------------------
 
+const stripeRedirectUrlSchema = z.string().url().max(5000);
+
 const checkoutRequestSchema = z.object({
   tier: z.enum(["pro", "team"]),
-  successUrl: z.string().url(),
-  cancelUrl: z.string().url(),
+  successUrl: stripeRedirectUrlSchema,
+  cancelUrl: stripeRedirectUrlSchema,
   trialDays: z.literal(7).optional(),
   adAttribution: adAttributionMetadataSchema.optional(),
 });
+
+export const USAGE_PACKS_USD = [20, 50, 100, 200] as const;
+export type UsagePackUsd = (typeof USAGE_PACKS_USD)[number];
+
+export const usagePackUsdSchema: z.ZodType<UsagePackUsd> = z.union([
+  z.literal(20),
+  z.literal(50),
+  z.literal(100),
+  z.literal(200),
+]);
+
+const usagePackCatalogItemSchema = z.object({
+  usagePackUsd: usagePackUsdSchema,
+  priceUsd: z.number().positive(),
+  purchasedCredits: z.number().int().positive(),
+  bonusCredits: z.number().int().positive(),
+  totalCredits: z.number().int().positive(),
+});
+
+const usagePackCatalogResponseSchema = z.object({
+  usagePacks: z.array(usagePackCatalogItemSchema),
+});
+
+const usagePackCreditBalanceSchema = z.object({
+  totalCredits: z.number().int().nonnegative(),
+  purchasedCredits: z.number().int().nonnegative(),
+  bonusCredits: z.number().int().nonnegative(),
+  creditGrants: z.array(
+    z.object({
+      id: z.string(),
+      grantType: z.enum(["purchased", "bonus"]),
+      amount: z.number().int().positive(),
+      remaining: z.number().int().positive(),
+      createdAt: z.string(),
+      expiresAt: z.string(),
+    }),
+  ),
+});
+
+const usagePackCreditsResponseSchema = usagePackCreditBalanceSchema.extend({
+  hasUsagePack: z.boolean().optional(),
+  memberCredits: z
+    .array(
+      usagePackCreditBalanceSchema.extend({
+        memberId: z.string().min(1),
+      }),
+    )
+    .optional(),
+});
+
+const memberUsagePackSchema = z.object({
+  memberId: z.string().min(1),
+  usagePackUsd: usagePackUsdSchema,
+});
+export type MemberUsagePack = z.infer<typeof memberUsagePackSchema>;
+export type UsagePackCatalogItem = z.infer<typeof usagePackCatalogItemSchema>;
+
+const usagePackCheckoutRequestSchema = z.object({
+  tier: z.enum(["pro", "team"]),
+  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+  successUrl: z.string().url(),
+  cancelUrl: z.string().url(),
+  adAttribution: adAttributionMetadataSchema.optional(),
+});
+
+const usagePackChangeStatusSchema = z.enum([
+  "previewed",
+  "applying",
+  "pending_payment",
+  "scheduled",
+  "applied",
+]);
+
+const usagePackPendingChangeSchema = z.object({
+  id: z.uuid(),
+  kind: z.enum(["addition", "upgrade", "downgrade", "removal"]),
+  status: usagePackChangeStatusSchema,
+  targetUsagePackUsd: usagePackUsdSchema.nullable(),
+  effectiveAt: z.iso.datetime().nullable(),
+});
+
+const managedUsagePackAllocationSchema = z.object({
+  id: z.uuid(),
+  memberId: z.string().min(1),
+  usagePackUsd: usagePackUsdSchema,
+  currentPeriodEnd: z.iso.datetime().nullable(),
+  pendingChange: usagePackPendingChangeSchema.nullable(),
+});
+
+const usagePackManagementResponseSchema = z.object({
+  tier: z.enum(["pro", "team"]),
+  currentPeriodEnd: z.iso.datetime().nullable(),
+  supportsMemberAdditions: z.boolean().optional(),
+  allocations: z.array(managedUsagePackAllocationSchema),
+});
+
+const usagePackChangePreviewRequestSchema = z.object({
+  memberId: z.string().min(1),
+  targetUsagePackUsd: usagePackUsdSchema,
+});
+
+const usagePackChangePreviewResponseSchema = z.object({
+  changeId: z.uuid(),
+  kind: z.enum(["upgrade", "downgrade"]),
+  sourceUsagePackUsd: usagePackUsdSchema,
+  targetUsagePackUsd: usagePackUsdSchema,
+  immediateAmountCents: z.number().int().nonnegative(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  effectiveAt: z.iso.datetime().nullable(),
+  prorationDate: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+
+const usagePackChangeConfirmResponseSchema = z.object({
+  status: z.enum(["processing", "pending_payment", "scheduled", "completed"]),
+  effectiveAt: z.iso.datetime().nullable(),
+  hostedInvoiceUrl: z.string().url().nullable(),
+});
+
+const usagePackSubscriptionChangePreviewRequestSchema = z.object({
+  targetTier: z.enum(["pro", "team"]),
+  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+});
+
+const usagePackSubscriptionChangePreviewResponseSchema = z.object({
+  changeId: z.uuid(),
+  sourceTier: z.enum(["pro", "team"]),
+  targetTier: z.enum(["pro", "team"]),
+  immediateAmountCents: z.number().int().nonnegative(),
+  immediateCreditGrant: z
+    .object({
+      purchasedCredits: z.number().int().nonnegative(),
+      bonusCredits: z.number().int().nonnegative(),
+      totalCredits: z.number().int().nonnegative(),
+      expiresAt: z.iso.datetime().optional(),
+    })
+    .optional(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  effectiveAt: z.iso.datetime(),
+  prorationDate: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+
+const usagePackSubscriptionChangeConfirmRequestSchema = z.object({
+  changeId: z.uuid(),
+});
+
+export type UsagePackManagementResponse = z.infer<
+  typeof usagePackManagementResponseSchema
+>;
+export type UsagePackChangePreviewResponse = z.infer<
+  typeof usagePackChangePreviewResponseSchema
+>;
+export type UsagePackChangeConfirmResponse = z.infer<
+  typeof usagePackChangeConfirmResponseSchema
+>;
+export type UsagePackSubscriptionChangePreviewResponse = z.infer<
+  typeof usagePackSubscriptionChangePreviewResponseSchema
+>;
+
+export const usagePackMigrationConfigurationSchema = z.object({
+  tier: z.enum(["pro", "team"]),
+  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+  recurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+});
+
+export type UsagePackMigrationConfiguration = z.infer<
+  typeof usagePackMigrationConfigurationSchema
+>;
+
+const usagePackMigrationStateResponseSchema = z.object({
+  tier: z.enum(["pro", "team"]),
+  targetTier: z.enum(["pro", "team"]).nullable(),
+  status: z.enum(["eligible", "previewed", "applying", "scheduled"]),
+  migrationId: z.uuid().nullable(),
+  effectiveAt: z.iso.datetime().nullable(),
+  hostedInvoiceUrl: z.string().url().nullable(),
+  configuration: usagePackMigrationConfigurationSchema.optional(),
+});
+
+const usagePackMigrationPreviewRequestSchema = z.object({
+  targetTier: z.enum(["pro", "team"]),
+  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+});
+
+const usagePackMigrationPreviewResponseSchema = z.object({
+  migrationId: z.uuid(),
+  tier: z.enum(["pro", "team"]),
+  targetTier: z.enum(["pro", "team"]),
+  currentRecurringAmountCents: z.number().int().nonnegative(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  recurringDifferenceCents: z.number().int(),
+  currency: z.string().length(3),
+  purchasedCredits: z.number().int().positive(),
+  bonusCredits: z.number().int().positive(),
+  totalCredits: z.number().int().positive(),
+  effectiveAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+
+const usagePackMigrationConfirmResponseSchema = z.object({
+  status: z.enum(["scheduled", "completed"]),
+  effectiveAt: z.iso.datetime(),
+  hostedInvoiceUrl: z.string().url().nullable(),
+});
+
+const usagePackMigrationRevisionPreviewResponseSchema =
+  usagePackMigrationPreviewResponseSchema.extend({
+    previewToken: z.string().min(1),
+  });
+
+const usagePackMigrationRevisionConfirmRequestSchema =
+  usagePackMigrationPreviewRequestSchema.extend({
+    previewToken: z.string().min(1),
+  });
+
+export type UsagePackMigrationStateResponse = z.infer<
+  typeof usagePackMigrationStateResponseSchema
+>;
+export type UsagePackMigrationPreviewResponse = z.infer<
+  typeof usagePackMigrationPreviewResponseSchema
+>;
+export type UsagePackMigrationConfirmResponse = z.infer<
+  typeof usagePackMigrationConfirmResponseSchema
+>;
+export type UsagePackMigrationRevisionPreviewResponse = z.infer<
+  typeof usagePackMigrationRevisionPreviewResponseSchema
+>;
 
 const checkoutCompleteRequestSchema = z.object({
   sessionId: z.string().min(1),
@@ -149,9 +394,52 @@ const checkoutCompleteRequestSchema = z.object({
 
 const concurrencyCheckoutRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
-  successUrl: z.string().url(),
-  cancelUrl: z.string().url(),
+  successUrl: stripeRedirectUrlSchema,
+  cancelUrl: stripeRedirectUrlSchema,
 });
+
+const concurrencyCheckoutPreviewRequestSchema =
+  concurrencyCheckoutRequestSchema.pick({ quantity: true });
+
+const concurrencySubscriptionReduceRequestSchema = z.object({
+  quantity: z.number().int().min(1).max(1000),
+  successUrl: stripeRedirectUrlSchema,
+  cancelUrl: stripeRedirectUrlSchema,
+});
+
+const concurrencySubscriptionChangeRequestSchema = z.object({
+  quantity: z.number().int().min(1).max(1000),
+});
+
+const concurrencySubscriptionChangePreviewResponseSchema = z.object({
+  currentQuantity: z.number().int().min(0).max(1000),
+  targetQuantity: z.number().int().min(1).max(1000),
+  immediateAmountCents: z.number().int().nonnegative(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  effectiveAt: z.iso.datetime().optional(),
+});
+
+const concurrencySubscriptionChangeResponseSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({
+      status: z.literal("processing"),
+      hostedInvoiceUrl: z.null(),
+      effectiveAt: z.iso.datetime().optional(),
+    }),
+    z.object({
+      status: z.literal("pending_payment"),
+      hostedInvoiceUrl: z.string().url(),
+      effectiveAt: z.iso.datetime().optional(),
+    }),
+    z.object({
+      status: z.literal("completed"),
+      hostedInvoiceUrl: z.null(),
+      effectiveAt: z.iso.datetime().optional(),
+    }),
+  ],
+);
 
 const concurrencySubscriptionCancelResponseSchema = z.object({
   success: z.literal(true),
@@ -166,8 +454,9 @@ const creditCheckoutRequestSchema = z
   .object({
     credits: z.number().int().min(1000).max(10_000_000),
     customAmount: z.boolean().optional(),
-    successUrl: z.string().url(),
-    cancelUrl: z.string().url(),
+    previewExistingBilling: z.boolean().optional(),
+    successUrl: stripeRedirectUrlSchema,
+    cancelUrl: stripeRedirectUrlSchema,
     autoRecharge: z
       .object({
         enabled: z.boolean(),
@@ -195,8 +484,33 @@ const creditCheckoutRequestSchema = z
   );
 
 const portalRequestSchema = z.object({
-  returnUrl: z.string().url(),
+  returnUrl: stripeRedirectUrlSchema,
 });
+
+const creditPurchasePreviewResponseSchema = z.object({
+  status: z.literal("preview"),
+  credits: z.number().int().positive(),
+  amountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  expiresAt: z.iso.datetime(),
+  previewToken: z.string().min(1),
+});
+
+const creditPurchaseStartResponseSchema = z.union([
+  checkoutResponseSchema,
+  creditPurchasePreviewResponseSchema,
+]);
+
+const creditPurchaseConfirmResponseSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("completed"),
+    hostedInvoiceUrl: z.null(),
+  }),
+  z.object({
+    status: z.literal("pending_payment"),
+    hostedInvoiceUrl: z.string().url(),
+  }),
+]);
 
 const autoRechargeUpdateRequestSchema = z
   .object({
@@ -217,8 +531,8 @@ const autoRechargeUpdateRequestSchema = z
   );
 
 const redeemRequestSchema = z.object({
-  successUrl: z.string().url(),
-  cancelUrl: z.string().url(),
+  successUrl: stripeRedirectUrlSchema,
+  cancelUrl: stripeRedirectUrlSchema,
 });
 
 const redeemCodeRequestSchema = z.object({
@@ -230,12 +544,12 @@ const redeemCodeRequestSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * Zero contract for GET /api/zero/billing/status
+ * Zero contract for GET /api/okou/billing/status
  */
 export const zeroBillingStatusContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/billing/status",
+    path: "/api/okou/billing/status",
     headers: authHeadersSchema,
     responses: {
       200: billingStatusResponseSchema,
@@ -250,12 +564,12 @@ export const zeroBillingStatusContract = c.router({
 export type ZeroBillingStatusContract = typeof zeroBillingStatusContract;
 
 /**
- * Zero contract for POST /api/zero/billing/checkout
+ * Zero contract for POST /api/okou/billing/checkout
  */
 export const zeroBillingCheckoutContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/billing/checkout",
+    path: "/api/okou/billing/checkout",
     headers: authHeadersSchema,
     body: checkoutRequestSchema,
     responses: {
@@ -270,7 +584,7 @@ export const zeroBillingCheckoutContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/zero/billing/checkout/complete",
+    path: "/api/okou/billing/checkout/complete",
     headers: authHeadersSchema,
     body: checkoutCompleteRequestSchema,
     responses: {
@@ -288,14 +602,14 @@ export const zeroBillingCheckoutContract = c.router({
 export type ZeroBillingCheckoutContract = typeof zeroBillingCheckoutContract;
 
 /**
- * Zero contract for POST /api/zero/billing/concurrency-checkout
+ * Zero contract for POST /api/okou/billing/usage-pack-checkout
  */
-export const zeroBillingConcurrencyCheckoutContract = c.router({
+export const zeroBillingUsagePackCheckoutContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/billing/concurrency-checkout",
+    path: "/api/okou/billing/usage-pack-checkout",
     headers: authHeadersSchema,
-    body: concurrencyCheckoutRequestSchema,
+    body: usagePackCheckoutRequestSchema,
     responses: {
       200: checkoutResponseSchema,
       400: apiErrorSchema,
@@ -304,7 +618,270 @@ export const zeroBillingConcurrencyCheckoutContract = c.router({
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Create Stripe checkout session for concurrency add-on",
+    summary: "Create Stripe checkout session for a plan with usage packs",
+  },
+});
+
+export type ZeroBillingUsagePackCheckoutContract =
+  typeof zeroBillingUsagePackCheckoutContract;
+
+export const zeroBillingUsagePackCatalogContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/okou/billing/usage-pack-catalog",
+    headers: authHeadersSchema,
+    responses: {
+      200: usagePackCatalogResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Get the validated Stripe usage pack catalog",
+  },
+});
+
+export type ZeroBillingUsagePackCatalogContract =
+  typeof zeroBillingUsagePackCatalogContract;
+
+export const zeroBillingUsagePackManagementContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/okou/billing/usage-pack-subscription",
+    headers: authHeadersSchema,
+    responses: {
+      200: usagePackManagementResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Get current member usage pack allocations",
+  },
+  previewChange: {
+    method: "POST",
+    path: "/api/okou/billing/usage-pack-subscription/changes/preview",
+    headers: authHeadersSchema,
+    body: usagePackChangePreviewRequestSchema,
+    responses: {
+      200: usagePackChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a member usage pack change",
+  },
+  confirmChange: {
+    method: "POST",
+    path: "/api/okou/billing/usage-pack-subscription/changes/:changeId/confirm",
+    pathParams: z.object({ changeId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: usagePackChangeConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a previewed member usage pack change",
+  },
+  previewSubscriptionChange: {
+    method: "POST",
+    path: "/api/okou/billing/usage-pack-subscription/subscription-change/preview",
+    headers: authHeadersSchema,
+    body: usagePackSubscriptionChangePreviewRequestSchema,
+    responses: {
+      200: usagePackSubscriptionChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview an existing usage pack subscription change",
+  },
+  confirmSubscriptionChange: {
+    method: "POST",
+    path: "/api/okou/billing/usage-pack-subscription/subscription-change/confirm",
+    headers: authHeadersSchema,
+    body: usagePackSubscriptionChangeConfirmRequestSchema,
+    responses: {
+      200: usagePackChangeConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Apply an existing usage pack subscription change in place",
+  },
+});
+
+export type ZeroBillingUsagePackManagementContract =
+  typeof zeroBillingUsagePackManagementContract;
+
+export const zeroBillingUsagePackCreditsContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/okou/billing/usage-pack-credits",
+    headers: authHeadersSchema,
+    responses: {
+      200: usagePackCreditsResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary:
+      "Get spendable usage pack credits, including member balances for admins",
+  },
+});
+
+export type ZeroBillingUsagePackCreditsContract =
+  typeof zeroBillingUsagePackCreditsContract;
+export type UsagePackCreditsResponse = z.infer<
+  typeof usagePackCreditsResponseSchema
+>;
+
+export const zeroBillingUsagePackMigrationContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/okou/billing/usage-pack-migration",
+    headers: authHeadersSchema,
+    responses: {
+      200: usagePackMigrationStateResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Get legacy subscription usage pack migration state",
+  },
+  preview: {
+    method: "POST",
+    path: "/api/okou/billing/usage-pack-migration/preview",
+    headers: authHeadersSchema,
+    body: usagePackMigrationPreviewRequestSchema,
+    responses: {
+      200: usagePackMigrationPreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a legacy subscription usage pack migration",
+  },
+  confirm: {
+    method: "POST",
+    path: "/api/okou/billing/usage-pack-migration/:migrationId/confirm",
+    pathParams: z.object({ migrationId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: usagePackMigrationConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a legacy subscription usage pack migration",
+  },
+  previewRevision: {
+    method: "POST",
+    path: "/api/okou/billing/usage-pack-migration/:migrationId/revision/preview",
+    pathParams: z.object({ migrationId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: usagePackMigrationPreviewRequestSchema,
+    responses: {
+      200: usagePackMigrationRevisionPreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a scheduled legacy subscription migration revision",
+  },
+  confirmRevision: {
+    method: "POST",
+    path: "/api/okou/billing/usage-pack-migration/:migrationId/revision/confirm",
+    pathParams: z.object({ migrationId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: usagePackMigrationRevisionConfirmRequestSchema,
+    responses: {
+      200: usagePackMigrationConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a scheduled legacy subscription migration revision",
+  },
+});
+
+export type ZeroBillingUsagePackMigrationContract =
+  typeof zeroBillingUsagePackMigrationContract;
+
+/**
+ * Zero contract for POST /api/okou/billing/concurrency-checkout
+ */
+export const zeroBillingConcurrencyCheckoutContract = c.router({
+  preview: {
+    method: "POST",
+    path: "/api/zero/billing/concurrency-checkout/preview",
+    headers: authHeadersSchema,
+    body: concurrencyCheckoutPreviewRequestSchema,
+    responses: {
+      200: concurrencySubscriptionChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a Stripe purchase for concurrency add-on slots",
+  },
+  create: {
+    method: "POST",
+    path: "/api/okou/billing/concurrency-checkout",
+    headers: authHeadersSchema,
+    body: concurrencyCheckoutRequestSchema,
+    responses: {
+      200: checkoutResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Start a Stripe purchase for concurrency add-on slots",
   },
 });
 
@@ -315,9 +892,68 @@ export type ZeroBillingConcurrencyCheckoutContract =
  * Zero contract for concurrency subscriptions.
  */
 export const zeroBillingConcurrencySubscriptionContract = c.router({
+  previewChange: {
+    method: "POST",
+    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
+    pathParams: z.object({
+      subscriptionId: z.string().min(1),
+    }),
+    headers: authHeadersSchema,
+    body: concurrencySubscriptionChangeRequestSchema,
+    responses: {
+      200: concurrencySubscriptionChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a concurrency add-on subscription quantity change",
+  },
+  confirmChange: {
+    method: "POST",
+    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
+    pathParams: z.object({
+      subscriptionId: z.string().min(1),
+    }),
+    headers: authHeadersSchema,
+    body: concurrencySubscriptionChangeRequestSchema,
+    responses: {
+      200: concurrencySubscriptionChangeResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Apply a concurrency add-on subscription quantity change",
+  },
+  reduce: {
+    method: "POST",
+    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/reduce",
+    pathParams: z.object({
+      subscriptionId: z.string().min(1),
+    }),
+    headers: authHeadersSchema,
+    body: concurrencySubscriptionReduceRequestSchema,
+    responses: {
+      200: checkoutResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Reduce a concurrency add-on subscription quantity",
+  },
   cancel: {
     method: "POST",
-    path: "/api/zero/billing/concurrency-subscriptions/:subscriptionId/cancel",
+    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/cancel",
     pathParams: z.object({
       subscriptionId: z.string().min(1),
     }),
@@ -328,6 +964,7 @@ export const zeroBillingConcurrencySubscriptionContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
@@ -335,7 +972,7 @@ export const zeroBillingConcurrencySubscriptionContract = c.router({
   },
   restore: {
     method: "POST",
-    path: "/api/zero/billing/concurrency-subscriptions/:subscriptionId/restore",
+    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/restore",
     pathParams: z.object({
       subscriptionId: z.string().min(1),
     }),
@@ -357,23 +994,39 @@ export type ZeroBillingConcurrencySubscriptionContract =
   typeof zeroBillingConcurrencySubscriptionContract;
 
 /**
- * Zero contract for POST /api/zero/billing/credit-checkout
+ * Zero contract for POST /api/okou/billing/credit-checkout
  */
 export const zeroBillingCreditCheckoutContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/billing/credit-checkout",
+    path: "/api/okou/billing/credit-checkout",
     headers: authHeadersSchema,
     body: creditCheckoutRequestSchema,
     responses: {
-      200: checkoutResponseSchema,
+      200: creditPurchaseStartResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Create Stripe checkout session for credits",
+    summary: "Start a credit purchase",
+  },
+  confirm: {
+    method: "POST",
+    path: "/api/okou/billing/credit-checkout/confirm",
+    headers: authHeadersSchema,
+    body: z.object({ previewToken: z.string().min(1) }),
+    responses: {
+      200: creditPurchaseConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a previewed credit purchase",
   },
 });
 
@@ -381,12 +1034,12 @@ export type ZeroBillingCreditCheckoutContract =
   typeof zeroBillingCreditCheckoutContract;
 
 /**
- * Zero contract for POST /api/zero/billing/portal
+ * Zero contract for POST /api/okou/billing/portal
  */
 export const zeroBillingPortalContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/billing/portal",
+    path: "/api/okou/billing/portal",
     headers: authHeadersSchema,
     body: portalRequestSchema,
     responses: {
@@ -404,12 +1057,12 @@ export const zeroBillingPortalContract = c.router({
 export type ZeroBillingPortalContract = typeof zeroBillingPortalContract;
 
 /**
- * Zero contract for /api/zero/billing/auto-recharge
+ * Zero contract for /api/okou/billing/auto-recharge
  */
 export const zeroBillingAutoRechargeContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/billing/auto-recharge",
+    path: "/api/okou/billing/auto-recharge",
     headers: authHeadersSchema,
     responses: {
       200: autoRechargeSchema,
@@ -420,7 +1073,7 @@ export const zeroBillingAutoRechargeContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/zero/billing/auto-recharge",
+    path: "/api/okou/billing/auto-recharge",
     headers: authHeadersSchema,
     body: autoRechargeUpdateRequestSchema,
     responses: {
@@ -438,7 +1091,7 @@ export type ZeroBillingAutoRechargeContract =
   typeof zeroBillingAutoRechargeContract;
 
 /**
- * Zero contract for GET /api/zero/billing/invoices
+ * Zero contract for GET /api/okou/billing/invoices
  */
 const invoiceSchema = z.object({
   id: z.string(),
@@ -464,7 +1117,7 @@ function billingMonthIndex(month: string): number {
 export const zeroBillingInvoicesContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/billing/invoices",
+    path: "/api/okou/billing/invoices",
     headers: authHeadersSchema,
     responses: {
       200: billingInvoicesResponseSchema,
@@ -476,7 +1129,7 @@ export const zeroBillingInvoicesContract = c.router({
   },
   downloadReceipts: {
     method: "GET",
-    path: "/api/zero/billing/invoices/receipts",
+    path: "/api/okou/billing/invoices/receipts",
     headers: authHeadersSchema,
     query: z
       .object({
@@ -516,7 +1169,7 @@ export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
 
 const downgradeRequestSchema = z.object({
   targetTier: z.enum(["limited-free-1", "pro-suspend", "pro"]),
-  returnUrl: z.string().url().optional(),
+  returnUrl: stripeRedirectUrlSchema.optional(),
 });
 
 const downgradeResponseSchema = z.union([
@@ -531,7 +1184,7 @@ const downgradeResponseSchema = z.union([
 ]);
 
 const restoreRequestSchema = z.object({
-  returnUrl: z.string().url().optional(),
+  returnUrl: stripeRedirectUrlSchema.optional(),
 });
 
 const restoreResponseSchema = z.discriminatedUnion("status", [
@@ -545,12 +1198,12 @@ const restoreResponseSchema = z.discriminatedUnion("status", [
 ]);
 
 /**
- * Zero contract for POST /api/zero/billing/downgrade
+ * Zero contract for POST /api/okou/billing/downgrade
  */
 export const zeroBillingDowngradeContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/billing/downgrade",
+    path: "/api/okou/billing/downgrade",
     headers: authHeadersSchema,
     body: downgradeRequestSchema,
     responses: {
@@ -569,12 +1222,12 @@ export const zeroBillingDowngradeContract = c.router({
 export type ZeroBillingDowngradeContract = typeof zeroBillingDowngradeContract;
 
 /**
- * Zero contract for POST /api/zero/billing/restore
+ * Zero contract for POST /api/okou/billing/restore
  */
 export const zeroBillingRestoreContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/billing/restore",
+    path: "/api/okou/billing/restore",
     headers: authHeadersSchema,
     body: restoreRequestSchema,
     responses: {
@@ -592,7 +1245,7 @@ export const zeroBillingRestoreContract = c.router({
 export type ZeroBillingRestoreContract = typeof zeroBillingRestoreContract;
 
 /**
- * Zero contract for POST /api/zero/billing/redeem/:campaign
+ * Zero contract for POST /api/okou/billing/redeem/:campaign
  *
  * One-time campaign redemption. The handler validates the campaign whitelist,
  * creates (or resumes) a Stripe Checkout session, and returns a discriminated
@@ -602,7 +1255,7 @@ export type ZeroBillingRestoreContract = typeof zeroBillingRestoreContract;
 export const zeroBillingRedeemContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/billing/redeem/:campaign",
+    path: "/api/okou/billing/redeem/:campaign",
     pathParams: z.object({
       campaign: z.string(),
     }),
@@ -621,7 +1274,7 @@ export const zeroBillingRedeemContract = c.router({
 export type ZeroBillingRedeemContract = typeof zeroBillingRedeemContract;
 
 /**
- * Zero contract for POST /api/zero/billing/redeem-code
+ * Zero contract for POST /api/okou/billing/redeem-code
  *
  * Proxies onboarding invite codes to the Atom redeem endpoint. The platform
  * waits for billing status to update through realtime before completing
@@ -630,7 +1283,7 @@ export type ZeroBillingRedeemContract = typeof zeroBillingRedeemContract;
 export const zeroBillingRedeemCodeContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/billing/redeem-code",
+    path: "/api/okou/billing/redeem-code",
     headers: authHeadersSchema,
     body: redeemCodeRequestSchema,
     responses: {
@@ -656,7 +1309,19 @@ export type RedeemCodeResponse = z.infer<typeof redeemCodeResponseSchema>;
 export type ConcurrencyCheckoutRequest = z.infer<
   typeof concurrencyCheckoutRequestSchema
 >;
+export type ConcurrencySubscriptionChangePreviewResponse = z.infer<
+  typeof concurrencySubscriptionChangePreviewResponseSchema
+>;
+export type ConcurrencySubscriptionChangeResponse = z.infer<
+  typeof concurrencySubscriptionChangeResponseSchema
+>;
 export type CreditCheckoutRequest = z.infer<typeof creditCheckoutRequestSchema>;
+export type CreditPurchasePreviewResponse = z.infer<
+  typeof creditPurchasePreviewResponseSchema
+>;
+export type CreditPurchaseConfirmResponse = z.infer<
+  typeof creditPurchaseConfirmResponseSchema
+>;
 export type PortalResponse = z.infer<typeof portalResponseSchema>;
 export type BillingInvoice = z.infer<typeof invoiceSchema>;
 export type BillingInvoicesResponse = z.infer<

@@ -2,13 +2,15 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
-  chatEventResponse,
   chatThreadEventsContract,
+  chatThreadsContract,
   type ChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
 import {
+  mockChatEventRows,
   normalizeMockChatEvents,
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
@@ -18,6 +20,7 @@ import {
   KEYBOARD_CURRENT_THREAD_ID,
   KEYBOARD_PREV_THREAD_ID,
   chatScrollContainer,
+  linkByText,
   mockKeyboardNavigationThreads,
 } from "./chat-lifecycle-test-helpers.ts";
 
@@ -35,6 +38,11 @@ interface ThreadLayout {
 interface ResizeObserverController {
   isObserved: (target: Element) => boolean;
   trigger: (target: Element) => void;
+}
+
+interface SmoothScrollController {
+  readonly calls: readonly ScrollToOptions[];
+  finish: (container: HTMLElement) => void;
 }
 
 const CHAT_VIEWPORT_TOP = 100;
@@ -231,6 +239,41 @@ function installChatLayout(layouts: ReadonlyMap<string, ThreadLayout>): void {
   );
 }
 
+function installSmoothScroll(): SmoothScrollController {
+  const prototype = HTMLElement.prototype;
+  const scrollToDescriptor = Object.getOwnPropertyDescriptor(
+    prototype,
+    "scrollTo",
+  );
+  const calls: ScrollToOptions[] = [];
+
+  Object.defineProperty(prototype, "scrollTo", {
+    configurable: true,
+    value(this: HTMLElement, options: ScrollToOptions): void {
+      calls.push(options);
+    },
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      restorePrototypeProperty(prototype, "scrollTo", scrollToDescriptor);
+    },
+    { once: true },
+  );
+
+  return {
+    calls,
+    finish: (container) => {
+      const top = calls.at(-1)?.top;
+      if (top === undefined) {
+        throw new Error("No smooth scroll to finish");
+      }
+      container.scrollTop = top;
+      fireEvent.scroll(container);
+    },
+  };
+}
+
 function installImmediateAnimationFrames(): void {
   const requestDescriptor = Object.getOwnPropertyDescriptor(
     globalThis,
@@ -375,6 +418,19 @@ function scrollTo(container: HTMLElement, scrollTop: number): void {
   fireEvent.scroll(container);
 }
 
+function buttonByName(name: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return (
+      candidate.getAttribute("aria-label") === name ||
+      candidate.textContent?.replace(/\s+/g, " ").trim() === name
+    );
+  });
+  if (!button) {
+    throw new Error(`Expected a ${name} button`);
+  }
+  return button;
+}
+
 function simpleUserEvents(
   threadId: string,
   prefix: string,
@@ -404,13 +460,13 @@ function mockLiveThread({
   publishAppendedEvents: () => Promise<void>;
   publishAppendedEventsOnReconnect: () => Promise<void>;
 } {
-  const events = normalizeMockChatEvents(
-    [...initialEvents, ...appendedEvents].map((event) => {
-      return { ...event, threadId };
-    }),
-  );
-  const initialCount = initialEvents.length;
-  const initialLastSeqId = events[initialCount - 1]?.seqId ?? 0;
+  const inputs = [...initialEvents, ...appendedEvents].map((event) => {
+    return { ...event, threadId };
+  });
+  const events = normalizeMockChatEvents(inputs);
+  const initialCount = normalizeMockChatEvents(
+    inputs.slice(0, initialEvents.length),
+  ).length;
   let appendedEventsPublished = false;
 
   mockChatLifecycle(context, {
@@ -418,29 +474,14 @@ function mockLiveThread({
     threadTitle: `Scroll position ${threadId}`,
     chatEvents: [...initialEvents],
   });
-  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (query.beforeSeqId !== undefined) {
-      return respond(200, { events: [] });
-    }
-    if (query.sinceSeqId === undefined) {
-      return respond(200, {
-        events: events.slice(0, initialCount).map(chatEventResponse),
-      });
-    }
-    if (
-      !appendedEventsPublished ||
-      query.sinceSeqId < initialLastSeqId ||
-      query.sinceSeqId >= (events.at(-1)?.seqId ?? 0)
-    ) {
-      return respond(200, { events: [] });
-    }
-    const sinceSeqId = query.sinceSeqId;
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    const availableEvents = appendedEventsPublished
+      ? events
+      : events.slice(0, initialCount);
     return respond(200, {
-      events: events
-        .filter((event) => {
-          return (event.seqId ?? 0) > sinceSeqId;
-        })
-        .map(chatEventResponse),
+      rows: mockChatEventRows(availableEvents).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      }),
     });
   });
 
@@ -520,76 +561,125 @@ function mockLateGrowingThread({
   };
 }
 
-function mockBackfilledHistoryScroll({
-  threadId,
-  finalScrollHeight,
+function mockKeyboardThreadScrollLayout({
+  currentThreadTop,
+  currentScrollHeight = () => {
+    return 1200;
+  },
+  includeCurrentLeadingEvent = false,
 }: {
-  readonly threadId: string;
-  readonly finalScrollHeight: number;
+  readonly currentThreadTop: () => number;
+  readonly currentScrollHeight?: () => number;
+  readonly includeCurrentLeadingEvent?: boolean;
 }): {
-  readonly historyGate: ReturnType<typeof context.mocks.deferred<void>>;
-  readonly historyMessage: string;
-  readonly currentMessage: string;
+  readonly beginPartialCurrentThreadReturn: () => void;
+  readonly publishCurrentThreadTarget: () => Promise<void>;
 } {
-  const clientHeight = 300;
-  const currentMessageHeight = 80;
-  const historyGate = context.mocks.deferred<void>();
-  const historyMessage = `Backfilled history ${threadId}`;
-  const currentMessage = `Current tail ${threadId}`;
-  const currentEventId = `backfill-tail-current-${threadId}`;
-  mockChatLifecycle(context, {
-    threadId,
-    threadTitle: "Backfill tail",
-    historyEvents: [
-      {
-        id: `backfill-tail-history-${threadId}`,
-        role: "user",
-        content: historyMessage,
-        runId: `backfill-tail-history-run-${threadId}`,
-        createdAt: "2026-07-30T09:00:00Z",
-      },
-    ],
-    chatEvents: [
-      {
-        id: currentEventId,
-        role: "user",
-        content: currentMessage,
-        runId: `backfill-tail-current-run-${threadId}`,
-        createdAt: "2026-07-30T10:00:00Z",
-      },
-    ],
-    beforeHistoryGate: historyGate.promise,
-  });
-  const historyRendered = () => {
-    return document.body.textContent?.includes(historyMessage) ?? false;
-  };
+  mockKeyboardNavigationThreads();
+  let partialCurrentThreadReturn = false;
+  let currentThreadTargetPublished = true;
+  const currentThreadEvents = normalizeMockChatEvents([
+    ...(includeCurrentLeadingEvent
+      ? [
+          {
+            id: `${KEYBOARD_CURRENT_THREAD_ID}-cached-leading-message`,
+            threadId: KEYBOARD_CURRENT_THREAD_ID,
+            role: "assistant" as const,
+            content: "Current thread cached leading note",
+            createdAt: "2026-05-31T23:59:00Z",
+          },
+        ]
+      : []),
+    {
+      id: `${KEYBOARD_CURRENT_THREAD_ID}-message`,
+      threadId: KEYBOARD_CURRENT_THREAD_ID,
+      role: "assistant",
+      content: "Current thread launch note",
+      createdAt: "2026-06-01T00:00:00Z",
+    },
+  ]);
+  const previousThreadEvents = normalizeMockChatEvents([
+    {
+      id: `${KEYBOARD_PREV_THREAD_ID}-message`,
+      threadId: KEYBOARD_PREV_THREAD_ID,
+      role: "assistant",
+      content: "Previous thread launch note",
+      createdAt: "2026-06-01T00:00:00Z",
+    },
+  ]);
+  const eventsByThreadId = new Map<string, readonly ChatEvent[]>([
+    [KEYBOARD_CURRENT_THREAD_ID, currentThreadEvents],
+    [KEYBOARD_PREV_THREAD_ID, previousThreadEvents],
+  ]);
+  context.mocks.api(
+    chatThreadEventsContract.rows,
+    ({ params, query, respond }) => {
+      const events = eventsByThreadId.get(params.threadId) ?? [];
+      const filteredEvents = events.filter((event) => {
+        if (
+          params.threadId === KEYBOARD_CURRENT_THREAD_ID &&
+          partialCurrentThreadReturn &&
+          event.id === `${KEYBOARD_CURRENT_THREAD_ID}-message` &&
+          !currentThreadTargetPublished
+        ) {
+          return false;
+        }
+        return event.seqId > query.sinceSeqId;
+      });
+      return respond(200, {
+        rows: mockChatEventRows(filteredEvents),
+      });
+    },
+  );
   installChatLayout(
     new Map([
       [
-        threadId,
+        KEYBOARD_CURRENT_THREAD_ID,
         {
           clientHeight: () => {
-            return clientHeight;
+            return 300;
+          },
+          scrollHeight: currentScrollHeight,
+          eventRect: (eventId) => {
+            return eventId === `${KEYBOARD_CURRENT_THREAD_ID}-message`
+              ? { top: currentThreadTop(), height: 80 }
+              : undefined;
+          },
+        },
+      ],
+      [
+        KEYBOARD_PREV_THREAD_ID,
+        {
+          clientHeight: () => {
+            return 300;
           },
           scrollHeight: () => {
-            return historyRendered() ? finalScrollHeight : 160;
+            return 600;
           },
           eventRect: (eventId) => {
-            if (eventId !== currentEventId) {
-              return undefined;
-            }
-            return {
-              top: historyRendered()
-                ? finalScrollHeight - currentMessageHeight
-                : 80,
-              height: currentMessageHeight,
-            };
+            return eventId === `${KEYBOARD_PREV_THREAD_ID}-message`
+              ? { top: 100, height: 80 }
+              : undefined;
           },
         },
       ],
     ]),
   );
-  return { historyGate, historyMessage, currentMessage };
+  return {
+    beginPartialCurrentThreadReturn: () => {
+      partialCurrentThreadReturn = true;
+      currentThreadTargetPublished = false;
+    },
+    publishCurrentThreadTarget: async () => {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      });
+      currentThreadTargetPublished = true;
+      context.mocks.ably.trigger(
+        `chatThreadMessageCreated:${KEYBOARD_CURRENT_THREAD_ID}`,
+      );
+    },
+  };
 }
 
 describe("chat scroll position", () => {
@@ -628,59 +718,6 @@ describe("chat scroll position", () => {
     expect(chatScrollContainer().scrollTop).toBe(0);
   });
 
-  it("keeps scrollTop at zero when backfilled history does not fill the viewport", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000807";
-    const { historyGate, historyMessage, currentMessage } =
-      mockBackfilledHistoryScroll({ threadId, finalScrollHeight: 260 });
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-    const container = await waitFor(() => {
-      expect(screen.getByText(currentMessage)).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-history-backfill-skeleton]"),
-      ).not.toBeNull();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(0);
-      return current;
-    });
-    historyGate.resolve();
-    await waitFor(() => {
-      expect(screen.getByText(historyMessage)).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-history-backfill-skeleton]"),
-      ).toBeNull();
-      expect(container.scrollHeight).toBeLessThan(container.clientHeight);
-      expect(container.scrollTop).toBe(0);
-    });
-  });
-
-  it("scrolls to the bottom when backfilled history fills beyond the viewport", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000808";
-    const { historyGate, historyMessage, currentMessage } =
-      mockBackfilledHistoryScroll({ threadId, finalScrollHeight: 700 });
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-    const container = await waitFor(() => {
-      expect(screen.getByText(currentMessage)).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-history-backfill-skeleton]"),
-      ).not.toBeNull();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(0);
-      return current;
-    });
-    historyGate.resolve();
-    await waitFor(() => {
-      expect(screen.getByText(historyMessage)).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-history-backfill-skeleton]"),
-      ).toBeNull();
-      expect(container.scrollHeight).toBeGreaterThan(container.clientHeight);
-      expect(container.scrollTop).toBeGreaterThan(0);
-      expect(container.scrollTop).toBe(
-        container.scrollHeight - container.clientHeight,
-      );
-    });
-  });
-
   it("follows the tail when a new message arrives while at the bottom", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000801";
     const initialEvents = simpleUserEvents(threadId, "tail-follow", 8);
@@ -692,6 +729,7 @@ describe("chat scroll position", () => {
       initialEvents,
       appendedEvents,
     });
+    const smoothScroll = installSmoothScroll();
     installChatLayout(
       new Map([
         [
@@ -718,7 +756,13 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSmoothAutoScroll]: false,
+      },
+    });
 
     const container = await waitFor(() => {
       expect(screen.getByText("tail-follow message 7")).toBeInTheDocument();
@@ -732,6 +776,111 @@ describe("chat scroll position", () => {
     await waitFor(() => {
       expect(screen.getByText("tail-follow message 8")).toBeInTheDocument();
       expect(container.scrollTop).toBe(800);
+      expect(smoothScroll.calls).toHaveLength(0);
+    });
+  });
+
+  it("smoothly follows later messages without letting content resize snap to the tail", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000817";
+    const initialEvents = simpleUserEvents(threadId, "smooth-tail", 8);
+    const appendedEvents = simpleUserEvents(threadId, "smooth-tail", 9).slice(
+      8,
+    );
+    const { publishAppendedEvents } = mockLiveThread({
+      threadId,
+      initialEvents,
+      appendedEvents,
+    });
+    const smoothScroll = installSmoothScroll();
+    const resizeObserver = installResizeObserver();
+    let lateGrowth = 0;
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return 300;
+            },
+            scrollHeight: () => {
+              const rendered = document.body.textContent?.includes(
+                "smooth-tail message 8",
+              )
+                ? 1100
+                : 1000;
+              return rendered + lateGrowth;
+            },
+            eventRect: (eventId) => {
+              const index = Number(eventId.split("-").at(-1));
+              return Number.isFinite(index)
+                ? { top: index * 100, height: 80 }
+                : undefined;
+            },
+          },
+        ],
+      ]),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSmoothAutoScroll]: true,
+      },
+    });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText("smooth-tail message 7")).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      expect(smoothScroll.calls).toHaveLength(0);
+      return current;
+    });
+
+    await publishAppendedEvents();
+
+    await waitFor(() => {
+      expect(screen.getByText("smooth-tail message 8")).toBeInTheDocument();
+      expect(smoothScroll.calls).toStrictEqual([
+        { top: 800, behavior: "smooth" },
+      ]);
+      expect(container.scrollTop).toBe(700);
+    });
+    const messageContainer = container.querySelector(
+      "[data-message-container]",
+    );
+    if (!messageContainer) {
+      throw new Error("Chat message container not found");
+    }
+
+    // The observer delivery for the event batch is already represented by the
+    // active smooth target, so it must not replace the animation with an
+    // immediate scroll.
+    resizeObserver.trigger(messageContainer);
+    expect(smoothScroll.calls).toHaveLength(1);
+    expect(container.scrollTop).toBe(700);
+
+    // Content that grows while the animation is active retargets that same
+    // smooth scroll instead of snapping or abandoning the tail.
+    lateGrowth = 400;
+    resizeObserver.trigger(messageContainer);
+    expect(smoothScroll.calls).toStrictEqual([
+      { top: 800, behavior: "smooth" },
+      { top: 1200, behavior: "smooth" },
+    ]);
+    expect(container.scrollTop).toBe(700);
+
+    smoothScroll.finish(container);
+    await waitFor(() => {
+      expect(container.scrollTop).toBe(1200);
+      expect(document.querySelector("[data-scroll-to-bottom]")).toBeNull();
+    });
+
+    lateGrowth = 500;
+    resizeObserver.trigger(messageContainer);
+    await waitFor(() => {
+      expect(container.scrollTop).toBe(1300);
+      expect(smoothScroll.calls).toHaveLength(2);
     });
   });
 
@@ -778,7 +927,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -809,40 +957,6 @@ describe("chat scroll position", () => {
     );
   });
 
-  it("leaves content growth alone while diagrams are switched off", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000817";
-    const { growContent } = mockLateGrowingThread({
-      threadId,
-      prefix: "growth-switched-off",
-    });
-    const resizeObserver = installResizeObserver();
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    const container = await waitFor(() => {
-      expect(
-        screen.getByText("growth-switched-off message 7"),
-      ).toBeInTheDocument();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(700);
-      return current;
-    });
-    const messageContainer = container.querySelector(
-      "[data-message-container]",
-    );
-    if (!messageContainer) {
-      throw new Error("Chat message container not found");
-    }
-
-    // Nothing observes the messages, so the thread stays where the per-event
-    // commit left it — the behaviour every reader had before the observer.
-    expect(resizeObserver.isObserved(messageContainer)).toBeFalsy();
-    growContent(400);
-    resizeObserver.trigger(messageContainer);
-
-    expect(container.scrollTop).toBe(700);
-  });
-
   it("keeps following the tail when growing content delivers a second scroll event", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000815";
     const { growContent } = mockLateGrowingThread({
@@ -854,7 +968,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -898,7 +1011,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -951,7 +1063,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -1215,6 +1326,12 @@ describe("chat scroll position", () => {
       initialEvents,
       appendedEvents,
     });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, {
+        agents: {},
+        threads: { [threadId]: "unread" },
+      });
+    });
     installChatLayout(
       new Map([
         [
@@ -1264,7 +1381,7 @@ describe("chat scroll position", () => {
   });
 
   it("preserves the visible anchor when older in-memory groups are prepended", async () => {
-    const threadId = "scroll-prepend-anchor";
+    const threadId = "e8000000-0000-4000-a000-000000000001";
     const chatEvents: ChatEvent[] = Array.from({ length: 24 }, (_, index) => {
       return {
         id: `prepend-anchor-${index}`,
@@ -1335,73 +1452,11 @@ describe("chat scroll position", () => {
 
   it("restores a thread after its old DOM collapses", async () => {
     let currentThreadTargetTop = 400;
-    mockKeyboardNavigationThreads();
-    context.mocks.api(
-      chatThreadEventsContract.list,
-      ({ params, query, respond }) => {
-        if (
-          query.beforeSeqId !== undefined ||
-          query.sinceSeqId !== undefined ||
-          query.sinceId !== undefined
-        ) {
-          return respond(200, { events: [] });
-        }
-        const contentByThreadId = new Map([
-          [KEYBOARD_CURRENT_THREAD_ID, "Current thread launch note"],
-          [KEYBOARD_PREV_THREAD_ID, "Previous thread launch note"],
-        ]);
-        const content = contentByThreadId.get(params.threadId);
-        return respond(200, {
-          events: content
-            ? normalizeMockChatEvents([
-                {
-                  id: `${params.threadId}-message`,
-                  threadId: params.threadId,
-                  role: "assistant",
-                  content,
-                  createdAt: "2026-06-01T00:00:00Z",
-                },
-              ]).map(chatEventResponse)
-            : [],
-        });
+    mockKeyboardThreadScrollLayout({
+      currentThreadTop: () => {
+        return currentThreadTargetTop;
       },
-    );
-    installChatLayout(
-      new Map([
-        [
-          KEYBOARD_CURRENT_THREAD_ID,
-          {
-            clientHeight: () => {
-              return 300;
-            },
-            scrollHeight: () => {
-              return 1200;
-            },
-            eventRect: (eventId) => {
-              return eventId === `${KEYBOARD_CURRENT_THREAD_ID}-message`
-                ? { top: currentThreadTargetTop, height: 80 }
-                : undefined;
-            },
-          },
-        ],
-        [
-          KEYBOARD_PREV_THREAD_ID,
-          {
-            clientHeight: () => {
-              return 300;
-            },
-            scrollHeight: () => {
-              return 600;
-            },
-            eventRect: (eventId) => {
-              return eventId === `${KEYBOARD_PREV_THREAD_ID}-message`
-                ? { top: 100, height: 80 }
-                : undefined;
-            },
-          },
-        ],
-      ]),
-    );
+    });
 
     detachedSetupPage({
       context,
@@ -1452,6 +1507,123 @@ describe("chat scroll position", () => {
         -20,
       );
       expect(chatScrollContainer().scrollTop).toBe(670);
+    });
+  });
+
+  it("restores the visible anchor after the reader switches threads from the sidebar", async () => {
+    // Opening another thread empties this container before the thread it
+    // returns to has rendered, so between the two the container is as tall as
+    // its viewport — which reads as "at the bottom".
+    mockKeyboardThreadScrollLayout({
+      currentThreadTop: () => {
+        return 400;
+      },
+      currentScrollHeight: () => {
+        return document.body.textContent?.includes("Current thread launch note")
+          ? 1200
+          : 300;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
+    });
+
+    const currentContainer = await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      return chatScrollContainer();
+    });
+    await waitFor(() => {
+      expect(
+        eventAnchor(`${KEYBOARD_CURRENT_THREAD_ID}-message`),
+      ).toBeInTheDocument();
+    });
+    scrollTo(currentContainer, 420);
+    expect(viewportOffsetTop(`${KEYBOARD_CURRENT_THREAD_ID}-message`)).toBe(
+      -20,
+    );
+
+    // Opening another thread from the sidebar unmounts this one. Its reader is
+    // parked mid-history, and coming back must land them where they left.
+    click(linkByText("Previous keyboard thread"));
+    await expect(
+      screen.findByText("Previous thread launch note"),
+    ).resolves.toBeInTheDocument();
+
+    click(linkByText("Current keyboard thread"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(viewportOffsetTop(`${KEYBOARD_CURRENT_THREAD_ID}-message`)).toBe(
+        -20,
+      );
+      expect(chatScrollContainer().scrollTop).toBe(420);
+    });
+  });
+
+  it("waits for the returned thread DOM to commit before restoring its anchor", async () => {
+    installImmediateAnimationFrames();
+    const { beginPartialCurrentThreadReturn, publishCurrentThreadTarget } =
+      mockKeyboardThreadScrollLayout({
+        currentThreadTop: () => {
+          return 400;
+        },
+        includeCurrentLeadingEvent: true,
+      });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
+    });
+
+    const currentContainer = await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      return chatScrollContainer();
+    });
+    await waitFor(() => {
+      expect(currentContainer.scrollTop).toBe(900);
+    });
+    scrollTo(currentContainer, 420);
+    expect(viewportOffsetTop(`${KEYBOARD_CURRENT_THREAD_ID}-message`)).toBe(
+      -20,
+    );
+    await waitFor(() => {
+      expect(document.querySelector("[data-scroll-to-bottom]")).not.toBeNull();
+    });
+
+    click(linkByText("Previous keyboard thread"));
+    await expect(
+      screen.findByText("Previous thread launch note"),
+    ).resolves.toBeInTheDocument();
+
+    beginPartialCurrentThreadReturn();
+    click(linkByText("Current keyboard thread"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread cached leading note"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText("Current thread launch note"),
+      ).not.toBeInTheDocument();
+      expect(document.querySelector("[data-scroll-to-bottom]")).not.toBeNull();
+    });
+    await publishCurrentThreadTarget();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(viewportOffsetTop(`${KEYBOARD_CURRENT_THREAD_ID}-message`)).toBe(
+        -20,
+      );
+      expect(chatScrollContainer().scrollTop).toBe(420);
     });
   });
 
@@ -1634,7 +1806,7 @@ describe("chat scroll position", () => {
   });
 
   it("preserves its visible anchor when composer or viewport resize changes layout", async () => {
-    const threadId = "scroll-resize-preserve";
+    const threadId = "e8000000-0000-4000-a000-000000000002";
     const events = simpleUserEvents(threadId, "resize-preserve", 8);
     let clientHeight = 300;
     let scrollHeight = 1000;
@@ -1674,7 +1846,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -1704,7 +1875,7 @@ describe("chat scroll position", () => {
   });
 
   it("keeps following the tail when composer or viewport resize shortens it", async () => {
-    const threadId = "scroll-resize-follow";
+    const threadId = "e8000000-0000-4000-a000-000000000003";
     const events = simpleUserEvents(threadId, "resize-follow", 8);
     let clientHeight = 300;
     const resizeObserver = installResizeObserver();
@@ -1748,6 +1919,81 @@ describe("chat scroll position", () => {
 
     await waitFor(() => {
       expect(container.scrollTop).toBe(820);
+    });
+  });
+
+  it("restores the visible anchor after entering and exiting sharing", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e8000000-0000-4000-a000-000000000004";
+    const events = simpleUserEvents(threadId, "sharing-transition", 8);
+    const sharingActive = () => {
+      return (
+        document.querySelector("[data-chat-share-selectable-group]") !== null
+      );
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Sharing transition",
+      chatEvents: events,
+    });
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return sharingActive() ? 180 : 300;
+            },
+            scrollHeight: () => {
+              return sharingActive() ? 1060 : 1000;
+            },
+            eventRect: (eventId) => {
+              const index = Number(eventId.split("-").at(-1));
+              if (!Number.isFinite(index)) {
+                return undefined;
+              }
+              return {
+                top: index * 100 + (sharingActive() ? 60 : 0),
+                height: 80,
+              };
+            },
+          },
+        ],
+      ]),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.SharedThreadSharing]: true,
+      },
+    });
+
+    const container = await waitFor(() => {
+      expect(
+        screen.getByText("sharing-transition message 7"),
+      ).toBeInTheDocument();
+      expect(chatScrollContainer().scrollTop).toBe(700);
+      return chatScrollContainer();
+    });
+    scrollTo(container, 420);
+    expect(viewportOffsetTop("sharing-transition-4")).toBe(-20);
+
+    await user.click(buttonByName("Share messages"));
+
+    await waitFor(() => {
+      expect(sharingActive()).toBeTruthy();
+      expect(viewportOffsetTop("sharing-transition-4")).toBe(-20);
+      expect(container.scrollTop).toBe(480);
+    });
+
+    await user.click(buttonByName("Cancel"));
+
+    await waitFor(() => {
+      expect(sharingActive()).toBeFalsy();
+      expect(viewportOffsetTop("sharing-transition-4")).toBe(-20);
+      expect(container.scrollTop).toBe(420);
     });
   });
 });

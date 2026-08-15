@@ -46,29 +46,13 @@ export function isTelegramApiError(
   return value instanceof TelegramApiError;
 }
 
-function isE2eTelegramMockEnabled(): boolean {
-  const flag = optionalEnv("E2E_TELEGRAM_MOCK_ENABLED");
-  return flag === "1" || flag === "true";
-}
-
 function resolveTelegramApiBase(): string {
   const telegramApiUrl = optionalEnv("TELEGRAM_API_URL");
   if (telegramApiUrl) {
     return telegramApiUrl;
   }
 
-  if (!isE2eTelegramMockEnabled()) {
-    return DEFAULT_TELEGRAM_API_BASE;
-  }
-
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (!vercelUrl) {
-    throw new Error(
-      "E2E_TELEGRAM_MOCK_ENABLED=1 but VERCEL_URL is unset; cannot redirect Telegram Bot API traffic to the preview mock routes",
-    );
-  }
-
-  return `https://${vercelUrl}/api/test/telegram-mock/bot`;
+  return DEFAULT_TELEGRAM_API_BASE;
 }
 
 function buildTelegramApiUrl(token: string, method: string): string {
@@ -76,15 +60,7 @@ function buildTelegramApiUrl(token: string, method: string): string {
 }
 
 function buildTelegramApiHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  const bypass = optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
-  if (isE2eTelegramMockEnabled() && bypass) {
-    headers["x-vercel-protection-bypass"] = bypass;
-    headers["x-vm0-test-endpoint-bypass"] = bypass;
-  }
-  return headers;
+  return { "Content-Type": "application/json" };
 }
 
 async function callTelegramApi<T>(
@@ -93,16 +69,9 @@ async function callTelegramApi<T>(
   params?: Record<string, string>,
 ): Promise<T> {
   const url = buildTelegramApiUrl(token, method);
-  const response = isE2eTelegramMockEnabled()
-    ? await fetch(url, {
-        method: "POST",
-        headers: buildTelegramApiHeaders(),
-        body: JSON.stringify(params ?? {}),
-      })
-    : await fetch(
-        `${url}${params ? `?${new URLSearchParams(params).toString()}` : ""}`,
-        { headers: buildTelegramApiHeaders() },
-      );
+  const response = await fetch(
+    `${url}${params ? `?${new URLSearchParams(params).toString()}` : ""}`,
+  );
 
   const data: unknown = await response.json();
 

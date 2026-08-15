@@ -1,9 +1,10 @@
-//! An oversized newline-free ordinary CLI stdout record must fail before it is
+//! An oversized newline-free Claude Code stdout record must fail before it is
 //! retained or logged and must trigger bounded cleanup of a live child.
 
 mod common;
 
 use guest_contracts::diagnostics::{CliTerminationReason, CliTerminationSignal};
+use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
 use std::time::Duration;
 
 #[tokio::test]
@@ -29,8 +30,12 @@ async fn oversized_newline_free_stdout_terminates_promptly()
         .control_error
         .expect("stdout framing failure should be a controlled execution error")
         .to_string();
+    let expected_error = format!(
+        "CLI stdout line exceeded {} bytes",
+        ORDINARY_CLI_STDOUT_MAX_LINE_BYTES
+    );
     assert!(
-        error.contains("CLI stdout line exceeded 16777216 bytes"),
+        error.contains(&expected_error),
         "unexpected stdout limit error: {error}"
     );
     assert_eq!(execution.last_event_sequence, None);

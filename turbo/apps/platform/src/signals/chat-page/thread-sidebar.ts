@@ -5,8 +5,17 @@ import {
   type ArtifactCatalogSignals,
 } from "../artifacts-page/create-artifact-catalog-signals.ts";
 import { artifactDetailPreview } from "../artifacts-page/artifact-catalog-signals.ts";
-import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
+import {
+  fetchPreviewText,
+  isTextPreviewKind,
+  type TextPreviewComputed,
+} from "../text-preview.ts";
 import { resetSignal } from "../utils.ts";
+import {
+  createMarkdownPreviewTree,
+  type MarkdownPreviewTreeComputed,
+} from "../markdown-preview-tree.ts";
+import type { MailDraftSignals } from "./mail-draft.ts";
 
 // ---------------------------------------------------------------------------
 // Thread-owned utility sidebar.
@@ -38,7 +47,34 @@ export type ArtifactRef = {
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
+  readonly shareAvailable?: boolean;
+  /** Reset resources owned by this particular sidebar preview. */
+  readonly resetResources$?: Command<AbortSignal, AbortSignal[]>;
+  /**
+   * Text preview content for text-kind refs, resolved by the opening command
+   * from the owning thread's artifact signals. The sidebar renders from the
+   * ref alone.
+   */
+  readonly text$?: TextPreviewComputed;
+  /** The prepared tree for markdown-kind refs, diagram signals embedded. */
+  readonly markdownTree$?: MarkdownPreviewTreeComputed;
 };
+
+export type ArtifactFileRef = {
+  readonly file: File;
+  readonly url: string;
+  readonly shareAvailable?: boolean;
+};
+
+export type ArtifactMetadataRef = {
+  readonly url: string;
+  readonly filename: string;
+  readonly contentType?: string;
+  readonly shareAvailable?: boolean;
+  readonly text$?: TextPreviewComputed;
+};
+
+export type ArtifactRefInput = string | ArtifactFileRef | ArtifactMetadataRef;
 
 export type ThreadSidebarArtifactSource =
   | { readonly kind: "catalog"; readonly artifactId: string }
@@ -47,7 +83,7 @@ export type ThreadSidebarArtifactSource =
 export type ThreadSidebarTarget =
   | { readonly type: "artifacts" }
   | { readonly type: "artifact"; readonly source: ThreadSidebarArtifactSource }
-  | { readonly type: "email-draft"; readonly mailDraftId: string }
+  | { readonly type: "email-draft"; readonly signals: MailDraftSignals }
   | { readonly type: "browser" }
   | { readonly type: "automations" };
 
@@ -83,16 +119,20 @@ export interface ThreadSidebarSignals {
    */
   readonly artifactCatalog: ArtifactCatalogSignals;
   readonly selectedArtifactText$: Computed<Promise<string>>;
-  /**
-   * Session resources for an open artifacts list: refresh the first page in
-   * the background and follow realtime catalog changes. `close$` aborts the
-   * session without touching the cached list.
-   */
-  readonly setupArtifactsSession$: Command<Promise<void>, [AbortSignal]>;
+  readonly selectedArtifactMarkdownTree$: MarkdownPreviewTreeComputed;
+}
+
+function attachmentResourceReset(
+  target: ThreadSidebarTarget | null,
+): Command<AbortSignal, AbortSignal[]> | undefined {
+  return target?.type === "artifact" && target.source.kind === "attachment"
+    ? target.source.ref.resetResources$
+    : undefined;
 }
 
 export function createThreadSidebarSignals(
   threadId: string,
+  ownerSignal: AbortSignal,
 ): ThreadSidebarSignals {
   const internalTarget$ = state<ThreadSidebarTarget | null>(null);
   const internalEntryAnimationsEnabled$ = state(false);
@@ -100,47 +140,64 @@ export function createThreadSidebarSignals(
   const internalFullscreen$ = state(false);
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
-  const resetSession$ = resetSignal();
+  const resetArtifactPreviewSignal$ = resetSignal();
+  const internalArtifactPreviewSignal$ = state(ownerSignal);
 
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
   });
-  const selectedArtifactText$ = computed(
-    async (get, { signal }): Promise<string> => {
-      const detail = await get(artifactCatalog.selectedArtifactDetail$);
-      if (!detail) {
-        throw new Error("Selected artifact is unavailable");
-      }
-      const preview = artifactDetailPreview(detail);
-      if (!isTextPreviewKind(preview.kind)) {
-        throw new Error("Selected artifact is not a text preview");
-      }
-      return fetchPreviewText(preview.url, signal);
-    },
+  const selectedArtifactText$ = computed(async (get): Promise<string> => {
+    const detail = await get(artifactCatalog.selectedArtifactDetail$);
+    if (!detail) {
+      throw new Error("Selected artifact is unavailable");
+    }
+    const preview = artifactDetailPreview(detail);
+    if (!isTextPreviewKind(preview.kind)) {
+      throw new Error("Selected artifact is not a text preview");
+    }
+    return fetchPreviewText(preview.url);
+  });
+  const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
+    selectedArtifactText$,
+    internalArtifactPreviewSignal$,
   );
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
+    const currentResourceReset$ = attachmentResourceReset(current);
+    const nextResourceReset$ = attachmentResourceReset(target);
     if (current === null) {
       set(internalAnimateEntry$, get(internalEntryAnimationsEnabled$));
     }
     if (current?.type !== target.type) {
       set(internalFullscreen$, false);
     }
+    set(
+      internalArtifactPreviewSignal$,
+      set(resetArtifactPreviewSignal$, ownerSignal),
+    );
     if (target.type === "artifact" && target.source.kind === "catalog") {
       set(artifactCatalog.selectArtifact$, target.source.artifactId);
     }
     set(internalTarget$, target);
+    if (currentResourceReset$ && currentResourceReset$ !== nextResourceReset$) {
+      set(currentResourceReset$);
+    }
   });
 
-  const close$ = command(({ set }) => {
-    // Abort session resources (realtime subscription, background refresh)
-    // while keeping the cached catalog pages for the next open.
-    set(resetSession$);
+  const close$ = command(({ get, set }) => {
+    set(
+      internalArtifactPreviewSignal$,
+      set(resetArtifactPreviewSignal$, ownerSignal),
+    );
+    const resourceReset$ = attachmentResourceReset(get(internalTarget$));
     set(internalTarget$, null);
     set(internalAnimateEntry$, false);
     set(internalFullscreen$, false);
     set(internalEditingAutomationId$, null);
+    if (resourceReset$) {
+      set(resourceReset$);
+    }
   });
 
   const claimAutoOpenCandidate$ = command(
@@ -150,14 +207,6 @@ export function createThreadSidebarSignals(
       }
       set(internalClaimedAutoOpenCandidateKey$, candidateKey);
       return true;
-    },
-  );
-
-  const setupArtifactsSession$ = command(
-    async ({ set }, parentSignal: AbortSignal): Promise<void> => {
-      const signal = set(resetSession$, parentSignal);
-      set(artifactCatalog.reload$);
-      await set(artifactCatalog.subscribeCatalogChanged$, signal);
     },
   );
 
@@ -190,6 +239,6 @@ export function createThreadSidebarSignals(
     }),
     artifactCatalog,
     selectedArtifactText$,
-    setupArtifactsSession$,
+    selectedArtifactMarkdownTree$,
   };
 }

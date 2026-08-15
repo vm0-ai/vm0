@@ -229,21 +229,11 @@ interface TeamsCreateConversationBody {
   };
 }
 
-function isE2eTeamsMockEnabled(): boolean {
-  const flag = optionalEnv("E2E_TEAMS_MOCK_ENABLED");
-  return flag === "1" || flag === "true";
-}
-
 function teamsBotCredentials(): TeamsBotCredentials | undefined {
   const appId = env("MICROSOFT_TEAMS_BOT_APP_ID");
   const appPassword = env("MICROSOFT_TEAMS_BOT_APP_PASSWORD");
   if (!appId || !appPassword) {
-    return isE2eTeamsMockEnabled()
-      ? {
-          appId: "e2e-teams-bot-app-id",
-          appPassword: "e2e-teams-bot-app-password",
-        }
-      : undefined;
+    return undefined;
   }
   return { appId, appPassword };
 }
@@ -254,54 +244,10 @@ function tenantTokenUrl(tenantId: string): string {
   )}/oauth2/v2.0/token`;
 }
 
-function e2eTeamsMockBaseUrl(): string | undefined {
-  const explicitBaseUrl = optionalEnv("TEAMS_MOCK_BASE_URL");
-  if (explicitBaseUrl) {
-    return explicitBaseUrl.replace(/\/+$/u, "");
-  }
-
-  const mockEnabled = isE2eTeamsMockEnabled();
-  if (!mockEnabled) {
-    return undefined;
-  }
-
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (vercelUrl) {
-    return `https://${vercelUrl}/api/test/teams-mock`;
-  }
-
-  const apiBackendUrl = optionalEnv("VM0_API_BACKEND_URL");
-  if (apiBackendUrl) {
-    return `${apiBackendUrl.replace(/\/+$/u, "")}/api/test/teams-mock`;
-  }
-
-  throw new Error(
-    "E2E_TEAMS_MOCK_ENABLED=1 but VERCEL_URL and VM0_API_BACKEND_URL are unset; cannot redirect Microsoft Teams API traffic to the preview mock routes",
-  );
-}
-
-function e2eTeamsMockHeaders(): Record<string, string> {
-  if (!isE2eTeamsMockEnabled()) {
-    return {};
-  }
-  const bypass = optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
-  if (!bypass) {
-    return {};
-  }
-  return {
-    "x-vercel-protection-bypass": bypass,
-    "x-vm0-test-endpoint-bypass": bypass,
-  };
-}
-
 function botTokenUrl(): string | undefined {
   const configured = optionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL");
   if (configured) {
     return configured;
-  }
-  const mockBaseUrl = e2eTeamsMockBaseUrl();
-  if (mockBaseUrl) {
-    return `${mockBaseUrl}/token`;
   }
   const appTenantId = env("MICROSOFT_TEAMS_APP_TENANT_ID");
   return appTenantId ? tenantTokenUrl(appTenantId) : undefined;
@@ -312,8 +258,7 @@ function graphTokenUrl(tenantId: string): string {
   if (configured) {
     return configured;
   }
-  const mockBaseUrl = e2eTeamsMockBaseUrl();
-  return mockBaseUrl ? `${mockBaseUrl}/token` : tenantTokenUrl(tenantId);
+  return tenantTokenUrl(tenantId);
 }
 
 function graphBaseUrl(): string {
@@ -321,10 +266,7 @@ function graphBaseUrl(): string {
   if (configured) {
     return configured.replace(/\/+$/u, "");
   }
-  const mockBaseUrl = e2eTeamsMockBaseUrl();
-  return mockBaseUrl
-    ? `${mockBaseUrl}/graph`
-    : DEFAULT_MICROSOFT_GRAPH_BASE_URL;
+  return DEFAULT_MICROSOFT_GRAPH_BASE_URL;
 }
 
 function networkErrorMessage(error: unknown): string {
@@ -335,11 +277,13 @@ function teamsApiError(status: number, error: string): TeamsApiErrorResult {
   return { kind: "teams-error", status, error };
 }
 
-async function fetchClientCredentialsAccessToken(args: {
-  readonly tokenUrl: string;
-  readonly scope: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function fetchClientCredentialsAccessToken(
+  args: {
+    readonly tokenUrl: string;
+    readonly scope: string;
+  },
+  signal: AbortSignal,
+): Promise<
   { readonly kind: "ok"; readonly accessToken: string } | TeamsApiErrorResult
 > {
   const credentials = teamsBotCredentials();
@@ -362,12 +306,11 @@ async function fetchClientCredentialsAccessToken(args: {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        ...e2eTeamsMockHeaders(),
       },
       body,
-      signal: args.signal,
+      signal,
     }),
-    args.signal,
+    signal,
   );
   if (!responseResult.ok) {
     return teamsApiError(502, networkErrorMessage(responseResult.error));
@@ -376,7 +319,7 @@ async function fetchClientCredentialsAccessToken(args: {
   const response = responseResult.value;
   if (!response.ok) {
     const text = await response.text();
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return teamsApiError(
       502,
       text || `OAuth token request failed with HTTP ${response.status}`,
@@ -386,7 +329,7 @@ async function fetchClientCredentialsAccessToken(args: {
   const parsed = teamsTokenResponseSchema.safeParse(
     safeJsonParse(await response.text()),
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!parsed.success) {
     return teamsApiError(502, "Invalid OAuth token response");
   }
@@ -405,24 +348,30 @@ function fetchTeamsBotAccessToken(
       teamsApiError(502, "Microsoft Teams bot app tenant is not configured"),
     );
   }
-  return fetchClientCredentialsAccessToken({
-    tokenUrl,
-    scope: BOT_FRAMEWORK_SCOPE,
+  return fetchClientCredentialsAccessToken(
+    {
+      tokenUrl,
+      scope: BOT_FRAMEWORK_SCOPE,
+    },
     signal,
-  });
+  );
 }
 
-function fetchTeamsGraphAccessToken(args: {
-  readonly tenantId: string;
-  readonly signal: AbortSignal;
-}): Promise<
+function fetchTeamsGraphAccessToken(
+  args: {
+    readonly tenantId: string;
+  },
+  signal: AbortSignal,
+): Promise<
   { readonly kind: "ok"; readonly accessToken: string } | TeamsApiErrorResult
 > {
-  return fetchClientCredentialsAccessToken({
-    tokenUrl: graphTokenUrl(args.tenantId),
-    scope: MICROSOFT_GRAPH_SCOPE,
-    signal: args.signal,
-  });
+  return fetchClientCredentialsAccessToken(
+    {
+      tokenUrl: graphTokenUrl(args.tenantId),
+      scope: MICROSOFT_GRAPH_SCOPE,
+    },
+    signal,
+  );
 }
 
 function teamsConversationActivityUrl(args: {
@@ -553,16 +502,20 @@ function shouldAuthorizeTeamsFileDownload(url: string): boolean {
   );
 }
 
-async function fetchTeamsGraphJson<T>(args: {
-  readonly tenantId: string;
-  readonly url: string;
-  readonly schema: z.ZodType<T>;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly kind: "ok"; readonly data: T } | TeamsApiErrorResult> {
-  const accessToken = await fetchTeamsGraphAccessToken({
-    tenantId: args.tenantId,
-    signal: args.signal,
-  });
+async function fetchTeamsGraphJson<T>(
+  args: {
+    readonly tenantId: string;
+    readonly url: string;
+    readonly schema: z.ZodType<T>;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly kind: "ok"; readonly data: T } | TeamsApiErrorResult> {
+  const accessToken = await fetchTeamsGraphAccessToken(
+    {
+      tenantId: args.tenantId,
+    },
+    signal,
+  );
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -572,11 +525,10 @@ async function fetchTeamsGraphJson<T>(args: {
       method: "GET",
       headers: {
         authorization: `Bearer ${accessToken.accessToken}`,
-        ...e2eTeamsMockHeaders(),
       },
-      signal: args.signal,
+      signal,
     }),
-    args.signal,
+    signal,
   );
   if (!responseResult.ok) {
     return teamsApiError(502, networkErrorMessage(responseResult.error));
@@ -584,7 +536,7 @@ async function fetchTeamsGraphJson<T>(args: {
 
   const response = responseResult.value;
   const responseText = await response.text();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!response.ok) {
     return teamsApiError(
       response.status,
@@ -599,29 +551,33 @@ async function fetchTeamsGraphJson<T>(args: {
   return { kind: "ok", data: parsed.data };
 }
 
-export async function fetchTeamsFile(args: {
-  readonly tenantId: string;
-  readonly url: string;
-  readonly downloadMode?: "graph";
-  readonly signal: AbortSignal;
-}): Promise<FetchTeamsFileResult> {
+export async function fetchTeamsFile(
+  args: {
+    readonly tenantId: string;
+    readonly url: string;
+    readonly downloadMode?: "graph";
+  },
+  signal: AbortSignal,
+): Promise<FetchTeamsFileResult> {
   const headers: Record<string, string> = {
     accept: "application/octet-stream",
   };
   let url = args.url;
 
   if (args.downloadMode === "graph") {
-    const accessToken = await fetchTeamsGraphAccessToken({
-      tenantId: args.tenantId,
-      signal: args.signal,
-    });
+    const accessToken = await fetchTeamsGraphAccessToken(
+      {
+        tenantId: args.tenantId,
+      },
+      signal,
+    );
     if (accessToken.kind === "teams-error") {
       return accessToken;
     }
     url = teamsGraphShareContentUrl(args.url);
     headers.authorization = `Bearer ${accessToken.accessToken}`;
   } else if (shouldAuthorizeTeamsFileDownload(args.url)) {
-    const accessToken = await fetchTeamsBotAccessToken(args.signal);
+    const accessToken = await fetchTeamsBotAccessToken(signal);
     if (accessToken.kind === "teams-error") {
       return accessToken;
     }
@@ -632,9 +588,9 @@ export async function fetchTeamsFile(args: {
     fetch(url, {
       method: "GET",
       headers,
-      signal: args.signal,
+      signal,
     }),
-    args.signal,
+    signal,
   );
   if (!responseResult.ok) {
     return teamsApiError(502, networkErrorMessage(responseResult.error));
@@ -643,21 +599,25 @@ export async function fetchTeamsFile(args: {
   return { kind: "ok", response: responseResult.value };
 }
 
-export async function fetchTeamsUsers(args: {
-  readonly tenantId: string;
-  readonly userIds: readonly string[];
-  readonly signal: AbortSignal;
-}): Promise<
+export async function fetchTeamsUsers(
+  args: {
+    readonly tenantId: string;
+    readonly userIds: readonly string[];
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly kind: "ok";
       readonly users: ReadonlyMap<string, TeamsGraphUserInfo>;
     }
   | TeamsApiErrorResult
 > {
-  const accessToken = await fetchTeamsGraphAccessToken({
-    tenantId: args.tenantId,
-    signal: args.signal,
-  });
+  const accessToken = await fetchTeamsGraphAccessToken(
+    {
+      tenantId: args.tenantId,
+    },
+    signal,
+  );
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -669,11 +629,10 @@ export async function fetchTeamsUsers(args: {
         method: "GET",
         headers: {
           authorization: `Bearer ${accessToken.accessToken}`,
-          ...e2eTeamsMockHeaders(),
         },
-        signal: args.signal,
+        signal,
       }),
-      args.signal,
+      signal,
     );
     if (!responseResult.ok) {
       return teamsApiError(502, networkErrorMessage(responseResult.error));
@@ -681,7 +640,7 @@ export async function fetchTeamsUsers(args: {
 
     const response = responseResult.value;
     const responseText = await response.text();
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (response.status === 404) {
       continue;
     }
@@ -707,15 +666,17 @@ export async function fetchTeamsUsers(args: {
   return { kind: "ok", users };
 }
 
-async function postTeamsActivity(args: {
-  readonly serviceUrl: string;
-  readonly conversationId: string;
-  readonly activityId?: string;
-  readonly tenantId: string;
-  readonly activity: TeamsActivityBody;
-  readonly signal: AbortSignal;
-}): Promise<SendTeamsActivityResult> {
-  const accessToken = await fetchTeamsBotAccessToken(args.signal);
+async function postTeamsActivity(
+  args: {
+    readonly serviceUrl: string;
+    readonly conversationId: string;
+    readonly activityId?: string;
+    readonly tenantId: string;
+    readonly activity: TeamsActivityBody;
+  },
+  signal: AbortSignal,
+): Promise<SendTeamsActivityResult> {
+  const accessToken = await fetchTeamsBotAccessToken(signal);
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -735,12 +696,11 @@ async function postTeamsActivity(args: {
       headers: {
         authorization: `Bearer ${accessToken.accessToken}`,
         "content-type": "application/json",
-        ...e2eTeamsMockHeaders(),
       },
       body: JSON.stringify(args.activity),
-      signal: args.signal,
+      signal,
     }),
-    args.signal,
+    signal,
   );
   if (!responseResult.ok) {
     return teamsApiError(502, networkErrorMessage(responseResult.error));
@@ -748,7 +708,7 @@ async function postTeamsActivity(args: {
 
   const response = responseResult.value;
   const responseText = await response.text();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!response.ok) {
     return teamsApiError(
       response.status,
@@ -769,16 +729,18 @@ async function postTeamsActivity(args: {
   };
 }
 
-export async function createTeamsPersonalConversation(args: {
-  readonly serviceUrl: string;
-  readonly tenantId: string;
-  readonly botId: string;
-  readonly botName?: string | null;
-  readonly teamsUserId: string;
-  readonly teamsUserDisplayName?: string | null;
-  readonly signal: AbortSignal;
-}): Promise<CreateTeamsConversationResult> {
-  const accessToken = await fetchTeamsBotAccessToken(args.signal);
+export async function createTeamsPersonalConversation(
+  args: {
+    readonly serviceUrl: string;
+    readonly tenantId: string;
+    readonly botId: string;
+    readonly botName?: string | null;
+    readonly teamsUserId: string;
+    readonly teamsUserDisplayName?: string | null;
+  },
+  signal: AbortSignal,
+): Promise<CreateTeamsConversationResult> {
+  const accessToken = await fetchTeamsBotAccessToken(signal);
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -813,12 +775,11 @@ export async function createTeamsPersonalConversation(args: {
       headers: {
         authorization: `Bearer ${accessToken.accessToken}`,
         "content-type": "application/json",
-        ...e2eTeamsMockHeaders(),
       },
       body: JSON.stringify(body),
-      signal: args.signal,
+      signal,
     }),
-    args.signal,
+    signal,
   );
   if (!responseResult.ok) {
     return teamsApiError(502, networkErrorMessage(responseResult.error));
@@ -826,7 +787,7 @@ export async function createTeamsPersonalConversation(args: {
 
   const response = responseResult.value;
   const responseText = await response.text();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!response.ok) {
     return teamsApiError(
       response.status,
@@ -844,16 +805,18 @@ export async function createTeamsPersonalConversation(args: {
   return { kind: "ok", conversationId: parsed.data.id };
 }
 
-async function requestTeamsReaction(args: {
-  readonly method: "PUT" | "DELETE";
-  readonly serviceUrl: string;
-  readonly conversationId: string;
-  readonly activityId: string;
-  readonly tenantId: string;
-  readonly reactionType: string;
-  readonly signal: AbortSignal;
-}): Promise<SendTeamsReactionResult> {
-  const accessToken = await fetchTeamsBotAccessToken(args.signal);
+async function requestTeamsReaction(
+  args: {
+    readonly method: "PUT" | "DELETE";
+    readonly serviceUrl: string;
+    readonly conversationId: string;
+    readonly activityId: string;
+    readonly tenantId: string;
+    readonly reactionType: string;
+  },
+  signal: AbortSignal,
+): Promise<SendTeamsReactionResult> {
+  const accessToken = await fetchTeamsBotAccessToken(signal);
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -873,11 +836,10 @@ async function requestTeamsReaction(args: {
       method: args.method,
       headers: {
         authorization: `Bearer ${accessToken.accessToken}`,
-        ...e2eTeamsMockHeaders(),
       },
-      signal: args.signal,
+      signal,
     }),
-    args.signal,
+    signal,
   );
   if (!responseResult.ok) {
     return teamsApiError(502, networkErrorMessage(responseResult.error));
@@ -885,7 +847,7 @@ async function requestTeamsReaction(args: {
 
   const response = responseResult.value;
   const responseText = await response.text();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!response.ok) {
     return teamsApiError(
       response.status,
@@ -896,39 +858,45 @@ async function requestTeamsReaction(args: {
   return { kind: "ok" };
 }
 
-export function sendTeamsMessageReply(args: {
-  readonly serviceUrl: string;
-  readonly conversationId: string;
-  readonly activityId?: string;
-  readonly tenantId: string;
-  readonly text: string;
-  readonly card?: TeamsAdaptiveCard;
-  readonly entities?: readonly TeamsMentionEntity[];
-  readonly signal: AbortSignal;
-}): Promise<SendTeamsActivityResult> {
-  return sendTeamsMessage({
-    serviceUrl: args.serviceUrl,
-    conversationId: args.conversationId,
-    activityId: args.activityId,
-    tenantId: args.tenantId,
-    text: args.text,
-    card: args.card,
-    ...(args.entities ? { entities: args.entities } : {}),
-    signal: args.signal,
-  });
+export function sendTeamsMessageReply(
+  args: {
+    readonly serviceUrl: string;
+    readonly conversationId: string;
+    readonly activityId?: string;
+    readonly tenantId: string;
+    readonly text: string;
+    readonly card?: TeamsAdaptiveCard;
+    readonly entities?: readonly TeamsMentionEntity[];
+  },
+  signal: AbortSignal,
+): Promise<SendTeamsActivityResult> {
+  return sendTeamsMessage(
+    {
+      serviceUrl: args.serviceUrl,
+      conversationId: args.conversationId,
+      activityId: args.activityId,
+      tenantId: args.tenantId,
+      text: args.text,
+      card: args.card,
+      ...(args.entities ? { entities: args.entities } : {}),
+    },
+    signal,
+  );
 }
 
-export function sendTeamsMessage(args: {
-  readonly serviceUrl: string;
-  readonly conversationId: string;
-  readonly activityId?: string;
-  readonly tenantId: string;
-  readonly text: string;
-  readonly card?: TeamsAdaptiveCard;
-  readonly entities?: readonly TeamsMentionEntity[];
-  readonly attachments?: readonly TeamsActivityAttachment[];
-  readonly signal: AbortSignal;
-}): Promise<SendTeamsActivityResult> {
+export function sendTeamsMessage(
+  args: {
+    readonly serviceUrl: string;
+    readonly conversationId: string;
+    readonly activityId?: string;
+    readonly tenantId: string;
+    readonly text: string;
+    readonly card?: TeamsAdaptiveCard;
+    readonly entities?: readonly TeamsMentionEntity[];
+    readonly attachments?: readonly TeamsActivityAttachment[];
+  },
+  signal: AbortSignal,
+): Promise<SendTeamsActivityResult> {
   const attachments: readonly TeamsActivityAttachment[] = [
     ...(args.card
       ? [
@@ -941,135 +909,163 @@ export function sendTeamsMessage(args: {
     ...(args.attachments ?? []),
   ];
 
-  return postTeamsActivity({
-    serviceUrl: args.serviceUrl,
-    conversationId: args.conversationId,
-    activityId: args.activityId,
-    tenantId: args.tenantId,
-    signal: args.signal,
-    activity: {
-      type: "message",
-      ...(args.card
-        ? { summary: args.text }
-        : { text: args.text, textFormat: "markdown" }),
-      replyToId: args.activityId,
-      ...(args.entities ? { entities: args.entities } : {}),
-      ...(attachments.length > 0 ? { attachments } : {}),
-      channelData: {
-        tenant: { id: args.tenantId },
+  return postTeamsActivity(
+    {
+      serviceUrl: args.serviceUrl,
+      conversationId: args.conversationId,
+      activityId: args.activityId,
+      tenantId: args.tenantId,
+      activity: {
+        type: "message",
+        ...(args.card
+          ? { summary: args.text }
+          : { text: args.text, textFormat: "markdown" }),
+        replyToId: args.activityId,
+        ...(args.entities ? { entities: args.entities } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+        channelData: {
+          tenant: { id: args.tenantId },
+        },
       },
     },
-  });
+    signal,
+  );
 }
 
-export function sendTeamsReaction(args: {
-  readonly serviceUrl: string;
-  readonly conversationId: string;
-  readonly activityId: string;
-  readonly tenantId: string;
-  readonly reactionType: string;
-  readonly signal: AbortSignal;
-}): Promise<SendTeamsReactionResult> {
-  return requestTeamsReaction({
-    method: "PUT",
-    ...args,
-  });
+export function sendTeamsReaction(
+  args: {
+    readonly serviceUrl: string;
+    readonly conversationId: string;
+    readonly activityId: string;
+    readonly tenantId: string;
+    readonly reactionType: string;
+  },
+  signal: AbortSignal,
+): Promise<SendTeamsReactionResult> {
+  return requestTeamsReaction(
+    {
+      method: "PUT",
+      ...args,
+    },
+    signal,
+  );
 }
 
-export function deleteTeamsReaction(args: {
-  readonly serviceUrl: string;
-  readonly conversationId: string;
-  readonly activityId: string;
-  readonly tenantId: string;
-  readonly reactionType: string;
-  readonly signal: AbortSignal;
-}): Promise<SendTeamsReactionResult> {
-  return requestTeamsReaction({
-    method: "DELETE",
-    ...args,
-  });
+export function deleteTeamsReaction(
+  args: {
+    readonly serviceUrl: string;
+    readonly conversationId: string;
+    readonly activityId: string;
+    readonly tenantId: string;
+    readonly reactionType: string;
+  },
+  signal: AbortSignal,
+): Promise<SendTeamsReactionResult> {
+  return requestTeamsReaction(
+    {
+      method: "DELETE",
+      ...args,
+    },
+    signal,
+  );
 }
 
-export function sendTeamsTypingActivity(args: {
-  readonly serviceUrl: string;
-  readonly conversationId: string;
-  readonly tenantId: string;
-  readonly signal: AbortSignal;
-}): Promise<SendTeamsActivityResult> {
-  return postTeamsActivity({
-    serviceUrl: args.serviceUrl,
-    conversationId: args.conversationId,
-    tenantId: args.tenantId,
-    signal: args.signal,
-    activity: {
-      type: "typing",
-      channelData: {
-        tenant: { id: args.tenantId },
+export function sendTeamsTypingActivity(
+  args: {
+    readonly serviceUrl: string;
+    readonly conversationId: string;
+    readonly tenantId: string;
+  },
+  signal: AbortSignal,
+): Promise<SendTeamsActivityResult> {
+  return postTeamsActivity(
+    {
+      serviceUrl: args.serviceUrl,
+      conversationId: args.conversationId,
+      tenantId: args.tenantId,
+      activity: {
+        type: "typing",
+        channelData: {
+          tenant: { id: args.tenantId },
+        },
       },
     },
-  });
+    signal,
+  );
 }
 
-export async function fetchTeamsChannelMessages(args: {
-  readonly tenantId: string;
-  readonly teamId: string;
-  readonly channelId: string;
-  readonly limit: number;
-  readonly signal: AbortSignal;
-}): Promise<FetchTeamsGraphMessagesResult> {
-  const result = await fetchTeamsGraphJson({
-    tenantId: args.tenantId,
-    url: teamsGraphChannelMessageUrl({
-      teamId: args.teamId,
-      channelId: args.channelId,
-      limit: args.limit,
-    }),
-    schema: teamsGraphMessagesResponseSchema,
-    signal: args.signal,
-  });
+export async function fetchTeamsChannelMessages(
+  args: {
+    readonly tenantId: string;
+    readonly teamId: string;
+    readonly channelId: string;
+    readonly limit: number;
+  },
+  signal: AbortSignal,
+): Promise<FetchTeamsGraphMessagesResult> {
+  const result = await fetchTeamsGraphJson(
+    {
+      tenantId: args.tenantId,
+      url: teamsGraphChannelMessageUrl({
+        teamId: args.teamId,
+        channelId: args.channelId,
+        limit: args.limit,
+      }),
+      schema: teamsGraphMessagesResponseSchema,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     return result;
   }
   return { kind: "ok", messages: result.data.value };
 }
 
-async function fetchTeamsChatMessages(args: {
-  readonly tenantId: string;
-  readonly chatId: string;
-  readonly limit: number;
-  readonly signal: AbortSignal;
-}): Promise<FetchTeamsGraphMessagesResult> {
-  const result = await fetchTeamsGraphJson({
-    tenantId: args.tenantId,
-    url: teamsGraphChatMessagesUrl({
-      chatId: args.chatId,
-      limit: args.limit,
-    }),
-    schema: teamsGraphMessagesResponseSchema,
-    signal: args.signal,
-  });
+async function fetchTeamsChatMessages(
+  args: {
+    readonly tenantId: string;
+    readonly chatId: string;
+    readonly limit: number;
+  },
+  signal: AbortSignal,
+): Promise<FetchTeamsGraphMessagesResult> {
+  const result = await fetchTeamsGraphJson(
+    {
+      tenantId: args.tenantId,
+      url: teamsGraphChatMessagesUrl({
+        chatId: args.chatId,
+        limit: args.limit,
+      }),
+      schema: teamsGraphMessagesResponseSchema,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     return result;
   }
   return { kind: "ok", messages: [...result.data.value].reverse() };
 }
 
-export async function fetchTeamsPersonalChatMessages(args: {
-  readonly tenantId: string;
-  readonly userId: string;
-  readonly teamsAppId: string;
-  readonly limit: number;
-  readonly signal: AbortSignal;
-}): Promise<FetchTeamsGraphMessagesResult> {
-  const installedAppsResult = await fetchTeamsGraphJson({
-    tenantId: args.tenantId,
-    url: teamsGraphUserInstalledAppsUrl({
-      userId: args.userId,
-      teamsAppId: args.teamsAppId,
-    }),
-    schema: teamsGraphUserInstalledAppsResponseSchema,
-    signal: args.signal,
-  });
+export async function fetchTeamsPersonalChatMessages(
+  args: {
+    readonly tenantId: string;
+    readonly userId: string;
+    readonly teamsAppId: string;
+    readonly limit: number;
+  },
+  signal: AbortSignal,
+): Promise<FetchTeamsGraphMessagesResult> {
+  const installedAppsResult = await fetchTeamsGraphJson(
+    {
+      tenantId: args.tenantId,
+      url: teamsGraphUserInstalledAppsUrl({
+        userId: args.userId,
+        teamsAppId: args.teamsAppId,
+      }),
+      schema: teamsGraphUserInstalledAppsResponseSchema,
+    },
+    signal,
+  );
   if (installedAppsResult.kind === "teams-error") {
     return installedAppsResult;
   }
@@ -1079,72 +1075,84 @@ export async function fetchTeamsPersonalChatMessages(args: {
   if (!installedApp) {
     return teamsApiError(404, "Microsoft Teams personal app not installed");
   }
-  const chatResult = await fetchTeamsGraphJson({
-    tenantId: args.tenantId,
-    url: teamsGraphUserInstalledAppChatUrl({
-      userId: args.userId,
-      installationId: installedApp.id,
-    }),
-    schema: teamsGraphChatSchema,
-    signal: args.signal,
-  });
+  const chatResult = await fetchTeamsGraphJson(
+    {
+      tenantId: args.tenantId,
+      url: teamsGraphUserInstalledAppChatUrl({
+        userId: args.userId,
+        installationId: installedApp.id,
+      }),
+      schema: teamsGraphChatSchema,
+    },
+    signal,
+  );
   if (chatResult.kind === "teams-error") {
     return chatResult;
   }
   if (chatResult.data.chatType !== "oneOnOne") {
     return teamsApiError(404, "Microsoft Teams personal chat not found");
   }
-  return await fetchTeamsChatMessages({
-    tenantId: args.tenantId,
-    chatId: chatResult.data.id,
-    limit: args.limit,
-    signal: args.signal,
-  });
+  return await fetchTeamsChatMessages(
+    {
+      tenantId: args.tenantId,
+      chatId: chatResult.data.id,
+      limit: args.limit,
+    },
+    signal,
+  );
 }
 
-export async function fetchTeamsChannelMessage(args: {
-  readonly tenantId: string;
-  readonly teamId: string;
-  readonly channelId: string;
-  readonly messageId: string;
-  readonly signal: AbortSignal;
-}): Promise<FetchTeamsGraphMessageResult> {
-  const result = await fetchTeamsGraphJson({
-    tenantId: args.tenantId,
-    url: teamsGraphChannelMessageUrl({
-      teamId: args.teamId,
-      channelId: args.channelId,
-      messageId: args.messageId,
-    }),
-    schema: teamsGraphMessageSchema,
-    signal: args.signal,
-  });
+export async function fetchTeamsChannelMessage(
+  args: {
+    readonly tenantId: string;
+    readonly teamId: string;
+    readonly channelId: string;
+    readonly messageId: string;
+  },
+  signal: AbortSignal,
+): Promise<FetchTeamsGraphMessageResult> {
+  const result = await fetchTeamsGraphJson(
+    {
+      tenantId: args.tenantId,
+      url: teamsGraphChannelMessageUrl({
+        teamId: args.teamId,
+        channelId: args.channelId,
+        messageId: args.messageId,
+      }),
+      schema: teamsGraphMessageSchema,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     return result;
   }
   return { kind: "ok", message: result.data };
 }
 
-export async function fetchTeamsChannelMessageReplies(args: {
-  readonly tenantId: string;
-  readonly teamId: string;
-  readonly channelId: string;
-  readonly messageId: string;
-  readonly limit: number;
-  readonly signal: AbortSignal;
-}): Promise<FetchTeamsGraphMessagesResult> {
-  const result = await fetchTeamsGraphJson({
-    tenantId: args.tenantId,
-    url: teamsGraphChannelMessageUrl({
-      teamId: args.teamId,
-      channelId: args.channelId,
-      messageId: args.messageId,
-      replies: true,
-      limit: args.limit,
-    }),
-    schema: teamsGraphMessagesResponseSchema,
-    signal: args.signal,
-  });
+export async function fetchTeamsChannelMessageReplies(
+  args: {
+    readonly tenantId: string;
+    readonly teamId: string;
+    readonly channelId: string;
+    readonly messageId: string;
+    readonly limit: number;
+  },
+  signal: AbortSignal,
+): Promise<FetchTeamsGraphMessagesResult> {
+  const result = await fetchTeamsGraphJson(
+    {
+      tenantId: args.tenantId,
+      url: teamsGraphChannelMessageUrl({
+        teamId: args.teamId,
+        channelId: args.channelId,
+        messageId: args.messageId,
+        replies: true,
+        limit: args.limit,
+      }),
+      schema: teamsGraphMessagesResponseSchema,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     return result;
   }

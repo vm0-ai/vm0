@@ -6,7 +6,7 @@
 mod common;
 
 use common::SystemLogOverrideGuard;
-use guest_agent::active_input::ActiveInputRuntime;
+use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
 use guest_agent::error::AgentError;
 use guest_agent::masker::SecretMasker;
 use guest_agent::run_context::GuestRuntime;
@@ -44,7 +44,14 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         Arc::clone(&masker),
         http.clone(),
     );
-    telemetry.final_flush_and_shutdown().await?;
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        telemetry.final_flush_and_shutdown(),
+    )
+    .await
+    .expect(
+        "no-API final-flush reply and uploader task termination should complete within 5 seconds",
+    )?;
 
     let shutdown = CancellationToken::new();
     let heartbeat = tokio::spawn(guest_agent::heartbeat::heartbeat_loop_for_run(
@@ -87,7 +94,9 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         &runtime.config.run_id,
         "sandbox-no-api",
         "reused",
+        "sandboxReused",
         Some(1),
+        &[],
     )
     .await;
     drop(complete_log_guard);
@@ -97,11 +106,43 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         "no-API complete path must return before touching the disabled HTTP client: {complete_log}"
     );
 
-    let active_input = ActiveInputRuntime::new_with_initial_prompt(
+    let delivery_id = "60fca608-d174-4c1a-a1b2-57607b3adf46";
+    let receipt_log_path = tmp.path().join("active-input-receipt-system.log");
+    let receipt_log_guard = SystemLogOverrideGuard::set(&receipt_log_path);
+    let active_input = ActiveInputRuntime::new_with_receipts(
         &runtime.config.run_id,
-        false,
         &runtime.config.prompt,
+        tmp.path().join("active-input-receipts.json"),
+        http.clone(),
+    )?;
+    let active_input_controller = active_input.controller();
+    let mut active_input_writer = active_input.into_writer();
+    assert_eq!(
+        active_input_controller.handle_control_payload(
+            &guest_contracts::active_input::encode_active_input(delivery_id, "local follow-up")?,
+        ),
+        ActiveInputControlOutcome::Accepted,
     );
+    let active_input_frame = active_input_writer
+        .next_frame()
+        .await
+        .expect("local active input should reach the CLI writer");
+    active_input_writer.mark_writing(&active_input_frame.uuid);
+    active_input_writer.mark_backend_accepted_without_replay(&active_input_frame)?;
+    active_input_controller.close_terminal();
+    assert_eq!(
+        active_input_controller.finalize_receipts().await?,
+        vec![delivery_id.to_string()],
+    );
+    drop(receipt_log_guard);
+    let receipt_log = std::fs::read_to_string(&receipt_log_path).unwrap_or_default();
+    assert!(
+        !receipt_log.contains("Active-input receipt attempt failed"),
+        "local active input must not attempt an API receipt: {receipt_log}",
+    );
+
+    let active_input =
+        ActiveInputRuntime::new_disabled(&runtime.config.run_id, &runtime.config.prompt);
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
         guest_agent::cli::execute_cli_with_active_input_for_config(

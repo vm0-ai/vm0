@@ -7,8 +7,8 @@ import {
   persistedWorkflowAutomationEventPayload,
   restoredWorkflowAutomationEventPayload,
   storedWorkflowAutomationContext,
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
+  workflowAutomationAgentPrompt,
+  workflowAutomationDisplayMessage,
   workflowAutomationTrigger,
   type WorkflowAutomationEventPolicy,
   type WorkflowAutomationEventType,
@@ -81,7 +81,7 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     trigger:
       'run run_123 in watched chat thread thread_123 finished with status "completed".',
     notes: [
-      "Not included below: the finished run's full transcript, and its final output beyond the excerpt. `zero logs <runId>` returns the transcript.",
+      'Not included below: the finished run\'s full transcript, and its final output beyond the excerpt. `okou search "<runId>" --source agent-session` prints both local session-file locations for direct analysis.',
     ],
     policy: eventPolicy,
   },
@@ -109,16 +109,16 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     policy: eventPolicy,
   },
   {
-    eventType: "github-label-applied",
+    eventType: "github-pull-request",
     payload: {
-      deliveryId: "delivery-label",
-      labelName: "bug",
-      subject: { type: "pull_request", number: 24_480 },
+      deliveryId: "delivery-pr-merged",
+      action: "closed",
+      pullRequest: { number: 24_480, merged: true, baseBranch: "main" },
     },
     trigger:
-      'GitHub label "bug" was applied to pull request #24480 (GitHub webhook delivery delivery-label).',
+      'GitHub pull request #24480 was merged into "main" (GitHub webhook delivery delivery-pr-merged).',
     notes: [
-      "Not included below: the issue or pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
+      "Not included below: the pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
     ],
     policy: eventPolicy,
   },
@@ -217,6 +217,23 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     policy: eventPolicy,
   },
   {
+    eventType: "google-forms-response-submitted",
+    payload: {
+      responseId: "response-123",
+      changeType: "created",
+      formId: "form-123",
+      formTitle: "Customer feedback",
+      lastSubmittedTime: "2026-08-05T10:00:00.654321Z",
+      respondentEmail: null,
+    },
+    trigger:
+      "Google Forms response response-123 from an anonymous respondent was created on Customer feedback (submitted 2026-08-05T10:00:00.654321Z).",
+    notes: [
+      "Response answers are not included below. Use GET /v1/forms/{formId}/responses/{responseId} for answers, then GET /v1/forms/{formId} to map questionId values to question text.",
+    ],
+    policy: eventPolicy,
+  },
+  {
     eventType: "google-meet-transcript-generated",
     payload: {
       transcriptName: "conferenceRecords/123/transcripts/456",
@@ -278,6 +295,21 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     policy: eventPolicy,
   },
   {
+    eventType: "stripe-invoice-paid",
+    payload: {
+      deliveryId: "delivery-stripe",
+      event: { id: "evt_stripe" },
+      invoice: { id: "in_stripe" },
+    },
+    trigger:
+      "Stripe event evt_stripe paid invoice in_stripe from the signed webhook snapshot (delivery delivery-stripe).",
+    notes: [
+      "The event below is the normalized, signed Stripe webhook snapshot, not live Stripe data.",
+      "No omitted invoice line-item pages were fetched; all line items embedded in the signed snapshot are included.",
+    ],
+    policy: eventPolicy,
+  },
+  {
     eventType: "webhook-received",
     payload: {
       receivedAt: "2026-08-01T12:00:04.000Z",
@@ -329,7 +361,7 @@ describe("workflow automation context lookup contracts", () => {
   });
 
   it.each(cases)(
-    "reconstructs the legacy $eventType trigger and settings",
+    "reconstructs the $eventType context and settings",
     ({ eventType, payload, trigger, notes, policy }) => {
       expect(
         workflowAutomationTrigger({ eventType, eventPayload: payload }),
@@ -348,7 +380,7 @@ describe("workflow automation context lookup contracts", () => {
       if (!restoredPayload) {
         throw new Error("Expected persisted event payload key order");
       }
-      const legacyContext = {
+      const originalContext = {
         workflowName: "workflow-context-test",
         eventType,
         trigger,
@@ -356,16 +388,27 @@ describe("workflow automation context lookup contracts", () => {
         event: payload,
       };
       const restoredContext = storedWorkflowAutomationContext({
-        workflowName: legacyContext.workflowName,
+        workflowName: originalContext.workflowName,
         eventType,
         eventPayload: restoredPayload,
       });
-      expect(workflowAutomationPrompt(restoredContext)).toBe(
-        workflowAutomationPrompt(legacyContext),
+      expect(workflowAutomationAgentPrompt(restoredContext)).toBe(
+        workflowAutomationAgentPrompt(originalContext),
       );
-      expect(workflowAutomationAppendSystemPrompt(restoredContext)).toBe(
-        workflowAutomationAppendSystemPrompt(legacyContext),
+      expect(workflowAutomationDisplayMessage(restoredContext)).toBe(
+        workflowAutomationDisplayMessage(originalContext),
       );
+
+      const rolloutPayload = reverseObjectKeys({
+        ...persistedWorkflowAutomationEventPayload(payload),
+        __vm0UserFriendlyAutomationMessageV1: true,
+      });
+      if (!isRecord(rolloutPayload)) {
+        throw new Error("Expected rollout event payload to be an object");
+      }
+      expect(
+        restoredWorkflowAutomationEventPayload(rolloutPayload),
+      ).toStrictEqual(payload);
     },
   );
 

@@ -197,6 +197,8 @@ impl MitmProxy {
             addon_dir: self.config.addon_dir.clone(),
             usage_state: Arc::clone(&self.usage_flush_state),
             request_lock: Arc::clone(&self.jsonl_flush_request_lock),
+            #[cfg(test)]
+            request_lock_poll_tx: None,
         }
     }
 
@@ -394,9 +396,10 @@ impl MitmProxy {
 impl MitmProxy {
     /// Create a noop proxy for testing. No real process is spawned.
     ///
-    /// `stop()` already handles `child: None` (returns immediately),
-    /// and `begin_restart()` is never triggered because the test holds
-    /// the crash channel sender and never sends on it.
+    /// `stop()` already handles `child: None` (returns immediately).
+    /// `begin_restart()` returns parameters whose spawn path fails
+    /// deterministically because there is no runtime owner, allowing tests
+    /// to exercise restart failure handling without starting a process.
     pub fn noop() -> (Self, mpsc::Receiver<()>) {
         let (crash_tx, crash_rx) = mpsc::channel(1);
         (
@@ -561,16 +564,9 @@ async fn spawn_mitmdump(
         .process_group(0);
     cmd.kill_on_drop(true);
 
-    // SAFETY: `set_pdeathsig` calls `prctl(PR_SET_PDEATHSIG)` which is
-    // async-signal-safe. This covers the direct PyInstaller bootloader; its
-    // forked application child is covered by managed process-group shutdown
-    // and marker-based reconciliation.
-    unsafe {
-        cmd.pre_exec(|| {
-            nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
-                .map_err(std::io::Error::from)
-        });
-    }
+    // This covers the direct PyInstaller bootloader; managed process-group
+    // shutdown and marker reconciliation cover its forked application child.
+    crate::parent_death::configure_parent_death_signal(&mut cmd);
 
     info!(port, bin = %config.mitmdump_bin.display(), "starting mitmdump");
 
@@ -1132,6 +1128,9 @@ exit 42
             "body_limits.py",
             "builtin_firewall_cache.py",
             "flow_metadata_keys.py",
+            "generated/__init__.py",
+            "generated/model_usage.py",
+            "generated/public_destination_policy.py",
             "matching.py",
             "mitmproxy_compat.py",
             "registry.py",

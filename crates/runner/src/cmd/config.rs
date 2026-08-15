@@ -188,12 +188,7 @@ mod tests {
     ) {
         let snapshot = rootfs.snapshot(snapshot_hash);
         tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
-        for path in [
-            snapshot.snapshot_bin(),
-            snapshot.memory_bin(),
-            snapshot.cow_img(),
-            snapshot.cow_bitmap(),
-        ] {
+        for path in snapshot.required_artifacts() {
             tokio::fs::write(path, b"snapshot").await.unwrap();
         }
     }
@@ -373,7 +368,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_config_writes_config_for_complete_snapshot() {
+    async fn run_config_writes_config_and_refreshes_image_mtimes() {
+        use std::fs::FileTimes;
+        use std::time::{Duration, SystemTime};
+
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let args = args_with_valid_image_hashes();
@@ -385,8 +383,30 @@ mod tests {
         let snapshot_hash = args.snapshot_hash[0].clone();
         let rootfs = write_rootfs(&home, &rootfs_hash).await;
         write_complete_snapshot(&rootfs, &snapshot_hash).await;
+        let snapshot = rootfs.snapshot(&snapshot_hash);
+        let old_mtime = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        for path in [rootfs.dir(), snapshot.dir()] {
+            std::fs::File::open(path)
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(old_mtime))
+                .unwrap();
+        }
 
         run_config_with_home(args, home).await.unwrap();
+
+        let rootfs_mtime = std::fs::metadata(rootfs.dir()).unwrap().modified().unwrap();
+        assert!(
+            rootfs_mtime > old_mtime,
+            "runner config should refresh the selected rootfs mtime"
+        );
+        let snapshot_mtime = std::fs::metadata(snapshot.dir())
+            .unwrap()
+            .modified()
+            .unwrap();
+        assert!(
+            snapshot_mtime > old_mtime,
+            "runner config should refresh the selected snapshot mtime"
+        );
 
         let config_content = tokio::fs::read_to_string(config_path).await.unwrap();
         let runner_config: RunnerConfig = serde_yaml_ng::from_str(&config_content).unwrap();

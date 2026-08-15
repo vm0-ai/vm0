@@ -12,18 +12,19 @@ import {
   Plugin,
   PluginKey,
   NodeSelection,
+  Selection,
   type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
-import { createCompositionGate, type CompositionGate } from "@vm0/ui";
+import { createCompositionGate, type CompositionGate } from "@okouai/ui";
 import {
   generationTemplateRequestSchema,
   type GenerationTemplateRequest,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef, resetSignal } from "../utils.ts";
@@ -35,6 +36,7 @@ import {
   type ComposerFeedbackSignals,
   type FeedbackItem,
 } from "./chat-feedback.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   findActiveChatThreadSuggestionRange,
   serializeChatThreadMention,
@@ -79,6 +81,12 @@ import {
 import { createComposerWorkflows } from "./composer-workflows.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
+import { videoTemplateOptionsEnabled$ } from "../external/feature-switch.ts";
+import {
+  videoTemplateSettingsText,
+  videoTemplateSpec,
+  type VideoTemplateSpec,
+} from "./video-template-spec.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -162,16 +170,6 @@ function composerPlaceholder(): string {
   });
 }
 
-function isIOS(): boolean {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
-}
-
 interface WorkflowHighlightStorage {
   workflowNames: readonly string[];
 }
@@ -211,6 +209,10 @@ export interface WorkflowComposerSignals {
     void,
     [GenerationTemplateRequest, ComposerTemplateAttachment]
   >;
+  readonly updateTemplateAt$: Command<
+    void,
+    [number, GenerationTemplateRequest, ComposerTemplateAttachment]
+  >;
   readonly readSelectedTemplate$: Command<
     GenerationTemplateRequest | undefined,
     []
@@ -234,6 +236,7 @@ export type ComposerTemplateAttachmentType =
   | "presentation"
   | "illustration"
   | "video"
+  | "avatar"
   | "workflow"
   | "website";
 
@@ -291,6 +294,36 @@ const COMPOSER_INLINE_REFERENCE_CLASS =
   "data-[selected]:ring-1 data-[selected]:ring-inset " +
   "data-[selected]:ring-orange-500/40 dark:data-[selected]:bg-orange-400/20 " +
   "dark:data-[selected]:ring-orange-300/40";
+
+/**
+ * Same surface as COMPOSER_INLINE_REFERENCE_CLASS with the padding and hover
+ * moved onto the zones below, so each half of a split chip reacts on its own.
+ */
+const INLINE_TEMPLATE_CHIP_CLASS =
+  "relative -top-px mx-0.5 inline-flex h-7 max-w-full select-none items-center " +
+  "overflow-hidden whitespace-nowrap rounded-md bg-orange-500/10 align-middle " +
+  "text-[13px] font-medium text-orange-600 transition-colors " +
+  "dark:bg-orange-400/15 dark:text-orange-300 data-[selected]:bg-orange-500/15 " +
+  "data-[selected]:ring-1 data-[selected]:ring-inset " +
+  "data-[selected]:ring-orange-500/40 dark:data-[selected]:bg-orange-400/20 " +
+  "dark:data-[selected]:ring-orange-300/40";
+
+const INLINE_TEMPLATE_NAME_ZONE_CLASS =
+  "flex h-full min-w-0 items-center gap-1.5 px-2 text-orange-600 " +
+  "transition-colors dark:text-orange-300 " +
+  "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-1 " +
+  "focus-visible:ring-inset focus-visible:ring-orange-500/40 " +
+  "dark:hover:bg-orange-400/20 dark:focus-visible:ring-orange-300/40";
+
+const INLINE_TEMPLATE_ZONE_CLASS =
+  "h-full shrink-0 items-center gap-1 border-l border-orange-500/25 " +
+  "text-[12px] font-normal text-orange-600/75 transition-colors " +
+  "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-1 " +
+  "focus-visible:ring-inset focus-visible:ring-orange-500/40 " +
+  "dark:border-orange-300/25 dark:text-orange-300/75 " +
+  "dark:hover:bg-orange-400/20 dark:focus-visible:ring-orange-300/40";
+
+const INLINE_TEMPLATE_SPEC_ZONE_CLASS = `flex pl-2 pr-1.5 ${INLINE_TEMPLATE_ZONE_CLASS}`;
 
 interface ChatThreadMentionAttributes {
   readonly threadId: string;
@@ -407,10 +440,43 @@ interface FeedbackItemNodeAttributes {
   readonly quote: string;
   readonly showDivider: boolean;
   readonly fill: boolean;
+  readonly eventId: string | null;
+  readonly rangeStart: number | null;
+  readonly rangeEnd: number | null;
   readonly sourceType: "mail" | null;
   readonly sourceId: string | null;
   readonly sourceStatus: "draft" | "sent" | null;
   readonly sourceSentId: string | null;
+}
+
+interface FeedbackItemLocationAttributes {
+  readonly eventId: string | null;
+  readonly rangeStart: number | null;
+  readonly rangeEnd: number | null;
+}
+
+function feedbackItemLocationAttributes(
+  node: ProseMirrorNode,
+): FeedbackItemLocationAttributes {
+  const eventId: unknown = node.attrs.eventId;
+  const rangeStart: unknown = node.attrs.rangeStart;
+  const rangeEnd: unknown = node.attrs.rangeEnd;
+  if (eventId === null && rangeStart === null && rangeEnd === null) {
+    return { eventId, rangeStart, rangeEnd };
+  }
+  if (
+    typeof eventId !== "string" ||
+    eventId.length === 0 ||
+    typeof rangeStart !== "number" ||
+    !Number.isInteger(rangeStart) ||
+    rangeStart < 0 ||
+    typeof rangeEnd !== "number" ||
+    !Number.isInteger(rangeEnd) ||
+    rangeEnd <= rangeStart
+  ) {
+    throw new Error("Feedback item node attributes are invalid");
+  }
+  return { eventId, rangeStart, rangeEnd };
 }
 
 function feedbackItemNodeAttributes(
@@ -420,6 +486,7 @@ function feedbackItemNodeAttributes(
   const quote: unknown = node.attrs.quote;
   const showDivider: unknown = node.attrs.showDivider;
   const fill: unknown = node.attrs.fill;
+  const location = feedbackItemLocationAttributes(node);
   const sourceType: unknown = node.attrs.sourceType;
   const sourceId: unknown = node.attrs.sourceId;
   const sourceStatus: unknown = node.attrs.sourceStatus;
@@ -446,6 +513,7 @@ function feedbackItemNodeAttributes(
     quote,
     showDivider,
     fill,
+    ...location,
     sourceType,
     sourceId,
     sourceStatus,
@@ -546,8 +614,10 @@ function createFeedbackItemNodeView(
   }
   function render(nextNode: ProseMirrorNode): void {
     const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
-    dom.className = `flex flex-col gap-1.5 pb-1.5 pt-1.5${
-      showDivider ? " border-t border-dashed border-border/60" : ""
+    // The top padding is breathing room for the dashed divider, so only the
+    // items that draw one get it. The first item keeps the editor's own pt-4.
+    dom.className = `flex flex-col gap-1.5 pb-1.5${
+      showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
     }`;
     noteDom.className = `relative${fill ? " min-h-[96px]" : ""}`;
     placeholderDom.hidden = nodeText(nextNode).length > 0;
@@ -605,6 +675,7 @@ function templateAttachmentNodeAttributes(
     (type !== "presentation" &&
       type !== "illustration" &&
       type !== "video" &&
+      type !== "avatar" &&
       type !== "workflow" &&
       type !== "website") ||
     typeof title !== "string" ||
@@ -723,6 +794,11 @@ function templateAttachmentTypeLabel(
   if (type === "video") {
     return i18n.t(($) => {
       return $.chat.templates.categories.video;
+    });
+  }
+  if (type === "avatar") {
+    return i18n.t(($) => {
+      return $.artifacts.templates.avatar;
     });
   }
   if (type === "website") {
@@ -853,30 +929,77 @@ function createTemplateAttachmentNodeView(
   };
 }
 
+interface InlineTemplateNodeActions {
+  readonly openTemplate: (category: string) => void;
+  readonly openOptions: (anchor: DOMRect) => void;
+  /** Read per render so a chip picks the switch up on its next update. */
+  readonly optionsEnabled: () => boolean;
+}
+
+function inlineTemplateSpec(node: ProseMirrorNode): VideoTemplateSpec | null {
+  const parsed = generationTemplateRequestSchema.safeParse(node.attrs.template);
+  return parsed.success ? videoTemplateSpec(parsed.data) : null;
+}
+
+function createInlineTemplateSpecZone(): {
+  readonly zone: HTMLButtonElement;
+  readonly render: (spec: VideoTemplateSpec) => void;
+} {
+  const zone = document.createElement("button");
+  zone.type = "button";
+  zone.className = INLINE_TEMPLATE_SPEC_ZONE_CLASS;
+  // Everything after the duration is dropped on narrow viewports so the chip
+  // stays readable inside a prompt sentence.
+  const core = document.createElement("span");
+  const rest = document.createElement("span");
+  rest.className = "hidden sm:inline";
+  const chevron = createComposerIcon(11, 1.7, ["M6 9l6 6 6 -6"]);
+  chevron.setAttribute("class", "shrink-0 opacity-70");
+  zone.append(core, rest, chevron);
+  return {
+    zone,
+    render(spec) {
+      core.textContent = spec.core.join(" \u00b7 ");
+      rest.textContent = spec.rest
+        .map((segment) => {
+          return ` \u00b7 ${segment}`;
+        })
+        .join("");
+      zone.setAttribute(
+        "aria-label",
+        i18n.t(
+          ($) => {
+            return $.chat.templates.videoOptionsLabel;
+          },
+          { spec: videoTemplateSettingsText(spec) },
+        ),
+      );
+    },
+  };
+}
+
 function createInlineTemplateNodeView(
   node: ProseMirrorNode,
-  selectAndOpenTemplate: (category: string) => void,
+  actions: InlineTemplateNodeActions,
   localizedUi: Set<() => void>,
 ): NodeView {
   const dom = document.createElement("span");
   dom.dataset.composerInlineTemplate = "";
-  dom.className = COMPOSER_INLINE_REFERENCE_CLASS;
+  dom.className = INLINE_TEMPLATE_CHIP_CLASS;
   dom.contentEditable = "false";
   dom.style.outline = "none";
   dom.style.userSelect = "none";
 
   const openButton = document.createElement("button");
   openButton.type = "button";
-  openButton.className =
-    "flex h-full min-w-0 items-center gap-1.5 rounded-md text-orange-600 " +
-    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-orange-500/40 " +
-    "dark:text-orange-300 dark:focus-visible:ring-orange-300/40";
+  openButton.className = INLINE_TEMPLATE_NAME_ZONE_CLASS;
+  // Mirrors Lucide's SwatchBook, which the composer template picker button and
+  // sent-message template chips also use.
   const icon = createComposerIcon(13, 1.7, [
-    "M4 4m-2 0a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2z",
-    "M4 14m-2 0a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2z",
-    "M16 14l6 0",
-    "M16 18l6 0",
-    "M16 22l6 0",
+    "M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z",
+    "M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7",
+    "M 7 17h.01",
+    "m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8",
   ]);
   icon.setAttribute("class", "shrink-0");
   const title = document.createElement("span");
@@ -885,26 +1008,47 @@ function createInlineTemplateNodeView(
     "dark:text-orange-300";
   openButton.append(icon, title);
   dom.append(openButton);
+  const spec = createInlineTemplateSpecZone();
 
   let currentNode = node;
-  function localize(): void {
-    openButton.setAttribute(
-      "aria-label",
-      templateAttachmentPreviewLabel(
-        templateAttachmentNodeAttributes(currentNode),
-      ),
-    );
-  }
   function render(nextNode: ProseMirrorNode): void {
     const attachment = templateAttachmentNodeAttributes(nextNode);
     title.textContent = attachment.title;
-    localize();
+    openButton.setAttribute(
+      "aria-label",
+      templateAttachmentPreviewLabel(attachment),
+    );
+    const nextSpec = actions.optionsEnabled()
+      ? inlineTemplateSpec(nextNode)
+      : null;
+    if (nextSpec) {
+      spec.render(nextSpec);
+      if (spec.zone.parentNode === null) {
+        dom.append(spec.zone);
+      }
+    } else {
+      spec.zone.remove();
+    }
+  }
+  // The zone labels are localized, so a locale switch has to re-render the
+  // chip rather than only refresh its labels.
+  function localize(): void {
+    render(currentNode);
   }
   openButton.addEventListener("mousedown", (event) => {
     event.preventDefault();
-    selectAndOpenTemplate(
+  });
+  openButton.addEventListener("click", () => {
+    actions.openTemplate(
       templateAttachmentNodeAttributes(currentNode).category,
     );
+  });
+  spec.zone.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  spec.zone.addEventListener("click", () => {
+    // Anchored to the zone, so the popover opens under the words it edits.
+    actions.openOptions(spec.zone.getBoundingClientRect());
   });
   localizedUi.add(localize);
   render(currentNode);
@@ -951,6 +1095,40 @@ function feedbackNoteFromNode(node: ProseMirrorNode): string {
   return nodeText(node);
 }
 
+function feedbackItemFromNode(node: ProseMirrorNode): FeedbackItem {
+  const attributes = feedbackItemNodeAttributes(node);
+  return {
+    id: attributes.feedbackId,
+    quote: attributes.quote,
+    note: feedbackNoteFromNode(node),
+    ...(attributes.eventId !== null &&
+    attributes.rangeStart !== null &&
+    attributes.rangeEnd !== null
+      ? {
+          eventId: attributes.eventId,
+          range: {
+            start: attributes.rangeStart,
+            end: attributes.rangeEnd,
+          },
+        }
+      : {}),
+    ...(attributes.sourceType === "mail" &&
+    attributes.sourceId !== null &&
+    attributes.sourceStatus !== null
+      ? {
+          source: {
+            type: attributes.sourceType,
+            id: attributes.sourceId,
+            status: attributes.sourceStatus,
+            ...(attributes.sourceSentId !== null
+              ? { sentId: attributes.sourceSentId }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
 function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
   return editor.schema.nodeFromJSON({
     type: FEEDBACK_ITEM_NODE_NAME,
@@ -959,6 +1137,9 @@ function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
       quote: item.quote,
       showDivider: false,
       fill: false,
+      eventId: item.eventId ?? null,
+      rangeStart: item.range?.start ?? null,
+      rangeEnd: item.range?.end ?? null,
       sourceType: item.source?.type ?? null,
       sourceId: item.source?.id ?? null,
       sourceStatus: item.source?.status ?? null,
@@ -1053,26 +1234,7 @@ function feedbackItemsFromWorkflowComposer(
     if (node.type.name !== FEEDBACK_ITEM_NODE_NAME) {
       continue;
     }
-    const attributes = feedbackItemNodeAttributes(node);
-    items.push({
-      id: attributes.feedbackId,
-      quote: attributes.quote,
-      note: feedbackNoteFromNode(node),
-      ...(attributes.sourceType === "mail" &&
-      attributes.sourceId !== null &&
-      attributes.sourceStatus !== null
-        ? {
-            source: {
-              type: attributes.sourceType,
-              id: attributes.sourceId,
-              status: attributes.sourceStatus,
-              ...(attributes.sourceSentId !== null
-                ? { sentId: attributes.sourceSentId }
-                : {}),
-            },
-          }
-        : {}),
-    });
+    items.push(feedbackItemFromNode(node));
   }
   return items;
 }
@@ -1115,6 +1277,7 @@ function isComposerTemplateAttachmentType(
     value === "presentation" ||
     value === "illustration" ||
     value === "video" ||
+    value === "avatar" ||
     value === "workflow" ||
     value === "website"
   );
@@ -1284,26 +1447,7 @@ function workflowComposerDocToString(editor: Editor): string {
     }
     if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
       flushTextBlocks();
-      const attributes = feedbackItemNodeAttributes(node);
-      feedbackItems.push({
-        id: attributes.feedbackId,
-        quote: attributes.quote,
-        note: feedbackNoteFromNode(node),
-        ...(attributes.sourceType === "mail" &&
-        attributes.sourceId !== null &&
-        attributes.sourceStatus !== null
-          ? {
-              source: {
-                type: attributes.sourceType,
-                id: attributes.sourceId,
-                status: attributes.sourceStatus,
-                ...(attributes.sourceSentId !== null
-                  ? { sentId: attributes.sourceSentId }
-                  : {}),
-              },
-            }
-          : {}),
-      });
+      feedbackItems.push(feedbackItemFromNode(node));
       continue;
     }
     flushFeedbackItems();
@@ -1426,6 +1570,9 @@ interface WorkflowComposerRuntime {
   blur(): void;
   templateAttachment: ComposerTemplateAttachment | undefined;
   openTemplate(category: string): void;
+  /** Resolved when the lifecycle bridge mounts; false until then. */
+  videoOptionsEnabled: boolean;
+  openTemplateOptions(anchor: DOMRect, position: number): void;
   removeTemplate(): void;
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
@@ -1535,19 +1682,35 @@ function createInlineTemplateNode(
     },
     addNodeView() {
       return ({ node, getPos, editor }) => {
+        const selectSelf = (): boolean => {
+          const position = getPos();
+          if (typeof position !== "number") {
+            return false;
+          }
+          editor.view.dispatch(
+            editor.state.tr.setSelection(
+              NodeSelection.create(editor.state.doc, position),
+            ),
+          );
+          return true;
+        };
         return createInlineTemplateNodeView(
           node,
-          (category) => {
-            const position = getPos();
-            if (typeof position !== "number") {
-              return;
-            }
-            editor.view.dispatch(
-              editor.state.tr.setSelection(
-                NodeSelection.create(editor.state.doc, position),
-              ),
-            );
-            runtime.openTemplate(category);
+          {
+            openTemplate: (category) => {
+              if (selectSelf()) {
+                runtime.openTemplate(category);
+              }
+            },
+            openOptions: (anchor) => {
+              const position = getPos();
+              if (typeof position === "number" && selectSelf()) {
+                runtime.openTemplateOptions(anchor, position);
+              }
+            },
+            optionsEnabled: () => {
+              return runtime.videoOptionsEnabled;
+            },
           },
           runtime.localizedUi,
         );
@@ -1572,6 +1735,9 @@ function createFeedbackItemNode(
         quote: { default: "" },
         showDivider: { default: false },
         fill: { default: false },
+        eventId: { default: null },
+        rangeStart: { default: null },
+        rangeEnd: { default: null },
         sourceType: { default: null },
         sourceId: { default: null },
         sourceStatus: { default: null },
@@ -1674,17 +1840,13 @@ function workflowComposerDocumentForValue(
 function workflowComposerDocumentForUserMessage(
   editor: Editor,
   value: Parameters<DraftInputSyncTarget["syncUserMessage"]>[0],
-  inlineTemplatesEnabled: boolean,
 ): ProseMirrorNode | null {
-  const document = messageDocumentToEditorDoc(value, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
+  const document = messageDocumentToEditorDoc(value);
   return document ? editor.schema.nodeFromJSON(document) : null;
 }
 
 function workflowComposerDocumentForDraft(
   editor: Editor,
-  inlineTemplatesEnabled: boolean,
   draft: {
     readonly input: string;
     readonly userMessage:
@@ -1697,11 +1859,7 @@ function workflowComposerDocumentForDraft(
     return editor.state.doc;
   }
   const userMessageDocument = draft.userMessage
-    ? workflowComposerDocumentForUserMessage(
-        editor,
-        draft.userMessage,
-        inlineTemplatesEnabled,
-      )
+    ? workflowComposerDocumentForUserMessage(editor, draft.userMessage)
     : null;
   const restoredEditorDocument = draft.editorDocument
     ? editor.schema.nodeFromJSON(draft.editorDocument.toEditorDocument())
@@ -1873,7 +2031,6 @@ interface MountEditorOptions {
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
   syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
-  inlineTemplatesEnabled: boolean;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }
@@ -1881,6 +2038,14 @@ interface MountEditorOptions {
 interface WorkflowComposerMountOptions {
   readonly autoFocus?: boolean;
   readonly singleLineOnMobile?: boolean;
+}
+
+function focusMountedEditorAtEnd(editor: Editor): void {
+  editor.view.dispatch(
+    editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)),
+  );
+  editor.view.focus();
+  editor.commands.scrollIntoView();
 }
 
 function createMountEditorCommand({
@@ -1894,7 +2059,6 @@ function createMountEditorCommand({
   compositionGate,
   syncWorkflowNames$,
   syncAgentMentionAvatars$,
-  inlineTemplatesEnabled,
   autoFocus,
   singleLineOnMobile,
 }: MountEditorOptions) {
@@ -1934,7 +2098,7 @@ function createMountEditorCommand({
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
-        workflowComposerDocumentForDraft(editor, inlineTemplatesEnabled, {
+        workflowComposerDocumentForDraft(editor, {
           input: get(draft.input$),
           userMessage: set(draft.takeRestoredUserMessage$),
           editorDocument: set(draft.readEditorDocument$),
@@ -1970,7 +2134,6 @@ function createMountEditorCommand({
           const document = workflowComposerDocumentForUserMessage(
             editor,
             value,
-            inlineTemplatesEnabled,
           );
           if (!document) {
             return;
@@ -1993,8 +2156,8 @@ function createMountEditorCommand({
         mountSignal: signal,
       };
       set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
-      if (autoFocus && !isIOS()) {
-        editor.commands.focus("end");
+      if (autoFocus && !isMobileTextInputDevice()) {
+        focusMountedEditorAtEnd(editor);
       }
       signal.addEventListener("abort", () => {
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
@@ -2221,7 +2384,7 @@ function inlineTemplateNode(
   return editor.schema.nodeFromJSON({
     type: INLINE_TEMPLATE_NODE_NAME,
     attrs: {
-      templateType: request.type,
+      templateType: attachment.type,
       template: request,
       title: attachment.title,
       category: attachment.category,
@@ -2260,6 +2423,39 @@ function createInsertTemplateCommand(editor: Editor) {
   );
 }
 
+/**
+ * Rewrites one inline template in place, addressed by position rather than by
+ * the editor selection. setNodeMarkup maps a NodeSelection to a TextSelection,
+ * so a selection-based update only works once; every later edit would fall
+ * through to inserting another chip.
+ */
+function createUpdateTemplateAtCommand(editor: Editor) {
+  return command(
+    (
+      _context,
+      position: number,
+      request: GenerationTemplateRequest,
+      attachment: ComposerTemplateAttachment,
+    ) => {
+      const target = editor.state.doc.nodeAt(position);
+      if (target?.type.name !== INLINE_TEMPLATE_NODE_NAME) {
+        return;
+      }
+      const node = inlineTemplateNode(editor, request, attachment);
+      const transaction = editor.state.tr.setNodeMarkup(
+        position,
+        undefined,
+        node.attrs,
+      );
+      editor.view.dispatch(
+        transaction.setSelection(
+          NodeSelection.create(transaction.doc, position),
+        ),
+      );
+    },
+  );
+}
+
 function createPrepareTemplateInsertionCommand(editor: Editor) {
   return command(() => {
     const { selection } = editor.state;
@@ -2291,15 +2487,13 @@ function createReadSelectedTemplateCommand(editor: Editor) {
 function createTemplateInsertionCommands(editor: Editor) {
   return {
     insertTemplate$: createInsertTemplateCommand(editor),
+    updateTemplateAt$: createUpdateTemplateAtCommand(editor),
     readSelectedTemplate$: createReadSelectedTemplateCommand(editor),
     prepareTemplateInsertion$: createPrepareTemplateInsertionCommand(editor),
   };
 }
 
-function createInsertUserMessageCommand(
-  editor: Editor,
-  inlineTemplatesEnabled: boolean,
-) {
+function createInsertUserMessageCommand(editor: Editor) {
   return command((_context, value: UserMessageDocument) => {
     const insertableParts = value.parts.filter((part) => {
       return (
@@ -2307,19 +2501,16 @@ function createInsertUserMessageCommand(
         part.type === "chat_thread" ||
         part.type === "agent" ||
         part.type === "feedback" ||
-        (inlineTemplatesEnabled && part.type === "template")
+        part.type === "template"
       );
     });
     if (insertableParts.length === 0) {
       return;
     }
-    const restored = messageDocumentToEditorDoc(
-      {
-        version: 1,
-        parts: insertableParts,
-      },
-      { inlineTemplates: inlineTemplatesEnabled },
-    );
+    const restored = messageDocumentToEditorDoc({
+      version: 1,
+      parts: insertableParts,
+    });
     if (!restored?.content) {
       return;
     }
@@ -2366,6 +2557,8 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     blur(): void {},
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
+    videoOptionsEnabled: false,
+    openTemplateOptions(_anchor: DOMRect, _position: number): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
@@ -2388,7 +2581,7 @@ function createTemplateAttachmentControls(
     runtime.templateRemoved();
   };
   const setLifecycleRef$ = onRef(
-    command(({ set }, element: HTMLButtonElement, signal: AbortSignal) => {
+    command(({ get, set }, element: HTMLButtonElement, signal: AbortSignal) => {
       const attachment = templateAttachmentFromLifecycleElement(element);
       runtime.templateAttachment = attachment;
       set(activeState$, attachment !== undefined);
@@ -2398,6 +2591,18 @@ function createTemplateAttachmentControls(
         element.dataset.templateCategory = category;
         element.click();
       };
+      runtime.videoOptionsEnabled = get(videoTemplateOptionsEnabled$);
+      runtime.openTemplateOptions = (anchor, position) => {
+        element.dataset.templateAction = "options";
+        element.dataset.templateAnchor = [
+          anchor.left,
+          anchor.top,
+          anchor.width,
+          anchor.height,
+        ].join(",");
+        element.dataset.templatePosition = String(position);
+        element.click();
+      };
       runtime.templateRemoved = () => {
         element.dataset.templateAction = "remove";
         element.click();
@@ -2405,6 +2610,7 @@ function createTemplateAttachmentControls(
       signal.addEventListener("abort", () => {
         runtime.templateAttachment = undefined;
         runtime.openTemplate = () => {};
+        runtime.openTemplateOptions = () => {};
         runtime.templateRemoved = () => {};
         set(activeState$, false);
         setTemplateAttachmentNode(editor, undefined);
@@ -2422,7 +2628,6 @@ export function createWorkflowComposerSignals<
 >(
   draft: DraftSignals,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
-  inlineTemplatesEnabled = false,
   mountOptions: WorkflowComposerMountOptions = {},
   feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
 ): WorkflowComposerSignals {
@@ -2496,7 +2701,6 @@ export function createWorkflowComposerSignals<
     compositionGate,
     syncWorkflowNames$,
     syncAgentMentionAvatars$,
-    inlineTemplatesEnabled,
     autoFocus: mountOptions.autoFocus ?? false,
     singleLineOnMobile: mountOptions.singleLineOnMobile ?? false,
   });
@@ -2507,10 +2711,7 @@ export function createWorkflowComposerSignals<
   );
   const textCommands = createInsertTextCommands(editor);
   const templateCommands = createTemplateInsertionCommands(editor);
-  const insertUserMessage$ = createInsertUserMessageCommand(
-    editor,
-    inlineTemplatesEnabled,
-  );
+  const insertUserMessage$ = createInsertUserMessageCommand(editor);
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,
     compositionGate,

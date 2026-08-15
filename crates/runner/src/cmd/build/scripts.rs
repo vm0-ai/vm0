@@ -56,15 +56,9 @@ pub(super) fn rootfs_script_command(script: &Path) -> tokio::process::Command {
     cmd.process_group(0);
     cmd.kill_on_drop(true);
 
-    // SAFETY: `set_pdeathsig` calls `prctl(PR_SET_PDEATHSIG)`, which is
-    // async-signal-safe. It narrows the window where a parent runner crash
-    // releases flocks while a rootfs script keeps mutating staging files.
-    unsafe {
-        cmd.pre_exec(|| {
-            nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
-                .map_err(std::io::Error::from)
-        });
-    }
+    // Prevent scripts from continuing to mutate staging files after a runner
+    // crash releases the associated locks.
+    crate::parent_death::configure_parent_death_signal(&mut cmd);
 
     cmd
 }
@@ -590,6 +584,45 @@ wait
             VERIFY_SCRIPT.contains(r#"check_required_executable "/usr/bin/ffmpeg" "ffmpeg""#),
             "verify-rootfs.sh should verify ffmpeg is present in sandbox images"
         );
+    }
+
+    #[test]
+    fn template_installs_and_verifies_noto_fonts() {
+        for package in [
+            "fonts-noto-core",
+            "fonts-noto-cjk",
+            "fonts-noto-color-emoji",
+        ] {
+            assert!(
+                template_build_installs_apt_package(package),
+                "build-template.sh should install {package}"
+            );
+        }
+
+        for (path, name) in [
+            (
+                "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+                "Noto Sans",
+            ),
+            (
+                "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+                "Noto Sans Arabic",
+            ),
+            (
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "Noto Sans CJK",
+            ),
+            (
+                "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+                "Noto Color Emoji",
+            ),
+        ] {
+            let check = format!(r#"check_bin "{path}" "{name}""#);
+            assert!(
+                VERIFY_SCRIPT.contains(&check),
+                "verify-rootfs.sh should verify {name} is present in sandbox images"
+            );
+        }
     }
 
     #[test]

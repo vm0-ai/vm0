@@ -406,12 +406,14 @@ export async function pollSlockDeviceAuth(args: {
   };
 }
 
-export async function refreshSlockToken(args: {
-  readonly refreshToken: string;
-  readonly signal: AbortSignal;
-}): Promise<OAuthRefreshResult> {
+export async function refreshSlockToken(
+  args: {
+    readonly refreshToken: string;
+  },
+  signal: AbortSignal,
+): Promise<OAuthRefreshResult> {
   const response = await fetch(SLOCK_REFRESH_TOKEN_URL, {
-    signal: args.signal,
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/json",

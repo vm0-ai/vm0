@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
 
-import { getHostedSiteDeployments } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { getHostedSiteDeployments } from "../../../lib/api/domains/zero-host";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface VersionsOptions {
   readonly json?: boolean;
@@ -22,11 +22,11 @@ export const versionsHostedSiteCommand = new Command()
     "after",
     `
 Examples:
-  List versions:     zero host versions my-product-demo
-  Machine readable:  zero host versions my-product-demo --json
+  List versions:     okou host versions my-product-demo
+  Machine readable:  okou host versions my-product-demo --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN and requires host:read
+  - Authenticates via OKOU_TOKEN and requires host:read
   - Requires hosted artifact versions to be enabled for the current user
   - The active marker identifies the version served by the site alias`,
   )
@@ -45,7 +45,7 @@ Notes:
           console.log(chalk.dim("No deployments found"));
           console.log(
             chalk.dim(
-              `Publish one with: zero host <dir> --site ${result.site}`,
+              `Publish one with: okou host <dir> --site ${result.site}`,
             ),
           );
           return;

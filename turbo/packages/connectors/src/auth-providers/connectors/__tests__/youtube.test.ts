@@ -111,17 +111,19 @@ describe("connector/providers/youtube", () => {
       });
       server.use(handler);
 
-      const result = await youtubeProvider.access.refresh({
-        authClient: {
-          ...testAuthClient,
-          clientId: "client-id",
-          clientSecret: "client-secret",
+      const result = await youtubeProvider.access.refresh(
+        {
+          authClient: {
+            ...testAuthClient,
+            clientId: "client-id",
+            clientSecret: "client-secret",
+          },
+          inputs: {
+            refreshToken: "refresh-token",
+          },
         },
-        inputs: {
-          refreshToken: "refresh-token",
-        },
-        signal: testRefreshSignal(),
-      });
+        testRefreshSignal(),
+      );
 
       expect(result).toEqual({
         outputs: {
@@ -139,17 +141,19 @@ describe("connector/providers/youtube", () => {
       });
       server.use(handler);
 
-      await youtubeProvider.revoke.revokeToken({
-        authClient: {
-          ...testAuthClient,
-          clientId: "client-id",
-          clientSecret: "client-secret",
+      await youtubeProvider.revoke.revokeToken(
+        {
+          authClient: {
+            ...testAuthClient,
+            clientId: "client-id",
+            clientSecret: "client-secret",
+          },
+          inputs: {
+            refreshToken: "youtube-refresh-token",
+          },
         },
-        inputs: {
-          refreshToken: "youtube-refresh-token",
-        },
-        signal: testRefreshSignal(),
-      });
+        testRefreshSignal(),
+      );
 
       expect(new URLSearchParams(requestBody).get("token")).toBe(
         "youtube-refresh-token",

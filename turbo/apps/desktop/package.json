@@ -1,9 +1,9 @@
 {
-  "name": "@vm0/desktop",
-  "version": "0.28.120",
+  "name": "@okouai/desktop",
+  "version": "0.38.25",
   "private": true,
   "productName": "Zero Computer Use",
-  "description": "Zero desktop shell",
+  "description": "Computer Use desktop shell",
   "main": "dist/bootstrap.js",
   "scripts": {
     "build": "pnpm build:native && pnpm build:electron && pnpm build:mcp-filesystem && pnpm build:renderer",
@@ -23,14 +23,14 @@
     "upload:sentry": "node scripts/upload-sentry-artifacts.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@modelcontextprotocol/server-filesystem": "2026.1.14",
     "@sentry/electron": "^7.13.0",
     "@sentry/react": "^10.50.0",
-    "@tabler/icons-react": "3.44.0",
-    "@vm0/api-contracts": "workspace:*",
+    "@okouai/api-contracts": "workspace:*",
     "ccstate": "^5.4.0",
     "ccstate-react": "^5.4.0",
+    "lucide-react": "1.30.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "update-electron-app": "3.2.0"
@@ -47,8 +47,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.1",
-    "@vm0/typescript-config": "workspace:*",
-    "electron": "42.3.3",
+    "@okouai/typescript-config": "workspace:*",
+    "electron": "42.5.1",
     "happy-dom": "^20.11.1",
     "oxlint": "^1.75.0",
     "tsup": "^8.5.1",

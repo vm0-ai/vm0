@@ -1,14 +1,14 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { Button } from "@okouai/ui";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
-  allConnectorCatalogItems$,
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
   connectFlowConnectorSlug$,
@@ -18,6 +18,7 @@ import {
   justConnectedSlugs$,
   pollingOAuthAuthCodeConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   directedAuthorizeSlug$,
@@ -29,7 +30,6 @@ import {
   isJustAuthorizedConnectorAgent,
   directedAuthorizeConnectModalKey$,
   setDirectedAuthorizeConnectModalKey$,
-  type DirectedAuthorizeConnectModalKey,
 } from "../../signals/connectors-page/directed-authorize-slug.ts";
 import {
   routeChatActionCallback$,
@@ -37,7 +37,7 @@ import {
 } from "../../signals/chat-page/action-callback.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../../signals/zero-page/agent-connector-authorizations.ts";
-import { IconCheck, IconLoader2 } from "@tabler/icons-react";
+import { Check, Loader2 } from "lucide-react";
 import { Vm0LogoLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { useTranslation } from "react-i18next";
@@ -63,7 +63,7 @@ function AuthorizeAction({
   if (isAuthorized) {
     return (
       <div className="inline-flex h-9 w-[140px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
-        <IconCheck size={16} />
+        <Check size={16} />
         {t(($) => {
           return $.connectors.card.authorized;
         })}
@@ -71,13 +71,13 @@ function AuthorizeAction({
     );
   }
   return (
-    <button
+    <Button
       type="button"
       disabled={isConnecting || disabled}
       onClick={onAuthorize}
-      className="inline-flex h-9 items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] px-4 text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
+      className="disabled:opacity-60"
     >
-      {isConnecting && <IconLoader2 size={14} className="animate-spin" />}
+      {isConnecting && <Loader2 size={14} className="animate-spin" />}
       {isConnecting
         ? t(($) => {
             return $.connectors.actions.connecting;
@@ -88,7 +88,7 @@ function AuthorizeAction({
             },
             { agent: agentName },
           )}
-    </button>
+    </Button>
   );
 }
 
@@ -114,9 +114,9 @@ function useDirectedAuthorizeParams(): {
 
 function useDirectedAuthorizeCatalogState(connectorSlug: ConnectorSlug | null) {
   const justConnected = useGet(justConnectedSlugs$);
-  const allLoadable = useLastLoadable(allConnectorCatalogItems$);
+  const allLoadable = useLastLoadable(connectorCatalogStatus$);
   const catalogLoaded = allLoadable.state === "hasData";
-  const allData = catalogLoaded ? allLoadable.data : [];
+  const allData = catalogLoaded ? allLoadable.data.connectors : [];
   const item = connectorSlug
     ? allData.find((connector) => {
         return connector.slug === connectorSlug;
@@ -186,18 +186,16 @@ function canAuthorizeConnector(
   return isConnected || (item ? item.authMethods.length > 0 : false);
 }
 
-function directedAuthorizeConnectModalOpen(
-  key: DirectedAuthorizeConnectModalKey | null,
-  args: {
-    readonly connectorSlug: ConnectorSlug | null;
-    readonly agentId: string | null;
-    readonly signal: AbortSignal;
-  },
+function useDirectedAuthorizeConnectModalOpen(
+  connectorSlug: ConnectorSlug | null,
+  agentId: string | null,
+  signal: AbortSignal,
 ): boolean {
+  const key = useGet(directedAuthorizeConnectModalKey$);
   return (
-    key?.connectorSlug === args.connectorSlug &&
-    key.agentId === args.agentId &&
-    key.signal === args.signal
+    key?.connectorSlug === connectorSlug &&
+    key.agentId === agentId &&
+    key.signal === signal
   );
 }
 
@@ -230,10 +228,7 @@ function DirectedAuthorizeCardContent({
         <div className="flex w-full flex-col gap-4">
           <div className="flex flex-col items-center gap-2.5">
             {isLoading ? (
-              <IconLoader2
-                size={20}
-                className="animate-spin text-muted-foreground"
-              />
+              <Loader2 size={20} className="animate-spin" />
             ) : (
               <>
                 <h1 className="text-lg font-medium text-foreground">
@@ -277,56 +272,54 @@ function DirectedAuthorizeCardContent({
   );
 }
 
-function runDirectedAuthorize(params: {
-  readonly canAuthorize: boolean;
-  readonly isConnected: boolean;
-  readonly item: PlatformConnectorCatalogStatusItem | undefined;
-  readonly connectorSlug: ConnectorSlug;
-  readonly connectorLabel: string;
-  readonly agentId: string;
-  readonly authMethod: PublicConnectorCatalogAuthMethodDetail | null;
-  readonly signal: AbortSignal;
-  readonly authorize: (
-    connectorSlug: ConnectorSlug,
-    agentId: string,
-    signal: AbortSignal,
-  ) => Promise<void>;
-  readonly connect: (
-    connectorSlug: ConnectorSlug,
-    method: PublicConnectorCatalogAuthMethodDetail,
-    options: {
-      readonly connectorLabel?: string;
-      readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
-      readonly agentId?: string;
-    },
-    signal: AbortSignal,
-  ) => Promise<boolean>;
-  readonly connectNoAuth: (
-    args: {
-      readonly connectorSlug: ConnectorSlug;
-      readonly authMethod: ConnectorAuthMethodId;
-      readonly options: {
+function runDirectedAuthorize(
+  params: {
+    readonly canAuthorize: boolean;
+    readonly isConnected: boolean;
+    readonly item: PlatformConnectorCatalogStatusItem | undefined;
+    readonly connectorSlug: ConnectorSlug;
+    readonly connectorLabel: string;
+    readonly agentId: string;
+    readonly authMethod: PublicConnectorCatalogAuthMethodDetail | null;
+    readonly authorize: (
+      connectorSlug: ConnectorSlug,
+      agentId: string,
+      signal: AbortSignal,
+    ) => Promise<void>;
+    readonly connect: (
+      connectorSlug: ConnectorSlug,
+      method: PublicConnectorCatalogAuthMethodDetail,
+      options: {
         readonly connectorLabel?: string;
+        readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
         readonly agentId?: string;
-      };
-    },
-    signal: AbortSignal,
-  ) => Promise<boolean>;
-  readonly openConnectModal: () => void;
-  readonly reloadAuthorization: () => void;
-  readonly onSuccess: () => void | Promise<void>;
-}): void {
+      },
+      signal: AbortSignal,
+    ) => Promise<boolean>;
+    readonly connectNoAuth: (
+      args: {
+        readonly connectorSlug: ConnectorSlug;
+        readonly authMethod: ConnectorAuthMethodId;
+        readonly options: {
+          readonly connectorLabel?: string;
+          readonly agentId?: string;
+        };
+      },
+      signal: AbortSignal,
+    ) => Promise<boolean>;
+    readonly openConnectModal: () => void;
+    readonly reloadAuthorization: () => void;
+    readonly onSuccess: () => void | Promise<void>;
+  },
+  signal: AbortSignal,
+): void {
   if (!params.canAuthorize) {
     return;
   }
   if (params.isConnected) {
     detach(
       (async () => {
-        await params.authorize(
-          params.connectorSlug,
-          params.agentId,
-          params.signal,
-        );
+        await params.authorize(params.connectorSlug, params.agentId, signal);
         await params.onSuccess();
       })(),
       Reason.DomCallback,
@@ -355,7 +348,7 @@ function runDirectedAuthorize(params: {
               connectorIcon: params.item.icon,
               agentId: params.agentId,
             },
-            params.signal,
+            signal,
           );
         } else if (noAuthMethod) {
           connected = await params.connectNoAuth(
@@ -367,7 +360,7 @@ function runDirectedAuthorize(params: {
                 agentId: params.agentId,
               },
             },
-            params.signal,
+            signal,
           );
         } else {
           return;
@@ -386,6 +379,38 @@ function runDirectedAuthorize(params: {
   }
 }
 
+function DirectedAuthorizeConnectModal({
+  open,
+  item,
+  agentId,
+  reloadAuthorization,
+  handleAuthorizeSuccess,
+  close,
+}: {
+  open: boolean;
+  item: PlatformConnectorCatalogStatusItem | null | undefined;
+  agentId: string;
+  reloadAuthorization: () => void;
+  handleAuthorizeSuccess: () => Promise<void>;
+  close: () => void;
+}) {
+  if (!open || !item) {
+    return null;
+  }
+
+  return (
+    <ConnectModal
+      item={item}
+      agentId={agentId}
+      onSuccess={async () => {
+        reloadAuthorization();
+        await handleAuthorizeSuccess();
+      }}
+      onClose={close}
+    />
+  );
+}
+
 function DirectedAuthorizeCard() {
   const params = useDirectedAuthorizeParams();
   const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
@@ -395,7 +420,6 @@ function DirectedAuthorizeCard() {
   const authorize = useSet(authorizeConnector$);
   const reloadAuthorization = useSet(reloadAgentConnectorAuthorizations$);
   const signal = useGet(pageSignal$);
-  const connectModalKey = useGet(directedAuthorizeConnectModalKey$);
   const setDirectedAuthorizeConnectModalKey = useSet(
     setDirectedAuthorizeConnectModalKey$,
   );
@@ -410,11 +434,11 @@ function DirectedAuthorizeCard() {
       connectorSlugForState,
       params?.agentId ?? null,
     );
-  const connectModalOpen = directedAuthorizeConnectModalOpen(connectModalKey, {
-    connectorSlug: connectorSlugForState,
-    agentId: params?.agentId ?? null,
+  const connectModalOpen = useDirectedAuthorizeConnectModalOpen(
+    connectorSlugForState,
+    params?.agentId ?? null,
     signal,
-  });
+  );
 
   if (!params) {
     return null;
@@ -449,24 +473,30 @@ function DirectedAuthorizeCard() {
   };
 
   const handleAuthorize = () => {
-    runDirectedAuthorize({
-      canAuthorize,
-      isConnected,
-      item,
-      connectorSlug,
-      connectorLabel,
-      agentId,
-      authMethod: selectedAuthMethod,
-      signal,
-      authorize,
-      connect,
-      connectNoAuth,
-      reloadAuthorization,
-      onSuccess: handleAuthorizeSuccess,
-      openConnectModal: () => {
-        setDirectedAuthorizeConnectModalKey({ connectorSlug, agentId, signal });
+    runDirectedAuthorize(
+      {
+        canAuthorize,
+        isConnected,
+        item,
+        connectorSlug,
+        connectorLabel,
+        agentId,
+        authMethod: selectedAuthMethod,
+        authorize,
+        connect,
+        connectNoAuth,
+        reloadAuthorization,
+        onSuccess: handleAuthorizeSuccess,
+        openConnectModal: () => {
+          setDirectedAuthorizeConnectModalKey({
+            connectorSlug,
+            agentId,
+            signal,
+          });
+        },
       },
-    });
+      signal,
+    );
   };
 
   return (
@@ -482,19 +512,16 @@ function DirectedAuthorizeCard() {
         canAuthorize={canAuthorize}
         onAuthorize={handleAuthorize}
       />
-      {connectModalOpen && (
-        <ConnectModal
-          selectedConnectorSlug={connectorSlug}
-          agentId={agentId}
-          onSuccess={async () => {
-            reloadAuthorization();
-            await handleAuthorizeSuccess();
-          }}
-          onClose={() => {
-            setDirectedAuthorizeConnectModalKey(null);
-          }}
-        />
-      )}
+      <DirectedAuthorizeConnectModal
+        open={connectModalOpen}
+        item={item}
+        agentId={agentId}
+        reloadAuthorization={reloadAuthorization}
+        handleAuthorizeSuccess={handleAuthorizeSuccess}
+        close={() => {
+          setDirectedAuthorizeConnectModalKey(null);
+        }}
+      />
     </>
   );
 }

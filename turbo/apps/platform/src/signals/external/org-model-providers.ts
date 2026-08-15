@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import type { UpsertModelProviderRequest } from "@vm0/api-contracts/contracts/model-providers";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import type { UpsertModelProviderRequest } from "@okouai/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 

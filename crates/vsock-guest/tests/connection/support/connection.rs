@@ -7,6 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use vsock_guest::{
+    handle_connection_with_test_dns_readiness_program,
     handle_connection_with_test_process_containment,
     handle_connection_with_test_process_containment_and_exec_drain_deadline,
 };
@@ -36,6 +37,14 @@ pub(crate) fn start_guest_connection_with_exec_drain_deadline(
             stream,
             exec_drain_deadline,
         )
+    })
+}
+
+pub(crate) fn start_guest_connection_with_dns_readiness_program(
+    program: std::path::PathBuf,
+) -> (GuestConnectionHandle, UnixStream) {
+    start_guest_connection_with_handler(move |stream| {
+        handle_connection_with_test_dns_readiness_program(stream, program)
     })
 }
 

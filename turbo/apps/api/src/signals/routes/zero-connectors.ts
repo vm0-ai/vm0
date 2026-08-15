@@ -3,15 +3,14 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthContinueContract,
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import type { PublicConnectorCatalogDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -23,8 +22,7 @@ import {
   providerUnavailable,
 } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
-import { nowDate } from "../../lib/time";
-import { db$, writeDb$ } from "../external/db";
+import { writeDb$ } from "../external/db";
 import {
   authorizeConnectedConnector$,
   connectorAgentAuthorizationRequested,
@@ -42,20 +40,15 @@ import {
 import {
   connectorActionResolver,
   type ConnectorActionMethodResolution,
-  type ConnectorSlugResolution,
 } from "../services/connector-action-resolver.service";
 import { isConnectorCatalogUnavailableError } from "../services/connector-catalog-reader.service";
-import { getConnectorOAuthAuthorizationUrl } from "../services/connector-oauth-state.service";
 import type { RouteEntry } from "../route-entry";
 import { settle } from "../utils";
 import {
   getConnectorOAuthCallbackUrlForMethod,
   getConnectorOpenIdCallbackOriginForMethod,
 } from "./connector-oauth-origin";
-import {
-  connectorOAuthRedirectResponse,
-  CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-} from "./connector-oauth-route-state";
+import { connectorOAuthStateExpiresAt } from "../../lib/connector-oauth-state";
 import {
   buildConnectorAuthCodeAuthUrlWithMethod,
   prepareConnectorAuthCodeStartWithMethod,
@@ -154,20 +147,7 @@ function connectorMethodResolutionError(
       return connectorUnavailable(args.connectorSlug);
     }
     case "missing_executable_capability": {
-      return internalServerError("Connector execution is not configured");
-    }
-  }
-}
-
-function connectorSlugResolutionError(
-  resolution: Exclude<ConnectorSlugResolution, { readonly ok: true }>,
-) {
-  switch (resolution.reason) {
-    case "unknown_connector": {
-      return notFound("Connector not found");
-    }
-    case "missing_executable_capability": {
-      return internalServerError("Connector execution is not configured");
+      return connectorUnavailable(args.connectorSlug);
     }
   }
 }
@@ -183,20 +163,11 @@ const getConnectorListInner$ = computed(async (get) => {
 const getConnectorBySlugInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorsBySlugContract.get));
-  const resolver = await get(connectorActionResolver());
-  const resolved = await resolver.resolveSlug({
-    connectorSlug: params.connectorSlug,
-    requireExecutable: false,
-  });
-  if (!resolved.ok) {
-    return connectorSlugResolutionError(resolved);
-  }
   const connector = await get(
     zeroConnectorBySlug({
       orgId: auth.orgId,
       userId: auth.userId,
-      connectorSlug: resolved.connectorSlug,
-      snapshot: resolved.snapshot,
+      connectorSlug: params.connectorSlug,
     }),
   );
   if (!connector) {
@@ -210,23 +181,12 @@ const deleteConnectorBySlugInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroConnectorsBySlugContract.delete));
-    const resolver = await get(connectorActionResolver());
-    signal.throwIfAborted();
-    const resolved = await resolver.resolveSlug({
-      connectorSlug: params.connectorSlug,
-      requireExecutable: false,
-    });
-    signal.throwIfAborted();
-    if (!resolved.ok) {
-      return connectorSlugResolutionError(resolved);
-    }
     const deleted = await set(
       deleteZeroConnectorLocalState$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        connectorSlug: resolved.connectorSlug,
-        snapshot: resolved.snapshot,
+        connectorSlug: params.connectorSlug,
       },
       signal,
     );
@@ -243,20 +203,11 @@ const deleteConnectorBySlugInner$ = command(
 const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
-  const resolver = await get(connectorActionResolver());
-  const resolved = await resolver.resolveSlug({
-    connectorSlug: params.connectorSlug,
-    requireExecutable: false,
-  });
-  if (!resolved.ok) {
-    return connectorSlugResolutionError(resolved);
-  }
   const diff = await get(
     zeroConnectorScopeDiff({
       orgId: auth.orgId,
       userId: auth.userId,
-      connectorSlug: resolved.connectorSlug,
-      snapshot: resolved.snapshot,
+      connectorSlug: params.connectorSlug,
     }),
   );
   if (!diff) {
@@ -525,18 +476,6 @@ const startConnectorOauthInner$ = command(
     });
     signal.throwIfAborted();
 
-    await set(
-      deleteZeroConnectorLocalState$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        connectorSlug: resolved.connectorSlug,
-        snapshot: resolved.snapshot,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
     const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
@@ -550,9 +489,7 @@ const startConnectorOauthInner$ = command(
       authorizationUrl: authResult.url,
       codeVerifier: authResult.codeVerifier,
       oauthContext: authResult.oauthContext,
-      expiresAt: new Date(
-        nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
-      ),
+      expiresAt: connectorOAuthStateExpiresAt(),
     });
     signal.throwIfAborted();
 
@@ -562,33 +499,6 @@ const startConnectorOauthInner$ = command(
         authorizationUrl: authResult.url,
       },
     };
-  },
-);
-
-// Compatibility for handoff URLs issued before direct provider redirects.
-// Remove after the previous API is no longer rollback-eligible and every state
-// issued with CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS has expired.
-const continueConnectorOauthInner$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    const params = get(
-      pathParamsOf(zeroConnectorOauthContinueContract.continue),
-    );
-    const query = get(queryOf(zeroConnectorOauthContinueContract.continue));
-    const resolution = await getConnectorOAuthAuthorizationUrl(
-      get(db$),
-      { state: query.state, connectorSlug: params.connectorSlug },
-      signal,
-    );
-
-    if (resolution.kind !== "usable") {
-      return notFound("OAuth handoff not found");
-    }
-
-    const response = connectorOAuthRedirectResponse(
-      resolution.authorizationUrl,
-    );
-    response.headers.set("Cache-Control", "no-store");
-    return response;
   },
 );
 
@@ -665,18 +575,6 @@ const startConnectorOpenIdInner$ = command(
     });
     signal.throwIfAborted();
 
-    await set(
-      deleteZeroConnectorLocalState$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        connectorSlug: resolved.connectorSlug,
-        snapshot: resolved.snapshot,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
     const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
@@ -689,9 +587,7 @@ const startConnectorOpenIdInner$ = command(
       redirectUri: prepared.expectedReturnTo,
       codeVerifier: authResult.codeVerifier,
       oauthContext: JSON.stringify({ realm: prepared.realm }),
-      expiresAt: new Date(
-        nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
-      ),
+      expiresAt: connectorOAuthStateExpiresAt(),
     });
     signal.throwIfAborted();
 
@@ -728,10 +624,6 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorOauthStartContract.start,
     handler: authRoute(connectorWriteAuth, startConnectorOauthInner$),
-  },
-  {
-    route: zeroConnectorOauthContinueContract.continue,
-    handler: continueConnectorOauthInner$,
   },
   {
     route: zeroConnectorOpenIdStartContract.start,

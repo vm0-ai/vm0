@@ -13,6 +13,18 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/project-chat-event-search",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/snapshot-chat-events",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/retain-chat-events",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/execute-workflow-automations",
       "schedule": "* * * * *"
     },
@@ -25,20 +37,16 @@
       "schedule": "0 */12 * * *"
     },
     {
+      "path": "/api/cron/renew-google-forms-watches",
+      "schedule": "0 */12 * * *"
+    },
+    {
       "path": "/api/cron/renew-google-calendar-watches",
       "schedule": "0 */12 * * *"
     },
     {
       "path": "/api/cron/renew-google-workspace-event-subscriptions",
       "schedule": "0 */12 * * *"
-    },
-    {
-      "path": "/api/cron/aggregate-usage",
-      "schedule": "5 0 * * *"
-    },
-    {
-      "path": "/api/cron/aggregate-insights",
-      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/compact-chat-thread-snapshots",
@@ -91,6 +99,10 @@
     {
       "path": "/api/cron/aggregate-model-stats",
       "schedule": "12 * * * *"
+    },
+    {
+      "path": "/api/cron/steer-run-time-budget",
+      "schedule": "* * * * *"
     }
   ]
 }

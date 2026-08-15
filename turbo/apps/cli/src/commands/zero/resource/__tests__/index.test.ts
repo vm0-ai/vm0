@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { WEBSITE_TEMPLATE_ITEMS } from "@vm0/core";
+import { WEBSITE_TEMPLATE_ITEMS } from "@okouai/core";
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,7 +36,7 @@ const EXPECTED_WEBSITE_TEMPLATE_V2_SHA256: Record<string, string> = {
     "213197ef200b16738b51b5d6c4a90b6e6c12c86c63207ef6afc31456cdd0d2e1",
 };
 
-describe("zero resource pull registry resolver", () => {
+describe("okou resource pull registry resolver", () => {
   it("resolves a presentation color system archive", () => {
     expect(findRegistryResourceForPull("color-system:carnival")).toEqual(
       expect.objectContaining({
@@ -67,7 +67,7 @@ describe("zero resource pull registry resolver", () => {
           archive: expect.objectContaining({
             type: "tar.gz",
             sha256:
-              "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
+              "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
           }),
         }),
       }),
@@ -77,6 +77,23 @@ describe("zero resource pull registry resolver", () => {
   it("canonicalizes unprefixed built-in website template ids", () => {
     expect(findRegistryResourceForPull("dot-matrix")?.id).toBe(
       "template:dot-matrix",
+    );
+  });
+
+  it("resolves the pre-cutover stable website SHA outside the rollout", () => {
+    expect(
+      findRegistryResourceForPull("template:dot-matrix", "previous"),
+    ).toEqual(
+      expect.objectContaining({
+        id: "template:dot-matrix",
+        source: expect.objectContaining({
+          archive: {
+            type: "tar.gz",
+            sha256:
+              "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
+          },
+        }),
+      }),
     );
   });
 
@@ -102,7 +119,7 @@ describe("zero resource pull registry resolver", () => {
   });
 });
 
-describe("zero resource pull command", () => {
+describe("okou resource pull command", () => {
   const downloadUrl = "https://r2.example.com/registry/vm0-illustration.tar.gz";
   const sha256 =
     "03e77d6968190b9f1888a900963135e92f75b40a6c37e1c1bae999ea49669a37";
@@ -153,7 +170,7 @@ describe("zero resource pull command", () => {
   beforeEach(async () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     outputDir = await mkdtemp(path.join(tmpdir(), "zero-resource-pull-test-"));
     mockExit.mockClear();
     mockConsoleLog.mockClear();

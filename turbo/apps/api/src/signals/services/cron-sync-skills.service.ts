@@ -10,19 +10,19 @@ import {
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
   resolveSkillRef,
-} from "@vm0/core/github-url";
+} from "@okouai/core/github-url";
 import {
   parseSkillFrontmatter,
   type SkillFrontmatter,
-} from "@vm0/core/skill-frontmatter";
+} from "@okouai/core/skill-frontmatter";
 import {
   getSkillStorageName,
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
-import { skills } from "@vm0/db/schema/skill";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+} from "@okouai/core/storage-names";
+import { SEED_SKILLS } from "@okouai/core/seed-skills";
+import { skills } from "@okouai/db/schema/skill";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
 import { eq, inArray, like } from "drizzle-orm";
 import { create as createTar, Parser } from "tar";
@@ -47,6 +47,11 @@ interface SyncSkillsResult {
   readonly failed: number;
   readonly removed: number;
   readonly total: number;
+}
+
+interface SyncSkillsScope {
+  readonly skillNamePrefix: string | null;
+  readonly requiredSkillNames: readonly string[];
 }
 
 interface ExtractedFile {
@@ -81,6 +86,7 @@ interface SkillArchiveUpload {
 const log = logger("skills:sync");
 const REPO_REFS_URL = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}.git/info/refs?service=git-upload-pack`;
 const TARBALL_URL = `https://codeload.github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tar.gz/refs/heads/${DEFAULT_SKILLS_BRANCH}`;
+const OFFICIAL_SKILL_URL_ROOT = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
 const SYNC_BATCH_SIZE = 5;
 
 function parseHeadRef(pktLineText: string, branch: string): string {
@@ -311,19 +317,21 @@ async function createSkillArchive(
   return { archiveBuffer, manifestBuffer };
 }
 
-async function hasCurrentSkillVersion(args: {
-  readonly db: Db;
-  readonly url: string;
-  readonly versionHash: string;
-  readonly commitSha: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+async function hasCurrentSkillVersion(
+  args: {
+    readonly db: Db;
+    readonly url: string;
+    readonly versionHash: string;
+    readonly commitSha: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const [existingSkill] = await args.db
     .select({ versionHash: skills.versionHash })
     .from(skills)
     .where(eq(skills.url, args.url))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (existingSkill?.versionHash !== args.versionHash) {
     return false;
@@ -333,7 +341,7 @@ async function hasCurrentSkillVersion(args: {
     .update(skills)
     .set({ commitSha: args.commitSha, updatedAt: nowDate() })
     .where(eq(skills.url, args.url));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return true;
 }
 
@@ -375,12 +383,14 @@ function uploadSkillArchive(
   });
 }
 
-async function upsertSkillStorage(args: {
-  readonly db: Db;
-  readonly context: SkillSyncContext;
-  readonly timestamp: Date;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly id: string; readonly s3Prefix: string }> {
+async function upsertSkillStorage(
+  args: {
+    readonly db: Db;
+    readonly context: SkillSyncContext;
+    readonly timestamp: Date;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly id: string; readonly s3Prefix: string }> {
   const location = newStorageS3Location(SYSTEM_ORG_ID);
   const [storage] = await args.db
     .insert(storages)
@@ -402,7 +412,7 @@ async function upsertSkillStorage(args: {
       },
     })
     .returning({ id: storages.id, s3Prefix: storages.s3Prefix });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!storage) {
     throw new Error(
@@ -413,14 +423,16 @@ async function upsertSkillStorage(args: {
   return storage;
 }
 
-async function insertSkillStorageVersion(args: {
-  readonly db: Db;
-  readonly storageId: string;
-  readonly context: SkillSyncContext;
-  readonly upload: SkillArchiveUpload;
-  readonly commitSha: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function insertSkillStorageVersion(
+  args: {
+    readonly db: Db;
+    readonly storageId: string;
+    readonly context: SkillSyncContext;
+    readonly upload: SkillArchiveUpload;
+    readonly commitSha: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   await args.db
     .insert(storageVersions)
     .values({
@@ -437,17 +449,19 @@ async function insertSkillStorageVersion(args: {
       target: storageVersions.id,
       set: { archiveSize: args.upload.archiveBuffer.length },
     });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function updateSkillStorageHead(args: {
-  readonly db: Db;
-  readonly storageId: string;
-  readonly context: SkillSyncContext;
-  readonly upload: SkillArchiveUpload;
-  readonly timestamp: Date;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function updateSkillStorageHead(
+  args: {
+    readonly db: Db;
+    readonly storageId: string;
+    readonly context: SkillSyncContext;
+    readonly upload: SkillArchiveUpload;
+    readonly timestamp: Date;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   await args.db
     .update(storages)
     .set({
@@ -457,18 +471,20 @@ async function updateSkillStorageHead(args: {
       updatedAt: args.timestamp,
     })
     .where(eq(storages.id, args.storageId));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function upsertSkillRecord(args: {
-  readonly db: Db;
-  readonly storageId: string;
-  readonly context: SkillSyncContext;
-  readonly upload: SkillArchiveUpload;
-  readonly commitSha: string;
-  readonly timestamp: Date;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function upsertSkillRecord(
+  args: {
+    readonly db: Db;
+    readonly storageId: string;
+    readonly context: SkillSyncContext;
+    readonly upload: SkillArchiveUpload;
+    readonly commitSha: string;
+    readonly timestamp: Date;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const displayName = args.context.frontmatter.name ?? args.context.skillName;
 
   await args.db
@@ -502,7 +518,7 @@ async function upsertSkillRecord(args: {
         updatedAt: args.timestamp,
       },
     });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 function syncSingleSkill(
@@ -515,13 +531,15 @@ function syncSingleSkill(
     const context = buildSkillSyncContext(extracted);
 
     if (
-      await hasCurrentSkillVersion({
-        db,
-        url: context.url,
-        versionHash: context.versionHash,
-        commitSha,
+      await hasCurrentSkillVersion(
+        {
+          db,
+          url: context.url,
+          versionHash: context.versionHash,
+          commitSha,
+        },
         signal,
-      })
+      )
     ) {
       return false;
     }
@@ -529,41 +547,49 @@ function syncSingleSkill(
     const timestamp = nowDate();
     // Upsert the storage row first: objects must land under the row's stored
     // prefix, which an existing row keeps from its creation time.
-    const storage = await upsertSkillStorage({
-      db,
-      context,
-      timestamp,
+    const storage = await upsertSkillStorage(
+      {
+        db,
+        context,
+        timestamp,
+      },
       signal,
-    });
+    );
     const storageId = storage.id;
     const upload = await get(
       uploadSkillArchive(context, storage.s3Prefix, signal),
     );
-    await insertSkillStorageVersion({
-      db,
-      storageId,
-      context,
-      upload,
-      commitSha,
+    await insertSkillStorageVersion(
+      {
+        db,
+        storageId,
+        context,
+        upload,
+        commitSha,
+      },
       signal,
-    });
-    await updateSkillStorageHead({
-      db,
-      storageId,
-      context,
-      upload,
-      timestamp,
+    );
+    await updateSkillStorageHead(
+      {
+        db,
+        storageId,
+        context,
+        upload,
+        timestamp,
+      },
       signal,
-    });
-    await upsertSkillRecord({
-      db,
-      storageId,
-      context,
-      upload,
-      commitSha,
-      timestamp,
+    );
+    await upsertSkillRecord(
+      {
+        db,
+        storageId,
+        context,
+        upload,
+        commitSha,
+        timestamp,
+      },
       signal,
-    });
+    );
 
     log.debug("Synced skill", {
       skillName: context.skillName,
@@ -576,6 +602,7 @@ function syncSingleSkill(
 function removeOrphanedSkills(
   db: Db,
   extractedSkills: readonly ExtractedSkill[],
+  urlPrefix: string,
   signal: AbortSignal,
 ): Computed<Promise<number>> {
   return computed(async (get): Promise<number> => {
@@ -584,7 +611,6 @@ function removeOrphanedSkills(
         return skillUrl(skill.skillName);
       }),
     );
-    const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
     const existingSkills = await db
       .select({ id: skills.id, url: skills.url, storageId: skills.storageId })
       .from(skills)
@@ -665,13 +691,16 @@ function removeOrphanedSkills(
   });
 }
 
-function validateSeedSkills(extractedSkills: readonly ExtractedSkill[]): void {
+function validateSeedSkills(
+  extractedSkills: readonly ExtractedSkill[],
+  requiredSkillNames: readonly string[],
+): void {
   const tarballNames = new Set(
     extractedSkills.map((skill) => {
       return skill.skillName;
     }),
   );
-  const missingSkills = SEED_SKILLS.filter((name) => {
+  const missingSkills = requiredSkillNames.filter((name) => {
     return !tarballNames.has(name);
   });
 
@@ -684,16 +713,25 @@ function validateSeedSkills(extractedSkills: readonly ExtractedSkill[]): void {
   }
 }
 
-export const syncSkills$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<SyncSkillsResult> => {
+export const syncSkillsForScope$ = command(
+  async (
+    { get, set },
+    scope: SyncSkillsScope,
+    signal: AbortSignal,
+  ): Promise<SyncSkillsResult> => {
     const db = set(writeDb$);
     const headSha = await fetchHeadCommitSha(signal);
     signal.throwIfAborted();
 
-    const [existing] = await db
-      .select({ commitSha: skills.commitSha })
-      .from(skills)
-      .limit(1);
+    const urlPrefix = `${OFFICIAL_SKILL_URL_ROOT}${scope.skillNamePrefix ?? ""}`;
+    const [existing] =
+      scope.skillNamePrefix === null
+        ? await db.select({ commitSha: skills.commitSha }).from(skills).limit(1)
+        : await db
+            .select({ commitSha: skills.commitSha })
+            .from(skills)
+            .where(like(skills.url, `${urlPrefix}%`))
+            .limit(1);
     signal.throwIfAborted();
 
     if (existing?.commitSha === headSha) {
@@ -707,7 +745,14 @@ export const syncSkills$ = command(
       };
     }
 
-    const extractedSkills = await downloadAndExtractSkills(signal);
+    const extractedSkills = (await downloadAndExtractSkills(signal)).filter(
+      (skill) => {
+        return (
+          scope.skillNamePrefix === null ||
+          skill.skillName.startsWith(scope.skillNamePrefix)
+        );
+      },
+    );
     signal.throwIfAborted();
 
     let synced = 0;
@@ -749,10 +794,10 @@ export const syncSkills$ = command(
     }
 
     const removed = await get(
-      removeOrphanedSkills(db, extractedSkills, signal),
+      removeOrphanedSkills(db, extractedSkills, urlPrefix, signal),
     );
     signal.throwIfAborted();
-    validateSeedSkills(extractedSkills);
+    validateSeedSkills(extractedSkills, scope.requiredSkillNames);
 
     log.debug("Skills sync completed", {
       commitSha: headSha,
@@ -771,5 +816,15 @@ export const syncSkills$ = command(
       removed,
       total: extractedSkills.length,
     };
+  },
+);
+
+export const syncSkills$ = command(
+  async ({ set }, signal: AbortSignal): Promise<SyncSkillsResult> => {
+    return await set(
+      syncSkillsForScope$,
+      { skillNamePrefix: null, requiredSkillNames: SEED_SKILLS },
+      signal,
+    );
   },
 );

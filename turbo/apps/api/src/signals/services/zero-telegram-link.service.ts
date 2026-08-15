@@ -1,14 +1,13 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
 
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { db$, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { bestEffort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
@@ -187,7 +186,7 @@ export function verifyConnectSignature(args: {
 }
 
 async function publishTelegramUserChanged(userId: string): Promise<void> {
-  await bestEffort(publishUserSignal([userId], "telegram:changed"));
+  await publishUserSignal([userId], "telegram:changed");
 }
 
 export function telegramInstallationForLink(args: {

@@ -1,13 +1,13 @@
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { computed } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
-  chatThreadEventsContract,
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -30,9 +30,7 @@ import {
   threadMeta,
   touchOptimisticChatThreadSort$,
 } from "../chat-thread-event-sourcing.ts";
-import { loadIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
-import { createRemoteChatThreadDataSource } from "../remote-chat-thread-data-source.ts";
-import { listEventsAfter$ } from "../remote-chat-event-data-source.ts";
+import { createRemoteChatThreadDraft } from "../chat-thread-remote-signals.ts";
 import { openChatIdb } from "../../external/chat-idb-store.ts";
 import { createIdbChatThreadEventStores } from "../../external/idb-chat-thread-event-store.ts";
 import type { OptimisticChatThreadEvent } from "../chat-thread-event-types.ts";
@@ -52,14 +50,34 @@ const EVENT_SEQ_ID = 1;
 const OPTIMISTIC_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
 const OPTIMISTIC_MODEL_EVENT_ID = "d0000000-0000-4000-a000-000000000003";
 
-const threadEventDb = openChatIdb("user_1", "org_1");
-const threadEventStores = createIdbChatThreadEventStores(() => {
-  return threadEventDb;
+function threadEventUserId(): string {
+  return `thread-event-user-${context.resourceId}`;
+}
+
+function threadEventOrgId(): string {
+  return `thread-event-org-${context.resourceId}`;
+}
+
+const threadEventDb$ = computed(async () => {
+  const db = await openChatIdb(threadEventUserId(), threadEventOrgId());
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      db.close();
+    },
+    { once: true },
+  );
+  return db;
 });
 
-async function clearThreadEventCache(): Promise<void> {
-  const { clear } = threadEventStores.writeStore;
-  await clear();
+const threadEventStores$ = computed((get) => {
+  return createIdbChatThreadEventStores(() => {
+    return get(threadEventDb$);
+  });
+});
+
+function threadEventStores() {
+  return context.store.get(threadEventStores$);
 }
 
 async function seedThreadEventCache(args: {
@@ -70,9 +88,8 @@ async function seedThreadEventCache(args: {
   } | null;
   readonly events?: readonly ChatThreadEvent[];
 }): Promise<void> {
-  await clearThreadEventCache();
   if (args.snapshot) {
-    await threadEventStores.writeStore.replaceFromSnapshot(
+    await threadEventStores().writeStore.replaceFromSnapshot(
       args.snapshot,
       args.events ?? [],
     );
@@ -88,21 +105,12 @@ function expectCallback(callback: (() => void) | null): () => void {
 }
 
 describe("chat thread event sourcing local-first list", () => {
-  afterEach(async () => {
-    context.store.set(setChatThreadOnlyUnread$, false);
-    await clearThreadEventCache();
-  });
-
-  afterAll(async () => {
-    (await threadEventDb).close();
-  });
-
   it("does not start remote event sync on signed-out pages", async () => {
-    let activeIdsRequests = 0;
+    let indicatorRequests = 0;
     let eventsRequests = 0;
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      activeIdsRequests += 1;
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      indicatorRequests += 1;
+      return respond(200, { agents: {}, threads: {} });
     });
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       eventsRequests += 1;
@@ -118,7 +126,7 @@ describe("chat thread event sourcing local-first list", () => {
       org: { activeOrg: null, memberships: [] },
     });
 
-    expect(activeIdsRequests).toBe(0);
+    expect(indicatorRequests).toBe(0);
     expect(eventsRequests).toBe(0);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
@@ -186,11 +194,11 @@ describe("chat thread event sourcing local-first list", () => {
       context,
       path: "/error",
       withoutRender: true,
-      user: { id: "user_1", fullName: "Test User" },
+      user: { id: threadEventUserId(), fullName: "Test User" },
       session: { token: "token" },
       org: {
-        activeOrg: { id: "org_1", name: "Test Org" },
-        memberships: [{ id: "org_1" }],
+        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
+        memberships: [{ id: threadEventOrgId() }],
       },
     });
 
@@ -214,6 +222,7 @@ describe("chat thread event sourcing local-first list", () => {
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
       },
     ]);
     expect(eventsRequests).toBe(1);
@@ -272,11 +281,11 @@ describe("chat thread event sourcing local-first list", () => {
       context,
       path: "/error",
       withoutRender: true,
-      user: { id: "user_1", fullName: "Test User" },
+      user: { id: threadEventUserId(), fullName: "Test User" },
       session: { token: "token" },
       org: {
-        activeOrg: { id: "org_1", name: "Test Org" },
-        memberships: [{ id: "org_1" }],
+        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
+        memberships: [{ id: threadEventOrgId() }],
       },
     });
     await vi.waitFor(async () => {
@@ -287,8 +296,8 @@ describe("chat thread event sourcing local-first list", () => {
 
     const before = await context.store.get(chatThreads$);
     const persistedBefore = {
-      snapshot: await threadEventStores.readStore.readSnapshot(),
-      eventLog: await threadEventStores.readStore.readEventLog(),
+      snapshot: await threadEventStores().readStore.readSnapshot(),
+      eventLog: await threadEventStores().readStore.readEventLog(),
     };
 
     await context.store.set(syncEventDrivenChatThreads$, context.signal);
@@ -296,10 +305,10 @@ describe("chat thread event sourcing local-first list", () => {
     const after = await context.store.get(chatThreads$);
     expect(after).toBe(before);
     await expect(
-      threadEventStores.readStore.readSnapshot(),
+      threadEventStores().readStore.readSnapshot(),
     ).resolves.toStrictEqual(persistedBefore.snapshot);
     await expect(
-      threadEventStores.readStore.readEventLog(),
+      threadEventStores().readStore.readEventLog(),
     ).resolves.toStrictEqual(persistedBefore.eventLog);
   });
 
@@ -347,8 +356,8 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
       unreadsRequests += 1;
@@ -365,11 +374,11 @@ describe("chat thread event sourcing local-first list", () => {
       context,
       path: "/error",
       withoutRender: true,
-      user: { id: "user_1", fullName: "Test User" },
+      user: { id: threadEventUserId(), fullName: "Test User" },
       session: { token: "token" },
       org: {
-        activeOrg: { id: "org_1", name: "Test Org" },
-        memberships: [{ id: "org_1" }],
+        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
+        memberships: [{ id: threadEventOrgId() }],
       },
     });
 
@@ -416,18 +425,18 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,
       path: "/error",
       withoutRender: true,
-      user: { id: "user_1", fullName: "Test User" },
+      user: { id: threadEventUserId(), fullName: "Test User" },
       session: { token: "token" },
       org: {
-        activeOrg: { id: "org_1", name: "Test Org" },
-        memberships: [{ id: "org_1" }],
+        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
+        memberships: [{ id: threadEventOrgId() }],
       },
     });
 
@@ -473,18 +482,18 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,
       path: "/error",
       withoutRender: true,
-      user: { id: "user_1", fullName: "Test User" },
+      user: { id: threadEventUserId(), fullName: "Test User" },
       session: { token: "token" },
       org: {
-        activeOrg: { id: "org_1", name: "Test Org" },
-        memberships: [{ id: "org_1" }],
+        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
+        memberships: [{ id: threadEventOrgId() }],
       },
     });
     await vi.waitFor(() => {
@@ -555,18 +564,18 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,
       path: "/error",
       withoutRender: true,
-      user: { id: "user_1", fullName: "Test User" },
+      user: { id: threadEventUserId(), fullName: "Test User" },
       session: { token: "token" },
       org: {
-        activeOrg: { id: "org_1", name: "Test Org" },
-        memberships: [{ id: "org_1" }],
+        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
+        memberships: [{ id: threadEventOrgId() }],
       },
     });
 
@@ -606,18 +615,18 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,
       path: "/error",
       withoutRender: true,
-      user: { id: "user_1", fullName: "Test User" },
+      user: { id: threadEventUserId(), fullName: "Test User" },
       session: { token: "token" },
       org: {
-        activeOrg: { id: "org_1", name: "Test Org" },
-        memberships: [{ id: "org_1" }],
+        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
+        memberships: [{ id: threadEventOrgId() }],
       },
     });
 
@@ -662,6 +671,7 @@ describe("chat thread event sourcing local-first list", () => {
         serviceTier: null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedVideoModel: null,
       },
     ]);
     expect(context.store.get(threadMeta(OPTIMISTIC_THREAD_ID))).toStrictEqual({
@@ -673,10 +683,10 @@ describe("chat thread event sourcing local-first list", () => {
       serviceTier: null,
       computerUseHostId: null,
       cloudBrowserEnabled: false,
+      selectedVideoModel: null,
     });
 
     let threadDraftRequests = 0;
-    let initialEventsRequests = 0;
     context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
       threadDraftRequests += 1;
       expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
@@ -685,46 +695,20 @@ describe("chat thread event sourcing local-first list", () => {
         draftAttachments: null,
       });
     });
-    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
-      initialEventsRequests += 1;
-      expect(params.threadId).toBe(OPTIMISTIC_THREAD_ID);
-      return respond(200, { events: [] });
-    });
-
-    const dataSource = createRemoteChatThreadDataSource(OPTIMISTIC_THREAD_ID);
-    await expect(
-      context.store.get(dataSource.threadDraft$),
-    ).resolves.toBeNull();
-    await expect(
-      context.store.set(
-        loadIndexedDbChatEvents$,
-        OPTIMISTIC_THREAD_ID,
-        context.signal,
-      ),
-    ).resolves.toStrictEqual([]);
+    const threadDraft$ = createRemoteChatThreadDraft(OPTIMISTIC_THREAD_ID);
+    await expect(context.store.get(threadDraft$)).resolves.toBeNull();
     expect(threadDraftRequests).toBe(0);
-    expect(initialEventsRequests).toBe(0);
 
     context.store.set(reconcileOptimisticChatThreadEvents$, {
       snapshot: [],
       events: [{ ...createdEvent, seqId: EVENT_SEQ_ID }],
     });
 
-    await expect(
-      context.store.get(dataSource.threadDraft$),
-    ).resolves.toStrictEqual({
+    await expect(context.store.get(threadDraft$)).resolves.toStrictEqual({
       draftUserMessage: null,
       draftAttachments: null,
     });
-    await expect(
-      context.store.set(
-        listEventsAfter$,
-        { threadId: OPTIMISTIC_THREAD_ID, sinceSeqId: undefined },
-        context.signal,
-      ),
-    ).resolves.toStrictEqual([]);
     expect(threadDraftRequests).toBe(1);
-    expect(initialEventsRequests).toBe(1);
   });
 
   it("settles optimistic create events once the matching persisted event arrives", async () => {
@@ -759,23 +743,23 @@ describe("chat thread event sourcing local-first list", () => {
         hasMore: false,
       });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     await setupPage({
       context,
       path: "/error",
       withoutRender: true,
-      user: { id: "user_1", fullName: "Test User" },
+      user: { id: threadEventUserId(), fullName: "Test User" },
       session: { token: "token" },
       org: {
-        activeOrg: { id: "org_1", name: "Test Org" },
-        memberships: [{ id: "org_1" }],
+        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
+        memberships: [{ id: threadEventOrgId() }],
       },
     });
 
     await vi.waitFor(async () => {
-      const eventLog = await threadEventStores.readStore.readEventLog();
+      const eventLog = await threadEventStores().readStore.readEventLog();
       expect(eventLog.events).toContainEqual({
         ...createdEvent,
         seqId: EVENT_SEQ_ID + 1,
@@ -843,11 +827,11 @@ describe("chat thread event sourcing local-first list", () => {
       context,
       path: "/error",
       withoutRender: true,
-      user: { id: "user_1", fullName: "Test User" },
+      user: { id: threadEventUserId(), fullName: "Test User" },
       session: { token: "token" },
       org: {
-        activeOrg: { id: "org_1", name: "Test Org" },
-        memberships: [{ id: "org_1" }],
+        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
+        memberships: [{ id: threadEventOrgId() }],
       },
     });
 

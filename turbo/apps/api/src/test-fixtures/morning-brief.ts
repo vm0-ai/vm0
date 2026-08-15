@@ -1,14 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
-import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
+import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
+import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
-import { insertChatEvent } from "../signals/services/zero-chat-event.service";
+import { insertChatEvent } from "../signals/services/chat-event.service";
 import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-event-shared.service";
-import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
+import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
 
 export async function readMorningBriefDeliveryFixture(args: {
   readonly orgId: string;
@@ -64,10 +63,10 @@ export async function insertQueuedWebUserMessageFixture(args: {
     const inserted = await insertChatEvent(tx, {
       id: messageId,
       chatThreadId: args.threadId,
+      contextType: "web",
       eventType: "input.prompt",
       userMessage: createUserMessageDocument({ text: args.content }),
       runId: null,
-      triggerSource: "web",
       createdAt: args.createdAt,
     });
     if (!inserted) {

@@ -10,15 +10,15 @@ import { messageCommand } from "../message";
 import { uploadFileCommand } from "../upload-file";
 
 const DOWNLOAD_URL =
-  "http://localhost:3000/api/zero/integrations/phone/download-file";
-const MESSAGE_URL = "http://localhost:3000/api/zero/integrations/phone/message";
+  "http://localhost:3000/api/okou/integrations/phone/download-file";
+const MESSAGE_URL = "http://localhost:3000/api/okou/integrations/phone/message";
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/phone/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/phone/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/phone/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/phone/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/phone-upload";
 
-describe("zero phone commands", () => {
+describe("okou phone commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -32,7 +32,7 @@ describe("zero phone commands", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     tmpDir = join(tmpdir(), `phone-command-test-${Date.now()}`);
@@ -132,7 +132,6 @@ describe("zero phone commands", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           length: 17,
-          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           uploadId: "00000000-0000-4000-8000-000000000001",

@@ -1,16 +1,22 @@
-import { command, computed, type Command, type Computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import type {
-  ModelProviderFramework,
-  ModelProviderResponse,
-  OrgModelPoliciesResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { hasChatEventBodyContent } from "./chat-event-body-blocks.ts";
+import { command, computed, type Computed } from "ccstate";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isChatEventContentTextType } from "@okouai/api-contracts/contracts/chat-events";
+import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
+import {
+  isSupportedRunModel,
+  type ModelProviderResponse,
+  type OrgModelPoliciesResponse,
+} from "@okouai/api-contracts/contracts/model-providers";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { personalModelProviders$ } from "../external/personal-model-providers.ts";
 import { resetPersonalCodexSubscriptionUsage$ } from "../zero-page/settings/personal-model-providers.ts";
+import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
 import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
-import type { SendMessageOptions } from "./chat-thread-signals.ts";
+import type { ChatEventSignals } from "./chat-event-signals.ts";
+import { threadMeta } from "./chat-thread-event-sourcing.ts";
+import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 
 export type AssistantErrorRecoveryKind = "usage-limit" | "model-capacity";
 export type AssistantErrorRecoveryScope = "framework" | "model";
@@ -55,10 +61,7 @@ interface SubscriptionReset {
   readonly limitWindow: AssistantErrorRecoveryWindow;
 }
 
-type SendMessageCommand = Command<
-  Promise<boolean>,
-  [string, SendMessageOptions | undefined, AbortSignal]
->;
+const RETRY_PROMPT = "try again";
 
 function normalizedProviderMessage(error: string): string {
   return error.replace(/\s+/gu, " ").trim();
@@ -161,12 +164,9 @@ function classifyAssistantError(
 }
 
 function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
-  const hasAttachments =
-    "attachFiles" in event && (event.attachFiles?.length ?? 0) > 0;
   return (
-    Boolean(event.content) ||
-    event.blocks.length > 0 ||
-    hasAttachments ||
+    (isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
+    hasChatEventBodyContent(event) ||
     event.eventType === "input.rejected" ||
     event.eventType === "output.error" ||
     event.eventType === "run.failed" ||
@@ -353,13 +353,59 @@ function createAssistantErrorRecoveryComputed(
 }
 
 export function createAssistantErrorRecoverySignals(deps: {
+  readonly threadId: string;
+  readonly chatEvents: ChatEventSignals;
   readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
-  readonly selectedModel$: Computed<string | null>;
-  readonly sendMessage$: SendMessageCommand;
 }) {
+  const threadMeta$ = threadMeta(deps.threadId);
+  const selectedModel$ = computed((get): string | null => {
+    return get(threadMeta$)?.selectedModel ?? null;
+  });
   const assistantErrorRecovery$ = createAssistantErrorRecoveryComputed(
     deps.visibleRenderedChatGroups$,
-    deps.selectedModel$,
+    selectedModel$,
+  );
+  const sendRetryMessage$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+      const meta = get(threadMeta$);
+      if (!meta) {
+        return false;
+      }
+      const userMessage = textToMessageDocument(RETRY_PROMPT);
+      if (!userMessage) {
+        throw new Error("Failed to serialize retry message");
+      }
+      const modelSelection = isSupportedRunModel(meta.selectedModel)
+        ? {
+            selectedModel: meta.selectedModel,
+            ...(meta.serviceTier === "priority"
+              ? { codexServiceTier: "fast" as const }
+              : {}),
+          }
+        : null;
+      const features = get(featureSwitch$);
+      const runOptions = runOptionsFromModelProviderSelection(
+        modelSelection,
+        features[FeatureSwitchKey.CodexFastMode] ?? false,
+      );
+      await set(
+        deps.chatEvents.sendEvent$,
+        {
+          kind: "input",
+          delivery: "run",
+          agentId: meta.agentId,
+          prompt: RETRY_PROMPT,
+          hasTextContent: true,
+          userMessage,
+          ...(runOptions ? { runOptions } : {}),
+          ...(features[FeatureSwitchKey.RealAgentInPreview]
+            ? { realAgentInPreview: true }
+            : {}),
+        },
+        signal,
+      );
+      return true;
+    },
   );
   const retryAssistantError$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
@@ -368,7 +414,7 @@ export function createAssistantErrorRecoverySignals(deps: {
       if (!recovery) {
         return false;
       }
-      return await set(deps.sendMessage$, "try again", undefined, signal);
+      return await set(sendRetryMessage$, signal);
     },
   );
   const resetCodexSubscriptionAndRetry$ = command(
@@ -383,7 +429,7 @@ export function createAssistantErrorRecoverySignals(deps: {
       if (result.outcome === "noCredit") {
         return false;
       }
-      return await set(deps.sendMessage$, "try again", undefined, signal);
+      return await set(sendRetryMessage$, signal);
     },
   );
 

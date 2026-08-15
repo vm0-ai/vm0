@@ -1,4 +1,4 @@
-import { AVATAR_PRESET_COUNT } from "@vm0/core/agent-avatar";
+import { AVATAR_PRESET_COUNT } from "@okouai/core/agent-avatar";
 
 import { getAvatarPresets } from "../zero-avatars.ts";
 

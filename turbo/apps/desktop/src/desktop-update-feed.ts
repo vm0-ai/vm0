@@ -22,9 +22,14 @@ export function shouldInstallDesktopAutoUpdates(
   );
 }
 
-export function desktopUpdateFeedBaseUrl(apiBaseUrl: string): string {
+export function desktopUpdateFeedBaseUrl(
+  apiBaseUrl: string,
+  updateLine: DesktopConfig["identity"]["updateLine"],
+): string {
   const url = new URL(apiBaseUrl);
-  url.pathname = `/api/desktop/updates/${DESKTOP_UPDATE_CHANNEL}/${DESKTOP_UPDATE_PLATFORM}/${DESKTOP_UPDATE_ARCH}`;
+  const updateLinePath =
+    updateLine === "zero" ? "" : `/${encodeURIComponent(updateLine)}`;
+  url.pathname = `/api/desktop/updates${updateLinePath}/${DESKTOP_UPDATE_CHANNEL}/${DESKTOP_UPDATE_PLATFORM}/${DESKTOP_UPDATE_ARCH}`;
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");

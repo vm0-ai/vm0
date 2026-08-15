@@ -1,4 +1,4 @@
-//! Resume-path integration coverage for the experimental Codex app-server backend.
+//! Resume-path integration coverage for Codex app-server execution.
 //!
 //! This is separate from `codex_app_server_backend.rs` because `guest_agent::env`
 //! uses resume-session process env setup that must stay isolated.

@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { env } from "../../lib/env";
 import {
@@ -21,7 +19,6 @@ import {
   tryListMultipartS3Parts,
 } from "../external/s3";
 import { safeUriComponentDecode } from "../utils";
-import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const MAX_ARTIFACT_KEY_ATTEMPTS = 5;
 const ARTIFACT_ID_METADATA_KEY = "artifact-id";
@@ -32,7 +29,7 @@ export interface ArtifactObjectLocation {
   readonly id: string;
   readonly key: string;
   readonly url: string;
-  readonly metadata: Readonly<Record<string, string>> | undefined;
+  readonly metadata: Readonly<Record<string, string>>;
 }
 
 type StoredGeneratedArtifactObject = Omit<
@@ -87,51 +84,22 @@ function filenameFromLegacyKey(key: string): string {
   return decodeURIComponent(key.split("/").pop() ?? key);
 }
 
-const artifactKeyV2Enabled$ = command(
-  async (
-    { get },
-    orgId: string | null | undefined,
-    userId: string,
-  ): Promise<boolean> => {
-    if (!orgId) {
-      return false;
-    }
-    const context = await get(userFeatureSwitchContext(orgId, userId));
-    return isFeatureEnabled(FeatureSwitchKey.ArtifactKeyV2, context);
-  },
-);
-
 function collisionVariant(variant: string, attempt: number): string {
   return attempt === 0 ? variant : `${variant}\0${String(attempt)}`;
 }
 
 export const allocateArtifactObject$ = command(
   async (
-    { get, set },
+    { get },
     args: {
       readonly userId: string;
-      readonly orgId: string | null | undefined;
       readonly filename: string;
       readonly id?: string;
       readonly variant?: string;
-      readonly allowV2?: boolean;
     },
     signal: AbortSignal,
   ): Promise<ArtifactObjectLocation> => {
-    const useV2 =
-      args.allowV2 !== false &&
-      (await set(artifactKeyV2Enabled$, args.orgId, args.userId));
     signal.throwIfAborted();
-
-    if (!useV2) {
-      const id = args.id ?? randomUUID();
-      const key = buildArtifactKey(
-        args.userId,
-        id,
-        sanitizeArtifactFilename(args.filename),
-      );
-      return { id, key, url: buildFileUrlFromKey(key), metadata: undefined };
-    }
 
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     for (let attempt = 0; attempt < MAX_ARTIFACT_KEY_ATTEMPTS; attempt += 1) {
@@ -190,7 +158,6 @@ export const storeGeneratedArtifactObject$ = command(
     { get, set },
     args: {
       readonly userId: string;
-      readonly orgId: string;
       readonly filenamePrefix: string;
       readonly extension: string;
       readonly body: Buffer;
@@ -207,7 +174,6 @@ export const storeGeneratedArtifactObject$ = command(
       allocateArtifactObject$,
       {
         userId: args.userId,
-        orgId: args.orgId,
         id: proposedId,
         filename: filenameFor(proposedId),
       },
@@ -317,10 +283,9 @@ export const resolveArtifactObject$ = command(
 
 export const resolveArtifactMultipartUpload$ = command(
   async (
-    { get, set },
+    { get },
     args: {
       readonly userId: string;
-      readonly orgId: string | null | undefined;
       readonly id: string;
       readonly filename: string;
       readonly uploadId: string;
@@ -330,9 +295,8 @@ export const resolveArtifactMultipartUpload$ = command(
     const sanitizedFilename = sanitizeArtifactFilename(args.filename);
     const v1Key = buildArtifactKey(args.userId, args.id, sanitizedFilename);
     const v2Key = buildArtifactKeyV2(args.id, args.filename);
-    const preferV2 = await set(artifactKeyV2Enabled$, args.orgId, args.userId);
-    signal.throwIfAborted();
-    const keys = preferV2 ? [v2Key, v1Key] : [v1Key, v2Key];
+    // Accept multipart uploads started by previous clients while they drain.
+    const keys = [v2Key, v1Key];
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     for (const key of keys) {
       const parts = await get(

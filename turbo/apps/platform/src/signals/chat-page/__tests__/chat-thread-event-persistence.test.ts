@@ -1,10 +1,9 @@
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { HttpResponse } from "msw";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it, vi } from "vitest";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -32,6 +31,22 @@ const REBASED_SNAPSHOT_SEQ_ID = 2000;
 const POST_SNAPSHOT_SEQ_ID = 2001;
 const LATEST_CACHED_TITLE = "Title restored from the latest cached event";
 const POST_SNAPSHOT_TITLE = "Title from the post-snapshot event";
+
+function testIdentity(prefix: string): string {
+  return `${prefix}-${context.resourceId}`;
+}
+
+async function openRuntimeChatDb() {
+  const db = await context.store.get(chatIdb$);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      db.close();
+    },
+    { once: true },
+  );
+  return db;
+}
 
 const snapshotThread = {
   id: THREAD_ID,
@@ -78,25 +93,6 @@ function createCachedEvents(
       eventNumber === count ? latestTitle : `Cached title ${eventNumber}`,
     );
   });
-}
-
-function createLegacyRenamedEvent(
-  eventNumber: number,
-  title: string,
-): Omit<ChatThreadEvent, "seqId"> {
-  const current = createRenamedEvent(eventNumber, title);
-  return {
-    id: current.id,
-    kind: current.kind,
-    chatThreadId: current.chatThreadId,
-    agentId: current.agentId,
-    title: current.title,
-    selectedModel: current.selectedModel,
-    serviceTier: current.serviceTier,
-    computerUseHostId: current.computerUseHostId,
-    cloudBrowserEnabled: current.cloudBrowserEnabled,
-    createdAt: current.createdAt,
-  };
 }
 
 async function writeCachedThreadEventLog(args: {
@@ -154,8 +150,8 @@ async function setupAuthenticatedPage(userId: string, orgId: string) {
 
 describe("chat thread event persistence", () => {
   it("hydrates a paged event log, then rebases it to the remote snapshot", async () => {
-    const userId = "thread-event-rebase-user";
-    const orgId = "thread-event-rebase-org";
+    const userId = testIdentity("thread-event-rebase-user");
+    const orgId = testIdentity("thread-event-rebase-org");
     const cachedEvents = createCachedEvents(1200, LATEST_CACHED_TITLE);
     await writeCachedThreadEventLog({
       userId,
@@ -206,40 +202,36 @@ describe("chat thread event persistence", () => {
     );
 
     snapshotGate.resolve(undefined);
-    const appDb = await context.store.get(chatIdb$);
-    try {
-      await vi.waitFor(async () => {
-        expect(requestedSeqIds).toStrictEqual([
-          cachedEvents.at(-1)?.seqId,
-          REBASED_SNAPSHOT_SEQ_ID,
-        ]);
-        expect(
-          (await context.store.get(eventDrivenChatThreads$))[0]?.title,
-        ).toBe(POST_SNAPSHOT_TITLE);
+    const appDb = await openRuntimeChatDb();
+    await vi.waitFor(async () => {
+      expect(requestedSeqIds).toStrictEqual([
+        cachedEvents.at(-1)?.seqId,
+        REBASED_SNAPSHOT_SEQ_ID,
+      ]);
+      expect((await context.store.get(eventDrivenChatThreads$))[0]?.title).toBe(
+        POST_SNAPSHOT_TITLE,
+      );
 
-        const tx = appDb.transaction(
-          [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
-          "readonly",
-        );
-        const [storedSnapshot, storedEvents] = await Promise.all([
-          tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).get("current"),
-          tx.objectStore(CHAT_THREAD_EVENTS_STORE).getAll(),
-          tx.done,
-        ]);
-        expect(storedSnapshot).toMatchObject({
-          latestEventId: REBASED_SNAPSHOT_EVENT_ID,
-          latestSeqId: REBASED_SNAPSHOT_SEQ_ID,
-        });
-        expect(storedEvents).toStrictEqual([postSnapshotEvent]);
+      const tx = appDb.transaction(
+        [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
+        "readonly",
+      );
+      const [storedSnapshot, storedEvents] = await Promise.all([
+        tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).get("current"),
+        tx.objectStore(CHAT_THREAD_EVENTS_STORE).getAll(),
+        tx.done,
+      ]);
+      expect(storedSnapshot).toMatchObject({
+        latestEventId: REBASED_SNAPSHOT_EVENT_ID,
+        latestSeqId: REBASED_SNAPSHOT_SEQ_ID,
       });
-    } finally {
-      appDb.close();
-    }
+      expect(storedEvents).toStrictEqual([postSnapshotEvent]);
+    });
   });
 
   it("does not rebase when the first sync leaves exactly 100 events", async () => {
-    const userId = "thread-event-threshold-user";
-    const orgId = "thread-event-threshold-org";
+    const userId = testIdentity("thread-event-threshold-user");
+    const orgId = testIdentity("thread-event-threshold-org");
     const cachedEvents = createCachedEvents(99);
     const hundredthEvent = createRenamedEvent(100, "Hundredth event title");
     await writeCachedThreadEventLog({
@@ -268,25 +260,21 @@ describe("chat thread event persistence", () => {
 
     await setupAuthenticatedPage(userId, orgId);
 
-    const appDb = await context.store.get(chatIdb$);
-    try {
-      await vi.waitFor(async () => {
-        expect(
-          (await context.store.get(eventDrivenChatThreads$))[0]?.title,
-        ).toBe("Hundredth event title");
-        await expect(
-          appDb.transaction(CHAT_THREAD_EVENTS_STORE, "readonly").store.count(),
-        ).resolves.toBe(100);
-      });
-      expect(snapshotRequests).toBe(0);
-    } finally {
-      appDb.close();
-    }
+    const appDb = await openRuntimeChatDb();
+    await vi.waitFor(async () => {
+      expect((await context.store.get(eventDrivenChatThreads$))[0]?.title).toBe(
+        "Hundredth event title",
+      );
+      await expect(
+        appDb.transaction(CHAT_THREAD_EVENTS_STORE, "readonly").store.count(),
+      ).resolves.toBe(100);
+    });
+    expect(snapshotRequests).toBe(0);
   });
 
   it("does not pull a second snapshot when the first sync replaced it", async () => {
-    const userId = "thread-event-initial-snapshot-user";
-    const orgId = "thread-event-initial-snapshot-org";
+    const userId = testIdentity("thread-event-initial-snapshot-user");
+    const orgId = testIdentity("thread-event-initial-snapshot-org");
     const remoteEvents = createCachedEvents(101, "Latest remote title");
     await writeCachedThreadEventLog({
       userId,
@@ -328,8 +316,8 @@ describe("chat thread event persistence", () => {
   });
 
   it("silently skips a failed rebase for the rest of the session", async () => {
-    const userId = "thread-event-failed-rebase-user";
-    const orgId = "thread-event-failed-rebase-org";
+    const userId = testIdentity("thread-event-failed-rebase-user");
+    const orgId = testIdentity("thread-event-failed-rebase-org");
     const cachedEvents = createCachedEvents(101);
     await writeCachedThreadEventLog({
       userId,
@@ -343,9 +331,6 @@ describe("chat thread event persistence", () => {
     });
 
     const errorToast = vi.spyOn(toast, "error");
-    context.signal.addEventListener("abort", () => {
-      errorToast.mockRestore();
-    });
     let snapshotRequests = 0;
     let eventRequests = 0;
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -370,74 +355,5 @@ describe("chat thread event persistence", () => {
     });
     expect(snapshotRequests).toBe(1);
     expect(errorToast).not.toHaveBeenCalled();
-  });
-
-  it("pages with UUID cursors while the new app is paired with the old API", async () => {
-    const userId = "thread-event-old-api-user";
-    const orgId = "thread-event-old-api-org";
-    const firstEvent = createLegacyRenamedEvent(1, "First legacy page");
-    const secondEvent = createLegacyRenamedEvent(2, "Second legacy page");
-    const promotedEvent = createRenamedEvent(3, "Post-promotion page");
-    const requestedCursors: {
-      readonly eventId: string | null;
-      readonly seqId: string | null;
-    }[] = [];
-    context.mocks.http.get("/api/zero/chat-threads/snapshot", () => {
-      return HttpResponse.json({
-        chatThreads: [snapshotThread],
-        latestEventId: SNAPSHOT_EVENT_ID,
-      });
-    });
-    context.mocks.http.get("/api/zero/chat-threads/events", ({ request }) => {
-      const url = new URL(request.url);
-      const eventId = url.searchParams.get("sinceEventId");
-      requestedCursors.push({
-        eventId,
-        seqId: url.searchParams.get("sinceSeqId"),
-      });
-      if (eventId === SNAPSHOT_EVENT_ID) {
-        return HttpResponse.json({ events: [firstEvent], hasMore: true });
-      }
-      if (eventId === firstEvent.id) {
-        return HttpResponse.json({ events: [secondEvent], hasMore: true });
-      }
-      if (eventId === secondEvent.id) {
-        return HttpResponse.json({ events: [promotedEvent], hasMore: false });
-      }
-      return HttpResponse.json({ events: [], hasMore: false });
-    });
-
-    await setupAuthenticatedPage(userId, orgId);
-
-    await vi.waitFor(async () => {
-      expect((await context.store.get(eventDrivenChatThreads$))[0]?.title).toBe(
-        "Post-promotion page",
-      );
-    });
-    expect(requestedCursors).toStrictEqual([
-      { eventId: SNAPSHOT_EVENT_ID, seqId: null },
-      { eventId: firstEvent.id, seqId: null },
-      { eventId: secondEvent.id, seqId: null },
-    ]);
-
-    const appDb = await context.store.get(chatIdb$);
-    try {
-      const tx = appDb.transaction(
-        [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
-        "readonly",
-      );
-      const [storedSnapshot, storedEvents] = await Promise.all([
-        tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).get("current"),
-        tx.objectStore(CHAT_THREAD_EVENTS_STORE).getAll(),
-        tx.done,
-      ]);
-      expect(storedSnapshot).toMatchObject({
-        latestEventId: SNAPSHOT_EVENT_ID,
-        latestSeqId: null,
-      });
-      expect(storedEvents).toStrictEqual([]);
-    } finally {
-      appDb.close();
-    }
   });
 });

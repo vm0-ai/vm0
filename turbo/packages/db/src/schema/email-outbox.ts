@@ -11,7 +11,7 @@ import type {
   EmailOutboxAddresses,
   EmailOutboxHeaders,
   EmailOutboxTemplate,
-} from "@vm0/db/jsonb-contracts/email-outbox";
+} from "@okouai/db/jsonb-contracts/email-outbox";
 
 /**
  * Email Outbox table

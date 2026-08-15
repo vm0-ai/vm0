@@ -2,12 +2,16 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   getZeroAgent,
-  getZeroAgentCustomConnectors,
+  getZeroAgentCustomConnectorGrants,
+} from "../../../../lib/api/domains/zero-agents";
+import {
   getZeroCustomConnector,
   listZeroCustomConnectors,
-} from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+} from "../../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../../../lib/okou-env";
 import { createCustomConnectorCommand } from "./create";
+import { updateCustomConnectorCommand } from "./update";
 
 const LABEL_WIDTH = 18;
 
@@ -29,18 +33,22 @@ async function resolveCustomAgentContext(agentId: string | undefined): Promise<{
   readonly displayName: string;
   readonly authorizedIds: Set<string>;
 } | null> {
-  const resolvedAgentId = agentId ?? process.env.ZERO_AGENT_ID;
+  const resolvedAgentId = agentId ?? getOkouAgentId();
   if (!resolvedAgentId) {
     return null;
   }
-  const [agent, enabledIds] = await Promise.all([
+  const [agent, grants] = await Promise.all([
     getZeroAgent(resolvedAgentId),
-    getZeroAgentCustomConnectors(resolvedAgentId),
+    getZeroAgentCustomConnectorGrants(resolvedAgentId),
   ]);
   return {
     agentId: agent.agentId,
     displayName: agent.displayName ?? agent.agentId,
-    authorizedIds: new Set(enabledIds),
+    authorizedIds: new Set(
+      grants.map((grant) => {
+        return grant.customConnectorId;
+      }),
+    ),
   };
 }
 
@@ -67,7 +75,12 @@ const listCommand = new Command()
           return connector.displayName.length;
         }),
       );
-      const header = ["ID".padEnd(idWidth), "NAME".padEnd(nameWidth), "STATUS"];
+      const header = [
+        "ID".padEnd(idWidth),
+        "NAME".padEnd(nameWidth),
+        "KIND",
+        "STATUS",
+      ];
       if (agentCtx) {
         header.push(`AUTHORIZED FOR ${agentCtx.displayName}`);
       }
@@ -76,6 +89,7 @@ const listCommand = new Command()
         const row = [
           connector.id.padEnd(idWidth),
           connector.displayName.padEnd(nameWidth),
+          connector.kind,
           renderConnected(connector),
         ];
         if (agentCtx) {
@@ -108,12 +122,22 @@ const statusCommand = new Command()
         console.log(`Custom connector: ${chalk.cyan(connector.displayName)}`);
         console.log();
         console.log(`${"ID:".padEnd(LABEL_WIDTH)}${connector.id}`);
+        console.log(`${"Kind:".padEnd(LABEL_WIDTH)}${connector.kind}`);
         console.log(
           `${"Status:".padEnd(LABEL_WIDTH)}${renderConnected(connector)}`,
         );
-        console.log(
-          `${"Prefixes:".padEnd(LABEL_WIDTH)}${connector.prefixTemplates.join(", ")}`,
-        );
+        if (connector.kind === "mcp") {
+          console.log(
+            `${"Transport:".padEnd(LABEL_WIDTH)}${connector.transport}`,
+          );
+          console.log(
+            `${"Endpoint:".padEnd(LABEL_WIDTH)}${connector.endpoint}`,
+          );
+        } else {
+          console.log(
+            `${"Prefixes:".padEnd(LABEL_WIDTH)}${connector.prefixTemplates.join(", ")}`,
+          );
+        }
         console.log(
           `${"Fields:".padEnd(LABEL_WIDTH)}${connector.fields
             .map((field) => {
@@ -154,7 +178,14 @@ const statusCommand = new Command()
 
 export const customConnectorCommand = new Command()
   .name("custom")
-  .description("Create and inspect org custom connectors")
+  .description("Create, update, and inspect org custom connectors")
   .addCommand(createCustomConnectorCommand)
+  .addCommand(updateCustomConnectorCommand)
   .addCommand(listCommand)
-  .addCommand(statusCommand);
+  .addCommand(statusCommand)
+  .addHelpText(
+    "after",
+    `
+To add a custom connector:
+  Run "okou connector custom create -h" and follow the definition-only creation workflow.`,
+  );

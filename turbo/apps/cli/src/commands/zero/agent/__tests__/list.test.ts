@@ -1,5 +1,5 @@
 /**
- * Tests for zero agent list command
+ * Tests for okou agent list command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -18,9 +18,10 @@ const mockAgent = {
   displayName: "My Agent",
   description: null,
   sound: null,
+  visibility: "private",
 };
 
-describe("zero agent list command", () => {
+describe("okou agent list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -32,7 +33,7 @@ describe("zero agent list command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -44,7 +45,7 @@ describe("zero agent list command", () => {
   describe("successful list", () => {
     it("should display agents in table format", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents", () => {
+        http.get("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json([mockAgent]);
         }),
       );
@@ -54,11 +55,13 @@ describe("zero agent list command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-agent");
       expect(logCalls).toContain("My Agent");
+      expect(logCalls).toContain("VISIBILITY");
+      expect(logCalls).toContain("private");
     });
 
     it("should display empty state message when no agents", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents", () => {
+        http.get("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json([]);
         }),
       );
@@ -66,14 +69,14 @@ describe("zero agent list command", () => {
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("No zero agents found");
+      expect(logCalls).toContain("No agents found");
     });
   });
 
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents", () => {
+        http.get("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },

@@ -1,9 +1,9 @@
 import { command } from "ccstate";
-import type { StoredConnectorPermissionBaseline } from "@vm0/api-contracts/contracts/runners";
+import type { StoredConnectorPermissionBaseline } from "@okouai/api-contracts/contracts/runners";
 import {
   createFirewallMetadataPolicyResolver,
   permissionGrantsToFirewallPolicies,
-} from "@vm0/connectors/firewall-metadata/policy";
+} from "@okouai/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
@@ -11,39 +11,23 @@ import {
   type FirewallPolicyValue,
   type NetworkPolicies,
   type NetworkPolicy,
-} from "@vm0/connectors/firewall-types";
-import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
+} from "@okouai/connectors/firewall-types";
+import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
-} from "@vm0/db/schema/connector-catalog";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import {
-  and,
-  asc,
-  eq,
-  gt,
-  inArray,
-  isNotNull,
-  isNull,
-  or,
-  type SQL,
-} from "drizzle-orm";
+} from "@okouai/db/schema/connector-catalog";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { and, asc, eq, gt, inArray, isNull, or, type SQL } from "drizzle-orm";
 import type {
   ApplyUserPermissionGrantsRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import {
-  publishConnectorPermissionUpdatedSafely,
-  publishNetworkPolicyRefreshToRunnerGroup,
-} from "../external/realtime";
-import { nowDate } from "../external/time";
+import { publishConnectorPermissionUpdatedSafely } from "../external/realtime";
+import { nowDate } from "../../lib/time";
 import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
@@ -60,6 +44,7 @@ import {
   connectorCatalogValidationAuthorityIsCurrent,
   currentConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-validator-authority";
+import { commitConnectorRuntimeMutation } from "./connector-runtime-wakeup.service";
 
 const userPermissionGrantSelection = Object.freeze({
   id: userPermissionGrants.id,
@@ -105,6 +90,10 @@ type BaselineNetworkPolicyRefreshResolution =
     }
   | { readonly kind: "incompatible" };
 
+type BaselineNetworkPolicyDatabaseMeasure = <T>(
+  operation: () => Promise<T>,
+) => Promise<T>;
+
 interface UserPermissionGrantBaseScope {
   readonly orgId: string;
   readonly userId: string;
@@ -148,11 +137,6 @@ type ApplyUserPermissionGrantsResult =
     }
   | NotFoundResponse
   | ValidationErrorResponse;
-
-interface ActiveNetworkPolicyRefreshRun {
-  readonly runId: string;
-  readonly runnerGroup: string | null;
-}
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -454,6 +438,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   baseline: StoredConnectorPermissionBaseline,
+  measureDatabase: BaselineNetworkPolicyDatabaseMeasure,
   checkedAt: Date = nowDate(),
 ): Promise<BaselineNetworkPolicyRefreshResolution> {
   const connectorSlugs = Object.keys(baseline.connectors);
@@ -469,52 +454,54 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
     return { kind: "incompatible" };
   }
 
-  const rows = await db
-    .select({
-      identity: {
-        schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
-        catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
-        catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
-      },
-      grant: {
-        connectorSlug: userPermissionGrants.connectorSlug,
-        permission: userPermissionGrants.permission,
-        action: userPermissionGrants.action,
-        expiresAt: userPermissionGrants.expiresAt,
-      },
-    })
-    .from(connectorCatalogActiveSnapshot)
-    .innerJoin(
-      connectorCatalogCompatibilityEvaluation,
-      connectorCatalogIdentityJoin(),
-    )
-    .leftJoin(
-      userPermissionGrants,
-      and(
-        eq(userPermissionGrants.orgId, scope.orgId),
-        eq(userPermissionGrants.userId, scope.userId),
-        eq(userPermissionGrants.agentId, scope.agentId),
-        inArray(userPermissionGrants.connectorSlug, connectorSlugs),
-        activeUserPermissionGrantCondition(checkedAt),
-      ),
-    )
-    .where(
-      and(
-        eq(connectorCatalogActiveSnapshot.sourceId, current.sourceId),
-        eq(
-          connectorCatalogActiveSnapshot.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+  const rows = await measureDatabase(async () => {
+    return await db
+      .select({
+        identity: {
+          schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
+          catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
+          catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
+        },
+        grant: {
+          connectorSlug: userPermissionGrants.connectorSlug,
+          permission: userPermissionGrants.permission,
+          action: userPermissionGrants.action,
+          expiresAt: userPermissionGrants.expiresAt,
+        },
+      })
+      .from(connectorCatalogActiveSnapshot)
+      .innerJoin(
+        connectorCatalogCompatibilityEvaluation,
+        connectorCatalogIdentityJoin(),
+      )
+      .leftJoin(
+        userPermissionGrants,
+        and(
+          eq(userPermissionGrants.orgId, scope.orgId),
+          eq(userPermissionGrants.userId, scope.userId),
+          eq(userPermissionGrants.agentId, scope.agentId),
+          inArray(userPermissionGrants.connectorSlug, connectorSlugs),
+          activeUserPermissionGrantCondition(checkedAt),
         ),
-        eq(
-          connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
-          current.capabilityDigest,
+      )
+      .where(
+        and(
+          eq(connectorCatalogActiveSnapshot.sourceId, current.sourceId),
+          eq(
+            connectorCatalogActiveSnapshot.schemaVersion,
+            SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+          ),
+          eq(
+            connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
+            current.capabilityDigest,
+          ),
         ),
-      ),
-    )
-    .orderBy(
-      asc(userPermissionGrants.connectorSlug),
-      asc(userPermissionGrants.permission),
-    );
+      )
+      .orderBy(
+        asc(userPermissionGrants.connectorSlug),
+        asc(userPermissionGrants.permission),
+      );
+  });
 
   const first = rows[0];
   if (
@@ -816,48 +803,6 @@ async function applyVisibleAgentGrantRows(
   });
 }
 
-async function loadActiveNetworkPolicyRefreshRuns(
-  db: ReadonlyDb,
-  scope: UserPermissionGrantScope,
-): Promise<readonly ActiveNetworkPolicyRefreshRun[]> {
-  return await db
-    .select({
-      runId: agentRuns.id,
-      runnerGroup: agentRuns.runnerGroup,
-    })
-    .from(agentRuns)
-    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .where(
-      and(
-        eq(agentRuns.orgId, scope.orgId),
-        eq(agentRuns.userId, scope.userId),
-        eq(agentRuns.status, "running"),
-        isNotNull(agentRuns.runnerGroup),
-        eq(agentSessions.agentComposeId, scope.agentId),
-      ),
-    );
-}
-
-async function publishActiveNetworkPolicyRefreshes(
-  db: ReadonlyDb,
-  scope: UserPermissionGrantScope,
-  connectorSlug: string,
-): Promise<void> {
-  const runs = await loadActiveNetworkPolicyRefreshRuns(db, scope);
-  await Promise.all(
-    runs.flatMap((run) => {
-      if (!run.runnerGroup) {
-        return [];
-      }
-      return publishNetworkPolicyRefreshToRunnerGroup(
-        run.runnerGroup,
-        run.runId,
-        connectorSlug,
-      );
-    }),
-  );
-}
-
 function permissionGrantResponseScope(scope: UserPermissionGrantScope): {
   readonly agentId: string;
 } {
@@ -875,26 +820,24 @@ async function applyRowsAndPublishNetworkPolicyRefreshes(
   args: ApplyUserPermissionGrantsArgs,
   serverFirewalls: ConnectorServerFirewallCatalog,
 ): Promise<readonly StoredPermissionGrantRow[] | NotFoundResponse> {
-  const rows = await applyVisibleGrantRows(db, args);
-  if ("status" in rows) {
-    return rows;
-  }
-
-  if (!serverFirewalls.has(args.apply.connectorSlug)) {
-    return rows;
-  }
-
-  const responseScope = applyPermissionGrantResponseScope(args);
-  await publishActiveNetworkPolicyRefreshes(
-    db,
-    {
-      orgId: args.orgId,
-      userId: args.userId,
-      agentId: responseScope.agentId,
+  return await commitConnectorRuntimeMutation(
+    applyVisibleGrantRows(db, args),
+    (rows) => {
+      if ("status" in rows || !serverFirewalls.has(args.apply.connectorSlug)) {
+        return undefined;
+      }
+      const responseScope = applyPermissionGrantResponseScope(args);
+      return {
+        db,
+        scope: {
+          orgId: args.orgId,
+          userId: args.userId,
+          agentId: responseScope.agentId,
+        },
+        targets: [{ kind: "builtin", connectorSlug: args.apply.connectorSlug }],
+      };
     },
-    args.apply.connectorSlug,
   );
-  return rows;
 }
 
 export const listUserPermissionGrants$ = command(

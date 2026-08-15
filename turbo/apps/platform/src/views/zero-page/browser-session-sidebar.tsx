@@ -1,11 +1,6 @@
-import {
-  IconArrowsDiagonal,
-  IconAspectRatio,
-  IconLoader2,
-  IconPlayerStop,
-  IconX,
-} from "@tabler/icons-react";
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { Maximize2, X } from "lucide-react";
+import { Button } from "@okouai/ui";
+import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
@@ -23,48 +18,8 @@ export function BrowserSessionSidebar({
   onClose,
 }: BrowserSessionSidebarProps) {
   const { t } = useTranslation();
-  const fitWindow = useSet(signals.fitWindow$);
-  const fittingWindow = useGet(signals.fittingWindow$);
-  const stop = useSet(signals.stop$);
-  const stopping = useGet(signals.stopping$);
-  const sessionLoadable = useLastLoadable(signals.panelSession$);
+  const closeBrowser = useSet(signals.close$);
   const pageSignal = useGet(pageSignal$);
-  const canFitWindow =
-    sessionLoadable.state !== "loading" &&
-    sessionLoadable.state !== "hasError" &&
-    sessionLoadable.data?.status === "active" &&
-    sessionLoadable.data.liveUrl !== null &&
-    sessionLoadable.data.screen?.resizable === true;
-  const canStop =
-    sessionLoadable.state !== "loading" &&
-    sessionLoadable.state !== "hasError" &&
-    sessionLoadable.data?.status === "active";
-
-  const handleFitWindow = (button: HTMLButtonElement) => {
-    if (!canFitWindow || fittingWindow) {
-      return;
-    }
-    const liveViewport = button
-      .closest("[data-browser-session-sidebar]")
-      ?.querySelector<HTMLElement>("[data-browser-session-viewport]");
-    if (!liveViewport) {
-      return;
-    }
-    const { width, height } = liveViewport.getBoundingClientRect();
-    if (
-      !Number.isFinite(width) ||
-      !Number.isFinite(height) ||
-      width <= 0 ||
-      height <= 0
-    ) {
-      return;
-    }
-    detach(
-      fitWindow(width / height, pageSignal),
-      Reason.DomCallback,
-      "fit browser to sidebar window",
-    );
-  };
   return (
     <aside
       aria-label={t(($) => {
@@ -79,46 +34,6 @@ export function BrowserSessionSidebar({
             return $.browserSession.title;
           })}
         </span>
-        <button
-          type="button"
-          onClick={() => {
-            detach(stop(pageSignal), Reason.DomCallback, "stop thread browser");
-          }}
-          disabled={!canStop || stopping}
-          aria-label={t(($) => {
-            return $.browserSession.stop;
-          })}
-          title={t(($) => {
-            return $.browserSession.stop;
-          })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-        >
-          {stopping ? (
-            <IconLoader2 className="animate-spin" size={16} />
-          ) : (
-            <IconPlayerStop size={16} />
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={(event) => {
-            handleFitWindow(event.currentTarget);
-          }}
-          disabled={!canFitWindow || fittingWindow}
-          aria-label={t(($) => {
-            return $.browserSession.fitWindow;
-          })}
-          title={t(($) => {
-            return $.browserSession.fitWindow;
-          })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-        >
-          {fittingWindow ? (
-            <IconLoader2 className="animate-spin" size={16} />
-          ) : (
-            <IconAspectRatio size={16} />
-          )}
-        </button>
         <a
           href={signals.href}
           target="_blank"
@@ -126,20 +41,28 @@ export function BrowserSessionSidebar({
           aria-label={t(($) => {
             return $.browserSession.openNewPage;
           })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
         >
-          <IconArrowsDiagonal size={16} />
+          <Maximize2 size={16} />
         </a>
-        <button
+        <Button
           type="button"
-          onClick={onClose}
+          onClick={() => {
+            onClose();
+            detach(
+              closeBrowser(pageSignal),
+              Reason.DomCallback,
+              "close thread browser sidebar",
+            );
+          }}
           aria-label={t(($) => {
             return $.browserSession.close;
           })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
-          <IconX size={16} />
-        </button>
+          <X size={16} />
+        </Button>
       </div>
       <div className="min-h-0 flex-1">
         <BrowserSessionPanel signals={signals} containLiveFrame />

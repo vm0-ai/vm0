@@ -21,11 +21,13 @@ interface LarkTenantAccessTokenResult {
   readonly expiresIn: number;
 }
 
-export async function fetchLarkTenantAccessToken(args: {
-  readonly appId: string;
-  readonly appSecret: string;
-  readonly signal: AbortSignal;
-}): Promise<LarkTenantAccessTokenResult> {
+export async function fetchLarkTenantAccessToken(
+  args: {
+    readonly appId: string;
+    readonly appSecret: string;
+  },
+  signal: AbortSignal,
+): Promise<LarkTenantAccessTokenResult> {
   const response = await fetch(LARK_TENANT_ACCESS_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -35,7 +37,7 @@ export async function fetchLarkTenantAccessToken(args: {
       app_id: args.appId,
       app_secret: args.appSecret,
     }),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {

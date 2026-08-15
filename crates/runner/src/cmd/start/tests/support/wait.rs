@@ -1,6 +1,8 @@
 use super::super::super::*;
 use super::env::MockRunEnv;
+use futures_util::FutureExt;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 
 use crate::idle_pool::ParkingState;
 use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistry};
@@ -19,15 +21,78 @@ where
     Fut: Future<Output = WaitProbe<T>>,
 {
     let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        match probe().await {
-            WaitProbe::Ready(value) => return value,
-            WaitProbe::Pending(message) => {
-                assert!(tokio::time::Instant::now() < deadline, "{message}");
-                tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+    let mut last_pending_message = None;
+    let result = tokio::time::timeout_at(deadline, async {
+        loop {
+            match probe().await {
+                WaitProbe::Ready(value) => return value,
+                WaitProbe::Pending(message) => {
+                    last_pending_message = Some(message);
+                    tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+                }
             }
         }
+    })
+    .await;
+
+    match result {
+        Ok(value) => value,
+        Err(_) => match last_pending_message {
+            Some(message) => panic!("{message}"),
+            None => panic!("probe did not complete within {timeout:?}"),
+        },
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_for_probe_times_out_while_probe_is_pending() {
+    let local_timeout = Duration::from_secs(1);
+    let result = tokio::time::timeout(
+        local_timeout + Duration::from_secs(1),
+        AssertUnwindSafe(wait_for_probe(local_timeout, || {
+            std::future::pending::<WaitProbe<()>>()
+        }))
+        .catch_unwind(),
+    )
+    .await
+    .expect("test guard elapsed before wait_for_probe's local deadline");
+
+    let panic = result.expect_err("wait_for_probe should panic at its local deadline");
+    let message = panic
+        .downcast_ref::<String>()
+        .expect("wait_for_probe panic should contain a String message");
+    assert_eq!(message, "probe did not complete within 1s");
+}
+
+#[tokio::test(start_paused = true)]
+#[should_panic(expected = "probe attempt 3")]
+async fn wait_for_probe_preserves_latest_pending_message() {
+    let mut attempt = 0;
+    wait_for_probe(Duration::from_millis(25), || {
+        attempt += 1;
+        let attempt = attempt;
+        async move { WaitProbe::<()>::Pending(format!("probe attempt {attempt}")) }
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_for_probe_returns_after_pending_probe_becomes_ready() {
+    let mut attempt = 0;
+    let value = wait_for_probe(Duration::from_secs(1), || {
+        attempt += 1;
+        let attempt = attempt;
+        async move {
+            if attempt == 1 {
+                WaitProbe::Pending("probe is not ready".to_string())
+            } else {
+                WaitProbe::Ready(42)
+            }
+        }
+    })
+    .await;
+
+    assert_eq!(value, 42);
 }
 
 pub(in super::super) async fn assert_run_exits_within(

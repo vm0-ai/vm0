@@ -1,16 +1,20 @@
 import {
   zeroTeamContract,
   type TeamComposeItem,
-} from "@vm0/api-contracts/contracts/zero-team";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+} from "@okouai/api-contracts/contracts/zero-team";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { zeroComposesListContract } from "@okouai/api-contracts/contracts/zero-composes";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroAgentDraftContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/zero-agents";
 import {
+  chatSearchContract,
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadDraftContract,
@@ -20,9 +24,8 @@ import {
   chatThreadModelSelectionContract,
   chatThreadEventsContract,
   chatThreadArtifactsContract,
-  artifactsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ComposeListItem } from "@okouai/api-contracts/contracts/composes";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_TEAM: TeamComposeItem[] = [
@@ -61,7 +64,10 @@ const DEFAULT_COMPOSES_LIST: ComposeListItem[] = [
 
 let mockComposesList: ComposeListItem[] = [...DEFAULT_COMPOSES_LIST];
 const mockEnabledConnectorSlugsByAgent = new Map<string, string[]>();
-const mockEnabledCustomConnectorIdsByAgent = new Map<string, string[]>();
+const mockCustomConnectorGrantsByAgent = new Map<
+  string,
+  AgentCustomConnectorGrant[]
+>();
 
 export function setMockComposesList(composes: ComposeListItem[]): void {
   mockComposesList = composes;
@@ -73,7 +79,7 @@ export function resetMockComposesList(): void {
 
 export function resetMockUserConnectors(): void {
   mockEnabledConnectorSlugsByAgent.clear();
-  mockEnabledCustomConnectorIdsByAgent.clear();
+  mockCustomConnectorGrantsByAgent.clear();
 }
 
 function mockConnectorUpdateResponse(
@@ -92,18 +98,47 @@ function mockConnectorUpdateResponse(
   return [...requested];
 }
 
+function mockCustomConnectorGrantUpdateResponse(
+  current: readonly AgentCustomConnectorGrant[],
+  requested: readonly AgentCustomConnectorGrant[],
+  operation: "replace" | "add" | "remove" | undefined,
+): AgentCustomConnectorGrant[] {
+  if (operation === "add") {
+    const byConnectorId = new Map(
+      current.map((grant) => {
+        return [grant.customConnectorId, grant] as const;
+      }),
+    );
+    for (const grant of requested) {
+      byConnectorId.set(grant.customConnectorId, grant);
+    }
+    return [...byConnectorId.values()];
+  }
+  if (operation === "remove") {
+    const removedIds = new Set(
+      requested.map((grant) => {
+        return grant.customConnectorId;
+      }),
+    );
+    return current.filter((grant) => {
+      return !removedIds.has(grant.customConnectorId);
+    });
+  }
+  return [...requested];
+}
+
 export const apiAgentsHandlers = [
-  // GET /api/zero/team
+  // GET /api/okou/team
   mockApi(zeroTeamContract.list, ({ respond }) => {
     return respond(200, mockTeam);
   }),
 
-  // GET /api/zero/composes/list
+  // GET /api/okou/composes/list
   mockApi(zeroComposesListContract.list, ({ respond }) => {
     return respond(200, { composes: mockComposesList });
   }),
 
-  // GET /api/zero/agents/:id/user-connectors
+  // GET /api/okou/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
     const enabledConnectorSlugs =
       mockEnabledConnectorSlugsByAgent.get(params.id) ?? [];
@@ -112,14 +147,13 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/zero/agents/:id/custom-connectors
+  // GET /api/okou/agents/:id/custom-connectors
   mockApi(zeroAgentCustomConnectorsContract.get, ({ params, respond }) => {
-    return respond(200, {
-      enabledIds: mockEnabledCustomConnectorIdsByAgent.get(params.id) ?? [],
-    });
+    const grants = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
+    return respond(200, { grants });
   }),
 
-  // PUT /api/zero/agents/:id/user-connectors
+  // PUT /api/okou/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.update, ({ body, params, respond }) => {
     const enabledConnectorSlugs = mockConnectorUpdateResponse(
       mockEnabledConnectorSlugsByAgent.get(params.id) ?? [],
@@ -132,27 +166,22 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // PUT /api/zero/agents/:id/custom-connectors
+  // PUT /api/okou/agents/:id/custom-connectors
   mockApi(
     zeroAgentCustomConnectorsContract.update,
     ({ body, params, respond }) => {
-      const requestedIds =
-        "enabledIds" in body
-          ? body.enabledIds
-          : body.grants.map((grant) => {
-              return grant.customConnectorId;
-            });
-      const enabledIds = mockConnectorUpdateResponse(
-        mockEnabledCustomConnectorIdsByAgent.get(params.id) ?? [],
-        requestedIds,
+      const current = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
+      const grants = mockCustomConnectorGrantUpdateResponse(
+        current,
+        body.grants,
         body.operation,
       );
-      mockEnabledCustomConnectorIdsByAgent.set(params.id, enabledIds);
-      return respond(200, { enabledIds });
+      mockCustomConnectorGrantsByAgent.set(params.id, grants);
+      return respond(200, { grants });
     },
   ),
 
-  // GET /api/zero/agents/:id
+  // GET /api/okou/agents/:id
   mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
     return respond(200, {
       agentId: "c0000000-0000-4000-a000-000000000001",
@@ -164,10 +193,11 @@ export const apiAgentsHandlers = [
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
+      visibility: "public",
     });
   }),
 
-  // GET /api/zero/agents/:id/instructions
+  // GET /api/okou/agents/:id/instructions
   mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
     return respond(200, {
       content: null,
@@ -175,20 +205,20 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/zero/agents/:id/draft
-  mockApi(zeroAgentDraftContract.get, ({ respond }) => {
+  // GET /api/okou/agents/:id/draft
+  mockApi(agentDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftUserMessage: null,
       draftAttachments: null,
     });
   }),
 
-  // PATCH /api/zero/agents/:id/draft
-  mockApi(zeroAgentDraftContract.patch, ({ respond }) => {
+  // PATCH /api/okou/agents/:id/draft
+  mockApi(agentDraftContract.patch, ({ respond }) => {
     return respond(204);
   }),
 
-  // GET /api/zero/chat-threads/snapshot
+  // GET /api/okou/chat-threads/snapshot
   mockApi(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: [],
@@ -197,7 +227,7 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/zero/chat-threads/events
+  // GET /api/okou/chat-threads/events
   mockApi(chatThreadsContract.events, ({ respond }) => {
     return respond(200, {
       events: [],
@@ -205,48 +235,61 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/zero/chat-threads/active-ids
-  mockApi(chatThreadsContract.activeIds, ({ respond }) => {
-    return respond(200, { threadIds: [] });
+  // GET /api/okou/chat/search
+  mockApi(chatSearchContract.search, ({ respond }) => {
+    return respond(200, { results: [], hasMore: false });
   }),
 
-  // GET /api/zero/chat-thread-drafts
+  // GET /api/okou/indicators
+  mockApi(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, { agents: {}, threads: {} });
+  }),
+
+  // GET /api/okou/chat-thread-drafts
   mockApi(chatThreadsContract.drafts, ({ respond }) => {
     return respond(200, { draftThreadIds: [] });
   }),
 
-  // POST /api/zero/chat-threads (create new thread)
+  // POST /api/okou/chat-threads (create new thread)
   mockApi(chatThreadsContract.create, ({ body, respond }) => {
     return respond(201, {
       id: body.clientThreadId ?? "b0000000-0000-4000-a000-000000000001",
       title: null,
       createdAt: "2026-03-10T00:00:00Z",
+      selectedModel: body.model ?? "claude-sonnet-4-6",
+      serviceTier: body.serviceTier ?? null,
     });
   }),
 
-  // GET /api/zero/chat-threads/:threadId/events (paged events)
-  mockApi(chatThreadEventsContract.list, ({ respond }) => {
-    return respond(200, { events: [] });
+  // GET /api/okou/chat-threads/:threadId/event-snapshot
+  mockApi(chatThreadEventsContract.snapshot, ({ respond }) => {
+    return respond(404, {
+      error: {
+        message: "Chat event snapshot not found",
+        code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+      },
+    });
   }),
 
-  // GET /api/zero/chat-threads/:threadId/artifacts
+  // GET /api/okou/chat-threads/:threadId/event-rows
+  mockApi(chatThreadEventsContract.rows, ({ respond }) => {
+    return respond(200, { rows: [] });
+  }),
+
+  // GET /api/okou/chat-threads/:threadId/artifacts
   mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, { runs: [] });
   }),
 
-  // GET /api/zero/artifacts
-  mockApi(artifactsContract.list, ({ respond }) => {
-    return respond(200, { artifacts: [], truncated: false, nextCursor: null });
-  }),
-
-  // GET /api/zero/chat-threads/:id (thread detail)
+  // GET /api/okou/chat-threads/:id (thread detail)
   mockApi(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
+      cancellationRecoveryPending: false,
     });
   }),
 
-  // GET /api/zero/chat-threads/:id/draft
+  // GET /api/okou/chat-threads/:id/draft
   mockApi(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftUserMessage: null,
@@ -254,37 +297,32 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // PATCH /api/zero/chat-threads/:id (update draft)
+  // PATCH /api/okou/chat-threads/:id (update draft)
   mockApi(chatThreadByIdContract.patch, ({ respond }) => {
     return respond(204);
   }),
 
-  // POST /api/zero/chat-threads/:id/model-selection
+  // POST /api/okou/chat-threads/:id/model-selection
   mockApi(chatThreadModelSelectionContract.update, ({ respond }) => {
     return respond(204);
   }),
 
-  // POST /api/zero/chat-threads/:id/computer-use-host
+  // POST /api/okou/chat-threads/:id/computer-use-host
   mockApi(chatThreadComputerUseHostContract.update, ({ respond }) => {
     return respond(204);
   }),
 
-  // GET /api/zero/chat-thread-unreads
+  // GET /api/okou/chat-thread-unreads
   mockApi(chatThreadsContract.unreads, ({ respond }) => {
     return respond(200, { unreads: [] });
   }),
 
-  // GET /api/zero/chat-thread-unread-agents
-  mockApi(chatThreadsContract.unreadAgents, ({ respond }) => {
-    return respond(200, { agentIds: [] });
-  }),
-
-  // POST /api/zero/chat-thread-unreads/mark-read
+  // POST /api/okou/chat-thread-unreads/mark-read
   mockApi(chatThreadMarkAgentReadContract.markAgentRead, ({ respond }) => {
     return respond(204);
   }),
 
-  // POST /api/zero/chat-threads/:id/mark-read
+  // POST /api/okou/chat-threads/:id/mark-read
   mockApi(chatThreadMarkReadContract.markRead, ({ respond }) => {
     return respond(200, { lastReadAt: null, unreads: [] });
   }),

@@ -9,17 +9,20 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
-  IconLogout,
-  IconPlus,
-  IconChevronRight,
-  IconSettings,
-  IconSwitchHorizontal,
-  IconDatabaseExport,
-  IconFlask,
-  IconCoins,
-} from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+  LogOut,
+  Plus,
+  ChevronRight,
+  Settings,
+  ArrowRightLeft,
+  DatabaseBackup,
+  FlaskConical,
+  Coins,
+  Cloud,
+  CloudOff,
+} from "lucide-react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
+  Button,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -28,9 +31,9 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-} from "@vm0/ui";
+  cn,
+} from "@okouai/ui";
 import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
-import { suppressUnauthorizedRedirectForAuthTransition$ } from "../../signals/auth-retry.ts";
 import {
   reloadAccountMenuSubscriptionUsageRows$,
   type AccountMenuSubscriptionUsageRowsCacheKey,
@@ -51,7 +54,8 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
-  reloadBillingStatus$,
+  reloadAccountMenuCreditBalances$,
+  usagePackCreditsAsync$,
 } from "../../signals/zero-page/billing.ts";
 import {
   accountMenuCodexResetDialog$,
@@ -65,8 +69,13 @@ import {
   useSubscriptionUsageRows,
 } from "./zero-sidebar-subscriptions.tsx";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
+import { UserAvatar } from "../components/avatar.tsx";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
+import {
+  zeroDebugRealtimeIndicator$,
+  type ZeroDebugRealtimeIndicator,
+} from "../../signals/zero-page/realtime-status.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -86,35 +95,6 @@ function formatCreditBalance(credits: number): string {
       count: credits,
       value: formatLocalizedNumber(credits),
     },
-  );
-}
-
-function AccountAvatar({
-  imageUrl,
-  name,
-  initial,
-  size = "sm",
-}: {
-  imageUrl: string | undefined;
-  name: string;
-  initial: string;
-  size?: "sm" | "md";
-}) {
-  const dim = size === "md" ? "h-9 w-9" : "h-8 w-8";
-  const textSize = size === "md" ? "text-sm" : "text-xs";
-  if (imageUrl) {
-    return (
-      <div className={`${dim} shrink-0 rounded-xl overflow-hidden`}>
-        <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
-      </div>
-    );
-  }
-  return (
-    <div
-      className={`${dim} rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 ${textSize} font-medium shrink-0`}
-    >
-      {initial}
-    </div>
   );
 }
 
@@ -187,31 +167,95 @@ function accountDisplayFrom(
   };
 }
 
-function renderAccountTrigger(display: AccountDisplay, collapsed: boolean) {
+function RealtimeStatusIcon({
+  status,
+}: {
+  status: Exclude<ZeroDebugRealtimeIndicator, null>;
+}) {
+  const label =
+    status === "disconnected"
+      ? i18n.t(($) => {
+          return $.global.realtime.disconnected;
+        })
+      : i18n.t(($) => {
+          return $.global.realtime.reconnecting;
+        });
+
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      title={label}
+      className={cn(
+        "relative mr-1 flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground",
+        status === "reconnecting"
+          ? "zero-realtime-status-reconnecting"
+          : "opacity-80",
+      )}
+    >
+      {status === "disconnected" ? (
+        <CloudOff size={14} strokeWidth={1.75} aria-hidden="true" />
+      ) : (
+        <>
+          <Cloud
+            size={14}
+            strokeWidth={1.75}
+            className="absolute opacity-40"
+            aria-hidden="true"
+          />
+          <Cloud
+            size={14}
+            strokeWidth={1.75}
+            className="zero-realtime-cloud-flow"
+            aria-hidden="true"
+          />
+        </>
+      )}
+    </span>
+  );
+}
+
+function renderAccountTrigger(
+  display: AccountDisplay,
+  collapsed: boolean,
+  realtimeIndicator: ZeroDebugRealtimeIndicator,
+) {
+  if (collapsed) {
+    return (
+      <Button
+        type="button"
+        variant="quiet"
+        size="icon"
+        className="shrink-0 p-0"
+      >
+        <UserAvatar
+          imageUrl={display.imageUrl}
+          name={display.name}
+          initial={display.initial}
+          size="sm"
+        />
+      </Button>
+    );
+  }
+  // Geometry mirrors ZeroOrgSwitcher's trigger so the workspace row at the top
+  // of the sidebar and the account row at the bottom read as one pair.
   return (
     <button
       type="button"
-      className={`rounded-lg transition-colors duration-200 ${
-        collapsed
-          ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-sidebar-accent"
-          : "flex w-full items-center gap-2 p-2 text-left hover:bg-sidebar-accent"
-      }`}
+      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-state-hover text-sidebar-foreground transition-colors"
     >
-      <AccountAvatar
+      <UserAvatar
         imageUrl={display.imageUrl}
         name={display.name}
         initial={display.initial}
+        size="sm"
       />
-      {!collapsed && (
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium leading-tight truncate text-sidebar-foreground">
-            {display.name}
-          </p>
-          <p className="text-xs leading-tight truncate mt-px text-sidebar-foreground opacity-70">
-            {display.email}
-          </p>
-        </div>
-      )}
+      <span className="min-w-0 flex-1 text-left text-sm font-medium leading-tight truncate">
+        {display.name}
+      </span>
+      {realtimeIndicator !== null ? (
+        <RealtimeStatusIcon status={realtimeIndicator} />
+      ) : null}
     </button>
   );
 }
@@ -230,11 +274,11 @@ function CurrentAccountHeader({
     <>
       <div className="px-3 py-3">
         <div className="flex items-center gap-3">
-          <AccountAvatar
+          <UserAvatar
             imageUrl={display.imageUrl}
             name={display.name}
             initial={display.initial}
-            size="md"
+            size="lg"
           />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-foreground truncate">
@@ -257,20 +301,39 @@ function AccountUsageGroup({
   resetPending,
   subscriptionRowsCacheKey,
   subscriptionsEnabled,
+  usagePackPlansEnabled,
 }: {
   onOpenCreditBalance: () => void;
   onResetCodexUsage: (resetCredits: number | null) => void;
   resetPending: boolean;
   subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
   subscriptionsEnabled: boolean;
+  usagePackPlansEnabled: boolean;
 }) {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" && isAdminLoadable.data === true;
 
   if (subscriptionsEnabled) {
-    return isAdmin ? (
-      <AccountUsageGroupWithCredit
+    if (isAdmin) {
+      return usagePackPlansEnabled ? (
+        <AccountUsageGroupWithCombinedCredit
+          onOpenCreditBalance={onOpenCreditBalance}
+          onResetCodexUsage={onResetCodexUsage}
+          resetPending={resetPending}
+          subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+        />
+      ) : (
+        <AccountUsageGroupWithCredit
+          onOpenCreditBalance={onOpenCreditBalance}
+          onResetCodexUsage={onResetCodexUsage}
+          resetPending={resetPending}
+          subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+        />
+      );
+    }
+    return usagePackPlansEnabled ? (
+      <AccountUsageGroupWithUsagePackCredit
         onOpenCreditBalance={onOpenCreditBalance}
         onResetCodexUsage={onResetCodexUsage}
         resetPending={resetPending}
@@ -285,9 +348,59 @@ function AccountUsageGroup({
     );
   }
 
-  return isAdmin ? (
-    <AccountCreditBalanceGroup onOpenCreditBalance={onOpenCreditBalance} />
+  if (isAdmin) {
+    return usagePackPlansEnabled ? (
+      <AccountCombinedCreditBalanceGroup
+        onOpenCreditBalance={onOpenCreditBalance}
+      />
+    ) : (
+      <AccountCreditBalanceGroup onOpenCreditBalance={onOpenCreditBalance} />
+    );
+  }
+  return usagePackPlansEnabled ? (
+    <AccountUsagePackCreditGroup onOpenCreditBalance={onOpenCreditBalance} />
   ) : null;
+}
+
+function useCombinedCreditBalance(): {
+  readonly creditLabel: string | null;
+  readonly loading: boolean;
+} {
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const usagePackLoadable = useLastLoadable(usagePackCreditsAsync$);
+  const organizationCredits =
+    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const usagePackCredits =
+    usagePackLoadable.state === "hasData"
+      ? usagePackLoadable.data.totalCredits
+      : null;
+  const waitingForOrganization =
+    billingLoadable.state === "loading" && organizationCredits === null;
+  const waitingForUsagePack =
+    usagePackLoadable.state === "loading" && usagePackCredits === null;
+  const credits =
+    organizationCredits !== null && !waitingForUsagePack
+      ? organizationCredits + (usagePackCredits ?? 0)
+      : null;
+  return {
+    creditLabel: credits !== null ? formatCreditBalance(credits) : null,
+    loading: waitingForOrganization || waitingForUsagePack,
+  };
+}
+
+function useUsagePackCreditBalance(): {
+  readonly creditLabel: string | null;
+  readonly loading: boolean;
+} {
+  const creditsLoadable = useLastLoadable(usagePackCreditsAsync$);
+  const credits =
+    creditsLoadable.state === "hasData"
+      ? creditsLoadable.data.totalCredits
+      : null;
+  return {
+    creditLabel: credits !== null ? formatCreditBalance(credits) : null,
+    loading: creditsLoadable.state === "loading" && credits === null,
+  };
 }
 
 function AccountCreditBalanceGroup({
@@ -367,6 +480,122 @@ function AccountUsageGroupWithCredit({
   );
 }
 
+function AccountUsageGroupWithCombinedCredit({
+  onOpenCreditBalance,
+  onResetCodexUsage,
+  resetPending,
+  subscriptionRowsCacheKey,
+}: {
+  onOpenCreditBalance: () => void;
+  onResetCodexUsage: (resetCredits: number | null) => void;
+  resetPending: boolean;
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
+}) {
+  const { creditLabel, loading: creditLoading } = useCombinedCreditBalance();
+  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows({
+    cacheKey: subscriptionRowsCacheKey,
+  });
+  const showCredit = creditLoading || creditLabel !== null;
+  const showSubscriptions = subscriptionsLoading || rows.length > 0;
+
+  if (!showCredit && !showSubscriptions) {
+    return null;
+  }
+
+  return (
+    <>
+      {showCredit ? (
+        <CreditBalanceItem
+          creditLabel={creditLabel}
+          loading={creditLoading}
+          onOpenCreditBalance={onOpenCreditBalance}
+          testId="account-menu-credit-balance"
+        />
+      ) : null}
+      {showCredit && showSubscriptions ? <DropdownMenuSeparator /> : null}
+      {showSubscriptions ? (
+        <AccountMenuSubscriptionsPanel
+          loading={subscriptionsLoading}
+          onResetCodexUsage={onResetCodexUsage}
+          resetPending={resetPending}
+          rows={rows}
+        />
+      ) : null}
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function AccountUsageGroupWithUsagePackCredit({
+  onOpenCreditBalance,
+  onResetCodexUsage,
+  resetPending,
+  subscriptionRowsCacheKey,
+}: {
+  onOpenCreditBalance: () => void;
+  onResetCodexUsage: (resetCredits: number | null) => void;
+  resetPending: boolean;
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
+}) {
+  const { creditLabel, loading: creditLoading } = useUsagePackCreditBalance();
+  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows({
+    cacheKey: subscriptionRowsCacheKey,
+  });
+  const showCredit = creditLoading || creditLabel !== null;
+  const showSubscriptions = subscriptionsLoading || rows.length > 0;
+
+  if (!showCredit && !showSubscriptions) {
+    return null;
+  }
+
+  return (
+    <>
+      {showCredit ? (
+        <CreditBalanceItem
+          creditLabel={creditLabel}
+          loading={creditLoading}
+          onOpenCreditBalance={onOpenCreditBalance}
+          testId="account-menu-credit-balance"
+        />
+      ) : null}
+      {showCredit && showSubscriptions ? <DropdownMenuSeparator /> : null}
+      {showSubscriptions ? (
+        <AccountMenuSubscriptionsPanel
+          loading={subscriptionsLoading}
+          onResetCodexUsage={onResetCodexUsage}
+          resetPending={resetPending}
+          rows={rows}
+        />
+      ) : null}
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function AccountCombinedCreditBalanceGroup({
+  onOpenCreditBalance,
+}: {
+  onOpenCreditBalance: () => void;
+}) {
+  const { creditLabel, loading } = useCombinedCreditBalance();
+
+  if (!loading && creditLabel === null) {
+    return null;
+  }
+
+  return (
+    <>
+      <CreditBalanceItem
+        creditLabel={creditLabel}
+        loading={loading}
+        onOpenCreditBalance={onOpenCreditBalance}
+        testId="account-menu-credit-balance"
+      />
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
 function AccountSubscriptionsGroup({
   onResetCodexUsage,
   resetPending,
@@ -398,21 +627,48 @@ function AccountSubscriptionsGroup({
   );
 }
 
+function AccountUsagePackCreditGroup({
+  onOpenCreditBalance,
+}: {
+  onOpenCreditBalance: () => void;
+}) {
+  const { creditLabel, loading } = useUsagePackCreditBalance();
+
+  if (!loading && creditLabel === null) {
+    return null;
+  }
+
+  return (
+    <>
+      <CreditBalanceItem
+        creditLabel={creditLabel}
+        loading={loading}
+        onOpenCreditBalance={onOpenCreditBalance}
+        testId="account-menu-credit-balance"
+      />
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
 function CreditBalanceItem({
   creditLabel,
   loading,
   onOpenCreditBalance,
+  testId,
 }: {
   creditLabel: string | null;
   loading: boolean;
   onOpenCreditBalance: () => void;
+  testId?: string;
 }) {
   return (
     <DropdownMenuModalItem
       onModalSelect={onOpenCreditBalance}
-      className="gap-3 px-3 py-2.5 rounded-lg"
+      className="gap-3 px-3 py-2.5"
+      data-testid={testId}
     >
-      <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
+      <Coins size={18} className="" />
       <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
         {loading ? (
           <span className="block h-4 w-24 rounded bg-muted/60" />
@@ -438,13 +694,9 @@ function UnifiedSettingsGroup({
     <>
       <DropdownMenuModalItem
         onModalSelect={onOpenSettings}
-        className="gap-3 px-3 py-2.5 rounded-lg"
+        className="gap-3 px-3 py-2.5"
       >
-        <IconSettings
-          size={18}
-          stroke={1.5}
-          className="text-muted-foreground"
-        />
+        <Settings size={18} className="" />
         <span>
           {t(($) => {
             return $.settings.accountMenu.settings;
@@ -456,9 +708,9 @@ function UnifiedSettingsGroup({
           onClick={() => {
             return onAccountAction("lab");
           }}
-          className="gap-3 px-3 py-2.5 rounded-lg"
+          className="gap-3 px-3 py-2.5"
         >
-          <IconFlask size={18} stroke={1.5} className="text-muted-foreground" />
+          <FlaskConical size={18} className="" />
           <span>
             {t(($) => {
               return $.settings.accountMenu.lab;
@@ -483,11 +735,8 @@ function AccountManagementGroup({
   const { t } = useTranslation();
   if (others.length === 0) {
     return (
-      <DropdownMenuItem
-        onClick={onAddAccount}
-        className="gap-3 px-3 py-2.5 rounded-lg"
-      >
-        <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
+      <DropdownMenuItem onClick={onAddAccount} className="gap-3 px-3 py-2.5">
+        <Plus size={18} className="" />
         <span>
           {t(($) => {
             return $.settings.accountMenu.addAccount;
@@ -498,22 +747,14 @@ function AccountManagementGroup({
   }
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5 rounded-lg">
-        <IconSwitchHorizontal
-          size={18}
-          stroke={1.5}
-          className="text-muted-foreground"
-        />
+      <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5">
+        <ArrowRightLeft size={18} className="" />
         <span className="flex-1">
           {t(($) => {
             return $.settings.accountMenu.switchAccount;
           })}
         </span>
-        <IconChevronRight
-          size={14}
-          stroke={1.5}
-          className="text-muted-foreground"
-        />
+        <ChevronRight size={14} className="" />
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-[220px]">
         {others.map((account) => {
@@ -523,9 +764,9 @@ function AccountManagementGroup({
               onClick={() => {
                 return onSwitchSession(account.sessionId);
               }}
-              className="gap-3 px-3 py-2.5 rounded-lg"
+              className="gap-3 px-3 py-2.5"
             >
-              <AccountAvatar
+              <UserAvatar
                 imageUrl={account.imageUrl}
                 name={account.name}
                 initial={account.initial}
@@ -542,11 +783,8 @@ function AccountManagementGroup({
           );
         })}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={onAddAccount}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
-          <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
+        <DropdownMenuItem onClick={onAddAccount} className="gap-3 px-3 py-2.5">
+          <Plus size={18} className="" />
           <span>
             {t(($) => {
               return $.settings.accountMenu.addAccount;
@@ -565,13 +803,9 @@ function ExtraAccountActions() {
       onClick={() => {
         return window.open(`${window.location.origin}/export`, "_blank");
       }}
-      className="gap-3 px-3 py-2.5 rounded-lg"
+      className="gap-3 px-3 py-2.5"
     >
-      <IconDatabaseExport
-        size={18}
-        stroke={1.5}
-        className="text-muted-foreground"
-      />
+      <DatabaseBackup size={18} className="" />
       <span>
         {t(($) => {
           return $.settings.accountMenu.exportData;
@@ -592,9 +826,9 @@ function SignOutItem({
       onClick={() => {
         return onAccountAction("signout");
       }}
-      className="gap-3 px-3 py-2.5 rounded-lg"
+      className="gap-3 px-3 py-2.5"
     >
-      <IconLogout size={18} stroke={1.5} className="text-muted-foreground" />
+      <LogOut size={18} className="" />
       <span>
         {t(($) => {
           return $.settings.accountMenu.signOut;
@@ -624,6 +858,9 @@ export function AccountDropdown({
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
   const subscriptionsEnabled =
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
+  const usagePackPlansEnabled =
+    features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
+  const realtimeIndicator = useGet(zeroDebugRealtimeIndicator$);
   const openSettings = useSet(openSettingsDialogAt$);
   const setPendingSettingsSection = useSet(
     setPendingAccountMenuSettingsSection$,
@@ -632,7 +869,7 @@ export function AccountDropdown({
     consumePendingAccountMenuSettingsSection$,
   );
   const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
-  const reloadBilling = useSet(reloadBillingStatus$);
+  const reloadCreditBalances = useSet(reloadAccountMenuCreditBalances$);
   const resetCodexSubscriptionUsage = useSet(
     resetPersonalCodexSubscriptionUsage$,
   );
@@ -640,9 +877,6 @@ export function AccountDropdown({
   const setResetDialog = useSet(setAccountMenuCodexResetDialog$);
   const actionLoadable = useLoadable(personalActionPromise$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
-  const suppressUnauthorizedRedirectForAuthTransition = useSet(
-    suppressUnauthorizedRedirectForAuthTransition$,
-  );
   const pageSignal = useGet(pageSignal$);
 
   const current = accounts.find((a) => {
@@ -679,7 +913,6 @@ export function AccountDropdown({
   };
 
   const handleSwitchSession = (sessionId: string) => {
-    suppressUnauthorizedRedirectForAuthTransition();
     detach(
       clerk?.setActive({
         session: sessionId,
@@ -698,7 +931,6 @@ export function AccountDropdown({
   };
 
   const handleAddAccount = () => {
-    suppressUnauthorizedRedirectForAuthTransition();
     detach(
       clerk?.openSignIn({
         fallbackRedirectUrl: "/",
@@ -730,7 +962,7 @@ export function AccountDropdown({
       (async () => {
         await resetCodexSubscriptionUsage(pageSignal);
         await reloadSubscriptions(subscriptionRowsCacheKey, pageSignal);
-        setResetDialog({ open: false, resetCredits: null });
+        setResetDialog({ ...resetDialog, open: false });
       })(),
       Reason.DomCallback,
     );
@@ -738,8 +970,8 @@ export function AccountDropdown({
 
   const handleCodexResetOpenChange = (open: boolean) => {
     setResetDialog({
+      ...resetDialog,
       open,
-      resetCredits: open ? resetDialog.resetCredits : null,
     });
   };
 
@@ -751,9 +983,13 @@ export function AccountDropdown({
     if (hidePreferences) {
       return;
     }
-    // Refresh the org credit balance every time the menu opens so the
-    // displayed remaining credit reflects the latest usage.
-    reloadBilling();
+    // Refresh credit balances every time the menu opens so the displayed
+    // remaining credits reflect the latest usage.
+    detach(
+      reloadCreditBalances(pageSignal),
+      Reason.DomCallback,
+      "reload account menu credit balances",
+    );
     if (!subscriptionsEnabled) {
       return;
     }
@@ -769,7 +1005,7 @@ export function AccountDropdown({
     <>
       <DropdownMenu onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger asChild>
-          {renderAccountTrigger(accountDisplay, collapsed)}
+          {renderAccountTrigger(accountDisplay, collapsed, realtimeIndicator)}
         </DropdownMenuTrigger>
 
         <DropdownMenuContent
@@ -797,6 +1033,7 @@ export function AccountDropdown({
               resetPending={actionPending}
               subscriptionRowsCacheKey={subscriptionRowsCacheKey}
               subscriptionsEnabled={subscriptionsEnabled}
+              usagePackPlansEnabled={usagePackPlansEnabled}
             />
           )}
           {!hidePreferences && (

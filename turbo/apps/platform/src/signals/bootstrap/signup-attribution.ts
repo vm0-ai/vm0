@@ -1,66 +1,31 @@
 import { command } from "ccstate";
 import {
-  zeroAttributionContract,
+  acquisitionAttributionContract,
   type AdAttributionMetadata,
-} from "@vm0/api-contracts/contracts/zero-attribution";
+} from "@okouai/api-contracts/contracts/acquisition-attribution";
 
 import { accept } from "../../lib/accept.ts";
+import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { user$ } from "../auth.ts";
-import { getStoredAdAttributionMetadata } from "./ad-attribution.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
+import { readStoredAdAttributionMetadata$ } from "./ad-attribution.ts";
+import {
+  fireGoogleAdsConversion,
+  GOOGLE_ADS_SIGNUP_SEND_TO,
+} from "./google-ads-conversion.ts";
 
 const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
 const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
-const GOOGLE_ADS_SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
 const SIGNUP_CONVERSION_VALUE_USD = 1;
 const SIGNUP_CONVERSION_MAX_USER_AGE_MS = 30 * 60 * 1000;
-
-type GoogleTag = (
-  command: "event",
-  eventName: "conversion",
-  params: {
-    readonly send_to: string;
-    readonly value: number;
-    readonly currency: "USD";
-  },
-) => void;
-
-type WindowWithGoogleTag = Window & {
-  readonly gtag?: GoogleTag;
-};
-
-function getSessionStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.sessionStorage;
-}
-
-function trackGoogleAdsSignupConversion(
-  storage: Storage | null,
-  fingerprint: string,
-): void {
-  if (storage?.getItem(SIGNUP_CONVERSION_RECORDED_KEY) === fingerprint) {
-    return;
-  }
-
-  const gtag =
-    typeof window === "undefined"
-      ? undefined
-      : (window as WindowWithGoogleTag).gtag;
-  if (typeof gtag !== "function") {
-    return;
-  }
-
-  gtag("event", "conversion", {
-    send_to: GOOGLE_ADS_SIGNUP_SEND_TO,
-    value: SIGNUP_CONVERSION_VALUE_USD,
-    currency: "USD",
-  });
-  storage?.setItem(SIGNUP_CONVERSION_RECORDED_KEY, fingerprint);
-}
+const signupAttributionRecordedStorage = sessionStorageSignals(
+  SIGNUP_ATTRIBUTION_RECORDED_KEY,
+);
+const signupConversionRecordedStorage = sessionStorageSignals(
+  SIGNUP_CONVERSION_RECORDED_KEY,
+);
 
 function timestampMs(value: unknown): number | null {
   if (value instanceof Date) {
@@ -89,14 +54,14 @@ function isRecentlyCreatedUser(user: {
 }
 
 export const recordSignupAttribution$ = command(
-  async ({ get }, signal: AbortSignal): Promise<void> => {
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const user = await get(user$);
     signal.throwIfAborted();
     if (!user) {
       return;
     }
 
-    const storedAttribution = getStoredAdAttributionMetadata();
+    const storedAttribution = set(readStoredAdAttributionMetadata$);
     const recentlyCreatedUser = isRecentlyCreatedUser(user);
     const attribution: AdAttributionMetadata | undefined =
       storedAttribution ??
@@ -105,15 +70,13 @@ export const recordSignupAttribution$ = command(
       return;
     }
 
-    const storage = getSessionStorage();
     const attributionFingerprint = `${user.id}:${JSON.stringify(attribution)}`;
     let recorded =
-      storage?.getItem(SIGNUP_ATTRIBUTION_RECORDED_KEY) ===
-      attributionFingerprint;
+      get(signupAttributionRecordedStorage.get$) === attributionFingerprint;
 
     if (!recorded) {
       const createClient = get(zeroClient$);
-      const client = createClient(zeroAttributionContract);
+      const client = createClient(acquisitionAttributionContract);
       const result = await accept(
         client.recordSignup({
           body: { attribution },
@@ -124,15 +87,31 @@ export const recordSignupAttribution$ = command(
       signal.throwIfAborted();
       recorded = result.body.recorded;
       if (recorded) {
-        storage?.setItem(
-          SIGNUP_ATTRIBUTION_RECORDED_KEY,
-          attributionFingerprint,
-        );
+        set(signupAttributionRecordedStorage.set$, attributionFingerprint);
+        capturePaidOnboardingEvent("SignupAttributionRecorded", {
+          landing_host: window.location.host,
+          landing_path: window.location.pathname,
+          source_type: attribution.source_type ?? "unknown",
+          ...(attribution.vm0_campaign_id
+            ? { vm0_campaign_id: attribution.vm0_campaign_id }
+            : {}),
+          ...(attribution.vm0_ad_group_id
+            ? { vm0_ad_group_id: attribution.vm0_ad_group_id }
+            : {}),
+        });
       }
     }
 
     if (recorded && recentlyCreatedUser) {
-      trackGoogleAdsSignupConversion(storage, user.id);
+      const conversionFired = fireGoogleAdsConversion({
+        sendTo: GOOGLE_ADS_SIGNUP_SEND_TO,
+        dedupeValue: user.id,
+        value: SIGNUP_CONVERSION_VALUE_USD,
+        storedDedupeValue: get(signupConversionRecordedStorage.get$),
+      });
+      if (conversionFired) {
+        set(signupConversionRecordedStorage.set$, user.id);
+      }
     }
   },
 );

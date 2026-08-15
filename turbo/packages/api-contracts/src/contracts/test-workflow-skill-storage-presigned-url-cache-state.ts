@@ -3,6 +3,7 @@ import { z } from "zod";
 import { initContract } from "./base";
 
 const c = initContract();
+const cacheScopeSchema = z.enum(["workflow_skill_storage", "readonly_storage"]);
 
 const testWorkflowSkillStoragePresignedUrlCacheStateErrorSchema = z.object({
   error: z.string(),
@@ -27,6 +28,7 @@ export const testWorkflowSkillStoragePresignedUrlCacheStateActionBodySchema =
     z.object({
       action: z.literal("cleanup"),
       object_key_prefix: z.string(),
+      scope: cacheScopeSchema.optional(),
     }),
     z.object({
       action: z.literal("seed-cache-row"),
@@ -40,10 +42,12 @@ export const testWorkflowSkillStoragePresignedUrlCacheStateActionBodySchema =
       expires_at: z.string(),
       refresh_after: z.string(),
       last_requested_at: z.string().optional(),
+      scope: cacheScopeSchema.optional(),
     }),
     z.object({
       action: z.literal("read-cache-by-object-key-prefix"),
       object_key_prefix: z.string(),
+      scope: cacheScopeSchema.optional(),
     }),
   ]);
 

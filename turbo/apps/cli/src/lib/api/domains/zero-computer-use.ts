@@ -1,4 +1,4 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import type {
   ComputerUseAuthorizationRequestCreateResponse,
   ComputerUseCommandCreateResponse,
@@ -6,15 +6,15 @@ import type {
   ComputerUseHost,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
-import type { ComputerUseAnyPluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
+import type { ComputerUseAnyPluginCallBody } from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
   zeroComputerUseAuthorizationRequestsContract,
   zeroComputerUseCommandContract,
   zeroComputerUseHostsContract,
   zeroComputerUsePluginCommandContract,
   zeroComputerUseWriteCommandContract,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
 import {
   ApiRequestError,
   getBaseUrl,
@@ -26,23 +26,6 @@ import {
   headersWithCliClientHeaders,
 } from "../client-headers";
 
-function normalizeConfiguredUrl(value: string): string {
-  return value.startsWith("http") ? value : `https://${value}`;
-}
-
-function resolveComputerUseApiBaseUrl(baseUrl: string): string {
-  const override = process.env.VM0_API_BACKEND_URL;
-  if (override) {
-    return normalizeConfiguredUrl(override).replace(/\/$/, "");
-  }
-
-  const url = new URL(baseUrl);
-  if (url.hostname === "www.vm0.ai" || url.hostname === "app.vm0.ai") {
-    url.hostname = "api.vm0.ai";
-  }
-  return url.toString().replace(/\/$/, "");
-}
-
 function buildHeaders(token?: string): Record<string, string> {
   const headers: Record<string, string> = {};
   if (token) {
@@ -52,7 +35,7 @@ function buildHeaders(token?: string): Record<string, string> {
 }
 
 async function getComputerUseClientConfig() {
-  const baseUrl = resolveComputerUseApiBaseUrl(await getBaseUrl());
+  const baseUrl = (await getBaseUrl()).replace(/\/$/, "");
   const token = await getActiveToken();
   if (!token) {
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
@@ -209,7 +192,7 @@ export async function fetchComputerUseScreenshot(
 ): Promise<{ readonly buffer: Buffer; readonly mimeType: string }> {
   const config = await getComputerUseClientConfig();
   const response = await fetch(
-    `${config.baseUrl}/api/zero/computer-use/commands/${encodeURIComponent(
+    `${config.baseUrl}/api/okou/computer-use/commands/${encodeURIComponent(
       commandId,
     )}/screenshot`,
     { headers: headersWithCliClientHeaders(config.baseHeaders) },
@@ -238,7 +221,7 @@ export async function fetchComputerUsePluginContent(
 }> {
   const config = await getComputerUseClientConfig();
   const response = await fetch(
-    `${config.baseUrl}/api/zero/computer-use/commands/${encodeURIComponent(
+    `${config.baseUrl}/api/okou/computer-use/commands/${encodeURIComponent(
       commandId,
     )}/plugin-content`,
     { headers: headersWithCliClientHeaders(config.baseHeaders) },

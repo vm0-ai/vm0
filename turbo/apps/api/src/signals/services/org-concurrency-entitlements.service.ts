@@ -1,12 +1,11 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { and, count, eq, gt, inArray, or, sql, sum } from "drizzle-orm";
-
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
+import { and, asc, count, eq, gt, inArray, or, sql, sum } from "drizzle-orm";
 import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 
@@ -28,6 +27,8 @@ export interface ActiveConcurrencySubscription {
   readonly quantity: number;
   readonly currentPeriodEnd: Date | null;
   readonly cancelAtPeriodEnd: boolean;
+  readonly scheduledQuantity: number | null;
+  readonly scheduledChangeAt: Date | null;
 }
 
 interface OrgConcurrencyState {
@@ -44,11 +45,11 @@ function dbTimestamp(value: Date | string | null | undefined): Date | null {
 }
 
 export function activeConcurrencyPriceId(): string | undefined {
-  return env("ZERO_PRICE_CONCURRENCY")?.[0];
+  return env("OKOU_PRICE_CONCURRENCY")?.[0];
 }
 
 export function isConcurrencyPriceId(priceId: string): boolean {
-  return env("ZERO_PRICE_CONCURRENCY")?.includes(priceId) ?? false;
+  return env("OKOU_PRICE_CONCURRENCY")?.includes(priceId) ?? false;
 }
 
 export function cappedBaseConcurrencyLimit(tierLimit: number): number {
@@ -181,9 +182,15 @@ export async function activeConcurrencySubscriptions(
       quantity: orgConcurrencySubscriptions.slots,
       currentPeriodEnd: orgConcurrencySubscriptions.currentPeriodEnd,
       cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+      scheduledQuantity: orgConcurrencySubscriptions.scheduledSlots,
+      scheduledChangeAt: orgConcurrencySubscriptions.scheduledChangeAt,
     })
     .from(orgConcurrencySubscriptions)
-    .where(activeConcurrencySubscriptionPredicate(orgId, at));
+    .where(activeConcurrencySubscriptionPredicate(orgId, at))
+    .orderBy(
+      asc(orgConcurrencySubscriptions.createdAt),
+      asc(orgConcurrencySubscriptions.stripeSubscriptionId),
+    );
 
   return rows
     .map((row) => {
@@ -192,6 +199,8 @@ export async function activeConcurrencySubscriptions(
         quantity: Number(row.quantity),
         currentPeriodEnd: dbTimestamp(row.currentPeriodEnd),
         cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+        scheduledQuantity: row.scheduledQuantity,
+        scheduledChangeAt: dbTimestamp(row.scheduledChangeAt),
       };
     })
     .filter((row) => {

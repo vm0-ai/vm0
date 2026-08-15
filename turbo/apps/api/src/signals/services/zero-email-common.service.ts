@@ -1,11 +1,10 @@
 import crypto from "node:crypto";
 
-import type { createClerkClient } from "@clerk/backend";
-import { emailOutbox } from "@vm0/db/schema/email-outbox";
-import { emailSuppressions } from "@vm0/db/schema/email-suppression";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { users } from "@vm0/db/schema/user";
+import { emailOutbox } from "@okouai/db/schema/email-outbox";
+import { emailSuppressions } from "@okouai/db/schema/email-suppression";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { users } from "@okouai/db/schema/user";
 import { command } from "ccstate";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { Resend } from "resend";
@@ -16,14 +15,18 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
+import type { ClerkClient } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
+import type { Tx } from "../../lib/db-types";
 
-type ClerkClient = ReturnType<typeof createClerkClient>;
-type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type Transaction = Tx;
 
 interface EmailOutboxDrainContext {
   readonly currentTimeMs: number;
-  readonly signal: AbortSignal;
+}
+
+interface EmailOutboxItemsContext extends EmailOutboxDrainContext {
+  readonly itemIds: readonly string[];
 }
 
 const log = logger("zero:email");
@@ -58,21 +61,6 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
       expiresAt: z.string(),
       artifactCount: z.number(),
       unsubscribeUrl: z.string().optional(),
-    }),
-  }),
-  z.object({
-    template: z.literal("developer-support"),
-    props: z.object({
-      title: z.string(),
-      description: z.string(),
-      reference: z.string(),
-      userId: z.string(),
-      userEmail: z.string(),
-      orgId: z.string(),
-      orgName: z.string(),
-      runId: z.string(),
-      downloadUrl: z.string(),
-      expiresAt: z.string(),
     }),
   }),
   z.object({
@@ -223,15 +211,6 @@ function escapeHtml(value: string): string {
   return escaped;
 }
 
-function htmlParagraphs(value: string): string {
-  return value
-    .split("\n")
-    .map((line) => {
-      return `<p>${escapeHtml(line)}</p>`;
-    })
-    .join("");
-}
-
 type MorningBriefEmailTemplate = Extract<
   EmailTemplate,
   { readonly template: "morning-brief" }
@@ -291,23 +270,6 @@ function renderTemplate(template: EmailTemplate): string {
       )}.</p><p><a href="${escapeHtml(
         template.props.downloadUrl,
       )}">Download export</a></p>${unsubscribe}</main>`;
-    }
-    case "developer-support": {
-      return `<main><h1>${escapeHtml(template.props.title)}</h1>${htmlParagraphs(
-        template.props.description,
-      )}<p>Reference: ${escapeHtml(
-        template.props.reference,
-      )}</p><p>User: ${escapeHtml(template.props.userEmail)} (${escapeHtml(
-        template.props.userId,
-      )})</p><p>Org: ${escapeHtml(template.props.orgName)} (${escapeHtml(
-        template.props.orgId,
-      )})</p><p>Run: ${escapeHtml(
-        template.props.runId,
-      )}</p><p><a href="${escapeHtml(
-        template.props.downloadUrl,
-      )}">Download bundle</a></p><p>Expires ${escapeHtml(
-        template.props.expiresAt,
-      )}</p></main>`;
     }
     case "morning-brief": {
       return renderMorningBriefTemplate(template);
@@ -466,6 +428,7 @@ async function processOutboxItem(
 async function drainNextOutboxItem(
   db: Db,
   currentTimeMs: number,
+  itemIds?: readonly string[],
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
     const currentTime = new Date(currentTimeMs);
@@ -474,6 +437,9 @@ async function drainNextOutboxItem(
       .from(emailOutbox)
       .where(
         and(
+          itemIds === undefined
+            ? undefined
+            : inArray(emailOutbox.id, [...itemIds]),
           eq(emailOutbox.status, "pending"),
           or(
             isNull(emailOutbox.nextRetryAt),
@@ -491,59 +457,117 @@ async function drainNextOutboxItem(
   });
 }
 
+async function drainEmailOutboxBatch(
+  db: Db,
+  context: EmailOutboxDrainContext,
+  signal: AbortSignal,
+  itemIds?: readonly string[],
+): Promise<number> {
+  let processed = 0;
+
+  for (let index = 0; index < MAX_OUTBOX_BATCH_SIZE; index++) {
+    signal.throwIfAborted();
+    const hadItem = await drainNextOutboxItem(
+      db,
+      context.currentTimeMs,
+      itemIds,
+    );
+    signal.throwIfAborted();
+    if (!hadItem) {
+      break;
+    }
+
+    processed++;
+    if (index < MAX_OUTBOX_BATCH_SIZE - 1) {
+      const delayMs = outboxDrainDelayMs();
+      if (delayMs > 0) {
+        await delay(delayMs, { signal });
+      }
+    }
+  }
+
+  if (processed > 0) {
+    log.debug("Drained emails from outbox", { processed });
+  }
+  return processed;
+}
+
 export const drainEmailOutboxBatch$ = command(
-  async ({ set }, context: EmailOutboxDrainContext): Promise<number> => {
-    const db = set(writeDb$);
-    let processed = 0;
-
-    for (let index = 0; index < MAX_OUTBOX_BATCH_SIZE; index++) {
-      context.signal.throwIfAborted();
-      const hadItem = await drainNextOutboxItem(db, context.currentTimeMs);
-      context.signal.throwIfAborted();
-      if (!hadItem) {
-        break;
-      }
-
-      processed++;
-      if (index < MAX_OUTBOX_BATCH_SIZE - 1) {
-        const delayMs = outboxDrainDelayMs();
-        if (delayMs > 0) {
-          await delay(delayMs, { signal: context.signal });
-        }
-      }
-    }
-
-    if (processed > 0) {
-      log.debug("Drained emails from outbox", { processed });
-    }
-    return processed;
+  async (
+    { set },
+    context: EmailOutboxDrainContext,
+    signal: AbortSignal,
+  ): Promise<number> => {
+    return await drainEmailOutboxBatch(set(writeDb$), context, signal);
   },
 );
 
-export const cleanupExpiredEmailOutbox$ = command(
-  async ({ set }, context: EmailOutboxDrainContext): Promise<number> => {
-    const db = set(writeDb$);
-    const cutoff = new Date(context.currentTimeMs - OUTBOX_TTL_MS);
-    const deleted = await db
-      .delete(emailOutbox)
-      .where(
-        and(
-          lt(emailOutbox.createdAt, cutoff),
-          or(
-            eq(emailOutbox.status, "pending"),
-            eq(emailOutbox.status, "failed"),
-          ),
-        ),
-      )
-      .returning({ id: emailOutbox.id });
-    context.signal.throwIfAborted();
+export const drainEmailOutboxItems$ = command(
+  async (
+    { set },
+    context: EmailOutboxItemsContext,
+    signal: AbortSignal,
+  ): Promise<number> => {
+    return await drainEmailOutboxBatch(
+      set(writeDb$),
+      context,
+      signal,
+      context.itemIds,
+    );
+  },
+);
 
-    if (deleted.length > 0) {
-      log.debug("Cleaned up expired email outbox items", {
-        cleaned: deleted.length,
-      });
-    }
-    return deleted.length;
+async function cleanupExpiredEmailOutbox(
+  db: Db,
+  context: EmailOutboxDrainContext,
+  signal: AbortSignal,
+  itemIds?: readonly string[],
+): Promise<number> {
+  const cutoff = new Date(context.currentTimeMs - OUTBOX_TTL_MS);
+  const deleted = await db
+    .delete(emailOutbox)
+    .where(
+      and(
+        itemIds === undefined
+          ? undefined
+          : inArray(emailOutbox.id, [...itemIds]),
+        lt(emailOutbox.createdAt, cutoff),
+        or(eq(emailOutbox.status, "pending"), eq(emailOutbox.status, "failed")),
+      ),
+    )
+    .returning({ id: emailOutbox.id });
+  signal.throwIfAborted();
+
+  if (deleted.length > 0) {
+    log.debug("Cleaned up expired email outbox items", {
+      cleaned: deleted.length,
+    });
+  }
+  return deleted.length;
+}
+
+export const cleanupExpiredEmailOutbox$ = command(
+  async (
+    { set },
+    context: EmailOutboxDrainContext,
+    signal: AbortSignal,
+  ): Promise<number> => {
+    return await cleanupExpiredEmailOutbox(set(writeDb$), context, signal);
+  },
+);
+
+export const cleanupExpiredEmailOutboxItems$ = command(
+  async (
+    { set },
+    context: EmailOutboxItemsContext,
+    signal: AbortSignal,
+  ): Promise<number> => {
+    return await cleanupExpiredEmailOutbox(
+      set(writeDb$),
+      context,
+      signal,
+      context.itemIds,
+    );
   },
 );
 

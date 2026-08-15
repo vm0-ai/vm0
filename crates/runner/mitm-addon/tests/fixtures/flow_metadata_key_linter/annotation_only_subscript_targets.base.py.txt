@@ -1,0 +1,4 @@
+flow.metadata["vm_run_id"]: str
+
+metadata = flow.metadata
+metadata["firewall_name"]: str

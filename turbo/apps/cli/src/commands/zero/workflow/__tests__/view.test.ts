@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow view command
+ * Tests for okou workflow view command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -35,7 +35,7 @@ function workflowSummary(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("zero workflow view command", () => {
+describe("okou workflow view command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -47,8 +47,8 @@ describe("zero workflow view command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
-    vi.stubEnv("ZERO_AGENT_ID", undefined);
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_AGENT_ID", undefined);
   });
 
   afterEach(() => {
@@ -62,7 +62,7 @@ describe("zero workflow view command", () => {
     it("should display workflow with instruction", async () => {
       server.use(
         http.get(
-          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
           () => {
             return HttpResponse.json({
               id: WORKFLOW_ID,
@@ -99,7 +99,7 @@ describe("zero workflow view command", () => {
     it("should resolve a workflow name under --agent using the runtime winner", async () => {
       let capturedUrl: string | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", ({ request }) => {
+        http.get("http://localhost:3000/api/okou/workflows", ({ request }) => {
           capturedUrl = request.url;
           return HttpResponse.json([
             workflowSummary({
@@ -119,7 +119,7 @@ describe("zero workflow view command", () => {
           ]);
         }),
         http.get(
-          `http://localhost:3000/api/zero/workflows/${PRIVATE_WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${PRIVATE_WORKFLOW_ID}`,
           () => {
             return HttpResponse.json({
               ...workflowSummary({
@@ -195,7 +195,7 @@ describe("zero workflow view command", () => {
       const missingId = "99999999-9999-9999-9999-999999999999";
       server.use(
         http.get(
-          `http://localhost:3000/api/zero/workflows/${missingId}`,
+          `http://localhost:3000/api/okou/workflows/${missingId}`,
           () => {
             return HttpResponse.json(
               { error: { message: "Workflow not found", code: "NOT_FOUND" } },

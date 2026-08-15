@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  cronConnectorOauthStateCleanupContract,
-  cronTelegramCleanupContract,
-} from "@vm0/api-contracts/contracts/cron";
+import { cronTelegramCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
   afterEach,
   beforeEach,
@@ -13,18 +10,18 @@ import {
   onTestFinished,
 } from "vitest";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import {
   type TestCronDeleteCleanupsStateActionBody,
   type TestCronDeleteCleanupsStateResponse,
   testCronDeleteCleanupsStateContract,
-  testCronDeleteCleanupsStateResponseSchema,
   testCronDeleteCleanupsStateRoutes,
 } from "../test-cron-delete-cleanups-state";
+import { cronTelegramCleanupRoutes } from "../cron-telegram-cleanup";
 
 const context = testContext();
 const CRON_SECRET = "test-delete-cleanups-secret";
@@ -41,20 +38,13 @@ function connectorState(marker: string, kind: string): string {
 async function requestFixture(
   body: TestCronDeleteCleanupsStateActionBody,
 ): Promise<TestCronDeleteCleanupsStateResponse> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: testCronDeleteCleanupsStateRoutes,
-  });
-  const response = await app.request(
-    testCronDeleteCleanupsStateContract.action.path,
-    {
-      method: testCronDeleteCleanupsStateContract.action.method,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
+  const response = await accept(
+    setupApp({ context, routes: testCronDeleteCleanupsStateRoutes })(
+      testCronDeleteCleanupsStateContract,
+    ).action({ body }),
+    [200],
   );
-  expect(response.status).toBe(200);
-  return testCronDeleteCleanupsStateResponseSchema.parse(await response.json());
+  return response.body;
 }
 
 function registerFixtureCleanup(
@@ -94,18 +84,15 @@ function cronHeaders() {
   return { authorization: `Bearer ${CRON_SECRET}` };
 }
 
-async function cleanupConnectorOauthStates() {
-  return await accept(
-    setupApp({ context })(cronConnectorOauthStateCleanupContract).cleanup({
-      headers: cronHeaders(),
-    }),
-    [200],
-  );
+async function cleanupConnectorOauthStates(marker: string) {
+  return await requestFixture({ action: "cleanup-connector", marker });
 }
 
 async function cleanupTelegramMessages() {
   return await accept(
-    setupApp({ context })(cronTelegramCleanupContract).cleanup({
+    setupApp({ context, routes: cronTelegramCleanupRoutes })(
+      cronTelegramCleanupContract,
+    ).cleanup({
       headers: cronHeaders(),
     }),
     [200],
@@ -126,9 +113,10 @@ describe("complete delete cleanup crons", () => {
     stubTestTimezone("Asia/Shanghai");
     mockNow(CUTOFF_MS);
     const marker = await seedConnectorFixture(CONNECTOR_EXPIRED_COUNT);
+    const unrelatedMarker = await seedConnectorFixture(1);
 
-    const first = await cleanupConnectorOauthStates();
-    expect(first.body.deleted).toBe(10_000);
+    const first = await cleanupConnectorOauthStates(marker);
+    expect(first.deleted).toBe(10_000);
     await expect(
       requestFixture({ action: "read-connector", marker }),
     ).resolves.toStrictEqual({
@@ -139,9 +127,19 @@ describe("complete delete cleanup crons", () => {
         connectorState(marker, "future"),
       ],
     });
+    await expect(
+      requestFixture({ action: "read-connector", marker: unrelatedMarker }),
+    ).resolves.toStrictEqual({
+      ok: true,
+      remaining: [
+        connectorState(unrelatedMarker, "equal"),
+        connectorState(unrelatedMarker, "expired-0"),
+        connectorState(unrelatedMarker, "future"),
+      ],
+    });
 
-    const second = await cleanupConnectorOauthStates();
-    expect(second.body.deleted).toBe(2);
+    const second = await cleanupConnectorOauthStates(marker);
+    expect(second.deleted).toBe(2);
     await expect(
       requestFixture({ action: "read-connector", marker }),
     ).resolves.toStrictEqual({
@@ -149,8 +147,8 @@ describe("complete delete cleanup crons", () => {
       remaining: [connectorState(marker, "future")],
     });
 
-    const empty = await cleanupConnectorOauthStates();
-    expect(empty.body.deleted).toBe(0);
+    const empty = await cleanupConnectorOauthStates(marker);
+    expect(empty.deleted).toBe(0);
   }, 15_000);
 
   it("runs full and short telegram batches across a non-UTC daylight-saving boundary", async () => {

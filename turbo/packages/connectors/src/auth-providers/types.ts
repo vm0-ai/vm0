@@ -68,6 +68,7 @@ export interface OpenIdAuthGrantProvider<
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
   verifyCallback(
     args: ConnectorOpenIdVerifyArgs,
+    signal: AbortSignal,
   ): Promise<
     ConnectorAuthProviderGrantResultForMethod<ConnectorSlug, AuthMethodId>
   >;
@@ -116,6 +117,7 @@ export interface ExternalCodeGrantProvider<
       ConnectorSlug,
       AuthMethodId
     >,
+    signal: AbortSignal,
   ): Promise<
     ConnectorAuthProviderGrantResultForMethod<ConnectorSlug, AuthMethodId>
   >;
@@ -136,7 +138,6 @@ export type ConnectorAuthProviderRefreshArgs<
           ConnectorSlug,
           AuthMethodId
         >;
-        readonly signal: AbortSignal;
       } & ConnectorRefreshAuthClientArgs<ConnectorSlug, AuthMethodId>
     : never;
 
@@ -176,6 +177,7 @@ export interface RefreshTokenAccessProvider<
   readonly kind: "refresh-token";
   refresh(
     args: ConnectorAuthProviderRefreshArgs<ConnectorSlug, AuthMethodId>,
+    signal: AbortSignal,
   ): Promise<ConnectorAuthProviderRefreshResult<ConnectorSlug, AuthMethodId>>;
 }
 
@@ -202,6 +204,7 @@ export interface TokenRevokeProvider<
   readonly kind: "token-revoke";
   revokeToken(
     args: ConnectorAuthProviderRevokeArgs<ConnectorSlug, AuthMethodId>,
+    signal: AbortSignal,
   ): Promise<void>;
 }
 
@@ -300,7 +303,6 @@ interface ModelProviderAuthProviderRefreshArgs<
 > {
   readonly authClient: ModelProviderAuthClient;
   readonly inputs: Inputs;
-  readonly signal: AbortSignal;
 }
 
 export interface ModelProviderAuthProviderRefreshResult<
@@ -323,6 +325,7 @@ export interface ModelProviderRefreshTokenAccessProvider<
   ): ModelProviderAuthClient | undefined;
   refresh(
     args: ModelProviderAuthProviderRefreshArgs<Inputs>,
+    signal: AbortSignal,
   ): Promise<ModelProviderAuthProviderRefreshResult<Outputs>>;
 }
 

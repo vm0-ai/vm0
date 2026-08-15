@@ -7,8 +7,31 @@ type BrowserUpgradeTarget =
   | "ios"
   | "safari";
 
+interface BrowserUpgradeCopy {
+  readonly action: string;
+  readonly description: string;
+  readonly title: string;
+}
+
+function appBrandName(): "VM0" | "Okou" {
+  const brandName = document.documentElement.dataset.appBrandName;
+  if (brandName !== "VM0" && brandName !== "Okou") {
+    throw new Error("Invalid app brand name");
+  }
+  return brandName;
+}
+
 function setMetaContent(selector: string, content: string): void {
   document.querySelector(selector)?.setAttribute("content", content);
+}
+
+function brandedBrowserUpgradeCopy(
+  copy: BrowserUpgradeCopy,
+): BrowserUpgradeCopy {
+  return {
+    ...copy,
+    description: copy.description.replace(/Zero/gu, appBrandName()),
+  };
 }
 
 function browserUpgradeTarget(): BrowserUpgradeTarget {
@@ -25,14 +48,10 @@ function browserUpgradeTarget(): BrowserUpgradeTarget {
   }
 }
 
-function browserUpgradeCopy(target: BrowserUpgradeTarget): {
-  readonly action: string;
-  readonly description: string;
-  readonly title: string;
-} {
+function browserUpgradeCopy(target: BrowserUpgradeTarget): BrowserUpgradeCopy {
   switch (target) {
     case "chrome": {
-      return {
+      return brandedBrowserUpgradeCopy({
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.chrome.action;
         }),
@@ -42,10 +61,10 @@ function browserUpgradeCopy(target: BrowserUpgradeTarget): {
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.chrome.title;
         }),
-      };
+      });
     }
     case "chromium": {
-      return {
+      return brandedBrowserUpgradeCopy({
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.chromium.action;
         }),
@@ -55,10 +74,10 @@ function browserUpgradeCopy(target: BrowserUpgradeTarget): {
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.chromium.title;
         }),
-      };
+      });
     }
     case "ios": {
-      return {
+      return brandedBrowserUpgradeCopy({
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.ios.action;
         }),
@@ -68,10 +87,10 @@ function browserUpgradeCopy(target: BrowserUpgradeTarget): {
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.ios.title;
         }),
-      };
+      });
     }
     case "safari": {
-      return {
+      return brandedBrowserUpgradeCopy({
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.safari.action;
         }),
@@ -81,10 +100,10 @@ function browserUpgradeCopy(target: BrowserUpgradeTarget): {
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.safari.title;
         }),
-      };
+      });
     }
     case "browser": {
-      return {
+      return brandedBrowserUpgradeCopy({
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.browser.action;
         }),
@@ -94,25 +113,27 @@ function browserUpgradeCopy(target: BrowserUpgradeTarget): {
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.browser.title;
         }),
-      };
+      });
     }
   }
 }
 
 export function applyDocumentLocaleCopy(): void {
-  const productDescription = i18n.t(($) => {
-    return $.appShell.metadata.description;
-  });
-  const productTitle = i18n.t(($) => {
-    return $.appShell.metadata.title;
-  });
+  if (document.documentElement.dataset.appHeadManaged !== "true") {
+    const productDescription = i18n.t(($) => {
+      return $.appShell.metadata.description;
+    });
+    const productTitle = i18n.t(($) => {
+      return $.appShell.metadata.title;
+    });
 
-  setMetaContent('meta[name="description"]', productDescription);
-  setMetaContent('meta[property="og:description"]', productDescription);
-  setMetaContent('meta[property="og:image:alt"]', productTitle);
-  setMetaContent('meta[property="og:title"]', productTitle);
-  setMetaContent('meta[name="twitter:description"]', productDescription);
-  setMetaContent('meta[name="twitter:title"]', productTitle);
+    setMetaContent('meta[name="description"]', productDescription);
+    setMetaContent('meta[property="og:description"]', productDescription);
+    setMetaContent('meta[property="og:image:alt"]', productTitle);
+    setMetaContent('meta[property="og:title"]', productTitle);
+    setMetaContent('meta[name="twitter:description"]', productDescription);
+    setMetaContent('meta[name="twitter:title"]', productTitle);
+  }
 
   const upgradeCopy = browserUpgradeCopy(browserUpgradeTarget());
   const title = document.getElementById("browser-upgrade-title");

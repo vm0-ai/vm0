@@ -224,10 +224,12 @@ pub fn supervise(
 mod tests {
     use super::*;
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::process::Command;
     use std::sync::Mutex;
     use std::thread;
 
     static PID1_TEST_LOCK: Mutex<()> = Mutex::new(());
+    const SIGNAL_SETUP_CHILD_TEST: &str = "pid1::tests::setup_ignores_inherited_signals_child";
 
     struct ChildGuard {
         pid: libc::pid_t,
@@ -417,6 +419,58 @@ mod tests {
     fn finish_signal_test(signals: &SignalContext) {
         drain_pending_signals(signals);
         signals.restore_child_mask().unwrap();
+    }
+
+    #[test]
+    fn setup_ignores_inherited_signals_in_isolated_process() {
+        // Other PID 1 tests call waitpid(-1), so serialize ownership of this child.
+        let _guard = PID1_TEST_LOCK.lock().unwrap();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg(SIGNAL_SETUP_CHILD_TEST)
+            .arg("--ignored")
+            .arg("--nocapture")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(
+            stdout.contains(SIGNAL_SETUP_CHILD_TEST),
+            "isolated signal setup test did not run\nstatus: {}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            output.status,
+        );
+        assert!(
+            output.status.success(),
+            "isolated signal setup test failed\nstatus: {}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            output.status,
+        );
+    }
+
+    #[test]
+    #[ignore = "run through the process-isolated parent test"]
+    fn setup_ignores_inherited_signals_child() {
+        let default = SigAction::new(SigHandler::SigDfl, SaFlags::empty(), SigSet::empty());
+        for signal in [Signal::SIGTTIN, Signal::SIGTTOU, Signal::SIGPIPE] {
+            // SAFETY: the action contains SIG_DFL, so it cannot invoke an
+            // invalid function pointer.
+            unsafe {
+                sigaction(signal, &default).unwrap();
+            }
+        }
+
+        let _signals = SignalContext::setup().unwrap();
+
+        for signal in [Signal::SIGTTIN, Signal::SIGTTOU, Signal::SIGPIPE] {
+            // SAFETY: the action contains SIG_DFL, so it cannot invoke an
+            // invalid function pointer. The returned action was installed by
+            // SignalContext::setup().
+            let configured = unsafe { sigaction(signal, &default).unwrap() };
+            assert!(
+                matches!(configured.handler(), SigHandler::SigIgn),
+                "{signal:?} was not configured as SIG_IGN",
+            );
+        }
     }
 
     #[test]

@@ -1,137 +1,72 @@
 import {
   logsByIdContract,
   logsListContract,
-} from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/logs";
 import type { z } from "zod";
-import { emailUnsubscribeContract } from "@vm0/api-contracts/contracts/email-unsubscribe";
-import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
-import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
+import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-unsubscribe";
+import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
+import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
 import type {
   ModelProviderType,
   OrgModelPoliciesResponse,
   UpsertModelProviderRequest,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   type WorkflowFileEntry,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-model-providers";
+} from "@okouai/api-contracts/contracts/zero-model-providers";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
-} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
-  addClientCapabilityToVersion,
-  CLIENT_CAPABILITY_ES_ES_LOCALE,
-  CLIENT_CAPABILITY_FR_FR_LOCALE,
-  CLIENT_CAPABILITY_HI_IN_LOCALE,
-  CLIENT_CAPABILITY_IT_IT_LOCALE,
-  CLIENT_CAPABILITY_JA_JP_LOCALE,
-  CLIENT_CAPABILITY_KO_KR_LOCALE,
-  CLIENT_CAPABILITY_ID_ID_LOCALE,
-  CLIENT_CAPABILITY_DE_DE_LOCALE,
-  CLIENT_CAPABILITY_PT_BR_LOCALE,
-  CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
-import {
-  zeroUserPreferencesContract,
+  userPreferencesContract,
   updateUserPreferencesRequestSchema,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
-
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
-import { createApp } from "../../../../app-factory";
+} from "@okouai/api-contracts/contracts/user-preferences";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { emailUnsubscribeRoutes } from "../../email-unsubscribe";
+import { userExportRoutes } from "../../user-export";
+import { logsRoutes } from "../../logs";
+import { zeroMeModelProvidersDeleteRoutes } from "../../zero-me-model-providers-delete";
+import { zeroMeModelProvidersListRoutes } from "../../zero-me-model-providers-list";
+import { zeroMeModelProvidersResetSubscriptionRoutes } from "../../zero-me-model-providers-reset-subscription";
+import { zeroMeModelProvidersUpsertRoutes } from "../../zero-me-model-providers-upsert";
+import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { orgLogoRoutes } from "../../org-logo";
+import { pushSubscriptionsRoutes } from "../../push-subscriptions";
+import { userPreferencesRoutes } from "../../user-preferences";
+import { zeroWorkflowsRoutes } from "../../zero-workflows";
+
+const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+  ...zeroMeModelProvidersListRoutes,
+  ...zeroMeModelProvidersUpsertRoutes,
+]);
+
+const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
+  ...zeroMeModelProvidersDeleteRoutes,
+  ...zeroMeModelProvidersResetSubscriptionRoutes,
+]);
 
 interface AuthHeaders {
   readonly authorization?: string;
-  readonly [CLIENT_VERSION_HEADER]?: string;
 }
 
 type UpdateUserPreferencesInput = z.input<
   typeof updateUserPreferencesRequestSchema
 >;
 
-export const BRAZILIAN_PORTUGUESE_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_PT_BR_LOCALE,
-);
-export const JAPANESE_CLIENT_VERSION = addClientCapabilityToVersion(
-  BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
-  CLIENT_CAPABILITY_JA_JP_LOCALE,
-);
-export const KOREAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_KO_KR_LOCALE,
-);
-export const INDONESIAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_ID_ID_LOCALE,
-);
-const ALL_LOCALES_WITH_KOREAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  JAPANESE_CLIENT_VERSION,
-  CLIENT_CAPABILITY_KO_KR_LOCALE,
-);
-const ALL_LOCALES_WITH_INDONESIAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_KOREAN_CLIENT_VERSION,
-  CLIENT_CAPABILITY_ID_ID_LOCALE,
-);
-export const GERMAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_DE_DE_LOCALE,
-);
-const ALL_LOCALES_WITH_GERMAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_INDONESIAN_CLIENT_VERSION,
-  CLIENT_CAPABILITY_DE_DE_LOCALE,
-);
-export const SPANISH_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_ES_ES_LOCALE,
-);
-const ALL_LOCALES_WITH_SPANISH_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_GERMAN_CLIENT_VERSION,
-  CLIENT_CAPABILITY_ES_ES_LOCALE,
-);
-export const ITALIAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.662.0",
-  CLIENT_CAPABILITY_IT_IT_LOCALE,
-);
-const ALL_LOCALES_WITH_ITALIAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_SPANISH_CLIENT_VERSION,
-  CLIENT_CAPABILITY_IT_IT_LOCALE,
-);
-export const FRENCH_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.649.0",
-  CLIENT_CAPABILITY_FR_FR_LOCALE,
-);
-const ALL_LOCALES_WITH_FRENCH_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_ITALIAN_CLIENT_VERSION,
-  CLIENT_CAPABILITY_FR_FR_LOCALE,
-);
-export const HINDI_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_HI_IN_LOCALE,
-);
-export const ALL_LOCALES_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_FRENCH_CLIENT_VERSION,
-  CLIENT_CAPABILITY_HI_IN_LOCALE,
-);
-
-type ZeroLogsSearchQuery = z.input<
-  (typeof zeroLogsSearchContract.searchLogs)["query"]
->;
-type ZeroLogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
+type LogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
 
 interface ClerkOrg {
   readonly imageUrl: string | null;
@@ -145,7 +80,6 @@ function authHeaders(actor: ApiTestUser | null): AuthHeaders {
 function authenticate(
   context: TestContext,
   actor: ApiTestUser | null,
-  clientVersion?: string,
 ): AuthHeaders {
   if (!actor) {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -159,10 +93,7 @@ function authenticate(
     actor.orgId,
     actor.orgRole,
   );
-  return {
-    ...authHeaders(actor),
-    ...(clientVersion && { [CLIENT_VERSION_HEADER]: clientVersion }),
-  };
+  return authHeaders(actor);
 }
 
 function workflowFiles(content: string): WorkflowFileEntry[] {
@@ -209,29 +140,14 @@ function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
   };
 }
 
-async function requestZeroLogsSearch<TStatus extends 200 | 400 | 401 | 403>(
+async function requestLogsList<TStatus extends 200 | 400 | 401 | 403>(
   context: TestContext,
   actor: ApiTestUser | null,
-  query: ZeroLogsSearchQuery,
+  query: LogsListQuery,
   statuses: readonly TStatus[],
 ) {
   return await accept(
-    setupApp({ context })(zeroLogsSearchContract).searchLogs({
-      headers: authenticate(context, actor),
-      query,
-    }),
-    statuses,
-  );
-}
-
-async function requestZeroLogsList<TStatus extends 200 | 400 | 401 | 403>(
-  context: TestContext,
-  actor: ApiTestUser | null,
-  query: ZeroLogsListQuery,
-  statuses: readonly TStatus[],
-) {
-  return await accept(
-    setupApp({ context })(logsListContract).list({
+    setupApp({ context, routes: logsRoutes })(logsListContract).list({
       headers: authenticate(context, actor),
       query,
     }),
@@ -281,7 +197,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroOrgLogoContract).get({
+        setupApp({ context, routes: orgLogoRoutes })(orgLogoContract).get({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -298,7 +214,7 @@ export function createMiscRoutesApi(context: TestContext) {
         body.append("file", file);
       }
       return await accept(
-        setupApp({ context })(zeroOrgLogoContract).post({
+        setupApp({ context, routes: orgLogoRoutes })(orgLogoContract).post({
           headers: authenticate(context, actor),
           body,
         }),
@@ -306,10 +222,12 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
-    async readPreferences(actor: ApiTestUser, clientVersion?: string) {
+    async readPreferences(actor: ApiTestUser) {
       return await accept(
-        setupApp({ context })(zeroUserPreferencesContract).get({
-          headers: authenticate(context, actor, clientVersion),
+        setupApp({ context, routes: userPreferencesRoutes })(
+          userPreferencesContract,
+        ).get({
+          headers: authenticate(context, actor),
         }),
         [200],
       );
@@ -319,11 +237,12 @@ export function createMiscRoutesApi(context: TestContext) {
       actor: ApiTestUser,
       body: UpdateUserPreferencesInput,
       statuses: readonly TStatus[],
-      clientVersion?: string,
     ) {
       return await accept(
-        setupApp({ context })(zeroUserPreferencesContract).update({
-          headers: authenticate(context, actor, clientVersion),
+        setupApp({ context, routes: userPreferencesRoutes })(
+          userPreferencesContract,
+        ).update({
+          headers: authenticate(context, actor),
           body,
         }),
         statuses,
@@ -335,7 +254,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403)[],
     ) {
       return await accept(
-        setupApp({ context })(pushSubscriptionsContract).register({
+        setupApp({ context, routes: pushSubscriptionsRoutes })(
+          pushSubscriptionsContract,
+        ).register({
           headers: authenticate(context, actor),
           body: {
             endpoint: `https://push.example.test/${actor?.userId ?? "anon"}`,
@@ -351,9 +272,11 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(userExportContract).get({
-          headers: authenticate(context, actor),
-        }),
+        setupApp({ context, routes: userExportRoutes })(userExportContract).get(
+          {
+            headers: authenticate(context, actor),
+          },
+        ),
         statuses,
       );
     },
@@ -363,7 +286,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (202 | 401 | 403 | 429 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(userExportContract).post({
+        setupApp({ context, routes: userExportRoutes })(
+          userExportContract,
+        ).post({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -375,7 +300,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (302 | 400)[],
     ) {
       return await accept(
-        setupApp({ context })(emailUnsubscribeContract).get({
+        setupApp({ context, routes: emailUnsubscribeRoutes })(
+          emailUnsubscribeContract,
+        ).get({
           query: { token },
         }),
         statuses,
@@ -387,7 +314,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 400)[],
     ) {
       return await accept(
-        setupApp({ context })(emailUnsubscribeContract).unsubscribe({
+        setupApp({ context, routes: emailUnsubscribeRoutes })(
+          emailUnsubscribeContract,
+        ).unsubscribe({
           query: { token },
         }),
         statuses,
@@ -396,7 +325,9 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async listWorkflows(actor: ApiTestUser) {
       return await accept(
-        setupApp({ context })(zeroWorkflowsCollectionContract).list({
+        setupApp({ context, routes: zeroWorkflowsRoutes })(
+          zeroWorkflowsCollectionContract,
+        ).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -414,7 +345,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 409)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroWorkflowsCollectionContract).create({
+        setupApp({ context, routes: zeroWorkflowsRoutes })(
+          zeroWorkflowsCollectionContract,
+        ).create({
           headers: authenticate(context, actor),
           body: {
             agentId,
@@ -435,7 +368,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (400 | 401 | 403 | 409)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroWorkflowsCollectionContract).create({
+        setupApp({ context, routes: zeroWorkflowsRoutes })(
+          zeroWorkflowsCollectionContract,
+        ).create({
           headers: authenticate(context, actor),
           body: {
             agentId,
@@ -455,7 +390,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroWorkflowsDetailContract).get({
+        setupApp({ context, routes: zeroWorkflowsRoutes })(
+          zeroWorkflowsDetailContract,
+        ).get({
           headers: authenticate(context, actor),
           params: { workflowId },
         }),
@@ -470,7 +407,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroWorkflowsDetailContract).update({
+        setupApp({ context, routes: zeroWorkflowsRoutes })(
+          zeroWorkflowsDetailContract,
+        ).update({
           headers: authenticate(context, actor),
           params: { workflowId },
           body: { instruction: content },
@@ -485,7 +424,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (204 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroWorkflowsDetailContract).delete({
+        setupApp({ context, routes: zeroWorkflowsRoutes })(
+          zeroWorkflowsDetailContract,
+        ).delete({
           headers: authenticate(context, actor),
           params: { workflowId },
         }),
@@ -495,7 +436,9 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async listModelProviders(actor: ApiTestUser) {
       return await accept(
-        setupApp({ context })(zeroModelProvidersMainContract).list({
+        setupApp({ context, routes: zeroModelProvidersRoutes })(
+          zeroModelProvidersMainContract,
+        ).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -507,7 +450,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 201 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroModelProvidersMainContract).upsert({
+        setupApp({ context, routes: zeroModelProvidersRoutes })(
+          zeroModelProvidersMainContract,
+        ).upsert({
           headers: authenticate(context, actor),
           body: { type: "vm0" },
         }),
@@ -521,7 +466,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 201 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroModelProvidersMainContract).upsert({
+        setupApp({ context, routes: zeroModelProvidersRoutes })(
+          zeroModelProvidersMainContract,
+        ).upsert({
           headers: authenticate(context, actor),
           body,
         }),
@@ -534,7 +481,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (204 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroModelProvidersByTypeContract).delete({
+        setupApp({ context, routes: zeroModelProvidersRoutes })(
+          zeroModelProvidersByTypeContract,
+        ).delete({
           headers: authenticate(context, actor),
           params: { type: "vm0" },
         }),
@@ -548,7 +497,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (204 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroModelProvidersByTypeContract).delete({
+        setupApp({ context, routes: zeroModelProvidersRoutes })(
+          zeroModelProvidersByTypeContract,
+        ).delete({
           headers: authenticate(context, actor),
           params: { type },
         }),
@@ -561,7 +512,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroPersonalModelProvidersMainContract).list({
+        setupApp({ context, routes: zeroPersonalModelProvidersMainTestRoutes })(
+          zeroPersonalModelProvidersMainContract,
+        ).list({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -574,7 +527,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 201 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroPersonalModelProvidersMainContract).upsert({
+        setupApp({ context, routes: zeroPersonalModelProvidersMainTestRoutes })(
+          zeroPersonalModelProvidersMainContract,
+        ).upsert({
           headers: authenticate(context, actor),
           body,
         }),
@@ -588,7 +543,10 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (204 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroPersonalModelProvidersByTypeContract).delete({
+        setupApp({
+          context,
+          routes: zeroPersonalModelProvidersByTypeTestRoutes,
+        })(zeroPersonalModelProvidersByTypeContract).delete({
           headers: authenticate(context, actor),
           params: { type },
         }),
@@ -600,7 +558,9 @@ export function createMiscRoutesApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<OrgModelPoliciesResponse> {
       const response = await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).list({
+        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+          zeroModelPoliciesMainContract,
+        ).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -614,7 +574,9 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
+        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+          zeroModelPoliciesMainContract,
+        ).update({
           headers: authenticate(context, actor),
           body: {
             policies: policies.map((policy) => {
@@ -633,44 +595,15 @@ export function createMiscRoutesApi(context: TestContext) {
     },
 
     async listLogs(actor: ApiTestUser) {
-      return await requestZeroLogsList(context, actor, {}, [200]);
+      return await requestLogsList(context, actor, {}, [200]);
     },
 
     async requestListLogs<TStatus extends 200 | 400 | 401 | 403>(
       actor: ApiTestUser | null,
-      query: ZeroLogsListQuery,
+      query: LogsListQuery,
       statuses: readonly TStatus[],
     ) {
-      return await requestZeroLogsList(context, actor, query, statuses);
-    },
-
-    async requestSearchLogs<TStatus extends 200 | 400 | 401 | 403>(
-      actor: ApiTestUser | null,
-      query: ZeroLogsSearchQuery,
-      statuses: readonly TStatus[],
-    ) {
-      return await requestZeroLogsSearch(context, actor, query, statuses);
-    },
-
-    async rawSearchLogs(
-      actor: ApiTestUser,
-      queryString: string,
-    ): Promise<{ readonly status: number; readonly body: unknown }> {
-      const { authorization } = authenticate(context, actor);
-      const app = createApp({ signal: context.signal });
-      const response = await app.request(
-        `/api/zero/logs/search${queryString}`,
-        {
-          method: "GET",
-          headers: authorization === undefined ? {} : { authorization },
-        },
-      );
-      const body: unknown = await response.json();
-      return { status: response.status, body };
-    },
-
-    async searchLogs(actor: ApiTestUser, keyword: string) {
-      return await requestZeroLogsSearch(context, actor, { keyword }, [200]);
+      return await requestLogsList(context, actor, query, statuses);
     },
 
     async readLog(
@@ -679,7 +612,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(logsByIdContract).getById({
+        setupApp({ context, routes: logsRoutes })(logsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id },
         }),

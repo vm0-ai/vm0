@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorScopeDiffContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorScopeDiffContract } from "@okouai/api-contracts/contracts/zero-connectors";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -14,6 +15,8 @@ import {
   createConnectorBddApi,
   mockGitHubConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
+import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -84,7 +87,9 @@ describe("GET /api/zero/connectors/:connectorSlug/scope-diff", () => {
       iat: seconds,
       exp: seconds + 60,
     });
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorScopeDiffContract,
+    );
     const response = await accept(
       client.getScopeDiff({
         params: { connectorSlug: "github" },
@@ -107,6 +112,30 @@ describe("GET /api/zero/connectors/:connectorSlug/scope-diff", () => {
     );
     expectApiError(response.body);
     expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the stored connector runtime method is unavailable", async () => {
+    const actor = bdd.user();
+    if (actor.orgId === null) {
+      throw new Error("Expected test actor organization");
+    }
+    await seedConnectorStorageRow(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorSlug: "openai",
+      authMethod: "unavailable-method",
+      storageVersion: 1,
+    });
+
+    const response = await connectorsApi.requestScopeDiff(
+      actor,
+      "openai",
+      [404],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    await connectorsApi.deleteConnectorBySlug(actor, "openai");
   });
 
   it("returns an empty diff when stored scopes match current scopes exactly", async () => {

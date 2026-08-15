@@ -1,10 +1,10 @@
 import { command } from "ccstate";
-import { emailMorningBriefUnsubscribeContract } from "@vm0/api-contracts/contracts/email-morning-brief-unsubscribe";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { emailMorningBriefUnsubscribeContract } from "@okouai/api-contracts/contracts/email-morning-brief-unsubscribe";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 
 import { queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { verifyMorningBriefUnsubscribeToken } from "../services/morning-brief-email-link.service";
 import { syncMorningBriefSchedule } from "../services/morning-brief-schedule.service";
 import type { RouteEntry } from "../route-entry";

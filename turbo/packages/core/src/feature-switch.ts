@@ -34,11 +34,6 @@ export interface FeatureSwitchContext {
   readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
 
-const CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES = [
-  ...STAFF_ORG_ID_HASHES,
-  "a6e60503", // geo rollout workspace
-] as const;
-
 /**
  * Registry of all feature switches
  */
@@ -113,19 +108,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Expensify accounting connector",
     enabled: false,
   },
-  [FeatureSwitchKey.GoogleContactsConnector]: {
+  [FeatureSwitchKey.JoggAiBuiltIn]: {
     maintainer: "yuma@vm0.ai",
-    description: "Enable the Google Contacts connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.GoogleFormsConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Google Forms connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.JoggAiConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the JoggAI video generation connector",
+    description: "Enable vm0-managed JoggAI talking-avatar video generation",
     enabled: true,
   },
   [FeatureSwitchKey.MercuryConnector]: {
@@ -146,11 +131,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Garmin Connect wellness connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.QuickBooksConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the QuickBooks accounting connector",
     enabled: false,
   },
   [FeatureSwitchKey.RedditConnector]: {
@@ -176,18 +156,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Meta Ads Manager connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.TikTokAdsConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the TikTok Ads Manager connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.AwsConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the temporary AWS remote login connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -214,11 +183,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
-  [FeatureSwitchKey.PexelsConnector]: {
-    maintainer: "bingjie@vm0.ai",
-    description: "Enable the Pexels stock photo and video connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Spotify connector integration",
@@ -227,7 +191,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
+      "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.Banking]: {
@@ -264,12 +228,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.GithubWebhookAutomations]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show creation entry points for GitHub workflow job, pull request review, deployment status, and issue comment automations.",
+  [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
+    maintainer: "lancy@vm0.ai",
+    description: "Enable Google Forms response workflow automations.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Stripe invoice-paid workflow automations with immutable Live-mode OAuth bindings.",
+    enabled: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -301,8 +270,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
 
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",
+    description: "Enable Codex fast mode for GPT 5.6 runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.NewChatDefaultModelAction]: {
+    maintainer: "lancy@vm0.ai",
     description:
-      "Enable Codex fast mode for ChatGPT subscription GPT 5.5 and GPT 5.6 web chat runs.",
+      "Make changing the personal default model an explicit action in the new-chat model picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -312,25 +287,63 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
-  [FeatureSwitchKey.ComposerUploadPopover]: {
+  [FeatureSwitchKey.VideoTemplateOptions]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.StructuredPromptInlineTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable multiple inline artifact templates in structured chat prompts.",
+      "Let a video template chip in the chat composer set the generation model, aspect ratio, duration, resolution, and audio.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CustomModelGateways]: {
+  [FeatureSwitchKey.VideoModelSelection]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Let the chat composer model picker pin the video model a chat thread generates with.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Enable admin-defined Anthropic Messages and OpenAI Responses model gateway connections.",
+      "Run web chat jobs with the sandbox-owned official Pi runtime and JSONL session persistence.",
     enabled: false,
-    enabledOrgIdHashes: CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PresentationTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable owner-scoped presentation template imports and catalog APIs.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PresentationArtifactViewport]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Fit presentation HTML artifacts into dialog, sidebar, and fullscreen previews and resolve their hosted aliases.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.LatestWebsiteTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Use the latest built-in Website template archives, independent registry, and seedream4 default instead of the pre-cutover release.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatConversationLocator]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.UsagePackPlans]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show the new Pro and Team plan UI with required monthly usage packs.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.SavedBillingCreditPurchase]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Preview saved-billing credit purchases and confirm them in the app.",
+    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -345,13 +358,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatErrorRecovery]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -359,31 +365,65 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PwaChatKeyboardGestures]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Keep the PWA chat composer pinned above the software keyboard and support swipe-to-dismiss gestures.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
+  [FeatureSwitchKey.SharedChatDatabase]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Automatically open the latest sidebar-capable card from a running or successfully completed chat run when the utility sidebar is closed and split view is available.",
+      "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.MermaidDiagrams]: {
-    maintainer: "bingjie@vm0.ai",
+  [FeatureSwitchKey.ChatForward]: {
+    maintainer: "ethan@vm0.ai",
     description:
-      "Render ```mermaid code blocks in assistant markdown as diagrams, and tell the web chat agent that they are rendered.",
+      "Show the Forward action in the assistant text-selection pill.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ArtifactSidebarInlineOpen]: {
-    maintainer: "bingjie@vm0.ai",
+  [FeatureSwitchKey.ChatRunContinuationPresentation]: {
+    maintainer: "ethan@vm0.ai",
     description:
-      "Open an artifact clicked in a chat thread inside the already-open artifact sidebar instead of stacking the page-global lightbox over it.",
+      "Distinguish mid-run steer messages and show run actions only after the latest user message.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatSmoothAutoScroll]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Smoothly follow new chat content after the thread's initial scroll position is committed.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.EmojiPickerCategoryRail]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Add a category icon rail, pinned section titles, jump-to-category scrolling, and a hovered-emoji name bar to the thread emoji picker.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ResponsiveFollowupCards]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ConnectorDiscovery]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Browse a bounded featured connector catalog and search it by slug or label.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ConnectorCatalogCount]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Show an approximate connector catalog size.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.SharedThreadSharing]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Create immutable public snapshots from explicitly selected chat messages.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -402,12 +442,25 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PersonalModelProviderAccounts]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Allow personal Codex and Claude Code subscriptions to store and manually switch between multiple accounts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ConcurrencyMemberUsage]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show active concurrency slot usage grouped by workspace member in the queue drawer.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",
@@ -423,62 +476,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ArtifactKeyV2]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Store new user artifacts under flat, ten-character hashed public keys.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.HostedArtifactVersions]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Create immutable hosted artifact versions behind stable site aliases.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.HtmlResourceIndex]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Use target-specific static indexes for HTML generation resource selection.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.VideoArtifactPosters]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: true,
-  },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Show the manual connector readiness check on workflow settings pages.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ZeroMailReplyFollowUp]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Enable Zero Mail reply follow-up for staff after all API deployments can read Gmail event configurations with threadId.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ZeroBrowser]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable thread-scoped Cloud browser access in chat and the Zero CLI.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ZeroChatMessaging]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Advertise zero chat create, send, and cancel in the agent system prompt without gating the CLI commands or API.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ZeroImageRecognition]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable managed image recognition for Zero runs whose selected model does not support image input.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -488,23 +489,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
   },
-  [FeatureSwitchKey.CustomConnectorCliCreate]: {
+  [FeatureSwitchKey.CustomConnectorMcp]: {
     maintainer: "liangyou@vm0.ai",
     description:
-      "Allow Zero CLI agents to create and configure custom connectors directly.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.CustomConnectorOAuth2]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.CustomConnectorPermissions]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Allow users to manage agent permission grants for custom connectors.",
-    enabled: true,
+      "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
+    enabled: false,
   },
 };
 

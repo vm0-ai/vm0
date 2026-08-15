@@ -121,12 +121,14 @@ export function isModelProviderRefreshConfigured(args: {
 
 export async function refreshModelProviderAccess<
   ProviderKey extends ModelProviderRefreshProviderKey,
->(args: {
-  readonly providerKey: ProviderKey;
-  readonly currentEnv: ProviderEnv;
-  readonly inputs: ModelProviderRefreshInputValues<ProviderKey>;
-  readonly signal: AbortSignal;
-}): Promise<
+>(
+  args: {
+    readonly providerKey: ProviderKey;
+    readonly currentEnv: ProviderEnv;
+    readonly inputs: ModelProviderRefreshInputValues<ProviderKey>;
+  },
+  signal: AbortSignal,
+): Promise<
   ModelProviderAuthProviderRefreshResult<
     ModelProviderRefreshOutputValues<ProviderKey>
   >
@@ -137,37 +139,43 @@ export async function refreshModelProviderAccess<
     throw new Error(`${args.providerKey} auth client not configured`);
   }
 
-  return await access.refresh({
-    authClient,
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+  return await access.refresh(
+    {
+      authClient,
+      inputs: args.inputs,
+    },
+    signal,
+  );
 }
 
-export async function refreshPreparedModelProviderAccess(args: {
-  readonly providerKey: ModelProviderRefreshProviderKey;
-  readonly currentEnv: ProviderEnv;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-}): Promise<
+export async function refreshPreparedModelProviderAccess(
+  args: {
+    readonly providerKey: ModelProviderRefreshProviderKey;
+    readonly currentEnv: ProviderEnv;
+    readonly inputs: Readonly<Record<string, string>>;
+  },
+  signal: AbortSignal,
+): Promise<
   ModelProviderAuthProviderRefreshResult<
     Readonly<Record<string, string | undefined>>
   >
 > {
   switch (args.providerKey) {
     case "codex-oauth-token": {
-      return await refreshModelProviderAccess({
-        providerKey: args.providerKey,
-        currentEnv: args.currentEnv,
-        inputs: {
-          refreshToken: requiredModelProviderRefreshInput({
-            providerKey: args.providerKey,
-            inputs: args.inputs,
-            inputName: "refreshToken",
-          }),
+      return await refreshModelProviderAccess(
+        {
+          providerKey: args.providerKey,
+          currentEnv: args.currentEnv,
+          inputs: {
+            refreshToken: requiredModelProviderRefreshInput({
+              providerKey: args.providerKey,
+              inputs: args.inputs,
+              inputName: "refreshToken",
+            }),
+          },
         },
-        signal: args.signal,
-      });
+        signal,
+      );
     }
   }
 }

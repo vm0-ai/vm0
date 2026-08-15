@@ -111,8 +111,10 @@ pub trait SandboxControl: Send + Sync {
     /// Execute a command inside a running sandbox using the requested identity
     /// scope.
     ///
-    /// `timeout` is the command timeout; the implementation may add extra
-    /// time for connection overhead.
+    /// `timeout` is the requested command timeout. Implementations may
+    /// normalize it to backend-specific granularity and limits, and may add
+    /// extra time for control or connection overhead. Consult the concrete
+    /// backend's documentation for its normalization rules.
     async fn exec_remote(
         &self,
         target: SandboxControlTarget,

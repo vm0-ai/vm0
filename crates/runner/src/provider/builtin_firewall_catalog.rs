@@ -559,6 +559,17 @@ mod tests {
         }
     }
 
+    fn oversized_catalog() -> BuiltinFirewallCatalog {
+        let mut catalog = catalog("github");
+        catalog.catalog_version = "x".repeat(
+            usize::try_from(crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES).unwrap(),
+        );
+        catalog
+            .validate_for_api_response()
+            .expect("oversized catalog should remain schema-valid");
+        catalog
+    }
+
     fn catalog_with_auth(auth: serde_json::Value) -> BuiltinFirewallCatalog {
         let mut catalog = catalog("auth-strategy");
         catalog.firewalls.get_mut("auth-strategy").unwrap().apis[0].auth =
@@ -973,6 +984,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_catalog_cache_rejects_oversized_catalog_without_replacing_existing_cache() {
+        use std::os::unix::fs::MetadataExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+        let expected_error = format!(
+            "builtin firewall catalog cache exceeds {} bytes",
+            crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES
+        );
+
+        let error = write_catalog_cache(&cache_path, &lock_path, oversized_catalog())
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains(&expected_error),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !cache_path.exists(),
+            "oversized catalog should not publish a cache file"
+        );
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let before = tokio::fs::read(&cache_path).await.unwrap();
+        let before_ino = std::fs::metadata(&cache_path).unwrap().ino();
+
+        let error = write_catalog_cache(&cache_path, &lock_path, oversized_catalog())
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains(&expected_error),
+            "unexpected error: {error}"
+        );
+        let after = tokio::fs::read(&cache_path).await.unwrap();
+        let after_ino = std::fs::metadata(&cache_path).unwrap().ino();
+        assert_eq!(after, before);
+        assert_eq!(after_ino, before_ino);
+    }
+
+    #[tokio::test]
     async fn write_catalog_cache_keeps_existing_file_when_payload_is_unchanged() {
         use std::os::unix::fs::MetadataExt;
 
@@ -1077,27 +1131,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_catalog_cache_accepts_valid_template_base() {
-        let dir = tempfile::tempdir().unwrap();
-        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
-        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
-        let mut valid = catalog("github");
-        valid
-            .firewalls
-            .get_mut("github")
-            .expect("catalog should contain github")
-            .apis[0]
-            .base = "https://${{ vars.TENANT }}.example.com".to_string();
+    async fn write_catalog_cache_accepts_valid_template_bases() {
+        let valid_cases =
+            crate::test_fixtures::firewall_base_url_contract::catalog_firewall_base_url_validation_cases(
+            )
+            .into_iter()
+            .filter(|test_case| test_case.expected_valid);
 
-        write_catalog_cache(&cache_path, &lock_path, valid)
-            .await
-            .unwrap();
+        for test_case in valid_cases {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+            let mut valid = catalog("github");
+            valid
+                .firewalls
+                .get_mut("github")
+                .expect("catalog should contain github")
+                .apis[0]
+                .base = test_case.base.clone();
 
-        let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
-        assert_eq!(
-            cache.firewalls["github"].apis[0].base,
-            "https://${{ vars.TENANT }}.example.com"
-        );
+            write_catalog_cache(&cache_path, &lock_path, valid)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "valid shared template base {:?} failed: {error}",
+                        test_case.name
+                    )
+                });
+
+            let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
+            assert_eq!(cache.firewalls["github"].apis[0].base, test_case.base);
+        }
     }
 
     #[tokio::test]

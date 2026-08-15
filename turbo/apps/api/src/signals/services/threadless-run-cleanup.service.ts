@@ -1,11 +1,10 @@
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { usageEvent } from "@okouai/db/schema/usage-event";
 import { command } from "ccstate";
 import {
   and,
@@ -14,14 +13,14 @@ import {
   exists,
   gte,
   inArray,
+  isNotNull,
   isNull,
   ne,
   or,
   sql,
 } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
 import { failPendingInlineOnlyDeliveryCallbacksForDeletedThread } from "./agent-run-callback.service";
@@ -104,6 +103,7 @@ function terminalError(candidate: ThreadlessRunCandidate): string | undefined {
 
 async function loadThreadlessRunCandidates(
   db: Db,
+  runIds: readonly string[] | null,
 ): Promise<readonly ThreadlessRunCandidate[]> {
   const forwardCutoff = new Date(THREADLESS_RUN_FORWARD_CUTOFF_ISO);
   return await db
@@ -116,16 +116,17 @@ async function loadThreadlessRunCandidates(
       completedAt: agentRuns.completedAt,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
     })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .from(agentRuns)
     .where(
       and(
-        isNull(zeroRuns.chatThreadId),
-        ne(zeroRuns.triggerSource, "test"),
+        isNotNull(agentRuns.triggerSource),
+        isNull(agentRuns.chatThreadId),
+        ne(agentRuns.triggerSource, "test"),
         inArray(agentRuns.status, [
           ...ACTIVE_RUN_STATUSES,
           ...TERMINAL_RUN_STATUSES,
         ]),
+        runIds === null ? undefined : inArray(agentRuns.id, runIds),
         or(
           gte(agentRuns.createdAt, forwardCutoff),
           exists(
@@ -238,12 +239,17 @@ async function deleteIfStillEligible(
       return false;
     }
 
-    const [zeroRun] = await tx
-      .select({ chatThreadId: zeroRuns.chatThreadId })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, candidate.runId))
+    const [metadataRun] = await tx
+      .select({ chatThreadId: agentRuns.chatThreadId })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.id, candidate.runId),
+          isNotNull(agentRuns.triggerSource),
+        ),
+      )
       .limit(1);
-    if (!zeroRun || zeroRun.chatThreadId !== null) {
+    if (!metadataRun || metadataRun.chatThreadId !== null) {
       return false;
     }
 
@@ -310,9 +316,13 @@ async function redriveTerminalLifecycle(
 }
 
 export const cleanupThreadlessRuns$ = command(
-  async ({ set }, signal: AbortSignal): Promise<ThreadlessRunCleanupResult> => {
+  async (
+    { set },
+    runIds: readonly string[] | null,
+    signal: AbortSignal,
+  ): Promise<ThreadlessRunCleanupResult> => {
     const db = set(writeDb$);
-    const candidates = await loadThreadlessRunCandidates(db);
+    const candidates = await loadThreadlessRunCandidates(db, runIds);
     signal.throwIfAborted();
 
     let cancelled = 0;

@@ -2,17 +2,17 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import {
   artifactCatalogContract,
   type ArtifactSummary,
-} from "@vm0/api-contracts/contracts/artifact-catalog";
+} from "@okouai/api-contracts/contracts/artifact-catalog";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { i18n, initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
+import { i18n } from "../../../i18n/index.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -32,7 +32,12 @@ function artifact(overrides: Partial<ArtifactSummary> = {}): ArtifactSummary {
   };
 }
 
-function setupArtifactCatalogPage(): void {
+function setupArtifactCatalogPage(
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {
+    [FeatureSwitchKey.JoggAiBuiltIn]: true,
+    [FeatureSwitchKey.SharedThreadSharing]: true,
+  },
+): void {
   detachedSetupPage({
     context,
     path: "/artifacts",
@@ -41,6 +46,7 @@ function setupArtifactCatalogPage(): void {
       activeOrg: { id: CATALOG_ORG_ID, name: "Test Org" },
       memberships: [{ id: CATALOG_ORG_ID }],
     },
+    featureSwitches,
   });
 }
 
@@ -68,11 +74,6 @@ async function findCard(title: string): Promise<HTMLElement> {
 }
 
 describe("artifact catalog page", () => {
-  afterEach(async () => {
-    document.documentElement.lang = DEFAULT_LOCALE;
-    await initializeI18n(DEFAULT_LOCALE);
-  });
-
   it("renders artifacts with their kind and resized thumbnails", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
       return respond(200, {
@@ -86,6 +87,11 @@ describe("artifact catalog page", () => {
               url: "https://cdn.vm0.io/artifacts/test/preview.webp",
             },
           }),
+          artifact({
+            id: "a0000000-0000-4000-a000-000000000003",
+            kind: "avatar",
+            title: "avatar-video.mp4",
+          }),
         ],
         nextCursor: null,
       });
@@ -98,22 +104,55 @@ describe("artifact catalog page", () => {
     expect(
       screen.getByTestId("artifact-catalog-kind-icon-hosted-site"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-catalog-kind-icon-avatar"),
+    ).toBeInTheDocument();
     expect(site.querySelector("img")).toHaveAttribute(
       "src",
       "https://cdn.vm0.io/cdn-cgi/image/width=640,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/test/preview.webp",
     );
   });
 
+  it("keeps the kind filter outside the scrolling catalog region", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage();
+
+    const card = await findCard("launch-deck");
+    const filter = buttonByLabel(
+      i18n.t(($) => {
+        return $.artifacts.catalog.filters.presentationAria;
+      }),
+    );
+    if (!filter) {
+      throw new Error("Expected the presentation kind filter to render");
+    }
+    const viewport = document.querySelector("main");
+    if (!viewport) {
+      throw new Error("Expected the artifacts page to render a scroll region");
+    }
+
+    // The filter stays pinned only while it lives outside the scroll
+    // container; moving it back inside would silently scroll it away.
+    expect(viewport.contains(filter)).toBeFalsy();
+    expect(viewport.contains(card)).toBeTruthy();
+  });
+
   it("defaults to presentations and uses the requested filter order", async () => {
     const requestedKinds: (string | undefined)[] = [];
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
       requestedKinds.push(query.kind);
-      const imageSelected = query.kind === "image";
+      const avatarSelected = query.kind === "avatar";
       return respond(200, {
         artifacts: [
           artifact({
-            kind: imageSelected ? "image" : "presentation",
-            title: imageSelected ? "generated.png" : "launch-deck",
+            kind: avatarSelected ? "avatar" : "presentation",
+            title: avatarSelected ? "avatar-video.mp4" : "launch-deck",
           }),
         ],
         nextCursor: null,
@@ -134,7 +173,15 @@ describe("artifact catalog page", () => {
       kindFilters.map((button) => {
         return button.textContent;
       }),
-    ).toStrictEqual(["Presentations", "Websites", "Images", "Videos", "Files"]);
+    ).toStrictEqual([
+      "Presentations",
+      "Websites",
+      "Images",
+      "Videos",
+      "Avatars",
+      "Shared conversations",
+      "Files",
+    ]);
     expect(buttonByLabel("Show all artifacts")).toBeUndefined();
     expect(buttonByLabel("Show presentation artifacts")).toHaveAttribute(
       "aria-pressed",
@@ -142,14 +189,198 @@ describe("artifact catalog page", () => {
     );
     expect(requestedKinds).toStrictEqual(["presentation"]);
 
-    const imageFilter = buttonByLabel("Show image artifacts");
-    if (!imageFilter) {
-      throw new Error("Expected an image kind filter");
+    const avatarFilter = buttonByLabel("Show avatar artifacts");
+    if (!avatarFilter) {
+      throw new Error("Expected an avatar kind filter");
     }
-    await click(imageFilter);
+    await click(avatarFilter);
 
-    await findCard("generated.png");
-    expect(requestedKinds).toStrictEqual(["presentation", "image"]);
+    await findCard("avatar-video.mp4");
+    expect(requestedKinds).toStrictEqual(["presentation", "avatar"]);
+  });
+
+  it("keeps the avatar filter visible while avatar artifacts load", async () => {
+    const releaseAvatarResponse = context.mocks.deferred<void>();
+    context.mocks.api(
+      artifactCatalogContract.list,
+      async ({ query, respond }) => {
+        if (query.kind === "avatar") {
+          await releaseAvatarResponse.promise;
+          return respond(200, {
+            artifacts: [
+              artifact({ kind: "avatar", title: "avatar-video.mp4" }),
+            ],
+            nextCursor: null,
+          });
+        }
+        return respond(200, {
+          artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+          nextCursor: null,
+        });
+      },
+    );
+
+    setupArtifactCatalogPage();
+    await findCard("launch-deck");
+
+    const avatarFilter = buttonByLabel("Show avatar artifacts");
+    if (!avatarFilter) {
+      throw new Error("Expected an avatar kind filter");
+    }
+    click(avatarFilter);
+
+    await expect(
+      screen.findByLabelText("Loading artifacts"),
+    ).resolves.toBeInTheDocument();
+    expect(buttonByLabel("Show avatar artifacts")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await act(async () => {
+      releaseAvatarResponse.resolve();
+      await releaseAvatarResponse.promise;
+    });
+    await findCard("avatar-video.mp4");
+  });
+
+  it("shows feature-switched filters while the first page loads", async () => {
+    const requestStarted = context.mocks.deferred<void>();
+    const releaseResponse = context.mocks.deferred<void>();
+    context.mocks.api(artifactCatalogContract.list, async ({ respond }) => {
+      requestStarted.resolve();
+      await releaseResponse.promise;
+      return respond(200, {
+        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage();
+    await requestStarted.promise;
+
+    expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+    expect(buttonByLabel("Show avatar artifacts")).toBeInTheDocument();
+    expect(
+      buttonByLabel("Show shared conversation artifacts"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      releaseResponse.resolve();
+      await releaseResponse.promise;
+    });
+    await findCard("launch-deck");
+  });
+
+  it("hides avatars when the JoggAI switch is disabled", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage({
+      [FeatureSwitchKey.JoggAiBuiltIn]: false,
+      [FeatureSwitchKey.SharedThreadSharing]: true,
+    });
+    await findCard("launch-deck");
+
+    expect(buttonByLabel("Show avatar artifacts")).toBeUndefined();
+    expect(
+      buttonByLabel("Show shared conversation artifacts"),
+    ).toBeInTheDocument();
+  });
+
+  it("hides shared conversations when sharing is disabled", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage({
+      [FeatureSwitchKey.JoggAiBuiltIn]: true,
+      [FeatureSwitchKey.SharedThreadSharing]: false,
+    });
+    await findCard("launch-deck");
+
+    expect(buttonByLabel("Show avatar artifacts")).toBeInTheDocument();
+    expect(buttonByLabel("Show shared conversation artifacts")).toBeUndefined();
+  });
+
+  it("renders shared conversations as compact rows", async () => {
+    const sharedRequestStarted = context.mocks.deferred<void>();
+    const releaseSharedResponse = context.mocks.deferred<void>();
+    const locationAssign = context.mocks.browser.locationAssign();
+    context.mocks.api(
+      artifactCatalogContract.list,
+      async ({ query, respond }) => {
+        if (query.kind === "shared-thread") {
+          sharedRequestStarted.resolve();
+          await releaseSharedResponse.promise;
+          return respond(200, {
+            artifacts: [
+              artifact({
+                kind: "shared-thread",
+                title: "Weekly launch review",
+              }),
+            ],
+            nextCursor: null,
+          });
+        }
+        return respond(200, {
+          artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+          nextCursor: null,
+        });
+      },
+    );
+    context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
+      return respond(200, {
+        ...artifact({
+          kind: "shared-thread",
+          title: "Weekly launch review",
+        }),
+        kind: "shared-thread",
+        sharedThread: { id: "b0000000-0000-4000-a000-000000000001" },
+      });
+    });
+
+    setupArtifactCatalogPage();
+    await findCard("launch-deck");
+
+    const sharedConversationFilter = buttonByLabel(
+      "Show shared conversation artifacts",
+    );
+    if (!sharedConversationFilter) {
+      throw new Error("Expected a shared conversation kind filter");
+    }
+    click(sharedConversationFilter);
+    await sharedRequestStarted.promise;
+
+    expect(screen.getByLabelText("Loading artifacts")).toBeInTheDocument();
+
+    await act(async () => {
+      releaseSharedResponse.resolve();
+      await releaseSharedResponse.promise;
+    });
+
+    const row = await findCard("Weekly launch review");
+    const listItem = row.closest("li");
+    if (!listItem) {
+      throw new Error("Expected a shared conversation list item");
+    }
+    expect(row).toHaveRole("button");
+    expect(listItem).toHaveRole("listitem");
+    expect(listItem.parentElement).toHaveRole("list");
+
+    click(row);
+    await waitFor(() => {
+      expect(locationAssign.calls).toStrictEqual([
+        "/share/threads/b0000000-0000-4000-a000-000000000001",
+      ]);
+    });
   });
 
   it("localizes the catalog and filters without changing artifact titles", async () => {
@@ -189,6 +420,8 @@ describe("artifact catalog page", () => {
       "Sites",
       "Imagens",
       "Vídeos",
+      "Avatares",
+      "Conversas compartilhadas",
       "Arquivos",
     ]);
 
@@ -484,6 +717,41 @@ describe("artifact catalog page", () => {
     await expect(screen.findByText("launch plan")).resolves.toBeInTheDocument();
   });
 
+  it("opens an avatar artifact as a video preview", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ kind: "avatar", title: "avatar-video.mp4" })],
+        nextCursor: null,
+      });
+    });
+    context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
+      return respond(200, {
+        ...artifact({ kind: "avatar", title: "avatar-video.mp4" }),
+        kind: "avatar",
+        file: {
+          id: "f0000000-0000-4000-a000-000000000004",
+          filename: "avatar-video.mp4",
+          contentType: "video/mp4",
+          size: 4096,
+          url: "https://artifacts.example.com/avatar-video.mp4",
+          previewImageUrl: null,
+        },
+        model: "joggai-talking-avatar",
+        durationSeconds: 12,
+      });
+    });
+
+    setupArtifactCatalogPage();
+    await click(await findCard("avatar-video.mp4"));
+
+    await expect(
+      screen.findByLabelText("Video preview for avatar-video.mp4"),
+    ).resolves.toHaveAttribute(
+      "src",
+      "https://artifacts.example.com/avatar-video.mp4",
+    );
+  });
+
   it("downloads a generic binary when its card is opened", async () => {
     const browser = context.mocks.browser.blobDownload();
     context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
@@ -524,62 +792,6 @@ describe("artifact catalog page", () => {
     expect(browser.downloads[0]).toMatchObject({
       filename: "release-bundle.zip",
       blob: expect.any(Blob),
-    });
-  });
-
-  it("reloads the same artifact detail after a realtime catalog change", async () => {
-    const browser = context.mocks.browser.blobDownload();
-    let listRequests = 0;
-    const detailRequests: string[] = [];
-    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
-      listRequests += 1;
-      return respond(200, {
-        artifacts: [artifact({ title: "changing.bin" })],
-        nextCursor: null,
-      });
-    });
-    context.mocks.http.get("https://artifacts.example.com/changing.bin", () => {
-      return HttpResponse.text("binary");
-    });
-    context.mocks.api(artifactCatalogContract.get, ({ params, respond }) => {
-      detailRequests.push(params.artifactId);
-      return respond(200, {
-        ...artifact({ title: "changing.bin" }),
-        kind: "file",
-        file: {
-          id: "f0000000-0000-4000-a000-000000000003",
-          filename: "changing.bin",
-          contentType: "application/octet-stream",
-          size: 512,
-          url: "https://artifacts.example.com/changing.bin",
-          previewImageUrl: null,
-        },
-      });
-    });
-
-    setupArtifactCatalogPage();
-    const card = await findCard("changing.bin");
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("artifactCatalogChanged"),
-      ).toBeTruthy();
-    });
-
-    await click(card);
-    await waitFor(() => {
-      expect(detailRequests).toHaveLength(1);
-      expect(browser.downloads).toHaveLength(1);
-    });
-
-    context.mocks.ably.trigger("artifactCatalogChanged");
-    await waitFor(() => {
-      expect(listRequests).toBeGreaterThanOrEqual(2);
-    });
-
-    await click(await findCard("changing.bin"));
-    await waitFor(() => {
-      expect(detailRequests).toHaveLength(2);
-      expect(browser.downloads).toHaveLength(2);
     });
   });
 

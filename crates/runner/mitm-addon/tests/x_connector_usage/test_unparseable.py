@@ -312,6 +312,56 @@ def test_billable_counts_fallback_only_when_no_hints(x_usage, tmp_path, real_flo
     assert p["quantity"] == 3
 
 
+@pytest.mark.parametrize(
+    ("path", "query", "rule", "expected_quantity"),
+    [
+        pytest.param(
+            "/2/tweets",
+            "%69ds=1,2",
+            "GET /2/tweets",
+            2,
+            id="encoded-key",
+        ),
+        pytest.param(
+            "/2/tweets",
+            "ids=1%2C2",
+            "GET /2/tweets",
+            2,
+            id="encoded-comma",
+        ),
+        pytest.param(
+            "/2/tweets/search/recent",
+            "query=test&max_results=%35%30",
+            "GET /2/tweets/search/recent",
+            50,
+            id="encoded-decimal",
+        ),
+    ],
+)
+def test_unparseable_response_decodes_percent_encoded_fallback_hints(
+    x_usage,
+    tmp_path,
+    real_flow,
+    path,
+    query,
+    rule,
+    expected_quantity,
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path=path,
+        query=query,
+        body=b"not json",
+        rule=rule,
+    )
+
+    event = x_usage.call_and_get_single_billing(flow)
+
+    assert event["category"] == "posts.read"
+    assert event["quantity"] == expected_quantity
+
+
 def test_parsed_response_ignores_oversized_fallback_query(x_usage, tmp_path, real_flow):
     """Parsed responses bill from the body and do not need query fallback hints."""
     body = json.dumps({"data": [{"id": "1"}, {"id": "2"}]}).encode()

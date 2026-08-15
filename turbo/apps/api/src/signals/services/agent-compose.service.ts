@@ -3,16 +3,16 @@ import { createHash } from "node:crypto";
 import {
   getInstructionsFilename,
   SUPPORTED_FRAMEWORKS,
-} from "@vm0/core/frameworks";
-import { getInstructionsStorageName } from "@vm0/core/storage-names";
+} from "@okouai/core/frameworks";
+import { getInstructionsStorageName } from "@okouai/core/storage-names";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+} from "@okouai/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { uploadVolumeServerSide$ } from "./storage-volume-upload.service";
 
 /**
@@ -26,8 +26,8 @@ function buildZeroAgentComposeContent(
   agentName: string,
 ): Record<string, unknown> {
   const environment: Record<string, string> = {
-    ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
-    ZERO_TOKEN: `\${{ secrets.ZERO_TOKEN }}`,
+    OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
+    OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
   };
 
   const agentDef: Record<string, unknown> = {

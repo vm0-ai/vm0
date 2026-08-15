@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.63.3"
+version = "0.74.2"
 edition.workspace = true
 
 [dependencies]
@@ -19,7 +19,7 @@ http-body = "1"
 libc.workspace = true
 pin-project-lite = "0.2"
 reqwest = { workspace = true }
-rustix.workspace = true
+rustix = { workspace = true, features = ["process"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 hex.workspace = true
@@ -34,7 +34,7 @@ zstd.workspace = true
 
 [dev-dependencies]
 httpmock.workspace = true
-nix = { workspace = true, features = ["inotify"] }
+nix = { workspace = true, features = ["inotify", "process"] }
 shell-quote.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 vsock-host.workspace = true

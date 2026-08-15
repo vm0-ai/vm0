@@ -3,7 +3,7 @@ import { highlightText } from "./utils/highlight-text.tsx";
 import {
   stringifyUnknownValue,
   type ToolOperation,
-} from "./log-detail-utils.ts";
+} from "../../../../signals/activity-page/log-detail-utils";
 import { formatDuration } from "./event-card.tsx";
 import { StatusDot } from "./status-dot.tsx";
 import { useTranslation } from "react-i18next";

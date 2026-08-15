@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
+use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, BorrowedRawMessage, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT,
     MSG_WRITE_FILES_RESULT,
@@ -17,10 +18,9 @@ use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
 use crate::shutdown::handle_shutdown;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
-use crate::user::apply_write_file_identity;
+use crate::user::apply_command_identity;
 use crate::wait::{
-    DRAIN_DEADLINE, WaitOutcome, await_drain_deadline,
-    wait_with_kill_timeout_or_connection_cancelled,
+    WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
 };
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
@@ -176,7 +176,7 @@ where
             Err(e) => {
                 cancel.store(true, std::sync::atomic::Ordering::Release);
                 kill_and_reap_child(child);
-                let _ = await_drain_deadline(&done_rx, 1, &cancel, DRAIN_DEADLINE);
+                let _ = await_drain_deadline(&done_rx, 1, &cancel, EXEC_OUTPUT_DRAIN_DEADLINE);
                 let _ = stderr_handle.join();
                 return (false, format!("Failed to spawn stdin writer thread: {e}"));
             }
@@ -198,7 +198,7 @@ where
             Err(panic) => std::panic::resume_unwind(panic),
         };
 
-        let _ = await_drain_deadline(&done_rx, 1, &cancel, DRAIN_DEADLINE);
+        let _ = await_drain_deadline(&done_rx, 1, &cancel, EXEC_OUTPUT_DRAIN_DEADLINE);
         let stderr = stderr_handle.join().unwrap_or_default();
 
         match outcome {
@@ -260,7 +260,7 @@ fn spawn_write_file_command(
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    apply_write_file_identity(&mut command, use_sudo)?;
+    apply_command_identity(&mut command, use_sudo)?;
     spawn_in_own_process_group(&mut command)
 }
 
@@ -271,7 +271,7 @@ fn spawn_write_files_command() -> io::Result<Child> {
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    apply_write_file_identity(&mut command, false)?;
+    apply_command_identity(&mut command, false)?;
     spawn_in_own_process_group(&mut command)
 }
 

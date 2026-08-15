@@ -15,8 +15,9 @@ pub(crate) use config::{
     test_config_with_timing,
 };
 pub(crate) use events::{
-    assert_value_stable_for, expect_connected, expect_event, expect_event_with_timeout,
-    expect_subscription_closed, join_server_task, wait_for_test_observation,
+    abort_server_task, assert_value_stable_for, expect_connected, expect_event,
+    expect_event_matching_before, expect_event_with_timeout, expect_subscription_closed,
+    join_server_task, wait_for_test_observation,
 };
 pub(crate) use protocol::{
     assert_attach_resume, expect_protocol_msg, now_ms, send_message,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::executor::{SandboxReuseDisposition, SandboxReuseTerminal};
 
 use async_trait::async_trait;
 use sandbox::SandboxConfig;
@@ -321,6 +322,7 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
         &mut telemetry,
         NewSandboxHooks {
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
         },
     )
@@ -367,6 +369,7 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
         &mut telemetry,
         NewSandboxHooks {
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
         },
     ))
@@ -730,6 +733,7 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
         &mut telemetry,
         NewSandboxHooks {
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
         },
     )
@@ -775,6 +779,7 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
         &mut telemetry,
         NewSandboxHooks {
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
         },
     )
@@ -880,6 +885,10 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_USER_ENV".into(), "visible-to-cli".into()),
         (
+            "OKOU_APP_URL".into(),
+            "https://app.runner-env.example.test/path".into(),
+        ),
+        (
             "ZERO_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
         ),
@@ -935,6 +944,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     }
     for key in [
         "CUSTOM_USER_ENV",
+        "OKOU_APP_URL",
         "ZERO_APP_URL",
         "VM0_APP_URL",
         "BASH_ENV",
@@ -968,6 +978,10 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
+    assert_eq!(
+        user_env.get("OKOU_APP_URL").unwrap(),
+        "https://app.runner-env.example.test/path"
+    );
     assert_eq!(
         user_env.get("ZERO_APP_URL").unwrap(),
         "https://app.runner-env.example.test/path"
@@ -1379,11 +1393,15 @@ async fn execute_job_codex_ignores_claude_tool_validation() {
     assert!(outcome.sandbox.is_some());
     assert_eq!(overrides.create_configs().len(), 1);
 }
+
 #[tokio::test]
 async fn execute_job_nonzero_exit_still_returns_sandbox() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let factory = MockSandboxFactory::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_code(
+        7,
+    ));
+    let factory = MockSandboxFactory::with_overrides(overrides);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, _telemetry) = execute_job(
@@ -1399,8 +1417,18 @@ async fn execute_job_nonzero_exit_still_returns_sandbox() {
     )
     .await;
 
-    // The executor returns sandbox ownership even though finalization must
-    // destroy it after a non-zero exit.
+    let failure = outcome
+        .failure
+        .as_ref()
+        .expect("non-zero exit must produce a failure");
+    assert_eq!(failure.exit_code, 7);
+    assert!(!failure.error.is_empty(), "failure must include an error");
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit),
+    );
+    // A healthy non-zero exit is reuse-eligible. Returning ownership lets
+    // caller finalization park it when policy permits or destroy it otherwise.
     assert!(
         outcome.sandbox.is_some(),
         "sandbox must be returned for caller finalization"

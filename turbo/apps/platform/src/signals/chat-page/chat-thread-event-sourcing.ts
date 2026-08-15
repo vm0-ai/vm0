@@ -2,34 +2,45 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadsContract,
   type ChatThreadsContract,
+  type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import type {
   InitClientArgs,
   InitClientReturn,
-} from "@vm0/api-contracts/contracts/trpc-contract";
+} from "@okouai/api-contracts/contracts/trpc-contract";
 import { accept } from "../../lib/accept.ts";
 import { activeRoute$ } from "../active-route.ts";
+import { authenticatedIdentity$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { foregroundReady$ } from "../auth-retry.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
 import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { logger } from "../log.ts";
-import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { rootSignal$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
-import { bestEffort } from "../utils.ts";
+import { bestEffort, createDeferredPromise } from "../utils.ts";
 import { i18n } from "../../i18n/index.ts";
+import type {
+  ChatThreadEventDataKey,
+  ChatThreadEventQueryResult,
+} from "../../shared-database/data-key.ts";
+import { CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD } from "../../shared-database/event-log-policy.ts";
 import {
-  chatThreadEventHasSeqId,
-  type ChatThreadEventView,
-  type CompatibleChatThreadEvent,
-  type OptimisticChatThreadEvent,
+  onSharedDatabase$,
+  queryChatThreadEventSharedDatabase$,
+} from "../shared-database.ts";
+import { sharedDatabaseModeEnabled$ } from "../shared-database-mode.ts";
+import { enqueueSharedDatabaseInvalidation$ } from "../shared-database-invalidation-queue.ts";
+import type {
+  ChatThreadEventView,
+  OptimisticChatThreadEvent,
 } from "./chat-thread-event-types.ts";
 
 const L = logger("ChatThreadEventSourcing");
-const EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD = 100;
 
 type Stores = ReturnType<typeof createIdbChatThreadEventStores>;
 type ChatThreadsClient = InitClientReturn<ChatThreadsContract, InitClientArgs>;
@@ -37,7 +48,7 @@ type ChatThreadEventSyncMode = "incremental" | "snapshot-rebase";
 
 interface ChatThreadEventData {
   readonly snapshot: readonly ChatThreadSnapshotProjection[];
-  readonly events: readonly CompatibleChatThreadEvent[];
+  readonly events: readonly ChatThreadEvent[];
 }
 
 interface ChatThreadSnapshotData {
@@ -48,7 +59,7 @@ interface ChatThreadSnapshotData {
 
 interface ChatThreadEventState {
   readonly snapshot: ChatThreadSnapshotData | null;
-  readonly events: readonly CompatibleChatThreadEvent[];
+  readonly events: readonly ChatThreadEvent[];
   readonly latestEventId: string | null;
   readonly latestSeqId: number | null;
 }
@@ -56,12 +67,12 @@ interface ChatThreadEventState {
 interface ChatThreadEventUpdate {
   readonly state: ChatThreadEventState;
   readonly replacementSnapshot: ChatThreadSnapshotData | null;
-  readonly newEvents: readonly CompatibleChatThreadEvent[];
+  readonly newEvents: readonly ChatThreadEvent[];
 }
 
 interface ChatThreadEventCursor {
   readonly eventId: string;
-  readonly seqId: number | null;
+  readonly seqId: number;
 }
 
 interface ChatThreadEventSyncResult {
@@ -78,6 +89,7 @@ export interface ThreadMeta {
   readonly serviceTier: "priority" | null;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
+  readonly selectedVideoModel: string | null;
 }
 
 const optimisticChatThreadEventsState$ = state<
@@ -88,6 +100,50 @@ const chatThreadEventState$ = state<ChatThreadEventState>({
   events: [],
   latestEventId: null,
   latestSeqId: null,
+});
+
+const initialLocalChatThreadEventsLoadedDeferred$ = computed((get) => {
+  return createDeferredPromise<void>(get(rootSignal$));
+});
+
+const initialRemoteChatThreadEventsSyncedDeferred$ = computed((get) => {
+  return createDeferredPromise<void>(get(rootSignal$));
+});
+
+const initialLocalChatThreadEventsLoaded$ = computed((get) => {
+  return get(initialLocalChatThreadEventsLoadedDeferred$).promise;
+});
+
+const initialRemoteChatThreadEventsSynced$ = computed((get) => {
+  return get(initialRemoteChatThreadEventsSyncedDeferred$).promise;
+});
+
+interface ChatThreadEventSyncBarrier {
+  inFlight: boolean;
+  next: ReturnType<typeof createDeferredPromise<void>>;
+}
+
+const chatThreadEventSyncBarrier$ = computed(
+  (get): ChatThreadEventSyncBarrier => {
+    return {
+      inFlight: false,
+      next: createDeferredPromise<void>(get(rootSignal$)),
+    };
+  },
+);
+
+const markChatThreadEventSyncPending$ = command(({ get }) => {
+  get(chatThreadEventSyncBarrier$).inFlight = true;
+});
+
+const resolveNextChatThreadEventSync$ = command(({ get }) => {
+  const barrier = get(chatThreadEventSyncBarrier$);
+  const completed = barrier.next;
+  barrier.inFlight = false;
+  barrier.next = createDeferredPromise<void>(get(rootSignal$));
+  if (!completed.settled()) {
+    completed.resolve();
+  }
 });
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
@@ -131,15 +187,6 @@ async function readChatThreadEventState(
   };
 }
 
-export const sidebarActiveThreadIds$ = computed(
-  async (get): Promise<ReadonlySet<string>> => {
-    get(reloadChatActiveRunIdsCounter$);
-    const client = get(zeroClient$)(chatThreadsContract);
-    const result = await accept(client.activeIds(), [200]);
-    return new Set(result.body.threadIds);
-  },
-);
-
 const chatThreadEventStores$ = computed((get): Stores => {
   const dbPromise = get(chatIdb$);
   return createIdbChatThreadEventStores(() => {
@@ -149,7 +196,7 @@ const chatThreadEventStores$ = computed((get): Stores => {
 
 const lastEventCursor$ = computed((get): ChatThreadEventCursor | null => {
   const state = get(chatThreadEventState$);
-  if (state.latestEventId === null) {
+  if (state.latestEventId === null || state.latestSeqId === null) {
     return null;
   }
   return {
@@ -161,7 +208,7 @@ const lastEventCursor$ = computed((get): ChatThreadEventCursor | null => {
 function snapshotCursor(
   snapshot: ChatThreadSnapshotData,
 ): ChatThreadEventCursor | null {
-  return snapshot.latestEventId === null
+  return snapshot.latestEventId === null || snapshot.latestSeqId === null
     ? null
     : {
         eventId: snapshot.latestEventId,
@@ -169,10 +216,10 @@ function snapshotCursor(
       };
 }
 
-function eventCursor(event: CompatibleChatThreadEvent): ChatThreadEventCursor {
+function eventCursor(event: ChatThreadEvent): ChatThreadEventCursor {
   return {
     eventId: event.id,
-    seqId: chatThreadEventHasSeqId(event) ? event.seqId : null,
+    seqId: event.seqId,
   };
 }
 
@@ -191,9 +238,7 @@ async function fetchRemoteSnapshot(
   return {
     chatThreads: result.body.chatThreads,
     latestEventId: result.body.latestEventId,
-    // App promotion can precede API promotion. The old API response does not
-    // carry latestSeqId, so retain its UUID cursor during that rollout window.
-    latestSeqId: result.body.latestSeqId ?? null,
+    latestSeqId: result.body.latestSeqId,
   };
 }
 
@@ -204,12 +249,7 @@ async function fetchRemoteEvents(
   signal?: AbortSignal,
 ) {
   const request = client.events({
-    query: {
-      ...(cursor?.seqId !== null && cursor?.seqId !== undefined
-        ? { sinceSeqId: cursor.seqId }
-        : {}),
-      ...(cursor ? { sinceEventId: cursor.eventId } : {}),
-    },
+    query: cursor ? { sinceSeqId: cursor.seqId } : {},
     fetchOptions: { signal },
   });
   return await accept(request, [200, 410], signal, {
@@ -219,10 +259,10 @@ async function fetchRemoteEvents(
 
 function createChatThreadEventUpdate(
   snapshot: ChatThreadSnapshotData,
-  events: readonly CompatibleChatThreadEvent[],
+  events: readonly ChatThreadEvent[],
   cursor: ChatThreadEventCursor | null,
   snapshotReplaced: boolean,
-  newEvents: readonly CompatibleChatThreadEvent[],
+  newEvents: readonly ChatThreadEvent[],
 ): ChatThreadEventUpdate | null {
   if (!snapshotReplaced && newEvents.length === 0) {
     return null;
@@ -250,7 +290,7 @@ async function fetchChatThreadEventUpdate(
   let events = currentState.events;
   let cursor = initialCursor;
   let snapshotReplaced = false;
-  let newEvents: readonly CompatibleChatThreadEvent[] = [];
+  let newEvents: readonly ChatThreadEvent[] = [];
 
   if (mode === "snapshot-rebase" || !snapshot || cursor === null) {
     snapshot = await fetchRemoteSnapshot(client, mode, signal);
@@ -273,7 +313,7 @@ async function fetchChatThreadEventUpdate(
       continue;
     }
 
-    const pageEvents: readonly CompatibleChatThreadEvent[] = result.body.events;
+    const pageEvents: readonly ChatThreadEvent[] = result.body.events;
     if (pageEvents.length > 0) {
       events = [...events, ...pageEvents];
       newEvents = [...newEvents, ...pageEvents];
@@ -310,6 +350,10 @@ const initializeChatThreadEventState$ = command(
       events: state.events,
     });
     set(syncCurrentChatThreadDocumentTitle$, signal);
+    const loaded = get(initialLocalChatThreadEventsLoadedDeferred$);
+    if (!loaded.settled()) {
+      loaded.resolve();
+    }
   },
 );
 
@@ -319,6 +363,9 @@ const syncChatThreadEvents$ = command(
     mode: ChatThreadEventSyncMode,
     signal: AbortSignal,
   ): Promise<ChatThreadEventSyncResult> => {
+    if (mode === "incremental") {
+      set(markChatThreadEventSyncPending$);
+    }
     const store = get(chatThreadEventStores$);
     const state = get(chatThreadEventState$);
     const client = get(zeroClient$)(chatThreadsContract);
@@ -330,50 +377,54 @@ const syncChatThreadEvents$ = command(
       signal,
     );
     signal.throwIfAborted();
+    let result: ChatThreadEventSyncResult;
     if (!update) {
-      return {
+      result = {
         eventCount: state.events.length,
         snapshotReplaced: false,
       };
+    } else {
+      const persistableNewEvents = update.newEvents;
+      if (update.replacementSnapshot) {
+        await store.writeStore.replaceFromSnapshot(
+          update.replacementSnapshot,
+          persistableNewEvents,
+          signal,
+        );
+      } else {
+        await store.writeStore.upsertEvents(persistableNewEvents, signal);
+      }
+      signal.throwIfAborted();
+      set(chatThreadEventState$, update.state);
+      set(reconcileOptimisticChatThreadEvents$, {
+        snapshot: update.state.snapshot?.chatThreads ?? [],
+        events: update.state.events,
+      });
+      set(syncCurrentChatThreadDocumentTitle$, signal);
+      result = {
+        eventCount: update.state.events.length,
+        snapshotReplaced: update.replacementSnapshot !== null,
+      };
     }
 
-    // The seq_id index cannot represent legacy events. Once one appears in the
-    // in-memory tail, keep the whole tail remote-only so IndexedDB never
-    // advances past an event it omitted during an API promotion boundary.
-    const persistableNewEvents = update.state.events.every(
-      chatThreadEventHasSeqId,
-    )
-      ? update.newEvents.filter(chatThreadEventHasSeqId)
-      : [];
-    if (update.replacementSnapshot) {
-      await store.writeStore.replaceFromSnapshot(
-        update.replacementSnapshot,
-        persistableNewEvents,
-        signal,
-      );
-    } else {
-      await store.writeStore.upsertEvents(persistableNewEvents, signal);
+    if (mode === "incremental") {
+      const synced = get(initialRemoteChatThreadEventsSyncedDeferred$);
+      if (!synced.settled()) {
+        synced.resolve();
+      }
+      set(resolveNextChatThreadEventSync$);
     }
-    set(chatThreadEventState$, update.state);
-    set(reconcileOptimisticChatThreadEvents$, {
-      snapshot: update.state.snapshot?.chatThreads ?? [],
-      events: update.state.events,
-    });
-    set(syncCurrentChatThreadDocumentTitle$, signal);
-    return {
-      eventCount: update.state.events.length,
-      snapshotReplaced: update.replacementSnapshot !== null,
-    };
+    return result;
   },
 );
 
-export const syncEventDrivenChatThreads$ = command(
+const syncLegacyEventDrivenChatThreads$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(syncChatThreadEvents$, "incremental", signal);
   },
 );
 
-export const subscribeEventDrivenChatThreads$ = command(
+const subscribeLegacyEventDrivenChatThreads$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     let initialSnapshotRebasePending = true;
     const syncOnThreadListChanged$ = command(
@@ -383,7 +434,7 @@ export const subscribeEventDrivenChatThreads$ = command(
           initialSnapshotRebasePending = false;
           if (
             !result.snapshotReplaced &&
-            result.eventCount > EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD
+            result.eventCount > CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD
           ) {
             await bestEffort(
               set(syncChatThreadEvents$, "snapshot-rebase", signal),
@@ -404,6 +455,137 @@ export const subscribeEventDrivenChatThreads$ = command(
         loopCommand$: syncOnThreadListChanged$,
         options: { runOnSubscribe: true },
       },
+      signal,
+    );
+  },
+);
+
+const sharedChatThreadEventDataKey$ = computed(
+  async (get): Promise<ChatThreadEventDataKey> => {
+    const { userId, orgId } = await get(authenticatedIdentity$);
+    return { kind: "chat-thread-event", userId, orgId };
+  },
+);
+
+const applySharedChatThreadEventResult$ = command(
+  (
+    { get, set },
+    result: ChatThreadEventQueryResult,
+    phase: "local" | "remote",
+    signal: AbortSignal,
+  ): void => {
+    const lastEvent = result.events.at(-1);
+    const state: ChatThreadEventState = {
+      snapshot:
+        result.snapshot === null
+          ? null
+          : {
+              chatThreads: result.snapshot.chatThreads,
+              latestEventId: result.snapshot.latestEventId,
+              latestSeqId: result.snapshot.latestSeqId,
+            },
+      events: result.events,
+      latestEventId: lastEvent?.id ?? result.snapshot?.latestEventId ?? null,
+      latestSeqId: lastEvent?.seqId ?? result.snapshot?.latestSeqId ?? null,
+    };
+    set(chatThreadEventState$, state);
+    set(reconcileOptimisticChatThreadEvents$, {
+      snapshot: state.snapshot?.chatThreads ?? [],
+      events: state.events,
+    });
+    set(syncCurrentChatThreadDocumentTitle$, signal);
+    if (phase === "local") {
+      const loaded = get(initialLocalChatThreadEventsLoadedDeferred$);
+      if (!loaded.settled()) {
+        loaded.resolve();
+      }
+      return;
+    }
+    const synced = get(initialRemoteChatThreadEventsSyncedDeferred$);
+    if (!synced.settled()) {
+      synced.resolve();
+    }
+    set(resolveNextChatThreadEventSync$);
+  },
+);
+
+const syncSharedEventDrivenChatThreads$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    set(markChatThreadEventSyncPending$);
+    const dataKey = await get(sharedChatThreadEventDataKey$);
+    signal.throwIfAborted();
+    const currentSeqId = get(chatThreadEventState$).latestSeqId;
+    const cached = await set(
+      queryChatThreadEventSharedDatabase$,
+      {
+        dataKey,
+        afterSeqId: currentSeqId,
+        consistency: "cache-only",
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    const cachedLastSeqId =
+      cached.events.at(-1)?.seqId ?? cached.snapshot?.latestSeqId ?? null;
+    const result =
+      cachedLastSeqId !== null &&
+      (currentSeqId === null || cachedLastSeqId > currentSeqId)
+        ? cached
+        : await set(
+            queryChatThreadEventSharedDatabase$,
+            {
+              dataKey,
+              afterSeqId: currentSeqId,
+              consistency: "catch-up",
+            },
+            signal,
+          );
+    signal.throwIfAborted();
+    set(applySharedChatThreadEventResult$, result, "remote", signal);
+  },
+);
+
+const subscribeSharedEventDrivenChatThreads$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const dataKey = await get(sharedChatThreadEventDataKey$);
+    signal.throwIfAborted();
+    await set(
+      onSharedDatabase$,
+      dataKey,
+      () => {
+        set(enqueueSharedDatabaseInvalidation$, dataKey);
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    const cached = await set(
+      queryChatThreadEventSharedDatabase$,
+      { dataKey, afterSeqId: null, consistency: "cache-only" },
+      signal,
+    );
+    signal.throwIfAborted();
+    set(applySharedChatThreadEventResult$, cached, "local", signal);
+    await set(syncSharedEventDrivenChatThreads$, signal);
+  },
+);
+
+export const syncEventDrivenChatThreads$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    await set(
+      get(sharedDatabaseModeEnabled$)
+        ? syncSharedEventDrivenChatThreads$
+        : syncLegacyEventDrivenChatThreads$,
+      signal,
+    );
+  },
+);
+
+export const subscribeEventDrivenChatThreads$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    await set(
+      get(sharedDatabaseModeEnabled$)
+        ? subscribeSharedEventDrivenChatThreads$
+        : subscribeLegacyEventDrivenChatThreads$,
       signal,
     );
   },
@@ -468,6 +650,7 @@ export const chatThreadMetaMap$ = computed((get) => {
           serviceTier: thread.serviceTier,
           computerUseHostId: thread.computerUseHostId,
           cloudBrowserEnabled: thread.cloudBrowserEnabled,
+          selectedVideoModel: thread.selectedVideoModel,
         },
       ];
     }),
@@ -477,6 +660,41 @@ export const chatThreadMetaMap$ = computed((get) => {
 export function threadMeta(threadId: string) {
   return computed((get): ThreadMeta | null => {
     return get(chatThreadMetaMap$).get(threadId) ?? null;
+  });
+}
+
+export function resolvedThreadMeta(threadId: string) {
+  const meta$ = threadMeta(threadId);
+  return computed(async (get): Promise<ThreadMeta | null> => {
+    let meta = get(meta$);
+    if (meta) {
+      return meta;
+    }
+
+    const foregroundReady = get(foregroundReady$);
+    const syncBarrier = get(chatThreadEventSyncBarrier$);
+    const foregroundSync =
+      foregroundReady.pending || syncBarrier.inFlight
+        ? syncBarrier.next.promise
+        : null;
+
+    await get(initialLocalChatThreadEventsLoaded$);
+    meta = get(meta$);
+    if (meta) {
+      return meta;
+    }
+
+    if (foregroundSync) {
+      await foregroundReady.promise;
+      await foregroundSync;
+      meta = get(meta$);
+      if (meta) {
+        return meta;
+      }
+    }
+
+    await get(initialRemoteChatThreadEventsSynced$);
+    return get(meta$);
   });
 }
 
@@ -539,6 +757,7 @@ export const touchOptimisticChatThreadSort$ = command(
       serviceTier: null,
       computerUseHostId: null,
       cloudBrowserEnabled: false,
+      selectedVideoModel: null,
       createdAt: args.createdAt,
     } satisfies OptimisticChatThreadEvent);
   },

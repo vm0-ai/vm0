@@ -1,19 +1,23 @@
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
-import { foldActiveChatGoalObjective } from "@vm0/api-contracts/contracts/chat-events";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import {
   isVisualAttachment,
   shouldExcludeVisualAttachmentsForModel,
 } from "../chat-page/resolve-draft-attachments.ts";
-import { zeroImageRecognitionEnabled$ } from "../external/feature-switch.ts";
+import {
+  featureSwitch$,
+  imageRecognitionAvailable$,
+} from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
-import type { ComposerFeedbackModel } from "./chat-feedback.ts";
+import { createComposerFeedbackModel } from "./chat-feedback.ts";
 import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
   deriveRunIndicatorStateFromChatEvents,
@@ -21,7 +25,9 @@ import {
   isUsageEvent,
   lastAssistantCancelledFromGroups,
   queuedEventsFromSemanticEvents,
+  runningModelSelectionFromChatEvents,
   semanticChatEventsFromChatEvents,
+  type ChatRunModelSelection,
 } from "../chat-page/chat-event-state.ts";
 import { messageDocumentToDisplayText } from "./user-message-document-codec.ts";
 import {
@@ -80,12 +86,12 @@ type ComposerTemplateEditorSignals = Pick<
   | "templatePreview"
   | "hasTemplateAttachment$"
   | "insertTemplate$"
+  | "updateTemplateAt$"
   | "readSelectedTemplate$"
   | "prepareTemplateInsertion$"
   | "setTemplateAttachmentLifecycleRef$"
 >;
 
-type ComposerDraftUiSignals = ComposerUiSignalGroups["draft"];
 type ComposerModelUiSignals = ComposerUiSignalGroups["model"];
 type ComposerTemplateUiSignals = ComposerUiSignalGroups["template"];
 
@@ -122,10 +128,11 @@ interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
   readonly setReplaceWorkflowPromptOpen$: Command<void, [boolean]>;
 }
 
-interface ComposerDraftSignals extends ComposerDraftUiSignals {
+interface ComposerDraftSignals {
+  readonly seed$: DraftSignals["seed$"];
   readonly setDraftInput$: Command<void, [string]>;
   readonly attachments$: Computed<ZeroChatAttachment[]>;
-  readonly attachmentUploadsReady$: Computed<boolean | Promise<boolean>>;
+  readonly attachmentUploadsReady$: Computed<boolean>;
   readonly uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   readonly restoreAttachments$: Command<void, [PersistedAttachment[]]>;
   readonly removeAttachment$: Command<void, [ZeroChatAttachment]>;
@@ -140,13 +147,28 @@ interface ComposerDraftSignals extends ComposerDraftUiSignals {
 }
 
 interface ComposerModelSignals extends ComposerModelUiSignals {
+  readonly temporaryModelNoticeEnabled$: Computed<boolean>;
   readonly modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  readonly runningModelSelection$: Computed<
+    Promise<ChatRunModelSelection | null>
+  >;
   readonly selectedModelOauthAvailable$: Computed<Promise<boolean>>;
   readonly setModelSelection$: Command<
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
   >;
   readonly configureSelectedModel$: Command<Promise<void>, [AbortSignal]>;
+}
+
+/** Video model selected for the composer, when that surface supports it. */
+export interface ComposerVideoModelSignals {
+  readonly selectedVideoModel$: Computed<
+    VideoModel | null | Promise<VideoModel | null>
+  >;
+  readonly setVideoModel$: Command<
+    Promise<void>,
+    [VideoModel | null, AbortSignal]
+  >;
 }
 
 interface ComposerComputerSignals {
@@ -181,7 +203,10 @@ interface ComposerQueueSignals {
   readonly pendingEvents$: Computed<Promise<readonly ComposerPendingEvent[]>>;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
   readonly removeQueuedMessage$: Command<Promise<void>, [string, AbortSignal]>;
-  readonly removeWorkflowEvent$: Command<Promise<void>, [string, AbortSignal]>;
+  readonly removeAutomationEvent$: Command<
+    Promise<void>,
+    [string, AbortSignal]
+  >;
 }
 
 interface ComposerGoalSignals {
@@ -200,7 +225,7 @@ interface ComposerTemplateSignals
 }
 
 export interface ComposerSignals {
-  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
+  readonly agentId: string;
   readonly editor: ComposerEditorSignals;
   readonly feedback: WorkflowComposerSignals["feedback"];
   readonly workflow: ComposerWorkflowSignals;
@@ -208,6 +233,7 @@ export interface ComposerSignals {
   readonly connector: ComposerConnectorSignals;
   readonly draft: ComposerDraftSignals;
   readonly model: ComposerModelSignals;
+  readonly videoModel?: ComposerVideoModelSignals;
   readonly computer: ComposerComputerSignals;
   readonly submission: ComposerSubmissionSignals;
   readonly queue: ComposerQueueSignals;
@@ -216,22 +242,19 @@ export interface ComposerSignals {
 }
 
 interface CreateComposerSignalsOptions {
-  readonly agent$: ComposerSignals["agent$"];
+  readonly agentId: string;
   readonly draft: {
     readonly signals: DraftSignals;
     readonly save$: ComposerDraftSignals["save$"];
   };
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly threadId?: string;
-  readonly feedbackModel?: ComposerFeedbackModel;
-  readonly inlineTemplatesEnabled: boolean;
-  readonly generationTemplate$?: ComposerTemplateSignals["generationTemplate$"];
-  readonly setGenerationTemplate$?: ComposerTemplateSignals["setGenerationTemplate$"];
   readonly singleLineOnMobile: boolean;
   readonly modelSelection$: ComposerModelSignals["modelSelection$"];
   readonly selectedModelOauthAvailable$: ComposerModelSignals["selectedModelOauthAvailable$"];
   readonly setModelSelection$: ComposerModelSignals["setModelSelection$"];
   readonly configureSelectedModel$: ComposerModelSignals["configureSelectedModel$"];
+  readonly videoModel?: ComposerVideoModelSignals;
   readonly computerUseHostId$: ComposerComputerSignals["computerUseHostId$"];
   readonly cloudBrowserEnabled$: ComposerComputerSignals["cloudBrowserEnabled$"];
   readonly setComputerUseHostId$: ComposerComputerSignals["setComputerUseHostId$"];
@@ -243,7 +266,7 @@ interface CreateComposerSignalsOptions {
   readonly cancelRun$: Command<Promise<void>, [AbortSignal]>;
   readonly cancellationRecoveryPending$: ComposerQueueSignals["cancellationRecoveryPending$"];
   readonly removeQueuedMessage$: ComposerQueueSignals["removeQueuedMessage$"];
-  readonly removeWorkflowEvent$: ComposerQueueSignals["removeWorkflowEvent$"];
+  readonly removeAutomationEvent$: ComposerQueueSignals["removeAutomationEvent$"];
   readonly cancelActiveGoal$: ComposerGoalSignals["cancelActiveGoal$"];
   readonly openActiveGoal$: ComposerGoalSignals["openActiveGoal$"];
 }
@@ -314,6 +337,7 @@ function composerTemplateSignals(
     templatePreview: composer.templatePreview,
     hasTemplateAttachment$: composer.hasTemplateAttachment$,
     insertTemplate$: composer.insertTemplate$,
+    updateTemplateAt$: composer.updateTemplateAt$,
     readSelectedTemplate$: composer.readSelectedTemplate$,
     prepareTemplateInsertion$: composer.prepareTemplateInsertion$,
     setTemplateAttachmentLifecycleRef$:
@@ -433,20 +457,24 @@ export function createComposerSignals(
 ): ComposerSignals {
   const eventSignals = createComposerChatEventSignals(options.chatEvents$);
   const draft = options.draft.signals;
-  const agentId$ = computed(async (get): Promise<string | null> => {
-    return (await get(options.agent$)).agentId;
+  const agentId$ = computed((): string => {
+    return options.agentId;
+  });
+  const feedback = createComposerFeedbackModel();
+  const temporaryModelNoticeEnabled$ = computed((get): boolean => {
+    return (
+      options.threadId === undefined &&
+      (get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false)
+    );
   });
   const workflowComposer = createWorkflowComposerSignals(
     draft,
     agentId$,
-    options.inlineTemplatesEnabled,
     {
-      // Existing threads must not steal selection while cached events hydrate.
-      // Empty new chats live in the agent composer, which still auto-focuses.
-      autoFocus: options.threadId === undefined,
+      autoFocus: true,
       singleLineOnMobile: options.singleLineOnMobile,
     },
-    options.feedbackModel,
+    feedback,
   );
   const submission = createComposerSubmissionSignals(
     options,
@@ -461,7 +489,7 @@ export function createComposerSignals(
   const ui = createComposerUiSignals();
 
   return {
-    agent$: options.agent$,
+    agentId: options.agentId,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     feedback: workflowComposer.feedback,
     workflow: {
@@ -469,9 +497,9 @@ export function createComposerSignals(
       ...workflowPrompt,
     },
     suggestion: composerSuggestionSignals(workflowComposer),
-    connector: createComposerConnectorSignals(options.agent$),
+    connector: createComposerConnectorSignals(options.agentId),
     draft: {
-      ...ui.draft,
+      seed$: draft.seed$,
       setDraftInput$: draft.setInput$,
       attachments$: draft.attachments$,
       attachmentUploadsReady$: draft.attachmentUploadsReady$,
@@ -485,11 +513,14 @@ export function createComposerSignals(
     },
     model: {
       ...ui.model,
+      temporaryModelNoticeEnabled$,
       modelSelection$: options.modelSelection$,
+      runningModelSelection$: eventSignals.runningModelSelection$,
       selectedModelOauthAvailable$: options.selectedModelOauthAvailable$,
       setModelSelection$: options.setModelSelection$,
       configureSelectedModel$: options.configureSelectedModel$,
     },
+    ...(options.videoModel ? { videoModel: options.videoModel } : {}),
     computer: {
       ...createComputerUseUiSignals(),
       computerUseHostId$: options.computerUseHostId$,
@@ -508,7 +539,7 @@ export function createComposerSignals(
         options.removeQueuedMessage$,
         workflowComposer,
       ),
-      removeWorkflowEvent$: options.removeWorkflowEvent$,
+      removeAutomationEvent$: options.removeAutomationEvent$,
     },
     goal: {
       activeGoalObjective$: eventSignals.activeGoalObjective$,
@@ -518,10 +549,8 @@ export function createComposerSignals(
     template: {
       ...composerTemplateSignals(workflowComposer),
       ...ui.template,
-      generationTemplate$:
-        options.generationTemplate$ ?? draft.generationTemplate$,
-      setGenerationTemplate$:
-        options.setGenerationTemplate$ ?? draft.setGenerationTemplate$,
+      generationTemplate$: draft.generationTemplate$,
+      setGenerationTemplate$: draft.setGenerationTemplate$,
     },
   };
 }
@@ -543,6 +572,13 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   const runIndicatorState$ = computed((get) => {
     return deriveRunIndicatorStateFromChatEvents(get(chatEvents$));
   });
+  const runningModelSelection$ = computed(
+    (get): Promise<ChatRunModelSelection | null> => {
+      return Promise.resolve(
+        runningModelSelectionFromChatEvents(get(chatEvents$)),
+      );
+    },
+  );
   const sending$ = computed((get): Promise<boolean> => {
     const running = get(runIndicatorState$) !== null;
     const lastAssistantCancelled = lastAssistantCancelledFromGroups(
@@ -593,6 +629,7 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   return {
     actionsLoading$,
     sending$,
+    runningModelSelection$,
     pendingEvents$,
     activeGoalObjective$,
     hasEvents$,
@@ -615,12 +652,12 @@ function createComposerSubmissionSignals(
         return "disabled";
       }
 
-      const uploadsReady = await get(draft.attachmentUploadsReady$);
+      const uploadsReady = get(draft.attachmentUploadsReady$);
       const attachments = get(draft.attachments$);
       let hasContent = get(workflowComposer.hasInput$);
       if (!hasContent && attachments.length > 0) {
         const modelSelection = await get(options.modelSelection$);
-        const imageRecognitionEnabled = get(zeroImageRecognitionEnabled$);
+        const imageRecognitionEnabled = get(imageRecognitionAvailable$);
         hasContent = hasVisibleAttachment(
           modelSelection,
           attachments,
@@ -654,6 +691,9 @@ function createComposerSubmissionSignals(
       if (action !== "send" && action !== "queue") {
         return false;
       }
+      if (!get(draft.attachmentUploadsReady$)) {
+        return false;
+      }
       if (get(internalSubmissionPending$)) {
         return false;
       }
@@ -674,7 +714,7 @@ function createComposerSubmissionSignals(
             }
             const modelSelection = await get(options.modelSelection$);
             signal.throwIfAborted();
-            const imageRecognitionEnabled = get(zeroImageRecognitionEnabled$);
+            const imageRecognitionEnabled = get(imageRecognitionAvailable$);
             if (
               !hasVisibleAttachment(
                 modelSelection,
@@ -685,14 +725,15 @@ function createComposerSubmissionSignals(
               return false;
             }
           }
+          if (!get(draft.attachmentUploadsReady$)) {
+            return false;
+          }
           return await set(
             options.submitMessage$,
             action,
             {
               prompt,
-              generationTemplate: get(
-                options.generationTemplate$ ?? draft.generationTemplate$,
-              ),
+              generationTemplate: get(draft.generationTemplate$),
               editorDocument: submission.editorDocument,
             },
             signal,

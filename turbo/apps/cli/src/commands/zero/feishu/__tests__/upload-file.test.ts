@@ -4,19 +4,19 @@ import { join } from "node:path";
 
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/integrations";
+import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@okouai/api-contracts/contracts/integrations";
 
 import { server } from "../../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/feishu/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/feishu/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/feishu/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/feishu/upload-file/complete";
 const STORAGE_UPLOAD_URL = "https://storage.test/feishu-upload";
 const FILE_CONTENT = "feishu pdf content";
 
-describe("zero feishu upload-file command", () => {
+describe("okou feishu upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((): never => {
     throw new Error("process.exit called");
   });
@@ -29,7 +29,7 @@ describe("zero feishu upload-file command", () => {
 
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     tempDir = mkdtempSync(join(tmpdir(), "feishu-upload-file-"));
     filePath = join(tempDir, "report.pdf");
     writeFileSync(filePath, FILE_CONTENT);
@@ -50,7 +50,6 @@ describe("zero feishu upload-file command", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           length: Buffer.byteLength(FILE_CONTENT),
-          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           uploadId: "00000000-0000-4000-8000-000000000001",
@@ -91,7 +90,7 @@ describe("zero feishu upload-file command", () => {
 
     await uploadFileCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "--file",
       filePath,
       "--installation",
@@ -121,7 +120,7 @@ describe("zero feishu upload-file command", () => {
     await expect(
       uploadFileCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "--file",
         filePath,
         "--chat",
@@ -145,7 +144,7 @@ describe("zero feishu upload-file command", () => {
     await expect(
       uploadFileCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "--file",
         largeFilePath,
         "--chat",

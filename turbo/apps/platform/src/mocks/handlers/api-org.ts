@@ -2,15 +2,14 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
-} from "@vm0/api-contracts/contracts/zero-org";
-import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
+} from "@okouai/api-contracts/contracts/zero-org";
+import type { OrgResponse } from "@okouai/api-contracts/contracts/orgs";
 import { http, HttpResponse } from "msw";
 import { mockApi } from "../msw-contract.ts";
 
 // Mock org data — default to admin role for development
 let mockOrg: OrgResponse = {
   id: "org_1",
-  slug: "user-12345678",
   name: "User 12345678",
   role: "admin",
 };
@@ -24,7 +23,6 @@ export function setMockOrg(overrides: Partial<OrgResponse>): void {
 export function resetMockOrg(): void {
   mockOrg = {
     id: "org_1",
-    slug: "user-12345678",
     name: "User 12345678",
     role: "admin",
   };
@@ -52,7 +50,7 @@ export const apiOrgHandlers = [
     return respond(200, { message: "Org deleted" });
   }),
 
-  http.get("*/api/zero/org/logo", () => {
+  http.get("*/api/okou/org/logo", () => {
     return HttpResponse.json({ logoUrl: mockLogoUrl, hasImage: !!mockLogoUrl });
   }),
 ];

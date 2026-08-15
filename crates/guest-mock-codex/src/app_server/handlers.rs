@@ -3,28 +3,47 @@ use super::messages::{
     initialize_response, large_server_notification, large_warning_notification,
     reasoning_item_started_notification, server_notification, server_notification_with_index,
     server_request, thread_response, thread_started_notification, turn,
-    turn_completed_notification, turn_started_notification, warning_notification, write_error,
-    write_json_line, write_split_json_line_prefix, write_success,
-    write_turn_completion_notifications, write_turn_notifications,
+    turn_completed_notification, turn_failed_notification, turn_started_notification,
+    warning_notification, write_error, write_json_line, write_oversized_delivery_notifications,
+    write_split_json_line_prefix, write_success, write_turn_completion_notifications,
+    write_turn_notifications, write_turn_start_notifications,
 };
 use super::persistence::{InputEventContext, persist_input_events};
 use super::scenario::Scenario;
 use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction, spawn_stderr_holder};
+use guest_contracts::stdout_framing::CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES;
 use serde_json::{Value, json};
 use std::io::{self, Write};
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
+use std::process::Command;
 use std::thread;
 use uuid::Uuid;
 
 const HANG_ON_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
 const HANG_ON_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+const WAIT_ON_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
+const WAIT_ON_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
+const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
-const OVERSIZED_STDOUT_BYTES: usize = 65 * 1024 * 1024;
+const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;
 const EVENT_DELIVERY_LARGE_EVENT_COUNT: usize = 10;
 const EVENT_DELIVERY_LARGE_EVENT_BYTES: usize = 2 * 1024 * 1024;
 const SECONDARY_THREAD_ID: &str = "00000000-0000-4000-8000-000000000def";
 const SECONDARY_ITEM_STARTED_AT_MS: u64 = 1_700_000_000_000;
+const SHELL_PROMPT_PREFIX: &str = "@shell@\n";
+const SHELL_PROMPT_END_SEPARATOR: &str = "\n@end-shell@";
+const CHECKPOINTED_SHELL_PROMPT_PREFIX: &str = "@shell-checkpoint@\n";
+const CHECKPOINTED_SHELL_SEPARATOR: &str = "\n@continue@\n";
+
+enum MockTurnOutput {
+    Complete(String),
+    Checkpoint {
+        checkpoint_text: String,
+        continuation_script: String,
+    },
+}
 
 impl AppServerState {
     pub(super) fn handle_initialize<W: Write>(
@@ -48,7 +67,11 @@ impl AppServerState {
             return Ok(ServerAction::Stop);
         }
         if self.scenario == Scenario::OversizedStdout {
-            writeln!(output, "{}", "x".repeat(OVERSIZED_STDOUT_BYTES))?;
+            let chunk = [b'x'; STDOUT_STREAM_CHUNK_BYTES];
+            for _ in 0..CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES / STDOUT_STREAM_CHUNK_BYTES {
+                output.write_all(&chunk)?;
+            }
+            output.write_all(b"x\n")?;
             output.flush()?;
             return Ok(ServerAction::Stop);
         }
@@ -283,6 +306,14 @@ impl AppServerState {
             },
             &inputs,
         )?;
+        let turn_output = mock_turn_output(inputs.iter().map(String::as_str))?;
+        let response_text = match &turn_output {
+            MockTurnOutput::Complete(response_text)
+            | MockTurnOutput::Checkpoint {
+                checkpoint_text: response_text,
+                ..
+            } => response_text,
+        };
         write_success(output, id, json!({ "turn": turn(&turn_id) }))?;
         if self.scenario == Scenario::UnexpectedThreadOutputItemStarted {
             write_json_line(
@@ -316,12 +347,15 @@ impl AppServerState {
             return Ok(ServerAction::Stop);
         }
         if self.scenario == Scenario::SecondaryThreadNotifications {
-            write_secondary_thread_notifications(output, &thread_id, &turn_id)?;
+            write_secondary_thread_notifications(output, &thread_id, &turn_id, response_text)?;
             return Ok(ServerAction::Continue);
         }
         if self.scenario.writes_turn_started_before_steer() {
             if let Some(current_thread) = &mut self.current_thread
-                && self.scenario == Scenario::RuntimeTurnStartedBeforeSteer
+                && matches!(
+                    self.scenario,
+                    Scenario::RuntimeTurnStartedBeforeSteer | Scenario::WaitOnTurnSteerResponse
+                )
             {
                 current_thread.active_turn_id = Some(turn_id.clone());
             }
@@ -331,7 +365,41 @@ impl AppServerState {
             self.scenario,
             Scenario::RuntimeTurnComplete | Scenario::RuntimeTurnCompleteWithoutThreadStarted
         ) {
-            write_turn_notifications(output, &thread_id, &turn_id)?;
+            match turn_output {
+                MockTurnOutput::Complete(response_text) => {
+                    write_turn_notifications(output, &thread_id, &turn_id, &response_text)?;
+                }
+                MockTurnOutput::Checkpoint {
+                    checkpoint_text,
+                    continuation_script,
+                } => {
+                    write_turn_start_notifications(output, &thread_id, &turn_id)?;
+                    write_json_line(
+                        output,
+                        &assistant_item_completed_notification(
+                            &thread_id,
+                            &turn_id,
+                            &checkpoint_text,
+                        ),
+                    )?;
+                    let response_text = shell_response_text(&continuation_script)?;
+                    write_turn_completion_notifications(
+                        output,
+                        &thread_id,
+                        &turn_id,
+                        &response_text,
+                    )?;
+                }
+            }
+        } else if matches!(turn_output, MockTurnOutput::Checkpoint { .. }) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "checkpointed shell prompts require a runtime turn-complete scenario",
+            ));
+        }
+        if self.scenario == Scenario::RuntimeTurnFailed {
+            write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
+            write_json_line(output, &turn_failed_notification(&thread_id, &turn_id))?;
         }
         if self.scenario == Scenario::RuntimeEventFlood {
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
@@ -354,6 +422,11 @@ impl AppServerState {
                 )?;
                 thread::sleep(std::time::Duration::from_millis(50));
             }
+            write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
+        }
+        if self.scenario == Scenario::RuntimeOversizedDelivery {
+            write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
+            write_oversized_delivery_notifications(output, &thread_id, &turn_id)?;
             write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
         }
         Ok(ServerAction::Continue)
@@ -432,15 +505,42 @@ impl AppServerState {
             },
             &inputs,
         )?;
+        if self.scenario == Scenario::WaitOnTurnSteerResponse {
+            let home = std::env::var_os("HOME")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+            let home = PathBuf::from(home);
+            let release = UnixListener::bind(home.join(WAIT_ON_TURN_STEER_RELEASE_SOCKET))?;
+            std::fs::write(
+                home.join(WAIT_ON_TURN_STEER_READY_FILE),
+                WAIT_ON_TURN_STEER_READY_EVENT,
+            )?;
+            release.accept()?;
+        }
+        let response_text = mock_response_text(
+            self.initial_inputs
+                .iter()
+                .chain(&self.steered_inputs)
+                .map(String::as_str),
+        )?;
         if self.scenario == Scenario::RuntimeTurnCompleteBeforeSteerResponse {
-            write_turn_completion_notifications(output, &thread_id, &active_turn_id)?;
+            write_turn_completion_notifications(
+                output,
+                &thread_id,
+                &active_turn_id,
+                &response_text,
+            )?;
         }
         write_success(output, id, json!({ "turnId": active_turn_id }))?;
         if self.scenario == Scenario::RuntimeTurnCompleteAfterSteer {
-            write_turn_notifications(output, &thread_id, &active_turn_id)?;
+            write_turn_notifications(output, &thread_id, &active_turn_id, &response_text)?;
         }
         if self.scenario == Scenario::RuntimeTurnStartedBeforeSteer {
-            write_turn_completion_notifications(output, &thread_id, &active_turn_id)?;
+            write_turn_completion_notifications(
+                output,
+                &thread_id,
+                &active_turn_id,
+                &response_text,
+            )?;
         }
         Ok(ServerAction::Continue)
     }
@@ -499,6 +599,7 @@ fn write_secondary_thread_notifications<W: Write>(
     output: &mut W,
     thread_id: &str,
     turn_id: &str,
+    response_text: &str,
 ) -> io::Result<()> {
     write_json_line(output, &thread_started_notification(SECONDARY_THREAD_ID))?;
     write_json_line(output, &warning_notification(thread_id, 0))?;
@@ -517,18 +618,81 @@ fn write_secondary_thread_notifications<W: Write>(
     )?;
     write_json_line(
         output,
-        &assistant_item_completed_notification(thread_id, turn_id),
+        &assistant_item_completed_notification(thread_id, turn_id, response_text),
     )?;
     write_json_line(output, &warning_notification(SECONDARY_THREAD_ID, 1))?;
     write_json_line(
         output,
-        &assistant_item_completed_notification(SECONDARY_THREAD_ID, turn_id),
+        &assistant_item_completed_notification(
+            SECONDARY_THREAD_ID,
+            turn_id,
+            "guest-mock-codex secondary app-server response",
+        ),
     )?;
     write_json_line(
         output,
         &turn_completed_notification(SECONDARY_THREAD_ID, turn_id),
     )?;
     write_json_line(output, &turn_completed_notification(thread_id, turn_id))
+}
+
+fn mock_response_text<'a>(inputs: impl IntoIterator<Item = &'a str>) -> io::Result<String> {
+    match mock_turn_output(inputs)? {
+        MockTurnOutput::Complete(response_text) => Ok(response_text),
+        MockTurnOutput::Checkpoint { .. } => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "checkpointed shell prompts are not supported for turn steering",
+        )),
+    }
+}
+
+fn mock_turn_output<'a>(inputs: impl IntoIterator<Item = &'a str>) -> io::Result<MockTurnOutput> {
+    let prompt = inputs.into_iter().collect::<Vec<_>>().join(" ");
+    if let Some(scripts) = prompt.strip_prefix(CHECKPOINTED_SHELL_PROMPT_PREFIX) {
+        let Some((checkpoint_script, continuation_script)) =
+            scripts.split_once(CHECKPOINTED_SHELL_SEPARATOR)
+        else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "checkpointed shell prompt is missing @continue@ separator",
+            ));
+        };
+        return Ok(MockTurnOutput::Checkpoint {
+            checkpoint_text: shell_response_text(checkpoint_script)?,
+            continuation_script: continuation_script.to_string(),
+        });
+    }
+    if let Some(script_with_suffix) = prompt.strip_prefix(SHELL_PROMPT_PREFIX) {
+        let Some((script, _)) = script_with_suffix.split_once(SHELL_PROMPT_END_SEPARATOR) else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "shell prompt is missing @end-shell@ separator",
+            ));
+        };
+        return shell_response_text(script).map(MockTurnOutput::Complete);
+    }
+    Ok(MockTurnOutput::Complete(format!(
+        "guest-mock-codex app-server response: {prompt}"
+    )))
+}
+
+fn shell_response_text(script: &str) -> io::Result<String> {
+    let output = Command::new("bash").args(["-c", script]).output()?;
+    let mut response = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.is_empty() {
+        if !response.is_empty() && !response.ends_with('\n') {
+            response.push('\n');
+        }
+        response.push_str(&stderr);
+    }
+    if !output.status.success() {
+        if !response.is_empty() && !response.ends_with('\n') {
+            response.push('\n');
+        }
+        response.push_str(&format!("mock shell exited with {}", output.status));
+    }
+    Ok(response)
 }
 
 fn validate_initialize_params(params: &Value) -> Result<(), &'static str> {

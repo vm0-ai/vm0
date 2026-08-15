@@ -21,7 +21,7 @@ use sandbox::{
 };
 use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use super::codex_model_catalog_prefetch::{
     StartedCodexModelCatalogPrefetch, is_eligible as is_codex_model_catalog_prefetch_eligible,
@@ -30,16 +30,16 @@ use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
     StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
     check_host_oom, collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom,
-    drain_stdout_to_file, explicit_enospc_evidence, log_agent_abnormal_exit_env_diagnostics,
-    log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
-    read_guest_error_file, read_guest_failure_diagnostic_file,
+    drain_stdout_to_file, explicit_enospc_evidence, failure_diagnostic_reports_workload_memory_oom,
+    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
+    log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
     should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
 use super::effective_cli_framework;
 use super::env::{
-    build_env_json_for_run, build_run_payload_for_run, build_user_env_json, write_run_payload_file,
+    PreparedRunPayload, build_env_json_for_run, build_user_env_json, write_run_payload_file,
     write_user_env_file,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
@@ -52,7 +52,7 @@ use super::session_restore::{
     MaterializedResumeSession, SessionRestoreDiagnostics, restore_session,
 };
 use super::storage::download_storages;
-use super::telemetry::{RunnerSpawnTiming, record_api_latency};
+use super::telemetry::{RunnerSpawnTiming, record_api_to_spawn};
 use super::workspace_session_history_materializer::{
     WorkspaceSessionHistoryMaterialization, WorkspaceSessionHistoryPhaseTiming,
     WorkspaceSessionHistoryTimings,
@@ -60,7 +60,8 @@ use super::workspace_session_history_materializer::{
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
     JOB_TIMEOUT_EXIT_CODE, ResourceFailureDiagnostics, ResourceFailureKind, RunnerError,
-    RunnerResult, SandboxReuseResult, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
+    RunnerResult, SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult,
+    SandboxReuseTerminal, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
     USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, guest_runtime_dir, guest_runtime_path,
     job_supervisor_timeout, job_terminal_wait_timeout, normalize_failure_exit_code,
 };
@@ -75,7 +76,7 @@ use crate::storage_plan::{StoragePlan, build_storage_plan};
 use crate::telemetry::{
     JobTelemetry, SessionHistoryTelemetryMetadata, session_history_prefix_extension_action_type,
 };
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, WorkspaceReuseResult};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
@@ -466,24 +467,12 @@ async fn verify_restored_session_identity_for_reuse(
     identity: RestoredSessionIdentity,
 ) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
     let Some(requested_identity) = RestoredSessionIdentity::from_context(context) else {
-        debug!(
-            run_id = %context.run_id,
-            "restored session identity cannot be verified without a valid hash-backed resume request"
-        );
         return Err(SessionHistoryIdentityReason::VerifyRequestMissing);
     };
     if identity != requested_identity {
-        debug!(
-            run_id = %context.run_id,
-            "restored session identity invalidated because it does not match the resume request"
-        );
         return Err(SessionHistoryIdentityReason::VerifyRequestMismatch);
     }
     let Some(verification) = identity.final_metadata_verification() else {
-        debug!(
-            run_id = %context.run_id,
-            "restored session identity cannot be verified without a final metadata verifier"
-        );
         return Err(SessionHistoryIdentityReason::VerifyMissingVerifier);
     };
     if !identity.is_verified_match_for_request(&requested_identity) {
@@ -510,12 +499,11 @@ async fn verify_restored_session_identity_for_reuse(
         history_hash,
         history_size_bytes,
     );
-    verify_final_identity_metadata(sandbox, context, identity, command, &runtime_dir).await
+    verify_final_identity_metadata(sandbox, identity, command, &runtime_dir).await
 }
 
 async fn verify_final_identity_metadata(
     sandbox: &dyn Sandbox,
-    context: &ExecutionContext,
     identity: RestoredSessionIdentity,
     command: String,
     runtime_dir: &str,
@@ -538,21 +526,8 @@ async fn verify_final_identity_metadata(
         .await
     {
         Ok(result) if helper_exec_succeeded(&result) => Ok(identity),
-        Ok(result) => {
-            debug!(
-                run_id = %context.run_id,
-                termination = %helper_exec_termination_label(&result),
-                "restored session identity final metadata verification failed"
-            );
-            Err(session_history_identity_reason_from_helper_result(&result))
-        }
-        Err(_) => {
-            debug!(
-                run_id = %context.run_id,
-                "restored session identity final metadata verification errored"
-            );
-            Err(SessionHistoryIdentityReason::VerifyHelperExecError)
-        }
+        Ok(result) => Err(session_history_identity_reason_from_helper_result(&result)),
+        Err(_) => Err(SessionHistoryIdentityReason::VerifyHelperExecError),
     }
 }
 
@@ -625,23 +600,13 @@ async fn read_final_session_history_identity(
         guest_contracts::runtime_paths::final_session_history_identity_file,
     ) {
         Ok(path) => path,
-        Err(error) => {
-            debug!(
-                run_id = %context.run_id,
-                error = %error,
-                "final session history identity path could not be resolved"
-            );
+        Err(_) => {
             return Err(SessionHistoryIdentityReason::FinalizeMetadataPathUnresolved);
         }
     };
     let runtime_dir = match guest_runtime_dir(context.run_id) {
         Ok(path) => path,
-        Err(error) => {
-            debug!(
-                run_id = %context.run_id,
-                error = %error,
-                "guest runtime dir could not be resolved for final session history identity"
-            );
+        Err(_) => {
             return Err(SessionHistoryIdentityReason::FinalizeRuntimeDirUnresolved);
         }
     };
@@ -651,22 +616,11 @@ async fn read_final_session_history_identity(
     {
         Ok(Some(bytes)) => bytes,
         Ok(None) => return Err(SessionHistoryIdentityReason::FinalizeMissingMetadata),
-        Err(_) => {
-            debug!(
-                run_id = %context.run_id,
-                "final session history identity metadata read failed"
-            );
-            return Err(SessionHistoryIdentityReason::FinalizeMetadataReadFailed);
-        }
+        Err(_) => return Err(SessionHistoryIdentityReason::FinalizeMetadataReadFailed),
     };
     let metadata = match FinalSessionHistoryIdentity::from_json_slice(&bytes) {
         Ok(metadata) => metadata,
         Err(error) => {
-            debug!(
-                run_id = %context.run_id,
-                error = %error,
-                "final session history identity metadata was invalid"
-            );
             return Err(SessionHistoryIdentityReason::from_final_metadata_error(
                 error,
             ));
@@ -685,19 +639,13 @@ pub(super) struct ProcessCancelTimeouts {
 
 pub(super) struct AgentExecutionResult {
     pub(super) failure: Option<ExecutionFailure>,
+    pub(super) sandbox_reuse_disposition: SandboxReuseDisposition,
     pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
     pub(super) reusable_session_identity: Option<RestoredSessionIdentity>,
+    pub(super) active_input_delivery_ids: Vec<String>,
 }
 
 impl AgentExecutionResult {
-    pub(super) fn success() -> Self {
-        Self {
-            failure: None,
-            stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
-            reusable_session_identity: None,
-        }
-    }
-
     pub(super) fn failure(
         exit_code: i32,
         error: impl Into<String>,
@@ -705,8 +653,10 @@ impl AgentExecutionResult {
     ) -> Self {
         Self {
             failure: Some(ExecutionFailure::new(exit_code, error, diagnostic)),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
             reusable_session_identity: None,
+            active_input_delivery_ids: Vec::new(),
         }
     }
 
@@ -717,9 +667,16 @@ impl AgentExecutionResult {
     pub(super) fn cancelled() -> Self {
         Self {
             failure: Some(ExecutionFailure::cancelled()),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
             reusable_session_identity: None,
+            active_input_delivery_ids: Vec::new(),
         }
+    }
+
+    pub(super) fn with_active_input_delivery_ids(mut self, delivery_ids: Vec<String>) -> Self {
+        self.active_input_delivery_ids = delivery_ids;
+        self
     }
 
     pub(super) fn with_stdout_stream_diagnostics(
@@ -730,18 +687,14 @@ impl AgentExecutionResult {
         self
     }
 
-    pub(super) fn with_reusable_session_identity(
-        mut self,
-        reusable_session_identity: Option<RestoredSessionIdentity>,
-    ) -> Self {
-        self.reusable_session_identity = reusable_session_identity;
-        self
-    }
-
     pub(super) fn with_resource_diagnostics(
         mut self,
         resource_diagnostics: Option<ResourceFailureDiagnostics>,
     ) -> Self {
+        if resource_diagnostics.is_some_and(|diagnostics| diagnostics.failure_kind.is_some()) {
+            self.sandbox_reuse_disposition =
+                SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
+        }
         if let Some(failure) = self.failure.take() {
             self.failure = Some(failure.with_resource_diagnostics(resource_diagnostics));
         }
@@ -750,6 +703,8 @@ impl AgentExecutionResult {
 
     #[must_use]
     pub(super) fn with_resource_failure_kind(mut self, kind: ResourceFailureKind) -> Self {
+        self.sandbox_reuse_disposition =
+            SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
         if let Some(failure) = self.failure.take() {
             self.failure = Some(failure.with_resource_diagnostics(Some(
                 ResourceFailureDiagnostics::from_failure_kind(kind),
@@ -1081,6 +1036,49 @@ fn diagnostic_is_agent_execution_timeout(diagnostic: Option<&FailureDiagnostic>)
         .is_some_and(|termination| termination.reason == CliTerminationReason::ExecutionTimeout)
 }
 
+fn sandbox_reuse_disposition_for_process_exit(
+    exit: &sandbox::ProcessExit,
+    cancellation: CancellationDisposition,
+    failure: Option<&ExecutionFailure>,
+) -> SandboxReuseDisposition {
+    if cancellation == CancellationDisposition::HardFallback {
+        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::HardCancellation);
+    }
+    if failure.is_some_and(|failure| {
+        failure
+            .resource_diagnostics
+            .is_some_and(|diagnostics| diagnostics.failure_kind.is_some())
+    }) {
+        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
+    }
+    // A guest-agent execution deadline is reusable only when the provider
+    // observed the guest-agent itself exit. A provider-level timeout does not
+    // carry the same process-termination evidence.
+    let exit_code = match exit.termination {
+        ExecTermination::Exited { exit_code } => exit_code,
+        ExecTermination::TimedOut => {
+            return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::UnconfirmedTimeout);
+        }
+        ExecTermination::Cancelled | ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain);
+        }
+    };
+    if cancellation == CancellationDisposition::Cooperative {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::CooperativeCancellation)
+    } else if failure.is_some_and(|failure| {
+        matches!(
+            failure.kind,
+            super::ExecutionFailureKind::RunnerJobTimeout { .. }
+        )
+    }) {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::ExecutionTimeout)
+    } else if exit_code == 0 {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::Success)
+    } else {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit)
+    }
+}
+
 fn process_exit_oom_candidate(exit: &sandbox::ProcessExit) -> bool {
     matches!(
         exit.termination,
@@ -1135,11 +1133,12 @@ fn append_process_diagnostic(stderr: &mut String, diagnostic: &str) {
 
 /// How this run is entering its sandbox. Each field feeds a distinct step:
 /// `restore_guest_state` gates clock/entropy repair, `prev_storage` enables
-/// the download-skip optimization on reuse, and `reuse_result` is forwarded
-/// to the guest for /complete metadata.
+/// the download-skip optimization on reuse, and both reuse outcomes are
+/// forwarded to the guest for /complete metadata.
 pub(super) struct RunStart<'a> {
     pub(super) restore_guest_state: bool,
     pub(super) reuse_result: SandboxReuseResult,
+    pub(super) workspace_reuse_result: WorkspaceReuseResult,
     pub(super) prev_storage: Option<&'a crate::storage_fingerprints::StorageFingerprints>,
 }
 
@@ -1152,6 +1151,21 @@ pub(super) struct RunControls {
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
     pub(super) prepared_storage: Option<crate::storage_cache::PreparedFreshStorage>,
     pub(super) prepared_guest_runtime: Option<PreparedGuestRuntime>,
+    guest_state_prepared: bool,
+}
+
+pub(super) struct PreparedRunInputs {
+    pub(super) controls: RunControls,
+    pub(super) run_payload: PreparedRunPayload,
+}
+
+impl PreparedRunInputs {
+    pub(super) fn new(controls: RunControls, run_payload: PreparedRunPayload) -> Self {
+        Self {
+            controls,
+            run_payload,
+        }
+    }
 }
 
 pub(super) enum PreparedGuestRuntime {
@@ -1244,6 +1258,7 @@ impl RunControls {
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
             prepared_storage: None,
             prepared_guest_runtime: None,
+            guest_state_prepared: false,
         }
     }
 
@@ -1257,6 +1272,11 @@ impl RunControls {
         plan: SessionHistoryRestorePlan,
     ) -> Self {
         self.session_history_restore_plan = plan;
+        self
+    }
+
+    pub(super) fn with_guest_state_prepared(mut self, prepared: bool) -> Self {
+        self.guest_state_prepared = prepared;
         self
     }
 }
@@ -1511,13 +1531,14 @@ pub(super) async fn run_in_sandbox(
     telemetry: &mut JobTelemetry,
     controls: RunControls,
 ) -> RunnerResult<AgentExecutionResult> {
+    let prepared_run_payload = super::env::prepare_run_payload_for_run(context)?;
     run_in_sandbox_with_process_cancel_timeouts(
         sandbox,
         context,
         config,
         start,
         telemetry,
-        controls,
+        PreparedRunInputs::new(controls, prepared_run_payload),
         super::PROCESS_CANCEL_TIMEOUTS,
     )
     .await
@@ -1530,8 +1551,8 @@ pub(super) async fn run_in_sandbox(
 ///
 /// - completes cancellation-aware guest runtime and storage preparation while
 ///   taking ownership of model-catalog prefetch supervision;
-/// - consumes the session-history restore plan, builds private guest inputs,
-///   and spawns guest-agent;
+/// - consumes the session-history restore plan, finalizes and writes private
+///   guest inputs, and spawns guest-agent;
 /// - starts locally owned active-input and stdout-drain work, releases deferred
 ///   cache fill, and supervises normal exit or cancellation;
 /// - stops or drains locally owned background work before classifying terminal
@@ -1549,9 +1570,13 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     config: &ExecutorConfig,
     start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
-    controls: RunControls,
+    inputs: PreparedRunInputs,
     process_cancel_timeouts: ProcessCancelTimeouts,
 ) -> RunnerResult<AgentExecutionResult> {
+    let PreparedRunInputs {
+        controls,
+        run_payload: prepared_run_payload,
+    } = inputs;
     let RunControls {
         cancel,
         cooperative_user_cancel,
@@ -1561,14 +1586,18 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         session_history_restore_plan,
         mut prepared_storage,
         prepared_guest_runtime,
+        guest_state_prepared,
     } = controls;
-    let has_active_input_source = active_input_source.is_some();
     let pre_spawn_started = Instant::now();
 
     // Complete cancellation-aware guest runtime and storage preparation while
     // taking ownership of model-catalog prefetch supervision.
     let prepared_guest_runtime = match prepared_guest_runtime {
         Some(prepared) => prepared,
+        None if guest_state_prepared => PreparedGuestRuntime::Ready(
+            StartedCodexModelCatalogPrefetch::start(sandbox, context, start.reuse_result, &cancel)
+                .await,
+        ),
         None => {
             PreparedGuestRuntime::prepare(
                 sandbox,
@@ -1961,9 +1990,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
 
-    // Build the private run payload and environment used to bootstrap
-    // guest-agent. User-provided env is passed through a private guest file and
-    // injected into the CLI child after guest-agent has started.
+    // Finalize the prepared private run payload and build the environment used
+    // to bootstrap guest-agent. User-provided env is passed through a private
+    // guest file and injected into the CLI child after guest-agent has started.
     let user_env_started = Instant::now();
     let user_env_map = build_user_env_json(context);
     let user_env_file = match write_user_env_file(sandbox, context.run_id, &user_env_map).await {
@@ -1987,7 +2016,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     };
     let env_build_started = Instant::now();
-    let run_payload = match build_run_payload_for_run(context) {
+    let run_payload = match prepared_run_payload.into_run_payload(context) {
         Ok(run_payload) => run_payload,
         Err(error) => {
             telemetry.record(
@@ -2038,7 +2067,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         &config.api_url,
         sandbox.id(),
         start.reuse_result,
-        has_active_input_source,
+        start.workspace_reuse_result,
     ) {
         Ok(env_map) => env_map,
         Err(error) => {
@@ -2170,7 +2199,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     } = prepared_agent;
 
     // Claude Code process has a PID now — record end-to-end startup latency.
-    record_api_latency("api_to_spawn", context, telemetry);
+    record_api_to_spawn(
+        context,
+        telemetry,
+        start.reuse_result,
+        start.workspace_reuse_result,
+    );
 
     // Start locally owned input and output work, then release deferred cache
     // fill now that process spawn has succeeded.
@@ -2181,7 +2215,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         process_control.clone(),
         cancel.clone(),
     );
-
     // Spawn background task to drain stdout chunks and write to the host stream log file.
     let host_log_path = config.log_paths.system_stream_log(context.run_id);
     let stream_task = handle.take_stdout_receiver().map(|stdout_rx| {
@@ -2251,10 +2284,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // Stop locally owned post-spawn work before interpreting terminal process
     // state. Join active input and model prefetch; drain or abort stdout based
     // on the wait outcome.
-    if let Some(forwarder) = active_input_forwarder {
-        forwarder.stop().await;
-    }
-
+    let active_input_delivery_ids = match active_input_forwarder {
+        Some(forwarder) => forwarder.stop(sandbox).await,
+        None => Vec::new(),
+    };
     // Wait for streaming to finish (channel closes when process exits).
     // When terminal proof is unavailable, close the bounded receiver so the
     // drain can flush accepted chunks without waiting for sender drop.
@@ -2303,7 +2336,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled)
-                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error));
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error)
+                    .with_active_input_delivery_ids(active_input_delivery_ids));
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
@@ -2317,8 +2351,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         t.elapsed(),
                         None,
                     )),
+                    sandbox_reuse_disposition: SandboxReuseDisposition::Ineligible(
+                        SandboxReuseRejection::UnconfirmedTimeout,
+                    ),
                     stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
                     reusable_session_identity: None,
+                    active_input_delivery_ids,
                 });
             }
             let resource_diagnostics = if explicit_enospc_evidence([error.as_str()]) {
@@ -2335,7 +2373,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             };
             return Ok(AgentExecutionResult::failure_from_error(error)
                 .with_resource_diagnostics(resource_diagnostics)
-                .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error));
+                .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error)
+                .with_active_input_delivery_ids(active_input_delivery_ids));
         }
     };
     if exit.stream_overflowed {
@@ -2370,10 +2409,20 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         stdout_stream_diagnostics,
     );
 
+    let failure_diagnostic = if !cancellation_observed && process_failed(&exit) {
+        read_guest_failure_diagnostic_file(sandbox, context.run_id).await
+    } else {
+        None
+    };
+
     // Check for OOM kill when process was terminated by SIGKILL. Skip only
     // after hard fallback, where the SIGKILL exit code is synthetic. A
-    // cooperative guest exit remains real process evidence.
-    if !used_hard_cancellation_fallback && process_exit_oom_candidate(&exit) {
+    // cooperative guest exit remains real process evidence. A guest-authored
+    // workload OOM diagnostic is more specific than VM-wide dmesg output.
+    if !used_hard_cancellation_fallback
+        && process_exit_oom_candidate(&exit)
+        && !failure_diagnostic_reports_workload_memory_oom(failure_diagnostic.as_ref())
+    {
         let dmesg_req = ExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
             timeout: Duration::from_secs(5),
@@ -2398,7 +2447,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 telemetry.record("agent_execute", t.elapsed(), false, Some(error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::GuestMemoryOomKilled)
-                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics));
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
+                    .with_active_input_delivery_ids(active_input_delivery_ids));
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
@@ -2421,7 +2471,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     } else if process_failed(&exit) {
         let failure_exit_code = process_failure_exit_code(&exit);
         let stderr = process_failure_stderr(&exit);
-        let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
         let should_read_guest_error = stderr.is_empty()
             || (failure_diagnostic.is_none()
                 && matches!(exit.termination, ExecTermination::Exited { exit_code } if exit_code != 0));
@@ -2556,15 +2605,23 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         None
     };
 
+    let sandbox_reuse_disposition =
+        sandbox_reuse_disposition_for_process_exit(&exit, cancellation, failure.as_ref());
     let agent_result = match failure {
         Some(failure) => AgentExecutionResult {
             failure: Some(failure),
+            sandbox_reuse_disposition,
             stdout_stream_diagnostics,
             reusable_session_identity: None,
+            active_input_delivery_ids,
         },
-        None => AgentExecutionResult::success()
-            .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
-            .with_reusable_session_identity(reusable_session_identity),
+        None => AgentExecutionResult {
+            failure: None,
+            sandbox_reuse_disposition,
+            stdout_stream_diagnostics,
+            reusable_session_identity,
+            active_input_delivery_ids,
+        },
     };
     telemetry.record(
         "agent_execute",

@@ -1,9 +1,9 @@
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   and,
   eq,
@@ -18,16 +18,16 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { pendingChatQueueEventCondition } from "./chat-event-queue.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 
 const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
 function activeChatRunCondition(db: Pick<Db, "select">) {
   return and(
+    isNotNull(agentRuns.triggerSource),
     inArray(agentRuns.status, ACTIVE_CHAT_RUN_STATUSES),
     or(
       notExists(
@@ -36,7 +36,7 @@ function activeChatRunCondition(db: Pick<Db, "select">) {
           .from(agentRunCallbacks)
           .where(
             and(
-              eq(agentRunCallbacks.runId, zeroRuns.id),
+              eq(agentRunCallbacks.runId, agentRuns.id),
               eq(agentRunCallbacks.internalKind, "chat"),
               isNotNull(sql`${agentRunCallbacks.payload}->>'queuedMessageId'`),
             ),
@@ -48,7 +48,7 @@ function activeChatRunCondition(db: Pick<Db, "select">) {
           .from(chatEvents)
           .where(
             and(
-              eq(chatEvents.runId, zeroRuns.id),
+              eq(chatEvents.runId, agentRuns.id),
               chatEventTypeIn(["input.prompt"]),
             ),
           ),
@@ -62,6 +62,7 @@ function unresolvedCancellationRecoveryCondition(
   completedAtCondition: SQL,
 ) {
   return and(
+    isNotNull(agentRuns.triggerSource),
     eq(agentRuns.status, "cancelled"),
     isNotNull(agentRuns.cancellationRecoveryCompleted),
     completedAtCondition,
@@ -73,7 +74,7 @@ function unresolvedCancellationRecoveryCondition(
           .from(chatEvents)
           .where(
             and(
-              eq(chatEvents.runId, zeroRuns.id),
+              eq(chatEvents.runId, agentRuns.id),
               chatEventTypeIn(["run.cancelled"]),
             ),
           ),
@@ -105,12 +106,11 @@ export async function cancellationRecoveryPendingForThread(
   },
 ): Promise<boolean> {
   const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
     .where(
       and(
-        eq(zeroRuns.chatThreadId, args.threadId),
+        eq(agentRuns.chatThreadId, args.threadId),
         freshUnresolvedCancellationRecoveryCondition(db),
       ),
     )
@@ -119,7 +119,7 @@ export async function cancellationRecoveryPendingForThread(
   return run !== undefined;
 }
 
-async function activeChatRunExists(
+async function chatThreadAdmissionBlockerExists(
   db: Pick<Db, "select">,
   args: {
     readonly threadId: string;
@@ -127,25 +127,49 @@ async function activeChatRunExists(
     readonly apiStartTime?: number;
   },
 ): Promise<boolean> {
-  const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+  const [thread] = await db
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
     .where(
       and(
-        eq(zeroRuns.chatThreadId, args.threadId),
-        args.excludeRunId === undefined
-          ? undefined
-          : ne(zeroRuns.id, args.excludeRunId),
+        eq(chatThreads.id, args.threadId),
         or(
-          activeChatRunCondition(db),
-          freshUnresolvedCancellationRecoveryCondition(db, args.apiStartTime),
+          exists(
+            db
+              .select({ id: agentRuns.id })
+              .from(agentRuns)
+              .where(
+                and(
+                  eq(agentRuns.chatThreadId, args.threadId),
+                  args.excludeRunId === undefined
+                    ? undefined
+                    : ne(agentRuns.id, args.excludeRunId),
+                  or(
+                    activeChatRunCondition(db),
+                    freshUnresolvedCancellationRecoveryCondition(
+                      db,
+                      args.apiStartTime,
+                    ),
+                  ),
+                ),
+              ),
+          ),
+          exists(
+            db
+              .select({ id: activeInputDeliveries.id })
+              .from(activeInputDeliveries)
+              .where(
+                and(
+                  eq(activeInputDeliveries.chatThreadId, args.threadId),
+                  eq(activeInputDeliveries.status, "open"),
+                ),
+              ),
+          ),
         ),
       ),
     )
     .limit(1);
-
-  return run !== undefined;
+  return thread !== undefined;
 }
 
 // A managed browser outlives the run that opened it and the next run simply
@@ -159,7 +183,7 @@ export async function chatThreadAdmissionBlocked(
     readonly apiStartTime?: number;
   },
 ): Promise<boolean> {
-  return await activeChatRunExists(db, args);
+  return await chatThreadAdmissionBlockerExists(db, args);
 }
 
 /** Pending queue threads whose cancellation recovery barrier has failed open. */
@@ -168,6 +192,7 @@ export async function expiredCancellationRecoveryThreads(
   args: {
     readonly expiredBefore: Date;
     readonly limit: number;
+    readonly chatThreadIds?: readonly string[];
   },
 ): Promise<readonly { chatThreadId: string; userId: string }[]> {
   const rows = await db
@@ -182,24 +207,22 @@ export async function expiredCancellationRecoveryThreads(
         pendingChatQueueEventCondition(db),
         notExists(
           db
-            .select({ id: zeroRuns.id })
-            .from(zeroRuns)
-            .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+            .select({ id: agentRuns.id })
+            .from(agentRuns)
             .where(
               and(
-                eq(zeroRuns.chatThreadId, chatEvents.chatThreadId),
+                eq(agentRuns.chatThreadId, chatEvents.chatThreadId),
                 activeChatRunCondition(db),
               ),
             ),
         ),
         exists(
           db
-            .select({ id: zeroRuns.id })
-            .from(zeroRuns)
-            .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+            .select({ id: agentRuns.id })
+            .from(agentRuns)
             .where(
               and(
-                eq(zeroRuns.chatThreadId, chatEvents.chatThreadId),
+                eq(agentRuns.chatThreadId, chatEvents.chatThreadId),
                 unresolvedCancellationRecoveryCondition(
                   db,
                   lte(agentRuns.completedAt, args.expiredBefore),
@@ -207,6 +230,9 @@ export async function expiredCancellationRecoveryThreads(
               ),
             ),
         ),
+        args.chatThreadIds === undefined
+          ? undefined
+          : inArray(chatEvents.chatThreadId, args.chatThreadIds),
       ),
     )
     .limit(args.limit);

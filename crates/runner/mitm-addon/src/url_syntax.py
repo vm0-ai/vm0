@@ -1,11 +1,20 @@
 """Shared URL syntax helpers for firewall matching and rewriting."""
 
+import re
+
 # C0 controls are code points below raw space; raw space is handled separately.
 ASCII_CONTROL_MAX = 0x20
 ASCII_DELETE = 0x7F
 RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _UNICODE_SURROGATE_MIN = 0xD800
 _UNICODE_SURROGATE_MAX = 0xDFFF
+_UNSAFE_URL_CODEPOINT_PATTERN = re.compile(
+    "["
+    f"{chr(0)}-{chr(ASCII_CONTROL_MAX - 1)}"
+    f"{chr(ASCII_DELETE)}"
+    f"{chr(_UNICODE_SURROGATE_MIN)}-{chr(_UNICODE_SURROGATE_MAX)}"
+    "]"
+)
 
 
 def has_unsafe_url_codepoint(value: str) -> bool:
@@ -16,12 +25,13 @@ def has_unsafe_url_codepoint(value: str) -> bool:
     excluded; pair this with has_raw_whitespace() when raw whitespace must be
     rejected.
     """
-    return any(
-        ord(char) < ASCII_CONTROL_MAX
-        or ord(char) == ASCII_DELETE
-        or _UNICODE_SURROGATE_MIN <= ord(char) <= _UNICODE_SURROGATE_MAX
-        for char in value
-    )
+    # ASCII non-printable code points are exactly C0 controls and DEL.
+    if value.isascii():
+        return not value.isprintable()
+    # Other non-printable code points require the narrower policy search below.
+    if value.isprintable():
+        return False
+    return _UNSAFE_URL_CODEPOINT_PATTERN.search(value) is not None
 
 
 def has_raw_whitespace(value: str) -> bool:
@@ -29,7 +39,7 @@ def has_raw_whitespace(value: str) -> bool:
 
     This covers space, tab, LF, CR, form feed, and vertical tab.
     """
-    return any(char in RAW_WHITESPACE_CHARS for char in value)
+    return any(char in value for char in RAW_WHITESPACE_CHARS)
 
 
 def has_unsafe_runtime_url_syntax(value: str, *, allow_backslash: bool = False) -> bool:

@@ -11,6 +11,7 @@
 //! or paths. Thread `GuestConfig` and `GuestPaths` through the caller instead.
 
 pub mod active_input;
+mod active_input_receipts;
 mod artifact;
 pub mod checkpoint;
 pub mod cli;
@@ -38,6 +39,7 @@ mod session_metadata;
 pub mod telemetry;
 pub mod timing;
 mod urls;
+pub mod workload_containment;
 
 #[cfg(test)]
 static SYSTEM_LOG_TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());

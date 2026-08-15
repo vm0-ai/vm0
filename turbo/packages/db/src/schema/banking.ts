@@ -18,8 +18,8 @@ import type {
   BankingConnectionAuditMetadata,
   BankingOperationScope,
   BankingOperationScopes,
-} from "@vm0/db/jsonb-contracts/banking";
-export type { BankingOperationScope } from "@vm0/db/jsonb-contracts/banking";
+} from "@okouai/db/jsonb-contracts/banking";
+export type { BankingOperationScope } from "@okouai/db/jsonb-contracts/banking";
 
 export type BankingProvider = "finicity";
 export type BankingConnectionStatus =

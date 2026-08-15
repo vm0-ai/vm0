@@ -60,6 +60,9 @@ export async function applyPendingMigrations(sql: postgres.Sql): Promise<void> {
     }
 
     await sql.begin(async (transaction) => {
+      await transaction`SET LOCAL lock_timeout = '1s'`;
+      await transaction`SET LOCAL statement_timeout = '10s'`;
+
       for (const statement of migration.sql) {
         if (statement.trim().length === 0) {
           continue;

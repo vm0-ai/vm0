@@ -1,0 +1,489 @@
+{
+  "addressPolicyCases": [
+    {
+      "name": "ipv4-this-network-start",
+      "address": "0.0.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-this-network-end",
+      "address": "0.255.255.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-this-network",
+      "address": "1.0.0.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-private-10",
+      "address": "9.255.255.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-private-10-start",
+      "address": "10.0.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-private-10-end",
+      "address": "10.255.255.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-private-10",
+      "address": "11.0.0.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-shared-address-space",
+      "address": "100.63.255.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-shared-address-space-start",
+      "address": "100.64.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-shared-address-space-end",
+      "address": "100.127.255.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-shared-address-space",
+      "address": "100.128.0.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-loopback",
+      "address": "126.255.255.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-loopback-start",
+      "address": "127.0.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-loopback-end",
+      "address": "127.255.255.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-loopback",
+      "address": "128.0.0.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-link-local",
+      "address": "169.253.255.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-link-local-start",
+      "address": "169.254.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-link-local-end",
+      "address": "169.254.255.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-link-local",
+      "address": "169.255.0.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-private-172",
+      "address": "172.15.255.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-private-172-start",
+      "address": "172.16.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-private-172-end",
+      "address": "172.31.255.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-private-172",
+      "address": "172.32.0.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-ietf-protocol-low",
+      "address": "191.255.255.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-ietf-protocol-low-start",
+      "address": "192.0.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-ietf-protocol-low-end",
+      "address": "192.0.0.8",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-pcp-anycast-gap",
+      "address": "192.0.0.9",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-turn-anycast-gap",
+      "address": "192.0.0.10",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-ietf-protocol-high-start",
+      "address": "192.0.0.11",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-ietf-protocol-high-end",
+      "address": "192.0.0.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-ietf-protocol-high",
+      "address": "192.0.1.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-documentation-1",
+      "address": "192.0.1.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-documentation-1-start",
+      "address": "192.0.2.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-documentation-1-end",
+      "address": "192.0.2.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-documentation-1",
+      "address": "192.0.3.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-deprecated-6to4-relay",
+      "address": "192.88.98.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-deprecated-6to4-relay-start",
+      "address": "192.88.99.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-deprecated-6to4-relay-end",
+      "address": "192.88.99.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-deprecated-6to4-relay",
+      "address": "192.88.100.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-private-192",
+      "address": "192.167.255.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-private-192-start",
+      "address": "192.168.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-private-192-end",
+      "address": "192.168.255.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-private-192",
+      "address": "192.169.0.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-benchmarking",
+      "address": "198.17.255.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-benchmarking-start",
+      "address": "198.18.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-benchmarking-end",
+      "address": "198.19.255.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-benchmarking",
+      "address": "198.20.0.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-documentation-2",
+      "address": "198.51.99.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-documentation-2-start",
+      "address": "198.51.100.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-documentation-2-end",
+      "address": "198.51.100.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-documentation-2",
+      "address": "198.51.101.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-documentation-3",
+      "address": "203.0.112.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-documentation-3-start",
+      "address": "203.0.113.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-documentation-3-end",
+      "address": "203.0.113.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-after-documentation-3",
+      "address": "203.0.114.0",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-before-multicast-and-reserved",
+      "address": "223.255.255.255",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv4-multicast-and-reserved-start",
+      "address": "224.0.0.0",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv4-multicast-and-reserved-end",
+      "address": "255.255.255.255",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-before-native-global-unicast",
+      "address": "1fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-native-global-unicast-start",
+      "address": "2000::",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-before-ietf-protocol-assignments",
+      "address": "2000:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-ietf-protocol-assignments-start",
+      "address": "2001::",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-before-special-exact-range",
+      "address": "2001:1::",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-pcp-anycast-exact",
+      "address": "2001:1::1",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-turn-anycast-exact",
+      "address": "2001:1::2",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-dns-sd-anycast-exact",
+      "address": "2001:1::3",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-after-special-exact-range",
+      "address": "2001:1::4",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-before-amt",
+      "address": "2001:2:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-amt-start",
+      "address": "2001:3::",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-amt-end",
+      "address": "2001:3:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-after-amt",
+      "address": "2001:4::",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-before-as112",
+      "address": "2001:4:111:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-as112-start",
+      "address": "2001:4:112::",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-as112-end",
+      "address": "2001:4:112:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-after-as112",
+      "address": "2001:4:113::",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-before-orchid-v2",
+      "address": "2001:1f:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-orchid-v2-start",
+      "address": "2001:20::",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-orchid-v2-end",
+      "address": "2001:2f:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-drone-remote-id-start",
+      "address": "2001:30::",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-drone-remote-id-end",
+      "address": "2001:3f:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-after-drone-remote-id",
+      "address": "2001:40::",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-ietf-protocol-assignments-end",
+      "address": "2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-after-ietf-protocol-assignments",
+      "address": "2001:200::",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-before-documentation",
+      "address": "2001:db7:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-documentation-start",
+      "address": "2001:db8::",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-documentation-end",
+      "address": "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-after-documentation",
+      "address": "2001:db9::",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-before-6to4",
+      "address": "2001:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-6to4-start",
+      "address": "2002::",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-6to4-end",
+      "address": "2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-after-6to4",
+      "address": "2003::",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-before-expanded-documentation",
+      "address": "3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-expanded-documentation-start",
+      "address": "3fff::",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-expanded-documentation-end",
+      "address": "3fff:0fff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": false
+    },
+    {
+      "name": "ipv6-after-expanded-documentation",
+      "address": "3fff:1000::",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-native-global-unicast-end",
+      "address": "3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "expectedPublic": true
+    },
+    {
+      "name": "ipv6-after-native-global-unicast",
+      "address": "4000::",
+      "expectedPublic": false
+    }
+  ]
+}

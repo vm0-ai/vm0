@@ -1,12 +1,12 @@
 import { useGet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { Button } from "@vm0/ui/components/ui/button";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { Switch } from "@vm0/ui/components/ui/switch";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { IconSunrise } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { Button } from "@okouai/ui/components/ui/button";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { Switch } from "@okouai/ui/components/ui/switch";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
+import { Sunrise } from "lucide-react";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   userPreferences$,
@@ -88,11 +88,7 @@ export function MorningBriefSettings() {
       <div className="flex flex-1 items-center gap-4 min-w-0">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
-            <IconSunrise
-              size={22}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
+            <Sunrise size={22} className="text-muted-foreground" />
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">

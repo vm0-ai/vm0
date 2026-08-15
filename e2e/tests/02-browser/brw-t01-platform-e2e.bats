@@ -10,10 +10,11 @@
 # by the Playwright suite and have been removed from this file.
 #
 # Required env vars:
-#   VM0_AUTH_URL   - Target auth URL (e.g., https://pr-123-app.omby.ai)
+#   VM0_API_BACKEND_URL - API URL and local fallback for the auth URL
+#   CLERK_SECRET_KEY    - Backend key used to clean the exact test account
 #
 # Optional env vars:
-#   VM0_API_BACKEND_URL            - API URL, used as a local fallback for auth URL
+#   VM0_AUTH_URL           - Target auth URL (e.g., https://pr-123-app.omby.ai)
 #   VM0_AUTH_DOMAIN        - API domain override for auth callbacks
 #   VM0_AUTH_REDIRECT_URL  - Post-auth app URL to verify Clerk completion
 #   E2E_ACCOUNT            - Test email (auto-generated if empty)
@@ -26,6 +27,7 @@ setup_file() {
   export BROWSER_SESSION_PREFIX
   export AGENT_BROWSER_SESSION="${BROWSER_SESSION_PREFIX}-sign-up"
   browser_setup
+  delete_e2e_account_if_exists
 
   # Generate a password for sign-up
   SIGNUP_PASSWORD="$(generate_password)"
@@ -41,7 +43,10 @@ setup_file() {
 }
 
 teardown_file() {
-  browser_teardown
+  local status=0
+  browser_teardown || status=$?
+  delete_e2e_account_if_exists || status=$?
+  return "$status"
 }
 
 auth_url() {
@@ -105,16 +110,16 @@ open_auth_form() {
     }
   )"
 
-  agent-browser open "$url"
+  open_browser_page "$url"
   if wait_for_browser_target --timeout-seconds 30 --fn \
     "Boolean(${target_expression}) || Boolean(${failed_script_expression})"; then
-    if [[ "$(agent-browser eval "Boolean(${target_expression})")" == "true" ]]; then
+    if [[ "$(agent_browser_on_page eval "Boolean(${target_expression})")" == "true" ]]; then
       return
     fi
 
     report_auth_page_failure
     local failed_script_urls_json
-    failed_script_urls_json="$(agent-browser eval \
+    failed_script_urls_json="$(agent_browser_on_page eval \
       "Array.from(new Set(
         performance.getEntriesByType('resource')
           .filter((entry) => {
@@ -142,7 +147,7 @@ open_auth_form() {
     done
 
     echo "# Failed app scripts are available; reloading once" >&3
-    agent-browser reload
+    agent_browser_on_page reload
     if ! wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
       report_auth_page_failure
       return 1
@@ -156,7 +161,7 @@ open_auth_form() {
   # A failed app module request leaves the static HTML bootstrap skeleton in
   # place before Clerk exists. Recover that transport failure once without
   # masking a Clerk form stall after the application has started.
-  if [[ "$(agent-browser eval \
+  if [[ "$(agent_browser_on_page eval \
     "Boolean(
       document.getElementById('app-bootstrap-skeleton')
       && typeof window.Clerk === 'undefined'
@@ -165,7 +170,7 @@ open_auth_form() {
   fi
 
   echo "# App bootstrap did not complete; reloading once" >&3
-  agent-browser reload
+  agent_browser_on_page reload
   if ! wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
     report_auth_page_failure
     return 1
@@ -190,15 +195,15 @@ open_auth_form() {
 
   # Fill sign-up form
   echo "# Filling sign-up form with $E2E_ACCOUNT" >&3
-  agent-browser fill 'input[name="emailAddress"]' "$E2E_ACCOUNT"
-  agent-browser fill 'input[name="password"]' "$SIGNUP_PASSWORD"
+  agent_browser_on_page fill 'input[name="emailAddress"]' "$E2E_ACCOUNT"
+  agent_browser_on_page fill 'input[name="password"]' "$SIGNUP_PASSWORD"
   accept_legal_consent
   click_continue
 
   local sign_up_state
   sign_up_state="$(wait_for_auth_next_step "sign-up")"
   if [[ "$sign_up_state" == "otp" ]]; then
-    enter_otp "$OTP" "sign-up"
+    enter_otp "$OTP"
     wait_for_auth_completion "sign-up"
   fi
   touch "$SIGN_UP_COMPLETE_FILE"
@@ -230,7 +235,7 @@ open_auth_form() {
 
   # Check if already signed in (redirected away from /sign-in)
   local current_url
-  current_url=$(agent-browser get url 2>/dev/null || true)
+  current_url=$(agent_browser_on_page get url 2>/dev/null || true)
   if [[ -n "$current_url" && ! "$current_url" =~ sign-in ]]; then
     echo "# Already signed in (redirected to $current_url)" >&3
     return 0
@@ -240,7 +245,7 @@ open_auth_form() {
 
   # Enter email and click Continue
   echo "# Entering email: $E2E_ACCOUNT" >&3
-  agent-browser fill 'input[name="identifier"]' "$E2E_ACCOUNT"
+  agent_browser_on_page fill 'input[name="identifier"]' "$E2E_ACCOUNT"
   click_continue
 
   local sign_in_state
@@ -255,12 +260,13 @@ open_auth_form() {
     # finish mounting. Wait for the control this test actually consumes so a
     # partial password form cannot send the flow down a transient branch.
     wait_for_browser_target --text "Use another method"
-    agent-browser find text "Use another method" click
+    agent_browser_on_page find text "Use another method" click
     wait_for_browser_target --text "Email code"
-    agent-browser find text "Email code" click
+    agent_browser_on_page find text "Email code" click
   fi
 
-  enter_otp "$OTP" "sign-in"
+  wait_for_sign_in_email_code_ready
+  enter_otp "$OTP"
   wait_for_auth_completion "sign-in"
   echo "# Sign-in successful!" >&3
 }

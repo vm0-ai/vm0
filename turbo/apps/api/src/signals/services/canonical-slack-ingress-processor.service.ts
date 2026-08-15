@@ -1,8 +1,9 @@
 import { command } from "ccstate";
-import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
-import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import type { ChatSlackMessageAssets } from "@okouai/db/jsonb-contracts/chat-slack-context";
+import { slackChatIngress } from "@okouai/db/schema/slack-chat-ingress";
+import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { and, asc, eq, inArray, lt, or } from "drizzle-orm";
 import { z } from "zod";
 
@@ -12,7 +13,7 @@ import {
   fetchConversationContexts,
   type SlackFile,
 } from "../../lib/slack-webhook-context";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
@@ -20,14 +21,11 @@ import {
 } from "../external/realtime";
 import {
   createSlackClient,
-  createSlackUserInfoResolver,
-  getMessagePermalink,
-  setThreadStatus,
+  type SlackClient,
 } from "../external/slack-message-client";
 import { settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
-  attachCanonicalAssetsToEvent,
   materializeCanonicalSlackInputAssets$,
   type CanonicalSlackInputAsset,
 } from "./canonical-asset.service";
@@ -43,9 +41,9 @@ import {
   slackSessionThreadTs,
 } from "./slack-chat-ingress.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { insertChatEvent } from "./chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
 
 const L = logger("CanonicalSlackIngressProcessor");
 const PROCESSING_STALE_AFTER_MS = 5 * 60 * 1000;
@@ -255,14 +253,13 @@ function persistedCanonicalSlackIngress(
 }
 
 async function setCanonicalSlackThinkingStatus(args: {
-  readonly client: ReturnType<typeof createSlackClient>;
+  readonly client: SlackClient;
   readonly ingressId: string;
   readonly channelId: string;
   readonly threadTs: string;
 }): Promise<void> {
   await tapError(
-    setThreadStatus(
-      args.client,
+    args.client.setThreadStatus(
       args.channelId,
       args.threadTs,
       "is thinking...",
@@ -283,9 +280,11 @@ type ClaimedCanonicalSlackIngress = NonNullable<
 interface CanonicalSlackLaunchContext {
   readonly channelId: string;
   readonly messageTs: string;
+  readonly botUserId: string;
   readonly conversationContext: string;
   readonly messageText: string;
   readonly messageFiles: readonly SlackFile[];
+  readonly messageAssets: ChatSlackMessageAssets;
   readonly mentionDisplayNames: Readonly<Record<string, string>>;
   readonly senderDisplayName: string | null;
   readonly senderUserId: string | null;
@@ -297,8 +296,10 @@ interface CanonicalSlackLaunchContext {
 function canonicalSlackLaunchContext(args: {
   readonly event: SlackAgentEvent;
   readonly routeThreadTs: string;
+  readonly botUserId: string;
   readonly messageText: string;
   readonly conversationContext: string;
+  readonly canonicalAssets: readonly CanonicalSlackInputAsset[];
   readonly mentionDisplayNames: Readonly<Record<string, string>>;
   readonly userInfoExtras: {
     readonly slackDisplayName?: string;
@@ -309,9 +310,19 @@ function canonicalSlackLaunchContext(args: {
   return {
     channelId: args.event.channel,
     messageTs: args.event.ts,
+    botUserId: args.botUserId,
     conversationContext: args.conversationContext,
     messageText: args.messageText,
     messageFiles: args.event.files ?? [],
+    messageAssets: args.canonicalAssets.map((asset) => {
+      return {
+        assetId: asset.assetId,
+        slackFileId: asset.slackFileId,
+        filename: asset.filename,
+        contentType: asset.contentType,
+        status: asset.status,
+      };
+    }),
     mentionDisplayNames: args.mentionDisplayNames,
     senderDisplayName: args.userInfoExtras.slackDisplayName ?? null,
     senderUserId: args.userInfoExtras.slackUserId ?? null,
@@ -355,7 +366,6 @@ async function persistCanonicalSlackMessage(
           }),
         }),
         runId: null,
-        triggerSource: "slack",
         slackContext: args.slackContext,
         createdAt: args.ingress.createdAt,
       },
@@ -365,11 +375,6 @@ async function persistCanonicalSlackMessage(
     if (!inserted) {
       throw new Error("Canonical Slack ingress message already exists");
     }
-    await attachCanonicalAssetsToEvent(
-      tx,
-      args.ingress.ingressId,
-      args.canonicalAssets,
-    );
     await touchChatThreadLastMessageAt(
       tx,
       args.chatThreadId,
@@ -425,7 +430,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
       threadTs,
     });
     signal.throwIfAborted();
-    const userInfoResolver = createSlackUserInfoResolver(client);
+    const userInfoResolver = client.createUserInfoResolver();
     const messageContent = stripBotMention(event.text, ingress.botUserId);
     const canonicalAssets = await set(
       materializeCanonicalSlackInputAssets$,
@@ -457,7 +462,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
         event.ts,
         { userInfoResolver },
       ),
-      getMessagePermalink(client, event.channel, event.ts),
+      client.getMessagePermalink(event.channel, event.ts),
     ]);
     signal.throwIfAborted();
     const messagePermalink =
@@ -478,8 +483,10 @@ const persistClaimedCanonicalSlackIngress$ = command(
         slackContext: canonicalSlackLaunchContext({
           event,
           routeThreadTs: ingress.threadTs,
+          botUserId: ingress.botUserId,
           messageText: messageContent,
           conversationContext: context.executionContext,
+          canonicalAssets,
           mentionDisplayNames: enriched.mentionDisplayNames,
           userInfoExtras: enriched.userInfoExtras,
         }),

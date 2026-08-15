@@ -1,7 +1,7 @@
 {
-  "name": "Zero",
-  "short_name": "Zero",
-  "description": "Zero — your AI workspace",
+  "name": "VM0",
+  "short_name": "VM0",
+  "description": "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",

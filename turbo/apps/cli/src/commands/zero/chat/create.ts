@@ -4,15 +4,17 @@ import { Command } from "commander";
 import {
   createZeroChatThread,
   getZeroChatThreadAgentId,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../../lib/okou-env";
 import { printChatUsageError } from "./shared";
 
 interface CreateOptions {
   readonly agent?: string;
   readonly json?: boolean;
   readonly model?: string;
+  readonly priority?: boolean;
 }
 
 /**
@@ -27,11 +29,11 @@ async function resolveAgentId(
     return agentId;
   }
 
-  const currentThreadId = process.env.ZERO_CHAT_THREAD_ID?.trim();
+  const currentThreadId = getOkouChatThreadId()?.trim();
   if (!currentThreadId) {
     printChatUsageError(
-      "ZERO_CHAT_THREAD_ID is not set",
-      "Pass --agent <agent-id> or run inside a Zero web chat thread.",
+      "OKOU_CHAT_THREAD_ID is not set",
+      "Pass --agent <agent-id> or run inside a web chat thread.",
     );
   }
   if (!isUuid(currentThreadId)) {
@@ -56,22 +58,33 @@ export const createCommand = new Command()
     "--model <id>",
     "Model for the thread (defaults to the current run's model)",
   )
+  .option(
+    "--priority",
+    "Enable priority for the thread (defaults to the current chat thread)",
+  )
+  .option(
+    "--no-priority",
+    "Use standard priority instead of inheriting the current chat thread",
+  )
   .option("--json", "Print machine-readable JSON")
   .addHelpText(
     "after",
     `
 Examples:
-  Create a chat:     zero chat create "Launch plan"
-  Pick the model:    zero chat create "Launch plan" --model claude-sonnet-5
-  Pick the agent:    zero chat create "Launch plan" --agent <agent-id>
-  Print JSON:        zero chat create "Launch plan" --json
+  Create a chat:     okou chat create "Launch plan"
+  Pick the model:    okou chat create "Launch plan" --model claude-sonnet-5
+  Enable priority:   okou chat create "Launch plan" --priority
+  Use standard:      okou chat create "Launch plan" --no-priority
+  Pick the agent:    okou chat create "Launch plan" --agent <agent-id>
+  Print JSON:        okou chat create "Launch plan" --json
 
 Notes:
-  - Creates an empty thread; send its first message with zero chat send
-  - Defaults --agent to the agent of ZERO_CHAT_THREAD_ID
-  - Defaults --model to the model of the run that owns ZERO_TOKEN
+  - Creates an empty thread; send its first message with okou chat send
+  - Defaults --agent to the agent of OKOU_CHAT_THREAD_ID
+  - Defaults --model to the model of the run that owns OKOU_TOKEN
+  - Defaults priority to the priority of the current chat thread
   - The new thread never inherits this chat's history, so the first message must be self-contained
-  - Authenticates via ZERO_TOKEN (requires chat-thread:write, and chat-thread:read to default --agent)`,
+  - Authenticates via OKOU_TOKEN (requires chat-thread:write, and chat-thread:read to default --agent)`,
   )
   .action(
     withErrorHandler(async (titleParts: string[], options: CreateOptions) => {
@@ -79,7 +92,7 @@ Notes:
       if (!title) {
         printChatUsageError(
           "Chat title is required",
-          'Run: zero chat create "New title"',
+          'Run: okou chat create "New title"',
         );
       }
 
@@ -88,6 +101,9 @@ Notes:
         agentId,
         title,
         ...(options.model === undefined ? {} : { model: options.model }),
+        ...(options.priority === undefined
+          ? {}
+          : { serviceTier: options.priority ? "priority" : null }),
       });
 
       if (options.json) {
@@ -96,6 +112,7 @@ Notes:
             threadId: thread.threadId,
             title: thread.title,
             selectedModel: thread.selectedModel,
+            serviceTier: thread.serviceTier,
             agentId,
           }),
         );
@@ -108,12 +125,15 @@ Notes:
       console.log(
         chalk.dim(`  Model:  ${thread.selectedModel ?? "(default)"}`),
       );
+      const priority =
+        thread.serviceTier === "priority" ? "enabled" : "disabled";
+      console.log(chalk.dim(`  Priority: ${priority}`));
       console.log(chalk.dim(`  Agent:  ${agentId}`));
       console.log();
       console.log("Send the first message:");
       console.log(
         chalk.cyan(
-          `  zero chat send --thread-id ${thread.threadId} --text "<message>"`,
+          `  okou chat send --thread-id ${thread.threadId} --text "<message>"`,
         ),
       );
     }),

@@ -1,5 +1,5 @@
 /**
- * Tests for zero web upload-file command
+ * Tests for okou web upload-file command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -18,13 +18,13 @@ import {
   CLIENT_TYPE_CLI,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 import { server } from "../../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";
 
-const PREPARE_URL = "http://localhost:3000/api/zero/uploads/prepare";
-const COMPLETE_URL = "http://localhost:3000/api/zero/uploads/complete";
+const PREPARE_URL = "http://localhost:3000/api/okou/uploads/prepare";
+const COMPLETE_URL = "http://localhost:3000/api/okou/uploads/complete";
 const PUT_URL = "https://mock-r2.test/upload-target";
 const CLI_VERSION = "0.0.0-test";
 
@@ -36,7 +36,7 @@ function requiredHeader(headers: Headers, name: string): string {
   return value;
 }
 
-describe("zero web upload-file command", () => {
+describe("okou web upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -50,7 +50,7 @@ describe("zero web upload-file command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     tmpDir = join(tmpdir(), `web-upload-test-${Date.now()}`);
     mkdirSync(tmpDir, { recursive: true });
@@ -107,12 +107,10 @@ describe("zero web upload-file command", () => {
             filename: string;
             contentType: string;
             size: number;
-            supportsUploadHeaders: true;
           };
           expect(body.filename).toBe("report.pdf");
           expect(body.contentType).toBe("application/pdf");
           expect(body.size).toBe(13);
-          expect(body.supportsUploadHeaders).toBe(true);
 
           return HttpResponse.json(prepared, { status: 200 });
         }),
@@ -278,6 +276,8 @@ describe("zero web upload-file command", () => {
       ["image.avif", "image/avif"],
       ["clip.mp3", "audio/mpeg"],
       ["voice.wav", "audio/wav"],
+      ["network.har", "application/json"],
+      ["payload.vm0unknown", "application/octet-stream"],
     ])("should infer %s as %s", async (filename, expectedContentType) => {
       const filePath = join(tmpDir, basename(filename));
       writeFileSync(filePath, Buffer.from("fake bytes"));

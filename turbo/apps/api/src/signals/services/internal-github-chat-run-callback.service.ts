@@ -1,19 +1,17 @@
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { githubChatThreadRoutes } from "@vm0/db/schema/github-chat-thread-route";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
+import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { and, eq, isNotNull } from "drizzle-orm";
-
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";
@@ -25,7 +23,8 @@ import {
   postGithubIssueComment,
   removeGithubCommentReaction,
 } from "./github-issues-api.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 import { resolveGithubAgentReplyFooterText } from "./zero-github-footer.service";
 
 const L = logger("InternalCallbacksGithubChat");
@@ -99,31 +98,32 @@ async function claimGitHubChatDelivery(
   return callback;
 }
 
-async function loadGitHubChatDeliveryContext(args: {
-  readonly db: Db;
-  readonly callback: ClaimedGitHubChatDelivery;
-  readonly signal: AbortSignal;
-}) {
+async function loadGitHubChatDeliveryContext(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedGitHubChatDelivery;
+  },
+  signal: AbortSignal,
+) {
   const payload = githubChatCallbackPayloadSchema.parse(args.callback.payload);
   const [run] = await args.db
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       sessionId: agentRuns.sessionId,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       agentId: chatThreads.agentComposeId,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
-        eq(zeroRuns.triggerSource, "github"),
+        eq(agentRuns.triggerSource, "github"),
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!run?.chatThreadId || run.agentId !== payload.agentId) {
     throw new Error("GitHub chat delivery run context is unavailable");
   }
@@ -136,7 +136,7 @@ async function loadGitHubChatDeliveryContext(args: {
   };
 
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
@@ -149,11 +149,11 @@ async function loadGitHubChatDeliveryContext(args: {
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!event?.content) {
     throw new Error("GitHub chat delivery message is unavailable");
   }
@@ -179,7 +179,7 @@ async function loadGitHubChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return {
     payload,
     run: runContext,
@@ -228,38 +228,44 @@ function formatGitHubComment(args: {
   return parts.join("\n");
 }
 
-async function githubAccessToken(args: {
-  readonly ghInstallationId: string;
-  readonly signal: AbortSignal;
-}): Promise<string> {
+async function githubAccessToken(
+  args: {
+    readonly ghInstallationId: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   const appId = optionalEnv("GITHUB_APP_ID");
   const privateKey = optionalEnv("GITHUB_APP_PRIVATE_KEY");
   if (!appId || !privateKey) {
     throw new Error("GitHub App not configured");
   }
-  const { token } = await getGithubInstallationAccessToken({
-    appId,
-    privateKey,
-    installationId: args.ghInstallationId,
-    signal: args.signal,
-  });
+  const { token } = await getGithubInstallationAccessToken(
+    {
+      appId,
+      privateKey,
+      installationId: args.ghInstallationId,
+    },
+    signal,
+  );
   return token;
 }
 
-async function buildGitHubDeliveryComment(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly run: GitHubChatRunContext;
-  readonly target: GitHubDeliveryTarget;
-  readonly messageContent: string;
-  readonly signal: AbortSignal;
-}): Promise<string> {
+async function buildGitHubDeliveryComment(
+  args: {
+    readonly db: Db;
+    readonly runId: string;
+    readonly run: GitHubChatRunContext;
+    readonly target: GitHubDeliveryTarget;
+    readonly messageContent: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   const featureContext = await loadUserFeatureSwitchContext(
     args.db,
     args.run.orgId,
     args.run.userId,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
     ? `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`
     : undefined;
@@ -270,7 +276,7 @@ async function buildGitHubDeliveryComment(args: {
     installationId: args.target.installationId,
     agentId: args.target.agentId,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return formatGitHubComment({
     response: args.messageContent,
     logsUrl,
@@ -279,45 +285,55 @@ async function buildGitHubDeliveryComment(args: {
   });
 }
 
-async function deliverClaimedGitHubChatCallback(args: {
-  readonly db: Db;
-  readonly callback: ClaimedGitHubChatDelivery;
-  readonly status: "completed" | "failed";
-  readonly signal: AbortSignal;
-}): Promise<"delivered" | "skipped_revoked"> {
-  const context = await loadGitHubChatDeliveryContext(args);
+async function deliverClaimedGitHubChatCallback(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedGitHubChatDelivery;
+    readonly status: "completed" | "failed";
+  },
+  signal: AbortSignal,
+): Promise<"delivered" | "skipped_revoked"> {
+  const context = await loadGitHubChatDeliveryContext(args, signal);
   if (!context.ghInstallationId) {
     return "skipped_revoked";
   }
-  const token = await githubAccessToken({
-    ghInstallationId: context.ghInstallationId,
-    signal: args.signal,
-  });
-  const body = await buildGitHubDeliveryComment({
-    db: args.db,
-    runId: args.callback.runId,
-    run: context.run,
-    target: context.payload,
-    messageContent: context.messageContent,
-    signal: args.signal,
-  });
-  await postGithubIssueComment({
-    token,
-    repo: context.payload.repo,
-    issueNumber: context.payload.subjectNumber,
-    body,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  if (context.payload.triggerCommentId && context.payload.triggerReactionId) {
-    await removeGithubCommentReaction({
+  const token = await githubAccessToken(
+    {
+      ghInstallationId: context.ghInstallationId,
+    },
+    signal,
+  );
+  const body = await buildGitHubDeliveryComment(
+    {
+      db: args.db,
+      runId: args.callback.runId,
+      run: context.run,
+      target: context.payload,
+      messageContent: context.messageContent,
+    },
+    signal,
+  );
+  await postGithubIssueComment(
+    {
       token,
       repo: context.payload.repo,
-      commentId: context.payload.triggerCommentId,
-      reactionId: context.payload.triggerReactionId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+      issueNumber: context.payload.subjectNumber,
+      body,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (context.payload.triggerCommentId && context.payload.triggerReactionId) {
+    await removeGithubCommentReaction(
+      {
+        token,
+        repo: context.payload.repo,
+        commentId: context.payload.triggerCommentId,
+        reactionId: context.payload.triggerReactionId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
   }
   return "delivered";
 }
@@ -335,12 +351,14 @@ export async function dispatchGitHubChatDeliveryOnce(
     return;
   }
   const delivery = await settleIncludingAbort(
-    deliverClaimedGitHubChatCallback({
-      db,
-      callback,
-      status,
+    deliverClaimedGitHubChatCallback(
+      {
+        db,
+        callback,
+        status,
+      },
       signal,
-    }),
+    ),
   );
   if (!delivery.ok) {
     const message =
@@ -370,25 +388,27 @@ export async function dispatchGitHubChatDeliveryOnce(
   });
 }
 
-export async function deliverGitHubChatAdmissionFailure(args: {
-  readonly db: Db;
-  readonly chatThreadId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly agentId: string;
-  readonly target: GitHubDeliveryTarget;
-  readonly chatEventId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function deliverGitHubChatAdmissionFailure(
+  args: {
+    readonly db: Db;
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly target: GitHubDeliveryTarget;
+    readonly chatEventId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.id, args.chatEventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         chatEventTypeIn(["output.error"]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
@@ -411,33 +431,39 @@ export async function deliverGitHubChatAdmissionFailure(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!event?.content || !binding?.ghInstallationId) {
     return;
   }
-  const token = await githubAccessToken({
-    ghInstallationId: binding.ghInstallationId,
-    signal: args.signal,
-  });
+  const token = await githubAccessToken(
+    {
+      ghInstallationId: binding.ghInstallationId,
+    },
+    signal,
+  );
   const body = formatGitHubComment({
     response: event.content,
     triggerCommentBody: args.target.triggerCommentBody,
   });
-  await postGithubIssueComment({
-    token,
-    repo: args.target.repo,
-    issueNumber: args.target.subjectNumber,
-    body,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  if (args.target.triggerCommentId && args.target.triggerReactionId) {
-    await removeGithubCommentReaction({
+  await postGithubIssueComment(
+    {
       token,
       repo: args.target.repo,
-      commentId: args.target.triggerCommentId,
-      reactionId: args.target.triggerReactionId,
-      signal: args.signal,
-    });
+      issueNumber: args.target.subjectNumber,
+      body,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (args.target.triggerCommentId && args.target.triggerReactionId) {
+    await removeGithubCommentReaction(
+      {
+        token,
+        repo: args.target.repo,
+        commentId: args.target.triggerCommentId,
+        reactionId: args.target.triggerReactionId,
+      },
+      signal,
+    );
   }
 }

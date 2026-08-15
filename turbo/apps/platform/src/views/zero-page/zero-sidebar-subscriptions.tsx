@@ -4,7 +4,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 import {

@@ -1,8 +1,8 @@
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
-} from "@vm0/api-contracts/contracts/zero-model-providers";
+} from "@okouai/api-contracts/contracts/zero-model-providers";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
@@ -23,12 +23,12 @@ export function resetMockOrgModelProviders(): void {
 }
 
 export const apiOrgModelProvidersHandlers = [
-  // GET /api/zero/model-providers - List all org model providers
+  // GET /api/okou/model-providers - List all org model providers
   mockApi(zeroModelProvidersMainContract.list, ({ respond }) => {
     return respond(200, { modelProviders: mockOrgModelProviders });
   }),
 
-  // POST /api/zero/model-providers - Create or update org model provider
+  // POST /api/okou/model-providers - Create or update org model provider
   mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
     const now = nowDate().toISOString();
     const existing = mockOrgModelProviders.find((p) => {
@@ -65,7 +65,7 @@ export const apiOrgModelProvidersHandlers = [
     return respond(created ? 201 : 200, { provider, created });
   }),
 
-  // DELETE /api/zero/model-providers/:type - Delete org model provider
+  // DELETE /api/okou/model-providers/:type - Delete org model provider
   mockApi(zeroModelProvidersByTypeContract.delete, ({ params, respond }) => {
     const existing = mockOrgModelProviders.find((p) => {
       return p.type === params.type;

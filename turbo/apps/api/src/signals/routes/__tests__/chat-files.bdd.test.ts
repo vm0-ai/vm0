@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessageInputDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   createChatFilesBddApi,
-  hostedTextFile,
   persistedAttachment,
 } from "./helpers/api-bdd-chat-files";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
 
 /*
 helper gap:
@@ -195,7 +195,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
 
     await api.renameThread(owner, thread.id, "Pinned launch plan");
-    await api.updateThreadModelSelection(owner, thread.id, "gpt-5.6-terra");
+    await api.updateThreadModelSelection(owner, thread.id, "gpt-5.6-luna");
     await api.pinThread(owner, thread.id);
     const readEmpty = await api.markThreadRead(owner, thread.id);
 
@@ -215,7 +215,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: thread.id,
-        selectedModel: "gpt-5.6-terra",
+        selectedModel: "gpt-5.6-luna",
       }),
     );
     expect(detail.lastReadAt).toStrictEqual(expect.any(String));
@@ -289,7 +289,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const uploadId = randomUUID();
     const clientEventId = randomUUID();
     api.mockCompletedUploadObject(actor, uploadId, "launch-plan.txt", 24);
-    const expectedUserMessage: UserMessageDocument = {
+    const expectedUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         { type: "text", text: "Build a launch-plan presentation" },
@@ -307,14 +307,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
         agentId: agent.agentId,
         prompt: "Build a launch-plan presentation",
         userMessage: expectedUserMessage,
-        attachFiles: [
-          {
-            id: uploadId,
-            filename: "launch-plan.txt",
-            contentType: "text/plain",
-            size: 24,
-          },
-        ],
         hasTextContent: false,
         clientEventId,
       },
@@ -364,14 +356,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
       userMessage: expectedUserMessage,
       error: "insufficient_credits",
       revokesEventId: clientEventId,
-      attachFiles: [
-        {
-          id: uploadId,
-          filename: "launch-plan.txt",
-          contentType: "text/plain",
-          size: 24,
-        },
-      ],
     });
     expect(rejectedUserMessage).not.toHaveProperty("automationId");
     expect(rejectedUserMessage).not.toHaveProperty("triggerBrief");
@@ -523,11 +507,21 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         prompt: "Use an unknown template",
-        generationTemplate: {
-          type: "presentation",
-          selection: {
-            templateId: "template:html-ppt-missing",
-          },
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Use an unknown template" },
+            {
+              type: "template",
+              titleSnapshot: "Missing presentation template",
+              template: {
+                type: "presentation",
+                selection: {
+                  templateId: "template:html-ppt-missing",
+                },
+              },
+            },
+          ],
         },
       },
       [400],
@@ -603,7 +597,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         prompt: "Persist the model selected at send time",
-        model: "gpt-5.6-terra",
+        model: "gpt-5.6-luna",
       },
       [201],
     );
@@ -624,7 +618,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: modelSelected.body.threadId,
-        selectedModel: "gpt-5.6-terra",
+        selectedModel: "gpt-5.6-luna",
       }),
     );
   });
@@ -684,7 +678,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     );
   });
 
-  it("given an empty chat thread, when message list boundaries are requested, then only the owner sees zero messages", async () => {
+  it("given an empty chat thread, when event rows are requested, then only the owner sees zero rows", async () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     const peer = bdd.user({ orgId });
@@ -747,6 +741,7 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
   it("prepares and completes an upload through S3 boundary state", async () => {
     const actor = bdd.user();
 
+    api.mockEmptyObjectStorage();
     const prepared = await api.prepareUpload(actor, {
       filename: "notes.txt",
       contentType: "Text/Plain; Charset=UTF-8",
@@ -760,7 +755,8 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
     expect("uploadUrl" in prepared ? prepared.uploadUrl : "").toMatch(
       /^https?:\/\//,
     );
-    expect(prepared.url).toContain(`/artifacts/${actor.userId}/`);
+    expect(prepared.url).toMatch(/\/artifacts\/[0-9a-z]{10}\.txt$/u);
+    expect(prepared.url).not.toContain(actor.userId);
 
     api.mockCompletedUploadObject(actor, prepared.id, "notes.txt", 12);
     const completed = await api.completeUpload(actor, { id: prepared.id });
@@ -780,17 +776,16 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
     expectApiError(crossUserComplete.body);
     expect(crossUserComplete.body.error.code).toBe("NOT_FOUND");
 
-    const unsupported = await api.requestPrepareUpload(
-      actor,
-      {
-        filename: "malware.exe",
-        contentType: "application/x-msdownload",
-        size: 10,
-      },
-      [400],
-    );
-    expectApiError(unsupported.body);
-    expect(unsupported.body.error.message).toContain("Unsupported file type");
+    const generic = await api.prepareUpload(actor, {
+      filename: "capture.custom",
+      contentType: "application/x-custom",
+      size: 10,
+    });
+    expect(generic).toMatchObject({
+      filename: "capture.custom",
+      contentType: "application/octet-stream",
+      size: 10,
+    });
   });
 
   it("prepares and completes a hosted-site deployment through host APIs", async () => {

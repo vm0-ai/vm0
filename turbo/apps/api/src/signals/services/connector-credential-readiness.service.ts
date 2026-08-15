@@ -1,7 +1,7 @@
-import type { ConnectorCredentialStorageReadiness } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
+import type { ConnectorCredentialStorageReadiness } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
+import { connectors } from "@okouai/db/schema/connector";
+import { secrets } from "@okouai/db/schema/secret";
+import { variables } from "@okouai/db/schema/variable";
 import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { z } from "zod";

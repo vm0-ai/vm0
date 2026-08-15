@@ -1,4 +1,5 @@
 import { computed, type Computed } from "ccstate";
+import { pageAttachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
 
 export type TextPreviewKind = "markdown" | "text" | "json" | "csv";
 export type TextPreviewComputed = Computed<Promise<string>>;
@@ -51,13 +52,9 @@ async function readLimitedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-export async function fetchPreviewText(
-  url: string,
-  signal?: AbortSignal,
-): Promise<string> {
+export async function fetchPreviewText(url: string): Promise<string> {
   const response = await fetch(url, {
     headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
-    signal,
   });
   if (!response.ok) {
     throw new Error(`HTTP ${String(response.status)}`);
@@ -65,19 +62,24 @@ export async function fetchPreviewText(
   return readLimitedText(response);
 }
 
-export function createTextPreviewComputed(url: string): TextPreviewComputed {
-  return computed((_get, { signal }) => {
-    return fetchPreviewText(url, signal);
+export function createTextPreviewComputed(
+  url: string,
+  resourceUrl$?: Computed<Promise<string>>,
+): TextPreviewComputed {
+  return computed(async (get) => {
+    // The canonical attachment URL needs an Authorization header this fetch
+    // does not carry, so read the presigned object URL instead.
+    const resourceUrl = resourceUrl$
+      ? await get(resourceUrl$)
+      : await get(get(pageAttachmentResourceUrlResolver$)(url));
+    return fetchPreviewText(resourceUrl);
   });
 }
 
 export function createTextPreviewComputedFromBlob(
   blob: Blob,
 ): TextPreviewComputed {
-  return computed(async (_get, { signal }) => {
-    signal.throwIfAborted();
-    const text = await blob.slice(0, TEXT_PREVIEW_MAX_BYTES).text();
-    signal.throwIfAborted();
-    return text;
+  return computed((_get) => {
+    return blob.slice(0, TEXT_PREVIEW_MAX_BYTES).text();
   });
 }

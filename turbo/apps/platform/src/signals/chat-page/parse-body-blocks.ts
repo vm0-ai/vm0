@@ -1,10 +1,6 @@
 import {
-  parseCustomConnectorProposalUrl,
   parseConnectorAuthorizeUrl,
   type ConnectorActionDescriptor,
-  type ConnectorSignals,
-  type CustomConnectorActionDescriptor,
-  type CustomConnectorSignals,
 } from "./connector-action-block.ts";
 import {
   parsePermissionActionUrl,
@@ -14,29 +10,21 @@ import {
 import {
   parseComputerUseAuthorizationUrl,
   type ComputerUseAuthorizationDescriptor,
-  type ComputerUseAuthorizationSignals,
 } from "./computer-use-authorization-block.ts";
 import {
   parsePlanUpgradeUrl,
   type PlanUpgradeDescriptor,
-  type PlanUpgradeSignals,
 } from "./plan-upgrade-block.ts";
 import type {
   ArtifactDescriptor,
   ArtifactKind,
-  ArtifactSignals,
 } from "./artifact-card-signals.ts";
-import type { PermissionSignals } from "./permission-card-signals.ts";
-import {
-  parseMailDraftUrl,
-  type MailDraftDescriptor,
-  type MailDraftSignals,
-} from "./mail-draft.ts";
+import { parseMailDraftUrl, type MailDraftDescriptor } from "./mail-draft.ts";
 import {
   parseBrowserSessionUrl,
   type BrowserSessionDescriptor,
-  type BrowserSessionSignals,
 } from "./browser-session-block.ts";
+
 import {
   resolvePublicArtifactsBaseUrl,
   resolveZeroHostDomain,
@@ -48,55 +36,14 @@ import {
 
 export type BodyPreviewKind = ArtifactKind;
 
-export type BodyRenderBlock =
-  | {
-      type: "markdown";
-      id: string;
-      content: string;
-    }
-  | {
-      type: "artifact";
-      resourceKey: string;
-      signals: ArtifactSignals;
-    }
-  | {
-      type: "connector-action";
-      resourceKey: string;
-      signals: ConnectorSignals;
-    }
-  | {
-      type: "custom-connector-action";
-      resourceKey: string;
-      signals: CustomConnectorSignals;
-    }
-  | {
-      type: "permission-action";
-      resourceKey: string;
-      signals: PermissionSignals;
-    }
-  | {
-      type: "computer-use-authorization";
-      resourceKey: string;
-      signals: ComputerUseAuthorizationSignals;
-    }
-  | {
-      type: "plan-upgrade";
-      resourceKey: string;
-      signals: PlanUpgradeSignals;
-    }
-  | {
-      type: "mail-draft";
-      resourceKey: string;
-      signals: MailDraftSignals;
-    }
-  | {
-      type: "browser-session";
-      resourceKey: string;
-      signals: BrowserSessionSignals;
-    };
+export interface ParsedMarkdownBlock {
+  type: "markdown";
+  id: string;
+  content: string;
+}
 
 export type ParsedBodyBlock =
-  | Extract<BodyRenderBlock, { type: "markdown" }>
+  | ParsedMarkdownBlock
   | {
       type: "artifact";
       resourceKey: string;
@@ -106,11 +53,6 @@ export type ParsedBodyBlock =
       type: "connector-action";
       resourceKey: string;
       descriptor: ConnectorActionDescriptor;
-    }
-  | {
-      type: "custom-connector-action";
-      resourceKey: string;
-      descriptor: CustomConnectorActionDescriptor;
     }
   | {
       type: "permission-action";
@@ -167,11 +109,67 @@ interface ParseBodyBlocksOptions {
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
+const LEGACY_PLATFORM_FILE_PATH_PATTERN =
+  /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
+const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
 const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts|browsers)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
+
+// URL.canParse is unavailable on iOS Safari < 17. Instead of relying on it (or
+// on try/catch, which this repo's ESLint forbids), feature-detect it and fall
+// back to a structural validation before constructing a URL. Mirrors the
+// pattern used in signals/auth.ts parseUrl(): the host must match a hostname
+// shape with an in-range optional port, so malformed absolute URLs (for
+// example "https://exa%mple.com") return null instead of throwing on old
+// browsers. Remove together with support for URL.canParse-less browsers.
+const LEGACY_HTTP_URL_REGEX = /^https?:\/\/([^/?#\s]+)([/?#][^\s]*)?$/i;
+const LEGACY_HOST_WITH_OPTIONAL_PORT_REGEX =
+  /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::(\d{1,5}))?$/i;
+const MAX_URL_PORT = 65_535;
+const PROTOCOL_RELATIVE_URL_REGEX = /^\/\/([^/?#\s]+)([/?#][^\s]*)?$/;
+
+function isLegacyUrlHostValid(host: string | undefined): host is string {
+  if (!host) {
+    return false;
+  }
+  const hostMatch = LEGACY_HOST_WITH_OPTIONAL_PORT_REGEX.exec(host);
+  const port = hostMatch?.[2];
+  return Boolean(hostMatch && (!port || Number(port) <= MAX_URL_PORT));
+}
+
+function tryParseUrl(input: string, base?: string): URL | null {
+  if (typeof URL.canParse === "function") {
+    return URL.canParse(input, base) ? new URL(input, base) : null;
+  }
+
+  if (/\s/u.test(input)) {
+    return null;
+  }
+
+  const absoluteMatch = LEGACY_HTTP_URL_REGEX.exec(input);
+  if (absoluteMatch) {
+    if (!isLegacyUrlHostValid(absoluteMatch[1])) {
+      return null;
+    }
+    return new URL(input);
+  }
+
+  if (base && input.startsWith("/")) {
+    if (input.startsWith("//")) {
+      const protocolRelativeMatch = PROTOCOL_RELATIVE_URL_REGEX.exec(input);
+      if (
+        !protocolRelativeMatch ||
+        !isLegacyUrlHostValid(protocolRelativeMatch[1])
+      ) {
+        return null;
+      }
+    }
+    return new URL(input, base);
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // classifyChatAttachment helpers
@@ -356,11 +354,11 @@ function addPlatformFileHostVariants(hosts: Set<string>, host: string | null) {
   hosts.add(host);
 
   const hostUrl = `https://${host}`;
-  if (!URL.canParse(hostUrl)) {
+  const parsed = tryParseUrl(hostUrl);
+  if (!parsed) {
     return;
   }
 
-  const parsed = new URL(hostUrl);
   for (const target of ["api", "www", "app", "platform"] as const) {
     parsed.hostname = rewritePlatformHostname(parsed.hostname, target);
     hosts.add(parsed.host);
@@ -390,10 +388,14 @@ function isPlatformFileHostname(hostname: string): boolean {
 }
 
 function artifactsCdnHost(baseUrl: string | undefined): string | null {
-  if (!baseUrl || !URL.canParse(baseUrl)) {
+  if (!baseUrl) {
     return null;
   }
-  return new URL(baseUrl).host;
+  const url = tryParseUrl(baseUrl);
+  if (!url) {
+    return null;
+  }
+  return url.host;
 }
 
 function hasExplicitUrlOrigin(url: string): boolean {
@@ -403,15 +405,19 @@ function hasExplicitUrlOrigin(url: string): boolean {
 function isPlatformFileUrl(url: string): boolean {
   const host = browserHost();
   const baseUrl = host ? `https://${host}` : "https://vm0.local";
-  if (!URL.canParse(url, baseUrl)) {
+  const parsed = tryParseUrl(url, baseUrl);
+  if (!parsed) {
     return false;
   }
-  const parsed = new URL(url, baseUrl);
-  if (!PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname)) {
+  const isLegacyPath = LEGACY_PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname);
+  const isShortArtifactPath = SHORT_ARTIFACT_FILE_PATH_PATTERN.test(
+    parsed.pathname,
+  );
+  if (!isLegacyPath && !isShortArtifactPath) {
     return false;
   }
   if (!hasExplicitUrlOrigin(url)) {
-    return true;
+    return isLegacyPath;
   }
   return (
     platformFileHosts().has(parsed.host) ||
@@ -438,11 +444,11 @@ function isHostedSiteUrl(url: string): boolean {
 
   const host = browserHost();
   const baseUrl = host ? `https://${host}` : "https://vm0.local";
-  if (!URL.canParse(url, baseUrl)) {
+  const parsed = tryParseUrl(url, baseUrl);
+  if (!parsed) {
     return false;
   }
 
-  const parsed = new URL(url, baseUrl);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     return false;
   }
@@ -456,11 +462,11 @@ function hostedSiteAttachment(
 ): ChatAttachmentDescriptor | null {
   const host = browserHost();
   const baseUrl = host ? `https://${host}` : "https://vm0.local";
-  if (!URL.canParse(url, baseUrl)) {
+  const parsed = tryParseUrl(url, baseUrl);
+  if (!parsed) {
     return null;
   }
 
-  const parsed = new URL(url, baseUrl);
   const publicSlug = hostedSitePublicSlug(parsed.hostname);
   if (!publicSlug) {
     return null;
@@ -522,22 +528,23 @@ function renderExtractedPreviewLine(
   const { title, url } = extracted;
   const attachment = previewAttachmentFromUrl(url, title);
   const kind = classifyChatAttachment(attachment);
+  const previewable = isPreviewableChatUrl(url);
 
   if (
     extracted.source === "markdown-link" &&
-    (kind === "image" || kind === "video")
+    (kind === "image" || (kind === "video" && !previewable))
   ) {
     return { renderKind: "markdown", line };
   }
 
-  if (kind === "image" && isPreviewableChatUrl(url)) {
+  if (kind === "image" && previewable) {
     return {
       renderKind: "markdown",
       line: markdownImageLine(url, attachment.filename),
     };
   }
 
-  if (isBodyPreviewKind(kind) && isPreviewableChatUrl(url)) {
+  if (isBodyPreviewKind(kind) && previewable) {
     return {
       renderKind: "preview",
       preview: { filename: attachment.filename, url, kind },
@@ -765,7 +772,6 @@ function createActionBlockFromLine(
   {
     type:
       | "connector-action"
-      | "custom-connector-action"
       | "permission-action"
       | "computer-use-authorization"
       | "plan-upgrade"
@@ -784,15 +790,6 @@ function createActionBlockFromLine(
       type: "connector-action",
       resourceKey: connectorAction.originalUrl,
       descriptor: connectorAction,
-    };
-  }
-
-  const customConnectorAction = parseCustomConnectorProposalUrl(url);
-  if (customConnectorAction) {
-    return {
-      type: "custom-connector-action",
-      resourceKey: customConnectorAction.originalUrl,
-      descriptor: customConnectorAction,
     };
   }
 
@@ -1075,4 +1072,78 @@ export function parseBodyBlocks(
     cleanContent,
     blocks,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Event body plan
+// ---------------------------------------------------------------------------
+
+export type CardDescriptorBlock = Exclude<ParsedBodyBlock, ParsedMarkdownBlock>;
+
+/** The URL a card's slot stands on, and the key its signals are looked up by. */
+export function cardSlotUrl(block: CardDescriptorBlock): string {
+  switch (block.type) {
+    case "artifact": {
+      return block.descriptor.url;
+    }
+    case "connector-action": {
+      return block.descriptor.originalUrl;
+    }
+    case "permission-action": {
+      return block.descriptor.originalUrl;
+    }
+    case "computer-use-authorization": {
+      return block.descriptor.originalUrl;
+    }
+    case "plan-upgrade": {
+      return block.descriptor.href;
+    }
+    case "mail-draft": {
+      return block.descriptor.originalUrl;
+    }
+    case "browser-session": {
+      return block.descriptor.href;
+    }
+  }
+}
+
+function cardSlotMarkdown(url: string): string {
+  const label = url
+    .replace(/\\/g, String.raw`\\`)
+    .replace(/\]/g, String.raw`\]`);
+  return `[${label}](<${url}>)`;
+}
+
+interface EventBodyPlan {
+  /**
+   * The event body as one markdown document. Where the scanner recognized a
+   * card, the prose carries a link to the card's URL standing alone in a
+   * paragraph; the tree pass swaps those paragraphs for the cards registered
+   * under the same URL and leaves any it cannot resolve as ordinary links.
+   */
+  readonly treeSource: string;
+  /** The recognized cards, in the order their slots appear in the source. */
+  readonly descriptors: readonly CardDescriptorBlock[];
+}
+
+/**
+ * Plans one event body. The line scanner in `parseBodyBlocks` stays the sole
+ * authority on which URLs become cards — fences, tables and inline labels
+ * behave exactly as before — and this only re-joins its output into a single
+ * document instead of a block list.
+ */
+export function eventBodyPlan(
+  content: string,
+  options: ParseBodyBlocksOptions = {},
+): EventBodyPlan {
+  const { blocks } = parseBodyBlocks(content, options);
+  const descriptors: CardDescriptorBlock[] = [];
+  const parts = blocks.map((block) => {
+    if (block.type === "markdown") {
+      return block.content;
+    }
+    descriptors.push(block);
+    return cardSlotMarkdown(cardSlotUrl(block));
+  });
+  return { treeSource: parts.join("\n\n"), descriptors };
 }

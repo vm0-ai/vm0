@@ -1,12 +1,12 @@
 import {
   connectorSlugSchema,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import type { CustomConnectorPermissionBundleRef } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import type { CustomConnectorPermissionBundleRef } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type {
   ExpandedFirewallConfig,
   FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 
 import type { ConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
@@ -38,7 +38,7 @@ function customConnectorPermissionBundleSlug(
 }
 
 export async function loadCustomConnectorPermissionBundle(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: Pick<ConnectorRuntimeSnapshot, "serverFirewalls">;
   readonly ref: CustomConnectorPermissionBundleRef;
 }): Promise<CustomConnectorPermissionBundle | null> {
   if (args.ref === FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF) {

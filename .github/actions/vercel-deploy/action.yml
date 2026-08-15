@@ -65,6 +65,10 @@ inputs:
     description: "Produce a Staged production deployment that is prod-eligible but not yet serving traffic (requires prebuilt=true and environment=production). Promote later via vercel-promote."
     required: false
     default: "false"
+  skip-setup:
+    description: "Skip Vercel CLI installation and project configuration when the caller already initialized them"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -81,6 +85,7 @@ runs:
         desc: Deploying ${{ inputs.environment }} environment
 
     - name: Setup Vercel
+      if: ${{ inputs.skip-setup != 'true' }}
       uses: ./.github/actions/vercel-setup
       with:
         vercel-token: ${{ inputs.vercel-token }}

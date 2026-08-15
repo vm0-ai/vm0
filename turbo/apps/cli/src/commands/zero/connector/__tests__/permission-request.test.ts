@@ -1,16 +1,16 @@
 /**
- * Tests for zero connector permission-request command.
+ * Tests for okou connector permission-request command.
  *
  * The command only points users at the grant page after a URL diagnostic
- * confirms that the requested Zero permission is denied or requires approval.
+ * confirms that the requested Okou permission is denied or requires approval.
  */
 
 import {
   connectorCheckRequestSchema,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckPolicy,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+} from "@okouai/api-contracts/contracts/connector-check";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -80,7 +80,7 @@ function stubDiagnostic(
 ): void {
   server.use(
     http.post(
-      `${baseUrl}/api/zero/connectors/diagnostics/check`,
+      `${baseUrl}/api/okou/connectors/diagnostics/check`,
       async ({ request }) => {
         const body: unknown = await request.json();
         const parsed = connectorCheckRequestSchema.parse(body);
@@ -91,7 +91,7 @@ function stubDiagnostic(
   );
 }
 
-describe("zero connector permission-request command", () => {
+describe("okou connector permission-request command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -101,8 +101,8 @@ describe("zero connector permission-request command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.stubEnv("ZERO_TOKEN", "test-token");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     const result = resolvedUrlDiagnostic();
     stubDiagnostic(result, "https://app.vm0.ai");
@@ -119,7 +119,7 @@ describe("zero connector permission-request command", () => {
 
   it("outputs an allow grant link without choosing the user's duration", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");
     let diagnosticRequest:
       | ReturnType<typeof connectorCheckRequestSchema.parse>
       | undefined;
@@ -162,7 +162,7 @@ describe("zero connector permission-request command", () => {
 
   it("uses the agent permission page inside an automated run", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");
     vi.stubEnv("ZERO_WORKFLOW_ID", "wf-789");
 
     await permissionRequestCommand.parseAsync([
@@ -189,8 +189,8 @@ describe("zero connector permission-request command", () => {
 
   it("includes the current thread and callback prompt in the grant URL", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+    vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", "thread-abc-123");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -217,8 +217,8 @@ describe("zero connector permission-request command", () => {
 
   it("rejects callback prompts outside the current web chat", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
 
     await expect(async () => {
       await permissionRequestCommand.parseAsync([
@@ -236,14 +236,14 @@ describe("zero connector permission-request command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
-        "--callback-prompt can only target the current Zero web chat thread and agent",
+        "--callback-prompt can only target the current web chat thread and agent",
       ),
     );
   });
 
   it("rejects callback prompts for a different agent", async () => {
-    vi.stubEnv("ZERO_AGENT_ID", "agent-current");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+    vi.stubEnv("OKOU_AGENT_ID", "agent-current");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", "thread-abc-123");
 
     await expect(async () => {
       await permissionRequestCommand.parseAsync([
@@ -263,14 +263,14 @@ describe("zero connector permission-request command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
-        "--callback-prompt can only target the current Zero web chat thread and agent",
+        "--callback-prompt can only target the current web chat thread and agent",
       ),
     );
   });
 
   it("outputs an allow grant link for unknown endpoints", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");
     const unknownUrl = "https://api.cloudflare.com/client/v4/example";
     stubDiagnostic(
       resolvedUrlDiagnostic({
@@ -306,9 +306,9 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).not.toContain("expiresIn=");
   });
 
-  it("uses the agents landing page when ZERO_AGENT_ID is not set", async () => {
+  it("uses the agents landing page when OKOU_AGENT_ID is not set", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "");
+    vi.stubEnv("OKOU_AGENT_ID", "");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -325,9 +325,9 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).not.toContain("/agents/permissions");
   });
 
-  it("uses --agent when ZERO_AGENT_ID is not set", async () => {
+  it("uses --agent when OKOU_AGENT_ID is not set", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "");
+    vi.stubEnv("OKOU_AGENT_ID", "");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -347,9 +347,9 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).toContain("action=allow");
   });
 
-  it("--agent overrides ZERO_AGENT_ID", async () => {
+  it("--agent overrides OKOU_AGENT_ID", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "env-agent-123");
+    vi.stubEnv("OKOU_AGENT_ID", "env-agent-123");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -370,7 +370,7 @@ describe("zero connector permission-request command", () => {
 
   it("transforms www.vm0.ai to app.vm0.ai", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://www.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-1");
+    vi.stubEnv("OKOU_AGENT_ID", "agent-1");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -390,7 +390,7 @@ describe("zero connector permission-request command", () => {
 
   it("prints sensitive Slack user-token guidance for chat:write enable", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");
     const url = "https://slack.com/api/chat.postMessage";
     stubDiagnostic(
       resolvedUrlDiagnostic({
@@ -422,13 +422,13 @@ describe("zero connector permission-request command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("AS THE USER's identity");
-    expect(logCalls).toContain("zero slack message send");
+    expect(logCalls).toContain("okou slack message send");
     expect(logCalls).toContain("Only allow this permission below");
   });
 
   it("prints sensitive Gmail sending guidance for messages.send enable", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");
     const url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
     stubDiagnostic(
       resolvedUrlDiagnostic({
@@ -524,7 +524,7 @@ describe("zero connector permission-request command", () => {
   });
 
   it("exits with authentication guidance when no token is available", async () => {
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("OKOU_TOKEN", "");
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
 
     await expect(async () => {
@@ -608,12 +608,12 @@ describe("zero connector permission-request command", () => {
     {
       name: "already allowed",
       policy: { outcome: "allow", basis: "allow-list" },
-      expected: "is already allowed by Zero",
+      expected: "is already allowed by Okou",
     },
     {
       name: "unavailable",
       policy: { outcome: "unavailable", basis: "not-run-scoped" },
-      expected: "Retry zero connector check from an active run",
+      expected: "Retry okou connector check from an active run",
     },
   ] satisfies readonly NonRequestablePolicyCase[])(
     "does not create a grant when policy is $name",
@@ -653,7 +653,7 @@ describe("zero connector permission-request command", () => {
   );
 
   it("explains selected-host token grants for computer-use permission changes", async () => {
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("OKOU_TOKEN", "");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -667,20 +667,24 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).toContain(
       "Computer Use access is not managed as a connector permission.",
     );
-    expect(logCalls).toContain("selected for the chat or thread");
+    expect(logCalls).toContain(
+      "issued only when an Okou Desktop Computer Use host is selected for the chat or thread",
+    );
+    expect(logCalls).toContain("Open Okou Desktop");
     expect(logCalls).toContain("Existing run tokens cannot be upgraded");
-    expect(logCalls).toContain("zero whoami");
+    expect(logCalls).toContain("okou whoami");
+    expect(logCalls).not.toContain("Zero Desktop");
     expect(logCalls).not.toContain("[Manage");
     expect(mockConsoleError).not.toHaveBeenCalled();
   });
 
   it("outputs a delegated authorization link for computer-use enable when authenticated", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "zero-run-token");
+    vi.stubEnv("OKOU_TOKEN", "zero-run-token");
 
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/computer-use/authorization-requests",
+        "http://localhost:3000/api/okou/computer-use/authorization-requests",
         ({ request }) => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer zero-run-token",
@@ -705,8 +709,9 @@ describe("zero connector permission-request command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain(
-      "Computer Use needs a Zero Desktop host selected before a run starts.",
+      "Computer Use needs an Okou Desktop host selected before a run starts.",
     );
+    expect(logCalls).not.toContain("Zero Desktop");
     expect(logCalls).toContain(
       "https://app.vm0.ai/computer-use/authorize/vm0_computer_use_authorization_request_test",
     );
@@ -718,7 +723,7 @@ describe("zero connector permission-request command", () => {
   });
 
   it("recognizes computer-use:write even when the connector slug is wrong", async () => {
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("OKOU_TOKEN", "");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -736,7 +741,7 @@ describe("zero connector permission-request command", () => {
   });
 
   it("explains thread access for cloud browser permission changes", async () => {
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("OKOU_TOKEN", "");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -758,11 +763,11 @@ describe("zero connector permission-request command", () => {
 
   it("outputs a delegated authorization link for cloud browser enable", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "zero-run-token");
+    vi.stubEnv("OKOU_TOKEN", "zero-run-token");
 
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/browser/authorization-requests",
+        "http://localhost:3000/api/okou/browser/authorization-requests",
         ({ request }) => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer zero-run-token",

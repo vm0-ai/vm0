@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import {
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
-} from "@vm0/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/webhooks";
 
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";

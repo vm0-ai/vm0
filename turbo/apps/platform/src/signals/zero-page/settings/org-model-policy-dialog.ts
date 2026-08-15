@@ -5,7 +5,7 @@ import type {
   OrgModelPolicy,
   SupportedRunModel,
   UpdateOrgModelPolicy,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { createOrgModelProvider$ } from "../../external/org-model-providers.ts";
 import {
   refreshOrgModelPolicies$,
@@ -167,17 +167,16 @@ export const openEditModelPolicyDialog$ = command(
 );
 
 export const closeModelPolicyDialog$ = command(({ set }) => {
-  set(internalModelPolicyDialogState$, {
-    open: false,
-    mode: "add",
-    model: null,
-    routeKind: "built-in",
-    providerType: null,
-    surfaceId: null,
+  set(internalModelPolicyDialogState$, (previous) => {
+    return { ...previous, open: false };
   });
+});
+
+export const completeModelPolicyDialogClose$ = command(({ get, set }) => {
+  if (get(internalModelPolicyDialogState$).open) {
+    return;
+  }
   set(internalModelPolicyApiKey$, "");
-  set(internalModelPolicyApiKeyTouched$, false);
-  set(internalModelPolicyApiKeyError$, null);
 });
 
 export const submitModelPolicyApiKeyRoute$ = command(

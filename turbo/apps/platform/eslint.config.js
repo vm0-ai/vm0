@@ -1,5 +1,5 @@
-import { config as baseConfig, oxlint } from "@vm0/eslint-config/base";
-import ccstatePlugin from "@vm0/eslint-rules/ccstate";
+import { config as baseConfig, oxlint } from "@okouai/eslint-config/base";
+import ccstatePlugin from "@okouai/eslint-rules/ccstate";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReact from "eslint-plugin-react";
 
@@ -41,15 +41,18 @@ export default [
       "ccstate/no-new-abort-controller": "error",
       "ccstate/no-new-promise": "error",
       "ccstate/no-direct-local-storage": "error",
+      "ccstate/no-direct-session-storage": "error",
       "ccstate/no-detach-in-signals": "error",
       "ccstate/no-direct-fetch": "error",
       "ccstate/no-empty-promise-catch": "error",
       "ccstate/no-void-statement": "error",
       "ccstate/no-abort-swallower": "error",
       "ccstate/no-react-class-component": "error",
+      "ccstate/prefer-ui-components": "error",
       "ccstate/require-accept": "error",
       "ccstate/require-client-signal": "error",
       "ccstate/command-async-signal": "error",
+      "ccstate/no-computed-signal": "error",
       "ccstate/no-getter-setter-params": "error",
       "ccstate/no-accessor-escape": "error",
       "ccstate/no-store-in-params": [
@@ -72,6 +75,23 @@ export default [
         },
       ],
       "ccstate/computed-const-args-package-scope": "error",
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/**/__tests__/**",
+      "src/**/test/**",
+      "src/**/tests/**",
+      "src/**/mocks/**",
+      "src/**/test-fixtures/**",
+      "src/**/*.test.{ts,tsx}",
+      "src/**/*.spec.{ts,tsx}",
+      "src/**/test-context.{ts,tsx}",
+      "src/signals/fetch.ts",
+    ],
+    rules: {
+      "vm0/no-abort-signal-in-object-params": "error",
     },
   },
   {
@@ -124,6 +144,17 @@ export default [
             "Use nowDate() from src/lib/time instead of new Date() so tests can control the platform clock.",
         },
       ],
+    },
+  },
+  {
+    files: [
+      "src/**/*.test.{ts,tsx}",
+      "src/**/*.spec.{ts,tsx}",
+      "src/**/__tests__/**/*.{ts,tsx}",
+    ],
+    ignores: ["src/signals/__tests__/test-helpers.ts"],
+    rules: {
+      "ccstate/no-test-after-each": "error",
     },
   },
   {
@@ -279,6 +310,19 @@ export default [
       ],
     },
   },
+  // Every catch in production source must re-throw cancellation before it does
+  // anything else, so an aborted page never reports a failure or persists a
+  // fallback. The ignore list matches the try-statement ban above: test and
+  // mock code carries no abort contract, and utils.ts implements the
+  // centralized helpers (onRejection, settle, tapError) whose whole purpose is
+  // to observe a rejection — including an abort — before re-throwing it.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/**/__tests__/**", "src/mocks/**", "src/signals/utils.ts"],
+    rules: {
+      "ccstate/no-catch-abort": "error",
+    },
+  },
   {
     ignores: [
       "dist/**",
@@ -287,7 +331,6 @@ export default [
       "vitest.config.ts",
       "src/mocks/**",
       "src/__tests__/**",
-      "eslint.config.ablation.mjs",
       // Asset files — not JS/TS, would cause parse errors when matched by
       // broad file globs in .oxlintrc.json overrides (e.g. src/views/**/*.*)
       "**/*.svg",
@@ -297,6 +340,23 @@ export default [
     ],
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@tabler/icons-react",
+              message:
+                "Use lucide-react or a shared @okouai/ui brand icon instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // react/jsx-uses-vars marked JSX identifiers as "used" for ESLint's no-unused-vars.
   // Both no-unused-vars and @typescript-eslint/no-unused-vars are now handled by
   // oxlint, so this rule is no longer needed.

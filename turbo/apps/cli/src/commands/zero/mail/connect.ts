@@ -1,8 +1,8 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { listZeroConnectorCatalogStatus } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { listZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { resolveAgentContext } from "../connector/agent-context";
 import { findConnectorStatusItem } from "../connector/public-catalog";
 import { getPlatformOrigin } from "../doctor/platform-url";
@@ -71,7 +71,7 @@ export const connectCommand = new Command()
         );
         console.log(
           chalk.dim(
-            "  After creating a Gmail draft: zero mail link <draft-id>",
+            "  After creating a Gmail draft: okou mail link <draft-id>",
           ),
         );
         return;

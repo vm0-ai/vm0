@@ -9,17 +9,23 @@ import {
   boolean,
   bigint,
   index,
+  check,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentComposes, agentComposeVersions } from "./agent-compose";
+import { registerAgentRunReferences } from "./agent-run-reference";
+import { chatThreads } from "./chat-thread";
+import { threadGoals } from "./thread-goal";
+import { workflowAutomations } from "./workflow";
 import type {
   AgentRunResult,
   AgentRunSecretNames,
   AgentRunStorageMounts,
   AgentRunVars,
   AgentSessionStorageMounts,
-} from "@vm0/db/jsonb-contracts/agent-run-session-conversation";
+} from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 
 /**
  * Agent Runs table
@@ -62,6 +68,9 @@ export const agentRuns = pgTable(
     // Null means unknown (old runner or historical row); "noSessionId" is a
     // legacy ambiguous result.
     sandboxReuseResult: varchar("sandbox_reuse_result", { length: 50 }),
+    // Final workspace reuse outcome after sandbox preparation. Null means the
+    // runner did not reach a reliable decision or predates this field.
+    workspaceReuseResult: varchar("workspace_reuse_result", { length: 50 }),
     // Null identifies a historical claim without cancellation recovery.
     // Current claims initialize false; false/true records whether recovery
     // completion has been reported. The barrier is active only while the
@@ -85,6 +94,44 @@ export const agentRuns = pgTable(
       .default(false)
       .notNull(),
     runnerGroup: varchar("runner_group", { length: 255 }),
+    // Null discriminators identify accepted lifecycle-only history where all
+    // product metadata is absent. Product runs write both fields together.
+    triggerSource: varchar("trigger_source", { length: 20 }),
+    autonomyBudget: integer("autonomy_budget"),
+    workflowAutomationId: uuid("workflow_automation_id").references(
+      (): AnyPgColumn => {
+        return workflowAutomations.id;
+      },
+      { onDelete: "set null" },
+    ),
+    goalId: uuid("goal_id").references(
+      (): AnyPgColumn => {
+        return threadGoals.id;
+      },
+      { onDelete: "set null" },
+    ),
+    modelProvider: varchar("model_provider", { length: 100 }),
+    modelProviderId: uuid("model_provider_id"),
+    modelProviderCredentialScope: varchar("model_provider_credential_scope", {
+      length: 20,
+    }),
+    selectedModel: varchar("selected_model", { length: 255 }),
+    codexServiceTier: varchar("codex_service_tier", {
+      length: 20,
+    }).$type<CodexServiceTier>(),
+    selectedVideoModel: varchar("selected_video_model", { length: 255 }),
+    chatThreadId: uuid("chat_thread_id").references(
+      (): AnyPgColumn => {
+        return chatThreads.id;
+      },
+      { onDelete: "set null" },
+    ),
+    apiStartedAt: timestamp("api_started_at"),
+    firstAssistantEventAcknowledgedAt: timestamp(
+      "first_assistant_event_acknowledged_at",
+    ),
+    summary: text("summary"),
+    triggerBrief: text("trigger_brief"),
   },
   (table) => {
     return [
@@ -110,11 +157,44 @@ export const agentRuns = pgTable(
         table.createdAt.desc(),
       ),
       index("idx_agent_runs_session").on(table.sessionId),
-      // Supports aggregate-insights recent completed-run discovery and
-      // per-window run counts by completed time.
-      index("idx_agent_runs_completed_org_user")
-        .on(table.completedAt.desc(), table.orgId, table.userId)
-        .where(sql`${table.completedAt} IS NOT NULL`),
+      index("idx_agent_runs_chat_thread_id")
+        .on(table.chatThreadId)
+        .where(sql`${table.chatThreadId} IS NOT NULL`),
+      index("idx_agent_runs_workflow_automation")
+        .on(table.workflowAutomationId)
+        .where(sql`${table.workflowAutomationId} IS NOT NULL`),
+      index("idx_agent_runs_goal")
+        .on(table.goalId)
+        .where(sql`${table.goalId} IS NOT NULL`),
+      check(
+        "agent_runs_autonomy_budget_check",
+        sql`${table.autonomyBudget} >= 0 AND ${table.autonomyBudget} <= 10`,
+      ),
+      check(
+        "agent_runs_metadata_presence_check",
+        sql`(
+          (
+            ${table.triggerSource} IS NULL AND
+            ${table.autonomyBudget} IS NULL AND
+            ${table.workflowAutomationId} IS NULL AND
+            ${table.goalId} IS NULL AND
+            ${table.modelProvider} IS NULL AND
+            ${table.modelProviderId} IS NULL AND
+            ${table.modelProviderCredentialScope} IS NULL AND
+            ${table.selectedModel} IS NULL AND
+            ${table.codexServiceTier} IS NULL AND
+            ${table.selectedVideoModel} IS NULL AND
+            ${table.chatThreadId} IS NULL AND
+            ${table.apiStartedAt} IS NULL AND
+            ${table.firstAssistantEventAcknowledgedAt} IS NULL AND
+            ${table.summary} IS NULL AND
+            ${table.triggerBrief} IS NULL
+          ) OR (
+            ${table.triggerSource} IS NOT NULL AND
+            ${table.autonomyBudget} IS NOT NULL
+          )
+        )`,
+      ),
     ];
   },
 );
@@ -167,7 +247,8 @@ export const agentSessions = pgTable(
  * Stores CLI agent conversation history for checkpoint resumption
  *
  * Session history storage strategy:
- * - New records use cliAgentSessionHistoryHash (R2 blob reference)
+ * - Resumable new records use cliAgentSessionHistoryHash (R2 blob reference)
+ * - Intentionally historyless checkpoints leave both history fields null
  * - Legacy records use cliAgentSessionHistory (TEXT field)
  * - Read logic: use the hash-backed path when present; use TEXT only for
  *   legacy rows that do not have a hash
@@ -192,4 +273,9 @@ export const conversations = pgTable("conversations", {
     length: 64,
   }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+registerAgentRunReferences({
+  agentRunId: agentRuns.id,
+  agentSessionId: agentSessions.id,
 });

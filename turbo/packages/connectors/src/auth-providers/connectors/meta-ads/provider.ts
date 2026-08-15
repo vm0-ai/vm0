@@ -45,13 +45,13 @@ export const metaAdsProvider: AuthCodeConnectorAuthProvider<"meta-ads"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId, clientSecret } = args.authClient;
       const result = await refreshMetaAdsLongLivedToken(
         clientId,
         clientSecret,
         args.inputs.refreshToken,
-        args.signal,
+        signal,
       );
       return {
         outputs: {

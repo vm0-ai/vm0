@@ -1,5 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
-import { IconScanEye } from "@tabler/icons-react";
+import { ScanEye } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
@@ -18,7 +18,11 @@ import {
 } from "./onboarding-data.ts";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import { OnboardingRunAction } from "./onboarding-run-action.tsx";
-import { OnboardingShell } from "./onboarding-shell.tsx";
+import { Textarea, cn } from "@okouai/ui";
+import {
+  ONBOARDING_TEXTAREA_CLASS,
+  OnboardingShell,
+} from "./onboarding-shell.tsx";
 import {
   WorkflowConnectorPills,
   WorkflowPreview,
@@ -110,7 +114,7 @@ export function OnboardingWorkflowRunPage() {
                   setUi({ workflowPreviewId: workflow.id });
                 }}
               >
-                <IconScanEye size={16} stroke={1.6} aria-hidden="true" />
+                <ScanEye size={16} aria-hidden="true" />
               </button>
             </div>
           </section>
@@ -129,7 +133,7 @@ export function OnboardingWorkflowRunPage() {
                   return $.onboarding.workflowRun.noteLabel;
                 })}
           </label>
-          <textarea
+          <Textarea
             id="workflow-note"
             value={draft.workflowNote}
             onChange={(event) => {
@@ -145,7 +149,10 @@ export function OnboardingWorkflowRunPage() {
                   })
             }
             rows={3}
-            className="mt-[18px] min-h-[98px] w-full resize-y rounded-xl border border-border bg-background p-3 text-sm leading-5 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className={cn(
+              ONBOARDING_TEXTAREA_CLASS,
+              "mt-[18px] min-h-[98px] resize-y p-3 leading-5",
+            )}
           />
         </OnboardingConnectorSetup>
       </OnboardingShell>

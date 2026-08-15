@@ -23,16 +23,17 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from "@vm0/ui";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { groupFirewallMetadataPermissionsByCategory } from "@vm0/connectors/firewall-metadata/policy";
+  Input,
+} from "@okouai/ui";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { groupFirewallMetadataPermissionsByCategory } from "@okouai/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
   type FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/connectors/firewall-types";
+import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,
@@ -79,15 +80,15 @@ import {
 } from "../../../../signals/zero-page/settings/permissions-dialog.ts";
 import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
 import {
-  IconCheck,
-  IconBan,
-  IconChevronRight,
-  IconClock,
-  IconChevronDown,
-  IconLoader2,
-  IconSearch,
-  IconX,
-} from "@tabler/icons-react";
+  Check,
+  Ban,
+  ChevronRight,
+  Clock,
+  ChevronDown,
+  Loader2,
+  Search,
+  X,
+} from "lucide-react";
 import {
   PermissionPolicyMixedBadge,
   PermissionPolicyToggle,
@@ -332,11 +333,11 @@ function PolicyPill({
                   : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
                 : disabled
                   ? "text-muted-foreground/50"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-state-hover"
             } ${disabled ? "cursor-default" : "cursor-pointer"}`}
           >
-            {option === "allow" && <IconCheck size={12} stroke={2.5} />}
-            {option === "deny" && <IconBan size={12} stroke={2.5} />}
+            {option === "allow" && <Check size={12} />}
+            {option === "deny" && <Ban size={12} />}
             {option === "allow"
               ? t(($) => {
                   return $.connectors.permissions.actions.allow;
@@ -552,7 +553,7 @@ function allowDurationMenuLabel(option: UserPermissionGrantExpiresIn): string {
 
 function MenuItemCheck({ active }: { active: boolean }) {
   return active ? (
-    <IconCheck size={14} stroke={2.5} />
+    <Check size={14} />
   ) : (
     <span className="h-3.5 w-3.5 shrink-0" />
   );
@@ -614,12 +615,12 @@ function PermissionAllowDurationDropdown({
           className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-medium zero-border transition-colors ${
             saving
               ? "cursor-default text-muted-foreground/50"
-              : "cursor-pointer text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              : "cursor-pointer text-muted-foreground hover:bg-state-hover hover:text-foreground"
           }`}
         >
-          <IconClock size={12} className="shrink-0" />
+          <Clock size={12} className="shrink-0" />
           <span className="max-w-[90px] truncate">{label}</span>
-          <IconChevronDown size={12} stroke={2.5} className="shrink-0" />
+          <ChevronDown size={12} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -657,7 +658,7 @@ function PermissionAllowDurationDropdown({
 function PermissionAllowDurationStatic({ label }: { label: string }) {
   return (
     <span className="inline-flex h-6 max-w-[150px] shrink-0 items-center gap-1.5 rounded-md border zero-border bg-muted/40 px-2 text-[11px] font-medium text-muted-foreground">
-      <IconClock size={12} className="shrink-0" />
+      <Clock size={12} className="shrink-0" />
       <span className="truncate">{label}</span>
     </span>
   );
@@ -834,9 +835,8 @@ function PermissionGroupHeader({
         onClick={onToggle}
         className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/80 transition-colors"
       >
-        <IconChevronRight
+        <ChevronRight
           size={14}
-          stroke={2}
           className={`transition-transform ${expanded ? "rotate-90" : ""}`}
         />
         {category} ({permissions.length})
@@ -1071,7 +1071,7 @@ function PermissionRow({
     <div>
       {showSeparator && <div className="mx-3 border-t border-border/40" />}
       <div
-        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors ${indent ? "pl-8" : ""}`}
+        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-md hover:bg-state-hover transition-colors ${indent ? "pl-8" : ""}`}
       >
         <div className="min-w-0 flex-1">
           <code className="block whitespace-normal break-words text-xs font-medium text-foreground [overflow-wrap:anywhere]">
@@ -1497,12 +1497,11 @@ function LoadedPermissionsDrawerContent({
           className={`flex flex-col gap-2 pb-3 -mx-6 px-6 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
         >
           <div className="relative w-full">
-            <IconSearch
+            <Search
               size={15}
-              stroke={1.5}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
             />
-            <input
+            <Input
               value={search}
               onChange={(event) => {
                 handleSearchChange(event.currentTarget.value);
@@ -1513,7 +1512,7 @@ function LoadedPermissionsDrawerContent({
               placeholder={t(($) => {
                 return $.connectors.permissions.findPlaceholder;
               })}
-              className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+              className="pl-9 pr-9"
             />
             {search && (
               <button
@@ -1521,12 +1520,12 @@ function LoadedPermissionsDrawerContent({
                 onClick={() => {
                   handleSearchChange("");
                 }}
-                className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground"
                 aria-label={t(($) => {
                   return $.connectors.permissions.clearSearch;
                 })}
               >
-                <IconX size={13} stroke={1.8} />
+                <X size={13} />
               </button>
             )}
           </div>
@@ -1719,7 +1718,7 @@ function PermissionsContent({
           <div className="flex flex-1 items-center justify-center">
             {loading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <IconLoader2 size={16} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin" />
                 {t(($) => {
                   return $.connectors.permissions.loading;
                 })}

@@ -104,7 +104,7 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_sidecar(
         CANONICAL_WORKING_DIR,
         u64::from(workspace_disk_mb) * 1024 * 1024,
     );
-    runner_paths.workspace_image_cache_current_image(&cache_key)
+    cache.entry_paths(&cache_key).current_image().to_path_buf()
 }
 
 pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerprints(
@@ -161,5 +161,5 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerpr
         CANONICAL_WORKING_DIR,
         u64::from(workspace_disk_mb) * 1024 * 1024,
     );
-    runner_paths.workspace_image_cache_current_image(&cache_key)
+    cache.entry_paths(&cache_key).current_image().to_path_buf()
 }

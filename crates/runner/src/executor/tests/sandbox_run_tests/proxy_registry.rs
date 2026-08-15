@@ -1,4 +1,6 @@
 use super::*;
+use crate::executor::tests::support::RUN_IN_SANDBOX_TEST_TIMEOUT;
+use crate::executor::{SandboxReuseDisposition, SandboxReuseRejection};
 
 fn capture_proxy_register_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
     let captured = CapturedEvents::default();
@@ -88,6 +90,60 @@ fn proxy_register_failure_warns_with_error() {
 }
 
 #[tokio::test]
+async fn proxy_registration_accepts_canonical_targets() {
+    let canonical_dir = tempfile::tempdir().unwrap();
+    let canonical_config = test_executor_config(canonical_dir.path()).await;
+    let mut canonical_context = minimal_context();
+    let canonical_routing_variables =
+        HashMap::from([("ZENDESK_SUBDOMAIN".to_string(), "xn--mnich-kva".to_string())]);
+    canonical_context.firewalls = Some(vec![FirewallEntry::Builtin {
+        name: "zendesk".to_string(),
+        base_url_vars: Some(canonical_routing_variables.clone()),
+    }]);
+    canonical_context.connector_runtime_targets =
+        vec![ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "zendesk".to_string(),
+            base_url_vars: Some(canonical_routing_variables),
+        }];
+    canonical_context.vars = Some(HashMap::from([(
+        "ZENDESK_SUBDOMAIN".to_string(),
+        "münich".to_string(),
+    )]));
+
+    let _canonical_session = register_proxy(&canonical_config, &canonical_context, "10.200.0.3")
+        .await
+        .unwrap();
+    let canonical_registry: serde_json::Value = serde_json::from_str(
+        &tokio::fs::read_to_string(canonical_dir.path().join("proxy-registry.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let canonical_vm = &canonical_registry["vms"]["10.200.0.3"];
+    assert_eq!(
+        canonical_vm["firewalls"],
+        serde_json::json!([{
+            "kind": "builtin",
+            "name": "zendesk",
+            "baseUrlVars": {
+                "ZENDESK_SUBDOMAIN": "xn--mnich-kva"
+            }
+        }])
+    );
+    assert_eq!(
+        canonical_vm["connectorRuntimeTargets"],
+        serde_json::json!([{
+            "kind": "builtin",
+            "connectorSlug": "zendesk"
+        }])
+    );
+    assert_eq!(
+        canonical_vm["connectorRoutingVariables"]["builtin:zendesk"],
+        serde_json::json!({"ZENDESK_SUBDOMAIN": "münich"})
+    );
+}
+
+#[tokio::test]
 async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_start() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -145,7 +201,10 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
         &config,
         &prev_storage,
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     )
     .await;
 
@@ -168,17 +227,16 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_copy_file_result(Ok(b"guest system log\n".to_vec()));
+    let copy_gate = MockLifecycleGate::new();
+    overrides.set_copy_file_lifecycle_gate(copy_gate.clone());
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let source_ip = sandbox.source_ip().to_string();
     let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
-    let sandbox: Box<dyn Sandbox> = Box::new(
-        QueuedCopyFileSandbox::new(sandbox, vec![b"guest system log\n".to_vec()])
-            .with_remove_path_before_copy(dir.path().join("proxy-registry.json")),
-    );
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = execute_prepared_sandbox_run(
+    let run = execute_prepared_sandbox_run(
         PreparedSandboxRun {
             sandbox,
             source_ip,
@@ -190,12 +248,35 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
-    )
-    .await;
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
+    );
+    tokio::pin!(run);
+
+    tokio::select! {
+        outcome = &mut run => {
+            let _ = outcome;
+            panic!("run finished before the diagnostic copy gate");
+        }
+        entered = copy_gate.wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT) => {
+            entered.expect("run should reach the diagnostic copy gate");
+        }
+    }
+    tokio::fs::remove_file(dir.path().join("proxy-registry.json"))
+        .await
+        .unwrap();
+    overrides.clear_copy_file_lifecycle_gate();
+    copy_gate.release_many(overrides.copy_file_calls().len());
+
+    let outcome = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut run)
+        .await
+        .expect("post-gate proxy cleanup and finalization should complete");
 
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
@@ -210,4 +291,8 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
     assert!(outcome.sandbox.is_some());
     assert!(outcome.network_log_session.is_some());
     assert!(outcome.discovered_cli_agent_session_id.is_none());
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::PostJobCleanupFailure),
+    );
 }

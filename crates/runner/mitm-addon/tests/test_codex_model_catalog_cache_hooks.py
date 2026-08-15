@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
+from unittest.mock import patch
 
 import pytest
 from mitmproxy import connection
@@ -21,7 +22,9 @@ from tests.codex_model_catalog_cache_helpers import (
     catalog_flow,
     catalog_response,
     finish_response,
+    install_catalog,
     prepare_miss,
+    prepare_prefetch_miss,
     responses_flow,
 )
 from tests.flow_helpers import header_map, response_stream
@@ -52,6 +55,30 @@ async def test_request_bypasses_do_not_touch_unrelated_traffic(real_flow):
     unrelated.response = catalog_response()
     mitm_addon.responseheaders(unrelated)
     assert callable(unrelated.response.stream)
+
+
+async def test_streaming_catalog_request_bypasses_fresh_cache(real_flow):
+    with patch.object(catalog_cache.time, "monotonic", return_value=100.0):
+        await install_catalog(catalog_flow(real_flow))
+        flow = catalog_flow(real_flow)
+
+        def external_stream(chunk: bytes) -> bytes:
+            return chunk
+
+        flow.request.stream = external_stream
+
+        await catalog_cache.prepare_request(flow, request_end_stream=True)
+
+    assert flow.response is None
+    assert flow.request.stream is external_stream
+    assert flow.request.headers["Accept-Encoding"] == "identity"
+    assert "_codex_model_catalog_cache_state" not in flow.metadata
+    telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(flow, telemetry)
+    assert telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_streaming",
+    }
 
 
 async def test_unbounded_request_content_length_is_rejected_without_parsing(real_flow):
@@ -213,7 +240,7 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
     assert request_flow.request.headers["Accept-Encoding"] == "br"
     assert "X-VM0-Codex-Model-Catalog-Prefetch" not in request_flow.request.headers
     request_flow.response = catalog_response(encoding="br")
-    request_telemetry = finish_response(request_flow)
+    request_telemetry = await finish_response(request_flow)
     assert request_telemetry["model_catalog_prefetch_role"] == "producer"
 
     header_registry = _write_codex_registry(tmp_path, capture=True)
@@ -331,8 +358,8 @@ async def test_catalog_wait_revalidates_only_provider_continuation(
                 owner.error = Error("upstream reset")
                 catalog_cache.handle_error(owner)
             elif owner_result == "local-response":
-                owner.response = catalog_response(encoding="br")
-                finish_response(owner)
+                owner.response = catalog_response()
+                await finish_response(owner)
 
             await follower_task
             if entry_point == "requestheaders":
@@ -453,18 +480,21 @@ async def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
         account="sensitive-account",
     )
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
-    await prepare_miss(flow)
+    await prepare_prefetch_miss(flow)
     flow.response = catalog_response(encoding="br")
     mitm_addon.responseheaders(flow)
     compressed_body = flow.response.raw_content or b""
     assert response_stream(flow)(compressed_body) == compressed_body
 
     with mitm_ctx():
-        mitm_addon.response(flow)
+        continuation = mitm_addon.response(flow)
+        assert continuation is not None
+        await continuation
 
     [entry] = read_jsonl_entries_after_flush(tmp_path / "network.jsonl")
     assert entry["model_catalog_cache_status"] == "model_catalog_cold_stored"
     assert entry["model_catalog_cache_upstream_encoding"] == "br"
+    assert entry["model_catalog_prefetch_role"] == "producer"
     assert entry["model_catalog_cache_validation_latency_ms"] >= 0
     assert entry["response_size"] == len(compressed_body)
     serialized = json.dumps(entry)

@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import type { UpdateOrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import type { UpdateOrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";

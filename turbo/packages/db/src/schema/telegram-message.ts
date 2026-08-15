@@ -14,8 +14,8 @@ import {
 import { sql } from "drizzle-orm";
 import { telegramInstallations } from "./telegram-installation";
 import { telegramOfficialUserLinks } from "./telegram-official-user-link";
-import type { TelegramMessageEntities } from "@vm0/db/jsonb-contracts/telegram-message";
-export type { TelegramMessageEntity } from "@vm0/db/jsonb-contracts/telegram-message";
+import type { TelegramMessageEntities } from "@okouai/db/jsonb-contracts/telegram-message";
+export type { TelegramMessageEntity } from "@okouai/db/jsonb-contracts/telegram-message";
 
 /**
  * Telegram Messages table

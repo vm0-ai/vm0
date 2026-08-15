@@ -1,12 +1,12 @@
-import { IconMoon, IconSun } from "@tabler/icons-react";
+import { Moon, Sun } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  platformCheckmarkPrimaryImg,
   platformVm0LogoDarkImg,
   platformVm0LogoImg,
 } from "../../lib/static-assets.ts";
+import type { AuthBrandContext } from "../../signals/auth.ts";
 import { setTheme$, theme$ } from "../../signals/theme.ts";
 
 const CLERK_CSS = `
@@ -315,7 +315,7 @@ a[class*="resendCode"] {
   color: hsl(var(--primary)) !important;
 }
 
-/* Legal consent checkbox - clear visual distinction between checked/unchecked states */
+/* Legal consent checkbox - preserve Clerk's checkmark on the platform checked surface */
 .cl-card input[type="checkbox"],
 .cl-formFieldCheckboxInput input[type="checkbox"] {
   -webkit-appearance: none;
@@ -333,12 +333,8 @@ a[class*="resendCode"] {
 
 .cl-card input[type="checkbox"]:checked,
 .cl-formFieldCheckboxInput input[type="checkbox"]:checked {
-  background-color: transparent !important;
+  background-color: hsl(var(--primary)) !important;
   border-color: hsl(var(--primary)) !important;
-  background-image: url("${platformCheckmarkPrimaryImg}") !important;
-  background-repeat: no-repeat !important;
-  background-position: center !important;
-  background-size: 70% !important;
 }
 
 .cl-card input[type="checkbox"]:hover,
@@ -348,10 +344,11 @@ a[class*="resendCode"] {
 `;
 
 interface AuthLayoutProps {
+  authBrand: AuthBrandContext;
   children: ReactNode;
 }
 
-export function AuthLayout({ children }: AuthLayoutProps) {
+export function AuthLayout({ authBrand, children }: AuthLayoutProps) {
   const { t } = useTranslation();
   const theme = useGet(theme$);
   const setTheme = useSet(setTheme$);
@@ -383,28 +380,36 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           onClick={() => {
             setTheme(theme === "dark" ? "light" : "dark");
           }}
-          className="fixed right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))] z-50 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-muted"
+          className="fixed right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))] z-50 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-card-hover"
           aria-label={t(($) => {
             return $.auth.toggleTheme;
           })}
         >
-          {theme === "dark" ? (
-            <IconSun size={16} stroke={2} />
-          ) : (
-            <IconMoon size={16} stroke={2} />
-          )}
+          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
 
         {/* Logo Header */}
-        <a href="/" className="absolute left-6 top-6 flex items-center gap-2">
-          <img
-            src={theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg}
-            alt={t(($) => {
-              return $.appShell.logoAlt;
-            })}
-            width={82}
-            height={20}
-          />
+        <a
+          href={authBrand.homeUrl}
+          className="absolute left-6 top-6 flex items-center gap-2"
+        >
+          {authBrand.brandName === "Okou" ? (
+            <span className="text-xl font-semibold tracking-tight">
+              {authBrand.brandName}
+            </span>
+          ) : (
+            <img
+              src={
+                theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg
+              }
+              alt={t(($) => {
+                return $.appShell.logoAlt;
+              })}
+              crossOrigin="anonymous"
+              width={82}
+              height={20}
+            />
+          )}
         </a>
 
         <div className="relative z-10 m-auto flex w-full min-w-0 justify-center">

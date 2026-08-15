@@ -147,18 +147,14 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
     }
     let key = cache_b.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
     assert!(
-        !home
-            .workspace_image_cache_dir()
-            .join(key)
-            .join("metadata.json")
-            .exists(),
+        !cache_b.entry_paths(&key).metadata().exists(),
         "move checkout must remove reusable cache metadata"
     );
 }
 
 #[tokio::test]
 async fn cache_hit_removes_metadata_and_returns_move_seed() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let key = write_current_cache_entry(
@@ -170,7 +166,7 @@ async fn cache_hit_removes_metadata_and_returns_move_seed() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     let image_size = fs::metadata(&current).await.unwrap().len();
 
     let lease = cache
@@ -197,14 +193,14 @@ async fn cache_hit_removes_metadata_and_returns_move_seed() {
     );
     assert!(current.exists());
     assert!(matches!(
-        fs::metadata(paths.workspace_image_cache_metadata(&key)).await,
+        fs::metadata(cache.entry_paths(&key).metadata().to_path_buf()).await,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound
     ));
 }
 
 #[tokio::test]
 async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let key = write_current_cache_entry(
         &cache,
@@ -215,7 +211,7 @@ async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     let image_size = fs::metadata(&current).await.unwrap().len();
 
     let lease = cache
@@ -240,7 +236,7 @@ async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
             .await
             .unwrap()
     );
-    assert!(!paths.workspace_image_cache_entry_dir(&key).exists());
+    assert!(!cache.entry_paths(&key).entry_dir().to_path_buf().exists());
 }
 
 #[tokio::test]
@@ -410,10 +406,18 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
         "/workspace",
         image.len() as u64,
     );
-    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&cache_key))
-        .await
-        .unwrap();
-    let current = paths.workspace_image_cache_current_image(&cache_key);
+    tokio::fs::create_dir_all(
+        setup_cache
+            .entry_paths(&cache_key)
+            .entry_dir()
+            .to_path_buf(),
+    )
+    .await
+    .unwrap();
+    let current = setup_cache
+        .entry_paths(&cache_key)
+        .current_image()
+        .to_path_buf();
     tokio::fs::write(&current, &image).await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     let actual_allocated_bytes = allocated_bytes(&current_metadata);
@@ -484,7 +488,7 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
         "move checkout keeps the source in place until sandbox preparation consumes it"
     );
     assert!(
-        !tokio::fs::try_exists(paths.workspace_image_cache_metadata(&cache_key))
+        !tokio::fs::try_exists(cache.entry_paths(&cache_key).metadata().to_path_buf())
             .await
             .unwrap(),
         "move checkout removes metadata before handing the current image to sandbox preparation"
@@ -519,13 +523,13 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
 
 #[tokio::test]
 async fn active_lease_hides_cached_reuse_key_until_dropped() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let cache_key = workspace_image_cache_key("sess-1", "/workspace");
-    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&cache_key))
+    tokio::fs::create_dir_all(cache.entry_paths(&cache_key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    let current = paths.workspace_image_cache_current_image(&cache_key);
+    let current = cache.entry_paths(&cache_key).current_image().to_path_buf();
     tokio::fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache

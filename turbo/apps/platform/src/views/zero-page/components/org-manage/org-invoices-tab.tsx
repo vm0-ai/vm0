@@ -1,7 +1,7 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { IconCircleCheck, IconDownload } from "@tabler/icons-react";
+import { CircleCheck, Download } from "lucide-react";
 import {
   Button,
   cn,
@@ -22,8 +22,8 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+} from "@okouai/ui";
+import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import type { FormEvent } from "react";
 import {
   downloadMonthlyReceipts$,
@@ -219,7 +219,7 @@ function DownloadReceiptsDialog({
           className="gap-1.5"
           disabled={downloading}
         >
-          <IconDownload size={14} stroke={1.5} />
+          <Download size={14} />
           {downloading
             ? t(($) => {
                 return $.billing.invoices.preparingReceipts;
@@ -368,7 +368,7 @@ export function OrgInvoicesTab() {
                   </span>
                   {inv.status && (
                     <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-                      <IconCircleCheck size={12} className="text-green-600" />
+                      <CircleCheck size={12} className="text-green-600" />
                       {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                     </span>
                   )}
@@ -388,7 +388,7 @@ export function OrgInvoicesTab() {
                             href={inv.hostedInvoiceUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
                             aria-label={t(
                               ($) => {
                                 return $.billing.invoices.downloadInvoice;
@@ -396,7 +396,7 @@ export function OrgInvoicesTab() {
                               { month: invoiceMonth },
                             )}
                           >
-                            <IconDownload size={14} stroke={1.5} />
+                            <Download size={14} />
                           </a>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
@@ -413,7 +413,7 @@ export function OrgInvoicesTab() {
                     </TooltipProvider>
                   ) : (
                     <span className="flex h-7 w-7 items-center justify-center text-muted-foreground/30">
-                      <IconDownload size={14} stroke={1.5} />
+                      <Download size={14} />
                     </span>
                   )}
                 </div>

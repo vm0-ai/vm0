@@ -1,15 +1,22 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+  chatThreadsContract,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroBillingConcurrencyCheckoutContract,
+  zeroBillingConcurrencySubscriptionContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
-import type { QueueEntry } from "@vm0/api-contracts/contracts/runs";
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { zeroRunsQueueContract } from "@okouai/api-contracts/contracts/zero-runs";
+import type {
+  ConcurrencyInfo,
+  QueueEntry,
+  QueueResponse,
+} from "@okouai/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -18,10 +25,11 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { mockChatEventRows } from "../../zero-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
 
-const THREAD_ID = "thread-queue";
+const THREAD_ID = "ea000000-0000-4000-a000-000000000001";
 
 function queuedEntry(): QueueEntry {
   return {
@@ -39,20 +47,16 @@ function queuedEntry(): QueueEntry {
 }
 
 function queueResponse(overrides?: {
-  concurrency?: {
-    tier: "free" | "pro-suspend" | "pro" | "team" | "custom";
-    limit: number;
-    active: number;
-    available: number;
-  };
+  concurrency?: ConcurrencyInfo;
   queue?: QueueEntry[];
-}) {
+}): QueueResponse {
   return {
     concurrency: overrides?.concurrency ?? {
       tier: "free" as const,
       limit: 1,
       active: 1,
       available: 0,
+      memberUsage: [],
     },
     queue: overrides?.queue ?? [],
     runningTasks: [],
@@ -60,7 +64,26 @@ function queueResponse(overrides?: {
   };
 }
 
-function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
+function concurrencyWithMemberUsage(): ConcurrencyInfo {
+  return {
+    tier: "custom",
+    limit: 80,
+    active: 17,
+    available: 63,
+    memberUsage: [
+      { userId: "user-bingjie", displayName: "Bingjie Zang", active: 7 },
+      { userId: "user-qiqi", displayName: "You Liang", active: 5 },
+      { userId: "user-ethan", displayName: "Ethan Zhang", active: 3 },
+      { userId: "user-linghan", displayName: "Linghan Hu", active: 2 },
+    ],
+  };
+}
+
+function mockConcurrencyCapability(
+  canBuyConcurrency: boolean,
+  concurrencySubscriptions: BillingStatusResponse["concurrencySubscriptions"] = [],
+  purchaseReviewAvailable = false,
+): void {
   const status: BillingStatusResponse = {
     tier: "pro",
     canBuyConcurrency,
@@ -76,7 +99,10 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
     creditBreakdown: [],
     creditGrants: [],
     concurrencyLimit: 2,
-    concurrencySubscriptions: [],
+    concurrencySubscriptions,
+    ...(purchaseReviewAvailable
+      ? { concurrencyPurchaseReviewAvailable: true }
+      : {}),
   };
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, status);
@@ -84,22 +110,37 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
 }
 
 function mockQueuedThread(): void {
-  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (
-      query.sinceSeqId !== undefined ||
-      query.beforeSeqId !== undefined ||
-      query.sinceId !== undefined ||
-      query.beforeId !== undefined
-    ) {
-      return respond(200, { events: [] });
-    }
-
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
-      events: [
+      chatThreads: [
+        {
+          id: THREAD_ID,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          title: "Queued thread",
+          sortAt: "2026-01-01T00:00:02Z",
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:02Z",
+          pinnedAt: null,
+          renamedAt: null,
+          selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
+        },
+      ],
+      latestEventId: null,
+      latestSeqId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    return respond(200, {
+      rows: mockChatEventRows([
         {
           id: "msg-previous-user",
           threadId: THREAD_ID,
-          eventType: "input.prompt" as const,
+          eventType: "input.prompt",
           content: null,
           userMessage: {
             version: 1,
@@ -112,29 +153,41 @@ function mockQueuedThread(): void {
         {
           id: "msg-previous-assistant",
           threadId: THREAD_ID,
-          eventType: "run.completed" as const,
+          eventType: "output.message",
           content: "Previous answer",
           runId: "run-completed",
-          runLifecycleEvent: "completed",
           seqId: 2,
+          createdAt: "2026-01-01T00:00:01Z",
+        },
+        {
+          id: "msg-previous-completed",
+          threadId: THREAD_ID,
+          eventType: "run.completed",
+          content: null,
+          runId: "run-completed",
+          runLifecycleEvent: "completed",
+          seqId: 3,
           createdAt: "2026-01-01T00:00:01Z",
         },
         {
           id: "msg-queued-marker",
           threadId: THREAD_ID,
-          eventType: "run.queued" as const,
+          eventType: "run.queued",
           content: "Waiting in queue...",
           runId: "run-queued",
           runEventId: "queue:queued",
-          seqId: 3,
+          seqId: 4,
           createdAt: "2026-01-01T00:00:02Z",
         },
-      ],
+      ]).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      }),
     });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
 }
@@ -151,9 +204,27 @@ function getButtonByText(text: string): HTMLElement {
   return button;
 }
 
-async function openDrawer(): Promise<void> {
+function getButtonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((element) => {
+    return element.getAttribute("aria-label") === label;
+  });
+
+  if (!button) {
+    throw new Error(`Could not find button with label: ${label}`);
+  }
+
+  return button;
+}
+
+async function openDrawer(memberUsageEnabled = false): Promise<void> {
   mockQueuedThread();
-  detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+  detachedSetupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: {
+      [FeatureSwitchKey.ConcurrencyMemberUsage]: memberUsageEnabled,
+    },
+  });
   const queueButton = await waitFor(() => {
     return getButtonByText("queue...");
   });
@@ -161,12 +232,60 @@ async function openDrawer(): Promise<void> {
 }
 
 describe("queue drawer", () => {
+  it("shows active slot usage grouped by member", async () => {
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({ concurrency: concurrencyWithMemberUsage() }),
+      );
+    });
+
+    await openDrawer(true);
+
+    await waitFor(() => {
+      expect(screen.getByText("17 of 80 slots in use")).toBeInTheDocument();
+      expect(screen.getByText("Bingjie Zang")).toBeInTheDocument();
+      expect(screen.getByText("7 slots")).toBeInTheDocument();
+      expect(screen.getByText("You Liang")).toBeInTheDocument();
+      expect(screen.getByText("5 slots")).toBeInTheDocument();
+      expect(screen.getByText("Ethan Zhang")).toBeInTheDocument();
+      expect(screen.getByText("3 slots")).toBeInTheDocument();
+      expect(screen.getByText("Linghan Hu")).toBeInTheDocument();
+      expect(screen.getByText("2 slots")).toBeInTheDocument();
+      expect(screen.getByText("Available now")).toBeInTheDocument();
+      expect(screen.getByText("63 slots")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps the existing availability summary when member usage is disabled", async () => {
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({ concurrency: concurrencyWithMemberUsage() }),
+      );
+    });
+
+    await openDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText("63 slots available")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Bingjie Zang")).not.toBeInTheDocument();
+    expect(screen.queryByText("Available now")).not.toBeInTheDocument();
+  });
+
   it("shows the free tier limit and upgrade path", async () => {
     context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
+          concurrency: {
+            tier: "free",
+            limit: 1,
+            active: 1,
+            available: 0,
+            memberUsage: [],
+          },
         }),
       );
     });
@@ -188,7 +307,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
+          concurrency: {
+            tier: "pro",
+            limit: 2,
+            active: 2,
+            available: 0,
+            memberUsage: [],
+          },
         }),
       );
     });
@@ -207,7 +332,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 3, available: 2 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 3,
+            available: 2,
+            memberUsage: [],
+          },
         }),
       );
     });
@@ -224,13 +355,55 @@ describe("queue drawer", () => {
     expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
   });
 
+  it("refreshes the concurrency limit when billing changes in realtime", async () => {
+    let concurrencyLimit = 5;
+    mockConcurrencyCapability(true);
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: {
+            tier: "team",
+            limit: concurrencyLimit,
+            active: 3,
+            available: concurrencyLimit - 3,
+            memberUsage: [],
+          },
+        }),
+      );
+    });
+
+    await openDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 of 5 slots/)).toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+
+    concurrencyLimit = 6;
+    context.mocks.ably.trigger("billing:changed");
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 of 6 slots/)).toBeInTheDocument();
+      expect(screen.getByText("3 slots available")).toBeInTheDocument();
+    });
+  });
+
   it("shows additional concurrency checkout for Custom admins without plan upgrade", async () => {
     mockConcurrencyCapability(true);
     context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "custom", limit: 10, active: 10, available: 0 },
+          concurrency: {
+            tier: "custom",
+            limit: 10,
+            active: 10,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -247,12 +420,13 @@ describe("queue drawer", () => {
     expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
   });
 
-  it("lets Team admins buy additional concurrency when the queue is full", async () => {
+  it("reviews and confirms concurrency for a Team admin buying it for the first time", async () => {
     let checkoutQuantity: number | null = null;
-    mockConcurrencyCapability(true);
+    let checkoutSuccessUrl: string | null = null;
+    let previewQuantity: number | null = null;
+    mockConcurrencyCapability(true, [], true);
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -260,18 +434,36 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 5, available: 0 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 5,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
     });
     context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.preview,
+      ({ body, respond }) => {
+        previewQuantity = body.quantity;
+        return respond(200, {
+          currentQuantity: 0,
+          targetQuantity: body.quantity,
+          immediateAmountCents: 7000,
+          nextRecurringAmountCents: 22_000,
+          currency: "usd",
+        });
+      },
+    );
+    context.mocks.api(
       zeroBillingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         checkoutQuantity = body.quantity;
-        return respond(200, {
-          url: `https://checkout.stripe.com/test?concurrency=${body.quantity}`,
-        });
+        checkoutSuccessUrl = body.successUrl;
+        return respond(200, { url: body.successUrl });
       },
     );
 
@@ -283,6 +475,133 @@ describe("queue drawer", () => {
       expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
     });
 
+    const quantityInput = screen.getByRole("textbox", {
+      name: "Quantity",
+    });
+    expect(
+      getButtonByLabel("Decrease concurrency quantity"),
+    ).toBeInTheDocument();
+    expect(
+      getButtonByLabel("Increase concurrency quantity"),
+    ).toBeInTheDocument();
+    fireEvent.change(quantityInput, { target: { value: "" } });
+    expect(quantityInput).toHaveValue("");
+    expect(getButtonByText("Buy $0/month")).toBeDisabled();
+    fireEvent.change(quantityInput, { target: { value: "5" } });
+    await waitFor(() => {
+      expect(screen.getByText("Buy $500/month")).toBeInTheDocument();
+    });
+
+    const buyButton = getButtonByText("Buy $500/month");
+    click(buyButton);
+
+    await screen.findByText("$70.00");
+    const reviewDialog = screen.getByRole("dialog", {
+      name: "Buy concurrency",
+    });
+    expect(buyButton).toHaveTextContent("Updating...");
+    expect(buyButton).toBeDisabled();
+    expect(previewQuantity).toBe(5);
+    expect(within(reviewDialog).getByText("5")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$220.00/month")).toBeInTheDocument();
+    click(within(reviewDialog).getByText("Confirm"));
+
+    await waitFor(() => {
+      expect(checkoutQuantity).toBe(5);
+      expect(
+        screen.queryByRole("dialog", { name: "Buy concurrency" }),
+      ).toBeNull();
+    });
+    if (!checkoutSuccessUrl) {
+      throw new Error("Concurrency checkout success URL was not captured");
+    }
+    const successUrl = new URL(checkoutSuccessUrl);
+    expect(successUrl.pathname).toBe("/");
+    expect(successUrl.searchParams.get("concurrency")).toBe("purchased");
+  });
+
+  it("reviews and confirms additional concurrency for an active subscription", async () => {
+    let checkoutQuantity: number | null = null;
+    let previewedSubscriptionId: string | null = null;
+    let previewedQuantity: number | null = null;
+    let confirmedSubscriptionId: string | null = null;
+    let confirmedQuantity: number | null = null;
+    mockConcurrencyCapability(true, [
+      {
+        id: "sub_concurrency_active",
+        quantity: 2,
+        currentPeriodEnd: "2026-09-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        canReduce: true,
+        canChangeInApp: true,
+      },
+    ]);
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: {
+            tier: "team",
+            limit: 12,
+            active: 12,
+            available: 0,
+            memberUsage: [],
+          },
+          queue: [queuedEntry()],
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.create,
+      ({ body, respond }) => {
+        checkoutQuantity = body.quantity;
+        return respond(200, {
+          url: "https://checkout.stripe.com/unexpected",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingConcurrencySubscriptionContract.previewChange,
+      ({ params, body, respond }) => {
+        previewedSubscriptionId = params.subscriptionId;
+        previewedQuantity = body.quantity;
+        return respond(200, {
+          currentQuantity: 2,
+          targetQuantity: body.quantity,
+          immediateAmountCents: 4321,
+          nextRecurringAmountCents: body.quantity * 10_000,
+          currency: "usd",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingConcurrencySubscriptionContract.confirmChange,
+      ({ params, body, respond }) => {
+        confirmedSubscriptionId = params.subscriptionId;
+        confirmedQuantity = body.quantity;
+        return respond(200, {
+          status: "pending_payment",
+          hostedInvoiceUrl:
+            "https://invoice.stripe.test/queue-concurrency-change",
+        });
+      },
+    );
+
+    await openDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Review the amount due now and your updated monthly subscription.",
+        ),
+      ).toBeInTheDocument();
+    });
     const increaseQuantityButton = queryAllByRoleFast("button").find((el) => {
       return el.getAttribute("aria-label") === "Increase concurrency quantity";
     });
@@ -294,12 +613,81 @@ describe("queue drawer", () => {
       expect(screen.getByText("Buy $200/month")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Buy $200/month"));
+    const buyButton = getButtonByText("Buy $200/month");
+    click(buyButton);
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review concurrency change",
+    });
+    expect(buyButton).toHaveTextContent("Updating...");
+    expect(buyButton).toBeDisabled();
+    expect(checkoutQuantity).toBeNull();
+    expect(previewedSubscriptionId).toBe("sub_concurrency_active");
+    expect(previewedQuantity).toBe(4);
+    expect(within(reviewDialog).getByText("$43.21")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$400.00/month")).toBeInTheDocument();
+
+    click(within(reviewDialog).getByText("Confirm"));
 
     await waitFor(() => {
-      expect(checkoutQuantity).toBe(2);
+      expect(confirmedSubscriptionId).toBe("sub_concurrency_active");
+      expect(confirmedQuantity).toBe(4);
       expect(window.location.href).toBe(
-        "https://checkout.stripe.com/test?concurrency=2",
+        "https://invoice.stripe.test/queue-concurrency-change",
+      );
+    });
+  });
+
+  it("keeps the Checkout fallback for an active subscription from an older API", async () => {
+    let checkoutQuantity: number | null = null;
+    mockConcurrencyCapability(true, [
+      {
+        id: "sub_concurrency_legacy",
+        quantity: 2,
+        currentPeriodEnd: "2026-09-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+      },
+    ]);
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: {
+            tier: "team",
+            limit: 12,
+            active: 12,
+            available: 0,
+            memberUsage: [],
+          },
+          queue: [queuedEntry()],
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.create,
+      ({ body, respond }) => {
+        checkoutQuantity = body.quantity;
+        return respond(200, {
+          url: "https://checkout.stripe.com/legacy-concurrency",
+        });
+      },
+    );
+
+    await openDrawer();
+    await waitFor(() => {
+      expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
+    });
+    click(screen.getByText("Buy $100/month"));
+
+    await waitFor(() => {
+      expect(checkoutQuantity).toBe(1);
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/legacy-concurrency",
       );
     });
   });
@@ -307,7 +695,6 @@ describe("queue drawer", () => {
   it("hides additional concurrency checkout when the plan capability is disabled", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -316,7 +703,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 5, available: 0 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 5,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -337,7 +730,6 @@ describe("queue drawer", () => {
   it("hides billing actions from non-admins", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -345,7 +737,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
+          concurrency: {
+            tier: "pro",
+            limit: 2,
+            active: 2,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -363,7 +761,6 @@ describe("queue drawer", () => {
   it("hides additional concurrency checkout from non-admins", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -371,7 +768,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 5, available: 0 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 5,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );

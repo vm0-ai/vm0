@@ -2,11 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../mocks/server";
-import {
-  getModelSwitchGuidance,
-  switchCommand,
-  zeroModelCommand,
-} from "../index";
+import { switchCommand, zeroModelCommand } from "../index";
 
 const MODEL_POLICIES_RESPONSE = {
   workspaceDefaultModel: "claude-sonnet-4-6",
@@ -41,13 +37,13 @@ const MODEL_POLICIES_RESPONSE = {
   ],
 };
 
-describe("zero model command", () => {
+describe("okou model command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     mockConsoleLog.mockClear();
   });
 
@@ -69,7 +65,7 @@ describe("zero model command", () => {
 
   it("should list allowed models, providers, and built-in price tiers", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/model-policies", () => {
+      http.get("http://localhost:3000/api/okou/model-policies", () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
       }),
     );
@@ -84,23 +80,10 @@ describe("zero model command", () => {
     expect(logCalls).toContain("GPT 5.5");
     expect(logCalls).toContain("provider: api key");
     expect(logCalls).not.toContain("price tier: $$$");
-    expect(logCalls).toContain("zero model-provider set --help");
+    expect(logCalls).toContain("okou model-provider set --help");
   });
 
-  it("should point web users at the input-side model selector", async () => {
-    vi.stubEnv(
-      "VM0_APPEND_SYSTEM_PROMPT",
-      "You are currently running inside: Web\n\nYou are communicating with the user through the web chat UI.",
-    );
-
-    await switchCommand.parseAsync(["node", "cli"]);
-
-    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-      "model selector next to the input box in the web chat",
-    );
-  });
-
-  it("should point Telegram users at /model", async () => {
+  it("should ignore the inherited legacy prompt when showing switch guidance", async () => {
     vi.stubEnv(
       "VM0_APPEND_SYSTEM_PROMPT",
       "You are currently running inside: Telegram",
@@ -108,14 +91,8 @@ describe("zero model command", () => {
 
     await switchCommand.parseAsync(["node", "cli"]);
 
-    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-      "Use /model in Telegram",
-    );
-  });
-
-  it("should point other environments at app.vm0.ai", () => {
-    expect(getModelSwitchGuidance("schedule")).toContain(
-      "Open https://app.vm0.ai",
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      "Open https://app.okou.ai and switch models from the model selector next to the input box.",
     );
   });
 });

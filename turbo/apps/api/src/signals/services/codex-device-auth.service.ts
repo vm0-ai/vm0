@@ -1,7 +1,12 @@
 import { command } from "ccstate";
-import type { CodexDeviceAuthScope } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
-import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
+import type {
+  CodexDeviceAuthMode,
+  CodexDeviceAuthScope,
+} from "@okouai/api-contracts/contracts/codex-device-auth";
+import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { modelProviderAuthSessions } from "@okouai/db/schema/model-provider-auth-session";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
@@ -23,6 +28,12 @@ import {
   encryptSecretValue,
 } from "./crypto.utils";
 import { handleCodexAuthJsonPaste } from "./codex-auth-json-paste-handler";
+import {
+  upsertPersonalModelProviderAccount,
+  type PersonalProviderAccountErrorResponse,
+  type PersonalProviderAccountMutation,
+} from "./model-provider-account.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 import {
   upsertOrgMultiAuthModelProvider$,
   upsertUserMultiAuthModelProvider$,
@@ -47,6 +58,8 @@ const codexDeviceAuthProviderStateSchema = z.object({
   version: z.literal(1),
   type: z.literal("codex"),
   scope: z.enum(["org", "personal"]),
+  mode: z.enum(["add", "reconnect"]).optional(),
+  modelProviderId: z.string().uuid().optional(),
   deviceAuthId: z.string().min(1),
   userCode: z.string().min(1),
 });
@@ -173,7 +186,7 @@ type CodexAuthJsonPasteResult = Awaited<
   ReturnType<typeof handleCodexAuthJsonPaste>
 >;
 interface CodexAuthJsonPasteErrorResponse {
-  readonly status: 400;
+  readonly status: 400 | 404;
   readonly body: {
     readonly error: {
       readonly message: string;
@@ -382,13 +395,15 @@ async function createSession(args: {
   return session;
 }
 
-function registerStartAbortCancellation(args: {
-  readonly signal: AbortSignal;
-  readonly writeDb: Db;
-  readonly session: ModelProviderAuthSession;
-  readonly orgId: string;
-  readonly userId: string;
-}): () => void {
+function registerStartAbortCancellation(
+  args: {
+    readonly writeDb: Db;
+    readonly session: ModelProviderAuthSession;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): () => void {
   const cleanupOnAbort = () => {
     detach(
       cancelSession({
@@ -402,9 +417,9 @@ function registerStartAbortCancellation(args: {
       "cancel aborted Codex device auth session",
     );
   };
-  args.signal.addEventListener("abort", cleanupOnAbort, { once: true });
+  signal.addEventListener("abort", cleanupOnAbort, { once: true });
   return () => {
-    args.signal.removeEventListener("abort", cleanupOnAbort);
+    signal.removeEventListener("abort", cleanupOnAbort);
   };
 }
 
@@ -444,6 +459,8 @@ async function moveSessionToAwaitingApproval(args: {
   readonly writeDb: Db;
   readonly session: ModelProviderAuthSession;
   readonly scope: CodexDeviceAuthScope;
+  readonly mode?: CodexDeviceAuthMode;
+  readonly modelProviderId?: string;
   readonly deviceAuthId: string;
   readonly userCode: string;
 }): Promise<ModelProviderAuthSession> {
@@ -458,6 +475,10 @@ async function moveSessionToAwaitingApproval(args: {
           version: 1,
           type: "codex",
           scope: args.scope,
+          ...(args.mode ? { mode: args.mode } : {}),
+          ...(args.modelProviderId
+            ? { modelProviderId: args.modelProviderId }
+            : {}),
           deviceAuthId: args.deviceAuthId,
           userCode: args.userCode,
         },
@@ -530,11 +551,13 @@ async function requestOpenAiDeviceUserCode(
   };
 }
 
-async function pollOpenAiDeviceToken(args: {
-  readonly deviceAuthId: string;
-  readonly userCode: string;
-  readonly signal: AbortSignal;
-}): Promise<CodexDeviceTokenPollResult> {
+async function pollOpenAiDeviceToken(
+  args: {
+    readonly deviceAuthId: string;
+    readonly userCode: string;
+  },
+  signal: AbortSignal,
+): Promise<CodexDeviceTokenPollResult> {
   const response = await fetch(
     `${CODEX_DEVICE_AUTH_API_BASE_URL}/deviceauth/token`,
     {
@@ -544,7 +567,7 @@ async function pollOpenAiDeviceToken(args: {
         device_auth_id: args.deviceAuthId,
         user_code: args.userCode,
       }),
-      signal: args.signal,
+      signal,
     },
   );
 
@@ -574,11 +597,13 @@ async function pollOpenAiDeviceToken(args: {
   };
 }
 
-async function exchangeOpenAiAuthorizationCode(args: {
-  readonly authorizationCode: string;
-  readonly codeVerifier: string;
-  readonly signal: AbortSignal;
-}): Promise<CodexOAuthTokens> {
+async function exchangeOpenAiAuthorizationCode(
+  args: {
+    readonly authorizationCode: string;
+    readonly codeVerifier: string;
+  },
+  signal: AbortSignal,
+): Promise<CodexOAuthTokens> {
   const response = await fetch(`${CODEX_DEVICE_AUTH_ISSUER}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -589,7 +614,7 @@ async function exchangeOpenAiAuthorizationCode(args: {
       client_id: CODEX_DEVICE_AUTH_CLIENT_ID,
       code_verifier: args.codeVerifier,
     }),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -611,13 +636,17 @@ async function exchangeOpenAiAuthorizationCode(args: {
   };
 }
 
-export async function startCodexDeviceAuth(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly scope: CodexDeviceAuthScope;
-  readonly signal: AbortSignal;
-}): Promise<CodexDeviceAuthStartResult> {
+export async function startCodexDeviceAuth(
+  args: {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly scope: CodexDeviceAuthScope;
+    readonly mode?: CodexDeviceAuthMode;
+    readonly modelProviderId?: string;
+  },
+  signal: AbortSignal,
+): Promise<CodexDeviceAuthStartResult> {
   const startedAt = nowDate();
   await cancelActiveSessions({
     writeDb: args.writeDb,
@@ -632,19 +661,21 @@ export async function startCodexDeviceAuth(args: {
     userId: args.userId,
     expiresAt: expiresAt(startedAt),
   });
-  const unregisterAbortCancellation = registerStartAbortCancellation({
-    signal: args.signal,
-    writeDb: args.writeDb,
-    session,
-    orgId: args.orgId,
-    userId: args.userId,
-  });
+  const unregisterAbortCancellation = registerStartAbortCancellation(
+    {
+      writeDb: args.writeDb,
+      session,
+      orgId: args.orgId,
+      userId: args.userId,
+    },
+    signal,
+  );
   const userCodeResult = await onRejection(
-    settle(requestOpenAiDeviceUserCode(args.signal), args.signal),
+    settle(requestOpenAiDeviceUserCode(signal), signal),
     unregisterAbortCancellation,
   );
   unregisterAbortCancellation();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!userCodeResult.ok) {
     const message = unknownErrorMessage(
       userCodeResult.error,
@@ -666,10 +697,12 @@ export async function startCodexDeviceAuth(args: {
     writeDb: args.writeDb,
     session,
     scope: args.scope,
+    mode: args.mode,
+    modelProviderId: args.modelProviderId,
     deviceAuthId: userCodeResult.value.deviceAuthId,
     userCode: userCodeResult.value.userCode,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return {
     ok: true,
@@ -732,47 +765,68 @@ function isSessionExpired(session: ModelProviderAuthSession): boolean {
   return session.expiresAt.getTime() <= nowDate().getTime();
 }
 
+function personalAccountMutation(args: {
+  readonly mode: CodexDeviceAuthMode | undefined;
+  readonly modelProviderId: string | undefined;
+}): PersonalProviderAccountMutation {
+  if (args.mode === "add") {
+    return { kind: "add" };
+  }
+  if (args.mode === "reconnect" && args.modelProviderId) {
+    return { kind: "reconnect", accountId: args.modelProviderId };
+  }
+  return { kind: "replace-active" };
+}
+
+interface ImportCodexAuthJsonArgs {
+  readonly scope: CodexDeviceAuthScope;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly rawAuthJson: string;
+  readonly accountMutation?: PersonalProviderAccountMutation;
+}
+
+interface ImportedCodexPasteArgs {
+  readonly authMethod: "auth_json";
+  readonly secretValues: {
+    readonly CHATGPT_ACCESS_TOKEN: string;
+    readonly CHATGPT_REFRESH_TOKEN: string;
+    readonly CHATGPT_ACCOUNT_ID: string;
+    readonly CHATGPT_ID_TOKEN: string;
+  };
+  readonly selectedModel: string | undefined;
+  readonly metadata: {
+    readonly externalAccountId: string;
+    readonly accountEmail: string | null;
+    readonly tokenExpiresAt: Date | null;
+    readonly workspaceName: string | null;
+    readonly planType: string | null;
+    readonly subscriptionResetPeriod?: string | null;
+    readonly subscriptionNextResetAt?: Date | null;
+  };
+}
+
+type ImportCodexAuthJsonResult =
+  | {
+      readonly status: "complete";
+      readonly body: CodexAuthJsonPasteSuccessBody;
+    }
+  | {
+      readonly status: "auth_error";
+      readonly response: CodexAuthJsonPasteErrorResponse;
+    };
+
 const importCodexAuthJson$ = command(
   async (
-    { set },
-    args: {
-      readonly scope: CodexDeviceAuthScope;
-      readonly orgId: string;
-      readonly userId: string;
-      readonly rawAuthJson: string;
-    },
+    { get, set },
+    args: ImportCodexAuthJsonArgs,
     signal: AbortSignal,
-  ): Promise<
-    | {
-        readonly status: "complete";
-        readonly body: CodexAuthJsonPasteSuccessBody;
-      }
-    | {
-        readonly status: "auth_error";
-        readonly response: CodexAuthJsonPasteErrorResponse;
-      }
-  > => {
+  ): Promise<ImportCodexAuthJsonResult> => {
     const common = {
       rawAuthJson: args.rawAuthJson,
       selectedModel: undefined,
       signal,
-      upsert: async (pasteArgs: {
-        readonly authMethod: "auth_json";
-        readonly secretValues: {
-          readonly CHATGPT_ACCESS_TOKEN: string;
-          readonly CHATGPT_REFRESH_TOKEN: string;
-          readonly CHATGPT_ACCOUNT_ID: string;
-          readonly CHATGPT_ID_TOKEN: string;
-        };
-        readonly selectedModel: string | undefined;
-        readonly metadata: {
-          readonly tokenExpiresAt: Date | null;
-          readonly workspaceName: string | null;
-          readonly planType: string | null;
-          readonly subscriptionResetPeriod?: string | null;
-          readonly subscriptionNextResetAt?: Date | null;
-        };
-      }) => {
+      upsert: async (pasteArgs: ImportedCodexPasteArgs) => {
         if (args.scope === "org") {
           const result = await set(
             upsertOrgMultiAuthModelProvider$,
@@ -790,6 +844,27 @@ const importCodexAuthJson$ = command(
               "upsertOrgMultiAuthModelProvider$ unexpectedly returned BAD_REQUEST during codex device auth",
             );
           }
+          return result;
+        }
+        if (args.accountMutation) {
+          const featureSwitchContext = await get(
+            userFeatureSwitchContext(args.orgId, args.userId),
+          );
+          const result = await upsertPersonalModelProviderAccount(
+            {
+              db: set(writeDb$),
+              orgId: args.orgId,
+              userId: args.userId,
+              type: CODEX_DEVICE_AUTH_CONNECTOR_TYPE,
+              authMethod: pasteArgs.authMethod,
+              secretValues: pasteArgs.secretValues,
+              selectedModel: pasteArgs.selectedModel,
+              metadata: pasteArgs.metadata,
+              mode: args.accountMutation,
+              featureSwitchContext,
+            },
+            signal,
+          );
           return result;
         }
         const result = await set(
@@ -815,19 +890,25 @@ const importCodexAuthJson$ = command(
 
     const response =
       args.scope === "org"
-        ? await handleCodexAuthJsonPaste({
-            scope: "org",
-            orgId: args.orgId,
-            ...common,
-          })
-        : await handleCodexAuthJsonPaste({
-            scope: "personal",
-            orgId: args.orgId,
-            userId: args.userId,
-            ...common,
-          });
+        ? await handleCodexAuthJsonPaste(
+            {
+              scope: "org",
+              orgId: args.orgId,
+              ...common,
+            },
+            common.signal,
+          )
+        : await handleCodexAuthJsonPaste(
+            {
+              scope: "personal",
+              orgId: args.orgId,
+              userId: args.userId,
+              ...common,
+            },
+            common.signal,
+          );
 
-    if (response.status === 400) {
+    if (response.status === 400 || response.status === 404) {
       return {
         status: "auth_error",
         response: codexAuthJsonPasteErrorResponse(response),
@@ -867,10 +948,10 @@ function extractApiErrorBody(
 }
 
 function codexAuthJsonPasteErrorResponse(
-  response: CodexAuthJsonPasteResult,
+  response: PersonalProviderAccountErrorResponse | CodexAuthJsonPasteResult,
 ): CodexAuthJsonPasteErrorResponse {
   return {
-    status: 400,
+    status: response.status === 404 ? 404 : 400,
     body: extractApiErrorBody(response.body),
   };
 }
@@ -949,11 +1030,13 @@ const completeLoadedCodexDeviceAuth$ = command(
       };
     }
 
-    const deviceToken = await pollOpenAiDeviceToken({
-      deviceAuthId: providerState.deviceAuthId,
-      userCode: providerState.userCode,
+    const deviceToken = await pollOpenAiDeviceToken(
+      {
+        deviceAuthId: providerState.deviceAuthId,
+        userCode: providerState.userCode,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (deviceToken.status === "pending") {
       return { status: "pending", errorMessage: null };
@@ -984,6 +1067,8 @@ const completeLoadedCodexDeviceAuth$ = command(
         writeDb,
         session,
         scope: providerState.scope,
+        mode: providerState.mode,
+        modelProviderId: providerState.modelProviderId,
         orgId: args.orgId,
         userId: args.userId,
         authorizationCode: deviceToken.authorizationCode,
@@ -996,11 +1081,13 @@ const completeLoadedCodexDeviceAuth$ = command(
 
 const importClaimedCodexDeviceAuth$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly writeDb: Db;
       readonly session: ModelProviderAuthSession;
       readonly scope: CodexDeviceAuthScope;
+      readonly mode: CodexDeviceAuthMode | undefined;
+      readonly modelProviderId: string | undefined;
       readonly orgId: string;
       readonly userId: string;
       readonly authorizationCode: string;
@@ -1009,11 +1096,13 @@ const importClaimedCodexDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<CodexDeviceAuthCompleteResult> => {
     const tokens = await settle(
-      exchangeOpenAiAuthorizationCode({
-        authorizationCode: args.authorizationCode,
-        codeVerifier: args.codeVerifier,
+      exchangeOpenAiAuthorizationCode(
+        {
+          authorizationCode: args.authorizationCode,
+          codeVerifier: args.codeVerifier,
+        },
         signal,
-      }),
+      ),
       signal,
     );
     signal.throwIfAborted();
@@ -1036,6 +1125,19 @@ const importClaimedCodexDeviceAuth$ = command(
       };
     }
 
+    const featureSwitchContext =
+      args.scope === "personal"
+        ? await get(userFeatureSwitchContext(args.orgId, args.userId))
+        : undefined;
+    signal.throwIfAborted();
+    const accountMutation =
+      featureSwitchContext &&
+      isFeatureEnabled(
+        FeatureSwitchKey.PersonalModelProviderAccounts,
+        featureSwitchContext,
+      )
+        ? personalAccountMutation(args)
+        : undefined;
     const imported = await settle(
       set(
         importCodexAuthJson$,
@@ -1044,6 +1146,7 @@ const importClaimedCodexDeviceAuth$ = command(
           orgId: args.orgId,
           userId: args.userId,
           rawAuthJson: authJsonFromTokens(tokens.value),
+          ...(accountMutation ? { accountMutation } : {}),
         },
         signal,
       ),

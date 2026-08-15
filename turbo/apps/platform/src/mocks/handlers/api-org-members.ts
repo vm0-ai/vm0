@@ -2,12 +2,12 @@ import {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/api-contracts/contracts/zero-org-members";
-import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
+} from "@okouai/api-contracts/contracts/zero-org-members";
+import type { OrgMembersResponse } from "@okouai/api-contracts/contracts/org-members";
 import { mockApi } from "../msw-contract.ts";
 
 let mockOrgMembersResponse: OrgMembersResponse = {
-  slug: "user-12345678",
+  name: "User Workspace",
   role: "admin",
   members: [],
   pendingInvitations: [],
@@ -23,7 +23,7 @@ export function setMockOrgMembers(
 
 export function resetMockOrgMembers(): void {
   mockOrgMembersResponse = {
-    slug: "user-12345678",
+    name: "User Workspace",
     role: "admin",
     members: [],
     pendingInvitations: [],

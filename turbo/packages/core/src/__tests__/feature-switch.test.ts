@@ -11,24 +11,9 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
-      true,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
-    ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, {})).toBe(
-      true,
-    );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CustomConnectorPermissions, {}),
-    ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ArtifactKeyV2, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {})).toBe(
-      true,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.HtmlResourceIndex, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -39,31 +24,6 @@ describe("isFeatureEnabled", () => {
 
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
-      false,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
-      false,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
-      false,
-    );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
-    ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
-      false,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.ZeroImageRecognition, {})).toBe(
-      false,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, {})).toBe(
-      false,
-    );
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -135,63 +95,69 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroImageRecognition]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroMailReplyFollowUp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
+    expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
+    ).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatSmoothAutoScroll]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(
-      staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
-    ).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
+    expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ConnectorDiscovery]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PresentationArtifactViewport]).toBe(
+      true,
+    );
+    expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroImageRecognition]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroMailReplyFollowUp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
-      false,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(
-      false,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
-      false,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(
-      otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
+      otherOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatSmoothAutoScroll]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
+    expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ConnectorDiscovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PresentationArtifactViewport]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
+      true,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {

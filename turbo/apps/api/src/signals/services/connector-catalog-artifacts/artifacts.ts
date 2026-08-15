@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
+import { SYSTEM_ORG_ID } from "@okouai/core/storage-names";
 
 import {
   artifactKeySchema,
@@ -17,7 +17,6 @@ import {
   connectorAccessSourceSchema,
   connectorAuthClientSourceSchema,
   connectorAuthMethodIdSchema,
-  connectorFeatureSwitchKeySchema,
   connectorRevokeSourceSchema,
   connectorStorageSourceSchema,
   connectorValueRefSchema,
@@ -26,9 +25,7 @@ import {
 } from "./source";
 import { isConnectorCatalogIconKey } from "./icon";
 
-export { connectorCatalogVersionSchema } from "./common";
-
-export const SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION = 2;
+export const SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION = 3;
 export const CONNECTOR_CATALOG_ACTIVE_KEY = `connectors/v${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION}/active.json`;
 
 export const CONNECTOR_CATALOG_MAX_RAW_BYTES = 8 * 1024 * 1024;
@@ -142,7 +139,6 @@ export const connectorCatalogAuthMethodSchema = z
     label: z.string().min(1),
     description: z.string().min(1).nullable(),
     visible: z.boolean(),
-    featureSwitch: connectorFeatureSwitchKeySchema.nullable(),
     client: connectorAuthClientSourceSchema.optional(),
     storage: connectorStorageSourceSchema,
     grant: connectorCatalogGrantSchema,

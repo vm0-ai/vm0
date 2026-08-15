@@ -1,7 +1,7 @@
 import {
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { nowDate } from "../../lib/time.ts";
 import { userPermissionGrantExpiresAt } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { mockApi } from "../msw-contract.ts";

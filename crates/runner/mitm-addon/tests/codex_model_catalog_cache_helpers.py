@@ -131,14 +131,20 @@ def catalog_response(
     )
 
 
-async def prepare_miss(flow: http.HTTPFlow) -> None:
+async def prepare_miss(flow: http.HTTPFlow, *, expected_encoding: str = "identity") -> None:
     await catalog_cache.prepare_request(flow, request_end_stream=True)
     assert flow.response is None
-    assert flow.request.headers["Accept-Encoding"] == "br"
+    assert flow.request.headers["Accept-Encoding"] == expected_encoding
     assert "If-None-Match" not in flow.request.headers
 
 
-def finish_response(flow: http.HTTPFlow) -> dict[str, object]:
+async def prepare_prefetch_miss(flow: http.HTTPFlow) -> None:
+    flow.request.headers["X-VM0-Codex-Model-Catalog-Prefetch"] = "1"
+    catalog_cache.capture_and_strip_prefetch_marker(flow)
+    await prepare_miss(flow, expected_encoding="br")
+
+
+async def finish_response(flow: http.HTTPFlow) -> dict[str, object]:
     assert flow.response is not None
     wire_body = flow.response.raw_content or b""
     mitm_addon.responseheaders(flow)
@@ -147,7 +153,9 @@ def finish_response(flow: http.HTTPFlow) -> dict[str, object]:
         split = len(wire_body) // 2
         assert stream(wire_body[:split]) == wire_body[:split]
         assert stream(wire_body[split:]) == wire_body[split:]
-    catalog_cache.finalize_response(flow)
+    finalization = catalog_cache.finalize_response(flow)
+    if finalization is not None:
+        await finalization
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(flow, telemetry)
     return telemetry
@@ -158,8 +166,11 @@ async def install_catalog(
     *,
     body: bytes = CATALOG_BODY,
     etag: str = CATALOG_ETAG,
-    encoding: str = "br",
+    encoding: str = "identity",
 ) -> dict[str, object]:
-    await prepare_miss(flow)
+    if encoding == "br":
+        await prepare_prefetch_miss(flow)
+    else:
+        await prepare_miss(flow)
     flow.response = catalog_response(body=body, etag=etag, encoding=encoding)
-    return finish_response(flow)
+    return await finish_response(flow)

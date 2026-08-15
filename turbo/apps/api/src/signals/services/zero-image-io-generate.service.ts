@@ -1,12 +1,19 @@
 import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usagePricing } from "@okouai/db/schema/usage-pricing";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import {
+  canonicalUsagePricingProvider,
+  resolveUsagePricingProvider,
+  usagePricingResolution$,
+  type UsagePricingResolution,
+} from "../context/usage-pricing-resolution";
 import { db$, writeDb$ } from "../external/db";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
 import { storeGeneratedArtifactObject$ } from "./artifact-storage.service";
@@ -454,6 +461,7 @@ interface RecordedImage {
   readonly contentType: string;
   readonly size: number;
   readonly url: string;
+  readonly embedUrl: string;
   readonly creditsCharged: number;
   readonly model: string;
   readonly provider: ImageProvider;
@@ -1162,10 +1170,13 @@ function mapPricingRows(
     readonly unitPrice: number;
     readonly unitSize: number;
   }[],
+  resolution: UsagePricingResolution,
 ): ImagePricing {
   const pricing = new Map<string, ImagePricingRow>();
   for (const row of rows) {
-    const model = normalizeImageModel(row.provider);
+    const model = normalizeImageModel(
+      canonicalUsagePricingProvider(resolution, USAGE_KIND, row.provider),
+    );
     if (model && includesString(IMAGE_PRICING_CATEGORIES, row.category)) {
       pricing.set(imagePricingKey(model, row.category), {
         provider: model,
@@ -1181,6 +1192,10 @@ function mapPricingRows(
 export const imagePricing$: Computed<Promise<ImagePricing>> = computed(
   async (get): Promise<ImagePricing> => {
     const db = get(db$);
+    const resolution = get(usagePricingResolution$);
+    const lookupProviders = IMAGE_MODELS.map((provider) => {
+      return resolveUsagePricingProvider(resolution, USAGE_KIND, provider);
+    });
     const rows = await db
       .select({
         provider: usagePricing.provider,
@@ -1192,19 +1207,19 @@ export const imagePricing$: Computed<Promise<ImagePricing>> = computed(
       .where(
         and(
           eq(usagePricing.kind, USAGE_KIND),
-          inArray(usagePricing.provider, [...IMAGE_MODELS]),
+          inArray(usagePricing.provider, lookupProviders),
           inArray(usagePricing.category, [...IMAGE_PRICING_CATEGORIES]),
         ),
       );
 
-    return mapPricingRows(rows);
+    return mapPricingRows(rows, resolution);
   },
 );
 
 export const checkImageCredits$ = command(
   async (
     { set },
-    args: { readonly orgId: string },
+    args: { readonly orgId: string; readonly userId: string },
     signal: AbortSignal,
   ): Promise<boolean> => {
     return await set(checkBillableOperationCredits$, args, signal);
@@ -1623,7 +1638,6 @@ export const recordGeneratedImage$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
-        orgId: params.orgId,
         filenamePrefix: "image",
         extension: extensionForFormat(params.generation.outputFormat),
         body: params.generation.imageBytes,
@@ -1708,6 +1722,10 @@ export const recordGeneratedImage$ = command(
       contentType,
       size: params.generation.imageBytes.byteLength,
       url,
+      // Models such as seedream4 only emit PNG. Serving the stored object
+      // through Cloudflare Image Resizing negotiates AVIF/WebP per request, so
+      // pages embedding this image download a fraction of the PNG bytes.
+      embedUrl: r2ImageTransformUrl(url, {}),
       creditsCharged: estimateImageCredits(
         params.generation.model,
         params.generation.billing,

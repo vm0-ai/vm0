@@ -1,13 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  IconAdjustmentsHorizontal,
-  IconCircleCheck,
-  IconDotsVertical,
-  IconLoader2,
-  IconPlus,
-} from "@tabler/icons-react";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
   Button,
@@ -15,18 +9,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
-import { LoadingSwitch } from "../../../components/loading-switch.tsx";
+import { ConnectorPermissionRow } from "./connector-permission-row.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   launchConnectorConnect,
@@ -66,9 +56,12 @@ type OnboardingConnectorCardProps = {
 
 type ActionConnectorCardProps = {
   readonly variant: "action";
-  readonly connector: PlatformConnectorCatalogStatusItem;
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly description: string;
   readonly connected: boolean;
   readonly complete: boolean;
+  readonly reconnectRequired: boolean;
   readonly busy: boolean;
   readonly className?: string;
   readonly onActivate: () => void;
@@ -154,9 +147,9 @@ function CatalogConnectorCard({
           aria-hidden="true"
         >
           {busy ? (
-            <IconLoader2 size={16} stroke={1.5} className="animate-spin" />
+            <Loader2 size={16} className="animate-spin" />
           ) : (
-            <IconPlus size={14} stroke={1.5} />
+            <Plus size={14} />
           )}
         </span>
       </div>
@@ -188,7 +181,7 @@ function ConnectorConnectionStatus({
   if (busy) {
     return (
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
+        <Loader2 size={12} className="animate-spin" />
         {t(($) => {
           return $.connectors.card.connecting;
         })}
@@ -229,9 +222,11 @@ function ConnectorConnectionStatus({
             return $.connectors.card.connected;
           }));
     return (
-      <span className="flex items-center gap-2 truncate text-xs text-muted-foreground">
+      <span className="flex min-w-0 items-center gap-2 truncate text-xs text-muted-foreground">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-        <span className="truncate">{connectedText}</span>
+        <span className="min-w-0 truncate" title={connectedText}>
+          {connectedText}
+        </span>
       </span>
     );
   }
@@ -276,7 +271,7 @@ function ConnectionConnectorCard({
         </span>
       </div>
       <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
-        <div className="flex shrink-0 items-center gap-2 overflow-hidden">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <ConnectorConnectionStatus
             connector={connector}
             connected={connected}
@@ -298,7 +293,7 @@ function ConnectionConnectorCard({
                   })}
                   disabled={busy}
                 >
-                  <IconDotsVertical size={14} stroke={1.5} />
+                  <EllipsisVertical size={14} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
@@ -401,7 +396,7 @@ function OnboardingConnectorCard({
       </div>
       {connected ? (
         <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-primary">
-          <IconCircleCheck size={16} aria-hidden="true" />
+          <CircleCheck size={16} aria-hidden="true" />
           {t(($) => {
             return $.connectors.card.connected;
           })}
@@ -420,7 +415,7 @@ function OnboardingConnectorCard({
           }}
         >
           {busy ? (
-            <IconLoader2 className="animate-spin" aria-hidden="true" />
+            <Loader2 className="animate-spin" aria-hidden="true" />
           ) : null}
           {t(($) => {
             return $.connectors.actions.connect;
@@ -432,16 +427,17 @@ function OnboardingConnectorCard({
 }
 
 function ActionConnectorCard({
-  connector,
+  icon,
+  label,
+  description,
   connected,
   complete,
+  reconnectRequired,
   busy,
   className,
   onActivate,
 }: ActionConnectorCardProps) {
   const { t } = useTranslation();
-  const reconnectRequired =
-    connectorCurrentConnectionStatus(connector) === "reconnect-required";
   const actionLabel = complete
     ? t(($) => {
         return $.connectors.card.authorized;
@@ -468,17 +464,17 @@ function ActionConnectorCard({
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon icon={connector.icon} size={22} />
+          {icon}
         </div>
         <div className="min-w-0">
           <div
             data-testid="connector-card-label"
             className="truncate text-[0.9375rem] font-medium text-foreground"
           >
-            {connector.label}
+            {label}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {connector.description}
+            {description}
           </div>
         </div>
       </div>
@@ -486,9 +482,9 @@ function ActionConnectorCard({
         type="button"
         disabled={complete || busy}
         onClick={onActivate}
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {busy ? <IconLoader2 size={15} className="animate-spin" /> : null}
+        {busy ? <Loader2 size={15} className="animate-spin" /> : null}
         {actionLabel}
       </button>
     </div>
@@ -513,84 +509,29 @@ function PermissionConnectorCard({
   onManage,
   onToggle,
 }: PermissionConnectorCardProps) {
-  const { t } = useTranslation();
   return (
-    <>
-      <div className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors">
-        <ConnectorIcon icon={connector.icon} size={20} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span
-              data-testid="connector-card-label"
-              className="text-sm font-medium text-foreground"
-            >
-              {connector.label}
-            </span>
-            {connector.connection?.externalUsername ? (
-              <span className="text-xs text-muted-foreground">
-                @{connector.connection.externalUsername}
-              </span>
-            ) : null}
-          </div>
-          {connector.description ? (
-            <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-              {permissionDescription(connector.description)}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {showManage ? (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={onManage}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    aria-label={t(
-                      ($) => {
-                        return $.connectors.card.managePermissionsFor;
-                      },
-                      { connector: connector.label },
-                    )}
-                  >
-                    <IconAdjustmentsHorizontal size={15} stroke={1.5} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <p className="text-xs">
-                    {t(($) => {
-                      return $.connectors.card.managePermissions;
-                    })}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : null}
-          <LoadingSwitch
-            checked={enabled}
-            onCheckedChange={onToggle}
-            loading={loading}
-            ariaLabel={t(
-              ($) => {
-                return $.connectors.card.accessFor;
-              },
-              {
-                action: enabled
-                  ? t(($) => {
-                      return $.connectors.actions.revoke;
-                    })
-                  : t(($) => {
-                      return $.connectors.actions.grant;
-                    }),
-                connector: connector.label,
-              },
-            )}
-          />
-        </div>
-      </div>
-      {!isLast ? <div className="mx-5 border-b border-border/50" /> : null}
-    </>
+    <ConnectorPermissionRow
+      icon={<ConnectorIcon icon={connector.icon} size={20} />}
+      label={connector.label}
+      labelSuffix={
+        connector.connection?.externalUsername ? (
+          <span className="text-xs text-muted-foreground">
+            @{connector.connection.externalUsername}
+          </span>
+        ) : undefined
+      }
+      description={
+        connector.description
+          ? permissionDescription(connector.description)
+          : undefined
+      }
+      enabled={enabled}
+      loading={loading}
+      showManage={showManage}
+      isLast={isLast}
+      onManage={onManage}
+      onToggle={onToggle}
+    />
   );
 }
 

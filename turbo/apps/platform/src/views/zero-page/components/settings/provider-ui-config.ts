@@ -4,7 +4,7 @@ import {
   type ModelProviderType,
   type SupportedRunModel,
   type Vm0ModelPriceTier,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { i18n } from "../../../../i18n/index.ts";
 
 /**
@@ -22,8 +22,7 @@ export function getUILabel(type: ModelProviderType): string {
         return $.settings.models.picker.providerLabels.claudeCodeOauth;
       });
     }
-    case "deepseek-api-key":
-    case "deepseek-codex": {
+    case "deepseek": {
       return i18n.t(($) => {
         return $.settings.models.picker.providerLabels.deepseek;
       });
@@ -69,19 +68,10 @@ const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
     "claude-fable-5": "anthropic-api-key",
     "claude-opus-5": "anthropic-api-key",
     "claude-opus-4-8": "anthropic-api-key",
-    "claude-opus-4-7": "anthropic-api-key",
-    "claude-opus-4-6": "anthropic-api-key",
     "claude-sonnet-5": "anthropic-api-key",
     "claude-sonnet-4-6": "anthropic-api-key",
-    "deepseek-v4-pro": "deepseek-api-key",
-    "deepseek-v4-flash": "deepseek-codex",
-    "kimi-k3": "moonshot-api-key",
-    "kimi-k2.7-code": "moonshot-api-key",
-    "MiniMax-M3": "minimax-api-key",
-    "glm-5.2": "zai-api-key",
-    "glm-5.1": "zai-api-key",
-    "mimo-v2.5": "openrouter-api-key",
-    "hy3-preview": "openrouter-api-key",
+    "deepseek-v4-flash": "deepseek",
+    "deepseek-v4-pro": "deepseek",
     "gpt-5.6-sol": "openai-api-key",
     "gpt-5.6-terra": "openai-api-key",
     "gpt-5.6-luna": "openai-api-key",

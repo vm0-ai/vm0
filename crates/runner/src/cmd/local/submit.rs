@@ -15,7 +15,9 @@ use clap::Args;
 use tokio::signal::unix::{Signal, SignalKind, signal};
 use uuid::Uuid;
 
-use crate::active_input::{ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, active_input_payload_len};
+use crate::active_input::{
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, identified_active_input_payload_len,
+};
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
@@ -70,14 +72,14 @@ pub struct SubmitArgs {
     active_inputs: Vec<String>,
 }
 
-/// Detect the system timezone from the `TZ` env var or `/etc/timezone`.
-fn detect_system_timezone() -> Option<String> {
+/// Detect the system timezone from the `TZ` env var or a timezone file.
+fn detect_system_timezone(timezone_file: &Path) -> Option<String> {
     if let Ok(tz) = std::env::var("TZ")
         && !tz.is_empty()
     {
         return Some(tz);
     }
-    std::fs::read_to_string("/etc/timezone")
+    std::fs::read_to_string(timezone_file)
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -284,7 +286,6 @@ struct SubmitPlan {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct DelayedActiveInput {
     sequence: u64,
-    message_id: String,
     after: Duration,
     text: String,
 }
@@ -315,7 +316,6 @@ impl ActiveInputProducer {
                         let entry = local_queue::ActiveInputEntry {
                             run_id: queue.job_id,
                             sequence: input.sequence,
-                            message_id: input.message_id,
                             text: input.text,
                         };
                         let queue_state = queue_state.clone();
@@ -392,7 +392,7 @@ impl SubmitPlan {
             .map_err(|e| RunnerError::Config(format!("create cancels dir: {e}")))?;
 
         let job_id = RunId::new_v4();
-        let active_inputs = Self::parse_active_inputs(&active_inputs, timeout, job_id)?;
+        let active_inputs = Self::parse_active_inputs(&active_inputs, timeout)?;
         let request = JobRequest {
             job_id,
             prompt,
@@ -400,7 +400,7 @@ impl SubmitPlan {
             vars: None,
             environment,
             secret_environment,
-            user_timezone: detect_system_timezone(),
+            user_timezone: detect_system_timezone(Path::new("/etc/timezone")),
             profile: Some(profile.clone()),
             reuse_key: chat_thread_id.map(|thread_id| format!("thread:{thread_id}")),
             session_id,
@@ -425,11 +425,10 @@ impl SubmitPlan {
     fn parse_active_inputs(
         values: &[String],
         timeout: Duration,
-        job_id: RunId,
     ) -> RunnerResult<Vec<DelayedActiveInput>> {
         let mut inputs: Vec<DelayedActiveInput> = Vec::with_capacity(values.len());
         for (index, value) in values.iter().enumerate() {
-            let input = Self::parse_active_input(value, index as u64 + 1, timeout, job_id)?;
+            let input = Self::parse_active_input(value, index as u64 + 1, timeout)?;
             if let Some(previous) = inputs.last()
                 && input.after < previous.after
             {
@@ -446,7 +445,6 @@ impl SubmitPlan {
         value: &str,
         sequence: u64,
         timeout: Duration,
-        job_id: RunId,
     ) -> RunnerResult<DelayedActiveInput> {
         let rest = value.strip_prefix("after=").ok_or_else(|| {
             RunnerError::Config(
@@ -474,7 +472,7 @@ impl SubmitPlan {
                 "invalid --active-input value: text must not contain NUL characters".to_string(),
             ));
         }
-        let payload_len = active_input_payload_len(text).map_err(|e| {
+        let payload_len = identified_active_input_payload_len(text).map_err(|e| {
             RunnerError::Internal(format!(
                 "serialize active-input payload for validation: {e}"
             ))
@@ -486,7 +484,6 @@ impl SubmitPlan {
         }
         Ok(DelayedActiveInput {
             sequence,
-            message_id: format!("local-active-input-{job_id}-{sequence}"),
             after,
             text: text.to_owned(),
         })
@@ -713,6 +710,12 @@ impl SubmitPlan {
     fn finish_completed(&self, buf: &[u8]) -> RunnerResult<ExitCode> {
         let response: JobResponse = serde_json::from_slice(buf)
             .map_err(|e| RunnerError::Internal(format!("parse result: {e}")))?;
+        if response.run_id != self.queue.job_id {
+            return Err(RunnerError::Internal(format!(
+                "local result run_id mismatch: expected {}, actual {}",
+                self.queue.job_id, response.run_id
+            )));
+        }
 
         self.queue.cleanup_completed();
 

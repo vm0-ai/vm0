@@ -2,15 +2,18 @@
 pub(crate) enum EffectiveCliFramework {
     ClaudeCode,
     Codex,
+    Pi,
 }
 
 pub(crate) fn effective_cli_framework(cli_agent_type: &str) -> EffectiveCliFramework {
-    if normalized_cli_agent_type(cli_agent_type) == "codex" {
-        EffectiveCliFramework::Codex
-    } else {
-        // Guest-agent currently falls back unknown CLI_AGENT_TYPE values to
-        // Claude Code. Keep runner env gating aligned with that behavior.
-        EffectiveCliFramework::ClaudeCode
+    match normalized_cli_agent_type(cli_agent_type) {
+        "codex" => EffectiveCliFramework::Codex,
+        "pi" => EffectiveCliFramework::Pi,
+        _ => {
+            // Guest-agent currently falls back unknown CLI_AGENT_TYPE values to
+            // Claude Code. Keep runner env gating aligned with that behavior.
+            EffectiveCliFramework::ClaudeCode
+        }
     }
 }
 

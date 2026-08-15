@@ -1,8 +1,8 @@
 {
-  "extends": "@vm0/typescript-config/base.json",
+  "extends": "@okouai/typescript-config/base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022"],
     "noEmit": true,
     "incremental": true,
     "tsBuildInfoFile": "./.tsbuildinfo",

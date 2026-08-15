@@ -19,7 +19,6 @@ const slackOrgStatusSchema = z.object({
   installUrl: z.string().nullable().optional(),
   connectUrl: z.string().nullable().optional(),
   defaultAgentName: z.string().nullable().optional(),
-  agentOrgSlug: z.string().nullable().optional(),
   environment: slackEnvironmentSchema.optional(),
   /** True when the installation's granted scopes are outdated (admin-only). */
   scopeMismatch: z.boolean().optional(),
@@ -28,13 +27,13 @@ const slackOrgStatusSchema = z.object({
 });
 
 /**
- * Zero integrations Slack contract (GET/DELETE /api/zero/integrations/slack)
+ * Zero integrations Slack contract (GET/DELETE /api/okou/integrations/slack)
  * Manages org-scoped Slack workspace info.
  */
 export const zeroIntegrationsSlackContract = c.router({
   getStatus: {
     method: "GET",
-    path: "/api/zero/integrations/slack",
+    path: "/api/okou/integrations/slack",
     headers: authHeadersSchema,
     responses: {
       200: slackOrgStatusSchema,
@@ -44,7 +43,7 @@ export const zeroIntegrationsSlackContract = c.router({
   },
   disconnect: {
     method: "DELETE",
-    path: "/api/zero/integrations/slack",
+    path: "/api/okou/integrations/slack",
     headers: authHeadersSchema,
     body: c.noBody(),
     query: z.object({

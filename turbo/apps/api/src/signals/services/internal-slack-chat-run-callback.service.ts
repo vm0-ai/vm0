@@ -1,28 +1,24 @@
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
-
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import {
-  createSlackClient,
-  postMessage,
-} from "../external/slack-message-client";
-import { now, nowDate } from "../external/time";
+import { createSlackClient } from "../external/slack-message-client";
+import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -92,36 +88,37 @@ async function claimSlackChatDelivery(
   return callback;
 }
 
-async function loadSlackChatDeliveryContext(args: {
-  readonly db: Db;
-  readonly callback: ClaimedSlackChatDelivery;
-  readonly signal: AbortSignal;
-}) {
+async function loadSlackChatDeliveryContext(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedSlackChatDelivery;
+  },
+  signal: AbortSignal,
+) {
   const payload = slackChatCallbackPayloadSchema.parse(args.callback.payload);
   const [run] = await args.db
     .select({
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       agentId: chatThreads.agentComposeId,
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
-        eq(zeroRuns.triggerSource, "slack"),
+        eq(agentRuns.triggerSource, "slack"),
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!run?.chatThreadId) {
     throw new Error("Slack chat delivery run context is unavailable");
   }
 
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
@@ -134,11 +131,11 @@ async function loadSlackChatDeliveryContext(args: {
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const messageContent = event?.content;
   if (!messageContent) {
     throw new Error("Slack chat delivery message is unavailable");
@@ -176,7 +173,7 @@ async function loadSlackChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { payload, run, messageContent, binding };
 }
 
@@ -203,13 +200,15 @@ async function countCanonicalSlackMentioners(args: {
   return row?.count ?? 0;
 }
 
-async function deliverClaimedSlackChatCallback(args: {
-  readonly db: Db;
-  readonly callback: ClaimedSlackChatDelivery;
-  readonly signal: AbortSignal;
-}): Promise<"delivered" | "skipped_revoked"> {
+async function deliverClaimedSlackChatCallback(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedSlackChatDelivery;
+  },
+  signal: AbortSignal,
+): Promise<"delivered" | "skipped_revoked"> {
   const { payload, run, messageContent, binding } =
-    await loadSlackChatDeliveryContext(args);
+    await loadSlackChatDeliveryContext(args, signal);
   if (!binding) {
     return "skipped_revoked";
   }
@@ -223,27 +222,28 @@ async function deliverClaimedSlackChatCallback(args: {
     }),
     loadUserFeatureSwitchContext(args.db, run.orgId, run.userId),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const [botToken, presentation] = await Promise.all([
     decryptPersistentSecretValue(binding.encryptedBotToken, featureContext),
-    resolveIntegrationAgentResponsePresentation({
-      db: args.db,
-      orgId: run.orgId,
-      userId: run.userId,
-      runId: args.callback.runId,
-      agentId: run.agentId,
-      replyToMention:
-        mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
-      getFeatureOverrides: () => {
-        return Promise.resolve(featureContext.overrides ?? {});
+    resolveIntegrationAgentResponsePresentation(
+      {
+        db: args.db,
+        orgId: run.orgId,
+        userId: run.userId,
+        runId: args.callback.runId,
+        agentId: run.agentId,
+        replyToMention:
+          mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
+        getFeatureOverrides: () => {
+          return Promise.resolve(featureContext.overrides ?? {});
+        },
       },
-      signal: args.signal,
-    }),
+      signal,
+    ),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
-  const postResult = await postMessage(
-    createSlackClient(botToken),
+  const postResult = await createSlackClient(botToken).postMessage(
     payload.channelId,
     messageContent,
     {
@@ -274,11 +274,13 @@ export async function dispatchSlackChatDeliveryOnce(
   }
 
   const delivery = await settleIncludingAbort(
-    deliverClaimedSlackChatCallback({
-      db,
-      callback,
+    deliverClaimedSlackChatCallback(
+      {
+        db,
+        callback,
+      },
       signal,
-    }),
+    ),
   );
   if (!delivery.ok) {
     const message =
@@ -315,28 +317,30 @@ export async function dispatchSlackChatDeliveryOnce(
   }
 }
 
-export async function deliverSlackChatAdmissionFailure(args: {
-  readonly db: Db;
-  readonly chatThreadId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly agentId: string;
-  readonly channelId: string;
-  readonly threadTs: string;
-  readonly routeThreadTs?: string;
-  readonly chatEventId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function deliverSlackChatAdmissionFailure(
+  args: {
+    readonly db: Db;
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly channelId: string;
+    readonly threadTs: string;
+    readonly routeThreadTs?: string;
+    readonly chatEventId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const [eventRows, bindingRows] = await Promise.all([
     args.db
-      .select({ content: chatEvents.content })
+      .select({ content: canonicalChatEventContent() })
       .from(chatEvents)
       .where(
         and(
           eq(chatEvents.id, args.chatEventId),
           eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["output.error"]),
-          isNotNull(chatEvents.content),
+          isNotNull(canonicalChatEventContent()),
         ),
       )
       .limit(1),
@@ -373,7 +377,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
       )
       .limit(1),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const event = eventRows[0];
   const binding = bindingRows[0];
   if (!event?.content || !binding) {
@@ -400,7 +404,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
         .where(eq(zeroAgents.id, args.agentId))
         .limit(1),
     ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const org = orgRows[0];
   const agent = agentRows[0];
 
@@ -419,9 +423,8 @@ export async function deliverSlackChatAdmissionFailure(args: {
     binding.encryptedBotToken,
     featureContext,
   );
-  args.signal.throwIfAborted();
-  const result = await postMessage(
-    createSlackClient(botToken),
+  signal.throwIfAborted();
+  const result = await createSlackClient(botToken).postMessage(
     args.channelId,
     event.content,
     {

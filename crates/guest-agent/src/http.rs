@@ -8,6 +8,7 @@ use api_contracts::generated::constants::client::headers::{
     CLIENT_REQUEST_ID_HEADER, CLIENT_SESSION_ID_HEADER, CLIENT_TYPE_HEADER, CLIENT_VERSION_HEADER,
 };
 use api_contracts::generated::constants::client::types::CLIENT_TYPE_GUEST_AGENT;
+use api_contracts::generated::types::runners::runs::active_inputs::receipt::Response as ActiveInputReceiptResponse;
 use bytes::{Bytes, BytesMut};
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
@@ -94,6 +95,7 @@ pub struct HttpClient {
 }
 
 struct ApiHttpConfig {
+    base_url: String,
     urls: ApiUrls,
     token: String,
     vercel_bypass: String,
@@ -275,6 +277,18 @@ impl HttpClient {
     pub(crate) fn storage_commit_url(&self) -> Result<&str, AgentError> {
         Ok(&self.api_config()?.urls.storage_commit)
     }
+
+    fn active_input_receipt_url(
+        &self,
+        run_id: &str,
+        delivery_id: &str,
+    ) -> Result<String, AgentError> {
+        Ok(urls::active_input_receipt_url(
+            &self.api_config()?.base_url,
+            run_id,
+            delivery_id,
+        ))
+    }
 }
 
 impl ApiHttpConfig {
@@ -297,6 +311,7 @@ impl ApiHttpConfig {
         reqwest::header::HeaderValue::from_str(&client_session_id)
             .map_err(|e| AgentError::Http(format!("invalid client session id: {e}")))?;
         Ok(Self {
+            base_url: base_url.clone(),
             urls: ApiUrls::new(&base_url),
             token,
             vercel_bypass,
@@ -473,7 +488,7 @@ impl HttpClient {
         max_attempts: u32,
     ) -> Result<Option<Value>, AgentError> {
         let resp = self
-            .post_json_response(url, body, max_attempts, None)
+            .post_json_response(url, body, max_attempts, None, None)
             .await?;
 
         let text = resp
@@ -495,9 +510,37 @@ impl HttpClient {
         max_attempts: u32,
         observer: Option<&dyn HttpAttemptObserver>,
     ) -> Result<(), AgentError> {
-        self.post_json_response(url, body, max_attempts, observer)
+        self.post_json_response(url, body, max_attempts, observer, None)
             .await?;
         Ok(())
+    }
+
+    /// Record one backend-accepted active-input delivery.
+    ///
+    /// The API operation is idempotent. Retry ownership remains with the
+    /// active-input receipt runtime, so one call performs exactly one bounded
+    /// HTTP attempt.
+    pub async fn post_active_input_receipt(
+        &self,
+        run_id: &str,
+        delivery_id: &str,
+    ) -> Result<ActiveInputReceiptResponse, AgentError> {
+        let url = self.active_input_receipt_url(run_id, delivery_id)?;
+        let response = self
+            .post_json_response(
+                &url,
+                Bytes::from_static(b"{}"),
+                1,
+                None,
+                Some(Duration::from_secs(
+                    constants::ACTIVE_INPUT_RECEIPT_TIMEOUT_SECS,
+                )),
+            )
+            .await?;
+        response
+            .json::<ActiveInputReceiptResponse>()
+            .await
+            .map_err(|error| AgentError::Http(format_reqwest_error(error)))
     }
 
     async fn post_json_response(
@@ -506,6 +549,7 @@ impl HttpClient {
         body: Bytes,
         max_attempts: u32,
         observer: Option<&dyn HttpAttemptObserver>,
+        request_timeout: Option<Duration>,
     ) -> Result<Response, AgentError> {
         let client = self.inner()?;
         let api = self.api_config()?;
@@ -521,6 +565,10 @@ impl HttpClient {
                     .header("Authorization", format!("Bearer {}", api.token))
                     .header(CONTENT_TYPE, "application/json")
                     .body(body.clone());
+
+                if let Some(request_timeout) = request_timeout {
+                    req = req.timeout(request_timeout);
+                }
 
                 if !api.vercel_bypass.is_empty() {
                     req = req.header("x-vercel-protection-bypass", &api.vercel_bypass);

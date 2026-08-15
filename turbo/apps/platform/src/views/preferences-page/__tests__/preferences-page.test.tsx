@@ -1,9 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import {
+  SUPPORTED_USER_LOCALES,
   type UserPreferencesResponse,
-  zeroUserPreferencesContract,
-} from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+  userPreferencesContract,
+} from "@okouai/api-contracts/contracts/user-preferences";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -27,6 +28,7 @@ function createMockPreferences(
   return {
     timezone: "UTC",
     locale: "en-US",
+    supportedLocales: [...SUPPORTED_USER_LOCALES],
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,
@@ -40,14 +42,14 @@ function renderPreferencesPage(): void {
   detachedSetupPage({ context, path: "/settings" });
 }
 
-function getButtonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
+function getSegmentByText(text: string): HTMLElement {
+  const segment = queryAllByRoleFast("radio").find((candidate) => {
     return candidate.textContent?.trim() === text;
   });
-  if (!button) {
-    throw new Error(`Button not found: ${text}`);
+  if (!segment) {
+    throw new Error(`Segment not found: ${text}`);
   }
-  return button;
+  return segment;
 }
 
 describe("preferences page", () => {
@@ -60,11 +62,11 @@ describe("preferences page", () => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
 
-    const darkButton = getButtonByText("Dark");
-    click(darkButton);
+    const darkSegment = getSegmentByText("Dark");
+    click(darkSegment);
 
     await waitFor(() => {
-      expect(darkButton).toHaveAttribute("aria-pressed", "true");
+      expect(darkSegment).toHaveAttribute("aria-checked", "true");
       expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     });
 
@@ -87,16 +89,13 @@ describe("preferences page", () => {
     context.mocks.data.userPreferences(
       createMockPreferences({ timezone: "UTC" }),
     );
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        capturedBodies.push(body as Record<string, unknown>);
-        return respond(200, {
-          ...createMockPreferences(),
-          ...(body as Partial<UserPreferencesResponse>),
-        });
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      capturedBodies.push(body as Record<string, unknown>);
+      return respond(200, {
+        ...createMockPreferences(),
+        ...(body as Partial<UserPreferencesResponse>),
+      });
+    });
 
     renderPreferencesPage();
 
@@ -104,14 +103,14 @@ describe("preferences page", () => {
       expect(screen.getByText("Send message with")).toBeInTheDocument();
     });
 
-    const cmdEnterButton = queryAllByRoleFast("button").find((btn) => {
+    const cmdEnterSegment = queryAllByRoleFast("radio").find((segment) => {
       return (
-        btn.textContent?.includes("Enter") &&
-        btn.textContent?.includes("\u2318")
+        segment.textContent?.includes("Enter") &&
+        segment.textContent?.includes("\u2318")
       );
     });
-    expect(cmdEnterButton).toBeInTheDocument();
-    click(cmdEnterButton as HTMLElement);
+    expect(cmdEnterSegment).toBeInTheDocument();
+    click(cmdEnterSegment as HTMLElement);
 
     click(screen.getByText("Time Zone"));
 
@@ -184,19 +183,16 @@ describe("preferences page", () => {
         timezone: "UTC",
       }),
     );
-    context.mocks.api(
-      zeroUserPreferencesContract.update,
-      ({ body, respond }) => {
-        capturedBodies.push(body as Record<string, unknown>);
-        return respond(200, {
-          ...createMockPreferences({
-            locale: "pt-BR",
-            supportedLocales: ["en-US", "pt-BR"],
-          }),
-          ...(body as Partial<UserPreferencesResponse>),
-        });
-      },
-    );
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      capturedBodies.push(body as Record<string, unknown>);
+      return respond(200, {
+        ...createMockPreferences({
+          locale: "pt-BR",
+          supportedLocales: ["en-US", "pt-BR"],
+        }),
+        ...(body as Partial<UserPreferencesResponse>),
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -208,7 +204,7 @@ describe("preferences page", () => {
       expect(screen.getByText("Seu esquema de cores preferido")).toBeVisible();
     });
 
-    click(getButtonByText("⌘ Enter"));
+    click(getSegmentByText("⌘ Enter"));
     click(screen.getByText("Fuso horário"));
 
     await waitFor(() => {

@@ -1,19 +1,25 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import {
+  activeInputDeliveries,
+  activeInputDeliveryItems,
+} from "@okouai/db/schema/active-input-delivery";
 import {
   and,
   asc,
   eq,
+  inArray,
   isNull,
   lt,
   notExists,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 
 type ChatQueueReadDb = Pick<Db, "select">;
 type ChatQueueDistinctReadDb = Pick<Db, "select" | "selectDistinct">;
@@ -24,15 +30,59 @@ interface PendingChatQueueEvent {
   readonly id: string;
   readonly chatThreadId: string;
   readonly eventType: "input.prompt" | "input.automation" | "input.goal";
+  readonly seqId: number;
   readonly createdAt: Date;
 }
 
 function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
-  return notExists(
-    db
-      .select({ id: queueEventRevoker.id })
-      .from(queueEventRevoker)
-      .where(eq(queueEventRevoker.revokesEventId, chatEvents.id)),
+  return and(
+    notExists(
+      db
+        .select({ id: queueEventRevoker.id })
+        .from(queueEventRevoker)
+        .where(eq(queueEventRevoker.revokesEventId, chatEvents.id)),
+    ),
+    notExists(
+      db
+        .select({ deliveryId: activeInputDeliveryItems.deliveryId })
+        .from(activeInputDeliveryItems)
+        .innerJoin(
+          activeInputDeliveries,
+          eq(activeInputDeliveries.id, activeInputDeliveryItems.deliveryId),
+        )
+        .where(
+          and(
+            eq(activeInputDeliveryItems.sourceEventId, chatEvents.id),
+            isNull(activeInputDeliveryItems.disposition),
+            eq(activeInputDeliveries.status, "open"),
+          ),
+        ),
+    ),
+  );
+}
+
+function pendingActiveInputPromptCondition(db: ChatQueueReadDb) {
+  return and(
+    chatEventTypeIn(["input.prompt"]),
+    isNull(chatEvents.runId),
+    sql`${chatEvents.contextType} IS DISTINCT FROM 'morning_brief'`,
+    unrevokedQueueEventCondition(db),
+  );
+}
+
+export function pendingActiveInputCondition(
+  db: ChatQueueReadDb,
+  runId: string,
+) {
+  return or(
+    pendingActiveInputPromptCondition(db),
+    and(
+      chatEventTypeIn(["input.budget"]),
+      isNull(chatEvents.runId),
+      eq(chatEvents.contextType, "agent_run"),
+      eq(chatEvents.contextId, runId),
+      unrevokedQueueEventCondition(db),
+    ),
   );
 }
 
@@ -47,18 +97,18 @@ export function pendingChatQueueEventCondition(db: ChatQueueReadDb) {
 export function chatQueueEventPriority(): SQL {
   return sql`CASE ${chatEvents.eventType}
     WHEN 'input.prompt' THEN 0
-    WHEN 'input.automation' THEN 1
-    WHEN 'input.goal' THEN 2
+    WHEN 'input.goal' THEN 1
+    WHEN 'input.automation' THEN 2
     ELSE 3
   END`;
 }
 
 /**
  * List one thread's pending queue in its authoritative database order. User
- * input keeps absolute priority over automation input, automation stays ahead
- * of goal continuation, then each class is FIFO by the original event
- * timestamp and id. Keep the sort in PostgreSQL so sub-millisecond timestamp
- * precision matches the final queue-claim queries.
+ * input keeps absolute priority over goal continuation; goal continuation stays
+ * ahead of automation input. Each class is FIFO by the original event timestamp
+ * and id. Keep the sort in PostgreSQL so sub-millisecond timestamp precision
+ * matches the final queue-claim queries.
  */
 export async function listPendingChatQueueEvents(
   db: ChatQueueReadDb,
@@ -70,6 +120,7 @@ export async function listPendingChatQueueEvents(
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       eventType: chatEvents.eventType,
+      seqId: chatEvents.seqId,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
@@ -99,6 +150,7 @@ export async function listPendingChatQueueEvents(
         id: event.id,
         chatThreadId: event.chatThreadId,
         eventType: event.eventType,
+        seqId: event.seqId,
         createdAt: event.createdAt,
       },
     ];
@@ -117,6 +169,7 @@ export async function loadPendingChatQueueEvent(
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       eventType: chatEvents.eventType,
+      seqId: chatEvents.seqId,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
@@ -176,6 +229,7 @@ export async function staleChatEventQueueThreadIds(
   args: {
     readonly staleBefore: Date;
     readonly limit: number;
+    readonly chatThreadIds?: readonly string[];
   },
 ): Promise<readonly string[]> {
   const rows = await db
@@ -185,6 +239,9 @@ export async function staleChatEventQueueThreadIds(
       and(
         pendingChatQueueEventCondition(db),
         lt(chatEvents.createdAt, args.staleBefore),
+        args.chatThreadIds === undefined
+          ? undefined
+          : inArray(chatEvents.chatThreadId, args.chatThreadIds),
       ),
     )
     .limit(args.limit);

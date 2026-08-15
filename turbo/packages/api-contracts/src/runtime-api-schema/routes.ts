@@ -1,6 +1,7 @@
 import { runnerRealtimeTokenContract } from "../contracts/realtime";
 import {
   runnersBuiltinFirewallsResolveContract,
+  runnersConnectorRuntimeSyncContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -39,11 +40,6 @@ export interface RuntimeApiRouteBinding {
 
 export const runtimeApiRouteBindings = [
   {
-    id: "webhooks.agent.modelUsageObservation",
-    owner: "mitm-addon",
-    route: webhookModelUsageObservationContract.send,
-  },
-  {
     id: "runners.poll",
     owner: "runner",
     route: runnersPollContract.poll,
@@ -67,6 +63,11 @@ export const runtimeApiRouteBindings = [
     id: "runners.builtinFirewalls.resolve",
     owner: "runner",
     route: runnersBuiltinFirewallsResolveContract.resolve,
+  },
+  {
+    id: "runners.connectorRuntime.sync",
+    owner: "runner",
+    route: runnersConnectorRuntimeSyncContract.sync,
   },
   {
     id: "webhooks.agent.events",

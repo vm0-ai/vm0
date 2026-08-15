@@ -12,8 +12,8 @@ import type {
   BuiltInGenerationError,
   BuiltInGenerationRequest,
   BuiltInGenerationResult,
-} from "@vm0/db/jsonb-contracts/built-in-generation-job";
-export type { BuiltInGenerationError } from "@vm0/db/jsonb-contracts/built-in-generation-job";
+} from "@okouai/db/jsonb-contracts/built-in-generation-job";
+export type { BuiltInGenerationError } from "@okouai/db/jsonb-contracts/built-in-generation-job";
 
 export const BUILT_IN_GENERATION_TYPES = [
   "image",

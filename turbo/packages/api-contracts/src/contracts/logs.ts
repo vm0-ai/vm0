@@ -55,8 +55,9 @@ export const triggerSourceSchema = z.enum([
   "test",
   "agent",
   "webhook",
-  "workflow-schedule",
-  "workflow-event",
+  "automation-schedule",
+  "automation-event",
+  "goal",
 ]);
 
 export type TriggerSource = z.infer<typeof triggerSourceSchema>;
@@ -71,7 +72,6 @@ const logEntrySchema = z.object({
   displayName: z.string().nullable(),
   framework: z.string().nullable(),
   triggerSource: triggerSourceSchema.nullable(),
-  triggerAgentName: z.string().nullable(),
   status: logStatusSchema,
   /** Prompt text the run was launched with. Used as a row description. */
   prompt: z.string(),
@@ -82,7 +82,7 @@ const logEntrySchema = z.object({
 
 /**
  * Available filter values returned by the list endpoint.
- * agents contains canonical Zero agent IDs.
+ * agents contains canonical agent IDs.
  */
 const logsFiltersSchema = z.object({
   statuses: z.array(logStatusSchema),
@@ -121,7 +121,6 @@ const logDetailSchema = z.object({
   modelProvider: z.string().nullable(),
   selectedModel: z.string().nullable(),
   triggerSource: triggerSourceSchema.nullable(),
-  triggerAgentName: z.string().nullable(),
   status: logStatusSchema,
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
@@ -134,12 +133,12 @@ const logDetailSchema = z.object({
 
 /**
  * Logs list contract
- * GET /api/zero/logs
+ * GET /api/okou/logs
  */
 export const logsListContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/logs",
+    path: "/api/okou/logs",
     headers: authHeadersSchema,
     query: listQuerySchema.extend({
       search: z.string().optional(),
@@ -162,12 +161,12 @@ export const logsListContract = c.router({
 
 /**
  * Logs by ID contract
- * GET /api/zero/logs/:id
+ * GET /api/okou/logs/:id
  */
 export const logsByIdContract = c.router({
   getById: {
     method: "GET",
-    path: "/api/zero/logs/:id",
+    path: "/api/okou/logs/:id",
     headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().uuid("Invalid log ID"),

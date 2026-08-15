@@ -1,12 +1,14 @@
 import type {
   ConnectorCatalogSyncFailureCode,
   ConnectorCatalogDiagnostics,
-} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
-import type { ConnectorCatalogSyncResponse } from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
+import type { ConnectorCatalogSyncResponse } from "@okouai/api-contracts/contracts/cron";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
-} from "@vm0/db/schema/connector-catalog";
+} from "@okouai/db/schema/connector-catalog";
+import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -23,6 +25,7 @@ import { safeSync, settle } from "../utils";
 import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+  type ConnectorCatalogArtifact,
 } from "./connector-catalog-artifacts/artifacts";
 import {
   CONNECTOR_CATALOG_ACTIVE_MAX_BYTES,
@@ -56,6 +59,14 @@ import {
   connectorCatalogSource,
   type ConnectorCatalogSource,
 } from "./connector-catalog-source";
+import {
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
+import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
+import { publishConnectorRuntimeSyncWakeups } from "./connector-runtime-wakeup.service";
+import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
+import { createAcceptedConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
 
 const log = logger("connector-catalog:sync");
 
@@ -117,6 +128,143 @@ class ConnectorCatalogPersistenceError extends Error {
   constructor() {
     super("Connector catalog snapshot persistence failed");
     this.name = "ConnectorCatalogPersistenceError";
+  }
+}
+
+function customConnectorPermissionBundleFingerprint(
+  bundle: Awaited<ReturnType<typeof loadCustomConnectorPermissionBundle>>,
+): string | null {
+  if (!bundle) {
+    return null;
+  }
+  return JSON.stringify({
+    connectorSlug: bundle.connectorSlug,
+    permissions: bundle.permissions,
+    defaultPolicies: Object.entries(bundle.defaultPolicies).sort(
+      ([left], [right]) => {
+        return left.localeCompare(right);
+      },
+    ),
+  });
+}
+
+async function publishCatalogPermissionBundleWakeupsInner(args: {
+  readonly db: Db;
+  readonly previousSnapshot: ConnectorRuntimeSnapshot | undefined;
+  readonly currentArtifact: ConnectorCatalogArtifact;
+}): Promise<void> {
+  const currentSnapshot = {
+    serverFirewalls: createAcceptedConnectorServerFirewallCatalog({
+      artifact: args.currentArtifact,
+      runtimeMethodsBySlug: new Map(
+        args.currentArtifact.connectors.flatMap((connector) => {
+          return connector.firewall.kind === "none"
+            ? []
+            : [[connector.slug, []] as const];
+        }),
+      ),
+    }),
+  };
+  const rows = await args.db
+    .select({
+      id: orgCustomConnectors.id,
+      orgId: orgCustomConnectors.orgId,
+      slug: orgCustomConnectors.slug,
+      authMode: orgCustomConnectors.authMode,
+      prefixTemplates: orgCustomConnectors.prefixTemplates,
+      permissionBundleRef: orgCustomConnectors.permissionBundleRef,
+      oauthProviderAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
+    })
+    .from(orgCustomConnectors)
+    .leftJoin(
+      orgCustomConnectorOauthConfigs,
+      and(
+        eq(orgCustomConnectorOauthConfigs.connectorId, orgCustomConnectors.id),
+        eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+      ),
+    )
+    .where(eq(orgCustomConnectors.enabled, true));
+
+  const connectorIdsByRef = new Map<
+    string,
+    { readonly orgId: string; readonly connectorId: string }[]
+  >();
+  for (const row of rows) {
+    const ref = effectiveCustomConnectorPermissionBundleRef({
+      slug: row.slug,
+      authMode: row.authMode,
+      oauthProviderAdapter: row.oauthProviderAdapter,
+      prefixTemplates: row.prefixTemplates,
+      permissionBundleRef: row.permissionBundleRef,
+    });
+    if (!ref) {
+      continue;
+    }
+    const connectors = connectorIdsByRef.get(ref) ?? [];
+    connectors.push({ orgId: row.orgId, connectorId: row.id });
+    connectorIdsByRef.set(ref, connectors);
+  }
+
+  const affectedByOrg = new Map<string, string[]>();
+  for (const [ref, connectors] of connectorIdsByRef) {
+    const [previousBundle, currentBundle] = await Promise.all([
+      args.previousSnapshot
+        ? loadCustomConnectorPermissionBundle({
+            snapshot: args.previousSnapshot,
+            ref,
+          })
+        : null,
+      loadCustomConnectorPermissionBundle({
+        snapshot: currentSnapshot,
+        ref,
+      }),
+    ]);
+    if (
+      customConnectorPermissionBundleFingerprint(previousBundle) ===
+      customConnectorPermissionBundleFingerprint(currentBundle)
+    ) {
+      continue;
+    }
+    for (const connector of connectors) {
+      const connectorIds = affectedByOrg.get(connector.orgId) ?? [];
+      connectorIds.push(connector.connectorId);
+      affectedByOrg.set(connector.orgId, connectorIds);
+    }
+  }
+
+  await Promise.all(
+    [...affectedByOrg].map(async ([orgId, customConnectorIds]) => {
+      await publishConnectorRuntimeSyncWakeups({
+        db: args.db,
+        scope: { orgId },
+        targets: customConnectorIds.map((customConnectorId) => {
+          return { kind: "custom" as const, customConnectorId };
+        }),
+      });
+    }),
+  );
+  log.debug("Evaluated Custom connector catalog wakeups", {
+    permissionBundleRefCount: connectorIdsByRef.size,
+    affectedOrgCount: affectedByOrg.size,
+    affectedCustomConnectorCount: [...affectedByOrg.values()].reduce(
+      (count, connectorIds) => {
+        return count + connectorIds.length;
+      },
+      0,
+    ),
+  });
+}
+
+async function publishCatalogPermissionBundleWakeups(args: {
+  readonly db: Db;
+  readonly previousSnapshot: ConnectorRuntimeSnapshot | undefined;
+  readonly currentArtifact: ConnectorCatalogArtifact;
+}): Promise<void> {
+  const result = await settle(publishCatalogPermissionBundleWakeupsInner(args));
+  if (!result.ok) {
+    log.warn("Failed to publish Custom connector catalog wakeups", {
+      error: result.error,
+    });
   }
 }
 
@@ -631,26 +779,30 @@ async function activateCandidate(args: {
     });
 }
 
-async function commitCandidate(args: {
-  readonly db: Db;
-  readonly sourceId: string;
-  readonly baseline: SyncStateSnapshot | undefined;
-  readonly candidate: ValidatedConnectorCatalogCandidate;
-  readonly catalogGzip: Buffer;
-  readonly skillRegistrations: readonly PreparedConnectorSkillRegistration[];
-  readonly pointerObservation: PointerObservation;
-  readonly attemptedAt: Date;
-  readonly capability: ExecutableCapabilityState;
-  readonly validator: ConnectorCatalogValidatorIdentity;
-  readonly signal: AbortSignal;
-}): Promise<CandidateCommitResult> {
+async function commitCandidate(
+  args: {
+    readonly db: Db;
+    readonly sourceId: string;
+    readonly baseline: SyncStateSnapshot | undefined;
+    readonly candidate: ValidatedConnectorCatalogCandidate;
+    readonly catalogGzip: Buffer;
+    readonly skillRegistrations: readonly PreparedConnectorSkillRegistration[];
+    readonly pointerObservation: PointerObservation;
+    readonly attemptedAt: Date;
+    readonly capability: ExecutableCapabilityState;
+    readonly validator: ConnectorCatalogValidatorIdentity;
+  },
+  signal: AbortSignal,
+): Promise<CandidateCommitResult> {
   const result = await settle(
     args.db.transaction(async (tx) => {
-      await registerPreparedConnectorCatalogSkills({
-        db: tx,
-        registrations: args.skillRegistrations,
-        signal: args.signal,
-      });
+      await registerPreparedConnectorCatalogSkills(
+        {
+          db: tx,
+          registrations: args.skillRegistrations,
+        },
+        signal,
+      );
       await activateCandidate({ ...args, db: tx });
       await persistConnectorCatalogCompatibility({
         db: tx,
@@ -734,7 +886,6 @@ interface ConnectorCatalogSyncRuntime {
     ifNoneMatch: string | null,
   ) => Promise<ConditionalS3BufferDownload>;
   readonly source: ConnectorCatalogSource;
-  readonly signal: AbortSignal;
   readonly validator: ConnectorCatalogValidatorIdentity;
 }
 
@@ -771,29 +922,35 @@ async function rejectSyncAttempt(
   runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
   failureCode: ConnectorCatalogSyncFailureCode,
-  options: RejectSyncAttemptOptions = {},
+  options: RejectSyncAttemptOptions | undefined,
+  signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
-  const reusedCachedRejection = options.reusedCachedRejection ?? false;
+  const resolvedOptions = options ?? {};
+  const reusedCachedRejection = resolvedOptions.reusedCachedRejection ?? false;
   const response = await rejectCandidate({
     db: runtime.db,
     source: runtime.source,
     baseline,
     failureCode,
     rejectedCandidate:
-      !reusedCachedRejection && (options.cacheable ?? true)
-        ? cacheableRejectedCandidate(options.pointerObservation, failureCode)
+      !reusedCachedRejection && (resolvedOptions.cacheable ?? true)
+        ? cacheableRejectedCandidate(
+            resolvedOptions.pointerObservation,
+            failureCode,
+          )
         : undefined,
-    pointerObservation: options.pointerObservation,
+    pointerObservation: resolvedOptions.pointerObservation,
     reusedCachedRejection,
     validator: runtime.validator,
   });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   return response ? { kind: "complete", response } : { kind: "retry" };
 }
 
 async function loadPointerForSync(
   runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
+  signal: AbortSignal,
 ): Promise<PointerLoadResult> {
   const conditionalEtag =
     baseline?.lastObservedPointerEtag &&
@@ -803,9 +960,9 @@ async function loadPointerForSync(
       : null;
   const downloaded = await settle(
     runtime.readActivePointer(conditionalEtag),
-    runtime.signal,
+    signal,
   );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!downloaded.ok) {
     const pointerObservation =
       downloaded.error instanceof S3ObjectSizeLimitError &&
@@ -817,6 +974,7 @@ async function loadPointerForSync(
       baseline,
       classifySyncFailure(downloaded.error),
       { pointerObservation },
+      signal,
     );
   }
   if (downloaded.value.kind === "not-modified") {
@@ -833,6 +991,7 @@ async function loadPointerForSync(
       baseline,
       classifySyncFailure(parsed.error),
       { pointerObservation: { pointer: null, etag } },
+      signal,
     );
   }
   return {
@@ -848,21 +1007,23 @@ async function loadCandidateForSync(
   pointerObservation: PointerObservation & {
     readonly pointer: ConnectorCatalogActivePointer;
   },
+  signal: AbortSignal,
 ): Promise<CandidateLoadResult> {
   const result = await settle(
     loadConnectorCatalogCandidate({
       reader: runtime.reader,
       pointer: pointerObservation.pointer,
     }),
-    runtime.signal,
+    signal,
   );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!result.ok) {
     return await rejectSyncAttempt(
       runtime,
       baseline,
       classifySyncFailure(result.error),
       { pointerObservation },
+      signal,
     );
   }
   return { kind: "loaded", candidate: result.value };
@@ -871,7 +1032,8 @@ async function loadCandidateForSync(
 async function completeUnchangedSync(
   runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot,
-  pointerObservation?: PointerObservation,
+  pointerObservation: PointerObservation | undefined,
+  signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
   const committed = await recordUnchangedAttempt({
     db: runtime.db,
@@ -880,7 +1042,7 @@ async function completeUnchangedSync(
     attemptedAt: nowDate(),
     pointerObservation,
   });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!committed) {
     return { kind: "retry" };
   }
@@ -889,56 +1051,86 @@ async function completeUnchangedSync(
     sourceId: runtime.source.sourceId,
     outcome: "unchanged",
   });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "complete", response };
 }
 
 async function commitValidatedCandidate(
   runtime: ConnectorCatalogSyncRuntime,
-  baseline: SyncStateSnapshot | undefined,
-  candidate: ValidatedConnectorCatalogCandidate,
-  skillRegistrations: readonly PreparedConnectorSkillRegistration[],
-  pointerObservation: PointerObservation,
+  args: {
+    readonly baseline: SyncStateSnapshot | undefined;
+    readonly candidate: ValidatedConnectorCatalogCandidate;
+    readonly skillRegistrations: readonly PreparedConnectorSkillRegistration[];
+    readonly pointerObservation: PointerObservation;
+  },
+  signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
-  const catalogGzip = encodeConnectorCatalogSnapshot(candidate.rawBytes);
-  const outcome = await commitCandidate({
-    db: runtime.db,
-    sourceId: runtime.source.sourceId,
-    baseline,
-    candidate,
-    catalogGzip,
-    capability: runtime.capability,
-    validator: runtime.validator,
-    skillRegistrations,
-    pointerObservation,
-    attemptedAt: nowDate(),
-    signal: runtime.signal,
-  });
-  runtime.signal.throwIfAborted();
+  const previousSnapshotResult = args.baseline?.activeCatalogVersion
+    ? await settle(loadConnectorRuntimeSnapshot(runtime.db), signal)
+    : undefined;
+  signal.throwIfAborted();
+  if (previousSnapshotResult && !previousSnapshotResult.ok) {
+    log.warn("Failed to load previous connector runtime snapshot", {
+      error: previousSnapshotResult.error,
+    });
+  }
+  const catalogGzip = encodeConnectorCatalogSnapshot(args.candidate.rawBytes);
+  const outcome = await commitCandidate(
+    {
+      db: runtime.db,
+      sourceId: runtime.source.sourceId,
+      baseline: args.baseline,
+      candidate: args.candidate,
+      catalogGzip,
+      capability: runtime.capability,
+      validator: runtime.validator,
+      skillRegistrations: args.skillRegistrations,
+      pointerObservation: args.pointerObservation,
+      attemptedAt: nowDate(),
+    },
+    signal,
+  );
   if (outcome === "retry") {
+    signal.throwIfAborted();
     return { kind: "retry" };
   }
   if (typeof outcome !== "string") {
-    return await rejectSyncAttempt(runtime, baseline, outcome.failure.code, {
-      pointerObservation,
-      cacheable: outcome.failure.cacheable,
-    });
+    signal.throwIfAborted();
+    return await rejectSyncAttempt(
+      runtime,
+      args.baseline,
+      outcome.failure.code,
+      {
+        pointerObservation: args.pointerObservation,
+        cacheable: outcome.failure.cacheable,
+      },
+      signal,
+    );
   }
   log.debug("Connector catalog sync completed", {
     sourceId: runtime.source.sourceId,
     schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-    catalogVersion: candidate.identity.catalogVersion,
-    catalogDigest: candidate.identity.catalogDigest,
-    rawBytes: candidate.rawBytes.byteLength,
+    catalogVersion: args.candidate.identity.catalogVersion,
+    catalogDigest: args.candidate.identity.catalogDigest,
+    rawBytes: args.candidate.rawBytes.byteLength,
     compressedBytes: catalogGzip.byteLength,
     outcome,
   });
+  await publishCatalogPermissionBundleWakeups({
+    db: runtime.db,
+    currentArtifact: args.candidate.artifact,
+    previousSnapshot:
+      previousSnapshotResult?.ok === true
+        ? previousSnapshotResult.value
+        : undefined,
+  });
+  signal.throwIfAborted();
   const response = await responseFromState({
     db: runtime.db,
     sourceId: runtime.source.sourceId,
     outcome,
   });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "complete", response };
 }
 
@@ -954,14 +1146,17 @@ async function prepareCandidateSkillsForSync(
   baseline: SyncStateSnapshot | undefined,
   candidate: ValidatedConnectorCatalogCandidate,
   pointerObservation: PointerObservation,
+  signal: AbortSignal,
 ): Promise<CandidateSkillPreparationResult> {
   const prepared = await settle(
-    prepareConnectorCatalogSkills({
-      db: runtime.db,
-      artifact: candidate.artifact,
-      signal: runtime.signal,
-    }),
-    runtime.signal,
+    prepareConnectorCatalogSkills(
+      {
+        db: runtime.db,
+        artifact: candidate.artifact,
+      },
+      signal,
+    ),
+    signal,
   );
   if (prepared.ok) {
     return { kind: "prepared", registrations: prepared.value };
@@ -970,18 +1165,25 @@ async function prepareCandidateSkillsForSync(
   if (!failure) {
     throw prepared.error;
   }
-  return await rejectSyncAttempt(runtime, baseline, failure.code, {
-    pointerObservation,
-    cacheable: failure.cacheable,
-  });
+  return await rejectSyncAttempt(
+    runtime,
+    baseline,
+    failure.code,
+    {
+      pointerObservation,
+      cacheable: failure.cacheable,
+    },
+    signal,
+  );
 }
 
 async function syncConnectorCatalogAttempt(
   runtime: ConnectorCatalogSyncRuntime,
+  signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
   const baseline = await readSyncState(runtime.db, runtime.source.sourceId);
-  runtime.signal.throwIfAborted();
-  const pointerResult = await loadPointerForSync(runtime, baseline);
+  signal.throwIfAborted();
+  const pointerResult = await loadPointerForSync(runtime, baseline, signal);
   if (pointerResult.kind === "retry" || pointerResult.kind === "complete") {
     return pointerResult;
   }
@@ -991,20 +1193,38 @@ async function syncConnectorCatalogAttempt(
   };
   if (pointerResult.kind === "not-modified") {
     if (!baseline) {
-      return await rejectSyncAttempt(runtime, baseline, "source-unavailable");
+      return await rejectSyncAttempt(
+        runtime,
+        baseline,
+        "source-unavailable",
+        undefined,
+        signal,
+      );
     }
     const cachedFailure = cachedRejectionForObservedEtag(
       baseline,
       runtime.validator,
     );
     if (cachedFailure) {
-      return await rejectSyncAttempt(runtime, baseline, cachedFailure, {
-        reusedCachedRejection: true,
-      });
+      return await rejectSyncAttempt(
+        runtime,
+        baseline,
+        cachedFailure,
+        {
+          reusedCachedRejection: true,
+        },
+        signal,
+      );
     }
     const observedPointer = observedPointerFromState(baseline);
     if (!observedPointer) {
-      return await rejectSyncAttempt(runtime, baseline, "source-unavailable");
+      return await rejectSyncAttempt(
+        runtime,
+        baseline,
+        "source-unavailable",
+        undefined,
+        signal,
+      );
     }
     pointerObservation = {
       pointer: observedPointer,
@@ -1022,7 +1242,12 @@ async function syncConnectorCatalogAttempt(
     if (!baseline) {
       throw new Error("Connector catalog active snapshot disappeared");
     }
-    return await completeUnchangedSync(runtime, baseline, pointerObservation);
+    return await completeUnchangedSync(
+      runtime,
+      baseline,
+      pointerObservation,
+      signal,
+    );
   }
 
   const cachedFailure = cachedRejectionForPointer(
@@ -1031,16 +1256,23 @@ async function syncConnectorCatalogAttempt(
     runtime.validator,
   );
   if (cachedFailure) {
-    return await rejectSyncAttempt(runtime, baseline, cachedFailure, {
-      pointerObservation,
-      reusedCachedRejection: true,
-    });
+    return await rejectSyncAttempt(
+      runtime,
+      baseline,
+      cachedFailure,
+      {
+        pointerObservation,
+        reusedCachedRejection: true,
+      },
+      signal,
+    );
   }
 
   const candidateResult = await loadCandidateForSync(
     runtime,
     baseline,
     pointerObservation,
+    signal,
   );
   if (candidateResult.kind !== "loaded") {
     return candidateResult;
@@ -1050,16 +1282,20 @@ async function syncConnectorCatalogAttempt(
     baseline,
     candidateResult.candidate,
     pointerObservation,
+    signal,
   );
   if (skillPreparation.kind !== "prepared") {
     return skillPreparation;
   }
   return await commitValidatedCandidate(
     runtime,
-    baseline,
-    candidateResult.candidate,
-    skillPreparation.registrations,
-    pointerObservation,
+    {
+      baseline,
+      candidate: candidateResult.candidate,
+      skillRegistrations: skillPreparation.registrations,
+      pointerObservation,
+    },
+    signal,
   );
 }
 
@@ -1085,7 +1321,6 @@ export const syncConnectorCatalog$ = command(
       capability: connectorCatalogExecutableCapabilityState(),
       db: set(writeDb$),
       source,
-      signal,
       validator: currentConnectorCatalogValidatorIdentity(),
       readActivePointer: async (ifNoneMatch) => {
         const result = await get(
@@ -1113,7 +1348,7 @@ export const syncConnectorCatalog$ = command(
 
     while (true) {
       signal.throwIfAborted();
-      const result = await syncConnectorCatalogAttempt(runtime);
+      const result = await syncConnectorCatalogAttempt(runtime, signal);
       signal.throwIfAborted();
       if (result.kind === "retry") {
         continue;

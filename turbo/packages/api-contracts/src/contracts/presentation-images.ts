@@ -30,8 +30,8 @@ export const presentationImageAssetSchema = z
   .object({
     src: z.url(),
     alt: z.string().min(1),
-    source: z.enum(["unsplash", "pexels"]),
-    sourceName: z.enum(["Unsplash", "Pexels"]),
+    source: z.literal("unsplash"),
+    sourceName: z.literal("Unsplash"),
     sourceUrl: z.url(),
     // Provider-neutral link rendered for the source in image attribution.
     sourceAttributionUrl: z.url(),
@@ -40,7 +40,7 @@ export const presentationImageAssetSchema = z
     unsplashUrl: z.url(),
     photographerName: z.string().min(1),
     photographerUrl: z.url(),
-    license: z.enum(["Unsplash", "Pexels"]),
+    license: z.literal("Unsplash"),
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
     color: z.string().min(1).optional(),

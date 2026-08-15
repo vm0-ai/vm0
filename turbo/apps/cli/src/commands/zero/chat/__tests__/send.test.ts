@@ -13,13 +13,13 @@ const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const AGENT_ID = "00000000-0000-4000-8000-000000000010";
 const RUN_ID = "00000000-0000-4000-8000-000000000020";
-const SEND_URL = "http://localhost:3000/api/zero/chat/events";
+const SEND_URL = "http://localhost:3000/api/okou/chat/events";
 
 function metadataUrl(threadId: string): string {
-  return `http://localhost:3000/api/zero/chat-threads/${threadId}/metadata`;
+  return `http://localhost:3000/api/okou/chat-threads/${threadId}/metadata`;
 }
 
-describe("zero chat send command", () => {
+describe("okou chat send command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -40,8 +40,8 @@ describe("zero chat send command", () => {
     chalk.level = 0;
     tempDir = mkdtempSync(path.join(tmpdir(), "zero-chat-send-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", THREAD_ID);
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
   afterEach(() => {
@@ -119,34 +119,14 @@ describe("zero chat send command", () => {
   });
 
   it("reports a message that remains queued and honors --thread-id", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.get(metadataUrl(OTHER_THREAD_ID), () => {
         return HttpResponse.json({
           id: OTHER_THREAD_ID,
+          agentId: AGENT_ID,
           title: "Busy thread",
           selectedModel: null,
-        });
-      }),
-      http.get("http://localhost:3000/api/zero/chat-threads/snapshot", () => {
-        return HttpResponse.json({
-          chatThreads: [
-            {
-              id: OTHER_THREAD_ID,
-              agentId: AGENT_ID,
-              title: "Busy thread",
-              sortAt: "2026-07-29T10:00:00.000Z",
-              createdAt: "2026-07-29T10:00:00.000Z",
-              updatedAt: "2026-07-29T10:00:00.000Z",
-              pinnedAt: null,
-              renamedAt: null,
-              selectedModel: null,
-              serviceTier: null,
-              computerUseHostId: null,
-            },
-          ],
-          latestEventId: null,
-          latestSeqId: null,
         });
       }),
       http.post(SEND_URL, async ({ request }) => {
@@ -325,6 +305,31 @@ describe("zero chat send command", () => {
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("is not a valid UserMessageDocument");
     expect(stderr).toContain("parts.0.filenameSnapshot");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("rejects a server-owned model annotation before calling the API", async () => {
+    const filePath = writeUserMessageFile({
+      version: 1,
+      parts: [
+        { type: "text", text: "Continue" },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
+
+    await expect(async () => {
+      await zeroChatCommand.parseAsync([
+        "node",
+        "cli",
+        "send",
+        "--user-message-file",
+        filePath,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("is not a valid UserMessageDocument");
+    expect(stderr).toContain("parts.1.type");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 

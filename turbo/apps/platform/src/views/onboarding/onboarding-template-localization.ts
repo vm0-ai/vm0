@@ -5,7 +5,7 @@ import {
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
   type VideoTemplateItem,
-} from "@vm0/core";
+} from "@okouai/core";
 import type { TFunction } from "i18next";
 import enUSCommon from "../../i18n/locales/en-US/common.json";
 

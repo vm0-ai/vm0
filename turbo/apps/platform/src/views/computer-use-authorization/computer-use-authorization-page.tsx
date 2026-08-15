@@ -1,33 +1,29 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconAlertTriangle,
-  IconCheck,
-  IconDeviceDesktop,
-  IconDownload,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { AlertTriangle, Check, Monitor, Download, Loader2 } from "lucide-react";
 import type {
   ComputerUseAuthorizationSource,
   ComputerUseHost,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
-import { Button } from "@vm0/ui/components/ui/button";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
+import { Button } from "@okouai/ui/components/ui/button";
 import { useTranslation } from "react-i18next";
 import {
   applyComputerUseAuthorizationRequest$,
   computerUseAuthorizationRequest$,
 } from "../../signals/computer-use-authorization/computer-use-authorization.ts";
 import {
-  zeroDesktopDownloadSupportStatus$,
+  desktopDownloadSupportStatus$,
   visibleComputerUseHosts,
-  ZERO_DESKTOP_DOWNLOAD_URL,
+  OKOU_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
+import { computerUseProductName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { computerUseIllustrationImg } from "../zero-page/platform-assets.ts";
 import { Vm0LogoLink } from "../zero-page/zero-directed-shared.tsx";
 import { locale$ } from "../../signals/locale.ts";
 import { i18n } from "../../i18n/index.ts";
+import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 
 function formatTime(value: string, locale: string): string {
   return new Date(value).toLocaleString(locale, {
@@ -75,11 +71,15 @@ function HostOption({
     <div className="flex w-full flex-col gap-3 rounded-lg border border-border bg-background px-3 py-3 text-left sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <IconDeviceDesktop size={18} />
+          <Monitor size={18} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-foreground">
-            {host.displayName}
+            <span>{host.displayName}</span>
+            <span className="ml-1 text-xs font-normal text-muted-foreground">
+              {" "}
+              {desktopProductDisplayName(host.product)}
+            </span>
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             {t(
@@ -98,10 +98,10 @@ function HostOption({
         onClick={onAuthorize}
         className="h-9 w-full shrink-0 sm:w-auto"
       >
-        {applying && <IconLoader2 size={16} className="animate-spin" />}
+        {applying && <Loader2 size={16} className="animate-spin" />}
         {applied ? (
           <>
-            <IconCheck size={16} />
+            <Check size={16} />
             {t(($) => {
               return $.authorization.computerUse.authorized;
             })}
@@ -118,9 +118,10 @@ function HostOption({
 
 function EmptyHosts() {
   const { t } = useTranslation();
-  const downloadSupportLoadable = useLoadable(
-    zeroDesktopDownloadSupportStatus$,
-  );
+  const computerUseProductName = useGet(computerUseProductName$);
+  const desktopApplicationName =
+    computerUseProductName === "Okou" ? "Okou" : "Zero Computer Use";
+  const downloadSupportLoadable = useLoadable(desktopDownloadSupportStatus$);
   const downloadSupportStatus =
     downloadSupportLoadable.state === "hasData"
       ? downloadSupportLoadable.data
@@ -142,9 +143,12 @@ function EmptyHosts() {
           })}
         </h2>
         <p className="text-sm leading-5 text-muted-foreground">
-          {t(($) => {
-            return $.authorization.computerUse.noHostsDescription;
-          })}
+          {t(
+            ($) => {
+              return $.authorization.computerUse.noHostsDescription;
+            },
+            { desktopApplicationName },
+          )}
         </p>
         <p className="text-sm leading-5 text-muted-foreground">
           {t(($) => {
@@ -154,7 +158,7 @@ function EmptyHosts() {
       </div>
       {downloadSupportStatus === "unsupported-intel-mac" ? (
         <Button type="button" variant="outline" disabled className="h-9">
-          <IconAlertTriangle size={16} />
+          <AlertTriangle size={16} />
           {t(($) => {
             return $.authorization.computerUse.unsupportedIntelMac;
           })}
@@ -167,12 +171,12 @@ function EmptyHosts() {
         </Button>
       ) : (
         <a
-          href={ZERO_DESKTOP_DOWNLOAD_URL}
+          href={OKOU_DESKTOP_DOWNLOAD_URL}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-state-hover"
         >
-          <IconDownload size={16} />
+          <Download size={16} />
           {t(($) => {
             return $.authorization.computerUse.downloadMac;
           })}
@@ -225,7 +229,7 @@ export function ComputerUseAuthorizationPage() {
   if (requestLoadable.state === "loading") {
     return (
       <div className="fixed inset-0 z-10 flex items-center justify-center">
-        <IconLoader2 size={22} className="animate-spin text-muted-foreground" />
+        <Loader2 size={22} className="animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -244,7 +248,7 @@ export function ComputerUseAuthorizationPage() {
         <div className="flex flex-col items-center gap-5 text-center">
           <Vm0LogoLink />
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-muted">
-            <IconDeviceDesktop size={22} />
+            <Monitor size={22} />
           </div>
           <div className="flex flex-col gap-2">
             <h1 className="text-lg font-medium text-foreground">

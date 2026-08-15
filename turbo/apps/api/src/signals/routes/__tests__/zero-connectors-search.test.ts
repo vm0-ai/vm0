@@ -1,23 +1,28 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorsSearchContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroConnectorsSearchContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroConnectorsRoutes } from "../zero-connectors";
+import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const store = createStore();
 
 function featureSwitchesClient() {
-  return setupApp({ context })(zeroFeatureSwitchesContract);
+  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    zeroFeatureSwitchesContract,
+  );
 }
 
 function authHeaders() {
@@ -70,7 +75,9 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({ query: {}, headers: {} }),
       [401],
@@ -82,7 +89,9 @@ describe("GET /api/zero/connectors/search", () => {
   it("returns connectors array with correct shape", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: {},
@@ -93,6 +102,7 @@ describe("GET /api/zero/connectors/search", () => {
 
     expect(response.body.connectors).toBeInstanceOf(Array);
     expect(response.body.connectors.length).toBeGreaterThan(0);
+    expect(response.body.connectors.length).toBeLessThanOrEqual(100);
     for (const connector of response.body.connectors) {
       expect(connector).toHaveProperty("slug");
       expect(connector).toHaveProperty("label");
@@ -105,10 +115,12 @@ describe("GET /api/zero/connectors/search", () => {
     }
   });
 
-  it("filters connectors by keyword matching label", async () => {
+  it("filters connectors by keyword matching slug or label", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: { keyword: "GitHub" },
@@ -120,17 +132,17 @@ describe("GET /api/zero/connectors/search", () => {
     expect(response.body.connectors.length).toBeGreaterThan(0);
     for (const connector of response.body.connectors) {
       const matchesLabel = connector.label.toLowerCase().includes("github");
-      const matchesDescription = connector.description
-        .toLowerCase()
-        .includes("github");
-      expect(matchesLabel || matchesDescription).toBeTruthy();
+      const matchesSlug = connector.slug.toLowerCase().includes("github");
+      expect(matchesLabel || matchesSlug).toBeTruthy();
     }
   });
 
-  it("filters connectors by keyword matching description", async () => {
+  it("does not search connector descriptions", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: { keyword: "permission behavior" },
@@ -139,17 +151,15 @@ describe("GET /api/zero/connectors/search", () => {
       [200],
     );
 
-    expect(
-      response.body.connectors.map((connector) => {
-        return connector.slug;
-      }),
-    ).toStrictEqual(["slack"]);
+    expect(response.body.connectors).toStrictEqual([]);
   });
 
-  it("filters connectors by keyword matching tags", async () => {
+  it("does not search connector tags", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: { keyword: "llm" },
@@ -158,17 +168,15 @@ describe("GET /api/zero/connectors/search", () => {
       [200],
     );
 
-    expect(
-      response.body.connectors.map((connector) => {
-        return connector.slug;
-      }),
-    ).toStrictEqual(["openai"]);
+    expect(response.body.connectors).toStrictEqual([]);
   });
 
   it("returns empty array for non-matching keyword", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: { keyword: "zzz_no_match_zzz" },
@@ -183,7 +191,9 @@ describe("GET /api/zero/connectors/search", () => {
   it("performs case-insensitive keyword search", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
 
     const lower = await accept(
       client.search({
@@ -206,7 +216,9 @@ describe("GET /api/zero/connectors/search", () => {
   it("hides the test OAuth device connector when the test OAuth feature is disabled", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: { keyword: "test oauth device" },
@@ -230,7 +242,9 @@ describe("GET /api/zero/connectors/search", () => {
     });
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: { keyword: "test oauth device" },
@@ -253,7 +267,9 @@ describe("GET /api/zero/connectors/search", () => {
     await enableFeatureSwitches(orgId, userId, {});
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: { keyword: "cloudflare" },
@@ -270,7 +286,9 @@ describe("GET /api/zero/connectors/search", () => {
   it("shows ungated api-token while hiding feature-gated oauth", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: {},
@@ -290,7 +308,9 @@ describe("GET /api/zero/connectors/search", () => {
   it("exposes openai as api-token only", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: {},
@@ -325,7 +345,9 @@ describe("GET /api/zero/connectors/search", () => {
       exp: seconds + 600,
     });
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: {},
@@ -357,7 +379,9 @@ describe("GET /api/zero/connectors/search", () => {
       exp: seconds + 600,
     });
 
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const response = await accept(
       client.search({
         query: {},

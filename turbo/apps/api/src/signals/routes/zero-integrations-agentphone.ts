@@ -1,6 +1,6 @@
-import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
-import { agentphoneVerificationSendCooldowns } from "@vm0/db/schema/agentphone-verification-send-cooldown";
-import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
+import { zeroIntegrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
+import { agentphoneVerificationSendCooldowns } from "@okouai/db/schema/agentphone-verification-send-cooldown";
+import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { command, computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -167,12 +167,14 @@ function truncateForLog(value: string): string {
   return value.length > 500 ? `${value.slice(0, 500)}...` : value;
 }
 
-async function sendAgentPhoneVerificationMessage(params: {
-  readonly config: ConfiguredAgentPhoneConfig;
-  readonly toNumber: string;
-  readonly body: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+async function sendAgentPhoneVerificationMessage(
+  params: {
+    readonly config: ConfiguredAgentPhoneConfig;
+    readonly toNumber: string;
+    readonly body: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const response = await fetch(`${params.config.apiBaseUrl}/v1/messages`, {
     method: "POST",
     headers: {
@@ -184,7 +186,7 @@ async function sendAgentPhoneVerificationMessage(params: {
       to_number: params.toNumber,
       body: params.body,
     }),
-    signal: params.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -295,12 +297,14 @@ const sendAgentPhoneVerificationText$ = command(
 
       const sent =
         (await tapError(
-          sendAgentPhoneVerificationMessage({
-            config: params.config,
-            toNumber: params.phoneHandle,
-            body: `Confirm this phone number for VM0: ${params.connectUrl}`,
+          sendAgentPhoneVerificationMessage(
+            {
+              config: params.config,
+              toNumber: params.phoneHandle,
+              body: `Confirm this phone number for VM0: ${params.connectUrl}`,
+            },
             signal,
-          }),
+          ),
           (error) => {
             log.error("AgentPhone verification text send failed", {
               agentphoneAgentId: params.config.agentphoneAgentId,

@@ -17,6 +17,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
   elevenlabs: "ElevenLabs",
   fal: "fal.ai",
   hume: "Hume",
+  joggai: "JoggAI",
   "luma-ai": "Luma AI",
   minimax: "MiniMax",
   openai: "OpenAI",
@@ -28,6 +29,7 @@ const CONNECTOR_GENERATION: Record<string, readonly string[]> = {
   elevenlabs: ["audio"],
   fal: ["image", "video"],
   hume: ["audio"],
+  joggai: ["video"],
   "luma-ai": ["image", "video"],
   minimax: ["audio"],
   openai: ["audio", "image", "text"],
@@ -54,7 +56,7 @@ function connector(
 }
 
 function stubConnectors(connectors: Array<Record<string, unknown>>) {
-  return stubConnectorsWithConfiguredSlugs(connectors, [
+  return stubConnectorsWithCatalogSlugs(connectors, [
     "fal",
     "luma",
     "luma-ai",
@@ -64,9 +66,9 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
   ]);
 }
 
-function stubConnectorsWithConfiguredSlugs(
+function stubConnectorsWithCatalogSlugs(
   connectors: Array<Record<string, unknown>>,
-  configuredConnectorSlugs: string[],
+  catalogConnectorSlugs: string[],
 ) {
   const connectedBySlug = new Map(
     connectors.map((item) => {
@@ -93,7 +95,7 @@ function stubConnectorsWithConfiguredSlugs(
     }),
   );
   const visibleConnectorSlugs = new Set([
-    ...configuredConnectorSlugs,
+    ...catalogConnectorSlugs,
     ...connectedBySlug.keys(),
   ]);
   return stubConnectorCatalogStatus(
@@ -113,7 +115,7 @@ function stubConnectorsWithConfiguredSlugs(
 
 function stubUserConnectors(enabledConnectorSlugs: string[]) {
   return http.get(
-    `http://localhost:3000/api/zero/agents/${AGENT_ID}/user-connectors`,
+    `http://localhost:3000/api/okou/agents/${AGENT_ID}/user-connectors`,
     () => {
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,
@@ -136,18 +138,14 @@ function stubAvailableConnectors(connectorSlugs: string[]) {
 }
 
 function stubBillingStatus(
-  videoGenerationAllowed: boolean | undefined,
+  videoGenerationAllowed: boolean,
   tier = videoGenerationAllowed ? "pro" : "limited-free-1",
 ) {
-  return http.get("http://localhost:3000/api/zero/billing/status", () => {
+  return http.get("http://localhost:3000/api/okou/billing/status", () => {
     return HttpResponse.json({
       tier,
-      ...(videoGenerationAllowed === undefined
-        ? {}
-        : {
-            canBuyCredits: videoGenerationAllowed,
-            videoGenerationAllowed,
-          }),
+      canBuyCredits: videoGenerationAllowed,
+      videoGenerationAllowed,
       credits: 0,
       onboardingPaymentPending: false,
       subscriptionStatus: null,
@@ -173,7 +171,7 @@ function stubBillingStatus(
   });
 }
 
-describe("zero generate lister", () => {
+describe("okou generate lister", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -185,8 +183,8 @@ describe("zero generate lister", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
-    vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     server.use(stubBillingStatus(true));
   });
 
@@ -200,6 +198,24 @@ describe("zero generate lister", () => {
   function output(): string {
     return mockConsoleLog.mock.calls.flat().join("\n");
   }
+
+  it("uses Okou branding in generate help", () => {
+    let helpOutput = "";
+    generateCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    generateCommand.outputHelp();
+
+    expect(helpOutput).toContain(
+      "Generate assets via Okou's built-in pipelines",
+    );
+    expect(helpOutput).toContain(
+      "--provider for Okou or connector execution guidance",
+    );
+  });
 
   it("lists ready image generation connectors for the current agent", async () => {
     server.use(
@@ -224,14 +240,14 @@ describe("zero generate lister", () => {
     expect(text).toContain("OpenAI");
     expect(text).not.toContain("replicate-user");
     expect(text).toContain("Built-in command:");
-    expect(text).toContain("vm0");
+    expect(text).toContain("Okou  Built-in image generation");
     expect(text).toContain("Built-in image generation");
     expect(text).toContain(
       "Models: fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2",
     );
-    expect(text).toContain("Use: zero generate image --provider built-in -h");
+    expect(text).toContain("Use: okou generate image --provider built-in -h");
     expect(text).not.toContain(
-      "Use: zero generate image --provider built-in --model",
+      "Use: okou generate image --provider built-in --model",
     );
     expect(text).not.toContain("Model: gpt-image-1.5");
     expect(text).not.toContain("Model: fal-ai/flux-pro/v1.1");
@@ -311,10 +327,10 @@ describe("zero generate lister", () => {
 
     const text = output();
     expect(text).toContain(
-      'Replicate (replicate) handles image generation through its own connector skill, not through "zero generate".',
+      'Replicate (replicate) handles image generation through its own connector skill, not through "okou generate".',
     );
     expect(text).toContain('Use the "replicate" skill in this session.');
-    expect(text).toContain("zero connector status replicate");
+    expect(text).toContain("okou connector status replicate");
     expect(text).not.toContain("Built-in command:");
   });
 
@@ -343,13 +359,13 @@ describe("zero generate lister", () => {
       "ElevenLabs (elevenlabs) does not advertise image generation.",
     );
     expect(text).toContain(
-      'Run "zero generate image" to see every provider that supports this generation type.',
+      'Run "okou generate image" to see every provider that supports this generation type.',
     );
   });
 
   it("suggests the built-in video command when no video connector is ready", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
+      stubConnectorsWithCatalogSlugs([], ["fal", "luma-ai", "runway"]),
       stubUserConnectors([]),
     );
 
@@ -362,14 +378,14 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in video generation");
     expect(text).toContain(
-      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
+      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
     );
-    expect(text).toContain("Use: zero generate video --provider built-in -h");
+    expect(text).toContain("Use: okou generate video --provider built-in -h");
     expect(text).toContain(
       "Availability: Available on the current plan without connector setup.",
     );
     expect(text).not.toContain(
-      "Use: zero generate video --provider built-in --model",
+      "Use: okou generate video --provider built-in --model",
     );
     expect(text).not.toContain("Model: dreamina-seedance-2-0-260128");
     expect(text).not.toContain("Model: seedance-1-5-pro-251215");
@@ -382,9 +398,38 @@ describe("zero generate lister", () => {
     );
   });
 
+  it("reflects built-in and connector choices for avatar video", async () => {
+    server.use(
+      stubConnectorsWithCatalogSlugs(
+        [connector("joggai", "jogg-user")],
+        ["joggai"],
+      ),
+      stubUserConnectors(["joggai"]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "avatar-video"]);
+
+    const text = output();
+    expect(text).toContain(
+      "Talking-avatar video generation choices for current agent",
+    );
+    expect(text).toContain("joggai");
+    expect(text).toContain("JoggAI");
+    expect(text).toContain("@jogg-user");
+    expect(text).toContain("Built-in command:");
+    expect(text).toContain("Built-in JoggAI talking-avatar video generation");
+    expect(text).toContain("Models: joggai-talking-avatar");
+    expect(text).toContain(
+      "Use: okou generate avatar-video --provider built-in -h",
+    );
+    expect(text).toContain(
+      "Availability: Available on the current plan without connector setup.",
+    );
+  });
+
   it("marks built-in video models as plan-restricted before generation", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
+      stubConnectorsWithCatalogSlugs([], ["fal", "luma-ai", "runway"]),
       stubUserConnectors([]),
       stubBillingStatus(false),
     );
@@ -400,39 +445,8 @@ describe("zero generate lister", () => {
     );
   });
 
-  it("uses a restricted legacy tier when billing capability fields are omitted", async () => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
-      stubUserConnectors([]),
-      stubBillingStatus(undefined, "limited-free-1"),
-    );
-
-    await generateCommand.parseAsync(["node", "cli", "video"]);
-
-    expect(output()).toContain(
-      "Availability: Requires a Pro, Team, or Custom workspace plan.",
-    );
-  });
-
-  it("uses an allowed legacy tier when billing capability fields are omitted", async () => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
-      stubUserConnectors([]),
-      stubBillingStatus(undefined, "free"),
-    );
-
-    await generateCommand.parseAsync(["node", "cli", "video"]);
-
-    expect(output()).toContain(
-      "Availability: Available on the current plan without connector setup.",
-    );
-  });
-
   it("suggests the built-in presentation command", async () => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], []),
-      stubUserConnectors([]),
-    );
+    server.use(stubConnectorsWithCatalogSlugs([], []), stubUserConnectors([]));
 
     await generateCommand.parseAsync(["node", "cli", "presentation"]);
 
@@ -445,17 +459,14 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in presentation generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain("Use: zero generate presentation -h");
+    expect(text).toContain("Use: okou generate presentation -h");
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
   });
 
   it("suggests the built-in website command", async () => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], []),
-      stubUserConnectors([]),
-    );
+    server.use(stubConnectorsWithCatalogSlugs([], []), stubUserConnectors([]));
 
     await generateCommand.parseAsync(["node", "cli", "website"]);
 
@@ -466,13 +477,13 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in website generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain("Use: zero generate website -h");
+    expect(text).toContain("Use: okou generate website -h");
     expect(text).toContain("Context:");
     expect(text).toContain(
-      "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
+      "Standalone static website artifacts can be authored locally and published with okou host for a public URL.",
     );
     expect(text).toContain(
-      "zero host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
+      "okou host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
     );
     expect(text).toContain(
       "Existing web app changes should usually follow the project's own build, test, and deploy workflow.",
@@ -497,10 +508,7 @@ describe("zero generate lister", () => {
       "Built-in mobile app design generation",
     ],
   ])("suggests the built-in %s command", async (type, label, commandLabel) => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], []),
-      stubUserConnectors([]),
-    );
+    server.use(stubConnectorsWithCatalogSlugs([], []), stubUserConnectors([]));
 
     await generateCommand.parseAsync(["node", "cli", type]);
 
@@ -510,12 +518,12 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain(commandLabel);
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain(`Use: zero generate ${type} -h`);
+    expect(text).toContain(`Use: okou generate ${type} -h`);
   });
 
   it("suggests the built-in voice command when no voice connector is ready", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs(
+      stubConnectorsWithCatalogSlugs(
         [],
         ["elevenlabs", "hume", "minimax", "openai"],
       ),
@@ -531,19 +539,19 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in voice generation");
     expect(text).toContain("Models: gpt-4o-mini-tts");
-    expect(text).toContain("Use: zero generate voice --provider built-in -h");
+    expect(text).toContain("Use: okou generate voice --provider built-in -h");
     expect(text).not.toContain("Model: gpt-4o-mini-tts");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
     expect(text).not.toContain("Next actions:");
     expect(text).not.toContain(
-      'zero generate voice --provider built-in --text "Hello"',
+      'okou generate voice --provider built-in --text "Hello"',
     );
   });
 
   it("also shows the built-in voice provider when a voice connector is ready", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs(
+      stubConnectorsWithCatalogSlugs(
         [connector("openai", "openai-user")],
         ["elevenlabs", "hume", "minimax", "openai"],
       ),
@@ -560,13 +568,13 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in voice generation");
     expect(text).toContain("Models: gpt-4o-mini-tts");
-    expect(text).toContain("Use: zero generate voice --provider built-in -h");
+    expect(text).toContain("Use: okou generate voice --provider built-in -h");
     expect(text).not.toContain("Model: gpt-4o-mini-tts");
   });
 
   it("lists music as the public audio connector-backed subtype", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs(
+      stubConnectorsWithCatalogSlugs(
         [connector("elevenlabs", "elevenlabs-user")],
         ["elevenlabs", "minimax"],
       ),
@@ -581,6 +589,34 @@ describe("zero generate lister", () => {
     expect(text).toContain("ElevenLabs");
     expect(text).toContain("@elevenlabs-user");
     expect(text).not.toContain("Built-in command:");
+  });
+
+  it("uses Okou branding when a subtype has no built-in pipeline", async () => {
+    const musicCommand = generateCommand.commands.find((command) => {
+      return command.name() === "music";
+    });
+    let helpOutput = "";
+    musicCommand?.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    musicCommand?.outputHelp();
+    expect(helpOutput).toContain(
+      "Okou does not provide a built-in music pipeline.",
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "music",
+      "--provider",
+      "built-in",
+    ]);
+    expect(output()).toContain(
+      "Okou has no built-in music generation pipeline.",
+    );
   });
 
   it("rejects unknown generation types via Commander", async () => {

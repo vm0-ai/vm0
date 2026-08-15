@@ -1,15 +1,17 @@
-import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
+import { createErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import type {
   ModelProviderType,
   ModelProviderFramework,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 
 import {
   parseCodexAuthJson,
+  extractCodexAccountEmailFromIdToken,
   isCodexAuthJsonShapeError,
   isCodexAuthJsonFreePlanError,
 } from "./codex-auth-json-parser";
 import { fetchCodexUsageMetadata } from "./codex-usage.service";
+import type { PersonalProviderAccountErrorResponse } from "./model-provider-account.service";
 import { logger } from "../../lib/log";
 import { settle, tapError, throwIfAbort } from "../utils";
 
@@ -20,6 +22,8 @@ import { settle, tapError, throwIfAbort } from "../utils";
  */
 interface UpsertedProvider {
   id: string;
+  modelProviderId?: string;
+  isActive?: boolean;
   type: ModelProviderType;
   framework: ModelProviderFramework;
   secretName: string | null;
@@ -27,14 +31,25 @@ interface UpsertedProvider {
   secretNames?: string[] | null;
   isDefault: boolean;
   selectedModel: string | null;
-  workspaceName: string | null;
-  planType: string | null;
-  subscriptionResetPeriod: string | null;
-  subscriptionNextResetAt: Date | null;
+  accountEmail?: string | null;
+  workspaceName?: string | null;
+  planType?: string | null;
+  subscriptionResetPeriod?: string | null;
+  subscriptionNextResetAt?: Date | string | null;
   needsReconnect: boolean;
   lastRefreshErrorCode: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+function serializeDate(value: Date | string): string {
+  return typeof value === "string" ? value : value.toISOString();
+}
+
+function serializeNullableDate(
+  value: Date | string | null | undefined,
+): string | null {
+  return value ? serializeDate(value) : null;
 }
 
 /**
@@ -45,6 +60,10 @@ interface UpsertedProvider {
 function serializeUpsertedProvider(provider: UpsertedProvider) {
   return {
     id: provider.id,
+    ...(provider.modelProviderId
+      ? { modelProviderId: provider.modelProviderId }
+      : {}),
+    ...(provider.isActive !== undefined ? { isActive: provider.isActive } : {}),
     type: provider.type,
     framework: provider.framework,
     secretName: provider.secretName,
@@ -52,15 +71,17 @@ function serializeUpsertedProvider(provider: UpsertedProvider) {
     secretNames: provider.secretNames ?? null,
     isDefault: provider.isDefault,
     selectedModel: provider.selectedModel,
-    workspaceName: provider.workspaceName,
-    planType: provider.planType,
-    subscriptionResetPeriod: provider.subscriptionResetPeriod,
-    subscriptionNextResetAt:
-      provider.subscriptionNextResetAt?.toISOString() ?? null,
+    accountEmail: provider.accountEmail ?? null,
+    workspaceName: provider.workspaceName ?? null,
+    planType: provider.planType ?? null,
+    subscriptionResetPeriod: provider.subscriptionResetPeriod ?? null,
+    subscriptionNextResetAt: serializeNullableDate(
+      provider.subscriptionNextResetAt,
+    ),
     needsReconnect: provider.needsReconnect,
     lastRefreshErrorCode: provider.lastRefreshErrorCode,
-    createdAt: provider.createdAt.toISOString(),
-    updatedAt: provider.updatedAt.toISOString(),
+    createdAt: serializeDate(provider.createdAt),
+    updatedAt: serializeDate(provider.updatedAt),
   };
 }
 
@@ -80,13 +101,18 @@ type UpsertCodexProvider = (args: {
   };
   selectedModel: string | undefined;
   metadata: {
+    externalAccountId: string;
+    accountEmail: string | null;
     tokenExpiresAt: Date | null;
     workspaceName: string | null;
     planType: string | null;
     subscriptionResetPeriod?: string | null;
     subscriptionNextResetAt?: Date | null;
   };
-}) => Promise<{ provider: UpsertedProvider; created: boolean }>;
+}) => Promise<
+  | { provider: UpsertedProvider; created: boolean }
+  | PersonalProviderAccountErrorResponse
+>;
 
 /**
  * Common args shared by both scopes. Split out so the discriminated union
@@ -96,7 +122,6 @@ type UpsertCodexProvider = (args: {
 interface CodexAuthJsonPasteCommonArgs {
   rawAuthJson: string;
   selectedModel: string | undefined;
-  signal: AbortSignal;
   upsert: UpsertCodexProvider;
 }
 
@@ -123,7 +148,10 @@ type CodexAuthJsonPasteArgs =
  *
  * Shared implementation for API org and personal model-provider paste routes.
  */
-export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
+export async function handleCodexAuthJsonPaste(
+  args: CodexAuthJsonPasteArgs,
+  signal: AbortSignal,
+) {
   const log = logger(
     args.scope === "personal"
       ? "api:zero-me-model-providers"
@@ -139,18 +167,20 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
       const parsed = parseCodexAuthJson(args.rawAuthJson);
       const usageMetadata =
         (await tapError(
-          fetchCodexUsageMetadata({
-            accessToken: parsed.accessToken,
-            accountId: parsed.accountId,
-            idToken: parsed.idToken,
-            signal: args.signal,
-          }),
+          fetchCodexUsageMetadata(
+            {
+              accessToken: parsed.accessToken,
+              accountId: parsed.accountId,
+              idToken: parsed.idToken,
+            },
+            signal,
+          ),
           () => {
             return undefined;
           },
         )) ?? null;
 
-      const { provider, created } = await args.upsert({
+      const upserted = await args.upsert({
         authMethod: "auth_json",
         secretValues: {
           CHATGPT_ACCESS_TOKEN: parsed.accessToken,
@@ -160,6 +190,10 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
         },
         selectedModel: args.selectedModel,
         metadata: {
+          externalAccountId: parsed.accountId,
+          accountEmail:
+            usageMetadata?.accountEmail ??
+            extractCodexAccountEmailFromIdToken(parsed.idToken),
           tokenExpiresAt: parsed.tokenExpiresAt,
           workspaceName: usageMetadata?.workspaceName ?? parsed.workspaceName,
           planType: usageMetadata?.planType ?? parsed.planType,
@@ -171,13 +205,17 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
             : {}),
         },
       });
+      if ("status" in upserted) {
+        return upserted;
+      }
+      const { provider, created } = upserted;
 
       return {
         status: (created ? 201 : 200) as 200 | 201,
         body: { provider: serializeUpsertedProvider(provider), created },
       };
     })(),
-    args.signal,
+    signal,
   );
 
   if (pasteResult.ok) {

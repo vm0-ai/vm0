@@ -3,17 +3,19 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   generationTemplateRequestSchema,
   userMessageDocumentSchema,
+  userMessageInputDocumentSchema,
   type FeedbackNotePart,
   type GenerationTemplateRequest,
-  type GenerationTemplateType,
   type PersistedAttachment,
   type UserMessageDocument,
+  type UserMessageInputDocument,
   type UserMessagePart,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 
 import { i18n } from "../../i18n/index.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
+import { avatarTemplateSelection } from "./avatar-template-selection.ts";
 import {
   serializeAgentMention,
   splitAgentMentionSegments,
@@ -26,7 +28,7 @@ export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 
 export interface EditorDocumentContext {
-  readonly generationTemplate?: GenerationTemplateRequest;
+  readonly selectedTemplate?: GenerationTemplateRequest;
   readonly attachments?: readonly PersistedAttachment[];
 }
 
@@ -34,7 +36,7 @@ export interface EditorDocumentSnapshot {
   readonly toEditorDocument: () => JSONContent;
   readonly toMessageDocument: (
     context?: EditorDocumentContext,
-  ) => UserMessageDocument | null;
+  ) => UserMessageInputDocument | null;
 }
 
 export function shouldUseUserMessage(
@@ -93,15 +95,15 @@ function agentPart(
   };
 }
 
-function legacyTemplatePart(
+function selectedTemplatePart(
   node: ProseMirrorNode,
-  generationTemplate: GenerationTemplateRequest | undefined,
+  selectedTemplate: GenerationTemplateRequest | undefined,
 ): UserMessagePart | null {
   const templateType: unknown = node.attrs.templateType;
   const title: unknown = node.attrs.title;
   if (
-    generationTemplate === undefined ||
-    templateType !== generationTemplate.type ||
+    selectedTemplate === undefined ||
+    templateType !== templateAttachmentType(selectedTemplate) ||
     typeof title !== "string"
   ) {
     return null;
@@ -109,7 +111,7 @@ function legacyTemplatePart(
   return {
     type: "template",
     titleSnapshot: title,
-    template: generationTemplate,
+    template: selectedTemplate,
   };
 }
 
@@ -221,10 +223,43 @@ function feedbackSource(
   };
 }
 
+interface FeedbackLocation {
+  readonly eventId: string;
+  readonly range: {
+    readonly start: number;
+    readonly end: number;
+  };
+}
+
+function feedbackLocation(
+  node: ProseMirrorNode,
+): FeedbackLocation | null | undefined {
+  const eventId: unknown = node.attrs.eventId;
+  const rangeStart: unknown = node.attrs.rangeStart;
+  const rangeEnd: unknown = node.attrs.rangeEnd;
+  if (eventId === null && rangeStart === null && rangeEnd === null) {
+    return undefined;
+  }
+  if (
+    typeof eventId !== "string" ||
+    eventId.length === 0 ||
+    typeof rangeStart !== "number" ||
+    !Number.isInteger(rangeStart) ||
+    rangeStart < 0 ||
+    typeof rangeEnd !== "number" ||
+    !Number.isInteger(rangeEnd) ||
+    rangeEnd <= rangeStart
+  ) {
+    return null;
+  }
+  return { eventId, range: { start: rangeStart, end: rangeEnd } };
+}
+
 function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
   const quote: unknown = node.attrs.quote;
   const source = feedbackSource(node);
-  if (typeof quote !== "string" || source === null) {
+  const location = feedbackLocation(node);
+  if (typeof quote !== "string" || source === null || location === null) {
     return null;
   }
   const note: UserMessagePart[] = [];
@@ -256,11 +291,12 @@ function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
     type: "feedback",
     quote,
     note,
+    ...location,
     ...(source ? { source } : {}),
   };
 }
 
-function legacyTemplateCount(document: ProseMirrorNode): number | null {
+function selectedTemplateNodeCount(document: ProseMirrorNode): number | null {
   let count = 0;
   for (let index = 0; index < document.childCount; index++) {
     const nodeName = document.child(index).type.name;
@@ -308,7 +344,7 @@ function appendFeedbackGroup(
 export function editorDocToMessageDocument(
   document: ProseMirrorNode,
   context: EditorDocumentContext = {},
-): UserMessageDocument | null {
+): UserMessageInputDocument | null {
   if (document.type.name !== "doc") {
     return null;
   }
@@ -316,7 +352,7 @@ export function editorDocToMessageDocument(
   const parts: UserMessagePart[] = [];
   const attachments = context.attachments ?? [];
   let filesAppended = false;
-  const documentTemplateCount = legacyTemplateCount(document);
+  const documentTemplateCount = selectedTemplateNodeCount(document);
   if (documentTemplateCount === null) {
     return null;
   }
@@ -325,7 +361,7 @@ export function editorDocToMessageDocument(
   for (let index = 0; index < document.childCount; index++) {
     const node = document.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
-      const part = legacyTemplatePart(node, context.generationTemplate);
+      const part = selectedTemplatePart(node, context.selectedTemplate);
       if (!part) {
         return null;
       }
@@ -358,11 +394,14 @@ export function editorDocToMessageDocument(
   if (!filesAppended) {
     appendFileParts(parts, attachments);
   }
-  if (documentTemplateCount === 0 && context.generationTemplate !== undefined) {
+  if (documentTemplateCount === 0 && context.selectedTemplate !== undefined) {
     return null;
   }
 
-  const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
+  const parsed = userMessageInputDocumentSchema.safeParse({
+    version: 1,
+    parts,
+  });
   return parsed.success ? parsed.data : null;
 }
 
@@ -389,7 +428,7 @@ export function textToMessageDocument(
   text: string,
   template?: TextMessageTemplateSnapshot,
   attachments: readonly PersistedAttachment[] = [],
-): UserMessageDocument | null {
+): UserMessageInputDocument | null {
   const parts: UserMessagePart[] = [];
   if (template) {
     parts.push({
@@ -400,44 +439,39 @@ export function textToMessageDocument(
   }
   appendFileParts(parts, attachments);
   appendTextPart(parts, text);
-  const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
+  const parsed = userMessageInputDocumentSchema.safeParse({
+    version: 1,
+    parts,
+  });
   return parsed.success ? parsed.data : null;
 }
 
-function templateCategory(type: GenerationTemplateType): string {
+function templateAttachmentType(template: GenerationTemplateRequest): string {
+  return avatarTemplateSelection(template) ? "avatar" : template.type;
+}
+
+function templateCategory(template: GenerationTemplateRequest): string {
+  const type = templateAttachmentType(template);
   return type === "presentation" ? "slides" : type;
 }
 
 function templatePreviewImageUrl(
   template: GenerationTemplateRequest,
 ): string | null {
-  return template.type === "presentation"
-    ? (template.selection.previewUrl ?? null)
-    : null;
+  if (template.type === "presentation") {
+    return template.selection.previewUrl ?? null;
+  }
+  return avatarTemplateSelection(template)?.previewUrl ?? null;
 }
 
 function templateNode(part: Extract<UserMessagePart, { type: "template" }>) {
   return {
     type: INLINE_TEMPLATE_NODE_NAME,
     attrs: {
-      templateType: part.template.type,
+      templateType: templateAttachmentType(part.template),
       template: part.template,
       title: part.titleSnapshot,
-      category: templateCategory(part.template.type),
-      previewImageUrl: templatePreviewImageUrl(part.template),
-    },
-  } satisfies JSONContent;
-}
-
-function legacyTemplateNode(
-  part: Extract<UserMessagePart, { type: "template" }>,
-) {
-  return {
-    type: TEMPLATE_ATTACHMENT_NODE_NAME,
-    attrs: {
-      templateType: part.template.type,
-      title: part.titleSnapshot,
-      category: templateCategory(part.template.type),
+      category: templateCategory(part.template),
       previewImageUrl: templatePreviewImageUrl(part.template),
     },
   } satisfies JSONContent;
@@ -590,10 +624,7 @@ function appendRestoredText(state: RestoredEditorState, text: string): void {
  * the existing external attachment state and therefore do not become Tiptap
  * nodes. Newlines are canonically restored as paragraph boundaries.
  */
-export function messageDocumentToEditorDoc(
-  value: unknown,
-  options: { readonly inlineTemplates?: boolean } = {},
-): JSONContent | null {
+export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -604,7 +635,6 @@ export function messageDocumentToEditorDoc(
     paragraphContent: [],
     trailingParagraph: false,
   };
-  let legacyTemplateCount = 0;
   let feedbackIndex = 0;
   const feedbackCount = parsed.data.parts.filter((part) => {
     return part.type === "feedback";
@@ -642,6 +672,13 @@ export function messageDocumentToEditorDoc(
           quote: part.quote,
           showDivider: feedbackIndex > 0,
           fill: feedbackIndex === feedbackCount - 1,
+          ...(part.eventId !== undefined && part.range !== undefined
+            ? {
+                eventId: part.eventId,
+                rangeStart: part.range.start,
+                rangeEnd: part.range.end,
+              }
+            : {}),
           ...(part.source
             ? {
                 sourceType: part.source.type,
@@ -657,19 +694,8 @@ export function messageDocumentToEditorDoc(
       continue;
     }
     if (part.type === "template") {
-      if (options.inlineTemplates === true) {
-        state.paragraphContent.push(templateNode(part));
-        state.trailingParagraph = false;
-        continue;
-      }
-      legacyTemplateCount += 1;
-      if (legacyTemplateCount > 1) {
-        return null;
-      }
-      if (state.paragraphContent.length > 0) {
-        flushRestoredParagraph(state);
-      }
-      state.content.push(legacyTemplateNode(part));
+      state.paragraphContent.push(templateNode(part));
+      state.trailingParagraph = false;
     }
   }
 
@@ -683,10 +709,7 @@ export function messageDocumentToEditorDoc(
 }
 
 /** Serializes the business document to the same plain prompt representation. */
-export function messageDocumentToPrompt(
-  value: unknown,
-  options: { readonly inlineTemplates?: boolean } = {},
-): string | null {
+export function messageDocumentToPrompt(value: unknown): string | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -724,7 +747,7 @@ export function messageDocumentToPrompt(
       );
     } else if (part.type === "agent") {
       inlineText += serializeAgentMention(part.agentId, part.nameSnapshot);
-    } else if (part.type === "template" && options.inlineTemplates === true) {
+    } else if (part.type === "template") {
       inlineText += `Select ${part.titleSnapshot} ${part.template.type} template`;
     }
   }
@@ -734,10 +757,7 @@ export function messageDocumentToPrompt(
 }
 
 /** Serializes the business document into a compact human-readable label. */
-export function messageDocumentToDisplayText(
-  value: unknown,
-  options: { readonly inlineTemplates?: boolean } = {},
-): string | null {
+export function messageDocumentToDisplayText(value: unknown): string | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -791,7 +811,9 @@ export function messageDocumentToDisplayText(
     if (
       part.type === "source" ||
       part.type === "automation" ||
-      part.type === "goal"
+      part.type === "goal" ||
+      part.type === "morning_brief" ||
+      part.type === "model"
     ) {
       continue;
     }
@@ -802,12 +824,7 @@ export function messageDocumentToDisplayText(
         },
         { title: part.titleSnapshot },
       );
-      if (options.inlineTemplates === true) {
-        inlineText += templateLabel;
-      } else {
-        flushInlineText();
-        blocks.push(templateLabel);
-      }
+      inlineText += templateLabel;
       continue;
     }
 

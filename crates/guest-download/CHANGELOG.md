@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.23.8](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.7...guest-download-v0.23.8) (2026-08-14)
+
+## [0.23.7](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.6...guest-download-v0.23.7) (2026-08-14)
+
+## [0.23.6](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.5...guest-download-v0.23.6) (2026-08-14)
+
+## [0.23.5](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.4...guest-download-v0.23.5) (2026-08-14)
+
+## [0.23.4](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.3...guest-download-v0.23.4) (2026-08-14)
+
+## [0.23.3](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.2...guest-download-v0.23.3) (2026-08-13)
+
+## [0.23.2](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.1...guest-download-v0.23.2) (2026-08-13)
+
+## [0.23.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.0...guest-download-v0.23.1) (2026-08-13)
+
+## [0.23.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.28...guest-download-v0.23.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate run identity env to okou ([#26796](https://github.com/vm0-ai/vm0/issues/26796)) ([88850c3](https://github.com/vm0-ai/vm0/commit/88850c33b9bb20018d9e0fd12097cc5eb7fb2bde))
+
+## [0.22.28](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.27...guest-download-v0.22.28) (2026-08-12)
+
+## [0.22.27](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.26...guest-download-v0.22.27) (2026-08-12)
+
+## [0.22.26](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.25...guest-download-v0.22.26) (2026-08-11)
+
+## [0.22.25](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.24...guest-download-v0.22.25) (2026-08-11)
+
+## [0.22.24](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.23...guest-download-v0.22.24) (2026-08-10)
+
+## [0.22.23](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.22...guest-download-v0.22.23) (2026-08-09)
+
+## [0.22.22](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.21...guest-download-v0.22.22) (2026-08-09)
+
+## [0.22.21](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.20...guest-download-v0.22.21) (2026-08-07)
+
+## [0.22.20](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.19...guest-download-v0.22.20) (2026-08-07)
+
+## [0.22.19](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.18...guest-download-v0.22.19) (2026-08-06)
+
+## [0.22.18](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.17...guest-download-v0.22.18) (2026-08-05)
+
+
+### Documentation
+
+* **guest-download:** document manifest partial failures ([#25272](https://github.com/vm0-ai/vm0/issues/25272)) ([a3fe705](https://github.com/vm0-ai/vm0/commit/a3fe705e88cd9a7ccd433bc1229e47d2c247a930))
+
+## [0.22.17](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.16...guest-download-v0.22.17) (2026-08-05)
+
+## [0.22.16](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.15...guest-download-v0.22.16) (2026-08-04)
+
+## [0.22.15](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.14...guest-download-v0.22.15) (2026-08-04)
+
 ## [0.22.14](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.13...guest-download-v0.22.14) (2026-08-03)
 
 ## [0.22.13](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.12...guest-download-v0.22.13) (2026-08-03)

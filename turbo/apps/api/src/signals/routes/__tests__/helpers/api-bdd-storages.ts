@@ -1,7 +1,7 @@
 import type {
   TestStorageStateActionBody,
   TestStorageStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-storage-fixture";
+} from "@okouai/api-contracts/contracts/test-storage-fixture";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";

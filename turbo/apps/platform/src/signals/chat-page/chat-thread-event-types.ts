@@ -1,4 +1,4 @@
-import type { ChatThreadEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadEvent } from "@okouai/api-contracts/contracts/chat-threads";
 
 type WithoutSeqId<T> = T extends unknown
   ? Omit<T, "seqId"> & { readonly seqId?: never }
@@ -13,9 +13,3 @@ export type CompatibleChatThreadEvent =
   | UnsequencedChatThreadEvent;
 
 export type ChatThreadEventView = CompatibleChatThreadEvent;
-
-export function chatThreadEventHasSeqId(
-  event: CompatibleChatThreadEvent,
-): event is ChatThreadEvent {
-  return "seqId" in event && typeof event.seqId === "number";
-}

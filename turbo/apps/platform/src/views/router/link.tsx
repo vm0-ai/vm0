@@ -11,11 +11,17 @@ type PathParams = Parameters<typeof generateRouterPath>[1];
 interface NavigationOptions {
   pathParams?: PathParams;
   searchParams?: URLSearchParams;
+  hash?: string;
 }
 
-function buildHref(path: string, searchParams?: URLSearchParams): string {
+function buildHref(
+  path: string,
+  searchParams?: URLSearchParams,
+  hash?: string,
+): string {
   const search = searchParams?.toString();
-  return search ? `${path}?${search}` : path;
+  const fragment = hash ? (hash.startsWith("#") ? hash : `#${hash}`) : "";
+  return `${search ? `${path}?${search}` : path}${fragment}`;
 }
 
 function isNewTabClick(e: MouseEvent<HTMLAnchorElement>): boolean {
@@ -42,7 +48,7 @@ export function Link({
 }: LinkProps) {
   const navigate = useSet(detachedNavigateTo$);
   const path = generateRouterPath(pathname, options?.pathParams);
-  const href = buildHref(path, options?.searchParams);
+  const href = buildHref(path, options?.searchParams, options?.hash);
 
   const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(e);

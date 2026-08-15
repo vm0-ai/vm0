@@ -1,8 +1,15 @@
 """Tests for captured network-log header sanitization."""
 
 import pytest
+from mitmproxy import http
 
-from body_capture import _sanitize_headers_for_capture
+from body_capture import _sanitize_headers_for_capture as _sanitize_bounded_headers
+
+
+def _sanitize_headers_for_capture(headers: http.Headers) -> dict[str, str]:
+    captured, truncated = _sanitize_bounded_headers(headers)
+    assert not truncated
+    return captured
 
 
 class TestSanitizeHeadersForCapture:
@@ -41,6 +48,45 @@ class TestSanitizeHeadersForCapture:
         assert result["Content-Type"] == expected
 
     @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            pytest.param(
+                (" " * 256) + "application/json",
+                "application/json",
+                id="leading-at-limit",
+            ),
+            pytest.param(
+                (" " * 257) + "application/json",
+                "***",
+                id="leading-over-limit",
+            ),
+            pytest.param(
+                "application/json" + (" " * 256),
+                "application/json",
+                id="trailing-at-limit",
+            ),
+            pytest.param(
+                "application/json" + (" " * 257),
+                "***",
+                id="trailing-over-limit",
+            ),
+            pytest.param(
+                "application/json" + (" " * 256) + "; charset=utf-8",
+                "application/json",
+                id="before-parameter-at-limit",
+            ),
+            pytest.param(
+                "application/json" + (" " * 257) + "; charset=utf-8",
+                "***",
+                id="before-parameter-over-limit",
+            ),
+        ],
+    )
+    def test_content_type_optional_whitespace_is_bounded(self, headers, value, expected):
+        result = _sanitize_headers_for_capture(headers(("Content-Type", value)))
+        assert result["Content-Type"] == expected
+
+    @pytest.mark.parametrize(
         ("name", "value", "expected"),
         [
             ("Accept-Encoding", "\tgzip, br ", "gzip, br"),
@@ -54,6 +100,18 @@ class TestSanitizeHeadersForCapture:
     ):
         result = _sanitize_headers_for_capture(headers((name, value)))
         assert result[name] == expected
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "Fri, 31 Feb 2026 03:29:48 GMT",
+            "Thu, 31 Apr 2026 03:29:48 GMT",
+            "Thu, 29 Feb 2025 03:29:48 GMT",
+        ],
+    )
+    def test_imf_fixdate_values_with_impossible_dates_are_redacted(self, headers, value):
+        result = _sanitize_headers_for_capture(headers(("Date", value)))
+        assert result["Date"] == "***"
 
     @pytest.mark.parametrize(
         ("name", "value"),

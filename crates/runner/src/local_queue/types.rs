@@ -44,6 +44,5 @@ pub(crate) struct JobResponse {
 pub(crate) struct ActiveInputEntry {
     pub(crate) run_id: RunId,
     pub(crate) sequence: u64,
-    pub(crate) message_id: String,
     pub(crate) text: String,
 }

@@ -6,6 +6,7 @@ use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
+use crate::firewall_hostname_policy::{raw_host_from_authority, raw_url_authority};
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 
@@ -121,6 +122,7 @@ pub struct ExecutionContext {
     pub network_policies: Option<std::collections::HashMap<String, NetworkPolicy>>,
     #[serde(default)]
     pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
+    pub connector_runtime_targets: Vec<ConnectorRuntimeTargetRegistration>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
@@ -136,6 +138,24 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
+    /// Non-secret Pi launch inputs resolved from mounted Storage in Sandbox.
+    #[serde(default)]
+    pub pi_launch_config: Option<serde_json::Value>,
+    /// Non-secret model metadata for the Pi Sandbox runtime.
+    #[serde(default)]
+    pub pi_model_config: Option<PiModelConfig>,
+    /// Chat Thread id used as Pi's official JSONL session id.
+    #[serde(default)]
+    pub pi_session_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PiModelConfig {
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+    pub api_key_env: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -166,7 +186,7 @@ pub struct SecretConnectorMetadata {
 }
 
 /// Execution firewall entry supplied by the API.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum FirewallEntry {
     /// Built-in firewall resolved by the Python addon from the runner-written catalog cache.
@@ -178,7 +198,11 @@ pub enum FirewallEntry {
     },
     /// Inline firewall body for org custom connectors.
     #[serde(rename = "inline", rename_all = "camelCase")]
-    Inline { firewall: Firewall },
+    Inline {
+        firewall: Firewall,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        custom_connector_id: Option<String>,
+    },
 }
 
 /// A firewall definition shared by inline execution entries and builtin catalogs.
@@ -207,15 +231,36 @@ impl Firewall {
     /// credentialed-destination and host-policy checks, matcher compilation,
     /// and request-time enforcement.
     pub(crate) fn validate_for_cache(&self) -> Result<(), String> {
+        self.validate_shape()?;
+        for (index, api) in self.apis.iter().enumerate() {
+            api.validate_for_cache()
+                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_for_connector_runtime(&self) -> Result<(), String> {
+        self.validate_shape()?;
+        let mut api_ids = HashSet::new();
+        for (index, api) in self.apis.iter().enumerate() {
+            api.validate_for_connector_runtime()
+                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
+            if !api_ids.insert(api.id.as_str()) {
+                return Err(format!(
+                    "firewall {} api id {:?} must be unique",
+                    self.name, api.id
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_shape(&self) -> Result<(), String> {
         if self.name.is_empty() {
             return Err("firewall name must be non-empty".to_string());
         }
         if self.apis.is_empty() {
             return Err(format!("firewall {} must have at least one api", self.name));
-        }
-        for (index, api) in self.apis.iter().enumerate() {
-            api.validate_for_cache()
-                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
         }
         Ok(())
     }
@@ -225,8 +270,8 @@ impl Firewall {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FirewallApi {
     /// Stable API identifier used as one component of mitm-addon auth cache keys.
-    /// Filled by the Python registry loader after built-in catalog entries and
-    /// inline firewalls are resolved.
+    /// Builtin catalogs leave this empty for the Python registry loader to
+    /// assign. Synced custom connector firewalls provide a stable ID.
     #[serde(default)]
     pub id: String,
     pub base: String,
@@ -246,6 +291,17 @@ impl FirewallApi {
         if !self.id.is_empty() {
             return Err("id must be empty because the runner assigns api ids".to_string());
         }
+        self.validate_shape()
+    }
+
+    fn validate_for_connector_runtime(&self) -> Result<(), String> {
+        if self.id.is_empty() {
+            return Err("id must be non-empty".to_string());
+        }
+        self.validate_shape()
+    }
+
+    fn validate_shape(&self) -> Result<(), String> {
         if self.base.is_empty() {
             return Err("base must be non-empty".to_string());
         }
@@ -447,6 +503,59 @@ fn is_unsafe_url_codepoint(ch: char) -> bool {
     ch < '\u{0020}' || ch == '\u{007f}'
 }
 
+// Use the shortest valid witness for each URL component so materialization does
+// not push an otherwise satisfiable DNS label past its 63-byte limit.
+const BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER: &str = "https://x.y";
+const BASE_URL_TEMPLATE_HOST_PLACEHOLDER: &str = "x.y";
+const BASE_URL_TEMPLATE_PORT_PLACEHOLDER: &str = "1";
+const BASE_URL_TEMPLATE_PATH_PLACEHOLDER: &str = "x";
+
+// Precompute fixed URL delimiters once; a catalog base can contain many templates.
+struct BaseUrlTemplateComponentBoundaries {
+    authority_start: Option<usize>,
+    path_start: Option<usize>,
+    query_or_fragment_start: Option<usize>,
+}
+
+impl BaseUrlTemplateComponentBoundaries {
+    fn new(base: &str) -> Self {
+        let authority_start = base.find("://").map(|index| index + "://".len());
+        let path_start = authority_start.and_then(|start| {
+            base[start..]
+                .find('/')
+                .map(|relative_index| start + relative_index)
+        });
+        let query_or_fragment_start = authority_start.and_then(|start| {
+            base[start..]
+                .find(['?', '#'])
+                .map(|relative_index| start + relative_index)
+        });
+        Self {
+            authority_start,
+            path_start,
+            query_or_fragment_start,
+        }
+    }
+
+    fn prefix_is_inside_authority(&self, template_start: usize) -> bool {
+        self.authority_start
+            .is_some_and(|start| start <= template_start)
+            && self
+                .path_start
+                .into_iter()
+                .chain(self.query_or_fragment_start)
+                .all(|boundary| template_start <= boundary)
+    }
+
+    fn prefix_is_inside_path(&self, template_start: usize) -> bool {
+        self.path_start
+            .is_some_and(|path_start| path_start < template_start)
+            && self
+                .query_or_fragment_start
+                .is_none_or(|boundary| template_start <= boundary)
+    }
+}
+
 fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
     let template_syntax_target = base_url_template_syntax_target_for_cache(base)?;
     let raw_syntax_target = template_syntax_target.as_deref().unwrap_or(base);
@@ -465,40 +574,27 @@ fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
     if raw_syntax_target.contains('#') {
         return Err("base URL must not contain fragment".to_string());
     }
-    let raw_path = if template_syntax_target.is_some() && !raw_syntax_target.contains("://") {
-        raw_syntax_target
-            .strip_prefix("template")
-            .filter(|suffix| suffix.starts_with('/'))
-            .unwrap_or("")
-    } else {
-        raw_url_path(raw_syntax_target)
-    };
+    let raw_path = raw_url_path(raw_syntax_target);
     if path_has_unsafe_segments_for_cache(raw_path) {
         return Err("base URL must not contain unsafe path".to_string());
     }
-    if template_syntax_target.is_some() {
-        if (raw_syntax_target.contains('{') || raw_syntax_target.contains('}'))
-            && raw_syntax_target.contains("://")
-        {
-            validate_parameterized_firewall_base_for_cache(raw_syntax_target)?;
-        }
-        return Ok(());
+    if raw_syntax_target.contains('{') || raw_syntax_target.contains('}') {
+        return validate_parameterized_firewall_base_for_cache(raw_syntax_target);
     }
-    if base.contains('{') || base.contains('}') {
-        return validate_parameterized_firewall_base_for_cache(base);
-    }
-    let parsed = url::Url::parse(base).map_err(|_| "base URL is invalid".to_string())?;
-    let authority = raw_url_authority(base)
+    let parsed =
+        url::Url::parse(raw_syntax_target).map_err(|_| "base URL is invalid".to_string())?;
+    let authority = raw_url_authority(raw_syntax_target)
         .ok_or_else(|| "base URL must include :// after the scheme".to_string())?;
     if authority.is_empty() {
         return Err("base URL must include a host".to_string());
     }
-    if raw_authority_has_empty_port(base) {
+    if raw_authority_has_empty_port(raw_syntax_target) {
         return Err("base URL authority must not include an empty port".to_string());
     }
-    crate::firewall_hostname_policy::validate_base_host_for_cache(raw_host_from_authority(
-        authority,
-    ))?;
+    crate::firewall_hostname_policy::validate_raw_url_host(
+        raw_host_from_authority(authority),
+        "base URL",
+    )?;
 
     let scheme = parsed.scheme();
     if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
@@ -523,6 +619,7 @@ fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String
     let mut search_start = 0;
     let mut result = String::new();
     let mut found = false;
+    let boundaries = BaseUrlTemplateComponentBoundaries::new(base);
     while let Some(relative_start) = base[search_start..].find("${{") {
         found = true;
         let start = search_start + relative_start;
@@ -533,8 +630,14 @@ fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String
         let end = content_start + relative_end;
         validate_base_url_var_reference(&base[content_start..end])?;
         result.push_str(&base[search_start..start]);
-        result.push_str("template");
-        search_start = end + "}}".len();
+        let template_end = end + "}}".len();
+        result.push_str(base_url_template_syntax_placeholder_for_cache(
+            base,
+            start,
+            template_end,
+            &boundaries,
+        )?);
+        search_start = template_end;
     }
     if !found {
         return Ok(None);
@@ -544,11 +647,55 @@ fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String
 }
 
 fn validate_base_url_var_reference(content: &str) -> Result<(), String> {
-    let trimmed = content.trim();
+    let trimmed = content.trim_matches(is_ecmascript_whitespace);
     let Some(name) = trimmed.strip_prefix("vars.") else {
         return Err("base URL template reference must use vars".to_string());
     };
     validate_template_identifier(name, "base URL template variable")
+}
+
+fn is_ecmascript_whitespace(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{0009}'..='\u{000d}'
+            | '\u{0020}'
+            | '\u{00a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+            | '\u{feff}'
+    )
+}
+
+fn base_url_template_syntax_placeholder_for_cache(
+    base: &str,
+    start: usize,
+    template_end: usize,
+    boundaries: &BaseUrlTemplateComponentBoundaries,
+) -> Result<&'static str, String> {
+    let ends_base_or_starts_path =
+        template_end == base.len() || base[template_end..].starts_with('/');
+
+    if start == 0 && ends_base_or_starts_path {
+        return Ok(BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER);
+    }
+    if base[..start].ends_with("://") && ends_base_or_starts_path {
+        return Ok(BASE_URL_TEMPLATE_HOST_PLACEHOLDER);
+    }
+    if boundaries.prefix_is_inside_authority(start) {
+        if base[..start].ends_with(':') && ends_base_or_starts_path {
+            return Ok(BASE_URL_TEMPLATE_PORT_PLACEHOLDER);
+        }
+        return Ok(BASE_URL_TEMPLATE_HOST_PLACEHOLDER);
+    }
+    if boundaries.prefix_is_inside_path(start) {
+        return Ok(BASE_URL_TEMPLATE_PATH_PLACEHOLDER);
+    }
+    Err("base URL template variable is used in an unsupported position".to_string())
 }
 
 fn validate_template_identifier(name: &str, label: &str) -> Result<(), String> {
@@ -691,7 +838,7 @@ fn validate_parameterized_firewall_base_authority(
     materialized_host: &str,
     port_suffix: &str,
 ) -> Result<(), String> {
-    crate::firewall_hostname_policy::validate_base_host_for_cache(materialized_host)?;
+    crate::firewall_hostname_policy::validate_raw_url_host(materialized_host, "base URL")?;
     let syntax_target = format!("{scheme}://{materialized_host}{port_suffix}");
     let parsed = url::Url::parse(&syntax_target)
         .map_err(|_| "parameterized base URL authority is invalid".to_string())?;
@@ -952,7 +1099,7 @@ fn auth_base_static_validation_target_for_cache(
 }
 
 fn validate_auth_base_template_reference(content: &str) -> Result<(), String> {
-    let trimmed = content.trim();
+    let trimmed = content.trim_matches(is_ecmascript_whitespace);
     let name = trimmed
         .strip_prefix("secrets.")
         .or_else(|| trimmed.strip_prefix("vars."))
@@ -1068,26 +1215,6 @@ fn raw_authority_has_empty_port(value: &str) -> bool {
     authority.ends_with(':')
 }
 
-fn raw_url_authority(value: &str) -> Option<&str> {
-    let rest = value.split_once("://").map(|(_, rest)| rest)?;
-    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    Some(&rest[..authority_end])
-}
-
-fn raw_host_from_authority(authority: &str) -> &str {
-    let without_userinfo = authority
-        .rsplit_once('@')
-        .map_or(authority, |(_, host)| host);
-    if without_userinfo.starts_with('[') {
-        return without_userinfo
-            .find(']')
-            .map_or(without_userinfo, |end| &without_userinfo[..=end]);
-    }
-    without_userinfo
-        .rsplit_once(':')
-        .map_or(without_userinfo, |(host, _)| host)
-}
-
 fn raw_url_path(value: &str) -> &str {
     let Some(rest) = value.split_once("://").map(|(_, rest)| rest) else {
         return "";
@@ -1134,7 +1261,7 @@ impl FirewallAwsSigv4Auth {
 /// Per-firewall grant configuration: which permissions are authorized and
 /// what policy applies to unknown endpoints (not matching any rule).
 /// Firewall names absent from the map are fully permissive (all granted + allow unknown).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPolicy {
     /// Permission names granted by the user.
@@ -1155,18 +1282,121 @@ pub struct NetworkPolicyRefresh {
     pub next_refresh_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkPolicyRefreshResponse {
-    pub connector_slug: String,
-    pub network_policy: NetworkPolicy,
-    pub next_refresh_at: Option<String>,
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ConnectorRuntimeTarget {
+    #[serde(rename_all = "camelCase")]
+    Builtin { connector_slug: String },
+    #[serde(rename_all = "camelCase")]
+    Custom { custom_connector_id: String },
+}
+
+/// Stable connector identity plus run-pinned metadata used at registration and
+/// in runtime synchronization requests. Metadata never participates in the
+/// derived target identity, result correlation, or realtime notification routing.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ConnectorRuntimeTargetRegistration {
+    #[serde(rename_all = "camelCase")]
+    Builtin {
+        connector_slug: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_url_vars: Option<HashMap<String, String>>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Custom {
+        custom_connector_id: String,
+        base_url_vars: HashMap<String, String>,
+    },
+}
+
+impl ConnectorRuntimeTargetRegistration {
+    pub(crate) fn target(&self) -> ConnectorRuntimeTarget {
+        match self {
+            Self::Builtin { connector_slug, .. } => ConnectorRuntimeTarget::Builtin {
+                connector_slug: connector_slug.clone(),
+            },
+            Self::Custom {
+                custom_connector_id,
+                ..
+            } => ConnectorRuntimeTarget::Custom {
+                custom_connector_id: custom_connector_id.clone(),
+            },
+        }
+    }
+
+    pub(crate) fn custom_base_url_vars(&self) -> Option<&HashMap<String, String>> {
+        match self {
+            Self::Custom { base_url_vars, .. } => Some(base_url_vars),
+            Self::Builtin { .. } => None,
+        }
+    }
+}
+
+impl ConnectorRuntimeTarget {
+    pub(crate) fn log_identity(&self) -> String {
+        match self {
+            Self::Builtin { connector_slug } => format!("builtin:{connector_slug}"),
+            Self::Custom {
+                custom_connector_id,
+            } => format!("custom:{custom_connector_id}"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NetworkPolicyRefreshBatchResponse {
-    pub refreshes: Vec<NetworkPolicyRefreshResponse>,
+pub struct ConnectorRuntimeSyncResult {
+    pub target: ConnectorRuntimeTarget,
+    pub next_sync_at: Option<String>,
+    /// Custom routing inputs echoed by an available synchronization result. The
+    /// scheduler accepts them only when they match the run-pinned registration.
+    #[serde(default)]
+    pub base_url_vars: Option<HashMap<String, String>>,
+    #[serde(flatten)]
+    pub state: ConnectorRuntimeSyncState,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(
+    tag = "state",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ConnectorRuntimeSyncState {
+    Available {
+        network_policy: NetworkPolicy,
+        #[serde(default)]
+        firewall: Option<FirewallEntry>,
+    },
+    Unresolved {
+        reason: ConnectorRuntimeUnresolvedReason,
+    },
+    Absent {
+        reason: ConnectorRuntimeCustomAbsentReason,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum ConnectorRuntimeUnresolvedReason {
+    #[serde(rename = "connector-unavailable")]
+    Connector,
+    #[serde(rename = "permission-bundle-unavailable")]
+    PermissionBundle,
+    #[serde(rename = "runtime-configuration-unavailable")]
+    RuntimeConfiguration,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum ConnectorRuntimeCustomAbsentReason {
+    #[serde(rename = "connector-unavailable")]
+    Connector,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorRuntimeSyncBatchResponse {
+    pub results: Vec<ConnectorRuntimeSyncResult>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1278,15 +1508,17 @@ impl ExecutionContext {
         self.reuse_key.as_deref()
     }
 
-    /// Extract the Claude/Codex CLI agent session id from `resume_session`.
+    /// Extract the framework-native session id.
     ///
     /// Returns `Some` for continued sessions. For first runs this returns
     /// `None`; the executor reads the CLI-generated session id from the
     /// guest filesystem post-execution (see `read_guest_cli_agent_session_id`).
     pub fn cli_agent_session_id(&self) -> Option<&str> {
-        self.resume_session
-            .as_ref()
-            .map(|r| r.cli_agent_session_id.as_str())
+        self.pi_session_id.as_deref().or_else(|| {
+            self.resume_session
+                .as_ref()
+                .map(|r| r.cli_agent_session_id.as_str())
+        })
     }
 }
 
@@ -1427,6 +1659,14 @@ pub struct CompleteRequest {
     /// that the caller could not determine it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_reuse_result: Option<SandboxReuseResult>,
+    /// Final outcome of the workspace-reuse decision. `None` means the run
+    /// failed before the runner reached a reliable final decision.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_reuse_result: Option<WorkspaceReuseResult>,
+    /// Active-input deliveries observed in the guest receipt journal but not
+    /// confirmed through the direct receipt route before process exit.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub active_input_delivery_ids: Vec<String>,
 }
 
 /// Outcome of the sandbox-reuse decision made at job dispatch time. `Reused`
@@ -1454,6 +1694,41 @@ impl SandboxReuseResult {
             Self::ProfileMismatch => "profileMismatch",
             Self::DeviceLimitMismatch => "deviceLimitMismatch",
             Self::UnparkFailed => "unparkFailed",
+        }
+    }
+}
+
+/// Final outcome of workspace reuse after sandbox preparation has settled.
+/// Wire name: `workspaceReuseResult`.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkspaceReuseResult {
+    Reused,
+    SandboxReused,
+    CacheMiss,
+    NoReuseKey,
+    InvalidWorkingDir,
+    LockBusy,
+    InvalidMetadata,
+    DiskPressure,
+    NotConfigured,
+    SandboxPrepareFallback,
+}
+
+impl WorkspaceReuseResult {
+    /// Wire-format string, kept lockstep with the serde derive in tests.
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Reused => "reused",
+            Self::SandboxReused => "sandboxReused",
+            Self::CacheMiss => "cacheMiss",
+            Self::NoReuseKey => "noReuseKey",
+            Self::InvalidWorkingDir => "invalidWorkingDir",
+            Self::LockBusy => "lockBusy",
+            Self::InvalidMetadata => "invalidMetadata",
+            Self::DiskPressure => "diskPressure",
+            Self::NotConfigured => "notConfigured",
+            Self::SandboxPrepareFallback => "sandboxPrepareFallback",
         }
     }
 }
@@ -1505,13 +1780,14 @@ mod tests {
             "job": {
                 "runId": "550e8400-e29b-41d4-a716-446655440000",
                 "experimentalProfile": "browser",
-                "cliAgentSessionId": "legacy-session",
+                "cliAgentSessionId": "session-id",
                 "runnerPreference": {
+                    "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "b85bb257-21c1-4b8f-8676-a4051f35b7b0",
                         "heartbeatGeneration": 7
                     },
-                    "reason": "matchingReuseKey",
+                    "tier": "reusableSandbox",
                     "expiresAt": "2026-08-03T12:00:00.000Z"
                 }
             }
@@ -1545,12 +1821,55 @@ mod tests {
     }
 
     #[test]
+    fn execution_context_deserializes_pi_sandbox_resources() {
+        let json = serde_json::json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "pi",
+            "piSessionId": "22222222-2222-4222-8222-222222222222",
+            "piLaunchConfig": {
+                "schemaVersion": 2
+            },
+            "piModelConfig": {
+                "provider": "deepseek",
+                "baseUrl": "https://api.deepseek.com/",
+                "model": "deepseek-v4-flash",
+                "apiKeyEnv": "OPENAI_API_KEY"
+            },
+            "connectorRuntimeTargets": []
+        });
+
+        let context: ExecutionContext = serde_json::from_value(json).unwrap();
+
+        assert_eq!(
+            context.pi_session_id.as_deref(),
+            Some("22222222-2222-4222-8222-222222222222")
+        );
+        assert_eq!(
+            context
+                .pi_launch_config
+                .as_ref()
+                .and_then(|config| config["schemaVersion"].as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            context
+                .pi_model_config
+                .as_ref()
+                .map(|config| config.model.as_str()),
+            Some("deepseek-v4-flash")
+        );
+    }
+
+    #[test]
     fn execution_context_rejects_legacy_expanded_firewall_entry() {
         let json = serde_json::json!({
             "runId": "11111111-1111-4111-8111-111111111111",
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude-code",
+            "connectorRuntimeTargets": [],
             "firewalls": [{
                 "name": "github",
                 "apis": [{
@@ -1575,6 +1894,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude-code",
+            "connectorRuntimeTargets": [],
             "firewalls": [{
                 "kind": "unknown",
                 "name": "github",
@@ -1790,6 +2110,8 @@ mod tests {
             error: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+            active_input_delivery_ids: Vec::new(),
         };
         let json = serde_json::to_value(&req).unwrap();
         assert!(json.get("runId").is_some());
@@ -1798,6 +2120,8 @@ mod tests {
         assert!(json.get("error").is_none());
         assert!(json.get("sandboxId").is_none());
         assert!(json.get("sandboxReuseResult").is_none());
+        assert!(json.get("workspaceReuseResult").is_none());
+        assert!(json.get("activeInputDeliveryIds").is_none());
     }
 
     #[test]
@@ -1810,11 +2134,14 @@ mod tests {
             error: Some("timeout".into()),
             sandbox_id: None,
             sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+            active_input_delivery_ids: Vec::new(),
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["error"], "timeout");
         assert!(json.get("sandboxId").is_none());
         assert!(json.get("sandboxReuseResult").is_none());
+        assert!(json.get("workspaceReuseResult").is_none());
     }
 
     #[test]
@@ -1828,10 +2155,17 @@ mod tests {
             error: None,
             sandbox_id: Some(sid),
             sandbox_reuse_result: Some(SandboxReuseResult::Reused),
+            workspace_reuse_result: Some(WorkspaceReuseResult::SandboxReused),
+            active_input_delivery_ids: vec!["aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee".to_string()],
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["sandboxId"], "11111111-2222-3333-4444-555555555555");
         assert_eq!(json["sandboxReuseResult"], "reused");
+        assert_eq!(json["workspaceReuseResult"], "sandboxReused");
+        assert_eq!(
+            json["activeInputDeliveryIds"],
+            serde_json::json!(["aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"])
+        );
     }
 
     #[test]
@@ -1875,6 +2209,23 @@ mod tests {
                 serde_json::Value::String(variant.as_wire().to_string()),
             );
         }
+        for variant in [
+            WorkspaceReuseResult::Reused,
+            WorkspaceReuseResult::SandboxReused,
+            WorkspaceReuseResult::CacheMiss,
+            WorkspaceReuseResult::NoReuseKey,
+            WorkspaceReuseResult::InvalidWorkingDir,
+            WorkspaceReuseResult::LockBusy,
+            WorkspaceReuseResult::InvalidMetadata,
+            WorkspaceReuseResult::DiskPressure,
+            WorkspaceReuseResult::NotConfigured,
+            WorkspaceReuseResult::SandboxPrepareFallback,
+        ] {
+            assert_eq!(
+                serde_json::to_value(variant).unwrap(),
+                serde_json::Value::String(variant.as_wire().to_string()),
+            );
+        }
     }
 
     #[test]
@@ -1884,10 +2235,48 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude_code",
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert!(ctx.cli_agent_session_id().is_none());
+    }
+
+    #[test]
+    fn execution_context_requires_custom_connector_routing_values() {
+        let execution_context = |target: serde_json::Value| {
+            json!({
+                "runId": "550e8400-e29b-41d4-a716-446655440000",
+                "prompt": "hello",
+                "sandboxToken": "tok",
+                "cliAgentType": "claude_code",
+                "billableFirewalls": [],
+                "connectorRuntimeTargets": [target]
+            })
+        };
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440001";
+
+        assert!(
+            serde_json::from_value::<ExecutionContext>(execution_context(json!({
+                "kind": "custom",
+                "customConnectorId": custom_connector_id
+            })))
+            .is_err()
+        );
+
+        let context = serde_json::from_value::<ExecutionContext>(execution_context(json!({
+            "kind": "custom",
+            "customConnectorId": custom_connector_id,
+            "baseUrlVars": {}
+        })))
+        .expect("empty custom connector routing values should be accepted");
+        assert_eq!(
+            context.connector_runtime_targets,
+            vec![ConnectorRuntimeTargetRegistration::Custom {
+                custom_connector_id: custom_connector_id.to_string(),
+                base_url_vars: HashMap::new(),
+            }]
+        );
     }
 
     #[test]
@@ -1901,7 +2290,8 @@ mod tests {
                 "sessionId": "sess-abc-123",
                 "sessionHistory": "{}"
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.cli_agent_session_id(), Some("sess-abc-123"));
@@ -1933,7 +2323,8 @@ mod tests {
                     "encodedSize": 42
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -1965,7 +2356,8 @@ mod tests {
                     "downloadSource": "configured_public_endpoint"
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2001,7 +2393,8 @@ mod tests {
                     "downloadSource": "future_edge_cache"
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2031,7 +2424,8 @@ mod tests {
                     "encodedSize": 18
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2053,7 +2447,8 @@ mod tests {
             "sandboxToken": "tok",
             "storageManifest": storage_manifest,
             "cliAgentType": "claude_code",
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         })
     }
 

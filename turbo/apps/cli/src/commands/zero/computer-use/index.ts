@@ -5,7 +5,7 @@ import type {
   ComputerUseCommandResponse,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
 import {
   COMPUTER_USE_FILESYSTEM_PLUGIN,
   COMPUTER_USE_MCP_LIST_TOOLS,
@@ -13,9 +13,9 @@ import {
   type ComputerUseMcpPluginCallBody,
   type ComputerUseFilesystemTool,
   type ComputerUsePluginCallBody,
-} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/computer-use-plugins";
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
 import {
-  ApiRequestError,
   createComputerUsePluginCommand,
   listComputerUseHosts,
   createComputerUseReadCommand,
@@ -23,7 +23,7 @@ import {
   fetchComputerUsePluginContent,
   fetchComputerUseScreenshot,
   getComputerUseCommand,
-} from "../../../lib/api";
+} from "../../../lib/api/domains/zero-computer-use";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   computerUseOutputDir,
@@ -132,17 +132,17 @@ const COMPUTER_USE_AUTHORIZATION_REQUIRED_ERROR =
   "COMPUTER_USE_AUTHORIZATION_REQUIRED";
 const COMPUTER_USE_HELP_TEXT = `
 Workflow:
-  1. Start the Zero Desktop app and make sure Computer Use is online.
-  2. Run "zero computer-use list-apps" to find the target app's bundleId.
+  1. Start the Okou Desktop app and make sure Computer Use is online.
+  2. Run "okou computer-use list-apps" to find the target app's bundleId.
      --app accepts a bundle id only (e.g. com.google.Chrome); the name is for
      display. Apps listed without a bundleId cannot be targeted.
-  3. Run "zero computer-use get-app-state --app <bundleId>" to get a screenshot,
+  3. Run "okou computer-use get-app-state --app <bundleId>" to get a screenshot,
      snapshotId, visible element indexes, and accessibility state.
   4. Prefer element actions with --snapshot-id and --element-index. Use --x/--y
      only when the target is visible in the returned screenshot but has no useful
      accessibility element.
   5. Read the JSON result. Screenshot and App State data are saved under
-     /tmp/vm0/computer-use and replaced with local file paths in CLI output.
+     /tmp/okou/computer-use and replaced with local file paths in CLI output.
      Files are named from app and snapshotId; rerunning the same snapshot
      overwrites the same files.
 
@@ -164,25 +164,25 @@ Notes:
 
 Examples:
   List available apps:
-    zero computer-use list-apps
+    okou computer-use list-apps
 
   Inspect Safari state:
-    zero computer-use get-app-state --app com.apple.Safari
+    okou computer-use get-app-state --app com.apple.Safari
 
   Click element index 7 from snapshot desktop_abc:
-    zero computer-use click --app com.apple.Safari --snapshot-id desktop_abc --element-index 7
+    okou computer-use click --app com.apple.Safari --snapshot-id desktop_abc --element-index 7
 
   Click screenshot coordinate (320, 240) from snapshot desktop_abc:
-    zero computer-use click --app com.apple.Safari --snapshot-id desktop_abc --x 320 --y 240
+    okou computer-use click --app com.apple.Safari --snapshot-id desktop_abc --x 320 --y 240
 
   Type text into the snapshot desktop_abc window in Safari:
-    zero computer-use type-text --app com.apple.Safari --snapshot-id desktop_abc --text "Hello"
+    okou computer-use type-text --app com.apple.Safari --snapshot-id desktop_abc --text "Hello"
 
   Press a keyboard shortcut in the snapshot desktop_abc window:
-    zero computer-use press-key --app com.apple.Safari --snapshot-id desktop_abc --key shift+semicolon
+    okou computer-use press-key --app com.apple.Safari --snapshot-id desktop_abc --key shift+semicolon
 
   Open an app without activating the current foreground app:
-    zero computer-use open-app --app com.culturedcode.ThingsMac`;
+    okou computer-use open-app --app com.culturedcode.ThingsMac`;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -894,7 +894,7 @@ const openAppCommand = appOption(
 const filesystemListAllowedDirectoriesCommand = addPluginOptions(
   new Command()
     .name("list_allowed_directories")
-    .description("List directories enabled in Zero Desktop")
+    .description("List directories enabled in Okou Desktop")
     .action(
       withErrorHandler(async (options: ComputerUsePluginOptions) => {
         await runFilesystemPluginCommand(
@@ -1158,7 +1158,7 @@ const filesystemGetFileInfoCommand = addPluginOptions(
 
 const filesystemPluginCommand = new Command()
   .name("filesystem")
-  .description("Use the Zero Desktop filesystem plugin")
+  .description("Use the Okou Desktop filesystem plugin")
   .addCommand(filesystemListAllowedDirectoriesCommand)
   .addCommand(filesystemReadTextFileCommand)
   .addCommand(filesystemReadMediaFileCommand)
@@ -1238,7 +1238,7 @@ async function printMcpServers(): Promise<void> {
   }
   if (lines.length === 0) {
     console.log(
-      "No MCP servers are running on any linked host. Configure and enable them in the Zero Desktop app's Developer Tools section.",
+      "No MCP servers are running on any linked host. Configure and enable them in the Okou Desktop app's Developer Tools section.",
     );
     return;
   }
@@ -1299,7 +1299,7 @@ const mcpCallCommand = new Command()
 
 const mcpPluginCommand = new Command()
   .name("mcp")
-  .description("Use custom MCP servers configured in the Zero Desktop app")
+  .description("Use custom MCP servers configured in the Okou Desktop app")
   .addCommand(mcpListCommand)
   .addCommand(mcpCallCommand);
 
@@ -1313,7 +1313,7 @@ const pluginCommand = addTargetOptions(
 
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
-  .description("Desktop app computer use through Zero CLI")
+  .description("Desktop app computer use through Okou CLI")
   .addHelpText("after", COMPUTER_USE_HELP_TEXT)
   .addCommand(listAppsCommand)
   .addCommand(getAppStateCommand)

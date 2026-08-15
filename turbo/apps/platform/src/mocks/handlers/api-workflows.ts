@@ -9,7 +9,7 @@ import {
   type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 
 import { mockApi } from "../msw-contract.ts";
 import {
@@ -568,6 +568,34 @@ function passthroughEventAutomationSummaryForRequest(
   } as ZeroWorkflowAutomationSummary;
 }
 
+function createStripeInvoicePaidAutomationSummary(
+  base: WorkflowAutomationCreateBase,
+  body: Extract<
+    ZeroWorkflowAutomationCreateRequest,
+    { readonly eventType: "stripe-invoice-paid" }
+  >,
+): ZeroWorkflowAutomationSummary {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "stripe-invoice-paid",
+    eventConfig: {
+      ...body.eventConfig,
+      connectorId: "b0000000-0000-4000-a000-000000000002",
+      stripeAccountId: "acct_mock_stripe_invoice_paid",
+      mode: "live",
+    },
+    schedule: null,
+    scheduleSummary: null,
+    health: {
+      lastMatchingEventReceivedAt: null,
+      lastDeliveryStatus: null,
+      lastDeliveryStatusAt: null,
+      warning: null,
+    },
+  };
+}
+
 function createWorkflowAutomationSummaryForRequest(
   base: WorkflowAutomationCreateBase,
   body: ZeroWorkflowAutomationCreateRequest,
@@ -619,17 +647,8 @@ function createWorkflowAutomationSummaryForRequest(
       scheduleSummary: null,
     };
   }
-  if (body.eventType === "github-label-applied") {
-    return {
-      ...base,
-      kind: "event",
-      eventType: "github-label-applied",
-      eventConfig: body.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
   if (
+    body.eventType === "github-pull-request" ||
     body.eventType === "github-workflow-run-completed" ||
     body.eventType === "github-workflow-job-completed" ||
     body.eventType === "github-pull-request-review-submitted" ||
@@ -662,6 +681,32 @@ function createWorkflowAutomationSummaryForRequest(
       pageUrl: body.eventConfig.pageUrl,
       databaseUrl: body.eventConfig.databaseUrl,
     });
+  }
+  if (body.eventType === "google-forms-response-submitted") {
+    const formInput = body.eventConfig.formUrl.trim();
+    const formId =
+      /^https?:\/\/docs\.google\.com\/forms\/d\/([^/]+)/.exec(formInput)?.[1] ??
+      formInput;
+    return {
+      ...base,
+      kind: "event",
+      eventType: "google-forms-response-submitted",
+      eventConfig: {
+        provider: "google-forms",
+        event: "response_submitted",
+        connectorId: crypto.randomUUID(),
+        form: {
+          id: formId,
+          title: "Mock Google Form",
+          url: `https://docs.google.com/forms/d/${formId}/edit`,
+        },
+      },
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (body.eventType === "stripe-invoice-paid") {
+    return createStripeInvoicePaidAutomationSummary(base, body);
   }
   return passthroughEventAutomationSummaryForRequest(base, body);
 }

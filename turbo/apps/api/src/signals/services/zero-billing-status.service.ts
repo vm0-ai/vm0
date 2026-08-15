@@ -1,10 +1,10 @@
 import { computed, type Computed } from "ccstate";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
-} from "@vm0/db/schema/org-usage-allowance";
+} from "@okouai/db/schema/org-usage-allowance";
 import {
   and,
   desc,
@@ -28,7 +28,10 @@ import {
   totalConcurrencyLimit,
   type ActiveConcurrencySubscription,
 } from "./org-concurrency-entitlements.service";
-import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
+import {
+  loadOrgPlanCapabilities,
+  type OrgPlanCapabilities,
+} from "./org-plan-entitlement-read.service";
 
 const TIER_MONTHLY_CREDITS = Object.freeze<Record<PlanCreditTier, number>>({
   pro: 20_000,
@@ -104,6 +107,11 @@ interface UsageAllowanceStatus {
   windows: UsageAllowanceWindowStatus[];
 }
 
+interface ActiveUsageAllowanceStatus {
+  status: UsageAllowanceStatus;
+  stripeSubscriptionId: string | null;
+}
+
 interface BillingOrgRow {
   tier: string;
   credits: number;
@@ -123,7 +131,10 @@ interface BillingOrgRow {
 interface BillingStatusResponse {
   tier: string;
   canBuyConcurrency: boolean;
+  concurrencyPurchaseReviewAvailable: boolean;
   canBuyCredits: boolean;
+  memberInviteUsagePackRequired: boolean;
+  memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
@@ -160,6 +171,10 @@ interface BillingStatusResponse {
     quantity: number;
     currentPeriodEnd: string | null;
     cancelAtPeriodEnd: boolean;
+    canReduce?: boolean;
+    canChangeInApp?: boolean;
+    scheduledQuantity?: number | null;
+    scheduledChangeAt?: string | null;
   }[];
   usageAllowance: UsageAllowanceStatus | null;
   concurrencyLimit: number;
@@ -419,7 +434,7 @@ async function activeUsageAllowanceStatus(
   db: ReadonlyDb,
   orgId: string,
   currentTime: Date,
-): Promise<UsageAllowanceStatus | null> {
+): Promise<ActiveUsageAllowanceStatus | null> {
   const [entitlement] = await db
     .select({
       effectiveAt: orgUsageAllowanceEntitlements.effectiveAt,
@@ -427,6 +442,7 @@ async function activeUsageAllowanceStatus(
       shortWindowUnits: orgUsageAllowanceEntitlements.shortWindowUnits,
       weeklyWindowSeconds: orgUsageAllowanceEntitlements.weeklyWindowSeconds,
       weeklyWindowUnits: orgUsageAllowanceEntitlements.weeklyWindowUnits,
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
     })
     .from(orgUsageAllowanceEntitlements)
     .where(
@@ -489,13 +505,16 @@ async function activeUsageAllowanceStatus(
   }
 
   return {
-    windows: USAGE_ALLOWANCE_WINDOW_KINDS.map((kind) => {
-      return usageAllowanceWindowStatus({
-        entitlement,
-        kind,
-        activeWindow: windowByKind.get(kind),
-      });
-    }),
+    status: {
+      windows: USAGE_ALLOWANCE_WINDOW_KINDS.map((kind) => {
+        return usageAllowanceWindowStatus({
+          entitlement,
+          kind,
+          activeWindow: windowByKind.get(kind),
+        });
+      }),
+    },
+    stripeSubscriptionId: entitlement.stripeSubscriptionId,
   };
 }
 
@@ -542,11 +561,21 @@ function scheduledBillingChange(
   };
 }
 
+function hasManageablePlanSubscription(org: BillingOrgRow): boolean {
+  return (
+    org.stripeSubscriptionId !== null &&
+    org.subscriptionStatus !== "canceled" &&
+    org.subscriptionStatus !== "incomplete_expired"
+  );
+}
+
 function billingStatusResponse(args: {
   orgId: string;
   org: BillingOrgRow | undefined;
   canBuyConcurrency: boolean;
   canBuyCredits: boolean;
+  memberInviteUsagePackRequired: boolean;
+  memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
@@ -555,7 +584,7 @@ function billingStatusResponse(args: {
   unsettledExpired: number;
   activeRecords: readonly ActiveCreditRecord[];
   concurrencySubscriptions: readonly ActiveConcurrencySubscription[];
-  usageAllowance: UsageAllowanceStatus | null;
+  usageAllowance: ActiveUsageAllowanceStatus | null;
   baseConcurrencyLimit: number;
 }): BillingStatusResponse {
   const org = args.org ?? DEFAULT_BILLING_ORG;
@@ -574,7 +603,10 @@ function billingStatusResponse(args: {
   return {
     tier: org.tier,
     canBuyConcurrency: args.canBuyConcurrency,
+    concurrencyPurchaseReviewAvailable: true,
     canBuyCredits: args.canBuyCredits,
+    memberInviteUsagePackRequired: args.memberInviteUsagePackRequired,
+    memberInvitationAllowed: args.memberInvitationAllowed,
     autoRechargeAllowed: args.autoRechargeAllowed,
     supportByok: args.supportByok,
     restrictedVm0Models: args.restrictedVm0Models,
@@ -586,7 +618,11 @@ function billingStatusResponse(args: {
     currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: org.cancelAtPeriodEnd,
     scheduledChange: scheduledBillingChange(org),
-    hasSubscription: org.stripeSubscriptionId !== null,
+    hasSubscription:
+      hasManageablePlanSubscription(org) ||
+      args.concurrencySubscriptions.length > 0 ||
+      (args.usageAllowance !== null &&
+        args.usageAllowance.stripeSubscriptionId !== null),
     autoRecharge: {
       enabled: org.autoRechargeEnabled,
       threshold: org.autoRechargeThreshold,
@@ -612,11 +648,36 @@ function billingStatusResponse(args: {
           currentPeriodEnd:
             subscription.currentPeriodEnd?.toISOString() ?? null,
           cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+          ...(subscription.scheduledQuantity !== null
+            ? {
+                scheduledQuantity: subscription.scheduledQuantity,
+                scheduledChangeAt:
+                  subscription.scheduledChangeAt?.toISOString() ?? null,
+              }
+            : {}),
+          ...(subscription.quantity > 1 && !subscription.cancelAtPeriodEnd
+            ? { canReduce: true as const }
+            : {}),
+          ...(!subscription.cancelAtPeriodEnd
+            ? { canChangeInApp: true as const }
+            : {}),
         };
       },
     ),
-    usageAllowance: args.usageAllowance,
+    usageAllowance: args.usageAllowance?.status ?? null,
   };
+}
+
+function memberInviteUsagePackRequired(
+  capabilities: OrgPlanCapabilities | null,
+): boolean {
+  return capabilities?.memberInviteUsagePackRequired ?? false;
+}
+
+function memberInvitationAllowed(
+  capabilities: OrgPlanCapabilities | null,
+): boolean {
+  return capabilities?.memberInvitationAllowed ?? false;
 }
 
 export function zeroBillingStatus(
@@ -697,6 +758,9 @@ export function zeroBillingStatus(
       org: org[0],
       canBuyConcurrency: capabilities?.canBuyConcurrency ?? false,
       canBuyCredits: capabilities?.canBuyCredits ?? false,
+      memberInviteUsagePackRequired:
+        memberInviteUsagePackRequired(capabilities),
+      memberInvitationAllowed: memberInvitationAllowed(capabilities),
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,
       restrictedVm0Models: capabilities?.restrictedVm0Models ?? false,

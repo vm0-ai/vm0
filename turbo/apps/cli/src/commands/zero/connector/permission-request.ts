@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-import type { ConnectorCheckPolicy } from "@vm0/api-contracts/contracts/zero-connector-check";
-import { withErrorHandler } from "../../../lib/command";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
+import type { ConnectorCheckPolicy } from "@okouai/api-contracts/contracts/connector-check";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   isComputerUsePermissionTarget,
@@ -11,12 +11,11 @@ import {
   isBrowserPermissionTarget,
   printBrowserPermissionGuidance,
 } from "./browser-guidance";
-import {
-  ApiRequestError,
-  createBrowserAuthorizationRequest,
-  createComputerUseAuthorizationRequest,
-} from "../../../lib/api";
-import { diagnoseZeroConnectorCheck } from "../../../lib/api/domains/zero-connectors";
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
+import { createBrowserAuthorizationRequest } from "../../../lib/api/domains/zero-browser";
+import { createComputerUseAuthorizationRequest } from "../../../lib/api/domains/zero-computer-use";
+import { diagnoseConnectorCheck } from "../../../lib/api/domains/zero-connectors";
+import { getOkouAgentId, getOkouToken } from "../../../lib/okou-env";
 import {
   addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,
@@ -98,7 +97,7 @@ function permissionMismatchError(args: {
   readonly matchedPermissions: readonly string[];
 }): Error {
   return new Error(
-    `Permission "${args.permission}" does not match ${args.method} ${args.url}. The request maps to: ${args.matchedPermissions.join(", ")}. Use the exact permission-request command printed by zero connector check; provider OAuth scopes and missing_scope/needed values cannot be granted here.`,
+    `Permission "${args.permission}" does not match ${args.method} ${args.url}. The request maps to: ${args.matchedPermissions.join(", ")}. Use the exact permission-request command printed by okou connector check; provider OAuth scopes and missing_scope/needed values cannot be granted here.`,
   );
 }
 
@@ -114,11 +113,11 @@ function assertRequestablePolicy(args: {
       return;
     case "allow":
       throw new Error(
-        `${permissionDescription(args.permission)} is already allowed by Zero for ${args.method} ${args.url}. Provider authorization failures cannot be fixed with a Zero permission request.`,
+        `${permissionDescription(args.permission)} is already allowed by Okou for ${args.method} ${args.url}. Provider authorization failures cannot be fixed with an Okou permission request.`,
       );
     case "unavailable":
       throw new Error(
-        `Zero permission policy is unavailable for ${args.method} ${args.url}. Retry zero connector check from an active run before requesting access.`,
+        `Okou permission policy is unavailable for ${args.method} ${args.url}. Retry okou connector check from an active run before requesting access.`,
       );
   }
 }
@@ -134,7 +133,7 @@ function printSensitivePermissionGuidance(
       "IMPORTANT: Granting chat:write allows sending messages AS THE USER's identity, not as a bot.",
     );
     console.log(
-      "Use `zero slack message send -c <channel> -t <text>` to send messages as the bot instead — this is the recommended approach for most use cases.",
+      "Use `okou slack message send -c <channel> -t <text>` to send messages as the bot instead — this is the recommended approach for most use cases.",
     );
     console.log(
       "Only allow this permission below if acting as the user is specifically required.",
@@ -176,7 +175,7 @@ function printComputerUseAuthorizationLink(args: {
   readonly expiresAt: string;
 }): void {
   console.log(
-    "Computer Use needs a Zero Desktop host selected before a run starts.",
+    "Computer Use needs an Okou Desktop host selected before a run starts.",
   );
   console.log(
     "Ask the user to authorize a host for future runs in this chat or Slack thread:",
@@ -188,7 +187,7 @@ function printComputerUseAuthorizationLink(args: {
 }
 
 async function printComputerUsePermissionRequestMessage(): Promise<void> {
-  if (!process.env.ZERO_TOKEN) {
+  if (!getOkouToken()) {
     printComputerUsePermissionGuidance();
     return;
   }
@@ -230,7 +229,7 @@ function printBrowserAuthorizationLink(args: {
 }
 
 async function printBrowserPermissionRequestMessage(): Promise<void> {
-  if (!process.env.ZERO_TOKEN) {
+  if (!getOkouToken()) {
     printBrowserPermissionGuidance();
     return;
   }
@@ -290,7 +289,7 @@ if (!callbackPromptAvailable) {
   callbackPromptOption.hideHelp();
 }
 const callbackPromptExample = callbackPromptAvailable
-  ? '  zero connector permission-request github --permission contents:write --url https://api.github.com/repos/vm0-ai/vm0 --method POST --callback-prompt "Re-check the permission, then continue the previous task"\n'
+  ? '  okou connector permission-request github --permission contents:write --url https://api.github.com/repos/vm0-ai/vm0 --method POST --callback-prompt "Re-check the permission, then continue the previous task"\n'
   : "";
 const callbackPromptNotes = callbackPromptAvailable
   ? "  - Use --callback-prompt only when this turn needs exactly one connector or permission action\n  - Callback prompts are included in the URL; keep them concise and do not include secrets\n"
@@ -309,13 +308,13 @@ export const permissionRequestCommand = new Command()
   .addOption(
     new Option(
       "--agent <id>",
-      "Agent ID whose permission page should be opened (defaults to ZERO_AGENT_ID)",
+      "Agent ID whose permission page should be opened (defaults to OKOU_AGENT_ID)",
     ),
   )
   .addOption(
     new Option(
       "--url <URL>",
-      "The failed request URL reported to zero connector check",
+      "The failed request URL reported to okou connector check",
     ),
   )
   .addOption(
@@ -328,18 +327,18 @@ export const permissionRequestCommand = new Command()
     "after",
     `
 Examples:
-  zero connector permission-request github --permission contents:read --url https://api.github.com/repos/vm0-ai/vm0 --method GET
-${callbackPromptExample}  zero connector permission-request gmail --permission messages.write --url https://gmail.googleapis.com/gmail/v1/users/me/messages --method POST --agent <agent-id>
-  zero connector permission-request cloudflare --permission __unknown__ --url https://api.cloudflare.com/client/v4/example --method POST
-  zero connector permission-request computer-use --permission computer-use:write
-  zero connector permission-request browser --permission browser:write
+  okou connector permission-request github --permission contents:read --url https://api.github.com/repos/vm0-ai/vm0 --method GET
+${callbackPromptExample}  okou connector permission-request gmail --permission messages.write --url https://gmail.googleapis.com/gmail/v1/users/me/messages --method POST --agent <agent-id>
+  okou connector permission-request cloudflare --permission __unknown__ --url https://api.cloudflare.com/client/v4/example --method POST
+  okou connector permission-request computer-use --permission computer-use:write
+  okou connector permission-request browser --permission browser:write
 
 Notes:
-  - First run zero connector check --url <FAILED_URL> --method <METHOD>
+  - First run okou connector check --url <FAILED_URL> --method <METHOD>
   - Use the exact permission-request command printed by connector check
   - A platform URL is output only when that request maps to a denied or approval-required permission
   - Use --permission __unknown__ to request access to unknown endpoints
-  - Use --agent to request a permission for another agent; defaults to ZERO_AGENT_ID
+  - Use --agent to request a permission for another agent; defaults to OKOU_AGENT_ID
   - The user chooses the permission duration on the confirmation page
 ${callbackPromptNotes}  - Permission requests update the current user's connector grants after confirmation`,
   )
@@ -384,10 +383,10 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           return;
         }
 
-        const agentId = opts.agent ?? process.env.ZERO_AGENT_ID;
+        const agentId = opts.agent ?? getOkouAgentId();
         if (opts.url === undefined) {
           throw new Error(
-            "--url is required for connector permission requests. Run zero connector check --url <FAILED_URL> --method <METHOD> and use the permission-request command it prints.",
+            "--url is required for connector permission requests. Run okou connector check --url <FAILED_URL> --method <METHOD> and use the permission-request command it prints.",
           );
         }
 
@@ -396,7 +395,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           method: opts.method,
           connectorSlug,
         });
-        const diagnostic = await diagnoseZeroConnectorCheck(diagnosticRequest);
+        const diagnostic = await diagnoseConnectorCheck(diagnosticRequest);
         const result = resolveConnectorCheckDiagnostic(
           diagnosticRequest,
           diagnostic,

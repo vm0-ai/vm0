@@ -22,7 +22,7 @@ async fn discover_claim_complete() {
     assert_eq!(ctx.prompt, "hello world");
 
     provider
-        .complete(job_id, 0, None, None, None, CompletionAuth::local())
+        .complete(complete_request(job_id, 0, None), CompletionAuth::local())
         .await;
 
     let resp = read_result(dir.path(), job_id);
@@ -177,7 +177,7 @@ async fn empty_result_does_not_hide_retryable_job() {
     assert_eq!(ctx.prompt, "retry me");
 
     provider
-        .complete(job_id, 0, None, None, None, CompletionAuth::local())
+        .complete(complete_request(job_id, 0, None), CompletionAuth::local())
         .await;
     let resp = read_result(dir.path(), job_id);
     assert_eq!(resp.exit_code, 0);
@@ -209,15 +209,11 @@ async fn concurrent_jobs() {
     assert_ne!(run_id1, run_id2);
 
     provider
-        .complete(run_id1, 0, None, None, None, CompletionAuth::local())
+        .complete(complete_request(run_id1, 0, None), CompletionAuth::local())
         .await;
     provider
         .complete(
-            run_id2,
-            1,
-            Some("test error"),
-            None,
-            None,
+            complete_request(run_id2, 1, Some("test error")),
             CompletionAuth::local(),
         )
         .await;

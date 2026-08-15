@@ -3,7 +3,9 @@ use std::time::Duration;
 
 use super::super::{ActiveInputProducer, DelayedActiveInput, SubmitPlan, run_submit_with_home};
 use super::support::{submit_args_for_test, submit_queue_entry, write_queue_job_file};
-use crate::active_input::{ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, active_input_payload_len};
+use crate::active_input::{
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, identified_active_input_payload_len,
+};
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
 use crate::paths::HomePaths;
@@ -58,14 +60,12 @@ async fn wait_for_active_inputs_and_write_success(
 
 #[test]
 fn parses_active_input_specs() {
-    let job_id = RunId::nil();
     let parsed = SubmitPlan::parse_active_inputs(
         &[
             "after=250ms,text=first".to_string(),
             "after=1s,text=second,with,commas".to_string(),
         ],
         Duration::from_secs(5),
-        job_id,
     )
     .unwrap();
 
@@ -74,13 +74,11 @@ fn parses_active_input_specs() {
         vec![
             DelayedActiveInput {
                 sequence: 1,
-                message_id: format!("local-active-input-{job_id}-1"),
                 after: Duration::from_millis(250),
                 text: "first".to_string(),
             },
             DelayedActiveInput {
                 sequence: 2,
-                message_id: format!("local-active-input-{job_id}-2"),
                 after: Duration::from_secs(1),
                 text: "second,with,commas".to_string(),
             },
@@ -90,24 +88,18 @@ fn parses_active_input_specs() {
 
 #[test]
 fn parses_more_than_eight_active_input_specs() {
-    let job_id = RunId::nil();
     let values = (1..=9)
         .map(|sequence| format!("after={sequence}ms,text=input-{sequence}"))
         .collect::<Vec<_>>();
-    let parsed = SubmitPlan::parse_active_inputs(&values, Duration::from_secs(5), job_id).unwrap();
+    let parsed = SubmitPlan::parse_active_inputs(&values, Duration::from_secs(5)).unwrap();
 
     assert_eq!(parsed.len(), 9);
     assert_eq!(parsed[8].sequence, 9);
-    assert_eq!(
-        parsed[8].message_id,
-        format!("local-active-input-{job_id}-9")
-    );
     assert_eq!(parsed[8].text, "input-9");
 }
 
 #[test]
 fn rejects_invalid_active_input_specs() {
-    let job_id = RunId::nil();
     for value in [
         "text=missing-after",
         "after=1m,text=bad-unit",
@@ -116,9 +108,8 @@ fn rejects_invalid_active_input_specs() {
         "after=5s,text=timeout",
         "after=1s,text=bad\0nul",
     ] {
-        let err =
-            SubmitPlan::parse_active_inputs(&[value.to_string()], Duration::from_secs(5), job_id)
-                .unwrap_err();
+        let err = SubmitPlan::parse_active_inputs(&[value.to_string()], Duration::from_secs(5))
+            .unwrap_err();
 
         assert!(
             err.to_string().contains("active-input"),
@@ -132,7 +123,6 @@ fn rejects_invalid_active_input_specs() {
             "after=1s,text=second".to_string(),
         ],
         Duration::from_secs(5),
-        job_id,
     )
     .unwrap_err();
     assert!(err.to_string().contains("non-decreasing"));
@@ -141,7 +131,6 @@ fn rejects_invalid_active_input_specs() {
     let err = SubmitPlan::parse_active_inputs(
         &[format!("after=1s,text={oversized_text}")],
         Duration::from_secs(5),
-        job_id,
     )
     .unwrap_err();
     assert!(err.to_string().contains("serialized payload"));
@@ -149,20 +138,18 @@ fn rejects_invalid_active_input_specs() {
 
 #[test]
 fn accepts_active_input_payload_at_serialized_limit() {
-    let job_id = RunId::nil();
-    let payload_overhead = active_input_payload_len("").unwrap();
+    let payload_overhead = identified_active_input_payload_len("").unwrap();
     let exact_limit_text = "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES - payload_overhead);
 
     let parsed = SubmitPlan::parse_active_inputs(
         &[format!("after=1s,text={exact_limit_text}")],
         Duration::from_secs(5),
-        job_id,
     )
     .unwrap();
 
     assert_eq!(parsed.len(), 1);
     assert_eq!(
-        active_input_payload_len(&parsed[0].text).unwrap(),
+        identified_active_input_payload_len(&parsed[0].text).unwrap(),
         ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES
     );
 }
@@ -266,13 +253,11 @@ async fn active_input_producer_stops_after_write_failure_to_preserve_sequence_or
         vec![
             DelayedActiveInput {
                 sequence: 1,
-                message_id: "msg-1".to_string(),
                 after: Duration::ZERO,
                 text: "first".to_string(),
             },
             DelayedActiveInput {
                 sequence: 2,
-                message_id: "msg-2".to_string(),
                 after: Duration::ZERO,
                 text: "second".to_string(),
             },

@@ -1,5 +1,5 @@
 /**
- * Tests for zero agent edit command
+ * Tests for okou agent edit command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -22,9 +22,10 @@ const mockAgent = {
   description: null,
   sound: null,
   avatarUrl: null,
+  visibility: "private",
 };
 
-describe("zero agent edit command", () => {
+describe("okou agent edit command", () => {
   let mockExit: ReturnType<typeof vi.spyOn>;
   let mockConsoleLog: ReturnType<typeof vi.spyOn>;
   let mockConsoleError: ReturnType<typeof vi.spyOn>;
@@ -38,18 +39,18 @@ describe("zero agent edit command", () => {
     mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   describe("successful edit", () => {
     it("should update display name and show success", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.put(
-          "http://localhost:3000/api/zero/agents/my-agent",
+          "http://localhost:3000/api/okou/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ ...mockAgent, displayName: "Updated" });
@@ -66,6 +67,7 @@ describe("zero agent edit command", () => {
       ]);
 
       expect(capturedBody?.displayName).toBe("Updated");
+      expect(capturedBody).not.toHaveProperty("visibility");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("updated");
     });
@@ -73,11 +75,11 @@ describe("zero agent edit command", () => {
     it("should update agent metadata without workflow attachments in request body", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.put(
-          "http://localhost:3000/api/zero/agents/my-agent",
+          "http://localhost:3000/api/okou/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent);
@@ -98,14 +100,40 @@ describe("zero agent edit command", () => {
       expect(logCalls).toContain("updated");
     });
 
-    it("should update avatar with preset and include it in request body", async () => {
+    it("should update visibility", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.put(
-          "http://localhost:3000/api/zero/agents/my-agent",
+          "http://localhost:3000/api/okou/agents/my-agent",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ ...mockAgent, visibility: "public" });
+          },
+        ),
+      );
+
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--visibility",
+        "public",
+      ]);
+
+      expect(capturedBody?.visibility).toBe("public");
+    });
+
+    it("should update avatar with preset and include it in request body", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.put(
+          "http://localhost:3000/api/okou/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent);
@@ -129,11 +157,11 @@ describe("zero agent edit command", () => {
     it("should compose svg avatar from descriptive flags", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.put(
-          "http://localhost:3000/api/zero/agents/my-agent",
+          "http://localhost:3000/api/okou/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent);
@@ -162,11 +190,11 @@ describe("zero agent edit command", () => {
       const agentWithAvatar = { ...mockAgent, avatarUrl: "svg:r2s1h3c3f1m" };
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
           return HttpResponse.json(agentWithAvatar);
         }),
         http.put(
-          "http://localhost:3000/api/zero/agents/my-agent",
+          "http://localhost:3000/api/okou/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(agentWithAvatar);
@@ -200,11 +228,11 @@ describe("zero agent edit command", () => {
       it("should upload instructions content from file and show success message", async () => {
         let capturedInstructionsContent: string | undefined;
         server.use(
-          http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
             return HttpResponse.json(mockAgent);
           }),
           http.put(
-            "http://localhost:3000/api/zero/agents/my-agent/instructions",
+            "http://localhost:3000/api/okou/agents/my-agent/instructions",
             async ({ request }) => {
               const body = (await request.json()) as { content: string };
               capturedInstructionsContent = body.content;
@@ -229,6 +257,20 @@ describe("zero agent edit command", () => {
   });
 
   describe("validation", () => {
+    it("should reject invalid visibility", async () => {
+      await expect(async () => {
+        await editCommand.parseAsync([
+          "node",
+          "cli",
+          "my-agent",
+          "--visibility",
+          "unlisted",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should fail when no options provided", async () => {
       await expect(async () => {
         await editCommand.parseAsync(["node", "cli", "my-agent"]);
@@ -276,7 +318,7 @@ describe("zero agent edit command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject retired model edit flags", async () => {
+    it("should reject unsupported model edit flags", async () => {
       await expect(async () => {
         await editCommand.parseAsync([
           "node",
@@ -296,7 +338,7 @@ describe("zero agent edit command", () => {
   describe("error handling", () => {
     it("should handle not found error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/missing", () => {
+        http.get("http://localhost:3000/api/okou/agents/missing", () => {
           return HttpResponse.json(
             { error: { message: "Agent not found", code: "NOT_FOUND" } },
             { status: 404 },

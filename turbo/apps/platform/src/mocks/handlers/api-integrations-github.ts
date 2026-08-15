@@ -2,7 +2,7 @@ import {
   integrationsGithubContract,
   type GithubInstallationNotFoundResponse,
   type GithubInstallationResponse,
-} from "@vm0/api-contracts/contracts/integrations-github";
+} from "@okouai/api-contracts/contracts/integrations-github";
 import { mockApi } from "../msw-contract.ts";
 
 const defaultMissingGithubIntegration: GithubInstallationNotFoundResponse = {

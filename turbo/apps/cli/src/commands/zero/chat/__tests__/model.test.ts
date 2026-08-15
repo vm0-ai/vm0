@@ -1,5 +1,5 @@
 /**
- * Tests for zero chat model command
+ * Tests for okou chat model command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -16,10 +16,10 @@ import { zeroChatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
-const GET_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
-const OTHER_GET_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/metadata`;
-const OTHER_MODEL_SELECTION_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/model-selection`;
-const MODEL_POLICIES_URL = "http://localhost:3000/api/zero/model-policies";
+const GET_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/metadata`;
+const OTHER_GET_URL = `http://localhost:3000/api/okou/chat-threads/${OTHER_THREAD_ID}/metadata`;
+const OTHER_MODEL_SELECTION_URL = `http://localhost:3000/api/okou/chat-threads/${OTHER_THREAD_ID}/model-selection`;
+const MODEL_POLICIES_URL = "http://localhost:3000/api/okou/model-policies";
 
 const MODEL_POLICIES_RESPONSE = {
   workspaceDefaultModel: "claude-sonnet-5",
@@ -54,7 +54,7 @@ const MODEL_POLICIES_RESPONSE = {
   ],
 };
 
-describe("zero chat model command", () => {
+describe("okou chat model command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -67,8 +67,8 @@ describe("zero chat model command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", THREAD_ID);
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
   afterEach(() => {
@@ -79,7 +79,7 @@ describe("zero chat model command", () => {
   });
 
   it("shows dynamic help with switchable models", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.get(MODEL_POLICIES_URL, () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
@@ -121,11 +121,11 @@ describe("zero chat model command", () => {
     expect(output).toContain("Chat thread loaded");
     expect(output).toContain("Model:  Claude Sonnet 5 (claude-sonnet-5)");
     expect(output).toContain("Switchable models:");
-    expect(output).toContain(`zero chat model --thread ${THREAD_ID} <model>`);
+    expect(output).toContain(`okou chat model --thread ${THREAD_ID} <model>`);
   });
 
   it("shows the model for --thread outside a web chat environment", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.get(OTHER_GET_URL, () => {
         return HttpResponse.json({
@@ -153,7 +153,7 @@ describe("zero chat model command", () => {
   });
 
   it("switches the model for --thread outside a web chat environment", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.get(MODEL_POLICIES_URL, () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
@@ -198,7 +198,7 @@ describe("zero chat model command", () => {
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("Model is not switchable: gpt-5.5");
     expect(stderr).toContain("No personal subscription connected");
-    expect(stderr).toContain("Run: zero chat model --help");
+    expect(stderr).toContain("Run: okou chat model --help");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

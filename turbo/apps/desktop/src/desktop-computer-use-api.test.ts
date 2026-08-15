@@ -5,7 +5,7 @@ import {
   CLIENT_TYPE_DESKTOP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
+} from "@okouai/api-contracts/contracts/client-headers";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import type { DesktopSessionCookieSource } from "./desktop-session-cookies";
@@ -40,7 +40,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
           }
           if (
             filter.url ===
-            "https://api.vm0.ai/api/zero/computer-use/hosts/start"
+            "https://api.vm0.ai/api/okou/computer-use/hosts/start"
           ) {
             return [{ name: "api_session", value: "api-cookie" }];
           }
@@ -69,7 +69,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
         return "desktop-token";
       },
     });
-    await sessionFetch("https://api.vm0.ai/api/zero/computer-use/hosts/start", {
+    await sessionFetch("https://api.vm0.ai/api/okou/computer-use/hosts/start", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -82,7 +82,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
 
     expect(cookieUrls).toStrictEqual([
       "https://app.vm0.ai/",
-      "https://api.vm0.ai/api/zero/computer-use/hosts/start",
+      "https://api.vm0.ai/api/okou/computer-use/hosts/start",
     ]);
     const call = fetchMock.mock.calls[0];
     if (!call) {

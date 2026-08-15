@@ -42,7 +42,7 @@ export const gmailProvider: AuthCodeConnectorAuthProvider<"gmail"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId, clientSecret } = args.authClient;
       const refreshToken = args.inputs.refreshToken;
       return oauthRefreshResultToProviderResult(
@@ -51,7 +51,7 @@ export const gmailProvider: AuthCodeConnectorAuthProvider<"gmail"> = {
           clientId,
           clientSecret,
           refreshToken,
-          args.signal,
+          signal,
         ),
       );
     },

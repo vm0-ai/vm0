@@ -1,16 +1,16 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -69,7 +69,7 @@ describe("permission allow page", () => {
   });
 
   it("lets a user grant an expiring connector permission and continue the callback", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000001";
     const threadId = "c0000000-0000-4000-a000-000000000101";
     const callbackPrompt = "Re-check Slack access, then continue";
@@ -87,6 +87,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(
@@ -211,6 +212,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(
@@ -265,6 +267,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -327,7 +330,7 @@ describe("permission allow page", () => {
   });
 
   it("shows already allowed when the permission is already granted with a different expiry", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000003";
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -341,6 +344,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -379,7 +383,7 @@ describe("permission allow page", () => {
   });
 
   it("shows the confirmation flow when an existing allow grant is expired", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000009";
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -393,6 +397,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -429,7 +434,7 @@ describe("permission allow page", () => {
   });
 
   it("shows the confirmation flow when an existing allow grant has an invalid expiration", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000011";
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -443,6 +448,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -479,7 +485,7 @@ describe("permission allow page", () => {
   });
 
   it("does not show expired grant text when the default policy already allows the permission", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000010";
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -493,6 +499,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(
@@ -562,6 +569,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -600,7 +608,7 @@ describe("permission allow page", () => {
   });
 
   it("lets a user grant unknown endpoints to an agent", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000004";
     let grants: UserPermissionGrantResponse[] = [];
 
@@ -615,6 +623,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -692,6 +701,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -741,6 +751,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -784,6 +795,7 @@ describe("permission allow page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
+        visibility: "public",
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {

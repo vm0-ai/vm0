@@ -4,12 +4,12 @@ import type {
   PublicConnectorCatalogIcon,
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogPermissionSummary,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 interface TestConnectorAuthMethod {
   readonly detail: PublicConnectorCatalogAuthMethodDetail;
@@ -538,7 +538,6 @@ export const testConnectorCatalogDefinitions = (
           label: "Sign in with AWS",
           description:
             "Sign in with AWS and paste the authorization code. This temporary AWS connector expires after up to 12 hours.",
-          featureSwitch: FeatureSwitchKey.AwsConnector,
         }),
       ],
       permissionSummary: NO_PERMISSIONS,
@@ -776,12 +775,6 @@ export const testConnectorCatalogCategoryMetadata = {
   ],
   groups: [{ id: "ai", label: "AI", menuLabel: "AI" }],
 } satisfies PublicConnectorCatalogCategoryMetadata;
-
-export const testConnectorSlugs = testConnectorCatalogDefinitions.map(
-  (definition) => {
-    return definition.connectorSlug;
-  },
-);
 
 export const composerOverflowConnectorSlugs = [
   "asana",

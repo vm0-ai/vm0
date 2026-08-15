@@ -5,16 +5,12 @@ import { jsonParseOr } from "../utils";
 
 const DEBUG_LOGGER_STORAGE_KEY = "debugLogger";
 
-const {
-  get$,
-  set$,
-  updateRaw: updateDebugLoggerRaw,
-} = localStorageSignals(DEBUG_LOGGER_STORAGE_KEY);
+const debugLoggerStorage = localStorageSignals(DEBUG_LOGGER_STORAGE_KEY);
 
 const L = logger("Logger");
 
 export const setupLoggers$ = command(({ get }) => {
-  const debugLoggers = get(get$);
+  const debugLoggers = get(debugLoggerStorage.get$);
   if (debugLoggers) {
     const loggerNames = jsonParseOr<string[]>(debugLoggers, []);
     if (loggerNames.length > 0) {
@@ -29,16 +25,18 @@ export const setupLoggers$ = command(({ get }) => {
   }
 });
 
-export const setDebugLoggerLocalStorage$ = set$;
+export const setDebugLoggerLocalStorage$ = debugLoggerStorage.set$;
 
-export function extendDebugLoggerLocalStorage(loggerName: string): void {
-  updateDebugLoggerRaw((debugLoggers) => {
+export const extendDebugLoggerLocalStorage$ = command(
+  ({ get, set }, loggerName: string): void => {
+    const debugLoggers = get(debugLoggerStorage.get$);
     const loggerNames = debugLoggers
       ? jsonParseOr<string[]>(debugLoggers, [])
       : [];
     if (loggerNames.includes(loggerName)) {
-      return debugLoggers;
+      return;
     }
-    return JSON.stringify([...loggerNames, loggerName]);
-  });
-}
+
+    set(debugLoggerStorage.set$, JSON.stringify([...loggerNames, loggerName]));
+  },
+);

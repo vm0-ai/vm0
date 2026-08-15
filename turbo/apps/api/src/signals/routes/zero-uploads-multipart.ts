@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
 
 import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
@@ -11,7 +11,7 @@ import {
   completeMultipartS3Upload,
 } from "../external/s3";
 import { resolveArtifactMultipartUpload$ } from "../services/artifact-storage.service";
-import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
+import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 
 const completeMultipartInner$ = command(
@@ -38,7 +38,6 @@ const completeMultipartInner$ = command(
       resolveArtifactMultipartUpload$,
       {
         userId: auth.userId,
-        orgId: auth.orgId,
         id,
         filename,
         uploadId,
@@ -87,7 +86,6 @@ const abortMultipartInner$ = command(
       resolveArtifactMultipartUpload$,
       {
         userId: auth.userId,
-        orgId: auth.orgId,
         id,
         filename,
         uploadId,

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
+import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import {
   and,
   asc,
@@ -29,7 +30,7 @@ import {
   type ComputerUseWriteCommandKind,
   type StoredPluginContentPointer,
   type StoredScreenshotPointer,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
 import {
   COMPUTER_USE_PLUGIN_CALL_KIND,
   COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES,
@@ -39,13 +40,13 @@ import {
   computerUsePluginCallRequiredCapabilities,
   isComputerUseMcpPluginCallPayload,
   isComputerUsePluginCallPayload,
-} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
   computerUseCommandAuditEvents,
   computerUseCommands,
   computerUseHosts,
-} from "@vm0/db/schema/computer-use-host";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+} from "@okouai/db/schema/computer-use-host";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -57,6 +58,7 @@ import {
 } from "../external/realtime";
 import { downloadS3Buffer, putS3Object } from "../external/s3";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import type { Tx } from "../../lib/db-types";
 
 const COMPUTER_USE_HOST_CLOSED_AFTER_MS = 90 * 1000;
 const COMPUTER_USE_RUNNING_COMMAND_DEFAULT_TIMEOUT_MS = 120 * 1000;
@@ -101,7 +103,7 @@ const DEFAULT_COMPUTER_USE_AUTOMATION_PERMISSIONS = {
   },
 } as const;
 
-type ComputerUseTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ComputerUseTx = Tx;
 type ComputerUseHostRow = typeof computerUseHosts.$inferSelect;
 type ComputerUseCommandRow = typeof computerUseCommands.$inferSelect;
 
@@ -907,6 +909,7 @@ function timeoutErrorForCommand(
 function serializeHost(row: ComputerUseHostRow, now: Date) {
   return {
     id: row.id,
+    product: row.clientProduct,
     hostName: row.displayName,
     displayName: row.displayName,
     appVersion: row.appVersion,
@@ -1115,6 +1118,7 @@ export const startComputerUseHost$ = command(
     params: {
       readonly orgId: string;
       readonly userId: string;
+      readonly clientProduct: DesktopProduct;
       readonly installationId?: string;
       readonly hostName: string;
       readonly appVersion: string;
@@ -1141,6 +1145,7 @@ export const startComputerUseHost$ = command(
         installationId: params.installationId ?? null,
         displayName,
         tokenHash,
+        clientProduct: params.clientProduct,
         appVersion,
         osVersion,
         supportedCapabilities,
@@ -1167,6 +1172,7 @@ export const startComputerUseHost$ = command(
               set: {
                 displayName,
                 tokenHash,
+                clientProduct: params.clientProduct,
                 appVersion,
                 osVersion,
                 supportedCapabilities,
@@ -1201,6 +1207,7 @@ export const heartbeatComputerUseHost$ = command(
     { set },
     params: {
       readonly hostToken: string;
+      readonly clientProduct: DesktopProduct;
       readonly hostName: string;
       readonly appVersion: string;
       readonly osVersion: string;
@@ -1230,6 +1237,7 @@ export const heartbeatComputerUseHost$ = command(
         const publishChanged =
           !computerUseHostIsOnline(lockedHost, now) ||
           lockedHost.displayName !== displayName ||
+          lockedHost.clientProduct !== params.clientProduct ||
           lockedHost.appVersion !== appVersion ||
           lockedHost.osVersion !== osVersion ||
           !sameStringArray(
@@ -1242,6 +1250,7 @@ export const heartbeatComputerUseHost$ = command(
           .update(computerUseHosts)
           .set({
             displayName,
+            clientProduct: params.clientProduct,
             appVersion,
             osVersion,
             supportedCapabilities,

@@ -61,6 +61,8 @@ class TestRegistryContextState:
                     "vms": {
                         "10.200.0.1": {
                             "runId": "run-abc-123",
+                            "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
                             "networkPolicies": {
                                 "example": {
                                     "allow": [],

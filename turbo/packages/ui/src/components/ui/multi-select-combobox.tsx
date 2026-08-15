@@ -1,12 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  IconChevronDown,
-  IconCheck,
-  IconX,
-  IconSearch,
-} from "@tabler/icons-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
@@ -38,10 +33,9 @@ export function MultiSelectCombobox({
   const [search, setSearch] = React.useState("");
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Radix Dialog's react-remove-scroll adds a non-passive wheel listener on
-  // document that calls preventDefault() for events outside the Dialog DOM.
-  // Popover portal content is outside the Dialog DOM, so scroll gets blocked.
-  // Native stopPropagation prevents the event from reaching that listener.
+  // Modal dialogs can install a document-level wheel listener for content
+  // outside the dialog DOM. Popover portal content lives outside that DOM, so
+  // stop propagation before the event reaches the modal scroll lock.
   const scrollContainerRef = React.useCallback(
     (node: HTMLDivElement | null) => {
       if (!node) return;
@@ -101,7 +95,7 @@ export function MultiSelectCombobox({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild nativeButton={false}>
         <div
           role="combobox"
           aria-expanded={open}
@@ -138,7 +132,7 @@ export function MultiSelectCombobox({
                       }}
                       aria-label={`Remove ${opt.label}`}
                     >
-                      <IconX size={12} />
+                      <X size={12} />
                     </span>
                   </span>
                 );
@@ -147,14 +141,11 @@ export function MultiSelectCombobox({
               <span className="text-muted-foreground">{placeholder}</span>
             )}
           </div>
-          <IconChevronDown
-            size={16}
-            className="shrink-0 text-muted-foreground"
-          />
+          <ChevronDown size={16} className="shrink-0 text-muted-foreground" />
         </div>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] p-0"
+        className="w-[var(--anchor-width)] p-0"
         align="start"
         onOpenAutoFocus={(e) => {
           e.preventDefault();
@@ -166,7 +157,7 @@ export function MultiSelectCombobox({
         }}
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <IconSearch size={14} className="shrink-0 text-muted-foreground" />
+          <Search size={14} className="shrink-0 text-muted-foreground" />
           <input
             ref={searchInputRef}
             type="text"
@@ -192,7 +183,7 @@ export function MultiSelectCombobox({
                   type="button"
                   role="option"
                   aria-selected={isSelected}
-                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground outline-none transition-colors hover:bg-state-hover hover:text-accent-foreground"
                   onClick={() => {
                     return toggle(opt.value);
                   }}
@@ -202,7 +193,7 @@ export function MultiSelectCombobox({
                   )}
                   <span className="flex-1 text-left">{opt.label}</span>
                   {isSelected && (
-                    <IconCheck size={16} className="shrink-0 text-primary" />
+                    <Check size={16} className="shrink-0 text-primary" />
                   )}
                 </button>
               );

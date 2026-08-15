@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/python-bindings/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

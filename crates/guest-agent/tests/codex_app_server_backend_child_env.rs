@@ -1,4 +1,4 @@
-//! Child-env snapshot coverage for the experimental Codex app-server backend.
+//! Child-env snapshot coverage for Codex app-server execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
@@ -13,12 +13,20 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[tokio::test]
-async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
+async fn codex_app_server_backend_uses_runtime_snapshot_and_preserves_large_prompt()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
     let run_id = "codex-app-server-backend-child-env-test";
-    let prompt = "runtime child env prompt";
+    let prompt_prefix = " \n--option-looking user text\n中文 and emoji 🚀\n";
+    let prompt = format!(
+        "{prompt_prefix}{}",
+        "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1 - prompt_prefix.len())
+    );
+    assert_eq!(
+        prompt.len(),
+        guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1
+    );
 
     unsafe {
         common::setup_codex_app_server_env(
@@ -26,7 +34,7 @@ async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
             tmp.path(),
             common::CodexAppServerEnvConfig {
                 run_id,
-                prompt,
+                prompt: &prompt,
                 scenario: Some("runtime-turn-complete-without-thread-started"),
                 resume_session_id: None,
             },
@@ -60,9 +68,8 @@ async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
         std::env::set_var("CUSTOM_USER_ENV", "stale-process-user-env");
     }
 
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
         &runtime.config.run_id,
-        false,
         &runtime.config.prompt,
     );
     let cli_result = tokio::time::timeout(
@@ -92,7 +99,7 @@ async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
     let input_event = find_mock_input_event(&Path::new(&runtime.config.home_dir).join(".codex"))?;
     assert_eq!(
         input_event.get("text").and_then(Value::as_str),
-        Some(prompt)
+        Some(prompt.as_str())
     );
     assert_eq!(
         input_event.get("child_env_home").and_then(Value::as_str),
@@ -114,6 +121,14 @@ async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
             .and_then(Value::as_str),
         Some("gpt-runtime-model")
     );
+    for key in [
+        "child_env_has_pi_session_id",
+        "child_env_has_pi_launch_config",
+        "child_env_has_pi_launch_payload_file",
+        "child_env_has_pi_model_config",
+    ] {
+        assert_eq!(input_event.get(key).and_then(Value::as_bool), Some(false));
+    }
 
     Ok(())
 }

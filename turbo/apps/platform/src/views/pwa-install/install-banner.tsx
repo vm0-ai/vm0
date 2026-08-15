@@ -1,11 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import {
-  IconDownload,
-  IconShare2,
-  IconSquarePlus,
-  IconX,
-} from "@tabler/icons-react";
+import { Download, Share2, SquarePlus, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
   Button,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import {
   installBannerVisible$,
   iosInstallModalOpen$,
@@ -38,38 +33,41 @@ export function InstallBanner() {
 
   return (
     <div className="shrink-0 flex items-center gap-2 bg-primary/5 border-b border-primary/20 px-3 py-2 text-sm">
-      <IconDownload size={16} className="text-primary shrink-0" />
+      <Download size={16} className="text-primary shrink-0" />
       <span className="flex-1 min-w-0 truncate text-foreground">
         {t(($) => {
           return $.lifecycle.pwaInstall.banner;
         })}
       </span>
-      <button
+      <Button
         type="button"
+        size="xs"
         aria-label={t(($) => {
           return $.lifecycle.pwaInstall.installApp;
         })}
         onClick={() => {
           detach(trigger(pageSignal), Reason.DomCallback);
         }}
-        className="h-7 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity shrink-0"
+        className="shrink-0 text-xs"
       >
         {t(($) => {
           return $.lifecycle.pwaInstall.install;
         })}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
         onClick={() => {
           dismiss();
         }}
-        className="h-7 w-7 shrink-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        variant="quiet"
+        size="icon-xs"
+        className="shrink-0"
         aria-label={t(($) => {
           return $.lifecycle.pwaInstall.dismiss;
         })}
       >
-        <IconX size={14} />
-      </button>
+        <X size={14} />
+      </Button>
     </div>
   );
 }
@@ -107,7 +105,7 @@ export function IosInstallModal() {
               1
             </span>
             <span className="flex-1 flex items-center gap-1.5 flex-wrap">
-              <IconShare2 size={16} className="inline" aria-hidden />
+              <Share2 size={16} className="inline" aria-hidden />
               {t(($) => {
                 return $.lifecycle.pwaInstall.stepOne;
               })}
@@ -118,7 +116,7 @@ export function IosInstallModal() {
               2
             </span>
             <span className="flex-1 flex items-center gap-1.5 flex-wrap">
-              <IconSquarePlus size={16} className="inline" aria-hidden />
+              <SquarePlus size={16} className="inline" aria-hidden />
               {t(($) => {
                 return $.lifecycle.pwaInstall.stepTwo;
               })}

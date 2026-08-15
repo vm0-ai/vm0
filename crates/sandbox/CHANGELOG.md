@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.19.43](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.42...sandbox-v0.19.43) (2026-08-10)
+
+
+### Refactoring
+
+* **runner:** preserve process-control outcomes ([#26178](https://github.com/vm0-ai/vm0/issues/26178)) ([23ccd10](https://github.com/vm0-ai/vm0/commit/23ccd10daa8552532ebc1a355c89087c2e72656b))
+
+## [0.19.42](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.41...sandbox-v0.19.42) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** attribute severe balloon retention ([#26038](https://github.com/vm0-ai/vm0/issues/26038)) ([d996ab7](https://github.com/vm0-ai/vm0/commit/d996ab715ff06c03dee96b82f683e577c7e52b89))
+
+## [0.19.41](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.40...sandbox-v0.19.41) (2026-08-10)
+
+
+### Performance Improvements
+
+* **rust:** restore 64 kib guest output drains ([#26006](https://github.com/vm0-ai/vm0/issues/26006)) ([a54ade4](https://github.com/vm0-ai/vm0/commit/a54ade4ad15ed3031cd0b6b9c33cd00999687fb0))
+
+## [0.19.40](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.39...sandbox-v0.19.40) (2026-08-07)
+
+
+### Performance Improvements
+
+* **rust:** eliminate exec-control payload copies ([#25608](https://github.com/vm0-ai/vm0/issues/25608)) ([3f71e3b](https://github.com/vm0-ai/vm0/commit/3f71e3b491c2fb66e3c964494565aa9a9bcd4166))
+
+## [0.19.39](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.38...sandbox-v0.19.39) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** remove resolved dns diagnostics ([#25426](https://github.com/vm0-ai/vm0/issues/25426)) ([a301c42](https://github.com/vm0-ai/vm0/commit/a301c42affa3da95dc3cec1b0c456acf16af2a5c))
+
+## [0.19.38](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.37...sandbox-v0.19.38) (2026-08-05)
+
+
+### Documentation
+
+* **sandbox:** document remote exec timeout normalization ([#25214](https://github.com/vm0-ai/vm0/issues/25214)) ([6138e94](https://github.com/vm0-ai/vm0/commit/6138e94533b3a0d23ccb7fb040b9ff6621c0db29))
+
+## [0.19.37](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.36...sandbox-v0.19.37) (2026-08-04)
+
+
+### Performance Improvements
+
+* measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
+
 ## [0.19.36](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.35...sandbox-v0.19.36) (2026-08-04)
 
 

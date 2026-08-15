@@ -1,8 +1,11 @@
-import type { Block, KnownBlock, MarkdownBlock } from "@slack/web-api";
+import type {
+  SlackAnyBlock,
+  SlackMarkdownBlock,
+} from "../signals/external/slack-block-kit";
 
 const MARKDOWN_BLOCK_MAX_LENGTH = 12_000;
 
-function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
+function buildMarkdownMessage(content: string): SlackAnyBlock[] {
   const truncationSuffix = "\n\n_(Message too long to view in Slack.)_";
   const truncated =
     content.length > MARKDOWN_BLOCK_MAX_LENGTH
@@ -12,7 +15,7 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
         ) + truncationSuffix
       : content;
 
-  const block: MarkdownBlock = {
+  const block: SlackMarkdownBlock = {
     type: "markdown",
     text: truncated,
   };
@@ -24,8 +27,8 @@ export function buildAgentResponseMessage(
   content: string,
   logsUrl?: string,
   footerText?: string,
-): (Block | KnownBlock)[] {
-  const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
+): SlackAnyBlock[] {
+  const blocks: SlackAnyBlock[] = [...buildMarkdownMessage(content)];
 
   if (logsUrl) {
     blocks.push({
@@ -57,7 +60,7 @@ export function buildAgentResponseMessage(
 /**
  * Build a divider + context block pair for message footers.
  */
-export function buildFooterBlocks(text: string): (Block | KnownBlock)[] {
+export function buildFooterBlocks(text: string): SlackAnyBlock[] {
   return [
     { type: "divider" },
     {

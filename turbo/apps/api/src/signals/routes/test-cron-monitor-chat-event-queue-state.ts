@@ -3,13 +3,14 @@ import { randomUUID } from "node:crypto";
 import {
   testCronMonitorChatEventQueueStateContract,
   type TestCronMonitorChatEventQueueStateActionBody,
-} from "@vm0/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 
@@ -20,13 +21,15 @@ import type { RouteEntry } from "../route-entry";
 import {
   insertChatEvent,
   replaceChatEvent,
-} from "../services/zero-chat-event.service";
-import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
+} from "../services/chat-event.service";
+import { normalizeRunMetadata } from "../services/agent-run-metadata-write.service";
+import { createUserMessageDocument } from "../services/chat-user-message.service";
 import { monitorChatEventQueueForEvents$ } from "../services/cron-monitor-chat-event-queue.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const actionBody$ = bodyResultOf(
   testCronMonitorChatEventQueueStateContract.action,
@@ -39,52 +42,52 @@ type FixtureKind = Extract<
   TestCronMonitorChatEventQueueStateActionBody,
   { readonly action: "seed-fixture" }
 >["fixture_kind"];
+type DbTransaction = Tx;
 
 const STALE_CONTEXT_FIXTURES = [
   {
+    contextType: "web",
+    eventType: "input.prompt",
+  },
+  {
+    contextType: "agent_run",
+    eventType: "input.prompt",
+  },
+  {
     contextType: "slack",
     eventType: "input.prompt",
-    triggerSource: "slack",
   },
   {
     contextType: "feishu",
     eventType: "input.prompt",
-    triggerSource: "feishu",
   },
   {
     contextType: "teams",
     eventType: "input.prompt",
-    triggerSource: "teams",
   },
   {
     contextType: "telegram",
     eventType: "input.prompt",
-    triggerSource: "telegram",
   },
   {
     contextType: "github",
     eventType: "input.prompt",
-    triggerSource: "github",
   },
   {
     contextType: "agentphone",
     eventType: "input.prompt",
-    triggerSource: "agentphone",
   },
   {
     contextType: "automation",
     eventType: "input.automation",
-    triggerSource: "workflow-event",
   },
   {
     contextType: "goal",
     eventType: "input.goal",
-    triggerSource: null,
   },
   {
     contextType: "morning_brief",
     eventType: "input.prompt",
-    triggerSource: "workflow-schedule",
   },
 ] as const;
 
@@ -118,6 +121,10 @@ async function seedActiveRun(
     throw new Error("Failed to seed orphan monitor session");
   }
 
+  const metadata = normalizeRunMetadata({
+    triggerSource: "web",
+    chatThreadId: fixture.threadId,
+  });
   const [run] = await db
     .insert(agentRuns)
     .values({
@@ -126,19 +133,112 @@ async function seedActiveRun(
       sessionId: session.id,
       status: "pending",
       prompt: "orphan monitor active run fixture",
+      ...metadata,
     })
     .returning({ id: agentRuns.id });
   signal.throwIfAborted();
   if (!run) {
     throw new Error("Failed to seed orphan monitor run");
   }
+}
 
-  await db.insert(zeroRuns).values({
-    id: run.id,
-    triggerSource: "web",
-    chatThreadId: fixture.threadId,
+async function seedGoalFixture(
+  tx: DbTransaction,
+  args: {
+    readonly composeId: string;
+    readonly fixtureKind: "orphaned-goal" | "paused-goal";
+    readonly orgId: string;
+    readonly threadId: string;
+    readonly userId: string;
+  },
+) {
+  const [goal] = await tx
+    .insert(threadGoals)
+    .values({
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      agentId: args.composeId,
+      chatThreadId: args.threadId,
+      status: args.fixtureKind === "paused-goal" ? "paused" : "active",
+      objective: "orphan monitor goal objective",
+      objectiveBrief: "orphan monitor goal",
+    })
+    .returning({ id: threadGoals.id });
+  if (!goal) {
+    throw new Error("Failed to seed orphan monitor goal");
+  }
+  const goalInputEvent = await insertChatEvent(tx, {
+    chatThreadId: args.threadId,
+    contextType: "goal",
+    eventType: "input.goal",
+    runGroupId: goal.id,
+    userMessage: createUserMessageDocument({
+      text: null,
+      nonContentPart: { type: "goal", goalBrief: "orphan monitor goal" },
+    }),
+    runId: null,
+    createdAt: new Date(0),
+  });
+  if (args.fixtureKind === "orphaned-goal") {
+    await tx.delete(threadGoals).where(eq(threadGoals.id, goal.id));
+  }
+  return goalInputEvent;
+}
+
+async function seedGoalAgent(
+  db: Db,
+  args: {
+    readonly composeId: string;
+    readonly fixtureKind: FixtureKind;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  if (
+    args.fixtureKind !== "orphaned-goal" &&
+    args.fixtureKind !== "paused-goal"
+  ) {
+    return;
+  }
+  await db.insert(zeroAgents).values({
+    id: args.composeId,
+    orgId: args.orgId,
+    owner: args.userId,
+    name: `orphan-monitor-${randomUUID()}`,
   });
   signal.throwIfAborted();
+}
+
+async function seedQueuedIntegrationEvent(tx: DbTransaction, threadId: string) {
+  const userMessage = createUserMessageDocument({
+    text: "orphan monitor fixture",
+  });
+  const [event] = await tx
+    .insert(chatEvents)
+    .values({
+      chatThreadId: threadId,
+      contextType: "slack",
+      contextId: randomUUID(),
+      eventType: "input.prompt",
+      payload: { userMessage },
+      runId: null,
+      seqId: 1,
+    })
+    .returning({ id: chatEvents.id });
+  if (!event) {
+    throw new Error("Failed to seed queued integration event");
+  }
+  return event;
+}
+
+function requireSeededEventId(
+  event: { readonly id: string } | null | undefined,
+): string {
+  if (!event) {
+    throw new Error("Failed to seed orphan monitor message");
+  }
+  return event.id;
 }
 
 async function seedFixture(
@@ -161,6 +261,12 @@ async function seedFixture(
     throw new Error("Failed to seed orphan monitor compose");
   }
 
+  await seedGoalAgent(
+    db,
+    { composeId: compose.id, fixtureKind, orgId, userId },
+    signal,
+  );
+
   const [thread] = await db
     .insert(chatThreads)
     .values({ userId, agentComposeId: compose.id })
@@ -171,11 +277,12 @@ async function seedFixture(
   }
 
   const events = await db.transaction(async (tx) => {
+    const userMessage = createUserMessageDocument({
+      text: "orphan monitor fixture",
+    });
     const baseEvent = {
       chatThreadId: thread.id,
-      userMessage: createUserMessageDocument({
-        text: "orphan monitor fixture",
-      }),
+      userMessage,
       runId: null,
     };
     if (fixtureKind === "orphan") {
@@ -184,9 +291,11 @@ async function seedFixture(
         .values(
           STALE_CONTEXT_FIXTURES.map((fixture, index) => {
             return {
-              ...baseEvent,
+              chatThreadId: baseEvent.chatThreadId,
+              payload: { userMessage: baseEvent.userMessage },
+              runId: baseEvent.runId,
               ...fixture,
-              contextId: randomUUID(),
+              contextId: fixture.contextType === null ? null : randomUUID(),
               createdAt: new Date(0),
               seqId: index + 1,
             };
@@ -200,10 +309,23 @@ async function seedFixture(
         eventType: "input.automation",
         createdAt: new Date(0),
         automationId: randomUUID(),
-        triggerSource: "workflow-event",
         triggerBrief: null,
       });
       return [automation];
+    }
+    if (fixtureKind === "orphaned-goal" || fixtureKind === "paused-goal") {
+      return [
+        await seedGoalFixture(tx, {
+          composeId: compose.id,
+          fixtureKind,
+          orgId,
+          threadId: thread.id,
+          userId,
+        }),
+      ];
+    }
+    if (fixtureKind === "queued-integration") {
+      return [await seedQueuedIntegrationEvent(tx, thread.id)];
     }
     const event =
       fixtureKind === "failed-message"
@@ -214,9 +336,8 @@ async function seedFixture(
           })
         : await insertChatEvent(tx, {
             ...baseEvent,
+            contextType: "web",
             eventType: "input.prompt",
-            triggerSource:
-              fixtureKind === "queued-integration" ? "slack" : "web",
           });
     return [event];
   });
@@ -249,12 +370,7 @@ async function seedFixture(
   return actionOk({
     compose_id: compose.id,
     event_id: event.id,
-    event_ids: events.map((candidate) => {
-      if (!candidate) {
-        throw new Error("Failed to seed orphan monitor message");
-      }
-      return candidate.id;
-    }),
+    event_ids: events.map(requireSeededEventId),
   });
 }
 

@@ -1,13 +1,15 @@
+import { getOkouAgentId, getOkouChatThreadId } from "../../../lib/okou-env";
+
 export const CALLBACK_PROMPT_PLACEHOLDER =
   "SOMETHING_AGENT_WANT_TO_BE_CALLBACK";
 
 export function connectorActionCallbackAvailable(): boolean {
-  return Boolean(process.env.ZERO_CHAT_THREAD_ID?.trim());
+  return Boolean(getOkouChatThreadId()?.trim());
 }
 
 function currentChatThreadId(agentId: string | undefined): string | null {
-  const threadId = process.env.ZERO_CHAT_THREAD_ID?.trim();
-  const currentAgentId = process.env.ZERO_AGENT_ID?.trim();
+  const threadId = getOkouChatThreadId()?.trim();
+  const currentAgentId = getOkouAgentId()?.trim();
   if (!threadId || !currentAgentId || agentId !== currentAgentId) {
     return null;
   }
@@ -46,7 +48,7 @@ export function addRequestedCallbackSearchParams(
   const threadId = currentChatThreadId(agentId);
   if (!threadId) {
     throw new Error(
-      "--callback-prompt can only target the current Zero web chat thread and agent",
+      "--callback-prompt can only target the current web chat thread and agent",
     );
   }
   addCallbackSearchParams(params, threadId, normalizedPrompt);
@@ -93,7 +95,7 @@ export function printCallbackActionUrlExample(
 
   console.log("");
   console.log(
-    "Or, if this is the only connector or permission action needed, use the callback URL below. After the user completes this action, Zero will automatically start the next round with the callback prompt:",
+    "Or, if this is the only connector or permission action needed, use the callback URL below. After the user completes this action, Okou will automatically start the next round with the callback prompt:",
   );
   console.log(callbackUrl);
 }
@@ -101,6 +103,6 @@ export function printCallbackActionUrlExample(
 export function printCallbackTurnInstruction(): void {
   console.log("");
   console.log(
-    "After sharing this callback URL, end the current turn. When the user completes the action, Zero will automatically start the next round with the callback prompt.",
+    "After sharing this callback URL, end the current turn. When the user completes the action, Okou will automatically start the next round with the callback prompt.",
   );
 }

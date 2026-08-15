@@ -2,13 +2,13 @@
 @import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @import "tailwindcss";
-@import "@vm0/ui/styles/globals.css";
+@import "@okouai/ui/styles/globals.css";
 @import "katex/dist/katex.min.css";
 
 @plugin "@tailwindcss/typography";
 @custom-variant pointer-coarse (@media (pointer: coarse));
 
-/* Include @vm0/ui components in Tailwind's content scanning */
+/* Include @okouai/ui components in Tailwind's content scanning */
 @source "../../../../../packages/ui/src/**/*.tsx";
 
 @theme {
@@ -27,11 +27,9 @@
 
   /* Sidebar colors - using tokens for dark mode support */
   --color-sidebar: hsl(var(--gray-0));
-  --color-sidebar-foreground: hsl(var(--gray-950));
   --color-sidebar-border: hsl(var(--gray-200));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-primary: hsl(var(--white));
-  --color-sidebar-accent: hsl(var(--gray-100));
 
   /* Credit balance breakdown segment colors (usage bar chart) */
   --color-credit-free: #3eb7b8;
@@ -40,10 +38,9 @@
   --color-credit-plan-pro: #edc43e;
   --color-credit-plan-team: #6b8de3;
 
-  /* Usage record kind breakdown segment colors — drawn from the Insights
-     card-palette hues so usage and insights read as one system. Model uses a
-     cool indigo so the dominant LLM segment separates cleanly from the pink
-     image hue; image and video also sit far apart (pink vs teal). */
+  /* Usage record kind breakdown segment colors. Model uses a cool indigo so
+     the dominant LLM segment separates cleanly from the pink image hue; image
+     and video also sit far apart (pink vs teal). */
   --color-usage-kind-model: #5e6ad2;
   --color-usage-kind-image: #ec70a5;
   --color-usage-kind-video: #358a8e;
@@ -91,6 +88,10 @@ body {
 
 #root {
   box-sizing: border-box;
+  /* Base UI appends top-level portals after #root and nests descendant portals
+     under their owning portal. Isolating the app lets that DOM order define
+     floating-layer priority without global z-index values on every primitive. */
+  isolation: isolate;
   position: fixed;
   top: 0;
   right: 0;
@@ -278,29 +279,88 @@ body {
 }
 
 /* Shimmer text effect for active/thinking states */
-@keyframes zero-shimmer {
-  0% {
-    background-position: 100% center;
+@keyframes zero-shimmer-window {
+  from {
+    transform: translate3d(-50%, 0, 0);
   }
-  100% {
-    background-position: -100% center;
+  to {
+    transform: translate3d(283.333333%, 0, 0);
   }
 }
+@keyframes zero-shimmer-highlight {
+  from {
+    transform: translate3d(30%, 0, 0);
+  }
+  to {
+    transform: translate3d(-170%, 0, 0);
+  }
+}
+@keyframes zero-shimmer-highlight-secondary {
+  from {
+    transform: translate3d(230%, 0, 0);
+  }
+  to {
+    transform: translate3d(30%, 0, 0);
+  }
+}
+.zero-shimmer-text-shell {
+  position: relative;
+  contain: paint;
+}
 .zero-shimmer-text {
-  background: linear-gradient(
-    90deg,
-    hsl(var(--muted-foreground) / 0.8) 0%,
-    hsl(var(--muted-foreground) / 0.8) 35%,
-    hsl(var(--foreground)) 48%,
-    hsl(var(--foreground)) 52%,
-    hsl(var(--muted-foreground) / 0.8) 65%,
-    hsl(var(--muted-foreground) / 0.8) 100%
-  );
-  background-size: 200% 100%;
+  background-color: hsl(var(--muted-foreground) / 0.8);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: zero-shimmer 3.5s linear infinite;
+}
+.zero-shimmer-window {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 60%;
+  overflow: hidden;
+  background-color: hsl(var(--background));
+  pointer-events: none;
+  user-select: none;
+  /* Map the old 35%-65% band from its 200%-wide gradient into one window. */
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 43.333333%,
+    black 56.666667%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 43.333333%,
+    black 56.666667%,
+    transparent 100%
+  );
+  animation: zero-shimmer-window 3.5s linear infinite;
+  will-change: transform;
+}
+.zero-shimmer-highlight {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  display: block;
+  width: 166.666667%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background-color: hsl(var(--foreground));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: zero-shimmer-highlight 3.5s linear infinite;
+  will-change: transform;
+}
+.zero-shimmer-window-secondary {
+  left: -200%;
+}
+.zero-shimmer-window-secondary .zero-shimmer-highlight {
+  animation-name: zero-shimmer-highlight-secondary;
 }
 
 @keyframes zero-thinking-in {
@@ -315,6 +375,38 @@ body {
 }
 .zero-thinking-enter {
   animation: zero-thinking-in 0.3s ease-out;
+}
+
+@keyframes zero-chat-skeleton-reveal {
+  to {
+    opacity: 1;
+  }
+}
+.zero-chat-skeleton-reveal {
+  /* Avoid flashing the skeleton when cached chat events resolve immediately. */
+  opacity: 0;
+  animation: zero-chat-skeleton-reveal 0s 100ms forwards;
+}
+
+/* Conversation locator: mark where a rail jump landed, then fade back out. */
+@keyframes zero-locator-landed {
+  from {
+    background-color: hsl(var(--primary) / 0.1);
+    box-shadow: 0 0 0 0.75rem hsl(var(--primary) / 0.1);
+  }
+  to {
+    background-color: transparent;
+    box-shadow: 0 0 0 0.75rem transparent;
+  }
+}
+[data-locator-landed] {
+  border-radius: 0.75rem;
+  animation: zero-locator-landed 1.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-locator-landed] {
+    animation-duration: 0.01ms;
+  }
 }
 
 /* Thinking indicator: 3-block loader */
@@ -359,10 +451,21 @@ body {
 
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
-  --zero-card-radius: 1rem;
+  --zero-card-radius: 1.25rem;
+  /* The composer is the largest surface on the page and leads the radius scale. */
+  --zero-composer-radius: 1.5rem;
   --zero-card-border: hsl(var(--border));
   --zero-card-shadow:
     0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
+  /* Static focus veil for the composer. Fading this layer through opacity lets
+     the browser composite it without interpolating the wide blur every frame. */
+  --zero-composer-focus-veil: 0 10px 48px -8px hsl(220 14% 50% / 0.08);
+}
+
+/* A grey veil is invisible on a dark page, so the dark theme casts the same
+   shape in black instead. The border step carries the state either way. */
+:where([data-theme="dark"]) .zero-app {
+  --zero-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
 }
 
 /* Desktop shell: avoid accidental selection on app chrome while preserving content/editors. */
@@ -413,9 +516,7 @@ body {
 }
 
 /* Switch track: ensure visibility against card background in dark mode */
-:where([data-theme="dark"])
-  .zero-app
-  button[role="switch"][data-state="unchecked"] {
+:where([data-theme="dark"]) .zero-app [role="switch"][data-unchecked] {
   background-color: hsl(var(--gray-400));
 }
 
@@ -451,6 +552,47 @@ body {
   border-top: 0.7px dashed hsl(var(--gray-400));
 }
 
+/* Avatar / logo thumbnails: a hairline lighter than zero-border, so the edge of
+   a picture stays readable without the stroke reading as a frame. */
+.zero-thumb-border {
+  border: 0.5px solid hsl(var(--gray-400));
+}
+
+.zero-realtime-status-reconnecting {
+  opacity: 0;
+  animation: zero-realtime-status-reveal 160ms cubic-bezier(0.16, 1, 0.3, 1)
+    300ms forwards;
+}
+
+.zero-realtime-cloud-flow {
+  stroke-dasharray: 3 6;
+  animation: zero-realtime-cloud-flow 1.05s linear infinite;
+}
+
+@keyframes zero-realtime-status-reveal {
+  to {
+    opacity: 0.8;
+  }
+}
+
+@keyframes zero-realtime-cloud-flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zero-realtime-status-reconnecting {
+    opacity: 0.8;
+    animation: none;
+  }
+
+  .zero-realtime-cloud-flow {
+    stroke-dasharray: none;
+    animation: none;
+  }
+}
+
 /* Role / status badge: pill with 0.7px border on neutral background */
 .zero-badge {
   border: 0.7px solid hsl(var(--gray-400));
@@ -463,59 +605,21 @@ body {
   border: 0.7px solid hsl(var(--gray-400));
 }
 .zero-app .zero-chip:hover {
-  background-color: hsl(var(--gray-100));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
   border-color: hsl(var(--gray-400));
-}
-
-/* Zero tabs (e.g. All agents / For you / For team) */
-.zero-app .zero-tabs {
-  background-color: hsl(var(--gray-100));
-}
-.zero-app .zero-tabs [role="tab"] {
-  background-color: transparent;
-  color: hsl(var(--muted-foreground));
-}
-.zero-app .zero-tabs [role="tab"]:hover {
-  color: hsl(var(--foreground));
-}
-.zero-app .zero-tabs [role="tab"].bg-background {
-  background-color: hsl(var(--card));
-  color: hsl(var(--foreground));
-  box-shadow:
-    0 1px 2px hsl(220 12% 20% / 0.06),
-    0 1px 3px hsl(220 12% 20% / 0.08);
-}
-:where([data-theme="dark"]) .zero-app .zero-tabs {
-  background-color: hsl(var(--gray-200));
-}
-:where([data-theme="dark"]) .zero-app .zero-tabs [role="tab"].bg-background {
-  background-color: hsl(var(--gray-400));
-  box-shadow:
-    0 1px 3px hsl(0 0% 0% / 0.3),
-    0 2px 6px hsl(0 0% 0% / 0.2);
-}
-
-/* View toggle (list/gallery): track like zero-tabs, selected segment like white card */
-.zero-app .zero-view-toggle {
-  background-color: hsl(var(--gray-100));
-  border: 0.7px solid hsl(var(--gray-400));
-}
-.zero-app .zero-view-toggle .zero-view-toggle-selected {
-  background-color: hsl(var(--card));
-  box-shadow: var(--zero-card-shadow);
 }
 
 /* Zero left nav */
 .zero-nav {
   --color-sidebar: hsl(var(--gray-0));
-  --color-sidebar-accent: hsl(var(--muted));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-border: hsl(var(--gray-200));
-  --color-divider: hsl(var(--divider));
 }
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);
-  --color-sidebar-accent: hsl(var(--gray-100));
   --color-sidebar-primary: #ffffff;
 }
 
@@ -526,7 +630,10 @@ body {
   color: hsl(var(--foreground));
 }
 .zero-app .zero-btn-morandi:hover {
-  background-color: hsl(var(--gray-100));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
   border-color: hsl(var(--gray-400));
 }
 
@@ -538,7 +645,10 @@ body {
   box-shadow: var(--zero-card-shadow);
 }
 .zero-app .zero-card-morandi:hover {
-  background-color: hsl(var(--gray-50));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
   border-color: hsl(var(--gray-200));
 }
 
@@ -555,7 +665,10 @@ body {
   box-shadow: var(--zero-card-shadow);
 }
 .zero-app .zero-card.cursor-pointer:hover {
-  background-color: hsl(var(--gray-0));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
 }
 
 /* Same as .zero-card but less rounded (more rectangular), e.g. account dropdown / profile card */
@@ -611,8 +724,111 @@ body {
 .zero-app .zero-composer {
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
-  border-radius: var(--zero-card-radius);
+  border-radius: var(--zero-composer-radius);
   box-shadow: var(--zero-card-shadow);
+}
+
+/* Keep the finished border and shadow on their own layer so focus animates
+   through compositor-friendly opacity instead of repainting the card. */
+.zero-app .zero-composer::after {
+  content: "";
+  position: absolute;
+  inset: -0.7px;
+  border: 0.7px solid hsl(var(--gray-500));
+  border-radius: inherit;
+  box-shadow: var(--zero-composer-focus-veil);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+.zero-app .zero-composer:focus-within::after {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zero-app .zero-composer::after {
+    transition: none;
+  }
+}
+
+/* Chat: steer acknowledgement label.
+
+   Both wordings share one box so a single feathered gradient boundary sweeps
+   across both: the previous wording is erased and the new one drawn in place,
+   without either moving. A hard edge sweeping across reads as the text being
+   pushed away, which is why this is a gradient and not a clip. */
+.zero-app .zero-steer-ack {
+  position: relative;
+  display: block;
+  /* 0% rests on the incoming wording, 100% on the outgoing one. */
+  --zero-steer-ack-sweep: 0%;
+  --zero-steer-ack-feather: 20px;
+}
+.zero-app .zero-steer-ack-layer {
+  display: block;
+  text-align: right;
+  white-space: nowrap;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  /* Wider than twice the box on purpose: at exactly 200% the resting edge lands
+     mid-ramp and fades out the first glyph. */
+  -webkit-mask-size: calc(200% + 4 * var(--zero-steer-ack-feather)) 100%;
+  mask-size: calc(200% + 4 * var(--zero-steer-ack-feather)) 100%;
+  -webkit-mask-position: var(--zero-steer-ack-sweep) 0;
+  mask-position: var(--zero-steer-ack-sweep) 0;
+}
+.zero-app .zero-steer-ack-outgoing {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(50% - var(--zero-steer-ack-feather)),
+    #000 calc(50% + var(--zero-steer-ack-feather)),
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(50% - var(--zero-steer-ack-feather)),
+    #000 calc(50% + var(--zero-steer-ack-feather)),
+    #000 100%
+  );
+}
+.zero-app .zero-steer-ack-incoming {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000 0,
+    #000 calc(50% - var(--zero-steer-ack-feather)),
+    transparent calc(50% + var(--zero-steer-ack-feather)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    #000 0,
+    #000 calc(50% - var(--zero-steer-ack-feather)),
+    transparent calc(50% + var(--zero-steer-ack-feather)),
+    transparent 100%
+  );
+}
+.zero-app .zero-steer-ack[data-steer-acknowledgement-sweeping] {
+  transition: width 520ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.zero-app
+  .zero-steer-ack[data-steer-acknowledgement-sweeping]
+  .zero-steer-ack-layer {
+  transition:
+    -webkit-mask-position 520ms cubic-bezier(0.4, 0, 0.2, 1),
+    mask-position 520ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .zero-app .zero-steer-ack[data-steer-acknowledgement-sweeping],
+  .zero-app
+    .zero-steer-ack[data-steer-acknowledgement-sweeping]
+    .zero-steer-ack-layer {
+    transition-duration: 1ms;
+  }
 }
 
 /* Chat: outline buttons inside dialogue */
@@ -622,16 +838,11 @@ body {
   color: hsl(var(--foreground));
 }
 .zero-app .zero-chat-btn:hover {
-  background-color: hsl(var(--gray-100));
+  background-image: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
   border-color: hsl(var(--gray-400));
-}
-
-/* Lighter icons and "Recent dialogue" label; other styles unchanged */
-.zero-nav svg {
-  opacity: 0.7;
-}
-.zero-nav .zero-nav-recent-label {
-  opacity: 1;
 }
 
 @layer base {
@@ -686,14 +897,6 @@ body {
 /* Global selection color */
 ::selection {
   background-color: hsl(var(--primary-200));
-  color: hsl(var(--foreground));
-}
-
-/* Inline feedback: keep the commented passage highlighted while its draft is
-   open, so the comment stays anchored to the text it is about. A lighter tint
-   than the live selection above. */
-::highlight(zero-feedback) {
-  background-color: hsl(var(--primary-100));
   color: hsl(var(--foreground));
 }
 
@@ -816,7 +1019,8 @@ body {
   max-width: 100%;
 }
 
-.wmde-markdown p {
+.wmde-markdown p,
+.wmde-markdown .zero-markdown-card {
   margin-top: 6px;
   margin-bottom: 6px;
 }
@@ -825,7 +1029,9 @@ body {
    Line-height is owned by the bubble container (leading-[1.7]) and inherited
    by the markdown body, mirroring how the bubble owns the font size. */
 .zero-chat-bubble-assistant .wmde-markdown p,
-.zero-chat-bubble-user .wmde-markdown p {
+.zero-chat-bubble-user .wmde-markdown p,
+.zero-chat-bubble-assistant .wmde-markdown .zero-markdown-card,
+.zero-chat-bubble-user .wmde-markdown .zero-markdown-card {
   margin-top: 8px;
   margin-bottom: 8px;
 }
@@ -1060,13 +1266,22 @@ body {
   margin-bottom: 16px;
 }
 
+/* The box is reserved at this size before the render starts, so every diagram
+   in a thread is the same height and none of them changes the height of the
+   message it sits in once it appears. Below the max width the box keeps its
+   ratio, so diagrams stay equally tall as the column narrows. */
 .wmde-markdown .mermaid-diagram-expand {
+  position: relative;
   display: block;
-  width: fit-content;
-  max-width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 4 / 3;
+  margin: 4px 0;
+  padding: 8px;
+  border: 1px solid hsl(var(--foreground) / 0.1);
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.3);
+  overflow: hidden;
   cursor: zoom-in;
 }
 
@@ -1074,19 +1289,44 @@ body {
   cursor: default;
 }
 
-.wmde-markdown .mermaid-diagram-canvas {
-  overflow-x: auto;
+/* The image and state indicators are taken out of flow so none can size the
+   box: the diagram is serialized at lightbox scale, and an in-flow image that
+   wide would win over `aspect-ratio` through its content-based minimum size.
+   Letterboxed rather than stretched, since a single box can only hold diagrams
+   of different aspect ratios undistorted by leaving margins. */
+.wmde-markdown .mermaid-diagram-image,
+.wmde-markdown .mermaid-diagram-pending,
+.wmde-markdown .mermaid-diagram-invalid {
+  /* Inset by the box's own padding: an absolutely positioned child is placed
+     against the padding box, which the padding would otherwise not clear. */
+  position: absolute;
+  inset: 8px;
 }
 
-.wmde-markdown
-  .mermaid-block[data-mermaid-status="rendering"]
-  .mermaid-diagram-canvas {
-  min-height: 2rem;
+.wmde-markdown .mermaid-diagram-image {
+  /* An absolutely positioned <img> whose width and height are `auto` is laid
+     out at its own intrinsic size, so `inset` alone leaves the diagram at
+     lightbox scale and `object-fit` has nothing to fit into. The size is
+     therefore stated: `calc` rather than `100%`, since a percentage resolves
+     against the padding box, which the box's own padding would not clear. */
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  object-fit: contain;
+  /* github-markdown-css paints every image on an opaque canvas colour, which
+     would cover the box behind the letterboxed diagram. */
+  background: none;
 }
 
-.wmde-markdown .mermaid-diagram-canvas svg {
-  max-width: 100%;
-  height: auto;
+.wmde-markdown .mermaid-diagram-pending,
+.wmde-markdown .mermaid-diagram-invalid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--muted-foreground));
+}
+
+.wmde-markdown .mermaid-diagram-invalid {
+  font-size: 0.875rem;
 }
 
 .wmde-markdown .mermaid-diagram-source > summary {
@@ -1266,11 +1506,11 @@ details[open] > summary > span:first-child {
   }
 }
 
-.sheet-content[data-side="right"][data-state="open"] {
+.sheet-content[data-side="right"][data-open] {
   animation: sheet-slide-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-.sheet-content[data-side="right"][data-state="closed"] {
+.sheet-content[data-side="right"][data-ending-style] {
   animation: sheet-slide-out-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
@@ -1739,4 +1979,23 @@ details[open] > summary > span:first-child {
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+/* A dialog scrim blurs the page behind it, and that blur only stays cached
+   while the page holds still — one moving pixel re-blurs the whole viewport,
+   every frame, for as long as the dialog is open. These are the app's
+   always-on animations, so park them while a scrim is mounted. Anything
+   rendered inside the dialog keeps running. */
+html:has(.zero-dialog-overlay)
+  :is(
+    .speaker-notes-dot-1,
+    .speaker-notes-dot-2,
+    .speaker-notes-dot-3,
+    .zero-shimmer-window,
+    .zero-shimmer-highlight,
+    .zero-blocks span,
+    .mic-starting-spinner,
+    .owf-diagram-beam
+  ):not(.zero-dialog-content *) {
+  animation-play-state: paused;
 }

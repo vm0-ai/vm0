@@ -1,6 +1,6 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
-import type { RoutePath } from "../types/route.ts";
+import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
@@ -8,7 +8,7 @@ import { rootSignal$ } from "./root-signal.ts";
 import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
 import { logger } from "./log.ts";
 import { capturePageView, markNavigationPushState$ } from "../lib/posthog.ts";
-import { recordAdAttribution } from "./bootstrap/ad-attribution.ts";
+import { recordAdAttribution$ } from "./bootstrap/ad-attribution.ts";
 import { recordSignupAttribution$ } from "./bootstrap/signup-attribution.ts";
 
 const L = logger("Route");
@@ -45,30 +45,6 @@ export const replaceSearchParams$ = command(
   },
 );
 
-/**
- * Update the address bar to point at a different path without firing
- * route setup. Existing search params are preserved.
- *
- * Use this for in-page swaps where the page itself has already loaded
- * the new content into state — the URL just needs to catch up so
- * sharing/bookmarking and browser back work. Going through `navigate$`
- * instead would re-run the route setup command, which would re-bootstrap
- * page-level signals from scratch.
- */
-export const pushPathSilently$ = command(
-  (
-    { set },
-    pathnameTemplate: Parameters<typeof generateRouterPath>[0],
-    pathParams?: Parameters<typeof generateRouterPath>[1],
-  ) => {
-    const newPath = generateRouterPath(pathnameTemplate, pathParams);
-    pushState({}, "", `${newPath}${search()}`);
-    set(reloadPathname$, (x) => {
-      return x + 1;
-    });
-  },
-);
-
 export const replacePathSilently$ = command(
   (
     { set },
@@ -88,6 +64,7 @@ export const replacePathSilently$ = command(
 interface Route {
   path: string;
   setup: Command<Promise<void> | void, [AbortSignal]>;
+  analytics?: boolean;
 }
 
 const internalRouteConfig$ = state<Route[] | undefined>(undefined);
@@ -135,11 +112,15 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw new Error("No route matches, pathname: " + get(pathname$));
   }
   L.debug("loading route", currentRoute.path);
-  recordAdAttribution(get(searchParams$));
+  if (currentRoute.analytics !== false) {
+    set(recordAdAttribution$, get(searchParams$));
+  }
 
   await set(currentRoute.setup, routeSignal);
   signal.throwIfAborted();
-  capturePageView();
+  if (currentRoute.analytics !== false) {
+    capturePageView();
+  }
   // Record first-touch signup attribution as part of the route-load lifecycle.
   // Bind to the parent `signal`, not the per-route `routeSignal`: a superseding
   // route load aborts the previous `routeSignal` via resetRouteSignal$, and
@@ -147,7 +128,9 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
   // completes cleanly. The command early-returns when there is nothing to
   // record, so this only performs network work on the first qualifying load.
-  await set(recordSignupAttribution$, signal);
+  if (currentRoute.analytics !== false) {
+    await set(recordSignupAttribution$, signal);
+  }
 });
 
 const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {
@@ -188,7 +171,15 @@ export const initRoutes$ = command(
 
 interface NavigateOptions {
   searchParams?: URLSearchParams;
+  hash?: string;
   replace?: boolean;
+}
+
+function routeHash(hash: string | undefined): string {
+  if (!hash) {
+    return "";
+  }
+  return hash.startsWith("#") ? hash : `#${hash}`;
 }
 
 const navigate$ = command(
@@ -199,7 +190,7 @@ const navigate$ = command(
     signal: AbortSignal,
   ) => {
     const searchStr = options.searchParams?.toString();
-    const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}`;
+    const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
     L.debug("navigating to", newPath);
     if (options.replace) {
       replaceState({}, "", newPath);
@@ -227,6 +218,7 @@ export const detachedNavigateTo$ = command(
     options?: {
       pathParams?: Parameters<typeof generateRouterPath>[1];
       searchParams?: URLSearchParams;
+      hash?: string;
       replace?: boolean;
     },
   ) => {

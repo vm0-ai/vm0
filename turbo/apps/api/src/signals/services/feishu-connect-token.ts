@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { env } from "../../lib/env";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 
 const CONNECT_LINK_MAX_AGE_SECONDS = 10 * 60;
 

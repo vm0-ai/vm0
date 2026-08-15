@@ -10,7 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
-import type { AgentRunCallbackPayload } from "@vm0/db/jsonb-contracts/agent-run-callback";
+import type { AgentRunCallbackPayload } from "@okouai/db/jsonb-contracts/agent-run-callback";
 
 /**
  * Agent Run Callbacks table

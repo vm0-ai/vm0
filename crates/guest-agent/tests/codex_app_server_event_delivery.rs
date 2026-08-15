@@ -1,4 +1,4 @@
-//! Event-delivery integration coverage for the experimental Codex app-server backend.
+//! Event-delivery integration coverage for Codex app-server execution.
 //!
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.

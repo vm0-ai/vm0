@@ -79,7 +79,7 @@ describe("connector/providers/mercury", () => {
   });
 
   describe("exchangeMercuryCode", () => {
-    it("authenticates with HTTP Basic and returns token plus account identity", async () => {
+    it("authenticates with HTTP Basic and returns token plus organization identity", async () => {
       let authorization: string | null = null;
       let body = "";
       const tokenHandler = http.post(
@@ -95,15 +95,18 @@ describe("connector/providers/mercury", () => {
           });
         },
       );
-      const accountsHandler = http.get(
-        "https://api.mercury.com/api/v1/accounts",
+      const organizationHandler = http.get(
+        "https://api.mercury.com/api/v1/organization",
         () => {
           return HttpResponse.json({
-            accounts: [{ id: "account-123", name: "Max & Zoe, Inc." }],
+            organization: {
+              id: "organization-123",
+              legalBusinessName: "Max & Zoe, Inc.",
+            },
           });
         },
       );
-      server.use(tokenHandler, accountsHandler);
+      server.use(tokenHandler, organizationHandler);
 
       const result = await exchangeMercuryCode(
         authCodeGrant(),
@@ -119,11 +122,11 @@ describe("connector/providers/mercury", () => {
       expect(result.refreshToken).toBe("mercury-refresh-token");
       expect(result.expiresIn).toBe(3600);
       expect(result.scopes).toEqual(["openid", "read", "offline_access"]);
-      expect(result.userInfo.id).toBe("account-123");
+      expect(result.userInfo.id).toBe("organization-123");
       expect(result.userInfo.username).toBe("Max & Zoe, Inc.");
     });
 
-    it("uses the sandbox token and accounts endpoints in sandbox mode", async () => {
+    it("uses the sandbox token and organization endpoints in sandbox mode", async () => {
       useSandboxEnvironment();
       const tokenHandler = http.post(
         "https://oauth2-sandbox.mercury.com/oauth2/token",
@@ -134,15 +137,18 @@ describe("connector/providers/mercury", () => {
           });
         },
       );
-      const accountsHandler = http.get(
-        "https://api-sandbox.mercury.com/api/v1/accounts",
+      const organizationHandler = http.get(
+        "https://api-sandbox.mercury.com/api/v1/organization",
         () => {
           return HttpResponse.json({
-            accounts: [{ id: "sandbox-account", name: "Sandbox Co" }],
+            organization: {
+              id: "sandbox-organization",
+              legalBusinessName: "Sandbox Co",
+            },
           });
         },
       );
-      server.use(tokenHandler, accountsHandler);
+      server.use(tokenHandler, organizationHandler);
 
       const result = await exchangeMercuryCode(
         authCodeGrant(),
@@ -153,7 +159,7 @@ describe("connector/providers/mercury", () => {
       );
 
       expect(result.accessToken).toBe("sandbox-access-token");
-      expect(result.userInfo.id).toBe("sandbox-account");
+      expect(result.userInfo.id).toBe("sandbox-organization");
     });
 
     it("throws when Mercury rejects the client credentials", async () => {

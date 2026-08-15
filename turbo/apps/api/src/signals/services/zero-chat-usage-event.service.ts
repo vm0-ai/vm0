@@ -1,15 +1,14 @@
 import { command } from "ccstate";
-import { and, count, eq, exists, max, sql, sum } from "drizzle-orm";
-import { agentRuns } from "@vm0/db/schema/agent-run";
+import { and, count, eq, exists, isNotNull, max, sql, sum } from "drizzle-orm";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   chatEvents,
   type ChatEventUsageKindBreakdown,
   type ChatEventUsagePayload,
   type ChatEventUsageProviderBreakdown,
-} from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { usageEvent } from "@okouai/db/schema/usage-event";
 
 import {
   pgBooleanDecoder,
@@ -18,23 +17,24 @@ import {
   pgTextDecoder,
 } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
+import { insertChatEvent } from "./chat-event.service";
 import {
   buildFinalizedUsageRelation,
   type FinalizedUsageRelation,
 } from "./finalized-usage-relation";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("ChatUsageMessage");
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WriteTx = Tx;
 
 const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const;
 const USAGE_CONTEXT_GROUP_BY_COLUMNS = [
   agentRuns.status,
-  zeroRuns.chatThreadId,
-  zeroRuns.runGroupId,
+  agentRuns.chatThreadId,
+  agentRuns.goalId,
   chatThreads.userId,
 ] as const;
 
@@ -72,8 +72,8 @@ async function loadUsageEventContext(tx: WriteTx, runId: string) {
   return await tx
     .select({
       status: agentRuns.status,
-      chatThreadId: zeroRuns.chatThreadId,
-      runGroupId: zeroRuns.runGroupId,
+      chatThreadId: agentRuns.chatThreadId,
+      goalId: agentRuns.goalId,
       userId: chatThreads.userId,
       hasPending: exists(
         tx
@@ -98,10 +98,9 @@ async function loadUsageEventContext(tx: WriteTx, runId: string) {
       )`.mapWith(agentRuns.createdAt),
     })
     .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .leftJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
     .leftJoin(usage, eq(usage.runId, agentRuns.id))
-    .where(eq(agentRuns.id, runId))
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .groupBy(...USAGE_CONTEXT_GROUP_BY_COLUMNS)
     .limit(1);
 }
@@ -183,7 +182,7 @@ export const maybeEmitRunUsageEvent$ = command(
         eventType: "usage.recorded",
         content: null,
         runId,
-        runGroupId: context.runGroupId,
+        runGroupId: context.goalId,
         usagePayload: payload,
         createdAt: new Date(payload.settledAt),
       });

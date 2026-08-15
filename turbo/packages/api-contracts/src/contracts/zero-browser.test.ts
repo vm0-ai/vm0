@@ -13,6 +13,7 @@ function browserResponse(overrides: Record<string, unknown> = {}) {
       status: "active",
       viewerUrl: `https://app.vm0.ai/browsers/${threadId}`,
       liveUrl: "https://live.browser.example",
+      screenshotUrl: null,
       proxyCountryCode: null,
       timeoutMinutes: 240,
       idleExpiresAt: "2026-07-30T01:10:00.000Z",

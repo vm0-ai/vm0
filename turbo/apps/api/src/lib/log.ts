@@ -5,7 +5,7 @@ import {
 } from "@axiomhq/logging";
 import { Axiom } from "@axiomhq/js";
 
-import { formatMessage, extractFields } from "@vm0/core/log-utils";
+import { formatMessage, extractFields } from "@okouai/core/log-utils";
 
 import { env } from "./env";
 import { singleton } from "./singleton";

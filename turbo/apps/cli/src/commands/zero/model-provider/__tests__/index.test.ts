@@ -54,13 +54,13 @@ const MODEL_POLICIES_RESPONSE = {
   ],
 };
 
-describe("zero model-provider command", () => {
+describe("okou model-provider command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     mockConsoleLog.mockClear();
   });
 
@@ -82,7 +82,7 @@ describe("zero model-provider command", () => {
 
   it("should list each allowed model's provider route", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/model-policies", () => {
+      http.get("http://localhost:3000/api/okou/model-policies", () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
       }),
     );

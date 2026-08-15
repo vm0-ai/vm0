@@ -1,5 +1,5 @@
-//! Generated Rust constants for `@vm0/api-contracts`.
-//! Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.
+//! Generated Rust constants for `@okouai/api-contracts`.
+//! Do not edit by hand; regenerate with `cd turbo && pnpm -F @okouai/api-contracts generate:rust`.
 //! These constants are shared TypeScript/Rust contract values.
 //! Token-shaped placeholder values in this module are fake marker bytes, not secrets.
 
@@ -100,17 +100,20 @@ pub mod model_provider_env {
 
 /// Runner contract constants shared by TypeScript and Rust.
 pub mod runners {
+    /// Maximum serialized active-input control payload accepted by runner and guest process control.
+    /// The API validates the materialized prompt against this shared limit before committing claimed chat events.
+    pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = 1048576;
+
     /// Maximum API admission hold after public user cancellation when recovery completion is lost.
     /// The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.
     pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = 120000;
 
-    /// Maximum connector slugs accepted by the runner network policy refresh endpoint.
-    /// Rust runners use this shared contract value to split refresh requests before calling the API.
-    pub const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX: u64 = 256;
+    /// API error code returned when connector runtime synchronization targets a terminal run.
+    pub const CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE: &str = "RUN_TERMINAL";
 
-    /// API error code returned when network policy refresh targets a terminal run.
-    /// Rust runners use this shared contract value to distinguish terminal reconciliation from ambiguous refresh failures.
-    pub const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE: &str = "RUN_TERMINAL";
+    /// Maximum connector runtime targets accepted by the sync endpoint.
+    /// Rust runners use this shared contract value to split target batches before calling the API.
+    pub const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX: u64 = 256;
 
     /// Maximum resume session history blob size accepted by the API, runner, and guest verifier.
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
@@ -155,8 +158,24 @@ pub mod runners {
         /// Rust and TypeScript components use this shared contract value when building runner guest paths.
         pub const CANONICAL_GUEST_HOME_DIR: &str = "/home/user";
 
+        /// Official Pi JSONL session directory for the canonical guest workspace.
+        /// Guest checkpointing validates Pi session files under this directory and runner restore materializes resume history here.
+        pub const CANONICAL_PI_SESSION_DIR: &str =
+            "/home/user/.pi/agent/sessions/--home-user-workspace--";
+
         /// Canonical working directory path expected inside runner guests.
         /// Rust and TypeScript components use this shared contract value when building runner commands and paths.
         pub const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
     }
+}
+
+/// Storage manifest contract constants shared by TypeScript and Rust.
+pub mod storages {
+    /// Maximum file entries accepted in a storage manifest.
+    /// Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.
+    pub const STORAGE_MANIFEST_MAX_FILES: u64 = 50000;
+
+    /// Maximum cumulative UTF-8 path bytes accepted in a storage manifest.
+    /// Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.
+    pub const STORAGE_MANIFEST_MAX_PATH_BYTES: u64 = 8388608;
 }

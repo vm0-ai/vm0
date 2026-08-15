@@ -4,15 +4,16 @@ import { httpInstrumentationMiddleware } from "@hono/otel";
 import * as Sentry from "@sentry/node";
 import {
   CLIENT_FORCE_UPGRADE_STATUS,
+  CLIENT_PRODUCT_HEADER,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_APP,
+  CLIENT_TYPE_DESKTOP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
-  ZERO_MAIL_CLIENT_VERSION,
-  ZERO_MAIL_CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
-import { serializeError } from "@vm0/core/log-utils";
+  desktopProductFromClientHeader,
+} from "@okouai/api-contracts/contracts/client-headers";
+import { serializeError } from "@okouai/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { Hono, type Context, type Next } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -36,7 +37,12 @@ import {
   getDatasetName,
   ingestToAxiom,
 } from "./signals/external/axiom";
-import type { RouteEntry } from "./signals/route-entry";
+import {
+  type RouteEntry,
+  withApiNamespaceAliases,
+} from "./signals/route-entry";
+import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
+import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
 import {
   isAbortError,
   normalizeThrown,
@@ -46,7 +52,7 @@ import {
 
 const L = logger("App");
 
-const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
+const AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
 const PREVIEW_AUTOMATION_BYPASS_ERROR = "Preview automation bypass required";
 const BYPASS_FINGERPRINT_LENGTH = 12;
 const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
@@ -67,14 +73,9 @@ interface UnhandledRequestErrorLogFields {
 interface ClientHeaderLogFields {
   readonly x_client_version?: string;
   readonly x_client_type?: string;
+  readonly x_client_product?: string;
   readonly x_client_session_id?: string;
   readonly x_client_request_id?: string;
-}
-
-function isSupportedZeroMailClientVersion(
-  clientVersion: string | undefined,
-): boolean {
-  return clientVersion === ZERO_MAIL_CLIENT_VERSION;
 }
 
 interface AxiomRequestLogEvent
@@ -102,11 +103,11 @@ function captureError(error: unknown): void {
   }
 }
 
-function redirectToWeb(context: Context): Response {
+function redirectToApp(context: Context): Response {
   const incoming = new URL(context.req.url);
   const target = new URL(
     `${incoming.pathname}${incoming.search}`,
-    env("VM0_WEB_URL"),
+    env("APP_URL"),
   );
   return context.redirect(target.toString());
 }
@@ -396,12 +397,19 @@ async function previewAutomationBypassMiddleware(
 function clientHeaderLogFields(context: Context): ClientHeaderLogFields {
   const clientVersion = requestHeader(context, CLIENT_VERSION_HEADER);
   const clientType = requestHeader(context, CLIENT_TYPE_HEADER);
+  const clientProduct =
+    clientType === CLIENT_TYPE_DESKTOP
+      ? desktopProductFromClientHeader(
+          requestHeader(context, CLIENT_PRODUCT_HEADER),
+        )
+      : undefined;
   const clientSessionId = requestHeader(context, CLIENT_SESSION_ID_HEADER);
   const clientRequestId = requestHeader(context, CLIENT_REQUEST_ID_HEADER);
 
   return {
     ...(clientVersion ? { x_client_version: clientVersion } : {}),
     ...(clientType ? { x_client_type: clientType } : {}),
+    ...(clientProduct ? { x_client_product: clientProduct } : {}),
     ...(clientSessionId ? { x_client_session_id: clientSessionId } : {}),
     ...(clientRequestId ? { x_client_request_id: clientRequestId } : {}),
   };
@@ -413,19 +421,10 @@ async function webClientCompatibilityMiddleware(
 ): Promise<Response | void> {
   const clientType = requestHeader(context, CLIENT_TYPE_HEADER);
   const clientVersion = requestHeader(context, CLIENT_VERSION_HEADER);
-  const zeroMailClientVersion = requestHeader(
-    context,
-    ZERO_MAIL_CLIENT_VERSION_HEADER,
-  );
-  const staleZeroMailClient =
-    clientType === CLIENT_TYPE_APP &&
-    requestPathname(context).startsWith("/api/zero/mail/") &&
-    !isSupportedZeroMailClientVersion(zeroMailClientVersion);
   if (
-    staleZeroMailClient ||
-    (clientType === CLIENT_TYPE_APP &&
-      clientVersion &&
-      !isSupportedWebClientVersion(clientVersion))
+    clientType === CLIENT_TYPE_APP &&
+    clientVersion &&
+    !isSupportedWebClientVersion(clientVersion)
   ) {
     return context.json(
       { error: "Client update required" },
@@ -550,12 +549,15 @@ function handleError(error: unknown, context: Context): Response {
 interface CreateAppWithRoutesOptions {
   readonly signal: AbortSignal;
   readonly routes: readonly RouteEntry[];
+  readonly usagePricingResolution?: UsagePricingResolution;
 }
 
 export function createAppWithRoutes({
   routes,
   signal,
+  usagePricingResolution,
 }: CreateAppWithRoutesOptions): Hono {
+  configureChatRunFinishedEventDispatcher();
   const app = new Hono();
   app.onError(handleError);
 
@@ -564,7 +566,7 @@ export function createAppWithRoutes({
   });
 
   // OpenTelemetry: each request gets a SERVER span named after its matched
-  // route template (e.g. `GET /api/zero/chat-threads/:threadId`). Child spans
+  // route template (e.g. `GET /api/okou/chat-threads/:threadId`). Child spans
   // (db queries, outbound fetches) parent to it via standard context
   // propagation; correlate them to a route by their `trace_id`, not by
   // copying `http.route` onto each child span.
@@ -593,13 +595,17 @@ export function createAppWithRoutes({
 
   app.use("*", webClientCompatibilityMiddleware);
 
-  for (const path of WEB_AUTH_PATHS) {
-    app.get(path, redirectToWeb);
-    app.get(`${path}/*`, redirectToWeb);
+  for (const path of AUTH_PATHS) {
+    app.get(path, redirectToApp);
+    app.get(`${path}/*`, redirectToApp);
   }
 
-  for (const { route, handler } of routes) {
-    app.on(route.method, route.path, honoSignalHandler(handler, route, signal));
+  for (const { route, handler } of withApiNamespaceAliases(routes)) {
+    app.on(
+      route.method,
+      route.path,
+      honoSignalHandler(handler, route, signal, usagePricingResolution),
+    );
   }
 
   app.notFound((context) => {

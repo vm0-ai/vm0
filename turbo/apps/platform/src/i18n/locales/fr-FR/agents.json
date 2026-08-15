@@ -16,10 +16,7 @@
     "connectorsLink": "Connecteurs",
     "connectorsSaved": "Connecteurs enregistrés",
     "customConnectors": {
-      "authorize": "Autoriser {{connectorName}} pour cet agent",
-      "description": "Connecteurs personnalisés enregistrés par votre organisation. Seuls les connecteurs pour lesquels vous avez fourni un secret peuvent être activés.",
-      "noSecret": "Aucun secret défini",
-      "noSecretSuffix": "— aucun secret défini",
+      "description": "Connecteurs personnalisés enregistrés par votre organisation.",
       "saved": "Connecteurs personnalisés enregistrés"
     },
     "description": "Lors de l'exécution, l'agent peut utiliser vos services connectés en toute sécurité. Vous pouvez gérer ou désactiver l'accès à tout moment.",
@@ -606,15 +603,12 @@
   },
   "sidebar": {
     "clearSearch": "Effacer la recherche",
-    "description": "Choisissez un agent pour commencer une conversation.",
     "descriptionWithChats": "Choisissez un agent ou passez à une discussion.",
     "leadDescription": "Votre assistant principal, toujours là pour vous",
     "markAllRead": "Tout marquer comme lu",
     "more": "Plus",
     "new": "Nouveau",
-    "noAgents": "Aucun agent trouvé",
     "noResults": "Aucun résultat trouvé",
-    "noSubagents": "Aucun sous-agent disponible pour le moment.",
     "openConversation": "Ouvrir une conversation",
     "openMenu": "Ouvrir le menu de l'agent",
     "pin": "Épingler à la barre latérale",
@@ -622,6 +616,7 @@
     "pinnedAgents": "Agents épinglés",
     "searchAgents": "Rechercher des agents...",
     "searchAgentsAndChats": "Rechercher des agents et des chats...",
+    "searching": "Recherche...",
     "sections": {
       "chats": "Chats",
       "lead": "Piste",

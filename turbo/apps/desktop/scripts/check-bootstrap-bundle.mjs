@@ -9,8 +9,10 @@ const bundle = readFileSync(
 );
 
 const failures = [];
-if (bundle.includes("@vm0/")) {
-  failures.push('dist/bootstrap.js must not bundle any "@vm0/" workspace code');
+if (bundle.includes("@okouai/")) {
+  failures.push(
+    'dist/bootstrap.js must not bundle any "@okouai/" workspace code',
+  );
 }
 if (!bundle.includes('require("./main.js")')) {
   failures.push(

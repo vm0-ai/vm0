@@ -1,24 +1,20 @@
 import { command } from "ccstate";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { exportJobs } from "@vm0/db/schema/export-job";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { exportJobs } from "@okouai/db/schema/export-job";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { and, eq, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
-
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
-  publishOrgSignal,
-  publishRunChangedForUserSafely,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
 import { deleteS3Objects } from "../external/s3";
-import { bestEffort, settle, tapError } from "../utils";
+import { settle, tapError } from "../utils";
 import { dispatchCompleteSideEffects$ } from "./agent-webhook-complete.service";
 import {
   cleanupExpiredQueueEntries$,
@@ -62,10 +58,19 @@ interface CleanupSandboxesResult {
   readonly threadlessRuns: ThreadlessRunCleanupResult;
 }
 
+type CleanupSandboxesScope =
+  | { readonly kind: "global" }
+  | {
+      readonly kind: "fixtures";
+      readonly chatThreadIds: readonly string[];
+      readonly runIds: readonly string[];
+      readonly orgIds: readonly string[];
+      readonly exportJobIds: readonly string[];
+    };
+
 interface StaleRun {
   readonly id: string;
   readonly orgId: string;
-  readonly userId: string;
   readonly status: string;
   readonly sandboxId: string | null;
   readonly lastHeartbeatAt: Date | null;
@@ -82,9 +87,7 @@ interface CleanupCutoffs {
 interface MaintenanceTerminalSideEffectsInput {
   readonly runId: string;
   readonly orgId: string;
-  readonly userId: string;
   readonly error: string;
-  readonly queueChanged: boolean;
   readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
 }
 
@@ -102,31 +105,21 @@ function isExpiredRun(run: StaleRun, cutoffs: CleanupCutoffs): boolean {
   return referenceTime < staleRunCutoff(run, cutoffs);
 }
 
-async function publishQueueChangedSafely(
-  orgId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  await bestEffort(publishOrgSignal(orgId, "queue:changed"), signal);
-}
-
 async function publishQueueMarkerNotificationSafely(
   notification: QueueMarkerRevokeNotification,
-  signal: AbortSignal,
 ): Promise<void> {
-  await bestEffort(
-    publishUserSignal(
-      [notification.userId],
-      `chatThreadMessageCreated:${notification.chatThreadId}`,
-    ),
-    signal,
+  await publishUserSignal(
+    [notification.userId],
+    `chatThreadMessageCreated:${notification.chatThreadId}`,
   );
-  await bestEffort(publishThreadListChanged(notification.userId), signal);
+  await publishThreadListChanged(notification.userId);
 }
 
 const cleanupExportJobs$ = command(
   async (
     { get },
     db: Db,
+    exportJobIds: readonly string[] | null,
     signal: AbortSignal,
   ): Promise<{
     readonly exportJobsCleaned: number;
@@ -144,6 +137,9 @@ const cleanupExportJobs$ = command(
           eq(exportJobs.status, "completed"),
           isNotNull(exportJobs.expiresAt),
           lt(exportJobs.expiresAt, currentTime),
+          exportJobIds === null
+            ? undefined
+            : inArray(exportJobs.id, exportJobIds),
         ),
       );
     signal.throwIfAborted();
@@ -183,6 +179,9 @@ const cleanupExportJobs$ = command(
         and(
           inArray(exportJobs.status, ["pending", "running"]),
           lt(exportJobs.createdAt, stuckCutoffTime),
+          exportJobIds === null
+            ? undefined
+            : inArray(exportJobs.id, exportJobIds),
         ),
       );
     signal.throwIfAborted();
@@ -219,20 +218,8 @@ const dispatchMaintenanceTerminalSideEffects$ = command(
     input: MaintenanceTerminalSideEffectsInput,
     signal: AbortSignal,
   ): Promise<void> => {
-    await publishRunChangedForUserSafely(input.userId, input.runId, {
-      status: "failed",
-    });
-    signal.throwIfAborted();
-
-    if (input.queueChanged) {
-      await publishQueueChangedSafely(input.orgId, signal);
-    }
-
     if (input.queueMarkerNotification) {
-      await publishQueueMarkerNotificationSafely(
-        input.queueMarkerNotification,
-        signal,
-      );
+      await publishQueueMarkerNotificationSafely(input.queueMarkerNotification);
     }
 
     await set(
@@ -306,9 +293,7 @@ const cleanupSingleRun$ = command(
       {
         runId: run.id,
         orgId: run.orgId,
-        userId: run.userId,
         error: timeoutReason,
-        queueChanged: false,
         queueMarkerNotification: null,
       },
       signal,
@@ -349,9 +334,7 @@ const cleanupQueuedTerminalRuns$ = command(
           {
             runId: run.runId,
             orgId: run.orgId,
-            userId: run.userId,
             error: run.error,
-            queueChanged: true,
             queueMarkerNotification: run.queueMarkerNotification,
           },
           signal,
@@ -431,11 +414,17 @@ const cleanupExpiredRuns$ = command(
 
 async function cleanupExpiredRunnerJobs(
   db: Db,
+  runIds: readonly string[] | null,
   signal: AbortSignal,
 ): Promise<number> {
   const { rowCount } = await db
     .delete(runnerJobQueue)
-    .where(lte(runnerJobQueue.expiresAt, sql`now()`));
+    .where(
+      and(
+        lte(runnerJobQueue.expiresAt, sql`now()`),
+        runIds === null ? undefined : inArray(runnerJobQueue.runId, runIds),
+      ),
+    );
   signal.throwIfAborted();
 
   const deletedCount = rowCount ?? 0;
@@ -447,45 +436,11 @@ async function cleanupExpiredRunnerJobs(
   return deletedCount;
 }
 
-async function cleanupExpiredCustomConnectorAuthRefs(
-  db: Db,
-  signal: AbortSignal,
-): Promise<number> {
-  const { rowCount } = await db
-    .delete(agentRunCustomConnectorAuthRefs)
-    .where(lte(agentRunCustomConnectorAuthRefs.expiresAt, sql`now()`));
-  signal.throwIfAborted();
-
-  const deletedCount = rowCount ?? 0;
-  if (deletedCount > 0) {
-    L.debug("Cleaned up expired custom connector auth refs", {
-      count: deletedCount,
-    });
-  }
-  return deletedCount;
-}
-
-async function cleanupExpiredCustomConnectorAuthRefsSafely(
-  db: Db,
-  signal: AbortSignal,
-): Promise<number> {
-  const deleted = await tapError(
-    cleanupExpiredCustomConnectorAuthRefs(db, signal),
-    (error) => {
-      L.error("Failed to cleanup expired custom connector auth refs", {
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    },
-  );
-  return deleted ?? 0;
-}
-
 function logQueueMaintenance(args: {
   readonly expired: number;
   readonly expiredTimedOut: number;
   readonly launchOrphansTimedOut: number;
   readonly expiredRunnerJobs: number;
-  readonly expiredCustomConnectorAuthRefs: number;
   readonly drained: number;
 }): void {
   if (
@@ -498,67 +453,8 @@ function logQueueMaintenance(args: {
   L.debug("Queue maintenance completed", args);
 }
 
-export const cleanupSandboxes$ = command(
-  async ({ set }, signal: AbortSignal): Promise<CleanupSandboxesResult> => {
-    const db = set(writeDb$);
-    const currentTime = now();
-    const cutoffs = {
-      running: new Date(currentTime - HEARTBEAT_TIMEOUT_MS),
-      debug: new Date(currentTime - DEBUG_HEARTBEAT_TIMEOUT_MS),
-      pending: new Date(currentTime - PENDING_TIMEOUT_MS),
-    };
-
-    L.debug("Checking for expired runs", {
-      runningBefore: cutoffs.running.toISOString(),
-      pendingBefore: cutoffs.pending.toISOString(),
-      debugBefore: cutoffs.debug.toISOString(),
-    });
-
-    const staleRuns = await db
-      .select({
-        id: agentRuns.id,
-        orgId: agentRuns.orgId,
-        userId: agentRuns.userId,
-        status: agentRuns.status,
-        sandboxId: agentRuns.sandboxId,
-        lastHeartbeatAt: agentRuns.lastHeartbeatAt,
-        createdAt: agentRuns.createdAt,
-        composeName: agentComposes.name,
-      })
-      .from(agentRuns)
-      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-      .leftJoin(
-        agentComposes,
-        eq(agentSessions.agentComposeId, agentComposes.id),
-      )
-      .where(inArray(agentRuns.status, ["pending", "running"]));
-    signal.throwIfAborted();
-
-    const expiredRuns = staleRuns.filter((run) => {
-      return isExpiredRun(run, cutoffs);
-    });
-
-    // Run before generic queue maintenance so an active threadless run always
-    // takes the hard-cancel path and can never become terminal and be deleted
-    // within the same maintenance pass.
-    const threadlessRuns = await set(cleanupThreadlessRuns$, signal);
-    signal.throwIfAborted();
-
-    const expiredQueueResult = await set(cleanupExpiredQueueEntries$, signal);
-    signal.throwIfAborted();
-    const queuedOrphanResult = await set(
-      cleanupQueuedRunLaunchOrphans$,
-      cutoffs.pending,
-      signal,
-    );
-    signal.throwIfAborted();
-    const expiredRunnerJobCount = await cleanupExpiredRunnerJobs(db, signal);
-    signal.throwIfAborted();
-    const expiredCustomConnectorAuthRefCount =
-      await cleanupExpiredCustomConnectorAuthRefsSafely(db, signal);
-    signal.throwIfAborted();
-    const drainedCount = await set(drainStaleQueues$, signal);
-    signal.throwIfAborted();
+const cleanupGlobalIngress$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(
       drainStaleChatThreadQueues$,
       { dispatchFailedCallbacks: dispatchFailedRunCallbacks },
@@ -577,6 +473,109 @@ export const cleanupSandboxes$ = command(
       L.error("Failed to retry Feishu connect welcomes", { error });
     });
     signal.throwIfAborted();
+  },
+);
+
+const cleanupFixtureChatThreadQueues$ = command(
+  async (
+    { set },
+    chatThreadIds: readonly string[],
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      drainStaleChatThreadQueues$,
+      {
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        chatThreadIds,
+      },
+      signal,
+    );
+  },
+);
+
+export const cleanupSandboxes$ = command(
+  async (
+    { set },
+    scope: CleanupSandboxesScope,
+    signal: AbortSignal,
+  ): Promise<CleanupSandboxesResult> => {
+    const db = set(writeDb$);
+    const runIds = scope.kind === "global" ? null : scope.runIds;
+    const orgIds = scope.kind === "global" ? null : scope.orgIds;
+    const currentTime = now();
+    const cutoffs = {
+      running: new Date(currentTime - HEARTBEAT_TIMEOUT_MS),
+      debug: new Date(currentTime - DEBUG_HEARTBEAT_TIMEOUT_MS),
+      pending: new Date(currentTime - PENDING_TIMEOUT_MS),
+    };
+
+    L.debug("Checking for expired runs", {
+      runningBefore: cutoffs.running.toISOString(),
+      pendingBefore: cutoffs.pending.toISOString(),
+      debugBefore: cutoffs.debug.toISOString(),
+    });
+
+    const staleRuns = await db
+      .select({
+        id: agentRuns.id,
+        orgId: agentRuns.orgId,
+        status: agentRuns.status,
+        sandboxId: agentRuns.sandboxId,
+        lastHeartbeatAt: agentRuns.lastHeartbeatAt,
+        createdAt: agentRuns.createdAt,
+        composeName: agentComposes.name,
+      })
+      .from(agentRuns)
+      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+      .leftJoin(
+        agentComposes,
+        eq(agentSessions.agentComposeId, agentComposes.id),
+      )
+      .where(
+        and(
+          inArray(agentRuns.status, ["pending", "running"]),
+          runIds === null ? undefined : inArray(agentRuns.id, runIds),
+        ),
+      );
+    signal.throwIfAborted();
+
+    const expiredRuns = staleRuns.filter((run) => {
+      return isExpiredRun(run, cutoffs);
+    });
+
+    // Run before generic queue maintenance so an active threadless run always
+    // takes the hard-cancel path and can never become terminal and be deleted
+    // within the same maintenance pass.
+    const threadlessRuns = await set(cleanupThreadlessRuns$, runIds, signal);
+    signal.throwIfAborted();
+
+    const expiredQueueResult = await set(
+      cleanupExpiredQueueEntries$,
+      runIds,
+      signal,
+    );
+    signal.throwIfAborted();
+    const queuedOrphanResult = await set(
+      cleanupQueuedRunLaunchOrphans$,
+      cutoffs.pending,
+      runIds,
+      signal,
+    );
+    signal.throwIfAborted();
+    const expiredRunnerJobCount = await cleanupExpiredRunnerJobs(
+      db,
+      runIds,
+      signal,
+    );
+    signal.throwIfAborted();
+    const drainedCount = await set(drainStaleQueues$, orgIds, signal);
+    signal.throwIfAborted();
+    if (scope.kind === "global") {
+      await set(cleanupGlobalIngress$, signal);
+    } else {
+      await set(cleanupFixtureChatThreadQueues$, scope.chatThreadIds, signal);
+    }
+    signal.throwIfAborted();
     const queuedTerminalRuns = [
       ...expiredQueueResult.timedOutRuns,
       ...queuedOrphanResult.timedOutRuns,
@@ -586,7 +585,6 @@ export const cleanupSandboxes$ = command(
       expiredTimedOut: expiredQueueResult.timedOutRuns.length,
       launchOrphansTimedOut: queuedOrphanResult.timedOutRuns.length,
       expiredRunnerJobs: expiredRunnerJobCount,
-      expiredCustomConnectorAuthRefs: expiredCustomConnectorAuthRefCount,
       drained: drainedCount,
     });
 
@@ -617,6 +615,7 @@ export const cleanupSandboxes$ = command(
     const { exportJobsCleaned, exportJobsStuck } = await set(
       cleanupExportJobs$,
       db,
+      scope.kind === "global" ? null : scope.exportJobIds,
       signal,
     );
 

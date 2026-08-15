@@ -22,15 +22,23 @@
         "src/signals/context/hono.ts",
         "src/signals/context/wait-until.ts",
         "src/signals/external/clerk.ts",
+        "src/signals/external/stripe-client.ts",
         "src/signals/external/env.ts",
         "src/scripts/**/*.ts",
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"],
-      "ignoreDependencies": ["@hono/node-server-v1"]
+      "ignoreDependencies": ["@hono/node-server-v1", "clerk"]
     },
     "apps/platform": {
-      "entry": ["src/main.ts", "i18next.config.ts", "**/*.{test,spec}.ts?(x)"],
+      "entry": [
+        "src/main.ts",
+        "src/lib/pptx-renderer.ts",
+        "i18next.config.ts",
+        "scripts/bench-p90-reporter.ts",
+        "src/**/__benches__/**/*.bench.tsx",
+        "**/*.{test,spec}.ts?(x)"
+      ],
       "project": ["**/*.{ts,tsx}"],
       "ignore": [
         "src/views/zero-page/zero-sidebar-account.tsx",
@@ -124,12 +132,15 @@
     },
     "packages/typescript-config": {
       "entry": [],
-      "project": ["*.json"],
-      "ignoreUnresolved": ["next"]
+      "project": ["*.json"]
     },
     "packages/proxy": {
       "entry": [],
       "project": ["**/*.{js,json}"]
+    },
+    "packages/pi-agent-runtime": {
+      "entry": ["src/**/*.{test,spec}.ts"],
+      "project": ["src/**/*.ts"]
     }
   },
   "ignoreIssues": {
@@ -140,7 +151,6 @@
   },
   "ignore": [
     "**/*.d.ts",
-    ".next/**",
     "dist/**",
     "build/**",
     "coverage/**",

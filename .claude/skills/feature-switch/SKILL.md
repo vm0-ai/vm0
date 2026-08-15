@@ -74,7 +74,7 @@ Choose the pattern that matches where your feature is consumed.
 #### Server-side (API routes)
 
 ```typescript
-import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
+import { isFeatureEnabled, FeatureSwitchKey } from "@okouai/core";
 
 // In route handler:
 if (!isFeatureEnabled(FeatureSwitchKey.MyFeature, { userId, orgId })) {
@@ -85,7 +85,7 @@ if (!isFeatureEnabled(FeatureSwitchKey.MyFeature, { userId, orgId })) {
 #### Client-side (Platform UI)
 
 ```typescript
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@okouai/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // In component:
@@ -152,8 +152,8 @@ Evaluation has two layers (lowest to highest priority):
 2. **DB overrides** — most switches are per-user rows in
    `user_feature_switches` keyed by `(orgId, userId)`. Some switches are
    org-scoped and stored under the org sentinel user id (`__org__`); currently
-   `ChatThreadUnifiedSearch` is org-scoped. Written via the Lab
-   page toggles or `window._vm0.featureSwitches.myFeature = true` (both call
+   `ChatErrorRecovery` and `PiLoop` are org-scoped. Written via the Lab page
+   toggles or `window._vm0.featureSwitches.myFeature = true` (both call
    `POST /api/zero/feature-switches`). Cleared via the Lab page "Reset all"
    button (`DELETE /api/zero/feature-switches`).
 

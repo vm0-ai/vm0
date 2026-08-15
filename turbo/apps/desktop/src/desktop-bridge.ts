@@ -2,6 +2,8 @@ import type {
   ComputerUseAutomationPermissionTarget,
   DesktopComputerUseState,
 } from "./computer-use-types";
+import type { DesktopIdentity } from "./config";
+import type { DesktopZeroMigrationState } from "./desktop-zero-migration-types";
 
 export interface DesktopAuthUser {
   readonly userId: string;
@@ -11,7 +13,6 @@ export interface DesktopAuthUser {
 export interface DesktopAuthOrganization {
   readonly id: string;
   readonly name: string;
-  readonly slug: string | null;
 }
 
 export type DesktopAuthState =
@@ -93,11 +94,27 @@ export interface DesktopDeveloperToolsApi {
   readonly subscribe: (callback: () => void) => () => void;
 }
 
+export interface DesktopZeroMigrationApi {
+  readonly getState: () => Promise<DesktopZeroMigrationState>;
+  readonly remindLater: () => Promise<DesktopZeroMigrationState>;
+  readonly beginMigration: () => Promise<DesktopZeroMigrationState>;
+  readonly resumeZero: () => Promise<DesktopZeroMigrationState>;
+  readonly quitZero: () => Promise<DesktopZeroMigrationState>;
+  readonly subscribe: (callback: () => void) => () => void;
+}
+
+export type DesktopIdentityInfo = Pick<
+  DesktopIdentity,
+  "brandName" | "displayName" | "product"
+>;
+
 declare global {
   interface Window {
     vm0DesktopAuth?: DesktopAuthApi;
     vm0DesktopComputerUse?: DesktopComputerUseApi;
     vm0DesktopDeveloperTools?: DesktopDeveloperToolsApi;
+    vm0DesktopZeroMigration?: DesktopZeroMigrationApi;
+    vm0DesktopIdentity?: DesktopIdentityInfo;
   }
 }
 

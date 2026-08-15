@@ -1,21 +1,24 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getZeroAgent, deleteZeroAgent } from "../../../lib/api";
+import {
+  getZeroAgent,
+  deleteZeroAgent,
+} from "../../../lib/api/domains/zero-agents";
 import { isInteractive, promptConfirm } from "../../../lib/utils/prompt-utils";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const deleteCommand = new Command()
   .name("delete")
   .alias("rm")
-  .description("Delete a zero agent")
+  .description("Delete an agent")
   .argument("<agent-id>", "Agent ID")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText(
     "after",
     `
 Examples:
-  zero agent delete <agent-id>
-  zero agent delete <agent-id> -y
+  okou agent delete <agent-id>
+  okou agent delete <agent-id> -y
 
 Notes:
   - Use -y to skip confirmation in non-interactive mode`,
@@ -29,7 +32,7 @@ Notes:
           throw new Error("--yes flag is required in non-interactive mode");
         }
         const confirmed = await promptConfirm(
-          `Delete zero agent '${agentId}'?`,
+          `Delete agent '${agentId}'?`,
           false,
         );
         if (!confirmed) {

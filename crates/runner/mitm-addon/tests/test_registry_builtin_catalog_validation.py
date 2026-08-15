@@ -179,6 +179,83 @@ class TestRegistryBuiltinCatalogValidation:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.example.com"
 
+    def test_runner_catalog_cache_resolves_whole_host_template_with_path_parameter(
+        self, tmp_path, mitm_ctx
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_multi_vm_registry(
+            registry_path,
+            {
+                "10.200.0.1": builtin_vm(
+                    "run-template",
+                    "templated",
+                    {"WORKSPACE_HOST": "acme.uspacy.com"},
+                )
+            },
+        )
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={
+                "templated": {
+                    "name": "templated",
+                    "apis": [
+                        {
+                            "base": "https://${{ vars.WORKSPACE_HOST }}/v1/hooks/{hookKey}",
+                            "hostPolicy": {
+                                "kind": "providerOwned",
+                                "suffixes": [".uspacy.com"],
+                            },
+                            "auth": {"headers": {}},
+                            "permissions": [
+                                {
+                                    "name": "read",
+                                    "rules": ["GET /v1/hooks/{hookKey}"],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            },
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert (
+            vm_info["firewalls"][0]["apis"][0]["base"]
+            == "https://acme.uspacy.com/v1/hooks/{hookKey}"
+        )
+
+    @pytest.mark.parametrize(
+        "raw_json",
+        [
+            pytest.param("[]", id="array"),
+            pytest.param("null", id="null"),
+            pytest.param("123", id="number"),
+            pytest.param('"text"', id="string"),
+        ],
+    )
+    def test_non_object_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx, raw_json):
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_trusted_catalog_cache_text(cache_path, raw_json)
+
+        with mitm_ctx():
+            snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+        assert snapshot.dependency_file_key is not None
+        assert snapshot.catalog is None
+        assert snapshot.cache_path == str(cache_path.absolute())
+        assert snapshot.unavailable_reason == "cache_invalid"
+
     def test_malformed_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
@@ -332,8 +409,8 @@ class TestRegistryBuiltinCatalogValidation:
 
         _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
 
-    @pytest.mark.parametrize("permission_name", ["all", "__unknown__"])
-    def test_reserved_permission_runner_catalog_cache_fails_closed(
+    @pytest.mark.parametrize("permission_name", ["", "all", "__unknown__"])
+    def test_invalid_permission_name_runner_catalog_cache_fails_closed(
         self, tmp_path, mitm_ctx, permission_name
     ):
         firewall = cache_firewall("fallback", "https://cache.example.com")

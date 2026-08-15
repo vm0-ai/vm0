@@ -1,8 +1,7 @@
 import { command } from "ccstate";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { ConnectorOauthCallbackResult } from "@vm0/api-contracts/contracts/connectors-slug-callback";
+import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { ConnectorOauthCallbackResult } from "@okouai/api-contracts/contracts/connectors-slug-callback";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -11,26 +10,32 @@ import { setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import {
-  claimCustomConnectorOAuthState,
-  type StoredOAuthState,
+  claimConnectorOAuthState,
+  getConnectorOAuthStateStatus,
+  type StoredCustomConnectorOAuthState,
 } from "../services/connector-oauth-state.service";
 import { validateConnectorAuthorizationTarget$ } from "../services/connected-connector-authorization.service";
 import {
+  customConnectorOAuthStateMatchesDefinition,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
-  parseCustomConnectorOAuthStateContext,
+  parseValidCustomConnectorOAuthState,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
+  type OAuthTokenResult,
 } from "../services/custom-connector-oauth2.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { addUserCustomConnector } from "../services/user-connectors.service";
+import { commitConnectorRuntimeMutation } from "../services/connector-runtime-wakeup.service";
+import { publishCustomConnectorUserInvalidationAfterCommit as publishCustomUserInvalidation } from "../services/connector-client-invalidation.service";
+import { isCustomConnectorMcpEnabled } from "../services/custom-connector-mcp-feature.service";
 import { getCustomConnectorById } from "../services/zero-custom-connector.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {
   connectorOAuthRedirectResponse,
   clearConnectorOAuthCookies,
-} from "./connector-oauth-route-state";
+} from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
 
 const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
@@ -86,48 +91,6 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!body.ok) {
     return body.response;
   }
-  const featureContext = await get(
-    userFeatureSwitchContext(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  const connector = await get(
-    getCustomConnectorById({
-      orgId: auth.orgId,
-      connectorId: params.id,
-    }),
-  );
-  signal.throwIfAborted();
-  const managedFeishuOAuthEnabled =
-    connector?.oauthConfig?.providerAdapter === "feishu" &&
-    isFeatureEnabled(FeatureSwitchKey.FeishuIntegration, featureContext);
-  if (
-    !managedFeishuOAuthEnabled &&
-    !isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, featureContext)
-  ) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: "Custom connector OAuth 2.0 is not enabled",
-          code: "FORBIDDEN" as const,
-        },
-      },
-    };
-  }
-  if (
-    (auth.tokenType === "zero" || body.data.agentId !== undefined) &&
-    !isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, featureContext)
-  ) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: "Custom connector CLI creation is not enabled",
-          code: "FORBIDDEN" as const,
-        },
-      },
-    };
-  }
   const agentTarget = await set(
     validateConnectorAuthorizationTarget$,
     {
@@ -163,35 +126,29 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-function validateClaimedState(storedState: StoredOAuthState):
+function validateClaimedState(storedState: StoredCustomConnectorOAuthState):
   | {
       readonly ok: true;
       readonly context: NonNullable<
-        ReturnType<typeof parseCustomConnectorOAuthStateContext>
+        ReturnType<typeof parseValidCustomConnectorOAuthState>
       >;
     }
   | { readonly ok: false } {
-  const context = parseCustomConnectorOAuthStateContext(
-    storedState.oauthContext,
-  );
-  if (
-    !context ||
-    storedState.connectorSlug !== null ||
-    storedState.customConnectorId !== context.connectorId ||
-    storedState.connectorRevision !== context.connectorRevision ||
-    storedState.authMethod !== "oauth2"
-  ) {
+  const context = parseValidCustomConnectorOAuthState(storedState);
+  if (!context) {
     return { ok: false };
   }
   return { ok: true, context };
 }
 
-async function authorizeCustomConnectorAgent(args: {
-  readonly db: Db;
-  readonly state: StoredOAuthState;
-  readonly connectorId: string;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+async function authorizeCustomConnectorAgent(
+  args: {
+    readonly db: Db;
+    readonly state: StoredCustomConnectorOAuthState;
+    readonly connectorId: string;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   if (!args.state.authorizeAgent || !args.state.agentId) {
     return null;
   }
@@ -201,7 +158,7 @@ async function authorizeCustomConnectorAgent(args: {
     agentId: args.state.agentId,
     customConnectorId: args.connectorId,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   switch (authorization.status) {
     case "added": {
       return null;
@@ -212,41 +169,84 @@ async function authorizeCustomConnectorAgent(args: {
     case "customConnectorsNotFound": {
       return "OAuth connected, but the custom connector was not found";
     }
-    case "customConnectorsNotConfigured": {
-      return "OAuth connected, but the connector could not be authorized";
-    }
     case "customConnectorPermissionSelectionRequired": {
       return "OAuth connected, but connector permissions must be selected before authorizing the agent";
     }
     case "invalidCustomConnectorPermissions": {
       return `OAuth connected, but agent authorization failed: ${authorization.message}`;
     }
+    case "mcpFeatureDisabled": {
+      return "OAuth connected, but MCP custom connector management is not enabled";
+    }
   }
+}
+
+async function persistCustomConnectorOAuth2Connection(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly storageVersion: number;
+    readonly token: OAuthTokenResult;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const connectionStorage = storeCustomConnectorOAuth2Connection(args, signal);
+  await commitConnectorRuntimeMutation(connectionStorage, () => {
+    return {
+      db: args.db,
+      scope: { orgId: args.orgId, userId: args.userId },
+      targets: [{ kind: "custom", customConnectorId: args.connectorId }],
+    };
+  });
+  await publishCustomUserInvalidation(args.userId, signal);
+}
+
+async function codeLessCustomOAuthCallbackResponse(
+  args: { readonly db: Db; readonly origin: string; readonly state: string },
+  signal: AbortSignal,
+): Promise<Response> {
+  const status = await getConnectorOAuthStateStatus(
+    args.db,
+    { state: args.state, target: { kind: "custom" } },
+    signal,
+  );
+  signal.throwIfAborted();
+  return status.kind === "usable"
+    ? callbackError(args.origin, "Missing authorization code")
+    : callbackError(args.origin, "Invalid OAuth state - please try again");
 }
 
 const completeOAuth2Callback$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const query = get(queryOf(zeroCustomConnectorOAuth2Contract.callback));
     const origin = new URL(env("APP_URL")).origin;
-    if (!query.state) {
+    const oauthState = query.state;
+    const authorizationCode = query.code ?? "";
+    const providerError = query.error;
+    if (!oauthState) {
       return callbackError(origin, "Missing OAuth state");
     }
-    const claimed = await claimCustomConnectorOAuthState(
+    if (!providerError && !authorizationCode) {
+      return await codeLessCustomOAuthCallbackResponse(
+        { db: set(writeDb$), origin, state: oauthState },
+        signal,
+      );
+    }
+    const claimed = await claimConnectorOAuthState(
       set(writeDb$),
-      { state: query.state },
+      { state: oauthState, target: { kind: "custom" } },
       signal,
     );
     signal.throwIfAborted();
     if (claimed.kind !== "usable") {
       return callbackError(origin, "Invalid OAuth state - please try again");
     }
-    if (query.error) {
-      return callbackError(origin, query.error_description ?? query.error);
+    if (providerError) {
+      return callbackError(origin, query.error_description ?? providerError);
     }
-    if (!query.code) {
-      return callbackError(origin, "Missing authorization code");
-    }
-    const authorizationCode = query.code;
     const state = validateClaimedState(claimed.state);
     if (!state.ok) {
       return callbackError(origin, "Invalid OAuth state - please try again");
@@ -262,7 +262,7 @@ const completeOAuth2Callback$ = command(
       !connector ||
       connector.authMode !== "oauth" ||
       !connector.oauthConfig ||
-      connector.revision !== state.context.connectorRevision
+      !customConnectorOAuthStateMatchesDefinition(state.context, connector)
     ) {
       return callbackError(
         origin,
@@ -281,15 +281,12 @@ const completeOAuth2Callback$ = command(
     );
     signal.throwIfAborted();
     if (
-      claimed.state.authorizeAgent &&
-      !isFeatureEnabled(
-        FeatureSwitchKey.CustomConnectorCliCreate,
-        featureContext,
-      )
+      connector.kind === "mcp" &&
+      !isCustomConnectorMcpEnabled(featureContext)
     ) {
       return callbackError(
         origin,
-        "Custom connector CLI creation is not enabled",
+        "MCP custom connector management is not enabled",
       );
     }
     const credentials = await tapError(
@@ -301,24 +298,29 @@ const completeOAuth2Callback$ = command(
     }
     const completed = await tapError(
       (async () => {
-        const token = await exchangeCustomConnectorOAuth2Code({
-          config: oauthConfig,
-          clientSecret: credentials.clientSecret,
-          code: authorizationCode,
-          codeVerifier: claimed.state.codeVerifier,
-          redirectUri: claimed.state.redirectUri,
+        const token = await exchangeCustomConnectorOAuth2Code(
+          {
+            config: oauthConfig,
+            clientSecret: credentials.clientSecret,
+            code: authorizationCode,
+            codeVerifier: claimed.state.codeVerifier,
+            redirectUri: claimed.state.redirectUri,
+          },
           signal,
-        });
+        );
         signal.throwIfAborted();
-        await storeCustomConnectorOAuth2Connection({
-          db: set(writeDb$),
-          orgId: claimed.state.orgId,
-          userId: claimed.state.userId,
-          connectorId: connector.id,
-          token,
-          featureContext,
-        });
-        signal.throwIfAborted();
+        await persistCustomConnectorOAuth2Connection(
+          {
+            db: set(writeDb$),
+            orgId: claimed.state.orgId,
+            userId: claimed.state.userId,
+            connectorId: connector.id,
+            storageVersion: connector.storageVersion,
+            token,
+            featureContext,
+          },
+          signal,
+        );
         return true;
       })(),
     );
@@ -329,12 +331,14 @@ const completeOAuth2Callback$ = command(
         "OAuth token exchange failed - please try again",
       );
     }
-    const authorizationError = await authorizeCustomConnectorAgent({
-      db: set(writeDb$),
-      state: claimed.state,
-      connectorId: connector.id,
+    const authorizationError = await authorizeCustomConnectorAgent(
+      {
+        db: set(writeDb$),
+        state: claimed.state,
+        connectorId: connector.id,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (authorizationError) {
       return callbackError(origin, authorizationError);

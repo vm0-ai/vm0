@@ -40,18 +40,47 @@ function subscribeToClerkAuthComponent(listener: () => void): () => void {
 interface ClerkProviderProps {
   children: ReactNode;
   allowedRedirectOrigins?: readonly (string | RegExp)[];
-  localization?: unknown;
+  localization?: {
+    signIn?: {
+      emailCode?: { subtitle?: string };
+      start?: { title?: string };
+    };
+  };
   signInFallbackRedirectUrl?: string;
   signInUrl?: string;
   signUpFallbackRedirectUrl?: string;
   signUpUrl?: string;
+  touchSession?: boolean;
 }
 
-export function ClerkProvider({ children }: ClerkProviderProps) {
-  return children;
+export function ClerkProvider({
+  children,
+  localization,
+  touchSession,
+}: ClerkProviderProps) {
+  return createElement(
+    Fragment,
+    null,
+    createElement("span", {
+      "data-clerk-sign-in-email-code-subtitle":
+        localization?.signIn?.emailCode?.subtitle,
+      "data-clerk-sign-in-start-title": localization?.signIn?.start?.title,
+      "data-clerk-touch-session":
+        touchSession === undefined ? undefined : String(touchSession),
+      "data-testid": "clerk-provider-config",
+      hidden: true,
+    }),
+    children,
+  );
 }
 
 interface ClerkAuthComponentProps {
+  appearance?: {
+    options?: {
+      logoImageUrl?: string;
+      logoPlacement?: string;
+    };
+  };
   fallback?: ReactNode;
   fallbackRedirectUrl?: string;
   forceRedirectUrl?: string;
@@ -61,6 +90,7 @@ interface ClerkAuthComponentProps {
 
 function ClerkAuthComponent({
   componentName,
+  appearance,
   fallback,
   fallbackRedirectUrl,
   forceRedirectUrl,
@@ -86,6 +116,8 @@ function ClerkAuthComponent({
         "data-clerk-component": componentName,
         "data-clerk-fallback-redirect-url": fallbackRedirectUrl,
         "data-clerk-force-redirect-url": forceRedirectUrl,
+        "data-clerk-logo-image-url": appearance?.options?.logoImageUrl,
+        "data-clerk-logo-placement": appearance?.options?.logoPlacement,
         "data-clerk-routing": routing,
         "data-testid": testId,
       },

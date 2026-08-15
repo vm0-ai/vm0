@@ -1,38 +1,43 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
   type PublicConnectorCatalogStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
-  zeroConnectorCheckContract,
+  connectorCheckContract,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckRequest,
-} from "@vm0/api-contracts/contracts/zero-connector-check";
+} from "@okouai/api-contracts/contracts/connector-check";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
+  customConnectorListResponseSchema,
+  customConnectorResponseSchema,
   type CreateCustomConnectorBody,
-  type CustomConnectorValueInput,
   type CustomConnectorResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+  type UpdateCustomConnectorBody,
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import {
+  mcpConnectorListResponseSchema,
+  mcpConnectorsContract,
+  type McpConnector,
+} from "@okouai/api-contracts/contracts/mcp-connectors";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
-} from "@vm0/api-contracts/contracts/connector-schemas";
+} from "@okouai/api-contracts/contracts/connector-schemas";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export type ZeroConnector = ConnectorResponse;
@@ -44,7 +49,6 @@ type ZeroConnectorCatalogListResponse = PublicConnectorCatalogListResponse;
 type ZeroConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
 export type ZeroConnectorCatalogPermissionDetail =
   PublicConnectorCatalogPermissionDetail;
-export type ZeroConnectorCheckDiagnosticResult = ConnectorCheckDiagnosticResult;
 
 /**
  * List all connectors for the authenticated user (zero proxy)
@@ -118,11 +122,11 @@ export async function getZeroConnectorCatalogPermissions(
   );
 }
 
-export async function diagnoseZeroConnectorCheck(
+export async function diagnoseConnectorCheck(
   request: ConnectorCheckRequest,
-): Promise<ZeroConnectorCheckDiagnosticResult> {
+): Promise<ConnectorCheckDiagnosticResult> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorCheckContract, {
+  const client = initClient(connectorCheckContract, {
     ...config,
     validateResponse: true,
   });
@@ -189,10 +193,22 @@ export async function listZeroCustomConnectors(): Promise<
 
   const result = await client.list({ headers: {} });
   if (result.status === 200) {
-    return result.body.connectors;
+    return customConnectorListResponseSchema.parse(result.body).connectors;
   }
 
   handleError(result, "Failed to list custom connectors");
+}
+
+export async function listZeroRunMcpConnectors(): Promise<McpConnector[]> {
+  const config = await getClientConfig();
+  const client = initClient(mcpConnectorsContract, config);
+
+  const result = await client.list({ headers: {} });
+  if (result.status === 200) {
+    return mcpConnectorListResponseSchema.parse(result.body).connectors;
+  }
+
+  handleError(result, "Failed to list MCP connectors for this run");
 }
 
 export async function createZeroCustomConnector(
@@ -203,7 +219,7 @@ export async function createZeroCustomConnector(
 
   const result = await client.create({ body, headers: {} });
   if (result.status === 201) {
-    return result.body;
+    return customConnectorResponseSchema.parse(result.body);
   }
 
   handleError(result, "Failed to create custom connector");
@@ -217,7 +233,7 @@ export async function getZeroCustomConnector(
 
   const result = await client.get({ params: { id }, headers: {} });
   if (result.status === 200) {
-    return result.body;
+    return customConnectorResponseSchema.parse(result.body);
   }
   if (result.status === 404) {
     return null;
@@ -226,40 +242,17 @@ export async function getZeroCustomConnector(
   handleError(result, `Failed to get custom connector "${id}"`);
 }
 
-export async function setZeroCustomConnectorValues(
+export async function updateZeroCustomConnector(
   id: string,
-  values: readonly CustomConnectorValueInput[],
+  body: UpdateCustomConnectorBody,
 ): Promise<CustomConnectorResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorValuesContract, config);
+  const client = initClient(zeroCustomConnectorByIdContract, config);
 
-  const result = await client.set({
-    params: { id },
-    headers: {},
-    body: { values: [...values] },
-  });
+  const result = await client.update({ params: { id }, body, headers: {} });
   if (result.status === 200) {
-    return result.body;
+    return customConnectorResponseSchema.parse(result.body);
   }
 
-  handleError(result, `Failed to set values for custom connector "${id}"`);
-}
-
-export async function startZeroCustomConnectorOAuth2(
-  id: string,
-  agentId: string | undefined,
-): Promise<string> {
-  const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorOAuth2Contract, config);
-
-  const result = await client.start({
-    params: { id },
-    headers: {},
-    body: agentId ? { agentId } : {},
-  });
-  if (result.status === 200) {
-    return result.body.authorizationUrl;
-  }
-
-  handleError(result, `Failed to start OAuth for custom connector "${id}"`);
+  handleError(result, `Failed to update custom connector "${id}"`);
 }

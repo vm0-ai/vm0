@@ -1,29 +1,30 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
-  type GenerationTemplateRequest,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { pathname } from "../../../signals/location.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
-
+const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
   readonly selectedModel: string;
@@ -31,23 +32,41 @@ interface ModelSelectionRequest {
 
 interface RunCreateCapture {
   prompt?: string;
+  threadId?: string;
+  clientThreadId?: string;
   userMessage?: UserMessageDocument;
-  attachFiles?: {
-    id: string;
-    filename: string;
-    contentType: string;
-    size: number;
-  }[];
   hasTextContent?: boolean;
-  generationTemplate?: GenerationTemplateRequest;
   modelSelection?: ModelSelectionRequest | null;
   computerUseHostId?: string | null;
   clientEventId?: string;
+  sourceRunId?: string;
 }
 
-function selectTextRangeForInlineFeedback(element: HTMLElement): void {
+function findInlineTemplate(): HTMLElement {
+  const inlineTemplate = document.querySelector(
+    "[data-composer-inline-template]",
+  );
+  if (!(inlineTemplate instanceof HTMLElement)) {
+    throw new Error("Inline template not found in the composer");
+  }
+  return inlineTemplate;
+}
+
+function selectTextRangeForInlineFeedback(
+  element: HTMLElement,
+  offsets?: { readonly start: number; readonly end: number },
+): void {
   const range = document.createRange();
-  range.selectNodeContents(element);
+  if (offsets) {
+    const textNode = element.firstChild;
+    if (!(textNode instanceof Text)) {
+      throw new Error("Selection source must start with a text node");
+    }
+    range.setStart(textNode, offsets.start);
+    range.setEnd(textNode, offsets.end);
+  } else {
+    range.selectNodeContents(element);
+  }
   Object.defineProperty(range, "getBoundingClientRect", {
     configurable: true,
     value: () => {
@@ -63,9 +82,12 @@ function selectTextRangeForInlineFeedback(element: HTMLElement): void {
   selection.addRange(range);
 }
 
-function selectTextForInlineFeedback(element: HTMLElement): void {
+function selectTextForInlineFeedback(
+  element: HTMLElement,
+  offsets?: { readonly start: number; readonly end: number },
+): void {
   element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-  selectTextRangeForInlineFeedback(element);
+  selectTextRangeForInlineFeedback(element, offsets);
   document.dispatchEvent(new Event("selectionchange"));
   element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
@@ -133,7 +155,9 @@ function buttonByText(text: string): HTMLElement {
       label === `${text}C` ||
       label === `${text} C` ||
       label === `${text}F` ||
-      label === `${text} F`
+      label === `${text} F` ||
+      label === `${text}Q` ||
+      label === `${text} Q`
     );
   });
   if (!button) {
@@ -154,12 +178,38 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
+async function findForwardFeedbackNote(
+  dialog: HTMLElement,
+): Promise<HTMLElement> {
+  return await waitFor((): HTMLElement => {
+    const note = dialog.querySelector(
+      "[data-chat-composer] [data-feedback-item] [data-feedback-note]",
+    );
+    if (!(note instanceof HTMLElement)) {
+      throw new Error("Forward feedback note not found");
+    }
+    return note;
+  });
+}
+
 function feedbackNotes(): HTMLElement[] {
   return Array.from(document.querySelectorAll("[data-feedback-note]")).filter(
     (element): element is HTMLElement => {
       return element instanceof HTMLElement;
     },
   );
+}
+
+async function findFeedbackItems(count: number): Promise<HTMLElement[]> {
+  return await waitFor(() => {
+    const items = Array.from(
+      document.querySelectorAll("[data-feedback-item]"),
+    ).filter((element): element is HTMLElement => {
+      return element instanceof HTMLElement;
+    });
+    expect(items).toHaveLength(count);
+    return items;
+  });
 }
 
 function pastePlainText(element: HTMLElement, value: string): void {
@@ -223,6 +273,408 @@ function dispatchDocumentShortcut(
 }
 
 describe("chat inline feedback", () => {
+  it("leaves the source passage out of the browser highlight registry", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply =
+      "This passage should stop repainting after feedback starts.";
+    const browserHighlights = new Map<string, object>();
+    vi.stubGlobal("CSS", { highlights: browserHighlights });
+    vi.stubGlobal("Highlight", class BrowserHighlight {});
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback repaint regression",
+      chatEvents: [
+        {
+          id: "msg-feedback-highlight-user",
+          role: "user",
+          content: "Review the passage",
+          runId: "run-feedback-highlight",
+          createdAt: "2026-08-12T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-highlight-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-highlight",
+          createdAt: "2026-08-12T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await user.click(await screen.findByText("Quote"));
+    await findFeedbackNote();
+    await waitForDeferredSelectionCapture();
+
+    expect(browserHighlights.has("zero-feedback")).toBeFalsy();
+    expect(browserHighlights.size).toBe(0);
+  });
+
+  it("forwards selected assistant content to a new agent chat without navigating", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sourceRunId = "d0000000-0000-4000-a000-000000000703";
+    const selectedContent = "Keep the migration window below fifteen minutes.";
+    const additionalContext = "Turn this into an operator checklist.";
+    const sentRequests: RunCreateCapture[] = [];
+    const successToast = vi.spyOn(toast, "success");
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Forward source",
+      chatEvents: [
+        {
+          id: "msg-forward-agent-user",
+          role: "user",
+          content: "Review the migration plan",
+          runId: sourceRunId,
+          createdAt: "2026-08-12T09:00:00Z",
+        },
+        {
+          id: "msg-forward-agent-assistant",
+          role: "assistant",
+          content: selectedContent,
+          runId: sourceRunId,
+          createdAt: "2026-08-12T09:00:01Z",
+        },
+      ],
+      onSendRequest(body) {
+        sentRequests.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(selectedContent));
+    await user.click(await screen.findByText("Forward"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Forward to" });
+    expect(within(dialog).getByText(selectedContent)).toBeInTheDocument();
+    expect(within(dialog).getByText("Content")).toBeInTheDocument();
+    const search = within(dialog).getByPlaceholderText(
+      "Search agents and chats...",
+    );
+    await fill(search, "Zero");
+    await user.keyboard("{ArrowDown}{Enter}");
+
+    const feedbackNote = await findForwardFeedbackNote(dialog);
+    expect(dialog).toHaveAccessibleName("Zero");
+    expect(within(dialog).queryByText("Content")).toBeNull();
+    expect(within(dialog).getAllByText(selectedContent)).toHaveLength(1);
+    pastePlainText(feedbackNote, additionalContext);
+    await user.click(within(dialog).getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Zero" }),
+      ).not.toBeInTheDocument();
+      expect(sentRequests).toHaveLength(1);
+    });
+    expect(pathname()).toBe(`/chats/${FEEDBACK_THREAD_ID}`);
+    expect(sentRequests[0]).toMatchObject({
+      threadId: expect.any(String),
+      sourceRunId,
+      prompt: `Feedback on this part of your reply:\n\n> ${selectedContent}\n\n${additionalContext}`,
+    });
+    expect(sentRequests[0]?.threadId).not.toBe(FEEDBACK_THREAD_ID);
+    expect(sentRequests[0]?.userMessage?.parts).toStrictEqual(
+      expect.arrayContaining([
+        {
+          type: "feedback",
+          quote: selectedContent,
+          eventId: "msg-forward-agent-assistant",
+          range: { start: 0, end: selectedContent.length },
+          note: [{ type: "text", text: additionalContext }],
+        },
+      ]),
+    );
+    expect(successToast).toHaveBeenCalledWith("Forwarded successfully");
+    successToast.mockRestore();
+  });
+
+  it("forwards selected assistant content to an existing chat with keyboard selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sourceRunId = "d0000000-0000-4000-a000-000000000704";
+    const targetThreadId = "b0000000-0000-4000-a000-000000000704";
+    const selectedContent = "The launch owner is still unresolved.";
+    const additionalContext = "Assign a launch owner.";
+    const sentRequests: RunCreateCapture[] = [];
+    let threadCreateCount = 0;
+    const successToast = vi.spyOn(toast, "success");
+
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Forward source",
+      chatEvents: [
+        {
+          id: "msg-forward-thread-user",
+          role: "user",
+          content: "Review launch readiness",
+          runId: sourceRunId,
+          createdAt: "2026-08-12T10:00:00Z",
+        },
+        {
+          id: "msg-forward-thread-assistant",
+          role: "assistant",
+          content: selectedContent,
+          runId: sourceRunId,
+          createdAt: "2026-08-12T10:00:01Z",
+        },
+      ],
+      onSendRequest(body) {
+        sentRequests.push(body);
+      },
+      onThreadCreate() {
+        threadCreateCount += 1;
+      },
+    });
+    lifecycle.setThreadList([
+      {
+        id: FEEDBACK_THREAD_ID,
+        title: "Forward source",
+        agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-12T09:00:00Z",
+        updatedAt: "2026-08-12T10:00:00Z",
+      },
+      {
+        id: targetThreadId,
+        title: "Launch ownership",
+        agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-12T08:00:00Z",
+        updatedAt: "2026-08-12T09:00:00Z",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(selectedContent));
+    await user.click(await screen.findByText("Forward"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Forward to" });
+    const search = within(dialog).getByPlaceholderText(
+      "Search agents and chats...",
+    );
+    await fill(search, "Launch ownership");
+    await user.keyboard("{ArrowDown}{Enter}");
+
+    const feedbackNote = await findForwardFeedbackNote(dialog);
+    expect(dialog).toHaveAccessibleName("Launch ownership");
+    expect(within(dialog).queryByText("Content")).toBeNull();
+    expect(within(dialog).getAllByText(selectedContent)).toHaveLength(1);
+    pastePlainText(feedbackNote, additionalContext);
+    await user.click(within(dialog).getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Launch ownership" }),
+      ).not.toBeInTheDocument();
+      expect(sentRequests).toHaveLength(1);
+    });
+    expect(pathname()).toBe(`/chats/${FEEDBACK_THREAD_ID}`);
+    expect(threadCreateCount).toBe(0);
+    expect(sentRequests[0]).toMatchObject({
+      threadId: targetThreadId,
+      sourceRunId,
+      prompt: `Feedback on this part of your reply:\n\n> ${selectedContent}\n\n${additionalContext}`,
+    });
+    expect(sentRequests[0]?.userMessage?.parts).toStrictEqual(
+      expect.arrayContaining([
+        {
+          type: "feedback",
+          quote: selectedContent,
+          eventId: "msg-forward-thread-assistant",
+          range: { start: 0, end: selectedContent.length },
+          note: [{ type: "text", text: additionalContext }],
+        },
+      ]),
+    );
+    expect(successToast).toHaveBeenCalledWith("Forwarded successfully");
+    successToast.mockRestore();
+  });
+
+  it("hides target pending items from the forward composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sourceRunId = "d0000000-0000-4000-a000-000000000706";
+    const targetThreadId = "b0000000-0000-4000-a000-000000000706";
+    const selectedContent = "Summarize the rollout blockers.";
+    const queuedContent = "Review the queued rollout update";
+    const automationContent = "Process the pending rollout automation";
+    const goalContent = "Keep the rollout on schedule";
+
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Forward pending items source",
+      chatEvents: [
+        {
+          id: "msg-forward-pending-user",
+          role: "user",
+          content: "Review the rollout",
+          runId: sourceRunId,
+          createdAt: "2026-08-12T12:00:00Z",
+        },
+        {
+          id: "msg-forward-pending-assistant",
+          role: "assistant",
+          content: selectedContent,
+          runId: sourceRunId,
+          createdAt: "2026-08-12T12:00:01Z",
+        },
+        {
+          id: "msg-forward-pending-queued",
+          role: "user",
+          content: queuedContent,
+          runId: undefined,
+          createdAt: "2026-08-12T12:00:02Z",
+        },
+        {
+          id: "msg-forward-pending-automation",
+          eventType: "input.automation",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "rollout-review",
+                automationBrief: automationContent,
+              },
+            ],
+          },
+          runId: undefined,
+          createdAt: "2026-08-12T12:00:03Z",
+        },
+        {
+          id: "msg-forward-pending-goal",
+          eventType: "goal.open",
+          role: "assistant",
+          content: goalContent,
+          runId: undefined,
+          createdAt: "2026-08-12T12:00:04Z",
+        },
+      ],
+      activeRunIds: [sourceRunId],
+    });
+    lifecycle.setThreadList([
+      {
+        id: FEEDBACK_THREAD_ID,
+        title: "Forward pending items source",
+        agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-12T11:00:00Z",
+        updatedAt: "2026-08-12T12:00:00Z",
+      },
+      {
+        id: targetThreadId,
+        title: "Rollout review",
+        agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-12T10:00:00Z",
+        updatedAt: "2026-08-12T11:00:00Z",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
+    });
+
+    const assistantReply = await screen.findByText(selectedContent);
+    await screen.findByText(queuedContent);
+    await screen.findByText(automationContent);
+    expect(screen.getByLabelText("Active goal")).toHaveTextContent(goalContent);
+    selectTextForInlineFeedback(assistantReply);
+    await user.click(await screen.findByText("Forward"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Forward to" });
+    await fill(
+      within(dialog).getByPlaceholderText("Search agents and chats..."),
+      "Rollout review",
+    );
+    await user.keyboard("{ArrowDown}{Enter}");
+    await findForwardFeedbackNote(dialog);
+    await waitForDeferredSelectionCapture();
+
+    expect(dialog).toHaveAccessibleName("Rollout review");
+    expect(within(dialog).queryByText(queuedContent)).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(automationContent),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(goalContent)).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Queued message")).toBeNull();
+    expect(
+      within(dialog).queryByLabelText("Pending automation event"),
+    ).toBeNull();
+    expect(within(dialog).queryByLabelText("Active goal")).toBeNull();
+  });
+
+  it("opens the forward dialog from the keyboard shortcut", async () => {
+    const sourceRunId = "d0000000-0000-4000-a000-000000000705";
+    const selectedContent = "Quote the approved launch checklist.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Forward shortcut source",
+      chatEvents: [
+        {
+          id: "msg-forward-shortcut-user",
+          role: "user",
+          content: "Review launch readiness",
+          runId: sourceRunId,
+          createdAt: "2026-08-12T11:00:00Z",
+        },
+        {
+          id: "msg-forward-shortcut-assistant",
+          role: "assistant",
+          content: selectedContent,
+          runId: sourceRunId,
+          createdAt: "2026-08-12T11:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(selectedContent));
+    await screen.findByText("Forward");
+    const copyButton = buttonByText("Copy");
+    const quoteButton = buttonByText("Quote");
+    const forwardButton = buttonByText("Forward");
+    expect(forwardButton).toHaveAttribute("aria-keyshortcuts", "f");
+    expect(quoteButton).toHaveAttribute("aria-keyshortcuts", "q");
+    const toolbar = copyButton.parentElement;
+    if (!(toolbar instanceof HTMLElement)) {
+      throw new Error("Selection toolbar is not available");
+    }
+    expect(queryAllByRoleFast("button", toolbar)).toStrictEqual([
+      copyButton,
+      quoteButton,
+      forwardButton,
+    ]);
+
+    const event = dispatchDocumentShortcut("f");
+    expect(event.defaultPrevented).toBeTruthy();
+
+    const dialog = await screen.findByRole("dialog", { name: "Forward to" });
+    expect(within(dialog).getByText(selectedContent)).toBeInTheDocument();
+  });
+
   it("inserts a template node inside a feedback note", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The illustration direction is too generic.";
@@ -255,14 +707,11 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-      },
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
     const feedbackNote = await findFeedbackNote();
     await user.click(feedbackNote);
 
@@ -281,7 +730,6 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(sentMessages).toHaveLength(1);
     });
-    expect(sentMessages[0]?.generationTemplate).toBeUndefined();
     expect(sentMessages[0]?.userMessage?.parts).toHaveLength(1);
     expect(sentMessages[0]?.userMessage?.parts[0]).toMatchObject({
       type: "feedback",
@@ -355,22 +803,26 @@ describe("chat inline feedback", () => {
     selectTextForInlineFeedback(assistantReplyElement);
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
+      expect(screen.queryByText("Forward")).not.toBeInTheDocument();
     });
+
+    const forwardEvent = dispatchDocumentShortcut("f");
+    expect(forwardEvent.defaultPrevented).toBeFalsy();
+    expect(screen.getByText("Quote")).toBeInTheDocument();
 
     await user.click(buttonByText("Copy"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     });
     expect(successToast).toHaveBeenCalledWith("Copied");
-    successToast.mockRestore();
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const feedbackComment = await findFeedbackNote();
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
@@ -403,6 +855,8 @@ describe("chat inline feedback", () => {
         {
           type: "feedback",
           quote: assistantReply,
+          eventId: "msg-feedback-assistant",
+          range: { start: 0, end: assistantReply.length },
           note: [{ type: "text", text: "Make the dates explicit." }],
         },
       ],
@@ -416,6 +870,11 @@ describe("chat inline feedback", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000707";
     const assistantReply = "The release summary needs a clearer owner.";
+    const selectedQuote = "release summary";
+    const selectedRange = {
+      start: assistantReply.indexOf(selectedQuote),
+      end: assistantReply.indexOf(selectedQuote) + selectedQuote.length,
+    };
     const sentMessages: RunCreateCapture[] = [];
 
     mockChatLifecycle(context, {
@@ -447,8 +906,11 @@ describe("chat inline feedback", () => {
       path: `/chats/${threadId}`,
     });
 
-    selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    selectTextForInlineFeedback(
+      await screen.findByText(assistantReply),
+      selectedRange,
+    );
+    await user.click(await screen.findByText("Quote"));
     pastePlainText(await findFeedbackNote(), "Name the owner.");
     await user.click(screen.getByLabelText("Send"));
 
@@ -458,104 +920,28 @@ describe("chat inline feedback", () => {
     expect(sentMessages[0]?.prompt).toContain(
       "Feedback on this part of your reply:",
     );
-    expect(sentMessages[0]?.prompt).toContain(`> ${assistantReply}`);
+    expect(sentMessages[0]?.prompt).toContain(`> ${selectedQuote}`);
     expect(sentMessages[0]?.prompt).toContain("Name the owner.");
     expect(sentMessages[0]?.userMessage).toStrictEqual({
       version: 1,
       parts: [
         {
           type: "feedback",
-          quote: assistantReply,
+          quote: selectedQuote,
+          eventId: "msg-legacy-feedback-assistant",
+          range: selectedRange,
           note: [{ type: "text", text: "Name the owner." }],
         },
       ],
     });
   });
 
-  it("restores queued inline feedback as a userMessage draft", async () => {
+  it("restores queued Morning Brief feedback as a userMessage draft", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000706";
     const assistantReply = "The rollout plan needs a clearer owner.";
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const queuedEvents: RunCreateCapture[] = [];
-    const draftPatches: Record<string, unknown>[] = [];
-
-    context.mocks.data.orgModelPolicies([
-      {
-        id: "00000000-0000-4000-a000-000000000706",
-        model: "claude-sonnet-4-6",
-        modelLabel: "Claude Sonnet 4.6",
-        isDefault: true,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-        routeStatus: "valid",
-        routeStatusReason: null,
-        createdAt: "2026-07-14T00:00:00.000Z",
-        updatedAt: "2026-07-14T00:00:00.000Z",
-      },
-    ]);
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Queued feedback",
-      selectedModel: "claude-sonnet-4-6",
-      chatEvents: [
-        {
-          id: "msg-queued-feedback-user",
-          role: "user",
-          content: "Review this rollout plan",
-          runId: "run-queued-feedback",
-          createdAt: "2026-07-26T10:00:00Z",
-        },
-        {
-          id: "msg-queued-feedback-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-queued-feedback",
-          createdAt: "2026-07-26T10:00:01Z",
-        },
-      ],
-      activeRunIds: ["run-queued-feedback"],
-      onQueuedEventAppend: (body) => {
-        queuedEvents.push(body);
-      },
-    });
-    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
-      return respond(204);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-    });
-
-    click(await screen.findByLabelText("Template"));
-    click(
-      await screen.findByLabelText(
-        `Preview ${template.title} at current slide`,
-      ),
-    );
-    click(await screen.findByLabelText("Select style Award night"));
-    click(await screen.findByLabelText(`Select template ${template.title}`));
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
-    });
-
-    selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
-    pastePlainText(
-      await findFeedbackNote(),
-      "Name the owner and explain the complete result.",
-    );
-    await user.click(screen.getByLabelText("Send"));
-
-    await waitFor(() => {
-      expect(queuedEvents).toHaveLength(1);
-    });
-    expect(queuedEvents[0]?.userMessage).toStrictEqual({
+    const recalledUserMessage = {
       version: 1,
       parts: [
         {
@@ -581,15 +967,66 @@ describe("chat inline feedback", () => {
           ],
         },
       ],
+    } satisfies UserMessageDocument;
+    const queuedUserMessage = {
+      version: 1,
+      parts: [
+        ...recalledUserMessage.parts,
+        { type: "morning_brief", briefDate: "2026-07-26" },
+      ],
+    } satisfies UserMessageDocument;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Queued feedback",
+      chatEvents: [
+        {
+          id: "msg-queued-feedback-user",
+          role: "user",
+          content: "Review this rollout plan",
+          runId: "run-queued-feedback",
+          createdAt: "2026-07-26T10:00:00Z",
+        },
+        {
+          id: "msg-queued-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-queued-feedback",
+          createdAt: "2026-07-26T10:00:01Z",
+        },
+        {
+          id: "msg-queued-feedback-pending",
+          role: "user",
+          content: "invalidate",
+          userMessage: queuedUserMessage,
+          runId: undefined,
+          createdAt: "2026-07-26T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-queued-feedback"],
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ respond }) => {
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
     });
 
     await user.click(await screen.findByLabelText("Remove queued message"));
 
     const composer = await findComposerEditor();
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${template.title}`),
-      ).toBeInTheDocument();
+      const inlineTemplate = composer.querySelector(
+        "[data-composer-inline-template]",
+      );
+      expect(inlineTemplate).toBeInTheDocument();
+      expect(inlineTemplate).toHaveTextContent(template.title);
     });
     await waitFor(() => {
       const feedbackItem = composer.querySelector("[data-feedback-item]");
@@ -602,12 +1039,6 @@ describe("chat inline feedback", () => {
       "Feedback on this part of your reply:",
     );
     expect(composer).not.toHaveTextContent(`> ${assistantReply}`);
-    await waitFor(() => {
-      expect(draftPatches).toContainEqual({
-        draftUserMessage: queuedEvents[0]?.userMessage,
-        draftAttachments: null,
-      });
-    });
   });
 
   it.each([
@@ -672,7 +1103,7 @@ describe("chat inline feedback", () => {
       }
 
       selectTextForInlineFeedback(assistantReplyElement);
-      await user.click(await screen.findByText("Provide feedback"));
+      await user.click(await screen.findByText("Quote"));
       const feedbackNote = await findFeedbackNote();
       pastePlainText(feedbackNote, "Rewrite this paragraph.");
       await user.click(screen.getByLabelText("Send"));
@@ -692,6 +1123,8 @@ describe("chat inline feedback", () => {
           {
             type: "feedback",
             quote: assistantReply,
+            eventId: "msg-mail-feedback-assistant",
+            range: { start: 0, end: assistantReply.length },
             note: [{ type: "text", text: "Rewrite this paragraph." }],
             source: {
               type: "mail",
@@ -756,7 +1189,7 @@ describe("chat inline feedback", () => {
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
     const feedbackNote = await findFeedbackNote();
     await user.click(feedbackNote);
     await user.keyboard("/");
@@ -808,7 +1241,7 @@ describe("chat inline feedback", () => {
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
 
     await findFeedbackNote();
     await user.keyboard("Mention the dates before the risk summary.");
@@ -884,7 +1317,7 @@ describe("chat inline feedback", () => {
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
 
     await findFeedbackNote();
     await user.keyboard("Mention the dates before the risk summary.");
@@ -936,7 +1369,7 @@ describe("chat inline feedback", () => {
 
     const composerEditor = await findComposerEditor();
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
 
     const feedbackComment = await findFeedbackNote();
     await user.keyboard("补充具体日期");
@@ -991,7 +1424,7 @@ describe("chat inline feedback", () => {
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
 
     const feedbackComment = await findFeedbackNote();
     await user.click(feedbackComment);
@@ -1060,14 +1493,14 @@ describe("chat inline feedback", () => {
     document.dispatchEvent(new Event("selectionchange"));
     await waitForDeferredSelectionCapture();
 
-    expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quote")).not.toBeInTheDocument();
 
     assistantReplyElement.dispatchEvent(
       new MouseEvent("mouseup", { bubbles: true }),
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
   });
 
@@ -1114,7 +1547,7 @@ describe("chat inline feedback", () => {
     document.dispatchEvent(new Event("selectionchange"));
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
   });
 
@@ -1152,7 +1585,7 @@ describe("chat inline feedback", () => {
     selectTextForInlineFeedback(assistantReplyElement);
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
 
     const composerEditor = await findComposerEditor();
@@ -1160,7 +1593,7 @@ describe("chat inline feedback", () => {
     expect(composerEditor).toHaveFocus();
 
     await waitFor(() => {
-      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     });
     await waitForDeferredSelectionCapture();
 
@@ -1198,7 +1631,7 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
     expect(window.getSelection()?.toString()).toBe(assistantReply);
 
@@ -1206,14 +1639,14 @@ describe("chat inline feedback", () => {
     expect(event.defaultPrevented).toBeFalsy();
 
     await waitFor(() => {
-      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     });
     expect(window.getSelection()?.toString()).toBe(assistantReply);
 
     dispatchDocumentShortcut("c", { ctrlKey: true }, "keyup");
     await waitForDeferredSelectionCapture();
 
-    expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     expect(window.getSelection()?.toString()).toBe(assistantReply);
   });
 
@@ -1250,10 +1683,13 @@ describe("chat inline feedback", () => {
     selectTextForInlineFeedback(assistantReplyElement);
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
 
-    const event = dispatchDocumentShortcut("f");
+    const quoteButton = buttonByText("Quote");
+    expect(quoteButton).toHaveAttribute("aria-keyshortcuts", "q");
+
+    const event = dispatchDocumentShortcut("q");
     expect(event.defaultPrevented).toBeTruthy();
 
     await findFeedbackNote();
@@ -1304,7 +1740,7 @@ describe("chat inline feedback", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
   });
 
@@ -1340,7 +1776,7 @@ describe("chat inline feedback", () => {
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
 
     // A real browser emits selectionchange after the selection collapses.
@@ -1348,7 +1784,7 @@ describe("chat inline feedback", () => {
     document.dispatchEvent(new Event("selectionchange"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     });
   });
 
@@ -1422,9 +1858,7 @@ describe("chat inline feedback", () => {
     click(await screen.findByLabelText("Select style Award night"));
     click(await screen.findByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Remove template ${templateChipLabel}`),
-      ).toBeInTheDocument();
+      expect(findInlineTemplate()).toHaveTextContent(templateChipLabel);
     });
 
     const fileInput =
@@ -1446,17 +1880,15 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    click(buttonByText("Provide feedback"));
+    click(buttonByText("Quote"));
 
     pastePlainText(
       await findFeedbackNote(),
       "Use the attached brief as supporting context.",
     );
-    expect(
-      screen.getByLabelText(`Remove template ${templateChipLabel}`),
-    ).toBeInTheDocument();
+    expect(findInlineTemplate()).toHaveTextContent(templateChipLabel);
     expect(
       screen.getByLabelText("Remove feedback-brief.txt"),
     ).toBeInTheDocument();
@@ -1464,29 +1896,30 @@ describe("chat inline feedback", () => {
     click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
-      expect(sentBodies[0]).toMatchObject({
-        attachFiles: [
-          {
-            id: "upload-feedback-brief",
-            filename: "feedback-brief.txt",
-            contentType: "text/plain",
-            size: 14,
-          },
-        ],
-        generationTemplate: {
-          type: "presentation",
-          selection: {
-            colorSystemId: "color-system:gold-luxe",
-            templateId: template.templateId,
-            previewUrl: template.embedUrl,
-          },
-        },
-      });
+      expect(sentBodies).toHaveLength(1);
     });
     const sentBody = sentBodies[0];
     if (!sentBody) {
       throw new Error("feedback send body not captured");
     }
+    expect(sentBody.userMessage?.parts).toContainEqual({
+      type: "file",
+      fileId: "upload-feedback-brief",
+      filenameSnapshot: "feedback-brief.txt",
+      contentType: "text/plain",
+    });
+    expect(sentBody.userMessage?.parts).toContainEqual({
+      type: "template",
+      titleSnapshot: templateChipLabel,
+      template: {
+        type: "presentation",
+        selection: {
+          colorSystemId: "color-system:gold-luxe",
+          templateId: template.templateId,
+          previewUrl: template.embedUrl,
+        },
+      },
+    });
     expect(sentBody?.prompt).toContain(
       "Use the attached brief as supporting context.",
     );
@@ -1525,9 +1958,9 @@ describe("chat inline feedback", () => {
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const firstComment = await findFeedbackNote();
     await user.keyboard("Assign each risk to an owner.");
@@ -1537,9 +1970,9 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const comments = await findFeedbackNotes(2);
     expect(comments).toHaveLength(2);
@@ -1599,9 +2032,9 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const firstComment = await findFeedbackNote();
     await user.keyboard("Add owners.");
@@ -1611,9 +2044,9 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const comments = await findFeedbackNotes(2);
     await user.keyboard("Add dates.");
@@ -1641,5 +2074,58 @@ describe("chat inline feedback", () => {
     );
     expect(sentPrompts[0]).toContain("Name owners.");
     expect(sentPrompts[0]).toContain("Add dates.");
+  });
+
+  it("keeps the divider spacing off the first inline feedback item", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The launch summary needs clearer risk ownership.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatEvents: [
+        {
+          id: "msg-feedback-spacing-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-spacing",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-spacing-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-spacing",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Quote")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Quote"));
+
+    // Alone, the quote chip aligns with the editor's own pt-4 inset.
+    const [onlyItem] = await findFeedbackItems(1);
+    expect(onlyItem).not.toHaveClass("pt-1.5");
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Quote")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Quote"));
+
+    const items = await findFeedbackItems(2);
+    expect(items[0]).not.toHaveClass("pt-1.5");
+    expect(items[1]).toHaveClass("pt-1.5", "border-t");
   });
 });

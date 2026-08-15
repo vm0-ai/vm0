@@ -1,8 +1,9 @@
 use super::*;
+use crate::executor::{SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseTerminal};
 use guest_contracts::diagnostics::{
     EventDeliveryAcceptanceOutcome, EventDeliveryAttemptFailureKind,
     EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
-    EventDeliveryFailedBatchDiagnostic,
+    EventDeliveryFailedBatchDiagnostic, WorkloadResourceLimitDiagnostic,
 };
 
 #[tokio::test]
@@ -86,10 +87,14 @@ async fn execute_prepared_marks_stdout_incomplete_when_process_cancel_send_fails
             RunStart {
                 restore_guest_state: false,
                 reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
                 prev_storage: None,
             },
             &mut telemetry,
-            RunControls::new(run_cancel, None),
+            PreparedRunInputs::new(
+                RunControls::new(run_cancel, None),
+                prepare_run_payload_for_run(&ctx).unwrap(),
+            ),
             ProcessCancelTimeouts {
                 write: Duration::from_secs(1),
                 terminal_grace: Duration::ZERO,
@@ -152,10 +157,14 @@ async fn execute_prepared_marks_stdout_incomplete_when_terminal_grace_expires() 
             RunStart {
                 restore_guest_state: false,
                 reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
                 prev_storage: None,
             },
             &mut telemetry,
-            RunControls::new(run_cancel, None),
+            PreparedRunInputs::new(
+                RunControls::new(run_cancel, None),
+                prepare_run_payload_for_run(&ctx).unwrap(),
+            ),
             ProcessCancelTimeouts {
                 write: Duration::from_secs(1),
                 terminal_grace: Duration::ZERO,
@@ -212,6 +221,10 @@ async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
     assert_eq!(outcome.exit_code(), 1);
     assert_eq!(failure.error.as_str(), "Agent process killed by OOM killer");
     assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure),
+    );
+    assert_eq!(
         failure
             .resource_diagnostics
             .expect("expected OOM resource diagnostics")
@@ -222,6 +235,60 @@ async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
     let mut expected = b"partial stdout\n".to_vec();
     expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
     assert_eq!(system_stream_log, expected);
+}
+
+#[tokio::test]
+async fn execute_inner_preserves_workload_oom_diagnostic_before_dmesg_rewrite() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, EXIT_SIGKILL, Vec::new(), Vec::new()));
+    let workload_resource_limit = WorkloadResourceLimitDiagnostic {
+        memory_max_events: 3,
+        memory_oom_events: 2,
+        memory_oom_kill_events: 1,
+        memory_oom_group_kill_events: 0,
+        pids_max_events: 0,
+    };
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("consume memory"),
+    )
+    .with_cli_exit_code(EXIT_SIGKILL)
+    .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL))
+    .with_failure_detail_source(FailureDetailSource::FallbackExitCode)
+    .with_workload_resource_limit(workload_resource_limit);
+    overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+    let guest_error = "Process killed by signal 9; workload resource limit reached";
+    overrides.push_read_file_result(Ok(Some(guest_error.as_bytes().to_vec())));
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "dmesg".to_string(),
+        exit_code: 0,
+        stdout: b"Out of memory: Killed process 1234".to_vec(),
+        stderr: Vec::new(),
+    });
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let outcome = run_new_sandbox_outcome(&factory, &minimal_context(), &config, &default_params())
+        .await
+        .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected workload failure");
+    assert_eq!(failure.exit_code, EXIT_SIGKILL);
+    assert_eq!(failure.error, guest_error);
+    assert_eq!(failure.diagnostic, Some(diagnostic));
+    assert!(failure.resource_diagnostics.is_none());
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit),
+    );
+    assert!(
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| !call.cmd.contains("dmesg") && !call.cmd.contains("guest-agent-binary"))
+    );
 }
 
 #[tokio::test]
@@ -263,14 +330,11 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
         truncated: false,
     }]);
     overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+    overrides.push_copy_file_result(Ok(b"guest system log\n".to_vec()));
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let source_ip = sandbox.source_ip().to_string();
     let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
-    let sandbox: Box<dyn Sandbox> = Box::new(QueuedCopyFileSandbox::new(
-        sandbox,
-        vec![b"guest system log\n".to_vec()],
-    ));
     let system_log_path = config.log_paths.system_log(ctx.run_id);
     let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
     let mut telemetry = test_telemetry(&config, &ctx);
@@ -287,10 +351,14 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
@@ -339,10 +407,14 @@ async fn execute_prepared_sandbox_run_logs_discovered_guest_session_id() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
@@ -386,14 +458,22 @@ async fn execute_prepared_sandbox_run_discovers_guest_session_id_after_nonzero_e
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
     assert_eq!(outcome.exit_code(), 7);
+    assert_eq!(
+        outcome.workspace_reuse_result,
+        Some(crate::types::WorkspaceReuseResult::NotConfigured),
+    );
     assert_eq!(outcome.error(), Some("Agent exited with code 7"));
     assert_eq!(
         outcome.discovered_cli_agent_session_id.as_deref(),
@@ -435,10 +515,14 @@ async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_s
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
@@ -482,10 +566,14 @@ async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_discovered_cli_agen
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
@@ -537,6 +625,10 @@ async fn execute_inner_marks_stdout_incomplete_on_wait_process_error() {
         }
         ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
     }
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::UnconfirmedTimeout),
+    );
     assert!(
         outcome.sandbox.is_some(),
         "sandbox must be returned on post-start execution failure"
@@ -649,6 +741,10 @@ async fn execute_inner_non_exited_zero_code_is_failure() {
     assert_eq!(failure.exit_code, 1);
     assert_eq!(failure.error, "Agent exited with code 1");
     assert_eq!(failure.kind, ExecutionFailureKind::Generic);
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain),
+    );
     assert!(outcome.discovered_cli_agent_session_id.is_none());
     assert!(
         overrides
@@ -714,6 +810,10 @@ async fn execute_inner_guest_process_timeout_marks_failure_kind() {
         }
         ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
     }
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::UnconfirmedTimeout),
+    );
 }
 
 #[tokio::test]
@@ -861,6 +961,10 @@ async fn execute_inner_structured_guest_execution_timeout_marks_failure_kind() {
         }
         ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
     }
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::ExecutionTimeout),
+    );
 }
 
 #[tokio::test]
@@ -1268,6 +1372,14 @@ async fn execute_inner_nonzero_records_agent_execute_error() {
     .unwrap();
 
     assert_eq!(outcome.exit_code(), 7);
+    assert_eq!(
+        outcome.workspace_reuse_result,
+        Some(crate::types::WorkspaceReuseResult::NotConfigured),
+    );
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit),
+    );
     let ops = telemetry.pending_ops_snapshot();
     let agent_execute = ops
         .iter()

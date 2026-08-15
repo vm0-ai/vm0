@@ -6,13 +6,14 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
+  Button,
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from "@vm0/ui";
-import { IconChevronDown, IconPlus, IconMail } from "@tabler/icons-react";
+  DropdownMenuTrigger,
+} from "@okouai/ui";
+import { ChevronDown, Plus, Mail } from "lucide-react";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
 import {
   bestEffort,
@@ -20,7 +21,6 @@ import {
   onDomEventFn,
   Reason,
 } from "../../signals/utils.ts";
-import { org$ } from "../../signals/org.ts";
 import {
   userInvitations$,
   refreshUserInvitations$,
@@ -31,39 +31,7 @@ import {
   acceptingInvitationId$,
   setAcceptingInvitationId$,
 } from "../../signals/select-org/org-switcher-ui.ts";
-
-function OrgAvatar({
-  name,
-  imageUrl,
-  size = "sm",
-}: {
-  name: string;
-  imageUrl?: string | null;
-  size?: "sm" | "lg";
-}) {
-  const dim = size === "lg" ? "h-10 w-10" : "h-6 w-6";
-  const radius = size === "lg" ? "rounded-xl" : "rounded-md";
-  const textSize = size === "lg" ? "text-base" : "text-[11px]";
-  const initial = name.charAt(0).toUpperCase();
-
-  if (imageUrl) {
-    return (
-      <img
-        src={imageUrl}
-        alt={name}
-        className={`${dim} ${radius} object-cover shrink-0`}
-      />
-    );
-  }
-
-  return (
-    <div
-      className={`${dim} ${radius} bg-[hsl(var(--gray-200))] text-[hsl(var(--primary-700))] flex items-center justify-center ${textSize} font-bold shrink-0`}
-    >
-      {initial}
-    </div>
-  );
-}
+import { WorkspaceLogo } from "../components/avatar.tsx";
 
 function InvitationRow({
   invitation,
@@ -99,20 +67,22 @@ function InvitationRow({
 
   return (
     <div className="flex min-w-0 items-center gap-3 overflow-hidden px-3 py-2.5">
-      <OrgAvatar
+      <WorkspaceLogo
         name={invitation.publicOrganizationData.name}
         imageUrl={invitation.publicOrganizationData.imageUrl}
       />
       <span className="min-w-0 flex-1 text-sm truncate">
         {invitation.publicOrganizationData.name}
       </span>
-      <button
+      <Button
         type="button"
         disabled={isAccepting}
         onClick={handleAccept}
-        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+        variant="quiet"
+        size="xs"
+        className="shrink-0 gap-1 px-2 text-xs border border-border disabled:opacity-50"
       >
-        <IconMail size={13} />
+        <Mail size={13} />
         {isAccepting
           ? t(($) => {
               return $.appShell.sidebar.workspaceSwitcher.joining;
@@ -120,7 +90,7 @@ function InvitationRow({
           : t(($) => {
               return $.appShell.sidebar.workspaceSwitcher.join;
             })}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -153,13 +123,9 @@ function CreateWorkspaceItem() {
       <DropdownMenuItem
         onClick={handleCreateOrg}
         disabled={clerk === null || creatingOrg}
-        className="min-w-0 gap-3 px-3 py-2.5 rounded-lg"
+        className="min-w-0 gap-3 px-3 py-2.5"
       >
-        <IconPlus
-          size={18}
-          stroke={1.5}
-          className="shrink-0 text-muted-foreground"
-        />
+        <Plus size={18} className="shrink-0" />
         <span>
           {creatingOrg
             ? t(($) => {
@@ -202,9 +168,9 @@ function OtherMembershipsList() {
             onClick={() => {
               handleSwitchOrg(membership.organization.id);
             }}
-            className="min-w-0 gap-3 px-3 py-2.5 rounded-lg"
+            className="min-w-0 gap-3 px-3 py-2.5"
           >
-            <OrgAvatar
+            <WorkspaceLogo
               name={membership.organization.name}
               imageUrl={membership.organization.imageUrl}
             />
@@ -220,7 +186,6 @@ function OtherMembershipsList() {
 
 function OrgDropdownContent() {
   const clerkLoadable = useLastLoadable(clerk$);
-  const orgData = useLastResolved(org$);
   const pendingInvitations = useLastResolved(userInvitations$);
   const currentOrg = useLastResolved(currentOrgInfo$);
   const { t } = useTranslation();
@@ -231,7 +196,6 @@ function OrgDropdownContent() {
     t(($) => {
       return $.appShell.sidebar.workspaceSwitcher.organizationFallback;
     });
-  const orgSlug = orgData?.slug;
   const memberships = clerk?.user?.organizationMemberships ?? [];
   const currentOrgId = clerk?.organization?.id;
 
@@ -248,22 +212,21 @@ function OrgDropdownContent() {
   return (
     <DropdownMenuContent
       align="start"
-      className="flex max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-72 flex-col overflow-hidden"
+      className="flex max-h-[min(420px,var(--available-height))] w-72 flex-col overflow-hidden"
       onCloseAutoFocus={(event) => {
         event.preventDefault();
       }}
     >
       <div className="flex min-w-0 shrink-0 items-center gap-3 px-2 py-1.5">
-        <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} size="lg" />
+        <WorkspaceLogo
+          name={orgName}
+          imageUrl={currentOrg?.imageUrl}
+          size="lg"
+        />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold leading-tight truncate text-foreground">
             {orgName}
           </p>
-          {orgSlug && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">
-              {orgSlug}
-            </p>
-          )}
         </div>
       </div>
 
@@ -324,16 +287,18 @@ export function ZeroOrgSwitcherCompact() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
+        <Button
           type="button"
           aria-label={t(($) => {
             return $.appShell.sidebar.workspaceSwitcher.switch;
           })}
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+          variant="quiet"
+          size="icon"
+          className="relative"
         >
-          <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
+          <WorkspaceLogo name={orgName} imageUrl={currentOrg?.imageUrl} />
           <PendingInvitationsBadge />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <OrgDropdownContent />
     </DropdownMenu>
@@ -358,19 +323,16 @@ export function ZeroOrgSwitcher() {
             aria-label={t(($) => {
               return $.appShell.sidebar.workspaceSwitcher.switch;
             })}
-            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground transition-colors"
+            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-state-hover text-sidebar-foreground transition-colors"
           >
             <span className="relative shrink-0">
-              <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
+              <WorkspaceLogo name={orgName} imageUrl={currentOrg?.imageUrl} />
               <PendingInvitationsBadge />
             </span>
             <span className="min-w-0 flex-1 text-left text-sm font-semibold leading-tight truncate">
               {orgName}
             </span>
-            <IconChevronDown
-              size={16}
-              className="ml-auto shrink-0 text-muted-foreground"
-            />
+            <ChevronDown size={16} className="ml-auto shrink-0" />
           </button>
         </DropdownMenuTrigger>
         <OrgDropdownContent />

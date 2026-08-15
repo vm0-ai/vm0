@@ -102,7 +102,6 @@ export function guaranteedConnectorProvidedBindingNames(args: {
  */
 export const connectorListResponseSchema = z.object({
   connectors: z.array(connectorResponseSchema),
-  configuredConnectorSlugs: z.array(connectorSlugSchema),
   connectorProvidedBindings: z
     .array(connectorProvidedBindingSchema)
     .default([]),

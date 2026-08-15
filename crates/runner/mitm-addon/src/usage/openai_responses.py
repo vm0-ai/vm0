@@ -11,10 +11,11 @@ model-provider usage billing:
   ``mitm_addon.py`` fallback used by legacy/test flows without
   response-streaming parser state.
 - Single-frame WebSocket event JSON via
-  ``inspect_openai_responses_event_json`` and
+  ``inspect_openai_responses_client_event_json``,
+  ``inspect_openai_responses_event_json``, and
   ``extract_openai_responses_usage_from_event``, consumed by
-  ``mitm_addon.py`` and ``response_streaming.py`` for Responses events received
-  over upgrades.
+  ``mitm_addon.py`` and ``response_streaming.py`` for client request intent,
+  event-type timing, and server usage events received over upgrades.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
   used by ``response_streaming.py`` to fold terminal SSE and WebSocket event
   usage into a per-flow accumulator.
@@ -22,7 +23,7 @@ model-provider usage billing:
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal, TypeGuard
+from typing import Literal
 
 from mitmproxy import http
 
@@ -36,11 +37,14 @@ from .json_selective import (
     ScalarField,
 )
 from .model_tokens import (
+    MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
     MODEL_USAGE_CATEGORY_CACHE_READ,
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
 )
+from .openai_tokens import is_usage_quantity as _is_usage_quantity
+from .openai_tokens import partition_input_tokens as _partition_input_tokens
 from .sse import SseUsageScanner
 
 # Terminal Responses events whose Response object may carry usage. WebSocket
@@ -109,6 +113,7 @@ _RESPONSES_KNOWN_NON_USAGE_EVENTS = frozenset(
     )
 )
 _SseUsageParseErrorCallback = Callable[[str, str], None]
+_SseTerminalUsageCallback = Callable[[dict], None]
 _ResponsesEventTypeClassification = Literal[
     "terminal",
     "known_non_usage",
@@ -127,29 +132,54 @@ _JSON_PREFILTER_MAX_STRING_BYTES = 1024
 # After this bounded prefix, fall back to the full selective extractor so rare
 # terminal events with late ``type`` fields still report usage.
 _RESPONSES_EVENT_PREFILTER_MAX_BYTES = 4096
-_RESPONSES_WEBSOCKET_MAX_WORK_UNITS = 65_536
+# Bound dense syntax and slow scalar inspection while retaining the selective
+# parser's bulk-scan path for ordinary large content strings.
+_RESPONSES_MAX_WORK_UNITS = 65_536
 _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
+_RESPONSES_CREATE_EVENT = "response.create"
+_RESPONSES_CREATED_EVENT = "response.created"
+
+
+@dataclass(frozen=True)
+class OpenAIResponsesClientEvent:
+    """Bounded observations from one client-originated Responses frame."""
+
+    event_type: str | None
+    is_prewarm: bool
+
+
+@dataclass(frozen=True)
+class OpenAIResponsesServerLifecycle:
+    """Bounded lifecycle observations needed before WebSocket settlement."""
+
+    event_type: str | None
+    response_id: str | None
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.event_type in _RESPONSES_TERMINAL_USAGE_EVENTS
 
 
 @dataclass(frozen=True)
 class OpenAIResponsesEvent:
-    """One inspected Responses WebSocket event."""
+    """One inspected Responses WebSocket event.
+
+    ``event_type`` is the top-level string ``type`` observed by the bounded
+    prefix probe. It is ``None`` when that probe cannot return a value, including
+    when the field is beyond the prefix, oversized, non-string, or missing, or
+    when syntax is malformed before the field is complete. ``None`` does not mean
+    that usage extraction cannot classify the retained complete frame.
+    """
 
     event_type: str | None
     _body: bytes = field(repr=False)
     _classification: _ResponsesEventTypeClassification
 
 
-_OPENAI_RESPONSES_USAGE_CATEGORIES = (
-    MODEL_USAGE_CATEGORY_INPUT,
-    MODEL_USAGE_CATEGORY_OUTPUT,
-    MODEL_USAGE_CATEGORY_CACHE_READ,
-    MODEL_USAGE_CATEGORY_CACHE_CREATION,
-)
-
 _RESPONSES_RESPONSE_SCALAR_FIELDS = {
     ("id",): ScalarField("string", max_bytes=1024),
     ("model",): ScalarField("string", max_bytes=1024),
+    ("service_tier",): ScalarField("string", max_bytes=1024),
     ("usage", "input_tokens"): ScalarField("int", max_bytes=64),
     ("usage", "output_tokens"): ScalarField("int", max_bytes=64),
     ("usage", "input_tokens_details", "cached_tokens"): ScalarField("int", max_bytes=64),
@@ -164,17 +194,90 @@ _RESPONSES_SSE_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     **_RESPONSES_SSE_RESPONSE_SCALAR_FIELDS,
 }
+_RESPONSES_CLIENT_SCALAR_FIELDS = {
+    ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
+    ("generate",): ScalarField("bool"),
+}
+_RESPONSES_LIFECYCLE_SCALAR_FIELDS = {
+    ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
+    ("response", "id"): ScalarField("string", max_bytes=1024),
+}
+
+
+def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesClientEvent:
+    """Inspect client event timing and exact non-generating request intent."""
+    observed_event_type = _inspect_openai_responses_event_type_json(body)
+    extractor = JsonSelectiveExtractor(
+        scalar_fields=_RESPONSES_CLIENT_SCALAR_FIELDS,
+        scalar_consistency_paths={("type",), ("generate",)},
+        max_work_units=_RESPONSES_MAX_WORK_UNITS,
+    )
+    extractor.feed(body)
+    result = extractor.finish()
+    if not result.complete:
+        return OpenAIResponsesClientEvent(observed_event_type, False)
+
+    return OpenAIResponsesClientEvent(
+        observed_event_type,
+        extractor.selected_scalar_values_are_consistent(("type",))
+        and extractor.selected_scalar_values_are_consistent(("generate",))
+        and result.values.get(("type",)) == _RESPONSES_CREATE_EVENT
+        and result.values.get(("generate",)) is False,
+    )
 
 
 def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
-    """Inspect one complete Responses WebSocket event with one bounded type probe."""
+    """Retain one complete Responses event and probe its prefix for ``type``.
+
+    The returned ``event_type`` is only the bounded-prefix observation; this
+    function does not fully parse or validate the frame. Pass the returned event
+    to ``extract_openai_responses_usage_from_event`` for selective full-frame
+    usage inspection.
+    """
     result = _probe_responses_event_type(body)
-    event_type = result.value if result.status == "found" and result.value is not None else None
     return OpenAIResponsesEvent(
-        event_type=event_type,
+        event_type=_observed_responses_event_type(result),
         _body=body,
         _classification=_classify_responses_event_type_result(result),
     )
+
+
+def _inspect_openai_responses_event_type_json(body: bytes) -> str | None:
+    """Probe one Responses frame for its top-level ``type`` without retaining it."""
+    return _observed_responses_event_type(_probe_responses_event_type(body))
+
+
+def inspect_openai_responses_server_lifecycle(
+    event: OpenAIResponsesEvent,
+) -> OpenAIResponsesServerLifecycle:
+    """Inspect an exact created or terminal event for WebSocket correlation."""
+    relevant_event_types = _RESPONSES_TERMINAL_USAGE_EVENTS | {_RESPONSES_CREATED_EVENT}
+    if event.event_type is not None and event.event_type not in relevant_event_types:
+        return OpenAIResponsesServerLifecycle(event.event_type, None)
+
+    extractor = JsonSelectiveExtractor(
+        scalar_fields=_RESPONSES_LIFECYCLE_SCALAR_FIELDS,
+        scalar_consistency_paths={("type",), ("response", "id")},
+        max_work_units=_RESPONSES_MAX_WORK_UNITS,
+    )
+    extractor.feed(event._body)
+    result = extractor.finish()
+    if not result.complete:
+        return OpenAIResponsesServerLifecycle(event.event_type, None)
+    if not extractor.selected_scalar_values_are_consistent(("type",)):
+        return OpenAIResponsesServerLifecycle(event.event_type, None)
+    event_type = result.values.get(("type",))
+    if not isinstance(event_type, str):
+        return OpenAIResponsesServerLifecycle(event.event_type, None)
+    response_id = result.values.get(("response", "id"))
+    if (
+        event_type not in relevant_event_types
+        or not extractor.selected_scalar_values_are_consistent(("response", "id"))
+        or not isinstance(response_id, str)
+        or not response_id
+    ):
+        response_id = None
+    return OpenAIResponsesServerLifecycle(event_type, response_id)
 
 
 def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
@@ -186,8 +289,13 @@ def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
     )
 
 
+def _observed_responses_event_type(result: TopLevelStringFieldProbeResult) -> str | None:
+    return result.value if result.status == "found" and result.value is not None else None
+
+
 def _classify_responses_event_type(body: bytes) -> _ResponsesEventTypeClassification:
-    return _classify_responses_event_type_result(_probe_responses_event_type(body))
+    result = _probe_responses_event_type(body)
+    return _classify_responses_event_type_result(result)
 
 
 def _classify_responses_event_type_result(
@@ -226,10 +334,6 @@ def _is_known_non_usage_event(value: object) -> bool:
     return isinstance(value, str) and value in _RESPONSES_KNOWN_NON_USAGE_EVENTS
 
 
-def _is_usage_quantity(value: object) -> TypeGuard[int]:
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-
 def _store_quantity(target: dict, category: str, value: object) -> None:
     """Store usage quantities using positive-wins, zero-does-not-clobber semantics.
 
@@ -242,7 +346,7 @@ def _store_quantity(target: dict, category: str, value: object) -> None:
 
 
 def _has_positive_usage_quantity(values: dict) -> bool:
-    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
+    for category in MODEL_USAGE_CATEGORIES:
         value = values.get(category)
         if _is_usage_quantity(value) and value > 0:
             return True
@@ -250,35 +354,7 @@ def _has_positive_usage_quantity(values: dict) -> bool:
 
 
 def _has_usage_quantity(values: dict) -> bool:
-    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
-        if _is_usage_quantity(values.get(category)):
-            return True
-    return False
-
-
-def _partition_input_tokens(
-    input_tokens: object,
-    cached_tokens: object,
-    cache_write_tokens: object,
-) -> tuple[int | None, int | None, int | None]:
-    # OpenAI reports cache reads and writes as details of ``input_tokens``. The
-    # usage-event ledger prices all three categories independently, so partition
-    # the upstream total before reporting to avoid charging any token twice.
-    if not _is_usage_quantity(input_tokens):
-        return None, None, None
-
-    remaining_input_tokens = input_tokens
-    cached_input_tokens = None
-    if _is_usage_quantity(cached_tokens):
-        cached_input_tokens = min(cached_tokens, remaining_input_tokens)
-        remaining_input_tokens -= cached_input_tokens
-
-    cache_creation_tokens = None
-    if _is_usage_quantity(cache_write_tokens):
-        cache_creation_tokens = min(cache_write_tokens, remaining_input_tokens)
-        remaining_input_tokens -= cache_creation_tokens
-
-    return remaining_input_tokens, cached_input_tokens, cache_creation_tokens
+    return any(_is_usage_quantity(values.get(category)) for category in MODEL_USAGE_CATEGORIES)
 
 
 def _normalized_input_snapshot(values: dict) -> tuple[int, int | None, int | None] | None:
@@ -348,6 +424,10 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
     if isinstance(message_id, str) and message_id:
         target["message_id"] = message_id
 
+    service_tier = values.get((*prefix, "service_tier"))
+    if isinstance(service_tier, str) and service_tier:
+        target["service_tier"] = service_tier
+
     uncached_input_tokens, cached_tokens, cache_creation_tokens = _partition_input_tokens(
         values.get((*prefix, "usage", "input_tokens")),
         values.get((*prefix, "usage", "input_tokens_details", "cached_tokens")),
@@ -390,8 +470,8 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     Metadata follows usage ownership. When the accumulator already has positive
     usage and the source has no positive usage quantity, source metadata is
     ignored so trailing no-usage events cannot relabel the billed model or
-    ``message_id``. Otherwise non-empty ``model`` and ``message_id`` values from
-    the source are copied.
+    ``message_id``. Otherwise non-empty ``model``, ``message_id``, and
+    ``service_tier`` values from the source are copied.
     """
 
     target_has_positive_quantity = _has_positive_usage_quantity(target)
@@ -414,6 +494,10 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     if isinstance(message_id, str) and message_id:
         target["message_id"] = message_id
 
+    service_tier = source.get("service_tier")
+    if isinstance(service_tier, str) and service_tier:
+        target["service_tier"] = service_tier
+
 
 def _has_response_wrapper_values(values: dict) -> bool:
     return any(path[:1] == ("response",) for path in values)
@@ -425,14 +509,15 @@ def _store_sse_result_values(
     *,
     event_name: str | None,
     data_event_type: _ResponsesEventTypeClassification | None = None,
-) -> None:
+    data_event_identity_consistent: bool = True,
+) -> dict | None:
     data_type = values.get(("type",))
     if (
         _is_known_non_usage_event(event_name)
         or data_event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE
         or (data_event_type is None and _is_known_non_usage_event(data_type))
     ):
-        return
+        return None
     event_identity = event_name if event_name is not None else data_type
     is_known_terminal_usage_event = (
         _is_known_terminal_usage_event(event_identity)
@@ -444,12 +529,31 @@ def _store_sse_result_values(
     source: dict = {}
     _store_response_values(values, source, prefix)
     if not is_known_terminal_usage_event and not _has_usage_quantity(source):
-        return
+        return None
     merge_openai_responses_usage_result(target, source)
+
+    if not _has_positive_usage_quantity(source):
+        return None
+    if not data_event_identity_consistent:
+        return None
+    if event_name is None:
+        if not _is_known_terminal_usage_event(data_type):
+            return None
+        if data_event_type not in (None, _RESPONSES_EVENT_TERMINAL):
+            return None
+        return source
+    if not _is_known_terminal_usage_event(event_name):
+        return None
+    if data_event_type not in (None, _RESPONSES_EVENT_TERMINAL):
+        return None
+    if data_type is not None and data_type != event_name:
+        return None
+    return source
 
 
 def create_openai_responses_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
+    on_terminal_usage: _SseTerminalUsageCallback | None = None,
 ) -> tuple[SseUsageScanner, dict]:
     """Create an incremental usage parser for content-decoded Responses SSE bytes.
 
@@ -467,11 +571,21 @@ def create_openai_responses_sse_usage_extractor(
     malformed non-terminal or unknown events remain silent. HTTP content
     decoding and its errors are outside this parser; callers feed decoded output
     and handle decoder completion separately.
+
+    ``on_terminal_usage(usage)`` is called after a complete, recognized terminal
+    event with compatible SSE/JSON identity contributes positive usage. The
+    callback receives that event's normalized usage snapshot, not the live
+    accumulator. This lets transport finalizers retain only terminal-proven
+    values without changing forward-compatible extraction from unknown events.
     """
 
     usage: dict = {}
     parser = SseUsageScanner(
-        _OpenAIResponsesSseUsageHandler(usage, on_parse_error=on_parse_error),
+        _OpenAIResponsesSseUsageHandler(
+            usage,
+            on_parse_error=on_parse_error,
+            on_terminal_usage=on_terminal_usage,
+        ),
         # Some compatible streams omit SSE event names and carry the terminal
         # response type in the JSON payload.
         capture_data_without_event=True,
@@ -485,6 +599,7 @@ class _OpenAIResponsesSseUsageHandler:
         usage: dict,
         *,
         on_parse_error: _SseUsageParseErrorCallback | None = None,
+        on_terminal_usage: _SseTerminalUsageCallback | None = None,
     ) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
@@ -494,6 +609,7 @@ class _OpenAIResponsesSseUsageHandler:
         self._discard_eventless_event = False
         self._discard_named_event = False
         self._on_parse_error = on_parse_error
+        self._on_terminal_usage = on_terminal_usage
 
     def should_capture_event(self, event_name: str | None) -> bool:
         return event_name is None or not _is_known_non_usage_event(event_name)
@@ -540,12 +656,18 @@ class _OpenAIResponsesSseUsageHandler:
             return
         result = extractor.finish()
         if result.complete:
-            _store_sse_result_values(
+            terminal_usage = _store_sse_result_values(
                 result.values,
                 self._usage,
                 event_name=event_name,
                 data_event_type=data_event_type,
+                data_event_identity_consistent=(
+                    self._on_terminal_usage is None
+                    or extractor.selected_scalar_values_are_consistent(("type",))
+                ),
             )
+            if terminal_usage is not None and self._on_terminal_usage is not None:
+                self._on_terminal_usage(terminal_usage)
             return
         event_type = event_name
         if event_type is None:
@@ -575,11 +697,19 @@ class _OpenAIResponsesSseUsageHandler:
         scalar_fields = (
             _RESPONSES_SSE_SCALAR_FIELDS if include_type else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
         )
-        self._extractor = JsonSelectiveExtractor(scalar_fields=scalar_fields)
+        self._extractor = JsonSelectiveExtractor(
+            scalar_fields=scalar_fields,
+            scalar_consistency_paths={("type",)} if self._on_terminal_usage is not None else None,
+            max_work_units=_RESPONSES_MAX_WORK_UNITS,
+        )
         return self._extractor
 
     def _should_include_type_scalar(self) -> bool:
-        return self._data_event_type is None or self._on_parse_error is not None
+        return (
+            self._data_event_type is None
+            or self._on_parse_error is not None
+            or self._on_terminal_usage is not None
+        )
 
     def _start_full_extractor_from_prefix(
         self,
@@ -656,10 +786,18 @@ class OpenAIResponsesJsonUsageExtractor:
     """
 
     def __init__(self) -> None:
-        self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_RESPONSE_SCALAR_FIELDS)
+        self._extractor = JsonSelectiveExtractor(
+            scalar_fields=_RESPONSES_RESPONSE_SCALAR_FIELDS,
+            max_work_units=_RESPONSES_MAX_WORK_UNITS,
+        )
 
     def feed(self, chunk: bytes) -> None:
         self._extractor.feed(chunk)
+
+    def accepts_more_input(self) -> bool:
+        """Return whether the document parser can still consume input."""
+
+        return self._extractor.accepts_more_input()
 
     def finish(self) -> tuple[dict | None, str | None]:
         result = self._extractor.finish()
@@ -669,7 +807,7 @@ class OpenAIResponsesJsonUsageExtractor:
         usage: dict = {}
         _store_response_values(result.values, usage)
 
-        if not any(category in usage for category in _OPENAI_RESPONSES_USAGE_CATEGORIES):
+        if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
             return None, None
         return usage, None
 
@@ -726,7 +864,17 @@ def extract_openai_responses_usage_with_error_from_json(
 def extract_openai_responses_usage_from_event(
     event: OpenAIResponsesEvent,
 ) -> tuple[dict | None, str | None]:
-    """Extract usage and inspection error from one Responses WebSocket event."""
+    """Extract usage and an inspection error from a retained Responses event.
+
+    When prefix inspection leaves the event classification unresolved, this
+    function selectively examines the complete retained frame and can resolve a
+    top-level ``type`` independently of ``event.event_type``.
+
+    Returns ``(usage, None)`` when usage is extracted. Exhausting the selective
+    parser's work budget returns ``(None, "work_limit_exceeded")``; no other
+    inspection failure is surfaced. Known non-usage events, other incomplete or
+    malformed frames, and frames without extractable usage return ``(None, None)``.
+    """
     event_type = event._classification
     if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
         return None, None
@@ -739,7 +887,7 @@ def extract_openai_responses_usage_from_event(
     )
     extractor = JsonSelectiveExtractor(
         scalar_fields=scalar_fields,
-        max_work_units=_RESPONSES_WEBSOCKET_MAX_WORK_UNITS,
+        max_work_units=_RESPONSES_MAX_WORK_UNITS,
     )
     extractor.feed(event._body)
     result = extractor.finish()
@@ -758,6 +906,6 @@ def extract_openai_responses_usage_from_event(
         event_name=None,
         data_event_type=data_event_type,
     )
-    if not any(category in usage for category in _OPENAI_RESPONSES_USAGE_CATEGORIES):
+    if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
         return None, None
     return usage, None

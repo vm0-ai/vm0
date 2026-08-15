@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { uploadWebFile } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { uploadWebFile } from "../../../lib/api/domains/web";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const uploadFileCommand = new Command()
   .name("upload-file")
@@ -11,15 +11,15 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:           zero web upload-file -f /tmp/report.pdf
-  Override content-type:   zero web upload-file -f /tmp/data --content-type text/csv
+  Upload a file:           okou web upload-file -f /tmp/report.pdf
+  Override content-type:   okou web upload-file -f /tmp/data --content-type text/csv
 
 Output:
   Prints a JSON object to stdout on success:
     {"id":"...","filename":"...","contentType":"...","size":N,"url":"https://..."}
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires file:write capability)
+  - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Returned URL is permanent (serves a short-lived signed redirect on access)
   - Safe to persist in chat messages or share over external channels
   - Max file size: 1 GB

@@ -1,10 +1,12 @@
 import { command } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import {
+  type CodexServiceTier,
   chatThreadsContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -14,8 +16,12 @@ import { publishThreadListChanged } from "../external/realtime";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { createChatThread$ } from "../services/zero-chat-thread.service";
 import { zeroComposeExists } from "../services/zero-compose-data.service";
-import { resolveModelSelectionPin } from "../services/zero-model-selection.service";
+import {
+  resolveModelSelectionPin,
+  validateCodexServiceTier,
+} from "../services/zero-model-selection.service";
 import { chatThreadModelPinColumns } from "../services/zero-chat-thread-model.service";
+import { chatThreadServiceTierFromCodex } from "../services/zero-chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const createBody$ = bodyResultOf(chatThreadsContract.create);
@@ -28,23 +34,41 @@ function modelFirstSelection(selectedModel: string) {
 }
 
 /**
- * Model a caller inherits when it omits `model`: the model of the run that owns
- * its token. Session and PAT callers have no run, so they must send a model.
+ * Model, priority, and video model a caller inherits when it omits them. The
+ * model belongs to the run that owns its token; the other settings belong to
+ * that run's chat thread.
  */
-async function inheritedRunModel(
+async function inheritedRunChatSettings(
   db: Db,
   runId: string | undefined,
-): Promise<string | null> {
+): Promise<{
+  readonly selectedModel: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
+  readonly selectedVideoModel: string | null;
+}> {
   if (!runId) {
-    return null;
+    return {
+      selectedModel: null,
+      codexServiceTier: null,
+      selectedVideoModel: null,
+    };
   }
 
   const [run] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({
+      selectedModel: agentRuns.selectedModel,
+      codexServiceTier: chatThreads.codexServiceTier,
+      selectedVideoModel: chatThreads.selectedVideoModel,
+    })
+    .from(agentRuns)
+    .leftJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
-  return run?.selectedModel ?? null;
+  return {
+    selectedModel: run?.selectedModel ?? null,
+    codexServiceTier: run?.codexServiceTier ?? null,
+    selectedVideoModel: run?.selectedVideoModel ?? null,
+  };
 }
 
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -71,12 +95,20 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "sandbox" || auth.tokenType === "zero"
       ? auth.runId
       : undefined;
-  const selectedModel =
-    body.data.model ?? (await inheritedRunModel(writeDb, callerRunId));
+  const inherited = await inheritedRunChatSettings(writeDb, callerRunId);
   signal.throwIfAborted();
+  const selectedModel = body.data.model ?? inherited.selectedModel;
   if (!selectedModel) {
     return badRequestMessage("A model selection is required");
   }
+  const codexServiceTier: CodexServiceTier | null =
+    body.data.serviceTier === undefined
+      ? inherited.codexServiceTier
+      : body.data.serviceTier === "priority"
+        ? "fast"
+        : null;
+  const selectedVideoModel =
+    body.data.videoModel ?? inherited.selectedVideoModel;
 
   const pin = await resolveModelSelectionPin({
     db: writeDb,
@@ -87,6 +119,17 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if ("status" in pin) {
     return pin;
+  }
+  const codexServiceTierError = await validateCodexServiceTier({
+    db: writeDb,
+    orgId: auth.orgId,
+    userId: auth.userId,
+    pin,
+    codexServiceTier,
+  });
+  signal.throwIfAborted();
+  if (codexServiceTierError) {
+    return codexServiceTierError;
   }
 
   const thread = await set(
@@ -99,6 +142,8 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       clientThreadId: body.data.clientThreadId,
       eventId: body.data.eventId,
       ...chatThreadModelPinColumns(pin),
+      codexServiceTier,
+      selectedVideoModel,
     },
     signal,
   );
@@ -114,6 +159,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       title: body.data.title ?? null,
       createdAt: thread.createdAt.toISOString(),
       selectedModel,
+      serviceTier: chatThreadServiceTierFromCodex(codexServiceTier),
     },
   };
 });

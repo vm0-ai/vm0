@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;

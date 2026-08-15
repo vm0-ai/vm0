@@ -16,6 +16,7 @@ from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
 
 import connector_intent
+import connector_runtime_metadata
 import connector_template_syntax
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from firewall_matching import base_url as _firewall_base_url
@@ -72,6 +73,7 @@ _VALID_RULE_METHODS = frozenset(
         "ANY",
     )
 )
+_RESERVED_DECLARED_FIREWALL_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
 _VALID_AUTH_BASE_SCHEME = "https"
 _AUTH_TEMPLATE_START = "${{"
 _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
@@ -174,6 +176,7 @@ class _CompiledApi(NamedTuple):
 
 class CompiledFirewallCore(NamedTuple):
     name: str
+    intent_identity: str
     api_cores: tuple[_CompiledApiCore, ...]
     name_malformed: bool
 
@@ -181,10 +184,15 @@ class CompiledFirewallCore(NamedTuple):
 class _CompiledFirewall(NamedTuple):
     core: CompiledFirewallCore
     apis: tuple[_CompiledApi, ...]
+    connector_runtime_kind: connector_runtime_metadata.ConnectorRuntimeKind | None
 
     @property
     def name(self) -> str:
         return self.core.name
+
+    @property
+    def intent_identity(self) -> str:
+        return self.core.intent_identity
 
     @property
     def name_malformed(self) -> bool:
@@ -770,6 +778,24 @@ def firewall_rule_is_valid(rule_str: str) -> bool:
     return _compile_rule(rule_str) is not None
 
 
+DeclaredFirewallPermissionNameInvalidReason = Literal["empty", "reserved"]
+
+
+def declared_firewall_permission_name_invalid_reason(
+    name: str,
+) -> DeclaredFirewallPermissionNameInvalidReason | None:
+    """Return why a declared permission name is invalid, or ``None`` when valid.
+
+    This validates permission definitions only. Network-policy grant storage may
+    use ``__unknown__`` as the unknown-endpoint sentinel.
+    """
+    if name == "":
+        return "empty"
+    if name in _RESERVED_DECLARED_FIREWALL_PERMISSION_NAMES:
+        return "reserved"
+    return None
+
+
 # Compiled matcher contract
 #
 # Registry loading stores these compiled objects and request handling later
@@ -809,13 +835,30 @@ def firewall_rule_is_valid(rule_str: str) -> bool:
 # firewall config; malformed unknownPolicy only affects unknown-endpoint
 # resolution.
 def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
-    """Compile one firewall into VM-independent matcher data."""
+    """Compile one firewall into reusable matcher data.
+
+    The core retains the firewall name and, for each compilable raw API, its original list index
+    plus matcher-relevant ``base``, ``auth``, optional ``hostPolicy``, permissions, rules, ordering,
+    and malformed state. The original index lets ``bind_compiled_firewall_core`` attach a later raw
+    API shell without recompiling this data.
+
+    Return ``None`` when the firewall is not a dictionary, ``apis`` is not a list, or no API has a
+    compilable string base. Other selected malformed inputs are retained according to the compiled
+    matcher contract above. A caller that reuses this core with another firewall dictionary must
+    satisfy the compatibility contract documented by ``bind_compiled_firewall_core``.
+    """
     if not isinstance(fw_entry, dict):
         return None
 
     raw_name = fw_entry.get("name")
     name_malformed = not isinstance(raw_name, str) or raw_name == ""
     firewall_name = raw_name if isinstance(raw_name, str) else ""
+    raw_custom_connector_id = fw_entry.get("customConnectorId")
+    intent_identity = (
+        raw_custom_connector_id
+        if isinstance(raw_custom_connector_id, str) and raw_custom_connector_id != ""
+        else firewall_name
+    )
 
     raw_apis = fw_entry.get("apis", [])
     if not isinstance(raw_apis, list):
@@ -857,7 +900,7 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
                 if not isinstance(raw_name, str):
                     has_malformed_rules = True
                     continue
-                if raw_name in ("", "all"):
+                if declared_firewall_permission_name_invalid_reason(raw_name) is not None:
                     has_malformed_rules = True
                     continue
                 if raw_name in seen_permission_names:
@@ -904,14 +947,38 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
 
     if not api_cores:
         return None
-    return CompiledFirewallCore(firewall_name, tuple(api_cores), name_malformed)
+    return CompiledFirewallCore(
+        firewall_name,
+        intent_identity,
+        tuple(api_cores),
+        name_malformed,
+    )
 
 
 def bind_compiled_firewall_core(
     fw_entry: dict,
     core: CompiledFirewallCore,
 ) -> _CompiledFirewall | None:
-    """Bind VM-specific raw API entries to reusable compiled firewall core data."""
+    """Bind compatible raw API shell entries to reusable compiled firewall data.
+
+    ``fw_entry`` must describe the same matcher definition that produced ``core``. Its firewall
+    name and raw ``apis`` positional structure must be unchanged, including which entries compile.
+    At every retained position, ``base``, ``auth``, optional ``hostPolicy``, permissions, permission
+    names, rules, and their ordering must have the same values. Each API core is paired with the raw
+    dictionary at its original ``raw_api_index``; reordering or replacing entries is incompatible
+    even when the target list still has a dictionary at that index.
+
+    Fields excluded from core compilation may remain shell-local. Builtin reuse currently rebinds
+    generated API ``id`` values, snapshot-owned ``_builtinHostPolicyRuntime`` metadata, and the
+    registry-owned connector candidate kind. Such raw fields remain subject to their own validity
+    and lifecycle contracts; in particular, runtime host-policy metadata must stay paired with the
+    target shell's resolved registry snapshot.
+
+    The caller or its cache key must enforce this compatibility before reuse. This function does
+    not compare semantic content. It returns ``None`` only when the target ``apis`` value is not a
+    list, a retained index is unavailable or does not contain a dictionary, or no APIs are bound;
+    that result is a structural failure, not a semantic compatibility verdict.
+    """
     raw_apis = fw_entry.get("apis", [])
     if not isinstance(raw_apis, list):
         return None
@@ -927,7 +994,11 @@ def bind_compiled_firewall_core(
 
     if not compiled_apis:
         return None
-    return _CompiledFirewall(core, tuple(compiled_apis))
+    return _CompiledFirewall(
+        core,
+        tuple(compiled_apis),
+        connector_runtime_metadata.connector_runtime_kind(fw_entry),
+    )
 
 
 def compile_firewalls(vm_firewalls: object | None) -> CompiledFirewallSet | None:
@@ -1385,6 +1456,20 @@ def _winning_owner_names(collection: _FirewallMatchCollection) -> tuple[str, ...
     return tuple(sorted(names))
 
 
+def _owner_name_for_intent(
+    collection: _FirewallMatchCollection,
+    intent_value: str,
+) -> str | None:
+    matching_names = {
+        match.firewall.name
+        for match in _winning_api_matches(collection)
+        if not match.firewall.name_malformed and match.firewall.intent_identity == intent_value
+    }
+    if len(matching_names) != 1:
+        return None
+    return next(iter(matching_names))
+
+
 def _ambiguity_reason(
     intent: connector_intent.ConnectorIntent,
 ) -> ConnectorRouteAmbiguityReason:
@@ -1407,8 +1492,10 @@ def _selected_owner_name(
         return None
     if len(owners) == 1:
         return owners[0]
-    if intent.status == "present" and intent.value in owners:
-        return intent.value
+    if intent.status == "present" and intent.value is not None:
+        selected_name = _owner_name_for_intent(collection, intent.value)
+        if selected_name is not None:
+            return selected_name
     return FirewallAmbiguous(
         upper_method,
         path,
@@ -1643,6 +1730,7 @@ def _match_compiled_firewall_request_with_api_candidates(
     is_asterisk_form: bool,
 ) -> FirewallAllow | FirewallPolicyAllow | FirewallBlock | FirewallAmbiguous | None:
     collection = _FirewallMatchCollection()
+    base_matches: list[_MatchedApi] = []
     unsafe_path: bool | None = False if is_asterisk_form else (True if url_has_backslash else None)
     decision_path = "*" if is_asterisk_form else (url_parts.path or "/")
 
@@ -1683,17 +1771,25 @@ def _match_compiled_firewall_request_with_api_candidates(
             base_params,
             block_match,
         )
+        base_matches.append(api_match)
+
+    custom_connector_matches = any(
+        match.firewall.connector_runtime_kind == "custom" for match in base_matches
+    )
+    for api_match in base_matches:
+        if custom_connector_matches and api_match.firewall.connector_runtime_kind == "builtin":
+            continue
         if not collection.accept_api(api_match):
             continue
 
-        if is_asterisk_form or not api_entry.permissions:
+        if is_asterisk_form or not api_match.api.permissions:
             continue
 
-        rel_path_segs = _split_path_segments(rel_path)
+        rel_path_segs = _split_path_segments(api_match.rel_path)
         rule_entries = (
-            _indexed_rule_candidates(api_entry, upper_method, rel_path_segs)
+            _indexed_rule_candidates(api_match.api, upper_method, rel_path_segs)
             if indexed_rules
-            else api_entry.rule_index.all_rules
+            else api_match.api.rule_index.all_rules
         )
         _collect_rule_routes(
             collection=collection,

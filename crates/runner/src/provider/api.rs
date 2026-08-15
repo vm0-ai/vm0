@@ -10,9 +10,13 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::{
     constants::runners::{
-        NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
-    routes,
+    decode_paths, routes,
+    types::runners::runs::active_inputs::{
+        receipt::Response as ActiveInputReceiptResponse,
+        reserve::Response as ActiveInputReserveResponse,
+    },
 };
 use reqwest::{Response, StatusCode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -28,21 +32,28 @@ use super::api_direct_candidates::{
 use super::builtin_firewall_catalog::{
     BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshController,
 };
-use super::network_policy_refresh::NetworkPolicyRefreshHandle;
+use super::connector_runtime_sync::ConnectorRuntimeSyncHandle;
 use super::{
-    ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
+    ClaimedJob, CompletionAuth, CompletionAuthError, CompletionReportTiming, JobCandidate,
+    JobDiscoverySource, JobProvider, RunnerPreference, RunnerPreferenceClaimState,
     parse_runner_preference,
 };
+use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
-    PollResponse, SandboxReuseResult,
+    CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTargetRegistration,
+    ExecutionContext, HeartbeatState, Job, PollResponse,
 };
-use sandbox::SandboxId;
+#[cfg(test)]
+use crate::types::{SandboxReuseResult, WorkspaceReuseResult};
+
+fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
+    reuse_key.is_some_and(|key| key.starts_with("thread:"))
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,6 +91,10 @@ struct ClaimRequestTelemetry {
     poll_http_request_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_preference: Option<RunnerPreference>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_preference_claim_state: Option<RunnerPreferenceClaimState>,
 }
 
 #[derive(Serialize)]
@@ -93,8 +108,8 @@ struct PollRequestBody<'a> {
     telemetry: PollRequestTelemetry,
 }
 
-pub(super) enum NetworkPolicyRefreshOutcome {
-    Refreshed(NetworkPolicyRefreshBatchResponse),
+pub(super) enum ConnectorRuntimeSyncOutcome {
+    Synced(ConnectorRuntimeSyncBatchResponse),
     RunTerminal,
 }
 
@@ -181,11 +196,11 @@ const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
 const CLAIM_COOLDOWN_CAPACITY: usize = RUNNER_POLL_EXCLUDED_RUN_IDS_MAX as usize;
 const CLAIM_TRANSIENT_COOLDOWN: Duration = POLL_FAST;
 const CLAIM_DETERMINISTIC_COOLDOWN: Duration = POLL_SLOW;
-const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
+const CONNECTOR_RUNTIME_SYNC_TIMEOUT: Duration = Duration::from_secs(3);
 const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
 enum DiscoveryWakeup {
-    Direct(DirectJobCandidate),
+    Direct(Box<DirectJobCandidate>),
     Poll(PollDue),
 }
 
@@ -238,8 +253,9 @@ pub struct ApiProvider {
     /// Background Ably control-plane task.
     ably_supervisor: Mutex<Option<AblySupervisor>>,
     cancel_tokens: RunCancellationRegistry,
-    network_policy_refresh: NetworkPolicyRefreshHandle,
+    connector_runtime_sync: ConnectorRuntimeSyncHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
+    active_input_notifications: ActiveInputNotifications,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -273,7 +289,7 @@ impl ApiProvider {
             supported_profiles,
         } = config;
         let api = ApiClient::new(http, token);
-        let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
+        let connector_runtime_sync = ConnectorRuntimeSyncHandle::new(api.clone());
         let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshController::new(
             api.clone(),
             builtin_firewall_catalog_cache_paths.cache_path,
@@ -285,7 +301,7 @@ impl ApiProvider {
             DIRECT_CANDIDATE_INBOX_CAPACITY,
             DIRECT_CANDIDATE_STALE_AFTER,
         );
-
+        let active_input_notifications = ActiveInputNotifications::new();
         Arc::new(Self {
             api,
             runner_id,
@@ -297,14 +313,15 @@ impl ApiProvider {
             claim_cooldowns: ClaimCooldowns::new(CLAIM_COOLDOWN_CAPACITY),
             ably_supervisor: Mutex::new(None),
             cancel_tokens,
-            network_policy_refresh,
+            connector_runtime_sync,
             builtin_firewall_catalog_refresh,
+            active_input_notifications,
             cancel,
         })
     }
 
-    pub(crate) fn network_policy_refresh_handle(&self) -> NetworkPolicyRefreshHandle {
-        self.network_policy_refresh.clone()
+    pub(crate) fn connector_runtime_sync_handle(&self) -> ConnectorRuntimeSyncHandle {
+        self.connector_runtime_sync.clone()
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
@@ -424,7 +441,7 @@ impl ApiProvider {
     async fn wait_for_discovery_wakeup(&self) -> Option<DiscoveryWakeup> {
         loop {
             if let Some(candidate) = self.try_recv_direct_candidate().await {
-                return Some(DiscoveryWakeup::Direct(candidate));
+                return Some(DiscoveryWakeup::Direct(Box::new(candidate)));
             }
 
             tokio::select! {
@@ -434,7 +451,7 @@ impl ApiProvider {
                 }
                 candidate = self.wait_for_direct_candidate() => {
                     if let Some(candidate) = candidate {
-                        return Some(DiscoveryWakeup::Direct(candidate));
+                        return Some(DiscoveryWakeup::Direct(Box::new(candidate)));
                     }
                 }
                 due = self.poll_wakeups.wait_for_poll_due(&self.cancel, POLL_SLOW, POLL_FAST) => {
@@ -457,7 +474,8 @@ impl ApiProvider {
             poll_wakeups: Arc::clone(&self.poll_wakeups),
             direct_candidates: Arc::clone(&self.direct_candidates),
             cancel_tokens: self.cancel_tokens.clone(),
-            network_policy_refresh: self.network_policy_refresh.clone(),
+            connector_runtime_sync: self.connector_runtime_sync.clone(),
+            active_input_notifications: self.active_input_notifications.clone(),
             provider_cancel: self.cancel.clone(),
         }));
     }
@@ -566,23 +584,24 @@ impl JobProvider for ApiProvider {
                     let run_id = job.run_id;
                     let reuse_key = job.reuse_key().map(str::to_owned);
                     let history_generation_run_id = job.history_generation_run_id;
-                    let runner_preference = match parse_runner_preference(job.runner_preference) {
-                        Ok(runner_preference) => runner_preference,
-                        Err(error) => {
-                            warn!(
-                                run_id = %run_id,
-                                error = %error,
-                                "poll: invalid runner preference, using ordinary admission"
-                            );
-                            None
-                        }
-                    };
+                    let runner_preference_context =
+                        match parse_runner_preference(job.runner_preference) {
+                            Ok(context) => context,
+                            Err(error) => {
+                                warn!(
+                                    run_id = %run_id,
+                                    error = %error,
+                                    "poll: invalid runner preference, using ordinary admission"
+                                );
+                                None
+                            }
+                        };
                     let profile = job.experimental_profile;
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_reuse_key(reuse_key)
                         .with_history_generation_run_id(history_generation_run_id)
-                        .with_runner_preference(runner_preference)
+                        .with_parsed_runner_preference_context(runner_preference_context)
                         .with_discovery_source(JobDiscoverySource::Poll)
                         .with_poll_reason(poll_reason_value(reason))
                         .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed);
@@ -628,7 +647,21 @@ impl JobProvider for ApiProvider {
             .await
         {
             Ok(Some(ctx)) => {
-                let claimed = match ClaimedJob::api(run_id, ctx) {
+                let active_input_source = (ctx.cli_agent_type != "pi"
+                    && supports_thread_active_input(ctx.reuse_key.as_deref()))
+                .then(|| {
+                    ActiveInputSource::api(
+                        self.api.clone(),
+                        run_id,
+                        ctx.sandbox_token.clone(),
+                        self.active_input_notifications.subscribe(run_id),
+                    )
+                });
+                let claimed = match if let Some(active_input_source) = active_input_source {
+                    ClaimedJob::api_with_active_input_source(run_id, ctx, active_input_source)
+                } else {
+                    ClaimedJob::api(run_id, ctx)
+                } {
                     Ok(claimed) => claimed,
                     Err(error) => {
                         self.record_claim_failure(
@@ -685,19 +718,16 @@ impl JobProvider for ApiProvider {
         if let Some(ably_supervisor) = ably_supervisor {
             ably_supervisor.shutdown().await;
         }
-        self.network_policy_refresh.shutdown().await;
+        self.connector_runtime_sync.shutdown().await;
         self.builtin_firewall_catalog_refresh.shutdown().await;
     }
 
-    async fn complete(
-        &self,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        sandbox_id: Option<SandboxId>,
-        reuse_result: Option<SandboxReuseResult>,
-        completion_auth: CompletionAuth,
-    ) {
+    fn completion_report_timing(&self) -> CompletionReportTiming {
+        CompletionReportTiming::ConcurrentWithFinalization
+    }
+
+    async fn complete(&self, request: CompleteRequest, completion_auth: CompletionAuth) {
+        let run_id = request.run_id;
         let token = match completion_auth.into_sandbox_token(run_id) {
             Ok(token) => token,
             Err(CompletionAuthError::NotSandbox) => {
@@ -718,11 +748,7 @@ impl JobProvider for ApiProvider {
         const RETRY_DELAY: Duration = Duration::from_secs(2);
 
         for attempt in 1..=MAX_ATTEMPTS {
-            match self
-                .api
-                .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
-                .await
-            {
+            match self.api.complete(&token, &request).await {
                 Ok(()) => return,
                 Err(e) => {
                     let (retryable, status, failure_kind) = match &e {
@@ -897,14 +923,67 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
 
 /// Low-level HTTP client for the vm0 runner API endpoints.
 #[derive(Clone)]
-pub(super) struct ApiClient {
+pub(crate) struct ApiClient {
     http: HttpClient,
     token: String,
 }
 
+#[derive(Serialize)]
+struct EmptyRequest {}
+
 impl ApiClient {
-    pub(super) fn new(http: HttpClient, token: String) -> Self {
+    pub(crate) fn new(http: HttpClient, token: String) -> Self {
         Self { http, token }
+    }
+
+    pub(crate) async fn reserve_active_inputs(
+        &self,
+        run_id: RunId,
+        sandbox_token: &str,
+    ) -> RunnerResult<ActiveInputReserveResponse> {
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.http
+                .request_resolved_route(
+                    routes::runners::runs::by_run_id::active_inputs::reserve::route(
+                        routes::runners::runs::by_run_id::active_inputs::reserve::Params {
+                            run_id: run_id.as_str(),
+                        },
+                    ),
+                    sandbox_token,
+                )
+                .json(&EmptyRequest {}),
+            "reserve active inputs",
+        )
+        .await?;
+        let resp = check_api_status(resp, "reserve active inputs").await?;
+        decode_api_json(resp, "reserve active inputs").await
+    }
+
+    pub(crate) async fn record_active_input_delivery(
+        &self,
+        run_id: RunId,
+        sandbox_token: &str,
+        delivery_id: &str,
+    ) -> RunnerResult<ActiveInputReceiptResponse> {
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.http
+                .request_resolved_route(
+                    routes::runners::runs::by_run_id::active_inputs::deliveries::by_delivery_id::receipt::route(
+                        routes::runners::runs::by_run_id::active_inputs::deliveries::by_delivery_id::receipt::Params {
+                            run_id: run_id.as_str(),
+                            delivery_id,
+                        },
+                    ),
+                    sandbox_token,
+                )
+                .json(&EmptyRequest {}),
+            "record active input delivery",
+        )
+        .await?;
+        let resp = check_api_status(resp, "record active input delivery").await?;
+        decode_api_json(resp, "record active input delivery").await
     }
 
     /// Poll for a pending job. The response contains `job: None` when no work is available.
@@ -1007,27 +1086,11 @@ impl ApiClient {
             .await
     }
     /// Report job completion. Uses the per-job **sandbox token** for auth.
-    async fn complete(
-        &self,
-        sandbox_token: &str,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        sandbox_id: Option<SandboxId>,
-        reuse_result: Option<SandboxReuseResult>,
-    ) -> RunnerResult<()> {
-        let body = CompleteRequest {
-            run_id,
-            exit_code,
-            error: error.map(String::from),
-            sandbox_id,
-            sandbox_reuse_result: reuse_result,
-        };
-
+    async fn complete(&self, sandbox_token: &str, request: &CompleteRequest) -> RunnerResult<()> {
         let resp = send_api(
             self.http
                 .request_route(routes::webhooks::agent::complete::COMPLETE, sandbox_token)
-                .json(&body),
+                .json(request),
             "complete",
         )
         .await?;
@@ -1054,48 +1117,48 @@ impl ApiClient {
         decode_api_json(resp, "realtime token").await
     }
 
-    pub(super) async fn refresh_network_policies(
+    pub(super) async fn sync_connector_runtime(
         &self,
         run_id: RunId,
-        connector_slugs: &[String],
-    ) -> RunnerResult<NetworkPolicyRefreshOutcome> {
+        targets: &[ConnectorRuntimeTargetRegistration],
+    ) -> RunnerResult<ConnectorRuntimeSyncOutcome> {
         let run_id = run_id.to_string();
         let resp = send_api(
-            self.network_policy_refresh_request(&run_id, connector_slugs),
-            "network policy refresh",
+            self.connector_runtime_sync_request(&run_id, targets),
+            "connector runtime sync",
         )
         .await?;
 
         if resp.status() == StatusCode::CONFLICT {
             let (status, body) = read_api_error(resp).await;
             if serde_json::from_str::<ApiErrorEnvelope>(&body).is_ok_and(|response| {
-                response.error.code == NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE
+                response.error.code == CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE
             }) {
-                return Ok(NetworkPolicyRefreshOutcome::RunTerminal);
+                return Ok(ConnectorRuntimeSyncOutcome::RunTerminal);
             }
-            return Err(api_status_error("network policy refresh", status, &body));
+            return Err(api_status_error("connector runtime sync", status, &body));
         }
 
-        let resp = check_api_status(resp, "network policy refresh").await?;
-        decode_api_json(resp, "network policy refresh")
+        let resp = check_api_status(resp, "connector runtime sync").await?;
+        decode_api_json(resp, "connector runtime sync")
             .await
-            .map(NetworkPolicyRefreshOutcome::Refreshed)
+            .map(ConnectorRuntimeSyncOutcome::Synced)
     }
 
-    fn network_policy_refresh_request(
+    fn connector_runtime_sync_request(
         &self,
         run_id: &str,
-        connector_slugs: &[String],
+        targets: &[ConnectorRuntimeTargetRegistration],
     ) -> ApiRequestBuilder {
         self.http
             .request_resolved_route(
-                routes::runners::runs::by_run_id::network_policy_refresh::route(
-                    routes::runners::runs::by_run_id::network_policy_refresh::Params { run_id },
+                routes::runners::runs::by_run_id::connector_runtime::sync::route(
+                    routes::runners::runs::by_run_id::connector_runtime::sync::Params { run_id },
                 ),
                 &self.token,
             )
-            .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
-            .json(&serde_json::json!({ "connectorSlugs": connector_slugs }))
+            .timeout(CONNECTOR_RUNTIME_SYNC_TIMEOUT)
+            .json(&serde_json::json!({ "targets": targets }))
     }
 
     pub(super) async fn resolve_builtin_firewall_catalog(
@@ -1130,6 +1193,7 @@ fn claim_request_body<'a>(
     runner_id: &'a str,
     heartbeat_generation: u64,
 ) -> ClaimRequestBody<'a> {
+    let runner_preference_telemetry = candidate.runner_preference_claim_telemetry();
     let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
     let (
         direct_candidate_notification_to_enqueue_ms,
@@ -1179,6 +1243,11 @@ fn claim_request_body<'a>(
                 .poll_http_request_elapsed()
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
+            runner_preference: runner_preference_telemetry
+                .as_ref()
+                .map(|telemetry| telemetry.runner_preference.clone()),
+            runner_preference_claim_state: runner_preference_telemetry
+                .and_then(|telemetry| telemetry.state),
         },
     }
 }
@@ -1234,7 +1303,46 @@ async fn check_api_status(resp: Response, label: &'static str) -> RunnerResult<R
     Ok(resp)
 }
 
-async fn decode_api_json<T: DeserializeOwned>(resp: Response, label: &str) -> RunnerResult<T> {
+trait ApiDecodePath: DeserializeOwned {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema;
+}
+
+impl ApiDecodePath for ActiveInputReserveResponse {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::runs::by_run_id::active_inputs::reserve::RESPONSE;
+}
+
+impl ApiDecodePath for ActiveInputReceiptResponse {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::runs::by_run_id::active_inputs::deliveries::by_delivery_id::receipt::RESPONSE;
+}
+
+impl ApiDecodePath for PollResponse {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::poll::RESPONSE;
+}
+
+impl ApiDecodePath for ExecutionContext {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::jobs::by_id::claim::RESPONSE;
+}
+
+impl ApiDecodePath for ably_subscriber::TokenRequest {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::realtime::token::RESPONSE;
+}
+
+impl ApiDecodePath for ConnectorRuntimeSyncBatchResponse {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::runs::by_run_id::connector_runtime::sync::RESPONSE;
+}
+
+impl ApiDecodePath for BuiltinFirewallCatalog {
+    const DECODE_PATH_SCHEMA: &'static api_contracts::DecodePathSchema =
+        &decode_paths::runners::builtin_firewalls::resolve::RESPONSE;
+}
+
+async fn decode_api_json<T: ApiDecodePath>(resp: Response, label: &str) -> RunnerResult<T> {
     let body = resp
         .bytes()
         .await
@@ -1256,19 +1364,26 @@ fn api_status_error(label: &'static str, status: StatusCode, body: &str) -> Runn
     }))
 }
 
-fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
+fn decode_api_json_bytes<T: ApiDecodePath>(body: &[u8]) -> Result<T, String> {
     let mut deserializer = serde_json::Deserializer::from_slice(body);
-    let value = serde_path_to_error::deserialize(&mut deserializer)
-        .map_err(|e| format_json_decode_error(format_json_decode_path(e.path()), e.inner()))?;
+    let value = serde_path_to_error::deserialize(&mut deserializer).map_err(|e| {
+        format_json_decode_error(
+            format_json_decode_path(e.path(), T::DECODE_PATH_SCHEMA),
+            e.inner(),
+        )
+    })?;
     deserializer
         .end()
         .map_err(|e| format_json_decode_error(".".to_string(), &e))?;
     Ok(value)
 }
 
-fn format_json_decode_path(path: &serde_path_to_error::Path) -> String {
+fn format_json_decode_path(
+    path: &serde_path_to_error::Path,
+    schema: &'static api_contracts::DecodePathSchema,
+) -> String {
     let mut formatted = String::new();
-    let mut redact_next_map_key = false;
+    let mut cursor = schema.root();
 
     for segment in path {
         match segment {
@@ -1276,18 +1391,23 @@ fn format_json_decode_path(path: &serde_path_to_error::Path) -> String {
                 formatted.push('[');
                 formatted.push_str(&index.to_string());
                 formatted.push(']');
+                cursor = cursor.sequence_item();
             }
             serde_path_to_error::Segment::Map { key } => {
-                push_json_path_map_segment(&mut formatted, key, redact_next_map_key);
-                redact_next_map_key = !redact_next_map_key && is_dynamic_json_map_field(key);
+                let (segment, next_cursor) = match cursor.map_segment(key) {
+                    api_contracts::DecodePathMapSegment::Field(next) => (key.as_str(), next),
+                    api_contracts::DecodePathMapSegment::DynamicKey(next) => ("<map-key>", next),
+                    api_contracts::DecodePathMapSegment::Unknown(next) => ("<field>", next),
+                };
+                push_json_path_segment(&mut formatted, segment);
+                cursor = next_cursor;
             }
             serde_path_to_error::Segment::Enum { .. } => {
                 push_json_path_segment(&mut formatted, "<variant>");
-                redact_next_map_key = false;
             }
             serde_path_to_error::Segment::Unknown => {
                 push_json_path_segment(&mut formatted, "?");
-                redact_next_map_key = false;
+                cursor = cursor.unknown();
             }
         }
     }
@@ -1299,139 +1419,11 @@ fn format_json_decode_path(path: &serde_path_to_error::Path) -> String {
     }
 }
 
-fn push_json_path_map_segment(formatted: &mut String, key: &str, redact: bool) {
-    let segment = if redact {
-        "<map-key>"
-    } else if is_static_json_field(key) {
-        key
-    } else {
-        "<field>"
-    };
-    push_json_path_segment(formatted, segment);
-}
-
 fn push_json_path_segment(formatted: &mut String, segment: &str) {
     if !formatted.is_empty() {
         formatted.push('.');
     }
     formatted.push_str(segment);
-}
-
-fn is_dynamic_json_map_field(field: &str) -> bool {
-    matches!(
-        field,
-        "vars"
-            | "environment"
-            | "secretConnectorMap"
-            | "secretConnectorMetadataMap"
-            | "baseUrlVars"
-            | "headers"
-            | "query"
-            | "networkPolicies"
-            | "featureFlags"
-    )
-}
-
-// serde_path_to_error reports both struct fields and runtime map keys as Map
-// segments, so only known response schema fields are safe to print verbatim.
-fn is_static_json_field(field: &str) -> bool {
-    matches!(
-        field,
-        "allow"
-            | "allowNonDefaultPort"
-            | "apiStartTime"
-            | "apis"
-            | "archiveSize"
-            | "archiveUrl"
-            | "artifacts"
-            | "ask"
-            | "auth"
-            | "accessKeyId"
-            | "awsSigv4"
-            | "base"
-            | "baseUrlVars"
-            | "billableFirewalls"
-            | "cached"
-            | "capability"
-            | "catalogDigest"
-            | "catalogVersion"
-            | "captureNetworkBodies"
-            | "cliAgentType"
-            | "cliAgentSessionId"
-            | "clientId"
-            | "realAgentInPreview"
-            | "deny"
-            | "description"
-            | "disallowedTools"
-            | "encodedSize"
-            | "encoding"
-            | "encryptedSecrets"
-            | "empty"
-            | "environment"
-            | "experimentalProfile"
-            | "expires"
-            | "exactHosts"
-            | "featureFlags"
-            | "firewall"
-            | "firewalls"
-            | "headers"
-            | "hash"
-            | "historyRef"
-            | "hostPolicy"
-            | "heldSandboxStates"
-            | "heldWorkspaceStates"
-            | "instructionsTargetFilename"
-            | "issued"
-            | "job"
-            | "keyName"
-            | "kind"
-            | "mac"
-            | "metadataKey"
-            | "missingRootPolicy"
-            | "modelUsageProvider"
-            | "mountPath"
-            | "name"
-            | "networkPolicies"
-            | "nonce"
-            | "permissions"
-            | "prompt"
-            | "query"
-            | "rawSize"
-            | "resumeSession"
-            | "rules"
-            | "runId"
-            | "sandboxToken"
-            | "secretConnectorMap"
-            | "secretConnectorMetadataMap"
-            | "secretAccessKey"
-            | "secretValues"
-            | "sessionToken"
-            | "sessionHistory"
-            | "sessionId"
-            | "settings"
-            | "size"
-            | "sourceType"
-            | "sourceUserId"
-            | "storageManifest"
-            | "storageId"
-            | "storageMounts"
-            | "storages"
-            | "suffixes"
-            | "timestamp"
-            | "token"
-            | "lastCompletedAt"
-            | "tools"
-            | "ttl"
-            | "unknownPolicy"
-            | "url"
-            | "userTimezone"
-            | "vars"
-            | "vasStorageId"
-            | "vasStorageName"
-            | "vasVersionId"
-            | "versionId"
-            | "writeback"
-    )
 }
 
 fn format_json_decode_error(mut path: String, error: &serde_json::Error) -> String {
@@ -1516,17 +1508,28 @@ mod tests {
     use uuid::Uuid;
 
     use crate::http::HttpClientConfig;
-    use crate::provider::RunnerPreferenceReason;
+    use crate::provider::{
+        ActiveRunnerPreference, RunnerNoPreferenceReason, RunnerPreference,
+        RunnerPreferenceRemovalReason, RunnerPreferenceTier,
+    };
 
     const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
         "../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/runner-claim-response.json"
     );
     const RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID: &str = "00000000-0000-4000-8000-000000020985";
     const TEST_RUNNER_ID: &str = "550e8400-e29b-41d4-a716-446655440000";
+
     const TEST_HEARTBEAT_GENERATION: u64 = 7;
 
     fn claim_request_body_for_test(candidate: &JobCandidate) -> ClaimRequestBody<'_> {
         claim_request_body(candidate, TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+    }
+
+    #[test]
+    fn active_input_source_requires_a_thread_run() {
+        assert!(supports_thread_active_input(Some("thread:chat-id")));
+        assert!(!supports_thread_active_input(Some("goal:goal-id")));
+        assert!(!supports_thread_active_input(None));
     }
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
@@ -1541,31 +1544,33 @@ mod tests {
         )
     }
 
-    #[test]
-    fn network_policy_refresh_request_uses_short_timeout() {
-        let server = MockServer::start();
-        let api = api_client_for_server(&server);
+    async fn claim_decode_error(
+        server: &MockServer,
+        run_id: RunId,
+        body: serde_json::Value,
+    ) -> String {
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(body);
+            })
+            .await;
+        let api = api_client_for_server(server);
+        let error = api
+            .claim_for_test(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+        mock.assert_async().await;
+        mock.delete_async().await;
 
-        let request = api
-            .network_policy_refresh_request(
-                "00000000-0000-0000-0000-000000000001",
-                &["slack".to_string()],
-            )
-            .build()
-            .expect("network policy refresh request should build");
-
-        assert_eq!(request.timeout(), Some(&NETWORK_POLICY_REFRESH_TIMEOUT));
-        assert_eq!(
-            request.url().path(),
-            "/api/runners/runs/00000000-0000-0000-0000-000000000001/network-policy-refresh"
-        );
-        assert_eq!(
-            request
-                .body()
-                .and_then(reqwest::Body::as_bytes)
-                .expect("request should include JSON body"),
-            br#"{"connectorSlugs":["slack"]}"#
-        );
+        let ClaimApiError::ResponseDecode(message) = error else {
+            panic!("expected ClaimApiError::ResponseDecode");
+        };
+        message
     }
 
     #[test]
@@ -1748,7 +1753,7 @@ mod tests {
             "runner-token".to_string(),
         );
         Arc::new(ApiProvider {
-            network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
+            connector_runtime_sync: ConnectorRuntimeSyncHandle::new(api.clone()),
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
             runner_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
@@ -1762,6 +1767,7 @@ mod tests {
             ),
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
+            active_input_notifications: ActiveInputNotifications::new(),
             cancel_tokens: RunCancellationRegistry::new(),
             cancel,
         })
@@ -1940,6 +1946,18 @@ mod tests {
         );
     }
 
+    fn complete_request(run_id: RunId) -> CompleteRequest {
+        CompleteRequest {
+            run_id,
+            exit_code: 0,
+            error: None,
+            sandbox_id: None,
+            sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+            active_input_delivery_ids: Vec::new(),
+        }
+    }
+
     #[tokio::test]
     async fn heartbeat_send_failure_logs_transport_and_state_context_without_secrets() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -2085,13 +2103,94 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
-        assert!(body.get("runnerPreference").is_none());
+        assert!(body["telemetry"].get("runnerPreference").is_none());
+        assert!(
+            body["telemetry"]
+                .get("runnerPreferenceClaimState")
+                .is_none()
+        );
         assert!(!body.to_string().contains("rawSizeBytes"));
         assert!(!body.to_string().contains("sessionId"));
         assert!(!body.to_string().contains("historyHash"));
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
         assert!(body.get("capabilities").is_none());
+    }
+
+    #[test]
+    fn claim_request_body_serializes_canonical_preference_at_claim_time() {
+        let active_preference = ActiveRunnerPreference::ranked_for_test(
+            TEST_RUNNER_ID.parse().unwrap(),
+            TEST_HEARTBEAT_GENERATION,
+            RunnerPreferenceTier::WorkspaceCache,
+            Instant::now() + Duration::from_secs(60),
+        );
+        let active = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+            .with_runner_preference_for_test(active_preference);
+        let active_body = serde_json::to_value(claim_request_body_for_test(&active)).unwrap();
+        assert_eq!(
+            active_body["telemetry"]["runnerPreference"]["kind"],
+            "preference"
+        );
+        assert_eq!(
+            active_body["telemetry"]["runnerPreference"]["tier"],
+            "workspaceCache"
+        );
+        assert_eq!(
+            active_body["telemetry"]["runnerPreference"]["runnerIdentity"]["runnerId"],
+            TEST_RUNNER_ID
+        );
+        assert_eq!(
+            active_body["telemetry"]["runnerPreferenceClaimState"],
+            "active"
+        );
+
+        let expired_preference = ActiveRunnerPreference::ranked_for_test(
+            TEST_RUNNER_ID.parse().unwrap(),
+            TEST_HEARTBEAT_GENERATION,
+            RunnerPreferenceTier::ExactSandbox,
+            Instant::now() - Duration::from_secs(1),
+        );
+        let expired = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+            .with_runner_preference_for_test(expired_preference);
+        let expired_body = serde_json::to_value(claim_request_body_for_test(&expired)).unwrap();
+        assert_eq!(
+            expired_body["telemetry"]["runnerPreferenceClaimState"],
+            "expired"
+        );
+
+        let cleared_preference = ActiveRunnerPreference::ranked_for_test(
+            Uuid::from_u128(8),
+            TEST_HEARTBEAT_GENERATION,
+            RunnerPreferenceTier::FinalizingPredecessor,
+            Instant::now() + Duration::from_secs(60),
+        );
+        let cleared = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+            .with_runner_preference_for_test(cleared_preference)
+            .without_runner_preference(RunnerPreferenceRemovalReason::Cleared);
+        let cleared_body = serde_json::to_value(claim_request_body_for_test(&cleared)).unwrap();
+        assert_eq!(
+            cleared_body["telemetry"]["runnerPreferenceClaimState"],
+            "cleared"
+        );
+        let no_preference =
+            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+                .with_no_runner_preference_for_test(RunnerNoPreferenceReason::NoViableHolder);
+        let no_preference_body =
+            serde_json::to_value(claim_request_body_for_test(&no_preference)).unwrap();
+        assert_eq!(
+            no_preference_body["telemetry"]["runnerPreference"]["kind"],
+            "noPreference"
+        );
+        assert_eq!(
+            no_preference_body["telemetry"]["runnerPreference"]["reason"],
+            "noViableHolder"
+        );
+        assert!(
+            no_preference_body["telemetry"]
+                .get("runnerPreferenceClaimState")
+                .is_none()
+        );
     }
 
     #[test]
@@ -2316,11 +2415,12 @@ mod tests {
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
                         "runnerPreference": {
+                            "kind": "preference",
                             "runnerIdentity": {
                                 "runnerId": "00000000-0000-0000-0000-000000000005",
                                 "heartbeatGeneration": 7
                             },
-                            "reason": "exactHistoryGeneration",
+                            "tier": "exactSandbox",
                             "expiresAt": "2999-01-01T00:00:00.000Z"
                         }
                     }
@@ -2348,11 +2448,19 @@ mod tests {
         let preference = discovered
             .runner_preference()
             .expect("canonical preference should be parsed");
-        assert_eq!(
-            preference.reason(),
-            RunnerPreferenceReason::ExactHistoryGeneration
-        );
+        assert_eq!(preference.tier(), RunnerPreferenceTier::ExactSandbox);
         assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
+        let telemetry = discovered
+            .runner_preference_claim_telemetry()
+            .expect("canonical preference telemetry");
+        assert!(matches!(
+            telemetry.runner_preference,
+            RunnerPreference::Preference {
+                tier: RunnerPreferenceTier::ExactSandbox,
+                ..
+            }
+        ));
+        assert_eq!(telemetry.state, Some(RunnerPreferenceClaimState::Active));
         assert_eq!(
             discovered.discovery_source(),
             Some(JobDiscoverySource::Poll)
@@ -2363,7 +2471,52 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_preserves_poll_job_with_malformed_optional_preference() {
+    async fn discover_parses_canonical_no_preference() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::new_v4();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": run_id,
+                        "experimentalProfile": "vm0/default",
+                        "runnerPreference": {
+                            "kind": "noPreference",
+                            "reason": "noViableHolder"
+                        }
+                    }
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test_with_supported_profiles(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+            vec!["vm0/default".to_string()],
+        );
+
+        let candidate = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("discover should preserve the job")
+            .expect("job candidate");
+
+        assert!(candidate.runner_preference().is_none());
+        let telemetry = candidate
+            .runner_preference_claim_telemetry()
+            .expect("no-preference telemetry");
+        assert!(matches!(
+            telemetry.runner_preference,
+            RunnerPreference::NoPreference {
+                reason: RunnerNoPreferenceReason::NoViableHolder
+            }
+        ));
+        assert_eq!(telemetry.state, None);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn discover_preserves_poll_job_after_malformed_preference() {
         let server = MockServer::start_async().await;
         let run_id = RunId::new_v4();
         let mock = server
@@ -2375,11 +2528,12 @@ mod tests {
                         "experimentalProfile": "vm0/default",
                         "reuseKey": "thread:malformed-preference",
                         "runnerPreference": {
+                            "kind": "preference",
                             "runnerIdentity": {
                                 "runnerId": TEST_RUNNER_ID,
                                 "heartbeatGeneration": 0
                             },
-                            "reason": "matchingReuseKey",
+                            "tier": "workspaceCache",
                             "expiresAt": "2999-01-01T00:00:00.000Z"
                         }
                     }
@@ -2401,6 +2555,42 @@ mod tests {
         assert_eq!(candidate.run_id(), run_id);
         assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
         assert!(candidate.runner_preference().is_none());
+        assert!(candidate.runner_preference_claim_telemetry().is_none());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn discover_preserves_poll_job_without_preference() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::new_v4();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": run_id,
+                        "experimentalProfile": "vm0/default",
+                        "reuseKey": "thread:missing-preference"
+                    }
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test_with_supported_profiles(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+            vec!["vm0/default".to_string()],
+        );
+
+        let candidate = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("discover should preserve the job")
+            .expect("job candidate");
+
+        assert_eq!(candidate.run_id(), run_id);
+        assert_eq!(candidate.reuse_key(), Some("thread:missing-preference"));
+        assert!(candidate.runner_preference().is_none());
+        assert!(candidate.runner_preference_claim_telemetry().is_none());
         mock.assert_async().await;
     }
 
@@ -2639,7 +2829,6 @@ mod tests {
             !format!("{event:#?}").contains("sensitive-claim-rejection-body"),
             "claim failure event must not contain the response body"
         );
-
         let next = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
             .expect("claim failure should poll for another candidate")
@@ -3229,7 +3418,8 @@ mod tests {
                         "kind": "secret-kind-value",
                         "name": "github"
                     }],
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3278,7 +3468,8 @@ mod tests {
                         "kind": "missing field `secret-kind-value`",
                         "name": "github"
                     }],
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3327,7 +3518,8 @@ mod tests {
                         "name": "github",
                         "apis": []
                     }],
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3386,7 +3578,8 @@ mod tests {
                             "encodedSize": 42
                         }
                     },
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3434,7 +3627,8 @@ mod tests {
                     "environment": {
                         "OPENAI_API_KEY": 123
                     },
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3463,6 +3657,215 @@ mod tests {
             !message.contains("claim-sandbox-token"),
             "decode error must not include response body values, got: {message}"
         );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_path_uses_current_codex_and_pi_schema_fields() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let codex_error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "claude_code",
+                "connectorRuntimeTargets": [],
+                "codexRuntimeConfig": {
+                    "providerId": 123,
+                    "name": "provider",
+                    "baseUrl": "https://api.example.com",
+                    "envKey": "OPENAI_API_KEY",
+                    "wireApi": "responses",
+                    "supportsWebsockets": false
+                }
+            }),
+        )
+        .await;
+        assert!(
+            codex_error.contains("failed at codexRuntimeConfig.providerId"),
+            "unexpected Codex decode error: {codex_error}"
+        );
+        assert!(!codex_error.contains("claim-sandbox-token"));
+
+        let pi_error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "pi",
+                "connectorRuntimeTargets": [],
+                "piLaunchConfig": {
+                    "schemaVersion": 2
+                },
+                "piSessionId": "00000000-0000-0000-0000-000000000001",
+                "piModelConfig": {
+                    "provider": "openai",
+                    "baseUrl": "https://api.example.com",
+                    "model": "gpt-5",
+                    "apiKeyEnv": 123
+                }
+            }),
+        )
+        .await;
+        assert!(
+            pi_error.contains("failed at piModelConfig.apiKeyEnv"),
+            "unexpected Pi decode error: {pi_error}"
+        );
+        assert!(!pi_error.contains("claim-sandbox-token"));
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_path_redacts_policy_refresh_key_then_resumes_static_field() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "claude_code",
+                "connectorRuntimeTargets": [],
+                "networkPolicyRefreshes": {
+                    "secret-connector-name": {
+                        "nextRefreshAt": 123
+                    }
+                }
+            }),
+        )
+        .await;
+
+        assert!(
+            error.contains("failed at networkPolicyRefreshes.<map-key>.nextRefreshAt"),
+            "unexpected typed map decode error: {error}"
+        );
+        assert!(!error.contains("secret-connector-name"));
+        assert!(!error.contains("claim-sandbox-token"));
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_path_redacts_colliding_dynamic_keys() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "claude_code",
+                "connectorRuntimeTargets": [],
+                "environment": {"prompt": 123}
+            }),
+        )
+        .await;
+
+        assert!(
+            error.contains("failed at environment.<map-key>"),
+            "unexpected colliding key decode error: {error}"
+        );
+        assert!(!error.contains("environment.prompt"));
+        assert!(!error.contains("claim-sandbox-token"));
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_path_redacts_codex_header_keys() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let error = claim_decode_error(
+            &server,
+            run_id,
+            serde_json::json!({
+                "runId": run_id,
+                "prompt": "hello",
+                "sandboxToken": "claim-sandbox-token",
+                "cliAgentType": "claude_code",
+                "connectorRuntimeTargets": [],
+                "codexRuntimeConfig": {
+                    "providerId": "provider",
+                    "name": "provider",
+                    "baseUrl": "https://api.example.com",
+                    "envKey": "OPENAI_API_KEY",
+                    "httpHeaders": {"secret-header-name": 123},
+                    "wireApi": "responses",
+                    "supportsWebsockets": false
+                }
+            }),
+        )
+        .await;
+
+        assert!(
+            error.contains("failed at codexRuntimeConfig.httpHeaders.<map-key>"),
+            "unexpected Codex header decode error: {error}"
+        );
+        assert!(!error.contains("secret-header-name"));
+        assert!(!error.contains("claim-sandbox-token"));
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_decode_path_uses_poll_response_schema() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200).json_body(serde_json::json!({
+                    "job": {"runId": 123, "experimentalProfile": "vm0/default"}
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+        let error = api
+            .poll(TEST_RUNNER_ID, "default", &[], &[], PollReason::Immediate)
+            .await
+            .unwrap_err();
+        let RunnerError::Api(error) = error else {
+            panic!("expected RunnerError::Api");
+        };
+
+        assert!(
+            error.contains("failed at job.runId"),
+            "unexpected poll decode error: {error}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_builtin_catalog_decode_path_redacts_firewall_map_keys() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::builtin_firewalls::resolve::RESOLVE.path);
+                then.status(200).json_body(serde_json::json!({
+                    "catalogDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "catalogVersion": "test-catalog",
+                    "firewalls": {
+                        "secret-firewall-name": {
+                            "name": "github",
+                            "apis": [{"base": 123, "auth": {"headers": {}}}]
+                        }
+                    }
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+        let error = api.resolve_builtin_firewall_catalog().await.unwrap_err();
+        let RunnerError::Api(error) = error else {
+            panic!("expected RunnerError::Api");
+        };
+
+        assert!(
+            error.contains("failed at firewalls.<map-key>.apis[0].base"),
+            "unexpected builtin catalog decode error: {error}"
+        );
+        assert!(!error.contains("secret-firewall-name"));
         mock.assert_async().await;
     }
 
@@ -3517,7 +3920,18 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .complete("sandbox-token", RunId::nil(), 1, Some("boom"), None, None)
+            .complete(
+                "sandbox-token",
+                &CompleteRequest {
+                    run_id: RunId::nil(),
+                    exit_code: 1,
+                    error: Some("boom".to_string()),
+                    sandbox_id: None,
+                    sandbox_reuse_result: None,
+                    workspace_reuse_result: None,
+                    active_input_delivery_ids: Vec::new(),
+                },
+            )
             .await
             .unwrap_err();
 
@@ -3543,6 +3957,7 @@ mod tests {
                         "runId": run_id,
                         "exitCode": 0,
                         "sandboxReuseResult": "noReuseKey",
+                        "workspaceReuseResult": "noReuseKey",
                     }));
                 then.status(200);
             })
@@ -3551,11 +3966,15 @@ mod tests {
 
         api.complete(
             "sandbox-token",
-            run_id,
-            0,
-            None,
-            None,
-            Some(SandboxReuseResult::NoReuseKey),
+            &CompleteRequest {
+                run_id,
+                exit_code: 0,
+                error: None,
+                sandbox_id: None,
+                sandbox_reuse_result: Some(SandboxReuseResult::NoReuseKey),
+                workspace_reuse_result: Some(WorkspaceReuseResult::NoReuseKey),
+                active_input_delivery_ids: Vec::new(),
+            },
         )
         .await
         .unwrap();
@@ -3700,7 +4119,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_provider_claim_accepts_previous_minimal_response() {
+    async fn api_provider_claim_accepts_current_minimal_response() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
         let claim_path = format!("/api/runners/jobs/{run_id}/claim");
@@ -3719,9 +4138,10 @@ mod tests {
                     );
                 then.status(200).json_body(serde_json::json!({
                     "runId": run_id,
-                    "prompt": "previous response",
-                    "sandboxToken": "previous-sandbox-token",
-                    "cliAgentType": "claude_code"
+                    "prompt": "minimal response",
+                    "sandboxToken": "minimal-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3737,10 +4157,10 @@ mod tests {
                 crate::profile::DEFAULT_PROFILE.to_string(),
             ))
             .await
-            .expect("previous minimal claim response should remain compatible");
+            .expect("current minimal claim response should decode");
         let context = claimed.context();
 
-        assert_eq!(context.prompt, "previous response");
+        assert_eq!(context.prompt, "minimal response");
         assert!(context.append_system_prompt.is_none());
         assert!(context.billable_firewalls.is_empty());
         claim_mock.assert_calls_async(1).await;
@@ -3759,6 +4179,7 @@ mod tests {
                     "prompt": "response with additive field",
                     "sandboxToken": "additive-sandbox-token",
                     "cliAgentType": "claude_code",
+                    "connectorRuntimeTargets": [],
                     "futureClaimMetadata": {"version": 2}
                 }));
             })
@@ -3794,6 +4215,7 @@ mod tests {
                     "prompt": "attempt local secret trust",
                     "sandboxToken": "local-secret-sandbox-token",
                     "cliAgentType": "claude_code",
+                    "connectorRuntimeTargets": [],
                     "localSecretEnvKeys": ["ANTHROPIC_API_KEY"]
                 }));
             })
@@ -3830,7 +4252,8 @@ mod tests {
                     "prompt": "hello",
                     "sandboxToken": "claim-sandbox-token",
                     "cliAgentType": "claude_code",
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3840,11 +4263,8 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
-            run_id,
-            crate::profile::DEFAULT_PROFILE.to_string(),
-        )))
-        .await;
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+        let (claimed, events) = capture_api_provider_events(provider.claim(candidate)).await;
 
         assert!(claimed.is_none());
         let event = captured_event(&events, "claim failed, candidate cooling down");
@@ -3870,7 +4290,8 @@ mod tests {
                     "prompt": "hello",
                     "sandboxToken": "claim-sandbox-token",
                     "cliAgentType": "claude_code",
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3888,11 +4309,8 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
-            run_id,
-            crate::profile::DEFAULT_PROFILE.to_string(),
-        )))
-        .await;
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+        let (claimed, events) = capture_api_provider_events(provider.claim(candidate)).await;
         let claimed = claimed.expect("claim should succeed");
         let event = captured_event(&events, "job claimed");
         assert_eq!(
@@ -3905,7 +4323,7 @@ mod tests {
         assert!(active_input_source.is_none());
 
         provider
-            .complete(run_id, 0, None, None, None, completion_auth)
+            .complete(complete_request(run_id), completion_auth)
             .await;
 
         claim_mock.assert_calls_async(1).await;
@@ -3927,7 +4345,8 @@ mod tests {
                     "prompt": "first",
                     "sandboxToken": "sandbox-token-a",
                     "cliAgentType": "claude_code",
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3939,7 +4358,8 @@ mod tests {
                     "prompt": "second",
                     "sandboxToken": "sandbox-token-b",
                     "cliAgentType": "claude_code",
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3993,10 +4413,10 @@ mod tests {
         assert!(active_input_source_b.is_none());
 
         provider
-            .complete(context_b.run_id, 0, None, None, None, completion_auth_b)
+            .complete(complete_request(context_b.run_id), completion_auth_b)
             .await;
         provider
-            .complete(context_a.run_id, 0, None, None, None, completion_auth_a)
+            .complete(complete_request(context_a.run_id), completion_auth_a)
             .await;
 
         claim_mock_a.assert_calls_async(1).await;
@@ -4025,11 +4445,7 @@ mod tests {
 
         provider
             .complete(
-                run_id,
-                0,
-                None,
-                None,
-                None,
+                complete_request(run_id),
                 CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
             )
             .await;
@@ -4054,7 +4470,7 @@ mod tests {
         );
 
         provider
-            .complete(RunId::nil(), 0, None, None, None, CompletionAuth::local())
+            .complete(complete_request(RunId::nil()), CompletionAuth::local())
             .await;
 
         mock.assert_calls_async(0).await;
@@ -4078,11 +4494,7 @@ mod tests {
 
         provider
             .complete(
-                RunId::nil(),
-                0,
-                None,
-                None,
-                None,
+                complete_request(RunId::nil()),
                 CompletionAuth::sandbox_token(RunId::new_v4(), "sandbox-token".to_string()),
             )
             .await;
@@ -4104,11 +4516,7 @@ mod tests {
             capture_api_provider_events(async move {
                 provider
                     .complete(
-                        run_id,
-                        0,
-                        None,
-                        None,
-                        None,
+                        complete_request(run_id),
                         CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
                     )
                     .await;
@@ -4163,11 +4571,7 @@ mod tests {
             let complete_task = tokio::spawn(async move {
                 provider
                     .complete(
-                        run_id,
-                        0,
-                        None,
-                        None,
-                        None,
+                        complete_request(run_id),
                         CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
                     )
                     .await;
@@ -4214,11 +4618,7 @@ mod tests {
         let complete_task = tokio::spawn(async move {
             provider
                 .complete(
-                    run_id,
-                    0,
-                    None,
-                    None,
-                    None,
+                    complete_request(run_id),
                     CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
                 )
                 .await;
@@ -4251,11 +4651,7 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
         let ((), events) = capture_api_provider_events(provider.complete(
-            run_id,
-            0,
-            None,
-            None,
-            None,
+            complete_request(run_id),
             CompletionAuth::sandbox_token(run_id, "invalid\nheader".to_string()),
         ))
         .await;
@@ -4283,11 +4679,11 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         let completion = provider
             .complete(
-                run_id,
-                1,
-                Some("boom"),
-                None,
-                None,
+                CompleteRequest {
+                    exit_code: 1,
+                    error: Some("boom".to_string()),
+                    ..complete_request(run_id)
+                },
                 CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
             )
             .with_subscriber(subscriber);

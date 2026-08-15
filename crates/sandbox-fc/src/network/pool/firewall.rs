@@ -4,7 +4,6 @@ use std::io::Write;
 use tracing::{info, warn};
 
 use crate::command::{CommandError, exec_status_with_timeout, exec_with_timeout};
-use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
 
 use super::super::error::{NetworkError, Result};
 use super::HOST_NETWORK_COMMAND_TIMEOUT;
@@ -13,8 +12,6 @@ use super::naming::{
     make_pool_dns_filter_comment, parse_netns_name,
 };
 use super::types::NamespaceDeleteOutcome;
-
-const GUEST_DNS_READINESS_IPV4: &str = "8.8.8.8/32";
 
 /// Configuration for one namespace's host firewall transaction.
 #[derive(Clone, Copy)]
@@ -113,28 +110,6 @@ pub(super) async fn apply_namespace_rules(
 ) -> Result<()> {
     let firewall = namespace_firewall_restore_tables(name, host_device, peer_ip, config);
     apply_firewall_rules_with_restore("iptables-restore", &firewall).await
-}
-
-/// Install root-netfilter guest DNS diagnostics without failing namespace use.
-pub(super) async fn apply_namespace_guest_dns_trace_rules(
-    command: &str,
-    name: &str,
-    host_device: &str,
-    peer_ip: &str,
-) -> bool {
-    let firewall = namespace_guest_dns_trace_restore_tables(name, host_device, peer_ip);
-    match apply_firewall_rules_with_restore(command, &firewall).await {
-        Ok(()) => true,
-        Err(error) => {
-            warn!(
-                name,
-                host_device,
-                %error,
-                "root netfilter trace rules unavailable; namespace remains usable"
-            );
-            false
-        }
-    }
 }
 
 /// Delete IPv4 firewall rules with the exact `comment`.
@@ -306,25 +281,6 @@ fn namespace_firewall_restore_tables(
             rules: filter,
         },
     ]
-}
-
-fn namespace_guest_dns_trace_restore_tables(
-    name: &str,
-    host_device: &str,
-    peer_ip: &str,
-) -> Vec<FirewallRestoreTable> {
-    let peer = format!("{peer_ip}/32");
-    vec![FirewallRestoreTable {
-        table: "raw",
-        rules: vec![
-            format!(
-                "-I PREROUTING 1 -i {host_device} -s {peer} -d {GUEST_DNS_READINESS_IPV4} -p udp --dport 53 -m length --length {GUEST_DNS_READINESS_PACKET_BYTES} -m comment --comment {name} -j TRACE"
-            ),
-            format!(
-                "-I PREROUTING 1 -i {host_device} -s {peer} -d {GUEST_DNS_READINESS_IPV4} -p tcp --dport 53 -m comment --comment {name} -j TRACE"
-            ),
-        ],
-    }]
 }
 
 #[derive(Debug)]
@@ -601,6 +557,7 @@ async fn run_firewall_restore(
         Err(error) => {
             return Err(CommandError {
                 command: command.to_string(),
+                exit_code: None,
                 detail: format!("failed to create firewall restore input: {error}"),
             });
         }
@@ -608,12 +565,14 @@ async fn run_firewall_restore(
     if let Err(error) = file.write_all(payload.as_bytes()) {
         return Err(CommandError {
             command: command.to_string(),
+            exit_code: None,
             detail: format!("failed to write firewall restore input: {error}"),
         });
     }
     let Some(path) = file.path().to_str() else {
         return Err(CommandError {
             command: command.to_string(),
+            exit_code: None,
             detail: format!(
                 "firewall restore input path is not UTF-8: {}",
                 file.path().display()
@@ -658,35 +617,6 @@ mod tests {
             payload,
             "*raw\n-I PREROUTING 1 -m comment --comment vm0-ns-00-00 -j DROP\nCOMMIT\n*filter\n-A FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT\nCOMMIT\n"
         );
-    }
-
-    #[test]
-    fn guest_dns_trace_rules_match_only_readiness_udp_and_dns_tcp() {
-        let tables =
-            namespace_guest_dns_trace_restore_tables("vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2");
-
-        assert_eq!(tables.len(), 1);
-        assert_eq!(tables[0].table, "raw");
-        assert_eq!(
-            tables[0].rules,
-            vec![
-                "-I PREROUTING 1 -i vm0-ve-00-01 -s 10.200.0.2/32 -d 8.8.8.8/32 -p udp --dport 53 -m length --length 67 -m comment --comment vm0-ns-00-01 -j TRACE",
-                "-I PREROUTING 1 -i vm0-ve-00-01 -s 10.200.0.2/32 -d 8.8.8.8/32 -p tcp --dport 53 -m comment --comment vm0-ns-00-01 -j TRACE",
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn guest_dns_trace_rule_failure_is_best_effort() {
-        let applied = apply_namespace_guest_dns_trace_rules(
-            "false",
-            "vm0-ns-00-01",
-            "vm0-ve-00-01",
-            "10.200.0.2",
-        )
-        .await;
-
-        assert!(!applied);
     }
 
     #[test]

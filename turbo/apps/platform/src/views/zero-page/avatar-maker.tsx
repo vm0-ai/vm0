@@ -12,13 +12,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-} from "@vm0/ui";
-import {
-  IconWand,
-  IconChevronLeft,
-  IconChevronRight,
-  IconDice,
-} from "@tabler/icons-react";
+} from "@okouai/ui";
+import { Wand, ChevronLeft, ChevronRight, Dices } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
@@ -247,9 +242,8 @@ function AvatarPreviewWithShuffle() {
                 return $.avatar.randomize;
               })}
             >
-              <IconDice
+              <Dices
                 size={14}
-                stroke={1.5}
                 style={
                   shuffling
                     ? { animation: "avatar-dice-spin 0.6s ease-out" }
@@ -330,7 +324,7 @@ function StepNavigator() {
             return $.avatar.previousStep;
           })}
         >
-          <IconChevronLeft size={14} />
+          <ChevronLeft size={14} />
         </button>
         <p
           className="min-w-[3rem] text-center text-xs font-semibold text-foreground"
@@ -350,7 +344,7 @@ function StepNavigator() {
             return $.avatar.nextStep;
           })}
         >
-          <IconChevronRight size={14} />
+          <ChevronRight size={14} />
         </button>
       </div>
     </>
@@ -506,7 +500,7 @@ export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
                   return $.avatar.create;
                 })}
               >
-                <IconWand size={16} stroke={1.5} />
+                <Wand size={16} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">

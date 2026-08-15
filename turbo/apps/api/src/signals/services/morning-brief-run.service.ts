@@ -1,17 +1,15 @@
 import { randomUUID } from "node:crypto";
-
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import {
   morningBriefDeliveries,
   morningBriefSchedules,
-} from "@vm0/db/schema/morning-brief";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+} from "@okouai/db/schema/morning-brief";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { command } from "ccstate";
 import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
-
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -19,7 +17,7 @@ import {
   publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
 } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { putS3Object } from "../external/s3";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { listPendingChatQueueEvents } from "./chat-event-queue.service";
@@ -36,9 +34,9 @@ import {
   nextMorningBriefRunAt,
 } from "./morning-brief-schedule.service";
 import { buildMorningBriefChatMessage } from "./morning-brief-run-prompt";
-import { insertChatEvent } from "./zero-chat-event.service";
+import { insertChatEvent } from "./chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
 import { resolveDefaultAgent } from "./zero-email-common.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -203,19 +201,21 @@ const stageMorningBriefInput$ = command(
     );
     const { dayStart, dayEnd } = morningBriefDayBounds(timezone, currentTime);
 
-    const input = await collectMorningBriefInput({
-      db,
-      orgId: row.orgId,
-      userId: row.userId,
-      briefDate,
-      timezone,
-      since,
-      until: currentTime,
-      dayStart,
-      dayEnd,
-      excludeChatThreadId: row.chatThreadId,
+    const input = await collectMorningBriefInput(
+      {
+        db,
+        orgId: row.orgId,
+        userId: row.userId,
+        briefDate,
+        timezone,
+        since,
+        until: currentTime,
+        dayStart,
+        dayEnd,
+        excludeChatThreadId: row.chatThreadId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (allSourcesFailed(input)) {
@@ -295,9 +295,14 @@ async function persistMorningBriefQueueEvent(
       id: randomUUID(),
       chatThreadId: args.chatThreadId,
       eventType: "input.prompt",
-      userMessage: createUserMessageDocument({ text: args.chatMessage }),
+      userMessage: createUserMessageDocument({
+        text: args.chatMessage,
+        nonContentPart: {
+          type: "morning_brief",
+          briefDate: claimed.briefDate,
+        },
+      }),
       runId: null,
-      triggerSource: "workflow-schedule",
       morningBriefContext: {
         deliveryId: claimed.deliveryId,
         timezone: claimed.timezone,
@@ -481,7 +486,7 @@ async function hasPendingMorningBriefQueueEvent(
     .where(
       and(
         inArray(chatEvents.id, pendingMessageIds),
-        eq(chatEvents.triggerSource, "workflow-schedule"),
+        eq(chatEvents.contextType, "morning_brief"),
       ),
     );
   for (const message of messages) {

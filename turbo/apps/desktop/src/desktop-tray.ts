@@ -15,6 +15,7 @@ import {
 import { latestWinsGuard } from "./desktop-async-control";
 
 interface DesktopTrayControllerOptions {
+  readonly brandName: "Zero" | "Okou";
   readonly displayName: string;
   readonly iconPath: string;
   readonly disabledIconPath: string;
@@ -156,6 +157,7 @@ export class DesktopTrayController {
     this.refreshIcon(tray, computerUseState);
     const items = buildDesktopTrayMenuItems(
       {
+        brandName: this.options.brandName,
         computerUse: computerUseState,
         auth: this.authState,
         authLoading: this.authLoading,

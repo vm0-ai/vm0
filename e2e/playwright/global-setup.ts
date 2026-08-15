@@ -2,7 +2,7 @@ import { clerkSetup } from "@clerk/testing/playwright";
 import {
   createOrganization,
   createUser,
-  deleteStaleTestUsers,
+  deleteClerkTestOwnerResources,
   generateTestEmail,
 } from "./lib/clerk-api";
 
@@ -13,14 +13,22 @@ export default async function globalSetup(): Promise<void> {
   // fetched inside one test body never reaches the other workers.
   await clerkSetup();
 
-  const email = generateTestEmail();
+  const email = generateTestEmail("playwright");
   console.log("[globalSetup] email:", email);
-
-  await deleteStaleTestUsers();
-  const userId = await createUser(email);
-  const orgId = await createOrganization("E2E Test Org", userId);
-  console.log("[globalSetup] userId:", userId, "orgId:", orgId);
-
   process.env.E2E_CLERK_USER_EMAIL = email;
-  process.env.E2E_CLERK_ORG_ID = orgId;
+
+  let organizationId: string | undefined;
+  try {
+    const userId = await createUser(email);
+    organizationId = await createOrganization(
+      "E2E Test Org",
+      userId,
+      "playwright",
+    );
+    process.env.E2E_CLERK_ORG_ID = organizationId;
+    console.log("[globalSetup] userId:", userId, "orgId:", organizationId);
+  } catch (cause) {
+    await deleteClerkTestOwnerResources(email, organizationId, "playwright");
+    throw cause;
+  }
 }

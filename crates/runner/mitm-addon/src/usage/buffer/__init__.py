@@ -83,12 +83,15 @@ def buffer_usage_events(
     run_id: str,
     events: Iterable[UsageEvent],
     proxy_log_path: str,
+    *,
+    accepted_source_keys: set[str] | None = None,
 ) -> int:
     """Buffer source events on the singleton and return the accepted count.
 
     Source idempotency-key duplicates are dropped before aggregation, so the
     accepted count can be smaller than the number of input events. A threshold
-    flush may be enqueued before this returns.
+    flush may be enqueued before this returns. When provided, the caller-owned
+    set accumulates the source payload keys accepted by this call.
     """
     return _usage_event_buffer.buffer_usage_events(
         url,
@@ -96,6 +99,7 @@ def buffer_usage_events(
         run_id,
         events,
         proxy_log_path,
+        accepted_source_keys=accepted_source_keys,
     )
 
 
@@ -105,14 +109,17 @@ def buffer_model_usage_observations(
     run_id: str,
     observations: Iterable[ModelUsageObservation],
     proxy_log_path: str,
+    *,
+    accepted_source_keys: set[str] | None = None,
 ) -> int:
-    """Buffer model usage observations with the observation webhook shape."""
+    """Buffer observations and optionally collect accepted source payload keys."""
     return _usage_event_buffer.buffer_model_usage_observations(
         url,
         sandbox_token,
         run_id,
         observations,
         proxy_log_path,
+        accepted_source_keys=accepted_source_keys,
     )
 
 
@@ -124,12 +131,14 @@ def buffer_source_usage_events(
     proxy_log_path: str,
     *,
     atomic_source_key: str | None = None,
+    accepted_source_keys: set[str] | None = None,
 ) -> int:
     """Buffer source events without replacing their idempotency keys.
 
     When ``atomic_source_key`` is provided, the batch is admitted only when the
     group key and every member event key are new to the bounded source-key set.
-    The internal group key is not included in the webhook payload.
+    The internal group key is not included in the webhook payload or accepted
+    source-key collector.
     """
     return _usage_event_buffer.buffer_usage_events(
         url,
@@ -139,6 +148,7 @@ def buffer_source_usage_events(
         proxy_log_path,
         preserve_source_idempotency=True,
         atomic_source_key=atomic_source_key,
+        accepted_source_keys=accepted_source_keys,
     )
 
 
@@ -148,8 +158,10 @@ def buffer_source_model_usage_observations(
     run_id: str,
     observations: Iterable[ModelUsageObservation],
     proxy_log_path: str,
+    *,
+    accepted_source_keys: set[str] | None = None,
 ) -> int:
-    """Buffer compact source observations without replacing their identities."""
+    """Buffer source observations and optionally collect accepted payload keys."""
     return _usage_event_buffer.buffer_model_usage_observations(
         url,
         sandbox_token,
@@ -157,6 +169,7 @@ def buffer_source_model_usage_observations(
         observations,
         proxy_log_path,
         preserve_source_idempotency=True,
+        accepted_source_keys=accepted_source_keys,
     )
 
 

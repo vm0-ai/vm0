@@ -1,8 +1,8 @@
 import { performance } from "node:perf_hooks";
 
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { safeSync } from "../utils";
 
@@ -75,7 +75,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_goal_drain_event_queue_age"
   | "api_dispatch_pre_create_zero_goal_drain_load_event"
   | "api_dispatch_pre_create_zero_goal_drain_load_target"
-  | "api_dispatch_pre_create_zero_goal_drain_reject_invalid_event"
+  | "api_dispatch_pre_create_zero_goal_drain_revoke_invalid_event"
   | "api_dispatch_pre_create_zero_goal_drain_resolve_model_context"
   | "api_dispatch_pre_create_zero_goal_drain_build_run_input"
   | "api_dispatch_pre_create_zero_goal_drain_handoff_run"
@@ -86,14 +86,14 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_workflow_automation_resolve_model_context"
   | "api_dispatch_pre_create_zero_workflow_automation_build_run_input"
   | "api_dispatch_pre_create_zero_workflow_automation_create_run"
-  | "api_dispatch_pre_create_zero_workflow_event_background_start_gap"
-  | "api_dispatch_pre_create_zero_workflow_event_load_source_state"
-  | "api_dispatch_pre_create_zero_workflow_event_load_external_events"
-  | "api_dispatch_pre_create_zero_workflow_event_load_automations"
-  | "api_dispatch_pre_create_zero_workflow_event_match_automations"
-  | "api_dispatch_pre_create_zero_workflow_event_record_processed_event"
-  | "api_dispatch_pre_create_zero_workflow_event_build_run_input"
-  | "api_dispatch_pre_create_zero_workflow_event_handoff_run"
+  | "api_dispatch_pre_create_zero_automation_event_background_start_gap"
+  | "api_dispatch_pre_create_zero_automation_event_load_source_state"
+  | "api_dispatch_pre_create_zero_automation_event_load_external_events"
+  | "api_dispatch_pre_create_zero_automation_event_load_automations"
+  | "api_dispatch_pre_create_zero_automation_event_match_automations"
+  | "api_dispatch_pre_create_zero_automation_event_record_processed_event"
+  | "api_dispatch_pre_create_zero_automation_event_build_run_input"
+  | "api_dispatch_pre_create_zero_automation_event_handoff_run"
   | "api_dispatch_check_org_tier"
   | "api_dispatch_check_run_admission"
   | "api_dispatch_prepare_run_callbacks"
@@ -115,7 +115,6 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_context_load_custom_connector_rows"
   | "api_dispatch_prepare_context_load_custom_connector_value_rows"
   | "api_dispatch_prepare_context_build_custom_connector_firewalls"
-  | "api_dispatch_prepare_context_decrypt_custom_connector_values"
   | "api_dispatch_prepare_context_render_custom_connector_auth_templates"
   | "api_dispatch_prepare_context_render_custom_connector_prefixes"
   | "api_dispatch_prepare_context_assemble_custom_connector_firewalls"
@@ -138,6 +137,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_check_vm0_credits"
   | "api_dispatch_insert_run_with_concurrency"
   | "api_dispatch_build_runner_job_payload"
+  | "api_dispatch_prepare_pi_launch_resources"
+  | "api_dispatch_prepare_pi_launch_resume_session"
   | "api_dispatch_persist_atomic_launch"
   | "api_dispatch_admission_lock_wait"
   | "api_dispatch_admission_lock_held"

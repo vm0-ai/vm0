@@ -1,6 +1,6 @@
-import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
+import { usageAllowanceAllocations } from "@okouai/db/schema/org-usage-allowance";
+import { usageEvent } from "@okouai/db/schema/usage-event";
+import { usageEventHourlyRollup } from "@okouai/db/schema/usage-event-hourly-rollup";
 import { command } from "ccstate";
 import {
   and,
@@ -23,7 +23,7 @@ import {
 } from "../../lib/db-raw-rows";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { timestampWithoutTimeZone } from "../external/time";
+import { timestampWithoutTimeZone } from "../../lib/time";
 import { lockUsageEventCompaction } from "./usage-event-compaction-lock.service";
 
 const L = logger("CronCompactUsageEvents");
@@ -503,7 +503,7 @@ async function loadCompactionCutoff(db: Pick<Db, "execute">): Promise<Date> {
     sql`
       SELECT (
         date_trunc('hour', timezone('UTC', statement_timestamp()))
-        - interval '1 hour'
+        - interval '4 days'
       )::timestamp AS cutoff
     `,
     cutoffRowSchema,

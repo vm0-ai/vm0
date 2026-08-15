@@ -104,7 +104,9 @@ export const RESOURCE_REGISTRY_VERSION = "v1";
 function privateR2ArchiveSource(
   path: string,
   sha256: string,
-): ResourceSourceRef {
+): ResourceSourceRef & {
+  readonly archive: NonNullable<ResourceSourceRef["archive"]>;
+} {
   return {
     path,
     archive: {
@@ -3625,7 +3627,7 @@ export function findPresentationRunbookPackage(
 
 /**
  * Resolve a runbook package archive by its pull resource id, shaped as a
- * RegistryEntry so the download route and `zero resource pull` can treat it like
+ * RegistryEntry so the download route and `okou resource pull` can treat it like
  * any other private archive.
  */
 export function findPresentationRunbookResource(
@@ -3662,12 +3664,71 @@ export interface WebsiteTemplatePackage {
   readonly slug: WebsiteTemplateItem["slug"];
   readonly name: WebsiteTemplateItem["title"];
   readonly description: WebsiteTemplateItem["description"];
-  readonly source: ResourceSourceRef;
+  readonly source: ResourceSourceRef & {
+    readonly archive: NonNullable<ResourceSourceRef["archive"]>;
+  };
 }
+
+export type WebsiteTemplateArchiveVersion = "latest" | "previous";
+
+export const WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV =
+  "OKOU_WEBSITE_TEMPLATE_ARCHIVE_VERSION";
 
 // Archive digests for uploaded private R2 website template packages. Keep these
 // in sync with the private R2 version ids served by the API download route.
 const WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
+  "black-slabs":
+    "38b2f826a86901e113b6e96b52563a839b729fc025fa793b1816d6149221bcf9",
+  "blueprint-grid":
+    "b5f058f3ec7881e642e31e44e7de1f94465bae783de7fc2d42727bbfd109fad2",
+  "coastal-hotel":
+    "6bba8c10b85a248a475624767616280fa5d29b757ce230fb4115d746b8b61386",
+  "dot-matrix":
+    "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+  "frame-stack":
+    "642db1ff8e1c98e4c390245cb0fcda5ce29503721bc2a513c38448b9d4e2d01c",
+  "frosted-scatter":
+    "548a1faf423baa1c7c11befe41a54ae398cfb5c94df7f957eff108e2afcd613a",
+  "gallery-wall":
+    "b477b2f05c266eccbd2ab3b822744873dd8a31db03981283688549f2936bd5c6",
+  "glass-bloom":
+    "8707cce50c5477d43912fd18aa5ab6973aae4fd2287a092967fa25bf4ea38e7c",
+  "serif-stack":
+    "718d617efd92033a68c476e85bb9231b1e0ff580c08a1f6bedf1b86058e97f13",
+  "sticker-pop":
+    "8145c78f932ae942108fba00c5de367958f12b4c492d61bc1310892abe51ca66",
+  "warm-cards":
+    "a795ef022e672d364c7a966eb042d38e460d4dcb996d5eecb0647aac5dd259df",
+};
+
+function websiteTemplateArchiveSha256(slug: string): string {
+  const sha256 = WEBSITE_TEMPLATE_ARCHIVE_SHA256[slug];
+  if (!sha256) {
+    throw new Error(`Missing website template archive sha256 for ${slug}`);
+  }
+  return sha256;
+}
+
+const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
+  WEBSITE_TEMPLATE_ITEMS.map((item) => {
+    return {
+      templateId: item.templateId,
+      resourceId: item.resourceId,
+      slug: item.sourcePath,
+      name: item.title,
+      description: item.description,
+      source: privateR2ArchiveSource(
+        item.sourcePath,
+        websiteTemplateArchiveSha256(item.slug),
+      ),
+    };
+  });
+
+// The disabled side of LatestWebsiteTemplates deliberately keeps the stable
+// Website package ids on their pre-cutover immutable R2 versions. Remove this
+// map with the switch only after the rollout and run-context drain in #26672;
+// historical R2 objects remain immutable and must not be deleted.
+const PREVIOUS_WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
   "black-slabs":
     "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3",
   "blueprint-grid":
@@ -3692,15 +3753,17 @@ const WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
     "2721c013f76e1b2eea09282269b33d7f143b7e83ee3e701e83a0fcf7773852dd",
 };
 
-function websiteTemplateArchiveSha256(slug: string): string {
-  const sha256 = WEBSITE_TEMPLATE_ARCHIVE_SHA256[slug];
+function previousWebsiteTemplateArchiveSha256(slug: string): string {
+  const sha256 = PREVIOUS_WEBSITE_TEMPLATE_ARCHIVE_SHA256[slug];
   if (!sha256) {
-    throw new Error(`Missing website template archive sha256 for ${slug}`);
+    throw new Error(
+      `Missing previous website template archive sha256 for ${slug}`,
+    );
   }
   return sha256;
 }
 
-const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
+const PREVIOUS_WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
   WEBSITE_TEMPLATE_ITEMS.map((item) => {
     return {
       templateId: item.templateId,
@@ -3710,7 +3773,7 @@ const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
       description: item.description,
       source: privateR2ArchiveSource(
         item.sourcePath,
-        websiteTemplateArchiveSha256(item.slug),
+        previousWebsiteTemplateArchiveSha256(item.slug),
       ),
     };
   });
@@ -3785,11 +3848,19 @@ export function listWebsiteTemplatePackages(): readonly WebsiteTemplatePackage[]
 
 export function findWebsiteTemplatePackage(
   templateId: string,
+  archiveVersion: WebsiteTemplateArchiveVersion = "latest",
 ): WebsiteTemplatePackage | undefined {
-  const directPackage = [
-    ...WEBSITE_TEMPLATE_PACKAGES,
-    ...WEBSITE_TEMPLATE_V2_PACKAGES,
-  ].find((pkg) => {
+  const v2Package = WEBSITE_TEMPLATE_V2_PACKAGES.find((pkg) => {
+    return pkg.templateId === templateId || pkg.resourceId === templateId;
+  });
+  if (v2Package) {
+    return v2Package;
+  }
+  const packages =
+    archiveVersion === "latest"
+      ? WEBSITE_TEMPLATE_PACKAGES
+      : PREVIOUS_WEBSITE_TEMPLATE_PACKAGES;
+  const directPackage = packages.find((pkg) => {
     return pkg.templateId === templateId || pkg.resourceId === templateId;
   });
   if (directPackage) {
@@ -3797,13 +3868,14 @@ export function findWebsiteTemplatePackage(
   }
   const normalizedTemplateId =
     findWebsiteTemplateItem(templateId)?.templateId ?? templateId;
-  return WEBSITE_TEMPLATE_PACKAGES.find((pkg) => {
+  return packages.find((pkg) => {
     return pkg.templateId === normalizedTemplateId;
   });
 }
 
 export function findWebsiteTemplateResource(
   resourceId: string,
+  archiveVersion: WebsiteTemplateArchiveVersion = "latest",
 ): RegistryEntry | undefined {
   const directPackage = WEBSITE_TEMPLATE_V2_PACKAGES.find((pkg) => {
     return pkg.resourceId === resourceId;
@@ -3813,7 +3885,11 @@ export function findWebsiteTemplateResource(
   }
   const normalizedResourceId =
     findWebsiteTemplateItem(resourceId)?.resourceId ?? resourceId;
-  const pkg = WEBSITE_TEMPLATE_PACKAGES.find((entry) => {
+  const packages =
+    archiveVersion === "latest"
+      ? WEBSITE_TEMPLATE_PACKAGES
+      : PREVIOUS_WEBSITE_TEMPLATE_PACKAGES;
+  const pkg = packages.find((entry) => {
     return entry.resourceId === normalizedResourceId;
   });
   if (!pkg) {
@@ -3862,7 +3938,7 @@ export function resolvePresentationRunbookColorToken(
 /**
  * Shared runbook authoring instructions for a selected presentation template.
  * Used by both the chat generation-template prompt (API) and
- * `zero generate presentation --template` (CLI) so the two never drift.
+ * `okou generate presentation --template` (CLI) so the two never drift.
  */
 export function buildPresentationRunbookInstructionLines(args: {
   readonly runbookPackage: PresentationRunbookPackage;
@@ -3874,12 +3950,12 @@ export function buildPresentationRunbookInstructionLines(args: {
     `Color system token: ${colorSystemToken}`,
     "",
     "To produce the presentation:",
-    `- Pull the package: zero resource pull ${pkg.resourceId} --dir ./generated/resources`,
+    `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
     `- Follow ./generated/resources/${pkg.slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
     "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
     "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
     "- Do not store slide content in JavaScript data or use JavaScript to create, inject, fetch, hydrate, or replace slide content. JavaScript may only progressively enhance the existing DOM for navigation, controls, themes, or animation.",
-    "- Host the finished deck: zero host <output-dir> --site <slug> --artifact-kind presentation-html",
+    "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",
     "- Return only the generated HTML deck as the final deliverable.",
   ];
 }
@@ -4008,22 +4084,6 @@ export function findTemplate(id: string): RegistryEntry | undefined {
   return filterByKind("template").find((entry) => {
     return entry.id === id;
   });
-}
-
-export function toGenerationTarget(value: string): GenerationTarget {
-  if (value === "dashboard") {
-    return "dashboard-design";
-  }
-
-  if (value === "docs") {
-    return "docs-design";
-  }
-
-  if (value === "mobile-app") {
-    return "mobile-app-design";
-  }
-
-  return value as GenerationTarget;
 }
 
 export function selectResourceCandidates(

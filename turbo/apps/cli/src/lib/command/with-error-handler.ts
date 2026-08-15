@@ -3,8 +3,9 @@ import {
   PLAN_UPGRADE_CLI_HINT,
   PLAN_UPGRADE_RUN_GUIDANCE,
   RUN_ERROR_GUIDANCE,
-} from "@vm0/api-contracts/contracts/errors";
+} from "@okouai/api-contracts/contracts/errors";
 import { ApiRequestError } from "../api/core/client-factory";
+import { getOkouToken } from "../okou-env";
 
 /**
  * Wraps a Commander.js action handler with centralized error handling.
@@ -22,12 +23,12 @@ export function withErrorHandler<T extends unknown[]>(
     } catch (error) {
       if (error instanceof ApiRequestError) {
         if (error.code === "UNAUTHORIZED") {
-          if (process.env.ZERO_TOKEN) {
+          if (getOkouToken()) {
             console.error(chalk.red("✗ Authentication failed"));
-            console.error(chalk.dim("  ZERO_TOKEN is invalid or expired"));
+            console.error(chalk.dim("  OKOU_TOKEN is invalid or expired"));
           } else {
             console.error(chalk.red("✗ Not authenticated"));
-            console.error(chalk.dim("  Set ZERO_TOKEN to a valid run token"));
+            console.error(chalk.dim("  Set OKOU_TOKEN to a valid run token"));
           }
         } else {
           const guidance = RUN_ERROR_GUIDANCE[error.code];

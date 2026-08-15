@@ -2,10 +2,10 @@
 
 import json
 import urllib.parse
-from unittest.mock import patch
 
 from mitmproxy.test import tutils
 
+import connector_diagnostics
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.connector_diagnostic_helpers import (
@@ -48,6 +48,9 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         record_connector_diagnostic_requestheaders_context(flow)
+        flow.metadata[metadata_keys.ORIGINAL_URL] = (
+            "https://fal.run/fal-ai/nano-banana-pro?debug=secret#fragment"
+        )
         flow.response = tutils.tresp(
             status_code=401,
             headers=header_map({"content-type": "text/plain", "content-length": "8"}),
@@ -87,6 +90,54 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
     assert proxy_entry["type"] == "connector_diagnostic"
     assert proxy_entry["connector"] == "fal"
     assert proxy_entry["upstream_status"] == 401
+    assert proxy_entry["url"] == "https://fal.run/fal-ai/nano-banana-pro"
+    assert proxy_entry["message"].endswith(f": {proxy_entry['url']}")
+    serialized_proxy_entry = json.dumps(proxy_entry)
+    assert "debug=secret" not in serialized_proxy_entry
+    assert "#fragment" not in serialized_proxy_entry
+    assert "url_truncated" not in proxy_entry
+    assert "url_original_char_count" not in proxy_entry
+
+
+async def test_replaces_buffered_head_401_with_bodyless_diagnostic(tmp_path, real_flow, mitm_ctx):
+    reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="HEAD",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        record_connector_diagnostic_requestheaders_context(flow)
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map(
+                {
+                    "content-encoding": "gzip",
+                    "content-length": "8",
+                    "content-type": "text/plain",
+                    "transfer-encoding": "chunked",
+                }
+            ),
+            content=b"upstream",
+        )
+        mitm_addon.response(flow)
+
+    assert flow.response.status_code == 401
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    assert "Content-Encoding" not in flow.response.headers
+    assert "Transfer-Encoding" not in flow.response.headers
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "fal"
+    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert network_entry["response_size"] == 0
+    assert "response_body" not in network_entry
+    [connector_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert connector_entry["type"] == "connector_diagnostic"
+    assert http_error_entry["type"] == "http_error"
 
 
 async def test_active_shared_base_owner_preserves_ordinary_allow_401(tmp_path, real_flow, mitm_ctx):
@@ -229,9 +280,15 @@ async def test_streams_unauthenticated_connector_401_diagnostic_without_upstream
     assert sum(entry["type"] == "connector_diagnostic" for entry in proxy_entries) == 1
 
 
-def test_responseheaders_parses_large_connector_auth_query_once(tmp_path, real_flow, mitm_ctx):
+def test_responseheaders_preserves_upstream_for_query_over_inspection_limit(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
     reg_path = write_connector_diagnostic_capture_registry(tmp_path)
-    query = "&".join(["noise=x"] * 25_000)
+    query = "noise=" + "x" * (
+        connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS - len("noise=") + 1
+    )
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -252,23 +309,20 @@ def test_responseheaders_parses_large_connector_auth_query_once(tmp_path, real_f
         try:
             urllib.parse.urlsplit("https://stable-config.example.com")
             stable_cache = urllib.parse.urlsplit.cache_info()
-            real_parse_qsl = urllib.parse.parse_qsl
-            with patch.object(
-                urllib.parse,
-                "parse_qsl",
-                wraps=real_parse_qsl,
-            ) as parse_qsl:
-                mitm_addon.responseheaders(flow)
-
-            assert parse_qsl.call_count == 1
+            mitm_addon.responseheaders(flow)
             assert urllib.parse.urlsplit.cache_info() == stable_cache
         finally:
             urllib.parse.urlsplit.cache_clear()
 
-        diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
+        assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
+        assert metadata_keys.CONNECTOR_DIAGNOSTIC_REASON not in flow.metadata
+        assert response_stream(flow)(b"upstream") == b"upstream"
         mitm_addon.response(flow)
 
-    assert flow.response.content == diagnostic_body
+    assert flow.response.status_code == 401
+    assert flow.response.content == b"upstream"
+    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert "firewall_error" not in entry
 
 
 async def test_restores_connector_diagnostic_body_when_headers_end_stream(
@@ -305,6 +359,45 @@ async def test_restores_connector_diagnostic_body_when_headers_end_stream(
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["response_size"] == len(content)
     assert json.loads(entry["response_body"])["error"] == "connector_not_configured_for_run"
+
+
+async def test_head_response_stream_emits_no_diagnostic_body(tmp_path, real_flow, mitm_ctx):
+    reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="HEAD",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        record_connector_diagnostic_requestheaders_context(flow)
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map(
+                {
+                    "content-length": "8",
+                    "content-type": "text/plain",
+                    "transfer-encoding": "chunked",
+                }
+            ),
+            content=b"upstream",
+        )
+        mitm_addon.responseheaders(flow)
+        stream = response_stream(flow)
+        assert stream(b"unexpected upstream body") == ()
+        assert stream(b"") == b""
+        mitm_addon.response(flow)
+
+    assert flow.response.status_code == 401
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    assert "Transfer-Encoding" not in flow.response.headers
+    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert network_entry["response_size"] == 0
+    assert "response_body" not in network_entry
 
 
 async def test_streams_connector_401_when_user_auth_is_present(

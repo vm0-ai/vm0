@@ -3,18 +3,21 @@ import { randomUUID } from "node:crypto";
 import {
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { createBddApi } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/org-membership";
+import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
+import { zeroChatThreadModelSelectionRoutes } from "../zero-chat-threads-model-selection";
 
 const context = testContext();
 const store = createStore();
@@ -23,6 +26,7 @@ const chat = createChatFilesBddApi(context);
 const api = createRunsApi(context);
 
 interface ChatThreadFixture {
+  readonly actor: ApiTestUser;
   readonly userId: string;
   readonly orgId: string;
   readonly agentId: string;
@@ -36,15 +40,8 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
   const { providerId } = await api.ensureOrgModelProvider(actor);
   await api.updateOrgModelPolicies(actor, [
     {
-      model: "claude-sonnet-4-6",
-      isDefault: true,
-      defaultProviderType: "anthropic-api-key",
-      credentialScope: "org",
-      modelProviderId: providerId,
-    },
-    {
       model: "claude-sonnet-5",
-      isDefault: false,
+      isDefault: true,
       defaultProviderType: "anthropic-api-key",
       credentialScope: "org",
       modelProviderId: providerId,
@@ -57,6 +54,7 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
   const thread = await chat.createThread(actor, {
     agentId: agent.agentId,
     title,
+    model: "claude-sonnet-5",
   });
   if (!actor.orgId) {
     throw new Error("Expected the seeded actor to belong to an org");
@@ -67,6 +65,7 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
     context.signal,
   );
   return {
+    actor,
     userId: actor.userId,
     orgId: actor.orgId,
     agentId: agent.agentId,
@@ -96,11 +95,15 @@ function zeroToken(args: {
 }
 
 function modelSelectionClient() {
-  return setupApp({ context })(chatThreadModelSelectionContract);
+  return setupApp({ context, routes: zeroChatThreadModelSelectionRoutes })(
+    chatThreadModelSelectionContract,
+  );
 }
 
 function metadataClient() {
-  return setupApp({ context })(chatThreadMetadataContract);
+  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+    chatThreadMetadataContract,
+  );
 }
 
 describe("POST /api/zero/chat-threads/:id/model-selection", () => {
@@ -136,6 +139,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
       agentId: fixture.agentId,
       title: "Launch plan",
       selectedModel: "claude-sonnet-5",
+      serviceTier: null,
     });
   });
 

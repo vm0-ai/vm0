@@ -103,6 +103,22 @@ function isUserVisibleFunctionName(value) {
 function getInternalAllowedLiterals() {
   return [
     [
+      "src/lib/pptx-renderer.ts\u0000Macro-enabled PowerPoint files are not supported",
+      "typed renderer diagnostic; UI consumers localize their own presentation",
+    ],
+    [
+      "src/lib/pptx-renderer.ts\u0000Embedded OLE objects are not supported",
+      "typed renderer diagnostic; UI consumers localize their own presentation",
+    ],
+    [
+      "src/lib/pptx-renderer.ts\u0000Office Math equations are not supported",
+      "typed renderer diagnostic; UI consumers localize their own presentation",
+    ],
+    [
+      "src/lib/pptx-renderer.ts\u0000EMF image content is not supported",
+      "typed renderer diagnostic; UI consumers localize their own presentation",
+    ],
+    [
       "src/signals/zero-page/chat-feedback.ts\u0000a sent email (mail ID: {…}{…})",
       "locale-neutral serialized agent prompt metadata",
     ],
@@ -142,10 +158,6 @@ function getConnectorAllowedLiterals() {
     [
       "src/views/zero-page/components/model-provider-picker.tsx\u0000BYOK",
       "bring-your-own-key product acronym",
-    ],
-    [
-      "src/views/zero-page/components/settings/custom-connector-connect-dialog.tsx\u0000OAuth 2.0",
-      "OAuth protocol name",
     ],
     [
       "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000Acme API",

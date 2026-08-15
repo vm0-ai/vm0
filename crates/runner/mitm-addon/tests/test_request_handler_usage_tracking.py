@@ -4,6 +4,7 @@ import asyncio
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Never
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -28,6 +29,11 @@ _MODEL_PROVIDER_SANDBOX_MARKER = "tok-model"
 _MODEL_PROVIDER_PATH = "/v1/messages"
 _AUTH_URL_REWRITE_REQUEST_BODY = b'{"ok":true}'
 _FORWARD_START_TIMEOUT_SECONDS = 2.0
+
+
+class _UnexpectedAuthHeaders(dict[str, str]):
+    def items(self) -> Never:
+        raise KeyError("unexpected auth header iteration failure")
 
 
 async def _wait_for_forward_start(
@@ -523,7 +529,7 @@ async def test_unexpected_request_exception_releases_tracking(
     reg_path = _write_billable_x_tracking_registry(tmp_path)
     flow = _x_tracking_flow(real_flow)
 
-    async def return_invalid_auth_after_tracking(*_args, **_kwargs):
+    async def return_unexpected_auth_headers_after_tracking(*_args, **_kwargs):
         usage.write_pending_snapshot(flush_request_id="during-auth-failure")
         assert_pending(
             usage_pending_path,
@@ -532,11 +538,15 @@ async def test_unexpected_request_exception_releases_tracking(
             reports=0,
             flush_request_id="during-auth-failure",
         )
-        return {}
+        return {"headers": _UnexpectedAuthHeaders({"Authorization": "Bearer resolved-token"})}
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        patch.object(auth, "get_firewall_headers", return_invalid_auth_after_tracking),
+        patch.object(
+            auth,
+            "get_firewall_headers",
+            return_unexpected_auth_headers_after_tracking,
+        ),
         pytest.raises(KeyError),
     ):
         await mitm_addon.request(flow)

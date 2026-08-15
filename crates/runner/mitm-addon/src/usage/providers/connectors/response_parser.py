@@ -39,9 +39,15 @@ class ConnectorResponseParser(NamedTuple):
     response body completed. It should publish connector-owned unparsed state so
     later fallback parsing does not trust best-effort decoded bytes. This runs
     before an opted-in interrupted response is reported.
+
+    ``should_continue`` is optional and only valid for one-document parsers
+    whose errors are permanent. Response decoding checks it after each parser
+    callback and intentionally stops inspection once it returns false. Event-
+    or line-scoped parsers that recover on later input must leave it unset.
     """
 
     feed: Callable[[bytes], None]
     report_on_interruption: bool
     finish: Callable[[], None] | None = None
     finish_decode_error: Callable[[str], None] | None = None
+    should_continue: Callable[[], bool] | None = None

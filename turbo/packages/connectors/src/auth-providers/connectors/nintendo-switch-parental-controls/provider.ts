@@ -43,7 +43,7 @@ function createExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
         expiresIn: EXTERNAL_CODE_EXPIRES_IN_SECONDS,
       };
     },
-    completeExternalCodeAuthorization: async (args) => {
+    completeExternalCodeAuthorization: async (args, signal: AbortSignal) => {
       const providerState = parseNintendoSwitchParentalControlsProviderState(
         args.providerState,
       );
@@ -53,29 +53,37 @@ function createExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
           expectedState: providerState.state,
         });
       const session =
-        await exchangeNintendoSwitchParentalControlsSessionTokenCode({
+        await exchangeNintendoSwitchParentalControlsSessionTokenCode(
+          {
+            clientId: args.authClient.clientId,
+            sessionTokenCode,
+            codeVerifier: providerState.codeVerifier,
+          },
+          signal,
+        );
+      const token = await exchangeNintendoSwitchParentalControlsSessionToken(
+        {
           clientId: args.authClient.clientId,
-          sessionTokenCode,
-          codeVerifier: providerState.codeVerifier,
-          signal: args.signal,
-        });
-      const token = await exchangeNintendoSwitchParentalControlsSessionToken({
-        clientId: args.authClient.clientId,
-        sessionToken: session.sessionToken,
-        signal: args.signal,
-      });
-      const profile = await fetchNintendoSwitchParentalControlsProfile({
-        accessToken: token.accessToken,
-        signal: args.signal,
-      });
+          sessionToken: session.sessionToken,
+        },
+        signal,
+      );
+      const profile = await fetchNintendoSwitchParentalControlsProfile(
+        {
+          accessToken: token.accessToken,
+        },
+        signal,
+      );
       const smartDeviceId = randomUUID();
       const deviceCatalog =
-        await federateNintendoSwitchParentalControlsSmartDevice({
-          idToken: token.idToken,
-          smartDeviceId,
-          language: profile.language,
-          signal: args.signal,
-        });
+        await federateNintendoSwitchParentalControlsSmartDevice(
+          {
+            idToken: token.idToken,
+            smartDeviceId,
+            language: profile.language,
+          },
+          signal,
+        );
       return {
         outputs: {
           sessionToken: session.sessionToken,
@@ -110,16 +118,18 @@ function catalogFailureCanUseStoredValue(error: unknown): boolean {
   );
 }
 
-async function refreshDeviceCatalog(args: {
-  readonly idToken: string;
-  readonly smartDeviceId: string;
-  readonly language: string;
-  readonly signal: AbortSignal;
-}): Promise<string | undefined> {
+async function refreshDeviceCatalog(
+  args: {
+    readonly idToken: string;
+    readonly smartDeviceId: string;
+    readonly language: string;
+  },
+  signal: AbortSignal,
+): Promise<string | undefined> {
   try {
-    return await fetchNintendoSwitchParentalControlsDeviceCatalog(args);
+    return await fetchNintendoSwitchParentalControlsDeviceCatalog(args, signal);
   } catch (error) {
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (catalogFailureCanUseStoredValue(error)) {
       return undefined;
     }
@@ -133,18 +143,22 @@ function createRefreshTokenAccessProvider(): RefreshTokenAccessProvider<
 > {
   return {
     kind: "refresh-token",
-    refresh: async (args) => {
-      const token = await exchangeNintendoSwitchParentalControlsSessionToken({
-        clientId: args.authClient.clientId,
-        sessionToken: args.inputs.sessionToken,
-        signal: args.signal,
-      });
-      const deviceCatalog = await refreshDeviceCatalog({
-        idToken: token.idToken,
-        smartDeviceId: args.inputs.smartDeviceId,
-        language: args.inputs.language,
-        signal: args.signal,
-      });
+    refresh: async (args, signal: AbortSignal) => {
+      const token = await exchangeNintendoSwitchParentalControlsSessionToken(
+        {
+          clientId: args.authClient.clientId,
+          sessionToken: args.inputs.sessionToken,
+        },
+        signal,
+      );
+      const deviceCatalog = await refreshDeviceCatalog(
+        {
+          idToken: token.idToken,
+          smartDeviceId: args.inputs.smartDeviceId,
+          language: args.inputs.language,
+        },
+        signal,
+      );
       return {
         outputs: {
           accessToken: token.accessToken,
@@ -163,18 +177,22 @@ function createTokenRevokeProvider(): TokenRevokeProvider<
 > {
   return {
     kind: "token-revoke",
-    revokeToken: async (args) => {
-      const token = await exchangeNintendoSwitchParentalControlsSessionToken({
-        clientId: args.authClient.clientId,
-        sessionToken: args.inputs.sessionToken,
-        signal: args.signal,
-      });
-      await logoutNintendoSwitchParentalControlsSmartDevice({
-        idToken: token.idToken,
-        smartDeviceId: args.inputs.smartDeviceId,
-        language: "en",
-        signal: args.signal,
-      });
+    revokeToken: async (args, signal: AbortSignal) => {
+      const token = await exchangeNintendoSwitchParentalControlsSessionToken(
+        {
+          clientId: args.authClient.clientId,
+          sessionToken: args.inputs.sessionToken,
+        },
+        signal,
+      );
+      await logoutNintendoSwitchParentalControlsSmartDevice(
+        {
+          idToken: token.idToken,
+          smartDeviceId: args.inputs.smartDeviceId,
+          language: "en",
+        },
+        signal,
+      );
     },
   };
 }

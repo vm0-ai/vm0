@@ -1,17 +1,14 @@
 import type { MouseEvent } from "react";
 import { useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import {
-  IconBrandGithub,
-  IconBrandSlack,
-  IconBrandTelegram,
-  IconChevronDown,
-  IconClock,
-  IconMail,
-  IconMessageCircle,
-  IconPhone,
-  IconRobot,
-} from "@tabler/icons-react";
-import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
+  ChevronDown,
+  Clock,
+  Mail,
+  MessageCircle,
+  Phone,
+  Bot,
+} from "lucide-react";
+import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
 import type {
   UsageRecordKind,
   UsageRecordRange,
@@ -19,21 +16,24 @@ import type {
   UsageRecordRow,
   UsageRecordScope,
   UsageRecordSource,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
-import type { UsageMembersResponse } from "@vm0/api-contracts/contracts/zero-usage";
+} from "@okouai/api-contracts/contracts/usage-record";
+import type { UsageMembersResponse } from "@okouai/api-contracts/contracts/zero-usage";
 import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@vm0/ui";
+  BrandGithub,
+  BrandSlack,
+  BrandTelegram,
+} from "@okouai/ui";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@vm0/ui/components/ui/tooltip";
+} from "@okouai/ui/components/ui/tooltip";
 import {
   loadMoreUsageRecord$,
   myUsageRecordAsync$,
@@ -45,6 +45,7 @@ import { nowDate } from "../../../../lib/time.ts";
 import { getCreditUsageDisplayName } from "../../../../lib/credit-usage-display.ts";
 import { Link } from "../../../router/link.tsx";
 import { MemberUsageTable } from "../org-manage/org-usage-tab.tsx";
+import { emptyUsageImg } from "../../platform-assets.ts";
 import { useTranslation } from "react-i18next";
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import {
@@ -55,17 +56,17 @@ import {
 const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
 
 const SOURCE_ICONS = {
-  chat: IconMessageCircle,
-  automation: IconClock,
-  slack: IconBrandSlack,
-  teams: IconMessageCircle,
-  telegram: IconBrandTelegram,
-  email: IconMail,
-  agentphone: IconPhone,
-  github: IconBrandGithub,
-  agent: IconRobot,
-  other: IconRobot,
-} as const satisfies Record<UsageRecordSource, typeof IconMessageCircle>;
+  chat: MessageCircle,
+  automation: Clock,
+  slack: BrandSlack,
+  teams: MessageCircle,
+  telegram: BrandTelegram,
+  email: Mail,
+  agentphone: Phone,
+  github: BrandGithub,
+  agent: Bot,
+  other: Bot,
+} as const satisfies Record<UsageRecordSource, typeof MessageCircle>;
 
 const KIND_META = {
   model: {
@@ -99,8 +100,7 @@ const RANGE_OPTIONS = [
 const ROW_CLASS =
   "relative px-5 py-3.5 [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:inset-x-5 [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:border-t [&:not(:first-child)]:before:border-border/50 [&:not(:first-child)]:before:content-['']";
 
-// Dotted-underline link affordance for the title, mirroring the insights page
-// (network-insights-page.tsx): click navigates. leading-6 keeps the line box
+// Dotted-underline link affordance for navigable titles. leading-6 keeps the line box
 // tall enough that the offset-4 underline isn't clipped by `truncate`'s
 // overflow-hidden. inline-block + max-w-full keeps the hover fill hugging the
 // title text (not the whole row), truncating long titles; the chip padding /
@@ -108,7 +108,7 @@ const ROW_CLASS =
 // stays flush with the title text and the breakdown bar below. The keyboard
 // focus ring is inset so the list card's overflow-hidden cannot clip it.
 const TITLE_LINK_CLASS =
-  "inline-block max-w-full -mr-1.5 truncate rounded-md pr-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-foreground/5 hover:decoration-foreground focus-visible:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+  "inline-block max-w-full -mr-1.5 truncate rounded-md pr-1.5 py-1 text-sm leading-6 font-medium text-foreground decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:bg-state-hover hover:decoration-foreground focus-visible:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
@@ -270,11 +270,7 @@ export function UsageRangeSelect({
           className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
         >
           {rangeLabel(value)}
-          <IconChevronDown
-            size={14}
-            stroke={1.5}
-            className="ml-1.5 text-muted-foreground"
-          />
+          <ChevronDown size={14} className="ml-1.5 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -436,7 +432,7 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
           aria-label={label}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
         >
-          <Icon size={20} stroke={1.5} />
+          <Icon size={20} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex min-h-8 min-w-0 items-center gap-3">
@@ -485,15 +481,45 @@ function UsageRecordSkeleton() {
   );
 }
 
-function emptyMessage(range: UsageRecordRange): string {
+function emptyTitle(range: UsageRecordRange): string {
   if (range === "billingPeriod") {
     return i18n.t(($) => {
-      return $.usage.records.emptyBillingPeriod;
+      return $.usage.records.empty.billingPeriodTitle;
     });
   }
   return i18n.t(($) => {
-    return $.usage.records.emptyRange;
+    return $.usage.records.empty.rangeTitle;
   });
+}
+
+// The list, the skeleton, and this share the same card so switching ranges does
+// not change the shape of the section.
+function UsageRecordEmpty({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div
+      className="flex flex-col items-center rounded-xl bg-card px-6 py-12 text-center"
+      style={{ border: CARD_BORDER }}
+      data-testid="usage-records-empty"
+    >
+      <img
+        src={emptyUsageImg}
+        alt=""
+        role="presentation"
+        loading="lazy"
+        className="h-24 w-24 object-contain opacity-80"
+      />
+      <p className="mt-3 text-sm font-medium text-foreground">{title}</p>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        {description}
+      </p>
+    </div>
+  );
 }
 
 // Summary + type legend above the list. The credit total is range-wide (from
@@ -592,7 +618,7 @@ function UsageRecordList({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-9 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
+            className="h-9 rounded-lg text-muted-foreground hover:bg-state-hover hover:text-foreground"
             onClick={() => {
               loadMore(scope);
             }}
@@ -629,7 +655,12 @@ function UsageRecordContent({
       )}
       {loadable.state === "hasData" &&
         (loadable.data.rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>
+          <UsageRecordEmpty
+            title={emptyTitle(range)}
+            description={t(($) => {
+              return $.usage.records.empty.description;
+            })}
+          />
         ) : (
           <UsageRecordList data={loadable.data} scope={scope} />
         ))}
@@ -666,13 +697,21 @@ function TeamMemberUsageContent({
       )}
       {loadable.state === "hasData" &&
         (!loadable.data.period ? (
-          <p className="text-sm text-muted-foreground">
-            {t(($) => {
-              return $.usage.records.noActiveBillingPeriod;
+          <UsageRecordEmpty
+            title={t(($) => {
+              return $.usage.records.empty.noBillingPeriodTitle;
             })}
-          </p>
+            description={t(($) => {
+              return $.usage.records.empty.noBillingPeriodDescription;
+            })}
+          />
         ) : loadable.data.members.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>
+          <UsageRecordEmpty
+            title={emptyTitle(range)}
+            description={t(($) => {
+              return $.usage.records.empty.teamDescription;
+            })}
+          />
         ) : (
           <MemberUsageTable
             members={loadable.data.members}

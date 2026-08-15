@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { cronComputerUseScreenshotCleanupContract } from "@vm0/api-contracts/contracts/cron";
+import {
+  CLIENT_PRODUCT_HEADER,
+  type DesktopProduct,
+} from "@okouai/api-contracts/contracts/client-headers";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import { cronComputerUseScreenshotCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
   zeroComputerUseAuthorizationRequestsContract,
   zeroComputerUseAuditEventsContract,
@@ -22,18 +26,18 @@ import {
   type ComputerUseHostListResponse,
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
-import type { ComputerUseAnyPluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/zero-computer-use";
+import type { ComputerUseAnyPluginCallBody } from "@okouai/api-contracts/contracts/computer-use-plugins";
 
 import { now } from "../../../../lib/time";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { cronComputerUseScreenshotCleanupRoutesForTest } from "../../cron-computer-use-screenshot-cleanup";
+import { zeroComputerUseRoutes } from "../../zero-computer-use";
+import { zeroComputerUseAuthorizationRoutes } from "../../zero-computer-use-authorization";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -51,6 +55,7 @@ interface RequiredAuthHeaders {
 type ComputerUseAuth = ApiTestUser | { readonly bearer: string } | null;
 
 interface ComputerUseHostStartOptions {
+  readonly clientProduct?: DesktopProduct;
   readonly installationId?: string;
   readonly hostName?: string;
   readonly supportedCapabilities?: readonly string[];
@@ -224,6 +229,10 @@ function hostHeaders(hostToken: string): RequiredAuthHeaders {
   return { authorization: `Bearer ${hostToken}` };
 }
 
+function clientProductHeaders(clientProduct: DesktopProduct | undefined) {
+  return clientProduct ? { [CLIENT_PRODUCT_HEADER]: clientProduct } : {};
+}
+
 function hostTokenHeaders(hostToken: string | null): AuthHeaders {
   return hostToken === null ? {} : hostHeaders(hostToken);
 }
@@ -349,39 +358,58 @@ export function createComputerUseBddApi(context: TestContext) {
   }
 
   function hostsClient() {
-    return setupApp({ context })(zeroComputerUseHostsContract);
+    return setupApp({ context, routes: zeroComputerUseRoutes })(
+      zeroComputerUseHostsContract,
+    );
   }
 
   function heartbeatClient() {
-    return setupApp({ context })(zeroComputerUseHeartbeatContract);
+    return setupApp({ context, routes: zeroComputerUseRoutes })(
+      zeroComputerUseHeartbeatContract,
+    );
   }
 
   function commandClient() {
-    return setupApp({ context })(zeroComputerUseCommandContract);
+    return setupApp({ context, routes: zeroComputerUseRoutes })(
+      zeroComputerUseCommandContract,
+    );
   }
 
   function writeCommandClient() {
-    return setupApp({ context })(zeroComputerUseWriteCommandContract);
+    return setupApp({ context, routes: zeroComputerUseRoutes })(
+      zeroComputerUseWriteCommandContract,
+    );
   }
 
   function pluginCommandClient() {
-    return setupApp({ context })(zeroComputerUsePluginCommandContract);
+    return setupApp({ context, routes: zeroComputerUseRoutes })(
+      zeroComputerUsePluginCommandContract,
+    );
   }
 
   function hostCommandsClient() {
-    return setupApp({ context })(zeroComputerUseHostCommandsContract);
+    return setupApp({ context, routes: zeroComputerUseRoutes })(
+      zeroComputerUseHostCommandsContract,
+    );
   }
 
   function auditEventsClient() {
-    return setupApp({ context })(zeroComputerUseAuditEventsContract);
+    return setupApp({ context, routes: zeroComputerUseRoutes })(
+      zeroComputerUseAuditEventsContract,
+    );
   }
 
   function authorizationRequestsClient() {
-    return setupApp({ context })(zeroComputerUseAuthorizationRequestsContract);
+    return setupApp({ context, routes: zeroComputerUseAuthorizationRoutes })(
+      zeroComputerUseAuthorizationRequestsContract,
+    );
   }
 
-  function cleanupCronClient() {
-    return setupApp({ context })(cronComputerUseScreenshotCleanupContract);
+  function cleanupCronClient(commandIds: readonly string[]) {
+    return setupApp({
+      context,
+      routes: cronComputerUseScreenshotCleanupRoutesForTest(commandIds),
+    })(cronComputerUseScreenshotCleanupContract);
   }
 
   return {
@@ -442,7 +470,10 @@ export function createComputerUseBddApi(context: TestContext) {
     ): Promise<{ readonly hostId: string; readonly hostToken: string }> {
       const response = await accept(
         hostsClient().start({
-          headers: authenticate(actor),
+          headers: {
+            ...authenticate(actor),
+            ...clientProductHeaders(options.clientProduct),
+          },
           body: hostRuntimeBody(options),
         }),
         [200],
@@ -489,7 +520,10 @@ export function createComputerUseBddApi(context: TestContext) {
     ): Promise<{ readonly ok: true; readonly hostId: string }> {
       const response = await accept(
         heartbeatClient().heartbeat({
-          headers: hostHeaders(hostToken),
+          headers: {
+            ...hostHeaders(hostToken),
+            ...clientProductHeaders(options.clientProduct),
+          },
           body: hostRuntimeBody(options),
         }),
         [200],
@@ -940,16 +974,9 @@ export function createComputerUseBddApi(context: TestContext) {
       );
     },
 
-    // Kept out of any shared safe-cron helper for the same shared-database
-    // reason as reconcileBillingCron in api-bdd-runs.ts: the
-    // screenshot-cleanup sweep is global (no org filter) and tombstones every
-    // screenshot row older than the 30-day retention window. Only
-    // computer-use.bdd.test.ts may invoke this cron, and only that file may
-    // create screenshot rows older than the retention window; sweep counts
-    // are asserted as `>=` on the first run because earlier aborted local
-    // runs can leave old rows behind.
     async runComputerUseScreenshotCleanupCron(
       auth: "valid" | "invalid" | "missing",
+      commandIds: readonly string[],
     ) {
       const headers =
         auth === "missing"
@@ -960,7 +987,10 @@ export function createComputerUseBddApi(context: TestContext) {
                   ? "Bearer test-cron-secret"
                   : "Bearer wrong-secret",
             };
-      return await accept(cleanupCronClient().cleanup({ headers }), [200, 401]);
+      return await accept(
+        cleanupCronClient(commandIds).cleanup({ headers }),
+        [200, 401],
+      );
     },
   };
 }

@@ -1,23 +1,16 @@
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-
-afterEach(async () => {
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
-});
 
 function featureSwitchControl(feature: FeatureSwitchKey): HTMLElement {
   const label = screen.getByText(feature).closest("label");
@@ -57,7 +50,7 @@ describe("lab page", () => {
   it("lets users toggle and reset feature switches", async () => {
     let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
       [FeatureSwitchKey.Lab]: true,
-      [FeatureSwitchKey.AwsConnector]: false,
+      [FeatureSwitchKey.TestOauthConnector]: false,
     };
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches, effectiveSwitches: switches });
@@ -84,21 +77,20 @@ describe("lab page", () => {
       expect(screen.getByText("Other")).toBeInTheDocument();
       expect(screen.getAllByText("Connectors").length).toBeGreaterThan(0);
       expect(
-        screen.getByText(FeatureSwitchKey.ComposerUploadPopover),
-      ).toBeInTheDocument();
-      expect(
         screen.getAllByText("Maintainer: liangyou@vm0.ai").length,
       ).toBeGreaterThan(0);
     });
 
-    const awsSwitch = featureSwitchControl(FeatureSwitchKey.AwsConnector);
-    expect(awsSwitch).toHaveAttribute("aria-checked", "false");
+    const testOauthSwitch = featureSwitchControl(
+      FeatureSwitchKey.TestOauthConnector,
+    );
+    expect(testOauthSwitch).toHaveAttribute("aria-checked", "false");
 
-    click(awsSwitch);
+    click(testOauthSwitch);
 
     await waitFor(() => {
       expect(
-        featureSwitchControl(FeatureSwitchKey.AwsConnector),
+        featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
       ).toHaveAttribute("aria-checked", "true");
     });
 
@@ -106,7 +98,7 @@ describe("lab page", () => {
 
     await waitFor(() => {
       expect(
-        featureSwitchControl(FeatureSwitchKey.AwsConnector),
+        featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
       ).toHaveAttribute("aria-checked", "false");
     });
   });

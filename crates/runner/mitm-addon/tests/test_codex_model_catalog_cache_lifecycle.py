@@ -23,7 +23,7 @@ async def test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions(real_fl
         assert await install_catalog(cold) == {
             "model_catalog_cache_status": "model_catalog_cold_stored",
             "model_catalog_cache_validation_latency_ms": 0,
-            "model_catalog_cache_upstream_encoding": "br",
+            "model_catalog_cache_upstream_encoding": "identity",
         }
 
         monotonic.return_value = 150.0
@@ -57,6 +57,14 @@ async def test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions(real_fl
 
         for flow in (*isolated_flows, expired):
             catalog_cache.handle_error(flow)
+
+
+async def test_distinct_credential_tuples_with_equal_concatenation_are_partitioned(real_flow):
+    await install_catalog(catalog_flow(real_flow, auth_value="a", account="bc"))
+
+    distinct_tuple = catalog_flow(real_flow, auth_value="ab", account="c")
+    await prepare_miss(distinct_tuple)
+    catalog_cache.handle_error(distinct_tuple)
 
 
 async def test_transport_error_after_expiry_never_serves_old_entry(real_flow):

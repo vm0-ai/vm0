@@ -34,7 +34,13 @@ const skeletonCSS = `
  *
  * Cycling is started here and cancelled by hideAppSkeleton$ via resetSignal.
  */
-export function AppSkeleton({ visible = true }: { visible?: boolean }) {
+export function AppSkeleton({
+  onHidden,
+  visible = true,
+}: {
+  onHidden?: () => void;
+  visible?: boolean;
+}) {
   const skeletonConfig = useGet(skeletonAvatarConfig$);
   const { ariaLabel, staticCopy, typewriterCopy, isFirst, cycle } =
     useGet(skeletonCopy$);
@@ -49,6 +55,11 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
       aria-label={ariaLabel}
       aria-live="polite"
       role="status"
+      onTransitionEnd={(event) => {
+        if (!visible && event.target === event.currentTarget) {
+          onHidden?.();
+        }
+      }}
       className={`fixed inset-0 z-50 flex items-center justify-center bg-background ${
         visible
           ? "opacity-100"

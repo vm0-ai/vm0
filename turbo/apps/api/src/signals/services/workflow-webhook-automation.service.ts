@@ -1,38 +1,36 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
-
 import { command } from "ccstate";
 import { and, eq, gte } from "drizzle-orm";
-
-import type { WebhookReceivedEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { WebhookReceivedEventConfig } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomations,
-  zeroWorkflowWebhookDeliveries,
-  zeroWorkflowWebhookAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
-
+  workflowAutomations,
+  workflowWebhookDeliveries,
+  workflowWebhookAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { env } from "../../lib/env";
 import { verifyCallbackRequest } from "../../lib/event-consumer/verify-signature";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "./crypto.utils";
 import {
-  WorkflowEventSourceTiming,
-  type WorkflowEventRunTiming,
-} from "./workflow-event-source-timing.service";
-import {
-  runWorkflowAutomationNow$,
-  type RunWorkflowAutomationResult,
-  type AutomationRow,
-} from "./zero-workflow-automation-run.service";
+  AutomationEventSourceTiming,
+  type AutomationEventRunTiming,
+} from "./automation-event-source-timing.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type {
+  RunWorkflowAutomationResult,
+  AutomationRow,
+} from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
@@ -42,7 +40,7 @@ export const WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES = 1_000_000;
 const WORKFLOW_WEBHOOK_BODY_PREVIEW_CHARS = 16_000;
 const WORKFLOW_WEBHOOK_RATE_LIMIT_PER_MINUTE = 10;
 
-type WebhookAutomationRow = typeof zeroWorkflowWebhookAutomations.$inferSelect;
+type WebhookAutomationRow = typeof workflowWebhookAutomations.$inferSelect;
 
 export function defaultWebhookReceivedEventConfig(): WebhookReceivedEventConfig {
   return {
@@ -131,8 +129,8 @@ export async function buildWorkflowWebhookSummaryFields(
 }> {
   const [webhook] = await db
     .select()
-    .from(zeroWorkflowWebhookAutomations)
-    .where(eq(zeroWorkflowWebhookAutomations.automationId, args.automation.id))
+    .from(workflowWebhookAutomations)
+    .where(eq(workflowWebhookAutomations.automationId, args.automation.id))
     .limit(1);
   if (!webhook) {
     throw new Error(
@@ -161,8 +159,8 @@ export async function revealWorkflowWebhookSecretFields(
 ): Promise<{ readonly webhookUrl: string; readonly webhookSecret: string }> {
   const [webhook] = await db
     .select()
-    .from(zeroWorkflowWebhookAutomations)
-    .where(eq(zeroWorkflowWebhookAutomations.automationId, args.automation.id))
+    .from(workflowWebhookAutomations)
+    .where(eq(workflowWebhookAutomations.automationId, args.automation.id))
     .limit(1);
   if (!webhook) {
     throw new Error(
@@ -207,7 +205,9 @@ interface WorkflowWebhookRunStartTestInput {
 
 type WorkflowWebhookRunStarterTestOverride = (
   args: WorkflowWebhookRunStartTestInput,
-) => Promise<{ readonly kind: "ok"; readonly runId: string } | "error">;
+) => Promise<
+  Extract<RunWorkflowAutomationResult, { readonly kind: "ok" }> | "error"
+>;
 
 const workflowWebhookRunStarterOverride = testOverride<
   WorkflowWebhookRunStarterTestOverride | undefined
@@ -321,59 +321,55 @@ function workflowWebhookTriggerContext(args: {
   };
 }
 
-async function loadWebhookAutomationForToken(args: {
-  readonly db: Db;
-  readonly token: string;
-  readonly signal: AbortSignal;
-}): Promise<WorkflowWebhookAutomationDispatchRow | null> {
+async function loadWebhookAutomationForToken(
+  args: {
+    readonly db: Db;
+    readonly token: string;
+  },
+  signal: AbortSignal,
+): Promise<WorkflowWebhookAutomationDispatchRow | null> {
   const [row] = await args.db
     .select({
-      automation: zeroWorkflowAutomations,
-      webhook: zeroWorkflowWebhookAutomations,
-      agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
+      automation: workflowAutomationColumns(),
+      webhook: workflowWebhookAutomations,
+      agentId: workflows.agentId,
+      workflowName: workflows.name,
+      workflowDisplayName: workflows.displayName,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowWebhookAutomations)
+    .from(workflowWebhookAutomations)
     .innerJoin(
-      zeroWorkflowAutomations,
-      eq(
-        zeroWorkflowWebhookAutomations.automationId,
-        zeroWorkflowAutomations.id,
-      ),
+      workflowAutomations,
+      eq(workflowWebhookAutomations.automationId, workflowAutomations.id),
     )
-    .innerJoin(
-      zeroWorkflows,
-      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
-    )
+    .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .leftJoin(
       workflowUserAutomationThreads,
       and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
+        eq(workflowUserAutomationThreads.orgId, workflowAutomations.orgId),
         eq(
           workflowUserAutomationThreads.userId,
-          zeroWorkflowAutomations.ownerUserId,
+          workflowAutomations.ownerUserId,
         ),
         eq(
           workflowUserAutomationThreads.workflowId,
-          zeroWorkflowAutomations.workflowId,
+          workflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
         eq(
-          zeroWorkflowWebhookAutomations.tokenHash,
+          workflowWebhookAutomations.tokenHash,
           hashWorkflowWebhookToken(args.token),
         ),
-        eq(zeroWorkflowAutomations.kind, "event"),
-        eq(zeroWorkflowAutomations.eventType, "webhook-received"),
-        eq(zeroWorkflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventType, "webhook-received"),
+        eq(workflowAutomations.enabled, true),
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!row) {
     return null;
   }
@@ -381,16 +377,19 @@ async function loadWebhookAutomationForToken(args: {
     args.db,
     row.automation.orgId,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (capabilities?.workflowWebhookAutomationAllowed !== true) {
     return null;
   }
-  const canFire = await workflowAutomationCanFire(args.db, {
-    automation: row.automation,
-    agentId: row.agentId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const canFire = await workflowAutomationCanFire(
+    args.db,
+    {
+      automation: row.automation,
+      agentId: row.agentId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (!canFire) {
     return null;
   }
@@ -407,7 +406,7 @@ async function loadWebhookAutomationForToken(args: {
         currentTime,
       });
     }));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return {
     automation: row.automation,
     webhook: row.webhook,
@@ -423,13 +422,13 @@ async function rateLimitExceeded(args: {
   readonly currentTime: Date;
 }): Promise<boolean> {
   const recent = await args.db
-    .select({ id: zeroWorkflowWebhookDeliveries.id })
-    .from(zeroWorkflowWebhookDeliveries)
+    .select({ id: workflowWebhookDeliveries.id })
+    .from(workflowWebhookDeliveries)
     .where(
       and(
-        eq(zeroWorkflowWebhookDeliveries.automationId, args.automationId),
+        eq(workflowWebhookDeliveries.automationId, args.automationId),
         gte(
-          zeroWorkflowWebhookDeliveries.receivedAt,
+          workflowWebhookDeliveries.receivedAt,
           new Date(args.currentTime.getTime() - 60_000),
         ),
       ),
@@ -474,7 +473,7 @@ async function insertWebhookDelivery(
   },
 ): Promise<{ readonly id: string } | null> {
   const [delivery] = await db
-    .insert(zeroWorkflowWebhookDeliveries)
+    .insert(workflowWebhookDeliveries)
     .values({
       automationId: args.automationId,
       deliveryKey: args.deliveryKey,
@@ -484,7 +483,7 @@ async function insertWebhookDelivery(
       createdAt: args.currentTime,
     })
     .onConflictDoNothing()
-    .returning({ id: zeroWorkflowWebhookDeliveries.id });
+    .returning({ id: workflowWebhookDeliveries.id });
   return delivery ?? null;
 }
 
@@ -493,8 +492,8 @@ async function deleteWebhookDelivery(
   deliveryId: string,
 ): Promise<void> {
   await db
-    .delete(zeroWorkflowWebhookDeliveries)
-    .where(eq(zeroWorkflowWebhookDeliveries.id, deliveryId));
+    .delete(workflowWebhookDeliveries)
+    .where(eq(workflowWebhookDeliveries.id, deliveryId));
 }
 
 async function recordWebhookDeliveryDispatched(
@@ -509,14 +508,14 @@ async function recordWebhookDeliveryDispatched(
   },
 ): Promise<void> {
   await db
-    .update(zeroWorkflowWebhookDeliveries)
+    .update(workflowWebhookDeliveries)
     .set({ status: "dispatched", runId: args.runId })
-    .where(eq(zeroWorkflowWebhookDeliveries.id, args.deliveryId));
+    .where(eq(workflowWebhookDeliveries.id, args.deliveryId));
 
   await db
-    .update(zeroWorkflowWebhookAutomations)
+    .update(workflowWebhookAutomations)
     .set({ lastReceivedAt: args.currentTime, updatedAt: args.currentTime })
-    .where(eq(zeroWorkflowWebhookAutomations.automationId, args.automationId));
+    .where(eq(workflowWebhookAutomations.automationId, args.automationId));
 }
 
 function workflowWebhookRunError(): DispatchWorkflowWebhookResult {
@@ -540,32 +539,36 @@ function webhookSignatureValid(args: {
   ).valid;
 }
 
-async function prepareWorkflowWebhookDispatch(args: {
-  readonly db: Db;
-  readonly token: string;
-  readonly rawBody: string;
-  readonly signature: string;
-  readonly timestamp: string;
-  readonly sourceTiming: WorkflowEventSourceTiming;
-  readonly signal: AbortSignal;
-}): Promise<PreparedWorkflowWebhookDispatch> {
+async function prepareWorkflowWebhookDispatch(
+  args: {
+    readonly db: Db;
+    readonly token: string;
+    readonly rawBody: string;
+    readonly signature: string;
+    readonly timestamp: string;
+    readonly sourceTiming: AutomationEventSourceTiming;
+  },
+  signal: AbortSignal,
+): Promise<PreparedWorkflowWebhookDispatch> {
   const row = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+    "api_dispatch_pre_create_zero_automation_event_load_source_state",
     async () => {
-      return await loadWebhookAutomationForToken({
-        db: args.db,
-        token: args.token,
-        signal: args.signal,
-      });
+      return await loadWebhookAutomationForToken(
+        {
+          db: args.db,
+          token: args.token,
+        },
+        signal,
+      );
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!row) {
     return { kind: "not_found" };
   }
 
   const secret = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+    "api_dispatch_pre_create_zero_automation_event_load_source_state",
     async () => {
       return await decryptPersistentSecretValue(row.webhook.encryptedSecret, {
         orgId: row.automation.orgId,
@@ -573,10 +576,10 @@ async function prepareWorkflowWebhookDispatch(args: {
       });
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const signatureValid = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_match_automations",
+    "api_dispatch_pre_create_zero_automation_event_match_automations",
     () => {
       return webhookSignatureValid({
         rawBody: args.rawBody,
@@ -592,7 +595,7 @@ async function prepareWorkflowWebhookDispatch(args: {
 
   const currentTime = nowDate();
   const limited = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_match_automations",
+    "api_dispatch_pre_create_zero_automation_event_match_automations",
     async () => {
       return await rateLimitExceeded({
         db: args.db,
@@ -604,7 +607,7 @@ async function prepareWorkflowWebhookDispatch(args: {
   if (limited) {
     return { kind: "rate_limited" };
   }
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return {
     kind: "ok",
@@ -650,7 +653,7 @@ const startWorkflowWebhookRun$ = command(
       readonly headers: Readonly<Record<string, string>>;
       readonly currentTime: Date;
       readonly apiStartTime: number;
-      readonly timing: WorkflowEventRunTiming;
+      readonly timing: AutomationEventRunTiming;
     },
     signal: AbortSignal,
   ): Promise<RunWorkflowAutomationResult | "error"> => {
@@ -666,7 +669,7 @@ const startWorkflowWebhookRun$ = command(
     }
 
     const runInput = await args.timing.measure(
-      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+      "api_dispatch_pre_create_zero_automation_event_build_run_input",
       () => {
         const context = workflowWebhookTriggerContext({
           workflowName: args.row.workflowName,
@@ -692,7 +695,7 @@ const startWorkflowWebhookRun$ = command(
         },
         automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },
@@ -726,27 +729,29 @@ export const dispatchWorkflowWebhook$ = command(
     const signature = args.signature;
     const timestamp = args.timestamp;
 
-    const sourceTiming = new WorkflowEventSourceTiming(
+    const sourceTiming = new AutomationEventSourceTiming(
       "webhook",
       args.apiStartTime,
     );
     const db = set(writeDb$);
-    const prepared = await prepareWorkflowWebhookDispatch({
-      db,
-      token: args.token,
-      rawBody: args.rawBody,
-      signature,
-      timestamp,
-      sourceTiming,
+    const prepared = await prepareWorkflowWebhookDispatch(
+      {
+        db,
+        token: args.token,
+        rawBody: args.rawBody,
+        signature,
+        timestamp,
+        sourceTiming,
+      },
       signal,
-    });
+    );
     if (prepared.kind !== "ok") {
       return prepared;
     }
 
     const runTiming = sourceTiming.createRunTiming();
     const delivery = await runTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+      "api_dispatch_pre_create_zero_automation_event_record_processed_event",
       async () => {
         return await acceptWebhookDelivery(db, {
           automationId: prepared.row.automation.id,

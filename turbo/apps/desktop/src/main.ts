@@ -1,4 +1,5 @@
 import { captureDesktopNativeHelperError } from "./sentry-main";
+import { writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -6,6 +7,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
   net,
   powerSaveBlocker,
@@ -22,7 +24,7 @@ import {
 import {
   COMPUTER_USE_PLUGIN_CALL_KIND,
   isComputerUseMcpPluginCallPayload,
-} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+} from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
   MAC_AUTOMATION_SETTINGS_URL,
   createAutomationPermissionDeniedPrompt,
@@ -64,6 +66,8 @@ import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-in
 import { DesktopFilesystemPluginManager } from "./desktop-filesystem-plugin";
 import { DesktopMcpPluginManager } from "./desktop-mcp-plugin";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
+import type { DesktopIdentityInfo } from "./desktop-bridge";
+import { DESKTOP_IDENTITY_CHANNEL } from "./desktop-identity-ipc-channels";
 import { startDesktopLaunchComputerUse } from "./desktop-launch-computer-use";
 import {
   DesktopQuitConfirmationController,
@@ -112,11 +116,18 @@ import {
   isDesktopRendererUrl,
 } from "./desktop-renderer-url";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
+import { DesktopZeroMigrationController } from "./desktop-zero-migration";
+import { ZERO_MIGRATION_BRIDGE_CONFIG } from "./desktop-zero-migration-config";
+import {
+  installDesktopZeroMigrationIpc,
+  notifyDesktopZeroMigrationChanged,
+} from "./desktop-zero-migration-electron";
 
 const config = resolveDesktopConfig();
 const desktopApiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
 const addDesktopClientHeaders = createDesktopClientHeaderInjector({
   clientVersion: app.getVersion(),
+  product: config.identity.product,
 });
 const desktopAuthStartUrl = buildDesktopAuthStartUrl(
   config.webUrl,
@@ -128,7 +139,7 @@ const desktopAuthSelectOrgUrl = buildDesktopAuthSelectOrgUrl(
 );
 const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
 const localRendererUrl = desktopRendererUrl();
-const ZERO_FEATURE_SWITCHES_PATH = "/api/zero/feature-switches";
+const ZERO_FEATURE_SWITCHES_PATH = "/api/okou/feature-switches";
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
 const DESKTOP_SIGN_OUT_STORAGES = [
@@ -147,6 +158,18 @@ let appIsQuitting = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
+let zeroMigrationController: DesktopZeroMigrationController | null = null;
+let zeroMigrationPolicyTimer: ReturnType<typeof setInterval> | null = null;
+
+const desktopIdentity: DesktopIdentityInfo = {
+  product: config.identity.product,
+  brandName: config.identity.brandName,
+  displayName: config.identity.displayName,
+};
+
+ipcMain.on(DESKTOP_IDENTITY_CHANNEL, (event) => {
+  event.returnValue = desktopIdentity;
+});
 let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
 let mcpPluginManager: DesktopMcpPluginManager | null = null;
 let desktopAutoUpdatesInstalled = false;
@@ -231,7 +254,9 @@ function notifyComputerUseChanged(): void {
   );
   notifyDesktopComputerUseChanged();
   refreshDesktopTray();
-  computerUseAutoStart.restartRecoverableRuntimeState();
+  if (!zeroMigrationController?.shouldSuppressAutoStart()) {
+    computerUseAutoStart.restartRecoverableRuntimeState();
+  }
 }
 
 function notifyAuthChanged(): void {
@@ -511,6 +536,15 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
 async function startComputerUseRuntime(
   options: { readonly userInitiated?: boolean } = {},
 ): Promise<DesktopComputerUseState> {
+  if (zeroMigrationController?.allowUserInitiatedStart() === false) {
+    return getComputerUseBridgeState();
+  }
+  if (zeroMigrationController?.shouldSuppressAutoStart()) {
+    if (options.userInitiated !== true) {
+      return getComputerUseBridgeState();
+    }
+    zeroMigrationController.clearForUserInitiatedStart();
+  }
   await computerUseController.start(options);
   return getComputerUseBridgeState();
 }
@@ -630,6 +664,76 @@ function installDesktopDeveloperTools(): void {
   );
 }
 
+function installZeroMigration(): void {
+  zeroMigrationController = new DesktopZeroMigrationController({
+    enabled:
+      config.environment === "production" &&
+      app.isPackaged &&
+      !isDesktopSmokeTestEnabled(process.env),
+    product: config.identity.product,
+    appVersion: app.getVersion(),
+    preferencesPath: desktopPreferencesPath(),
+    drainAndStopZero: async () => {
+      await computerUseController.drainAndStop();
+    },
+    startZero: async () => {
+      await computerUseController.start({ userInitiated: true });
+    },
+    openDownload: async (url) => {
+      await shell.openExternal(url);
+    },
+    fetchPolicy: (signal) => {
+      const headers = new Headers();
+      addDesktopClientHeaders(headers);
+      return fetch(
+        new URL(ZERO_MIGRATION_BRIDGE_CONFIG.policyPath, desktopApiBaseUrl),
+        { headers, signal },
+      );
+    },
+    quitZero: () => {
+      quitConfirmation.allowQuitWithoutConfirmation();
+      app.quit();
+    },
+    onChange: notifyDesktopZeroMigrationChanged,
+    onAttention: () => {
+      void createMainWindow();
+    },
+    logPolicyError: (error) => {
+      console.warn("Unable to refresh Zero migration policy", error);
+    },
+  });
+  const controller = zeroMigrationController;
+  installDesktopZeroMigrationIpc(
+    {
+      getState: () => controller.getState(),
+      remindLater: () => controller.remindLater(),
+      beginMigration: () => controller.beginMigration(),
+      resumeZero: () => controller.resumeZero(),
+      quitZero: () => controller.quitZero(),
+    },
+    { rendererUrl: localRendererUrl },
+  );
+}
+
+function startZeroMigrationPolicyRefresh(): void {
+  const controller = zeroMigrationController;
+  if (!controller || zeroMigrationPolicyTimer) {
+    return;
+  }
+  zeroMigrationPolicyTimer = setInterval(() => {
+    void controller.refreshPolicy();
+  }, ZERO_MIGRATION_BRIDGE_CONFIG.policyRefreshIntervalMs);
+  zeroMigrationPolicyTimer.unref();
+}
+
+function stopZeroMigrationPolicyRefresh(): void {
+  if (!zeroMigrationPolicyTimer) {
+    return;
+  }
+  clearInterval(zeroMigrationPolicyTimer);
+  zeroMigrationPolicyTimer = null;
+}
+
 function refreshComputerUsePermissionsForState(): void {
   void refreshComputerUsePermissionState()
     .catch((error) => {
@@ -703,6 +807,7 @@ function installDesktopAuth(): void {
 
 function installTray(): void {
   desktopTray = installDesktopTray({
+    brandName: config.identity.brandName,
     displayName: config.identity.displayName,
     iconPath: trayIconPath(),
     disabledIconPath: trayIconDisabledPath(),
@@ -758,7 +863,7 @@ function requestDesktopUpdateCheck(): void {
     return;
   }
 
-  checkForDesktopUpdates();
+  checkForDesktopUpdates(config.identity.displayName);
 }
 
 function applyApplicationMenu(): void {
@@ -1006,6 +1111,82 @@ async function createMainWindow(): Promise<BrowserWindow> {
   return window;
 }
 
+interface DesktopSmokeBridgeState {
+  readonly auth: boolean;
+  readonly computerUse: boolean;
+  readonly developerTools: boolean;
+  readonly zeroMigration: boolean;
+  readonly identity: DesktopIdentityInfo | null;
+}
+
+function isDesktopIdentityInfo(value: unknown): value is DesktopIdentityInfo {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "product" in value &&
+    (value.product === "zero" || value.product === "okou") &&
+    "brandName" in value &&
+    (value.brandName === "Zero" || value.brandName === "Okou") &&
+    "displayName" in value &&
+    typeof value.displayName === "string"
+  );
+}
+
+function isDesktopSmokeBridgeState(
+  value: unknown,
+): value is DesktopSmokeBridgeState {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "auth" in value &&
+    typeof value.auth === "boolean" &&
+    "computerUse" in value &&
+    typeof value.computerUse === "boolean" &&
+    "developerTools" in value &&
+    typeof value.developerTools === "boolean" &&
+    "zeroMigration" in value &&
+    typeof value.zeroMigration === "boolean" &&
+    "identity" in value &&
+    (value.identity === null || isDesktopIdentityInfo(value.identity))
+  );
+}
+
+async function verifyDesktopSmokeBridge(): Promise<void> {
+  const window = await createMainWindow();
+  const rawState: unknown = await window.webContents.executeJavaScript(
+    `({
+      auth: typeof window.vm0DesktopAuth === "object",
+      computerUse: typeof window.vm0DesktopComputerUse === "object",
+      developerTools: typeof window.vm0DesktopDeveloperTools === "object",
+      zeroMigration: typeof window.vm0DesktopZeroMigration === "object",
+      identity: window.vm0DesktopIdentity ?? null,
+    })`,
+    true,
+  );
+
+  if (!isDesktopSmokeBridgeState(rawState)) {
+    throw new Error(
+      `Desktop renderer bridge returned an invalid result: ${JSON.stringify(rawState)}`,
+    );
+  }
+
+  const state = rawState;
+  if (
+    !state.auth ||
+    !state.computerUse ||
+    !state.developerTools ||
+    !state.zeroMigration ||
+    !state.identity ||
+    state.identity.product !== desktopIdentity.product ||
+    state.identity.brandName !== desktopIdentity.brandName ||
+    state.identity.displayName !== desktopIdentity.displayName
+  ) {
+    throw new Error(
+      `Desktop renderer bridge failed acceptance: ${JSON.stringify(state)}`,
+    );
+  }
+}
+
 function installAuthConsumeWindowPolicy(window: BrowserWindow): void {
   window.webContents.on("will-navigate", (event, url) => {
     if (isAllowedAppNavigation(url, config.allowedAppOrigins)) {
@@ -1127,7 +1308,10 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   notifyAuthChanged();
   const permissions = await refreshComputerUsePermissionState();
   notifyComputerUseChanged();
-  if (hasRequiredComputerUsePermissions(permissions)) {
+  if (
+    hasRequiredComputerUsePermissions(permissions) &&
+    !zeroMigrationController?.shouldSuppressAutoStart()
+  ) {
     await computerUseController.start({ userInitiated: true });
   }
 }
@@ -1194,7 +1378,9 @@ function registerDesktopAuthProtocol(): void {
 }
 
 if (process.platform !== "darwin") {
-  console.warn("Zero Desktop POC is macOS-first and only packages for darwin.");
+  console.warn(
+    "Computer Use Desktop is macOS-first and only packages for darwin.",
+  );
 }
 
 applyAppName();
@@ -1224,6 +1410,7 @@ if (!hasSingleInstanceLock) {
       return;
     }
 
+    stopZeroMigrationPolicyRefresh();
     appIsQuitting = true;
     releaseKeepAwake();
     if (!computerUseController.quitStopRequired()) {
@@ -1246,12 +1433,28 @@ if (!hasSingleInstanceLock) {
     installKeepAwake();
     installComputerUse();
     installDesktopDeveloperTools();
-    refreshComputerUsePermissionsForState();
+    installZeroMigration();
     const desktopAuthSession = getAuthSession();
     installDesktopAuth();
+    await zeroMigrationController?.refreshPolicy();
+    startZeroMigrationPolicyRefresh();
+    refreshComputerUsePermissionsForState();
     developerTools.requestRefresh();
     installTray();
     queueDesktopAuthCallbackArgv(process.argv);
+
+    if (isDesktopSmokeTestEnabled(process.env)) {
+      desktopAuthSession.signOut();
+      try {
+        await verifyDesktopSmokeBridge();
+      } catch (error) {
+        console.error("[smoke-test] desktop renderer bridge failed", error);
+        app.exit(1);
+        return;
+      }
+      writeSync(1, `${DESKTOP_SMOKE_TEST_READY_MARKER}\n`);
+      process.exit(0);
+    }
 
     startDesktopLaunchComputerUse({
       pendingCallback: desktopAuthSession.takePendingCallback(),
@@ -1268,15 +1471,13 @@ if (!hasSingleInstanceLock) {
       logLaunchError: logComputerUseLaunchError,
     });
 
+    if (zeroMigrationController?.shouldOpenWindowOnLaunch()) {
+      await createMainWindow();
+    }
+
     app.on("activate", () => {
       void createMainWindow();
     });
-
-    if (isDesktopSmokeTestEnabled(process.env)) {
-      console.log(DESKTOP_SMOKE_TEST_READY_MARKER);
-      quitConfirmation.allowQuitWithoutConfirmation();
-      app.quit();
-    }
   });
 
   app.on("window-all-closed", () => {

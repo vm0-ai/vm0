@@ -2,7 +2,7 @@ import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   integrationsFeishuUploadCompleteContract,
   integrationsFeishuUploadInitContract,
@@ -14,7 +14,7 @@ import {
   type FeishuUploadInitResponse,
   type SendFeishuMessageBody,
   type SendFeishuMessageResponse,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 
 import { headersWithCliClientHeaders } from "../client-headers";
 import { getActiveToken } from "../config";
@@ -80,7 +80,7 @@ export async function downloadFeishuFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/zero/integrations/feishu/download-file", baseUrl);
+  const url = new URL("/api/okou/integrations/feishu/download-file", baseUrl);
   url.searchParams.set("message_id", messageId);
   url.searchParams.set("file_key", fileKey);
   url.searchParams.set("type", resourceType);

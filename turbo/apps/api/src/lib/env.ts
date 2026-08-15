@@ -26,17 +26,29 @@ const SCHEMA = {
   OFFICIAL_RUNNER_SECRET: z.string().length(64),
   OPENAI_API_KEY: z.string().min(1),
   FAL_KEY: z.string().min(1).optional(),
+  JOGGAI_API_KEY: z.string().min(1).optional(),
+  JOGGAI_WEBHOOK_SECRET: z.string().min(1).optional(),
   BYTEPLUS_API_KEY: z.string().min(1).optional(),
+  MINIMAX_API_KEY: z.string().min(1).optional(),
   BYTEPLUS_STT_API_KEY: z.string().min(1).optional(),
+  OKOU_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),
   ZERO_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),
+  OKOU_WEATHER_GOOGLE_WEATHER_TOKEN: z.string().min(1).optional(),
   ZERO_WEATHER_GOOGLE_WEATHER_TOKEN: z.string().min(1).optional(),
+  OKOU_SCRAPE_FIRECRAWL_TOKEN: z.string().min(1).optional(),
   ZERO_SCRAPE_FIRECRAWL_TOKEN: z.string().min(1).optional(),
+  OKOU_WEB_SEARCH_PERPLEXITY_TOKEN: z.string().min(1).optional(),
   ZERO_WEB_SEARCH_PERPLEXITY_TOKEN: z.string().min(1).optional(),
+  OKOU_FINANCE_APIDOJO_TOKEN: z.string().min(1).optional(),
   ZERO_FINANCE_APIDOJO_TOKEN: z.string().min(1).optional(),
+  OKOU_SEO_DATAFORSEO_LOGIN: z.string().min(1).optional(),
+  ZERO_SEO_DATAFORSEO_LOGIN: z.string().min(1).optional(),
+  OKOU_SEO_DATAFORSEO_PASSWORD: z.string().min(1).optional(),
+  ZERO_SEO_DATAFORSEO_PASSWORD: z.string().min(1).optional(),
+  OKOU_BROWSER_USE_API_KEY: z.string().min(1).optional(),
   ZERO_BROWSER_USE_API_KEY: z.string().min(1).optional(),
   STEAM_WEB_API_KEY: z.string().min(1).optional(),
   UNSPLASH_ACCESS_KEY: z.string().min(1).optional(),
-  PEXELS_API_KEY: z.string().min(1).optional(),
   FINICITY_APP_KEY: z.string().min(1).optional(),
   FINICITY_APP_SECRET: z.string().min(1).optional(),
   FINICITY_PARTNER_ID: z.string().min(1).optional(),
@@ -53,12 +65,16 @@ const SCHEMA = {
   FEISHU_CALLBACK_BASE_URL: z.url(),
   VM0_WEB_URL: z.url(),
   APP_URL: z.url(),
+  CLI_PKG_URL: z.url(),
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
   RESEND_FROM_DOMAIN: z.string().min(1).optional(),
   GMAIL_PUBSUB_TOPIC_NAME: z.string().min(1).optional(),
   GMAIL_PUBSUB_PUSH_AUDIENCE: z.url().optional(),
   GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL: z.email().optional(),
+  GOOGLE_FORMS_PUBSUB_TOPIC_NAME: z.string().min(1).optional(),
+  GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE: z.url().optional(),
+  GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL: z.email().optional(),
   GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME: z.string().min(1).optional(),
   GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE: z.url().optional(),
   GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL: z
@@ -78,7 +94,9 @@ const SCHEMA = {
   R2_HOSTED_SITES_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   CLOUDFLARE_BROWSER_RENDERING_API_TOKEN: z.string().min(1).optional(),
   ARTIFACT_PREVIEW_WAF_SECRET: z.string().min(32).optional(),
+  OKOU_HOST_DOMAIN: z.string().min(1).optional(),
   ZERO_HOST_DOMAIN: z.string().min(1).default("sites.vm0.io"),
+  OKOU_HOST_SCHEME: z.enum(["http", "https"]).optional(),
   ZERO_HOST_SCHEME: z.enum(["http", "https"]).default("https"),
   S3_ENDPOINT: z.url().optional(),
   S3_REGION: z.string().min(1).optional(),
@@ -91,10 +109,40 @@ const SCHEMA = {
   ATOM_URL: z.url().optional(),
   ATOM_GRANT_PRICE: z.string().min(1).optional(),
   VM0_MACHINE_SECRET_KEY: z.string().min(1).optional(),
+  OKOU_PRICE_PRO: priceIdsSchema,
   ZERO_PRICE_PRO: priceIdsSchema,
+  OKOU_PRICE_TEAM: priceIdsSchema,
   ZERO_PRICE_TEAM: priceIdsSchema,
+  OKOU_PRICE_USAGE_PACK_PLAN_PRO: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_PLAN_PRO: priceIdsSchema,
+  OKOU_PRICE_USAGE_PACK_PLAN_TEAM: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_PLAN_TEAM: priceIdsSchema,
+  OKOU_PRICE_USAGE_PACK_20: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_20: priceIdsSchema,
+  OKOU_PRICE_USAGE_PACK_50: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_50: priceIdsSchema,
+  OKOU_PRICE_USAGE_PACK_100: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_100: priceIdsSchema,
+  OKOU_PRICE_USAGE_PACK_200: priceIdsSchema,
+  ZERO_PRICE_USAGE_PACK_200: priceIdsSchema,
+  OKOU_PRICE_CUSTOM_CREDIT_UNIT: z.string().min(1).optional(),
   ZERO_PRICE_CUSTOM_CREDIT_UNIT: z.string().min(1).optional(),
+  OKOU_PRICE_CONCURRENCY: priceIdsSchema,
   ZERO_PRICE_CONCURRENCY: priceIdsSchema,
+  OKOU_ONE_TIME_CAMPAIGN: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val) {
+        return undefined;
+      }
+      return z
+        .record(
+          z.string(),
+          z.object({ priceId: z.string(), couponId: z.string() }),
+        )
+        .parse(JSON.parse(val));
+    }),
   ZERO_ONE_TIME_CAMPAIGN: z
     .string()
     .optional()
@@ -148,6 +196,32 @@ const baseEnv = createEnv<undefined, typeof SCHEMA>({
 type EnvShape = typeof baseEnv;
 type EnvName = keyof EnvShape;
 
+const OKOU_ENV_FALLBACKS = {
+  OKOU_MAPS_GOOGLE_MAPS_TOKEN: "ZERO_MAPS_GOOGLE_MAPS_TOKEN",
+  OKOU_WEATHER_GOOGLE_WEATHER_TOKEN: "ZERO_WEATHER_GOOGLE_WEATHER_TOKEN",
+  OKOU_SCRAPE_FIRECRAWL_TOKEN: "ZERO_SCRAPE_FIRECRAWL_TOKEN",
+  OKOU_WEB_SEARCH_PERPLEXITY_TOKEN: "ZERO_WEB_SEARCH_PERPLEXITY_TOKEN",
+  OKOU_FINANCE_APIDOJO_TOKEN: "ZERO_FINANCE_APIDOJO_TOKEN",
+  OKOU_SEO_DATAFORSEO_LOGIN: "ZERO_SEO_DATAFORSEO_LOGIN",
+  OKOU_SEO_DATAFORSEO_PASSWORD: "ZERO_SEO_DATAFORSEO_PASSWORD",
+  OKOU_BROWSER_USE_API_KEY: "ZERO_BROWSER_USE_API_KEY",
+  OKOU_HOST_DOMAIN: "ZERO_HOST_DOMAIN",
+  OKOU_HOST_SCHEME: "ZERO_HOST_SCHEME",
+  OKOU_PRICE_PRO: "ZERO_PRICE_PRO",
+  OKOU_PRICE_TEAM: "ZERO_PRICE_TEAM",
+  OKOU_PRICE_USAGE_PACK_PLAN_PRO: "ZERO_PRICE_USAGE_PACK_PLAN_PRO",
+  OKOU_PRICE_USAGE_PACK_PLAN_TEAM: "ZERO_PRICE_USAGE_PACK_PLAN_TEAM",
+  OKOU_PRICE_USAGE_PACK_20: "ZERO_PRICE_USAGE_PACK_20",
+  OKOU_PRICE_USAGE_PACK_50: "ZERO_PRICE_USAGE_PACK_50",
+  OKOU_PRICE_USAGE_PACK_100: "ZERO_PRICE_USAGE_PACK_100",
+  OKOU_PRICE_USAGE_PACK_200: "ZERO_PRICE_USAGE_PACK_200",
+  OKOU_PRICE_CUSTOM_CREDIT_UNIT: "ZERO_PRICE_CUSTOM_CREDIT_UNIT",
+  OKOU_PRICE_CONCURRENCY: "ZERO_PRICE_CONCURRENCY",
+  OKOU_ONE_TIME_CAMPAIGN: "ZERO_ONE_TIME_CAMPAIGN",
+} as const satisfies Partial<Record<EnvName, EnvName>>;
+
+type OkouEnvName = keyof typeof OKOU_ENV_FALLBACKS;
+
 const {
   get: getOverrideEnv,
   set: setOverrideEnv,
@@ -164,12 +238,24 @@ const {
   return {};
 });
 
-export function env<K extends EnvName>(name: K): EnvShape[K] {
+function readEnv<K extends EnvName>(name: K): EnvShape[K] {
   const overrideEnv = getOverrideEnv();
   if (Object.prototype.hasOwnProperty.call(overrideEnv, name)) {
     return overrideEnv[name] as EnvShape[K];
   }
   return baseEnv[name];
+}
+
+function isOkouEnvName(name: EnvName): name is OkouEnvName {
+  return Object.prototype.hasOwnProperty.call(OKOU_ENV_FALLBACKS, name);
+}
+
+export function env<K extends EnvName>(name: K): EnvShape[K] {
+  const value = readEnv(name);
+  if (value !== undefined || !isOkouEnvName(name)) {
+    return value;
+  }
+  return readEnv(OKOU_ENV_FALLBACKS[name]) as EnvShape[K];
 }
 
 export function optionalEnv(name: string): string | undefined {

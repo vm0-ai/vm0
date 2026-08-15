@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
@@ -12,19 +12,13 @@ import {
   zeroAgentInstructionsContract,
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/zero-agents";
 import {
   type TeamComposeItem,
   zeroTeamContract,
-} from "@vm0/api-contracts/contracts/zero-team";
-import { i18n } from "../../../i18n/index.ts";
+} from "@okouai/api-contracts/contracts/zero-team";
 
 const context = testContext();
-
-afterEach(async () => {
-  await i18n.changeLanguage("en-US");
-  document.documentElement.lang = "en-US";
-});
 
 function createDefaultAgent(): TeamComposeItem {
   return {
@@ -61,7 +55,7 @@ function mockAgentsPage(team: TeamComposeItem[]): void {
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
-      visibility: agent.visibility,
+      visibility: agent.visibility ?? "public",
     });
   });
 }
@@ -74,6 +68,16 @@ function tabByText(text: string): HTMLElement {
     throw new Error(`${text} tab not found`);
   }
   return tab;
+}
+
+function segmentByText(text: string): HTMLElement {
+  const segment = queryAllByRoleFast("radio").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!segment) {
+    throw new Error(`${text} segment not found`);
+  }
+  return segment;
 }
 
 function newAgentButton(label = "New agent"): HTMLElement {
@@ -90,11 +94,11 @@ async function openCreateDialog(
   tabName: "Public" | "Private",
 ): Promise<HTMLElement> {
   await waitFor(() => {
-    expect(tabByText(tabName)).toBeInTheDocument();
+    expect(segmentByText(tabName)).toBeInTheDocument();
   });
-  click(tabByText(tabName));
+  click(segmentByText(tabName));
   await waitFor(() => {
-    expect(tabByText(tabName)).toHaveAttribute("aria-selected", "true");
+    expect(segmentByText(tabName)).toHaveAttribute("aria-checked", "true");
   });
   click(newAgentButton());
   return await screen.findByRole("dialog");
@@ -190,7 +194,7 @@ describe("zero jobs page", () => {
     expect(screen.queryByText("Writes content based on research")).toBeNull();
     expect(newAgentButton()).toBeInTheDocument();
 
-    click(tabByText("Private"));
+    click(segmentByText("Private"));
     await waitFor(() => {
       expect(
         screen.getByText("a0000000-0000-4000-a000-000000000102"),
@@ -235,7 +239,7 @@ describe("zero jobs page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
-        visibility: agent.visibility,
+        visibility: agent.visibility ?? "public",
       });
     });
     context.mocks.api(
@@ -328,7 +332,7 @@ describe("zero jobs page", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(dialog).not.toBeInTheDocument();
 
-    click(tabByText("Public"));
+    click(segmentByText("Public"));
     await waitFor(() => {
       expect(screen.getByText("Marketing Bot")).toBeInTheDocument();
     });
@@ -423,7 +427,7 @@ describe("zero jobs page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
-        visibility: agent.visibility,
+        visibility: agent.visibility ?? "public",
       });
     });
     context.mocks.api(

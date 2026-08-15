@@ -10,9 +10,11 @@ use vsock_proto::{
     ExecCapturedOutput, ExecControlNonce, ExecControlStatus, ExecOutputStream, ExecTermination,
     HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, RawMessage,
+    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_MEMORY_SNAPSHOT,
+    MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING,
+    MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
+    MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
+    MSG_WRITE_FILES_RESULT, RawMessage,
 };
 
 use crate::operation_tracker::NormalOperationReadiness;
@@ -158,6 +160,10 @@ fn message_type_name(msg_type: u8) -> &'static str {
         MSG_EXEC_CANCEL => "exec_cancel",
         MSG_EXEC_CONTROL => "exec_control",
         MSG_EXEC_CONTROL_RESULT => "exec_control_result",
+        MSG_MEMORY_SNAPSHOT => "memory_snapshot",
+        MSG_MEMORY_SNAPSHOT_RESULT => "memory_snapshot_result",
+        MSG_GUEST_DNS_READINESS => "guest_dns_readiness",
+        MSG_GUEST_DNS_READINESS_RESULT => "guest_dns_readiness_result",
         MSG_ERROR => "error",
         _ => "unknown",
     }
@@ -180,6 +186,36 @@ pub(crate) fn pending_request_count(host: &VsockHost) -> usize {
     let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
     match &*guard {
         ConnectionState::Connected { pending, .. } => pending.len(),
+        ConnectionState::Closed => 0,
+    }
+}
+
+pub(crate) fn pending_control_count(host: &VsockHost) -> usize {
+    let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &*guard {
+        ConnectionState::Connected { operations, .. } => operations.pending_control_count(),
+        ConnectionState::Closed => 0,
+    }
+}
+
+pub(crate) fn set_next_route_id(host: &VsockHost, next_route_id: u64) {
+    let mut guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    let ConnectionState::Connected {
+        next_route_id: current,
+        ..
+    } = &mut *guard
+    else {
+        panic!("connection should be open");
+    };
+    *current = next_route_id;
+}
+
+pub(crate) fn route_reservation_count(host: &VsockHost) -> usize {
+    let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &*guard {
+        ConnectionState::Connected {
+            route_reservations, ..
+        } => route_reservations.len(),
         ConnectionState::Closed => 0,
     }
 }
@@ -440,6 +476,36 @@ pub(crate) async fn send_exec_output(
 pub(crate) async fn wait_for_operation_count(host: &VsockHost, expected: usize) {
     tokio::time::timeout(Duration::from_secs(5), async {
         while operation_count(host) != expected {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+pub(crate) async fn wait_for_pending_request_count(host: &VsockHost, expected: usize) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pending_request_count(host) != expected {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+pub(crate) async fn wait_for_pending_control_count(host: &VsockHost, expected: usize) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pending_control_count(host) != expected {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+pub(crate) async fn wait_for_route_reservation_count(host: &VsockHost, expected: usize) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while route_reservation_count(host) != expected {
             tokio::task::yield_now().await;
         }
     })

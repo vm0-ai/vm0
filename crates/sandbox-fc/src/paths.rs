@@ -232,6 +232,19 @@ impl SnapshotOutputPaths {
         self.output_dir.join("cow.img.bitmap")
     }
 
+    /// Returns the four regular files required for a reusable snapshot.
+    ///
+    /// The completion marker is intentionally separate because it is the
+    /// publication commit signal rather than a snapshot data artifact.
+    pub fn required_artifacts(&self) -> [PathBuf; 4] {
+        [
+            self.snapshot(),
+            self.memory(),
+            self.cow(),
+            self.cow_bitmap(),
+        ]
+    }
+
     /// Commit marker written only after all snapshot artifacts are published.
     pub fn complete_marker(&self) -> PathBuf {
         self.output_dir.join(".snapshot-complete")

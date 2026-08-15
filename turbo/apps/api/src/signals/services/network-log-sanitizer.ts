@@ -8,7 +8,7 @@ import {
   networkLogActionSchema,
   networkLogEntrySchema,
   type NetworkLogEntry,
-} from "@vm0/api-contracts/contracts/runs";
+} from "@okouai/api-contracts/contracts/runs";
 
 type UnknownRecord = Record<string, unknown>;
 type UpstreamBindingField = Extract<
@@ -204,6 +204,8 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     port: numberValue(event.port),
     method: stringValue(event.method),
     url: stringValue(event.url),
+    url_truncated: booleanValue(event.url_truncated),
+    url_original_char_count: numberValue(event.url_original_char_count),
     status: numberValue(event.status),
     latency_ms: numberValue(event.latency_ms),
     request_size: numberValue(event.request_size),
@@ -263,12 +265,14 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     auth_url_rewrite: booleanValue(event.auth_url_rewrite),
     error: stringValue(event.error),
     request_headers: stringRecordValue(event.request_headers),
+    request_headers_truncated: booleanValue(event.request_headers_truncated),
     request_body: stringValue(event.request_body),
     request_body_encoding: networkBodyEncodingValue(
       event.request_body_encoding,
     ),
     request_body_truncated: booleanValue(event.request_body_truncated),
     response_headers: stringRecordValue(event.response_headers),
+    response_headers_truncated: booleanValue(event.response_headers_truncated),
     response_body: stringValue(event.response_body),
     response_body_encoding: networkBodyEncodingValue(
       event.response_body_encoding,

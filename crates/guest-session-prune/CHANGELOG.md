@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.3.20](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.19...guest-session-prune-v0.3.20) (2026-08-14)
+
+## [0.3.19](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.18...guest-session-prune-v0.3.19) (2026-08-14)
+
+## [0.3.18](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.17...guest-session-prune-v0.3.18) (2026-08-14)
+
+## [0.3.17](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.16...guest-session-prune-v0.3.17) (2026-08-14)
+
+## [0.3.16](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.15...guest-session-prune-v0.3.16) (2026-08-14)
+
+## [0.3.15](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.14...guest-session-prune-v0.3.15) (2026-08-13)
+
+## [0.3.14](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.13...guest-session-prune-v0.3.14) (2026-08-13)
+
+## [0.3.13](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.12...guest-session-prune-v0.3.13) (2026-08-13)
+
+## [0.3.12](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.11...guest-session-prune-v0.3.12) (2026-08-13)
+
+## [0.3.11](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.10...guest-session-prune-v0.3.11) (2026-08-12)
+
+## [0.3.10](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.9...guest-session-prune-v0.3.10) (2026-08-12)
+
+## [0.3.9](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.8...guest-session-prune-v0.3.9) (2026-08-11)
+
+## [0.3.8](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.7...guest-session-prune-v0.3.8) (2026-08-11)
+
+## [0.3.7](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.6...guest-session-prune-v0.3.7) (2026-08-10)
+
+## [0.3.6](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.5...guest-session-prune-v0.3.6) (2026-08-09)
+
+## [0.3.5](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.4...guest-session-prune-v0.3.5) (2026-08-09)
+
+## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.3...guest-session-prune-v0.3.4) (2026-08-07)
+
+
+### Bug Fixes
+
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
 ## [0.3.3](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.2...guest-session-prune-v0.3.3) (2026-08-03)
 
 

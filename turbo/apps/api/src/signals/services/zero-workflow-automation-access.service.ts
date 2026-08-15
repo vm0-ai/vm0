@@ -1,5 +1,5 @@
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
@@ -8,7 +8,7 @@ import {
   type WorkflowAgentInfo,
 } from "./zero-workflow-data.service";
 
-type WorkflowAutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
+type WorkflowAutomationRow = typeof workflowAutomations.$inferSelect;
 
 function canReadAgent(agent: WorkflowAgentInfo, userId: string): boolean {
   return agent.visibility === "public" || agent.owner === userId;
@@ -38,11 +38,11 @@ async function workflowAutomationOwnerCanReadTarget(
     readonly userId: string;
     readonly workflowId: string;
     readonly agentId: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<boolean> {
   const member = await loadWorkflowAutomationOwnerMember(db, args);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!member) {
     return false;
   }
@@ -52,7 +52,7 @@ async function workflowAutomationOwnerCanReadTarget(
     member,
     workflowId: args.workflowId,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!visible || visible.workflow.agentId !== args.agentId) {
     return false;
   }
@@ -66,8 +66,8 @@ export async function workflowAutomationCanFire(
     readonly automation: WorkflowAutomationRow;
     readonly agentId: string;
     readonly allowClaimedOnceScheduleAutomation?: boolean;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<boolean> {
   const claimedOnceSchedule =
     args.allowClaimedOnceScheduleAutomation === true &&
@@ -80,11 +80,14 @@ export async function workflowAutomationCanFire(
     return false;
   }
 
-  return await workflowAutomationOwnerCanReadTarget(db, {
-    orgId: args.automation.orgId,
-    userId: args.automation.ownerUserId,
-    workflowId: args.automation.workflowId,
-    agentId: args.agentId,
-    signal: args.signal,
-  });
+  return await workflowAutomationOwnerCanReadTarget(
+    db,
+    {
+      orgId: args.automation.orgId,
+      userId: args.automation.ownerUserId,
+      workflowId: args.automation.workflowId,
+      agentId: args.agentId,
+    },
+    signal,
+  );
 }

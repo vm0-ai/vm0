@@ -1,11 +1,11 @@
 import {
   runContextResponseSchema,
   type RunContextResponse,
-} from "@vm0/api-contracts/contracts/zero-runs";
+} from "@okouai/api-contracts/contracts/zero-runs";
 import {
   networkLogEntrySchema,
   type NetworkLogEntry,
-} from "@vm0/api-contracts/contracts/runs";
+} from "@okouai/api-contracts/contracts/runs";
 import type { AgentEvent, LogDetail } from "../zero-page/log-types.ts";
 import { jsonParseOr } from "../utils.ts";
 

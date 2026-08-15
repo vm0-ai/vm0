@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useLastLoadable } from "ccstate-react";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { useTranslation } from "react-i18next";
 import type { OnboardingWorkflow } from "./onboarding-data.ts";
 import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";

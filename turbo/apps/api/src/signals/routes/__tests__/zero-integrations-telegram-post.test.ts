@@ -4,17 +4,18 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import type {
   TestTelegramStateActionBody,
   TestTelegramStateActionResponse,
   TestTelegramStateResponse,
-} from "@vm0/api-contracts/contracts/test-telegram-state";
+} from "@okouai/api-contracts/contracts/test-telegram-state";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -35,6 +36,9 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { testTelegramStateRoutes } from "../test-telegram-state";
+import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
+
+const TEST_APP_ROUTES = Object.freeze([...zeroIntegrationsTelegramRoutes]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -288,21 +292,23 @@ afterEach(() => {
 });
 
 function telegramClient() {
-  return setupApp({ context })(zeroIntegrationsTelegramContract);
+  return setupApp({ context, routes: zeroIntegrationsTelegramRoutes })(
+    zeroIntegrationsTelegramContract,
+  );
 }
 
 async function postRegisterRaw(body: unknown): Promise<Response> {
-  return await createApp({ signal: context.signal }).request(
-    "/api/telegram/register",
-    {
-      method: "POST",
-      headers: {
-        authorization: "Bearer clerk-session",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
+  return await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/telegram/register", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer clerk-session",
+      "content-type": "application/json",
     },
-  );
+    body: JSON.stringify(body),
+  });
 }
 
 async function postWebhook(args: {
@@ -310,18 +316,17 @@ async function postWebhook(args: {
   readonly secret: string;
   readonly body: unknown;
 }): Promise<Response> {
-  return await createApp({ signal: context.signal }).request(
-    `/api/telegram/webhook/${args.telegramBotId}`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-telegram-bot-api-secret-token": args.secret,
-      },
-      body:
-        typeof args.body === "string" ? args.body : JSON.stringify(args.body),
+  return await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/telegram/webhook/${args.telegramBotId}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-telegram-bot-api-secret-token": args.secret,
     },
-  );
+    body: typeof args.body === "string" ? args.body : JSON.stringify(args.body),
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -726,17 +731,17 @@ describe("POST /api/telegram/setup-status", () => {
   it("returns 400 when botToken is missing", async () => {
     mocks.clerk.session("user_missing_token", "org_missing_token");
 
-    const response = await createApp({ signal: context.signal }).request(
-      "/api/telegram/setup-status",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({}),
+    const response = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request("/api/telegram/setup-status", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({}),
+    });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
@@ -1202,9 +1207,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         "Root message ID: dm",
       ].join("\n"),
     );
-    const admitted = await findTelegramChatEventByPromptFixture(
-      "hello from telegram",
-    );
+    const admitted = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: "hello from telegram",
+    });
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
       throw new Error("Expected admitted Telegram input event");
@@ -1216,7 +1222,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       contextId: expect.any(String),
       telegramChatId: "77001",
       telegramMessageId: "42",
-      telegramIsDm: true,
       telegramMessageThreadId: null,
       telegramMessageText: "hello from telegram",
       telegramThreadContext: "",
@@ -1367,11 +1372,12 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       cliAgentSessionId: null,
       reuseKey,
       runnerPreference: {
+        kind: "preference",
         runnerIdentity: {
           runnerId,
           heartbeatGeneration: 1,
         },
-        reason: "matchingReuseKey",
+        tier: "reusableSandbox",
         expiresAt: expect.any(String),
       },
     });
@@ -1452,8 +1458,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       ).status,
     ).toBe(200);
     await flushWaitUntilForTest();
-    const queuedParams =
-      await findPendingChatEventByPromptFixture(queuedPrompt);
+    const queuedParams = await findPendingChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: queuedPrompt,
+    });
     expect(queuedParams).toMatchObject({
       eventId: expect.any(String),
     });
@@ -1524,7 +1532,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     await seedModelPolicies({
       fixture,
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
     const telegramMocks = telegramApiMocks();
     const chatId = 77_101;
@@ -1676,7 +1684,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     await seedModelPolicies({
       fixture,
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
     const telegramMocks = telegramApiMocks();
     const botUsername = `bot_${fixture.telegramBotId}`;
@@ -1712,8 +1720,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const firstState = await telegramPostRunState(fixture, firstPrompt);
     expect(firstState.zeroRun?.chatThreadId).toStrictEqual(expect.any(String));
-    const admittedForum =
-      await findTelegramChatEventByPromptFixture(firstPrompt);
+    const admittedForum = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: firstPrompt,
+    });
     expect(admittedForum).toMatchObject({ eventId: expect.any(String) });
     if (!admittedForum) {
       throw new Error("Expected admitted Telegram forum input event");
@@ -1725,7 +1735,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       contextType: "telegram",
       telegramChatId: String(chatId),
       telegramMessageId: "2201",
-      telegramIsDm: false,
       telegramMessageThreadId: messageThreadId,
       telegramMessageText: firstPrompt,
       telegramThreadContext: "",
@@ -1823,8 +1832,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       "",
       followUpPrompt,
     ].join("\n");
-    const admittedFollowUp =
-      await findTelegramChatEventByPromptFixture(followUpAgentPrompt);
+    const admittedFollowUp = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: followUpAgentPrompt,
+    });
     expect(admittedFollowUp).toMatchObject({ eventId: expect.any(String) });
     if (!admittedFollowUp) {
       throw new Error("Expected admitted Telegram forum follow-up event");
@@ -2079,9 +2090,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         "Message ID: 101",
       ].join("\n"),
     );
-    const admitted = await findTelegramChatEventByPromptFixture(
-      "summarize this thread",
-    );
+    const admitted = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: "summarize this thread",
+    });
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
       throw new Error("Expected admitted Telegram supergroup input event");
@@ -2092,7 +2104,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       contextType: "telegram",
       telegramChatId: "-10099002",
       telegramMessageId: "101",
-      telegramIsDm: false,
       telegramMessageThreadId: null,
       telegramMessageText: "summarize this thread",
       telegramThreadContext: "",
@@ -2150,9 +2161,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         "Root message ID: dm",
       ].join("\n"),
     );
-    const admitted = await findTelegramChatEventByPromptFixture(
-      "run through official bot",
-    );
+    const admitted = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: "run through official bot",
+    });
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
       throw new Error("Expected admitted official Telegram input event");
@@ -2517,7 +2529,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     await seedModelPolicies({
       fixture,
-      selectedModel: "deepseek-v4-pro",
+      selectedModel: "deepseek-v4-flash",
     });
     const telegramMocks = telegramApiMocks();
 
@@ -2542,10 +2554,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages[0]?.text).toContain("Available models");
     expect(telegramMocks.sentMessages[0]?.text).toContain(
-      "/model claude-sonnet-4-6",
+      "/model claude-sonnet-5",
     );
     expect(telegramMocks.sentMessages[0]?.text).toContain(
-      "/model deepseek-v4-pro",
+      "/model deepseek-v4-flash",
     );
     expect(telegramMocks.sentMessages[0]?.text).not.toContain("/model default");
 
@@ -2562,13 +2574,13 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
             username: "alice",
             first_name: "Alice",
           },
-          text: "/model Claude Sonnet 4.6",
+          text: "/model Claude Sonnet 5",
         },
       },
     });
     expect(switchModel.status).toBe(200);
     await flushWaitUntilForTest();
-    await expect(selectedModelFor(fixture)).resolves.toBe("claude-sonnet-4-6");
+    await expect(selectedModelFor(fixture)).resolves.toBe("claude-sonnet-5");
 
     const defaultModel = await postWebhook({
       telegramBotId: fixture.telegramBotId,
@@ -2592,7 +2604,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(telegramMocks.sentMessages[2]?.text).toContain(
       "Unknown model &quot;default&quot;.",
     );
-    await expect(selectedModelFor(fixture)).resolves.toBe("claude-sonnet-4-6");
+    await expect(selectedModelFor(fixture)).resolves.toBe("claude-sonnet-5");
   });
 
   it("sends typing for accepted custom-bot runs and a queued message at the concurrency limit", async () => {
@@ -2726,7 +2738,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     await seedModelPolicies({
       fixture,
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
     });
     await seedOrgCredits(fixture, 100_000);
     const previousSessionId = await seedCompletedRun({
@@ -2777,7 +2789,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
     await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
-        selectedModel: "claude-opus-4-7",
+        selectedModel: "claude-opus-4-8",
       }),
     );
   });
@@ -2830,7 +2842,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
         modelProvider: "vm0",
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: "claude-sonnet-5",
       }),
     );
   });
@@ -2883,7 +2895,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
         modelProvider: "vm0",
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: "claude-sonnet-5",
       }),
     );
   });

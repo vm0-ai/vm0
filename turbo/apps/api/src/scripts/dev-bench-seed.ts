@@ -3,24 +3,27 @@
 import { createHash, randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import {
+  serializeChatFollowupsContent,
+  type ChatRecommendedFollowup,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
+} from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
 import {
   chatEvents,
-  type ChatEventRecommendedFollowups,
   type ChatEventUsagePayload,
-} from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
+import { normalizeRunMetadata } from "../signals/services/agent-run-metadata-write.service";
 import { onRejection } from "../signals/utils";
 
 const BULK_INSERT_CHUNK = 500;
@@ -29,7 +32,6 @@ const ALLOW_NON_LOCAL_ENV = "DEV_BENCH_SEED_ALLOW_NON_LOCAL";
 
 type Database = ReturnType<typeof db>;
 type AgentRunInsert = typeof agentRuns.$inferInsert;
-type ZeroRunInsert = typeof zeroRuns.$inferInsert;
 type ChatEventInsert = typeof chatEvents.$inferInsert;
 type SeedChatEventRow = Omit<
   ChatEventInsert,
@@ -43,7 +45,6 @@ type SeedChatEventRow = Omit<
 
 export interface BuiltProfileRows {
   readonly runRows: AgentRunInsert[];
-  readonly zeroRunRows: ZeroRunInsert[];
   readonly eventRows: SeedChatEventRow[];
 }
 
@@ -96,7 +97,7 @@ export const DEV_BENCH_THREAD_PROFILES: readonly ThreadProfile[] = [
   {
     slug: "feature-switch-digest",
     title: "[dev bench] prod-shaped chat thread A - 1.4k rows",
-    selectedModel: "glm-5.2",
+    selectedModel: "deepseek-v4-flash",
     startAt: "2026-05-10T00:05:02.553Z",
     endAt: "2026-06-23T01:34:51.637Z",
     targetRunRows: 1412,
@@ -447,10 +448,10 @@ function sequenceNumberFor(
   return Math.max(1, Math.round(2 + ratio * (baseMax - 2)));
 }
 
-function recommendedFollowups(
+function followups(
   profile: ThreadProfile,
   runIndex: number,
-): ChatEventRecommendedFollowups {
+): ChatRecommendedFollowup[] {
   return [
     {
       kind: "talk",
@@ -530,9 +531,14 @@ async function cleanupExistingBenchThreads(
   }
 
   const runRows = await database
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .where(inArray(zeroRuns.chatThreadId, threadIds));
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(
+      and(
+        inArray(agentRuns.chatThreadId, threadIds),
+        isNotNull(agentRuns.triggerSource),
+      ),
+    );
   const runIds = runRows.map((row) => {
     return row.id;
   });
@@ -555,7 +561,6 @@ async function cleanupExistingBenchThreads(
     .delete(chatEvents)
     .where(inArray(chatEvents.chatThreadId, threadIds));
   if (runIds.length > 0) {
-    await database.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
     await database.delete(agentRuns).where(inArray(agentRuns.id, runIds));
   }
   if (sessionIds.length > 0) {
@@ -649,17 +654,29 @@ function appendRunEvents(
   );
   const failed = args.runIndex < args.profile.failedRunCount;
   const prompt = userPromptLorem(args.profile, args.runIndex);
+  const userMessage = {
+    version: 1 as const,
+    parts: [{ type: "text" as const, text: prompt }],
+  };
   const userMessageRow: SeedChatEventRow = {
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId,
     eventType: "input.prompt",
-    userMessage: { version: 1, parts: [{ type: "text", text: prompt }] },
+    contextType: args.workflowAutomationBrief ? "automation" : "web",
+    payload: { userMessage },
     createdAt: baseCreatedAt,
   };
 
   args.runUserMessageRows.push(userMessageRow);
   args.rows.eventRows.push(userMessageRow);
+  const metadata = normalizeRunMetadata({
+    triggerSource: args.workflowAutomationBrief ? "automation-schedule" : "web",
+    selectedModel: args.profile.selectedModel,
+    chatThreadId: args.threadId,
+    summary: `Synthetic ${args.profile.slug} run ${String(args.runIndex)}`,
+    triggerBrief: args.workflowAutomationBrief,
+  });
   args.rows.runRows.push({
     id: runId,
     userId: args.userId,
@@ -678,14 +695,7 @@ function appendRunEvents(
     createdAt: baseCreatedAt,
     startedAt: addMs(baseCreatedAt, 1000),
     completedAt: addMs(baseCreatedAt, 45_000 + eventCount * 100),
-  });
-  args.rows.zeroRunRows.push({
-    id: runId,
-    triggerSource: args.workflowAutomationBrief ? "workflow-schedule" : "web",
-    selectedModel: args.profile.selectedModel,
-    chatThreadId: args.threadId,
-    summary: `Synthetic ${args.profile.slug} run ${String(args.runIndex)}`,
-    triggerBrief: args.workflowAutomationBrief,
+    ...metadata,
   });
 
   appendAssistantEvents({
@@ -750,7 +760,9 @@ function appendAssistantEvents(args: {
       chatThreadId: args.threadId,
       runId: args.runId,
       eventType: "output.message",
-      content: markdownLorem(args.profile, args.runIndex, eventIndex),
+      payload: {
+        content: markdownLorem(args.profile, args.runIndex, eventIndex),
+      },
       sequenceNumber,
       runEventId: runEventId(args.profile, args.runIndex, sequenceNumber),
       createdAt: addMs(args.baseCreatedAt, 10_000 + eventIndex * 750),
@@ -772,13 +784,13 @@ function appendUsageEvent(args: {
     return;
   }
   const createdAt = addMs(args.baseCreatedAt, 44_000 + args.eventCount * 100);
+  const usage = usagePayload(args.profile, args.runIndex, createdAt);
   args.eventRows.push({
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: "usage.recorded",
-    content: null,
-    usagePayload: usagePayload(args.profile, args.runIndex, createdAt),
+    payload: { usage },
     createdAt,
   });
 }
@@ -798,8 +810,7 @@ function appendLifecycleEvent(args: {
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: args.failed ? "run.failed" : "run.completed",
-    content: null,
-    error: args.failed ? "Synthetic benchmark failure" : null,
+    payload: args.failed ? { error: "Synthetic benchmark failure" } : null,
     createdAt: addMs(args.baseCreatedAt, 45_000 + args.eventCount * 100),
   });
 }
@@ -822,8 +833,11 @@ function appendFollowupsEvent(args: {
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: "output.followups",
-    content: null,
-    recommendedFollowups: recommendedFollowups(args.profile, args.runIndex),
+    payload: {
+      content: serializeChatFollowupsContent(
+        followups(args.profile, args.runIndex),
+      ),
+    },
     createdAt: addMs(args.baseCreatedAt, 45_001 + args.eventCount * 100),
   });
 }
@@ -849,19 +863,27 @@ function appendNullRunControlRows(args: {
       ),
       500,
     );
+    const prompt = userPromptLorem(args.profile, controlIndex);
+    const isInputPrompt = controlIndex % 2 === 0;
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: prompt }],
+    };
     args.eventRows.push({
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: null,
-      eventType: controlIndex % 2 === 0 ? "input.prompt" : "output.thinking",
-      content:
-        controlIndex % 2 === 0
-          ? userPromptLorem(args.profile, controlIndex)
-          : null,
-      thinking:
-        controlIndex % 2 === 0
-          ? null
-          : `Synthetic background state ${String(controlIndex)}`,
+      eventType: isInputPrompt ? "input.prompt" : "output.thinking",
+      ...(isInputPrompt
+        ? {
+            contextType: "web",
+            payload: { userMessage },
+          }
+        : {
+            payload: {
+              thinking: `Synthetic background state ${String(controlIndex)}`,
+            },
+          }),
       createdAt,
     });
   }
@@ -910,7 +932,6 @@ export function buildProfileRows(args: BuildProfileRowsArgs): BuiltProfileRows {
   const workflowAutomationBriefs = buildWorkflowAutomationBriefs(args.profile);
   const rows: BuiltProfileRows = {
     runRows: [],
-    zeroRunRows: [],
     eventRows: [],
   };
   const runUserMessageRows: SeedChatEventRow[] = [];
@@ -946,9 +967,6 @@ async function insertProfileRows(
 ): Promise<void> {
   await chunkedInsert(rows.runRows, (chunk) => {
     return database.insert(agentRuns).values(chunk);
-  });
-  await chunkedInsert(rows.zeroRunRows, (chunk) => {
-    return database.insert(zeroRuns).values(chunk);
   });
   const eventRows = rows.eventRows.map((row) => {
     const seqId = row.seqId;
@@ -1049,9 +1067,7 @@ async function seedDevBench(args: {
     seeded.push({ profile, ...result });
   }
 
-  await database.execute(
-    sql`ANALYZE zero_runs, agent_runs, chat_threads, chat_events`,
-  );
+  await database.execute(sql`ANALYZE agent_runs, chat_threads, chat_events`);
 
   writeLine("Seeded prod-shaped chat benchmark threads:");
   for (const item of seeded) {

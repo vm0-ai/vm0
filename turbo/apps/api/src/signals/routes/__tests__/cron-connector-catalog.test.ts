@@ -1,31 +1,30 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron";
-import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
-import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
-import { runnersBuiltinFirewallsResolveContract } from "@vm0/api-contracts/contracts/runners";
-import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
-import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cron";
+import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@okouai/api-contracts/contracts/model-provider-firewalls";
+import { runnersBuiltinFirewallsResolveContract } from "@okouai/api-contracts/contracts/runners";
+import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import {
   testSystemStoragePresignedUrlCacheStateContract,
   type TestSystemStoragePresignedUrlCacheStateActionBody,
-} from "@vm0/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
+} from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsSearchContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroConnectorCheckContract } from "@vm0/api-contracts/contracts/zero-connector-check";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { connectorCheckContract } from "@okouai/api-contracts/contracts/connector-check";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+} from "@okouai/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
 import { HttpResponse, http } from "msw";
 import {
   afterEach,
@@ -39,7 +38,8 @@ import {
 import apiPackage from "../../../../package.json";
 import { createApp } from "../../../app-factory";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { singleton } from "../../../lib/singleton";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -59,10 +59,12 @@ import {
   deleteOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
+import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
 import { readConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
+import { readUserSecrets } from "./helpers/user-config-state";
 import {
   createBddApi,
   expectApiError,
@@ -71,6 +73,7 @@ import {
 import {
   awsVerificationCode,
   createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
   mockAwsExternalCodeProvider,
   mockDatadogConnectorOAuth,
   mockGmailConnectorOAuth,
@@ -86,6 +89,32 @@ import {
   expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
+import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
+import { cronConnectorCatalogRoutes } from "../cron-connector-catalog";
+import { runnersRoutes } from "../runners";
+import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
+import { connectorCheckRoutes } from "../connector-check";
+import { zeroConnectorsRoutes } from "../zero-connectors";
+import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { steamPlayerRoutes } from "../steam-player";
+import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...connectorsSlugCallbackRoutes,
+  ...cronConnectorCatalogRoutes,
+  ...runnersRoutes,
+  ...testSystemStoragePresignedUrlCacheStateRoutes,
+  ...zeroConnectorCatalogRoutes,
+  ...connectorCheckRoutes,
+  ...zeroConnectorsRoutes,
+  ...zeroFeatureSwitchesRoutes,
+  ...steamPlayerRoutes,
+  ...zeroUserPermissionGrantsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+  ...zeroWorkflowsRoutes,
+]);
 
 const context = testContext();
 const zeroMocks = createZeroRouteMocks(context);
@@ -95,7 +124,7 @@ const miscApi = createMiscRoutesApi(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-const ACTIVE_KEY = "connectors/v2/active.json";
+const ACTIVE_KEY = "connectors/v3/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const DIAGNOSTICS_USER_ID = `user_${randomUUID()}`;
 const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
@@ -103,12 +132,11 @@ const PRIVATE_VALUE = "SECRET_TOKEN";
 const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const EXPECTED_CAPABILITY_DIGEST =
-  "sha256:f28faa130eeea8dbc27f816003b6fe162dc1792dd27f5e9173856c5bedb7eea7";
+  "sha256:632ef463ab0f7304218b483f24bcd432b82912464bf77ff018eb80d829747ed0";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_REVOKE_URL = "https://slack.com/api/auth.revoke";
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const STEAM_TEST_ID = "76561198000000000";
 
 type JsonRecord = Record<string, unknown>;
@@ -207,7 +235,7 @@ function catalogTemplate(reference: string): string {
 function releaseKeys(version: string): {
   readonly catalog: string;
 } {
-  const prefix = `connectors/v2/releases/${version}`;
+  const prefix = `connectors/v3/releases/${version}`;
   return {
     catalog: `${prefix}/catalog.json`,
   };
@@ -351,7 +379,6 @@ function publicAuthMethod(args: {
     label: `${args.id} auth`,
     description: null,
     visible: true,
-    featureSwitch: null,
     grantKind: args.grantKind,
     manualFields: args.manual
       ? [
@@ -833,7 +860,7 @@ function datadogPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
 
 function buildBundledSkill(
   connectorSlug: string,
-  versionId = "a".repeat(64),
+  versionId = createHash("sha256").update(randomUUID()).digest("hex"),
   metadata: {
     readonly size: number;
     readonly archiveSize: number;
@@ -843,7 +870,7 @@ function buildBundledSkill(
     archiveSize: 321,
     fileCount: 1,
   },
-  storageName = `connector-skill@${connectorSlug}`,
+  storageName = `connector-skill@${connectorSlug}-${randomUUID().replaceAll("-", "")}`,
 ): JsonRecord {
   const prefix = `__system__/volume/${storageName}/${versionId}`;
   return {
@@ -857,10 +884,33 @@ function buildBundledSkill(
   };
 }
 
-interface BundledSkillFixture {
-  readonly descriptor: JsonRecord;
+interface OwnedVolumeStorageFixture {
+  readonly storageId: string;
   readonly storageName: string;
   readonly s3Prefix: string;
+}
+
+function createOwnedVolumeStorageFixture(
+  storageName: string,
+  s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`,
+): OwnedVolumeStorageFixture {
+  return {
+    storageId: randomUUID(),
+    storageName,
+    s3Prefix,
+  };
+}
+
+function createBundledSkillStorageFixture(
+  connectorSlug: string,
+): OwnedVolumeStorageFixture {
+  return createOwnedVolumeStorageFixture(
+    `connector-skill@${connectorSlug}-${randomUUID().replaceAll("-", "")}`,
+  );
+}
+
+interface BundledSkillFixture extends OwnedVolumeStorageFixture {
+  readonly descriptor: JsonRecord;
   readonly versionId: string;
   readonly contentSize: number;
   readonly archiveSize: number;
@@ -870,14 +920,13 @@ interface BundledSkillFixture {
 
 function buildBundledSkillFixture(
   connectorSlug: string,
-  versionId = "a".repeat(64),
-  storageName = `connector-skill@${connectorSlug}`,
+  versionId = createHash("sha256").update(randomUUID()).digest("hex"),
+  storage = createBundledSkillStorageFixture(connectorSlug),
 ): BundledSkillFixture {
   const contentSize = Buffer.byteLength(`# ${connectorSlug}\n`);
   const archiveSize = 321;
   const fileCount = 1;
-  const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
-  const versionPrefix = `${s3Prefix}/${versionId}`;
+  const versionPrefix = `${storage.s3Prefix}/${versionId}`;
   const manifestKey = `${versionPrefix}/manifest.json`;
   const archiveKey = `${versionPrefix}/archive.tar.gz`;
   return {
@@ -889,10 +938,9 @@ function buildBundledSkillFixture(
         archiveSize,
         fileCount,
       },
-      storageName,
+      storage.storageName,
     ),
-    storageName,
-    s3Prefix,
+    ...storage,
     versionId,
     contentSize,
     archiveSize,
@@ -1052,7 +1100,6 @@ function canonicalAuthMethod(
         "label",
         "description",
         "visible",
-        "featureSwitch",
         "grantKind",
         "manualFields",
         "startOptions",
@@ -1066,7 +1113,6 @@ function canonicalAuthMethod(
     label: publicMethod.label,
     description: publicMethod.description,
     visible: publicMethod.visible,
-    featureSwitch: publicMethod.featureSwitch,
     ...(privateMethod.client === undefined
       ? {}
       : { client: privateMethod.client }),
@@ -1095,7 +1141,7 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
     "platform/views/zero-page/components/settings/icons/" +
     `${connectorSlug}-${iconDigest.slice("sha256:".length, 19)}.svg`;
   const catalog: JsonRecord = {
-    artifactSchemaVersion: 2,
+    artifactSchemaVersion: 3,
     catalogVersion: options.version,
     categoryMetadata: {
       categories: [
@@ -1340,15 +1386,21 @@ function cronHeaders(secret = CRON_SECRET): { readonly authorization: string } {
 }
 
 function cronClient() {
-  return setupApp({ context })(cronConnectorCatalogContract);
+  return setupApp({ context, routes: cronConnectorCatalogRoutes })(
+    cronConnectorCatalogContract,
+  );
 }
 
 function diagnosticsClient() {
-  return setupApp({ context })(zeroConnectorCatalogContract);
+  return setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+    zeroConnectorCatalogContract,
+  );
 }
 
 function runnerFirewallClient() {
-  return setupApp({ context })(runnersBuiltinFirewallsResolveContract);
+  return setupApp({ context, routes: runnersRoutes })(
+    runnersBuiltinFirewallsResolveContract,
+  );
 }
 
 interface VolumeStorageState {
@@ -1384,37 +1436,79 @@ async function readVolumeStorageState(args: {
   return response.body.storage_state ?? null;
 }
 
-async function restoreVolumeStorageState(args: {
+async function readOwnedVolumeStorageState(
+  storageId: string,
+): Promise<VolumeStorageState | null> {
+  const response = await systemStorageStateAction({
+    action: "read-owned-storage-state",
+    storage_id: storageId,
+  });
+  return response.body.storage_state ?? null;
+}
+
+interface OwnedVolumeStorageClaim extends OwnedVolumeStorageFixture {
   readonly orgId: string;
-  readonly storageName: string;
-  readonly previous: VolumeStorageState | null;
-}): Promise<void> {
+}
+
+async function claimOwnedVolumeStorages(
+  claims: readonly OwnedVolumeStorageClaim[],
+): Promise<void> {
   await systemStorageStateAction({
-    action: "restore-storage-state",
-    org_id: args.orgId,
-    user_id: VOLUME_ORG_USER_ID,
-    storage_name: args.storageName,
-    previous: args.previous,
+    action: "claim-owned-storages",
+    storages: claims.map((claim) => {
+      return {
+        storage_id: claim.storageId,
+        org_id: claim.orgId,
+        user_id: VOLUME_ORG_USER_ID,
+        storage_name: claim.storageName,
+        s3_prefix: claim.s3Prefix,
+      };
+    }),
   });
 }
 
-async function seedVolumeStorageVersion(args: {
-  readonly orgId: string;
-  readonly storageName: string;
+async function claimOwnedVolumeStorage(
+  claim: OwnedVolumeStorageClaim,
+): Promise<void> {
+  await claimOwnedVolumeStorages([claim]);
+}
+
+async function cleanupOwnedVolumeStorages(
+  storageIds: readonly string[],
+): Promise<void> {
+  await systemStorageStateAction({
+    action: "cleanup-owned-storages",
+    storage_ids: [...storageIds],
+  });
+}
+
+async function seedOwnedVolumeStorageVersion(args: {
+  readonly storageId: string;
   readonly versionId: string;
-  readonly s3Prefix: string;
   readonly s3Key: string;
 }): Promise<void> {
   await systemStorageStateAction({
-    action: "seed-storage-version",
+    action: "seed-owned-storage-version",
+    storage_id: args.storageId,
+    version_id: args.versionId,
+    s3_key: args.s3Key,
+    archive_size: 321,
+  });
+}
+
+async function readVolumeStorageVersion(args: {
+  readonly orgId: string;
+  readonly storageName: string;
+  readonly versionId: string;
+}) {
+  const response = await systemStorageStateAction({
+    action: "read-storage-version",
     org_id: args.orgId,
     user_id: VOLUME_ORG_USER_ID,
     storage_name: args.storageName,
     version_id: args.versionId,
-    s3_prefix: args.s3Prefix,
-    s3_key: args.s3Key,
-    archive_size: 321,
   });
+  return response.body.storage_version ?? null;
 }
 
 async function syncCatalog() {
@@ -1424,7 +1518,9 @@ async function syncCatalog() {
 async function enableDiagnosticsFeatureSwitch(): Promise<void> {
   zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
   await accept(
-    setupApp({ context })(zeroFeatureSwitchesContract).update({
+    setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+      zeroFeatureSwitchesContract,
+    ).update({
       headers: { authorization: "Bearer clerk-session" },
       body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
     }),
@@ -1433,7 +1529,9 @@ async function enableDiagnosticsFeatureSwitch(): Promise<void> {
   onTestFinished(async () => {
     zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
     await accept(
-      setupApp({ context })(zeroFeatureSwitchesContract).delete({
+      setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+        zeroFeatureSwitchesContract,
+      ).delete({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -1452,7 +1550,10 @@ async function readStatus() {
 }
 
 async function rawCronRequest(path: string): Promise<Response> {
-  return await createApp({ signal: context.signal }).request(path, {
+  return await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(path, {
     method: "GET",
   });
 }
@@ -1616,7 +1717,9 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
     const publicCatalog = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -1646,8 +1749,13 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
-    const searchClient = setupApp({ context })(zeroConnectorsSearchContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
+    const searchClient = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const callsBeforePublicReads = context.mocks.s3.send.mock.calls.length;
 
     const list = await accept(catalogClient.list({ headers }), [200]);
@@ -1750,7 +1858,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const search = await accept(
       searchClient.search({
-        query: { keyword: "fixture" },
+        query: { keyword: "external" },
         headers,
       }),
       [200],
@@ -1804,7 +1912,9 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const response = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).permissions({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).permissions({
         params: { connectorSlug: release.connectorSlug },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -1825,7 +1935,10 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const callsBeforePublicReads = context.mocks.s3.send.mock.calls.length;
 
     const [list, detail] = await Promise.all([
@@ -1862,7 +1975,9 @@ describe("connector catalog valid lifecycle", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const digestResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1881,7 +1996,9 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const jsonResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1906,7 +2023,9 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const identityResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1925,7 +2044,9 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const nonObjectResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1941,13 +2062,15 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: schemaRelease.version,
       rawBytes: jsonBytes({
-        artifactSchemaVersion: 3,
+        artifactSchemaVersion: 4,
         catalogVersion: schemaRelease.version,
       }),
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const schemaResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1963,12 +2086,14 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: shapeRelease.version,
       rawBytes: jsonBytes({
-        artifactSchemaVersion: 2,
+        artifactSchemaVersion: 3,
       }),
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const shapeResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1996,7 +2121,9 @@ describe("connector catalog valid lifecycle", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const semanticResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -2017,7 +2144,9 @@ describe("connector catalog valid lifecycle", () => {
       await readApiTestConnectorCatalogCompatibilityEvaluations();
     expect(corruptedEvaluations).toHaveLength(1);
     const compatibilityResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -2035,7 +2164,9 @@ describe("connector catalog valid lifecycle", () => {
       await readApiTestConnectorCatalogCompatibilityEvaluations();
     expect(remainingEvaluations).toHaveLength(0);
     const missingResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -2050,20 +2181,20 @@ describe("connector catalog valid lifecycle", () => {
       grantKind: "manual",
       manual: true,
     });
-    gated.featureSwitch = "awsConnector";
     const visible = publicAuthMethod({
       id: "cli",
       grantKind: "manual",
       manual: true,
     });
     const hidden = publicAuthMethod({
-      id: "api",
+      id: "oauth",
       grantKind: "manual",
       manual: true,
     });
     hidden.visible = false;
     const release = buildRelease({
       version: "2026-07-15.external-request-filters",
+      connectorSlug: "cal-com",
       mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [gated, visible, hidden]);
       },
@@ -2082,7 +2213,7 @@ describe("connector catalog valid lifecycle", () => {
             revoke: "none",
           }),
           manualPrivateAuthMethod({
-            id: "api",
+            id: "oauth",
             prefix: "HIDDEN",
             access: "static",
             revoke: "none",
@@ -2096,8 +2227,14 @@ describe("connector catalog valid lifecycle", () => {
     const orgId = `org_${randomUUID()}`;
     zeroMocks.clerk.session(userId, orgId);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
-    const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
+    const featureClient = setupApp({
+      context,
+      routes: zeroFeatureSwitchesRoutes,
+    })(zeroFeatureSwitchesContract);
 
     const disabled = await accept(catalogClient.list({ headers }), [200]);
     expect(disabled.body.connectors[0]?.authMethods).toStrictEqual([
@@ -2113,7 +2250,7 @@ describe("connector catalog valid lifecycle", () => {
       featureClient.update({
         headers,
         body: {
-          switches: { [FeatureSwitchKey.AwsConnector]: true },
+          switches: { [FeatureSwitchKey.CalComConnector]: true },
         },
       }),
       [200],
@@ -2126,23 +2263,21 @@ describe("connector catalog valid lifecycle", () => {
     ).toStrictEqual(["api-token", "cli"]);
     await accept(featureClient.delete({ headers }), [200]);
 
-    const unsupported = buildRelease({
-      version: "2026-07-15.external-all-incompatible",
-      mutateCatalog: (artifact) => {
-        const method = firstRecord(
-          firstRecord(artifact.connectors, "connectors").authMethods,
-          "authMethods",
-        );
-        method.featureSwitch = "futureConnectorSwitch";
-      },
+    const graduated = buildRelease({
+      version: "2026-07-15.external-graduated-switch",
     });
-    serveObjects(catalogObjects([release, unsupported], unsupported));
+    serveObjects(catalogObjects([release, graduated], graduated));
     await syncCatalog();
-    const allFiltered = await accept(catalogClient.list({ headers }), [200]);
-    expect(allFiltered.body).toStrictEqual({
-      connectors: [],
-      categoryMetadata: { categories: [], groups: [] },
-    });
+    const graduatedVisible = await accept(
+      catalogClient.list({ headers }),
+      [200],
+    );
+    expect(graduatedVisible.body.connectors).toMatchObject([
+      {
+        slug: "external-test",
+        authMethods: [{ id: "api-token" }],
+      },
+    ]);
   });
 
   it("executes an external manual grant with catalog-owned storage", async () => {
@@ -2210,16 +2345,14 @@ describe("connector catalog valid lifecycle", () => {
       }),
     );
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(secrets.body.secrets).toContainEqual(
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    expect(secrets).toContainEqual(
       expect.objectContaining({ name: PRIVATE_VALUE, type: "connector" }),
     );
-    expect(JSON.stringify(secrets.body)).not.toContain("catalog-manual-secret");
+    expect(JSON.stringify(secrets)).not.toContain("catalog-manual-secret");
     const storageState = await readConnectorCredentialStorageState(context, {
       connectorSlug: "agora",
       orgId: actor.orgId ?? "",
@@ -2271,21 +2404,17 @@ describe("connector catalog valid lifecycle", () => {
       connectionStatus: "connected",
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(secrets.body.secrets).toContainEqual(
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    expect(secrets).toContainEqual(
       expect.objectContaining({
         name: "CATALOG_CLI_DEVICE_ACCESS_TOKEN",
         type: "connector",
       }),
     );
-    expect(JSON.stringify(secrets.body)).not.toContain(
-      "catalog-cli-access-token",
-    );
+    expect(JSON.stringify(secrets)).not.toContain("catalog-cli-access-token");
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeSeed);
   });
 
@@ -2375,13 +2504,11 @@ describe("connector catalog valid lifecycle", () => {
     });
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const names = secrets.body.secrets.map((secret) => {
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const names = secrets.map((secret) => {
       return secret.name;
     });
     expect(names).toContain("CURRENT_CREDENTIAL");
@@ -2418,14 +2545,12 @@ describe("connector catalog valid lifecycle", () => {
     expect(filtered.body.filtering.filteredAuthMethods).toHaveLength(2);
 
     await connectorsApi.deleteConnectorBySlug(actor, "agora");
-    const secretsAfterDelete = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const secretsAfterDelete = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secretsAfterDelete.body.secrets.map((secret) => {
+      secretsAfterDelete.map((secret) => {
         return secret.name;
       }),
     ).not.toContain("CURRENT_CREDENTIAL");
@@ -2502,13 +2627,11 @@ describe("connector catalog valid lifecycle", () => {
     await connectorsApi.deleteConnectorBySlug(actor, "agora", [204]);
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const secretNames = secrets.body.secrets.map((secret) => {
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const secretNames = secrets.map((secret) => {
       return secret.name;
     });
     expect(secretNames).not.toContain("LEGACY_CREDENTIAL");
@@ -2576,13 +2699,11 @@ describe("connector catalog valid lifecycle", () => {
     expect(callbackLocation.pathname).toBe("/connector/success");
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const secretNames = secrets.body.secrets.map((secret) => {
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const secretNames = secrets.map((secret) => {
       return secret.name;
     });
     expect(secretNames).not.toContain("LEGACY_GMAIL_CREDENTIAL");
@@ -2647,7 +2768,9 @@ describe("connector catalog valid lifecycle", () => {
     const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const check = await accept(
-      setupApp({ context })(zeroConnectorCheckContract).check({
+      setupApp({ context, routes: connectorCheckRoutes })(
+        connectorCheckContract,
+      ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           mode: "url",
@@ -2672,18 +2795,21 @@ describe("connector catalog valid lifecycle", () => {
         permissions: [{ name: "items.read" }],
       },
     });
-    const hostOverlap = await connectorsApi.createCustomConnector(actor, {
-      displayName: "External Host Overlap",
-      prefixes: ["https://api.example.test/custom/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const hostOverlap = await connectorsApi.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "External Host Overlap",
+        prefixTemplates: ["https://api.example.test/custom/"],
+      }),
+    );
     customConnectorIds.push(hostOverlap.id);
-    expect(hostOverlap.prefixes).toStrictEqual([
+    expect(hostOverlap.prefixTemplates).toStrictEqual([
       "https://api.example.test/custom/",
     ]);
     const grants = await accept(
-      setupApp({ context })(zeroUserPermissionGrantsContract).apply({
+      setupApp({ context, routes: zeroUserPermissionGrantsRoutes })(
+        zeroUserPermissionGrantsContract,
+      ).apply({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           agentId: agent.agentId,
@@ -2759,6 +2885,109 @@ describe("connector catalog valid lifecycle", () => {
     });
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRun);
     await runs.requestCancelRun(actor, run.runId, [200]);
+  }, 15_000);
+
+  it("wakes claimed runs when a custom permission bundle changes", async () => {
+    const connectorSlug = "external-custom-permissions";
+    configureSource();
+    const initial = buildRelease({
+      version: "2026-07-15.external-custom-permissions-1",
+      connectorSlug,
+      label: "External Custom Permissions",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([initial], initial));
+    await syncCatalog();
+
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "External custom permission agent",
+      visibility: "private",
+    });
+    const custom = await connectorsApi.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "External custom permission API",
+        prefixTemplates: ["https://custom-permissions.example.test/v1/"],
+        permissionBundleRef: `builtin:${connectorSlug}@1`,
+      }),
+    );
+    await connectorsApi.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-permission-secret",
+    );
+    const grant = {
+      customConnectorId: custom.id,
+      permissionNames: ["items.read"],
+    };
+    const grantResponse =
+      await connectorsApi.requestUpdateAgentCustomConnectorGrants(
+        actor,
+        agent.agentId,
+        [grant],
+        [200],
+      );
+    if (grantResponse.status !== 200) {
+      throw new Error("Expected custom connector permission grant");
+    }
+
+    const created: { runId?: string } = {};
+    onTestFinished(async () => {
+      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+      if (created.runId) {
+        await runs.requestCancelRun(actor, created.runId, [200, 404]);
+      }
+      await connectorsApi.deleteCustomConnector(actor, custom.id);
+      await bdd.deleteAgent(actor, agent.agentId);
+    });
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "Use the custom permission bundle",
+      modelProvider: "anthropic-api-key",
+    });
+    created.runId = run.runId;
+    await runs.heartbeatRunner(runnerGroup);
+    await runs.claimRunnerJob(run.runId);
+
+    context.mocks.ably.publish.mockClear();
+    const replacement = buildRelease({
+      version: "2026-07-15.external-custom-permissions-2",
+      connectorSlug,
+      label: "External Custom Permissions",
+      generatedFirewall: true,
+      mutateFirewall: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        const firewall = recordValue(connector.firewall, "firewall");
+        const config = recordValue(firewall.config, "firewall.config");
+        const api = firstRecord(config.apis, "firewall.apis");
+        const permission = firstRecord(api.permissions, "permissions");
+        permission.rules = ["GET /items", "GET /items/:id"];
+      },
+    });
+    serveObjects(catalogObjects([initial, replacement], replacement));
+    await syncCatalog();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      {
+        runId: run.runId,
+        target: { kind: "custom", customConnectorId: custom.id },
+      },
+    );
+
+    context.mocks.ably.publish.mockClear();
+    await syncCatalog();
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      expect.anything(),
+    );
   }, 15_000);
 
   it("composes accepted connector and local model-provider runner firewalls", async () => {
@@ -2864,7 +3093,7 @@ describe("connector catalog valid lifecycle", () => {
   });
 
   it("loads 17 exact connector skill versions in one bounded storage preload", async () => {
-    const fixtureSuffix = randomUUID().slice(0, 8);
+    const fixtureSuffix = randomUUID().replaceAll("-", "");
     const skills = Array.from({ length: 17 }, (_, index) => {
       const sequence = String(index + 1).padStart(2, "0");
       const connectorSlug = `batch-skill-${fixtureSuffix}-${sequence}`;
@@ -2882,15 +3111,11 @@ describe("connector catalog valid lifecycle", () => {
       };
     });
     configureSource();
-    const previousSystemStates: (VolumeStorageState | null)[] = [];
-    for (const skill of skills) {
-      previousSystemStates.push(
-        await readVolumeStorageState({
-          orgId: SYSTEM_ORG_ID,
-          storageName: skill.skill.storageName,
-        }),
-      );
-    }
+    await claimOwnedVolumeStorages(
+      skills.map((skill) => {
+        return { orgId: SYSTEM_ORG_ID, ...skill.skill };
+      }),
+    );
 
     const firstSkill = skills[0];
     if (!firstSkill) {
@@ -2976,18 +3201,18 @@ describe("connector catalog valid lifecycle", () => {
       for (const runId of activeRunIds) {
         await runs.requestCancelRun(actor, runId, [200, 404]);
       }
-      for (const [index, skill] of skills.entries()) {
+      for (const skill of skills) {
         await systemStorageStateAction({
           action: "cleanup",
           object_key_prefix: skill.skill.s3Prefix,
         });
-        await restoreVolumeStorageState({
-          orgId: SYSTEM_ORG_ID,
-          storageName: skill.skill.storageName,
-          previous: previousSystemStates[index] ?? null,
-        });
         await createConnectorCleanup(actor, skill.connectorSlug)();
       }
+      await cleanupOwnedVolumeStorages(
+        skills.map((skill) => {
+          return skill.skill.storageId;
+        }),
+      );
       await bdd.deleteAgent(actor, agent.agentId);
     });
 
@@ -3056,11 +3281,9 @@ describe("connector catalog valid lifecycle", () => {
     activeRunIds.delete(headRun.run.runId);
 
     for (const skill of skills) {
-      await seedVolumeStorageVersion({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.skill.storageName,
+      await seedOwnedVolumeStorageVersion({
+        storageId: skill.skill.storageId,
         versionId: skill.newerVersionId,
-        s3Prefix: skill.skill.s3Prefix,
         s3Key: `${skill.skill.s3Prefix}/${skill.newerVersionId}`,
       });
     }
@@ -3087,10 +3310,7 @@ describe("connector catalog valid lifecycle", () => {
     const skill = buildBundledSkillFixture(connectorSlug, selectedVersionId);
     const { storageName, s3Prefix: canonicalPrefix } = skill;
     configureSource();
-    const previousSystemState = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
-    });
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...skill });
     const release = buildRelease({
       version: "2026-07-15.external-exact-skill",
       connectorSlug,
@@ -3108,10 +3328,10 @@ describe("connector catalog valid lifecycle", () => {
       throw new Error("Expected an organization-scoped test actor");
     }
     const runtimeOrgId = actor.orgId;
-    const previousRuntimeState = await readVolumeStorageState({
-      orgId: runtimeOrgId,
+    const runtimeStorage = createOwnedVolumeStorageFixture(
       storageName,
-    });
+      canonicalPrefix,
+    );
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -3133,16 +3353,10 @@ describe("connector catalog valid lifecycle", () => {
         action: "cleanup",
         object_key_prefix: canonicalPrefix,
       });
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName,
-        previous: previousSystemState,
-      });
-      await restoreVolumeStorageState({
-        orgId: runtimeOrgId,
-        storageName,
-        previous: previousRuntimeState,
-      });
+      await cleanupOwnedVolumeStorages([
+        skill.storageId,
+        runtimeStorage.storageId,
+      ]);
       await cleanupConnector();
       await bdd.deleteAgent(actor, agent.agentId);
     });
@@ -3169,11 +3383,9 @@ describe("connector catalog valid lifecycle", () => {
       });
     };
 
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
+    await seedOwnedVolumeStorageVersion({
+      storageId: skill.storageId,
       versionId: newerVersionId,
-      s3Prefix: canonicalPrefix,
       s3Key: `${canonicalPrefix}/${newerVersionId}`,
     });
 
@@ -3209,49 +3421,47 @@ describe("connector catalog valid lifecycle", () => {
     await runs.requestCancelRun(actor, run.runId, [200]);
     successfulRunId = undefined;
 
-    await restoreVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
-      previous: previousSystemState,
-    });
-    await seedVolumeStorageVersion({
+    await cleanupOwnedVolumeStorages([skill.storageId]);
+    await claimOwnedVolumeStorage({
       orgId: runtimeOrgId,
-      storageName,
+      ...runtimeStorage,
+    });
+    await seedOwnedVolumeStorageVersion({
+      storageId: runtimeStorage.storageId,
       versionId: selectedVersionId,
-      s3Prefix: canonicalPrefix,
       s3Key: `${canonicalPrefix}/${selectedVersionId}`,
     });
     await expectRegistrationFailure();
-    await restoreVolumeStorageState({
-      orgId: runtimeOrgId,
-      storageName,
-      previous: previousRuntimeState,
-    });
+    await cleanupOwnedVolumeStorages([runtimeStorage.storageId]);
 
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...skill });
+    await seedOwnedVolumeStorageVersion({
+      storageId: skill.storageId,
       versionId: otherVersionId,
-      s3Prefix: canonicalPrefix,
       s3Key: `${canonicalPrefix}/${otherVersionId}`,
     });
     await expectRegistrationFailure();
 
     const wrongPrefix = `${SYSTEM_ORG_ID}/volume/wrong-${storageName}`;
-    await seedVolumeStorageVersion({
+    await cleanupOwnedVolumeStorages([skill.storageId]);
+    await claimOwnedVolumeStorage({
       orgId: SYSTEM_ORG_ID,
+      storageId: skill.storageId,
       storageName,
-      versionId: selectedVersionId,
       s3Prefix: wrongPrefix,
+    });
+    await seedOwnedVolumeStorageVersion({
+      storageId: skill.storageId,
+      versionId: selectedVersionId,
       s3Key: `${wrongPrefix}/${selectedVersionId}`,
     });
     await expectRegistrationFailure();
 
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName,
+    await cleanupOwnedVolumeStorages([skill.storageId]);
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...skill });
+    await seedOwnedVolumeStorageVersion({
+      storageId: skill.storageId,
       versionId: selectedVersionId,
-      s3Prefix: canonicalPrefix,
       s3Key: `${canonicalPrefix}/wrong-${selectedVersionId}`,
     });
     await expectRegistrationFailure();
@@ -3269,7 +3479,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "api",
           grantKind: "device-auth",
         });
-        method.featureSwitch = "testOauthConnector";
         method.startOptions = [
           {
             id: "environment",
@@ -3351,13 +3560,11 @@ describe("connector catalog valid lifecycle", () => {
       oauthScopes: ["read"],
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(secrets.body.secrets).toContainEqual(
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    expect(secrets).toContainEqual(
       expect.objectContaining({
         name: "CATALOG_DEVICE_ACCESS_TOKEN",
         type: "connector",
@@ -3396,7 +3603,9 @@ describe("connector catalog valid lifecycle", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const start = await accept(
-      setupApp({ context })(zeroConnectorOpenIdStartContract).start({
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorOpenIdStartContract,
+      ).start({
         params: { connectorSlug: "steam" },
         headers,
         body: { authMethod: "openid" },
@@ -3405,7 +3614,9 @@ describe("connector catalog valid lifecycle", () => {
     );
     mockSteamOpenIdVerification();
     await accept(
-      setupApp({ context })(connectorsSlugCallbackContract).callback({
+      setupApp({ context, routes: connectorsSlugCallbackRoutes })(
+        connectorsSlugCallbackContract,
+      ).callback({
         params: { connectorSlug: "steam" },
         headers: {},
         query: steamOpenIdCallbackQuery(start.body.authorizationUrl),
@@ -3414,7 +3625,9 @@ describe("connector catalog valid lifecycle", () => {
     );
     mockSteamPlayerApisForCatalog();
     const player = await accept(
-      setupApp({ context })(zeroSteamPlayerContract).getPlayer({ headers }),
+      setupApp({ context, routes: steamPlayerRoutes })(
+        steamPlayerContract,
+      ).getPlayer({ headers }),
       [200],
     );
     expect(player.body).toMatchObject({
@@ -3449,7 +3662,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "cli",
           grantKind: "external-code",
         });
-        method.featureSwitch = "awsConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
@@ -3460,19 +3672,12 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
 
     const actor = bdd.user();
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.AwsConnector]: true,
-    });
     const cleanupConnector = createConnectorCleanup(actor, "aws");
     onTestFinished(async () => {
       await cleanupConnector();
-      await connectorsApi.deleteFeatureSwitches(actor);
     });
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.AwsConnector]: false,
-    });
     const completed = await connectorsApi.completeExternalCode(actor, "aws", {
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
@@ -3485,14 +3690,12 @@ describe("connector catalog valid lifecycle", () => {
       oauthScopes: ["openid"],
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secrets.body.secrets.map((secret) => {
+      secrets.map((secret) => {
         return secret.name;
       }),
     ).toStrictEqual(
@@ -3669,14 +3872,12 @@ describe("connector catalog valid lifecycle", () => {
     providerResume.release();
     await firstCallback;
 
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const headers = { authorization: "Bearer clerk-session" };
-    const firstSecrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({ headers }),
-      [200],
-    );
+    const firstSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      firstSecrets.body.secrets.map((secret) => {
+      firstSecrets.map((secret) => {
         return secret.name;
       }),
     ).toContain("FIRST_RELEASE_SLACK_TOKEN");
@@ -3705,12 +3906,12 @@ describe("connector catalog valid lifecycle", () => {
       code: "second-release",
       state: secondState,
     });
-    const secondSecrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({ headers }),
-      [200],
-    );
+    const secondSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secondSecrets.body.secrets.map((secret) => {
+      secondSecrets.map((secret) => {
         return secret.name;
       }),
     ).toContain("SECOND_RELEASE_SLACK_TOKEN");
@@ -3778,7 +3979,8 @@ describe("connector catalog valid lifecycle", () => {
       ),
     );
 
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const orgId = createUniqueStaffOrgIdFixture();
+    const actor = bdd.user({ orgId });
     const created: { agentId?: string; workflowId?: string } = {};
     const cleanupConnector = createConnectorCleanup(actor, "gmail");
     onTestFinished(async () => {
@@ -3790,10 +3992,10 @@ describe("connector catalog valid lifecycle", () => {
       if (created.agentId) {
         await bdd.deleteAgent(actor, created.agentId);
       }
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+      await deleteOrgPlanEntitlementFixture(orgId);
     });
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "active",
       supportByok: true,
       restrictedVm0Models: false,
@@ -3811,15 +4013,13 @@ describe("connector catalog valid lifecycle", () => {
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
-    const initialSecrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({ headers }),
-      [200],
-    );
-    const initialAccessTokenDescription = initialSecrets.body.secrets.find(
-      (secret) => {
-        return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
-      },
-    )?.description;
+    const initialSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const initialAccessTokenDescription = initialSecrets.find((secret) => {
+      return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
+    })?.description;
     expect(initialAccessTokenDescription).toBe(
       "Connector token output for gmail: CATALOG_GMAIL_ACCESS_TOKEN",
     );
@@ -3844,7 +4044,9 @@ describe("connector catalog valid lifecycle", () => {
     });
     created.agentId = agent.agentId;
     const workflow = await accept(
-      setupApp({ context })(zeroWorkflowsCollectionContract).create({
+      setupApp({ context, routes: zeroWorkflowsRoutes })(
+        zeroWorkflowsCollectionContract,
+      ).create({
         headers,
         body: {
           agentId: agent.agentId,
@@ -3856,7 +4058,9 @@ describe("connector catalog valid lifecycle", () => {
     );
     created.workflowId = workflow.body.id;
     await accept(
-      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+        zeroWorkflowAutomationsContract,
+      ).create({
         headers,
         params: { workflowId: workflow.body.id },
         body: {
@@ -3873,12 +4077,12 @@ describe("connector catalog valid lifecycle", () => {
     expect(refreshBodies).toHaveLength(1);
     expect(refreshBodies[0]?.get("grant_type")).toBe("refresh_token");
     expect(refreshBodies[0]?.get("refresh_token")).toBe("gmail-refresh-token");
-    const refreshedSecrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({ headers }),
-      [200],
-    );
+    const refreshedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      refreshedSecrets.body.secrets.find((secret) => {
+      refreshedSecrets.find((secret) => {
         return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
       })?.description,
     ).toBe(initialAccessTokenDescription);
@@ -3930,7 +4134,9 @@ describe("connector catalog valid lifecycle", () => {
 
     const callsBeforeReadiness = context.mocks.s3.send.mock.calls.length;
     const readiness = await accept(
-      setupApp({ context })(zeroWorkflowsDetailContract).connectorReadiness({
+      setupApp({ context, routes: zeroWorkflowsRoutes })(
+        zeroWorkflowsDetailContract,
+      ).connectorReadiness({
         headers,
         params: { workflowId: workflow.body.id },
       }),
@@ -3989,7 +4195,8 @@ describe("connector catalog valid lifecycle", () => {
       }),
     );
 
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const orgId = createUniqueStaffOrgIdFixture();
+    const actor = bdd.user({ orgId });
     const created: { agentId?: string; workflowId?: string } = {};
     const refreshResume = deferredGate();
     const cleanupConnector = createConnectorCleanup(actor, "gmail");
@@ -4003,10 +4210,10 @@ describe("connector catalog valid lifecycle", () => {
       if (created.agentId) {
         await bdd.deleteAgent(actor, created.agentId);
       }
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+      await deleteOrgPlanEntitlementFixture(orgId);
     });
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "active",
       supportByok: true,
       restrictedVm0Models: false,
@@ -4037,7 +4244,9 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const workflow = await accept(
-      setupApp({ context })(zeroWorkflowsCollectionContract).create({
+      setupApp({ context, routes: zeroWorkflowsRoutes })(
+        zeroWorkflowsCollectionContract,
+      ).create({
         headers,
         body: {
           agentId: agent.agentId,
@@ -4086,7 +4295,9 @@ describe("connector catalog valid lifecycle", () => {
     );
 
     const firstCreate = accept(
-      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+        zeroWorkflowAutomationsContract,
+      ).create({
         headers,
         params: { workflowId: workflow.body.id },
         body: {
@@ -4128,7 +4339,9 @@ describe("connector catalog valid lifecycle", () => {
     });
 
     await accept(
-      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+        zeroWorkflowAutomationsContract,
+      ).create({
         headers,
         params: { workflowId: workflow.body.id },
         body: {
@@ -4156,7 +4369,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "oauth",
           grantKind: "auth-code",
         });
-        method.featureSwitch = "datadogConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
@@ -4195,9 +4407,6 @@ describe("connector catalog valid lifecycle", () => {
       new URL(callbackLocation ?? "https://invalid.example").pathname,
     ).toBe("/connector/success");
     const hiddenConnectedList = await connectorsApi.listConnectors(actor);
-    expect(hiddenConnectedList.configuredConnectorSlugs).not.toContain(
-      "datadog",
-    );
     expect(hiddenConnectedList.connectors).toContainEqual(
       expect.objectContaining({ slug: "datadog", authMethod: "oauth" }),
     );
@@ -4214,7 +4423,10 @@ describe("connector catalog valid lifecycle", () => {
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const connected = await accept(catalogClient.status({ headers }), [200]);
     expect(connected.body.connectors[0]).toMatchObject({
       slug: "datadog",
@@ -4244,7 +4456,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "oauth",
           grantKind: "auth-code",
         });
-        method.featureSwitch = "datadogConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
@@ -4273,7 +4484,10 @@ describe("connector catalog valid lifecycle", () => {
     configureSource();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
 
     const catalogResponse = await accept(
@@ -4285,7 +4499,9 @@ describe("connector catalog valid lifecycle", () => {
       [503],
     );
     const searchResponse = await accept(
-      setupApp({ context })(zeroConnectorsSearchContract).search({
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsSearchContract,
+      ).search({
         headers,
         query: {},
       }),
@@ -4338,7 +4554,9 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const diagnostic = await accept(
-      setupApp({ context })(zeroConnectorCheckContract).check({
+      setupApp({ context, routes: connectorCheckRoutes })(
+        connectorCheckContract,
+      ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           mode: "url",
@@ -4383,22 +4601,16 @@ describe("connector catalog valid lifecycle", () => {
 
   it("accepts a complete bundled skill descriptor", async () => {
     configureSource();
-    const resolvedStorageName = `connector-skill@resolved-${randomUUID().slice(0, 8)}`;
+    const resolvedStorageName = `connector-skill@resolved-${randomUUID().replaceAll("-", "")}`;
+    const storage = createOwnedVolumeStorageFixture(resolvedStorageName);
     const skill = buildBundledSkillFixture(
       "external-test",
       createHash("sha256").update(randomUUID()).digest("hex"),
-      resolvedStorageName,
+      storage,
     );
-    const previous = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: skill.storageName,
-    });
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...skill });
     onTestFinished(async () => {
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.storageName,
-        previous,
-      });
+      await cleanupOwnedVolumeStorages([skill.storageId]);
     });
     const release = buildRelease({
       version: "2026-07-15.bundled-skill",
@@ -4415,10 +4627,7 @@ describe("connector catalog valid lifecycle", () => {
       active: { catalogVersion: release.version },
     });
     await expect(
-      readVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.storageName,
-      }),
+      readOwnedVolumeStorageState(skill.storageId),
     ).resolves.toStrictEqual({
       s3_prefix: skill.s3Prefix,
       size: skill.contentSize,
@@ -4461,17 +4670,6 @@ describe("connector catalog valid lifecycle", () => {
           .update(`${testCase.label}:${randomUUID()}`)
           .digest("hex"),
       );
-      const previous = await readVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.storageName,
-      });
-      onTestFinished(async () => {
-        await restoreVolumeStorageState({
-          orgId: SYSTEM_ORG_ID,
-          storageName: skill.storageName,
-          previous,
-        });
-      });
       const release = buildRelease({
         version: `2026-07-22.skill-${testCase.label}-${randomUUID().slice(0, 8)}`,
         connectorSlug,
@@ -4506,24 +4704,20 @@ describe("connector catalog valid lifecycle", () => {
   it("reuses immutable skill versions without regressing HEAD", async () => {
     configureSource();
     const connectorSlug = `skill-cache-${randomUUID().slice(0, 8)}`;
+    const storage = createBundledSkillStorageFixture(connectorSlug);
     const firstSkill = buildBundledSkillFixture(
       connectorSlug,
       createHash("sha256").update(`first:${randomUUID()}`).digest("hex"),
+      storage,
     );
     const secondSkill = buildBundledSkillFixture(
       connectorSlug,
       createHash("sha256").update(`second:${randomUUID()}`).digest("hex"),
+      storage,
     );
-    const previous = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: firstSkill.storageName,
-    });
+    await claimOwnedVolumeStorage({ orgId: SYSTEM_ORG_ID, ...storage });
     onTestFinished(async () => {
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: firstSkill.storageName,
-        previous,
-      });
+      await cleanupOwnedVolumeStorages([storage.storageId]);
     });
     const firstRelease = buildRelease({
       version: `2026-07-22.skill-cache-first-${randomUUID().slice(0, 8)}`,
@@ -4571,10 +4765,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(requestedKeys).not.toContain(firstSkill.manifestKey);
     expect(requestedKeys).not.toContain(firstSkill.archiveKey);
     await expect(
-      readVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: firstSkill.storageName,
-      }),
+      readOwnedVolumeStorageState(storage.storageId),
     ).resolves.toMatchObject({
       head_version_id: secondSkill.versionId,
     });
@@ -4593,35 +4784,27 @@ describe("connector catalog valid lifecycle", () => {
       conflictingConnectorSlug,
       createHash("sha256").update(`conflict:${randomUUID()}`).digest("hex"),
     );
-    const previousFirst = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: firstSkill.storageName,
-    });
-    const previousConflicting = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: conflictingSkill.storageName,
-    });
-    onTestFinished(async () => {
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: firstSkill.storageName,
-        previous: previousFirst,
-      });
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: conflictingSkill.storageName,
-        previous: previousConflicting,
-      });
-    });
     const wrongPrefix = `${SYSTEM_ORG_ID}/volume/wrong-${conflictingSkill.storageName}`;
+    await claimOwnedVolumeStorages([
+      { orgId: SYSTEM_ORG_ID, ...firstSkill },
+      {
+        orgId: SYSTEM_ORG_ID,
+        ...conflictingSkill,
+        s3Prefix: wrongPrefix,
+      },
+    ]);
+    onTestFinished(async () => {
+      await cleanupOwnedVolumeStorages([
+        firstSkill.storageId,
+        conflictingSkill.storageId,
+      ]);
+    });
     const existingVersionId = createHash("sha256")
       .update(`existing:${randomUUID()}`)
       .digest("hex");
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName: conflictingSkill.storageName,
+    await seedOwnedVolumeStorageVersion({
+      storageId: conflictingSkill.storageId,
       versionId: existingVersionId,
-      s3Prefix: wrongPrefix,
       s3Key: `${wrongPrefix}/${existingVersionId}`,
     });
     const conflictingIconBytes = Buffer.from(
@@ -4677,16 +4860,22 @@ describe("connector catalog valid lifecycle", () => {
       lastAttempt: { failureCode: "invalid-reference" },
     });
     await expect(
-      readVolumeStorageState({
+      readOwnedVolumeStorageState(firstSkill.storageId),
+    ).resolves.toStrictEqual({
+      s3_prefix: firstSkill.s3Prefix,
+      size: 0,
+      file_count: 0,
+      head_version_id: null,
+    });
+    await expect(
+      readVolumeStorageVersion({
         orgId: SYSTEM_ORG_ID,
         storageName: firstSkill.storageName,
+        versionId: firstSkill.versionId,
       }),
     ).resolves.toBeNull();
     await expect(
-      readVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: conflictingSkill.storageName,
-      }),
+      readOwnedVolumeStorageState(conflictingSkill.storageId),
     ).resolves.toStrictEqual({
       s3_prefix: wrongPrefix,
       size: 1,
@@ -4694,10 +4883,10 @@ describe("connector catalog valid lifecycle", () => {
       head_version_id: existingVersionId,
     });
 
-    await restoreVolumeStorageState({
+    await cleanupOwnedVolumeStorages([conflictingSkill.storageId]);
+    await claimOwnedVolumeStorage({
       orgId: SYSTEM_ORG_ID,
-      storageName: conflictingSkill.storageName,
-      previous: previousConflicting,
+      ...conflictingSkill,
     });
     serveObjects(objects);
     expect((await syncCatalog()).body).toMatchObject({
@@ -4706,10 +4895,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     for (const skill of [firstSkill, conflictingSkill]) {
       await expect(
-        readVolumeStorageState({
-          orgId: SYSTEM_ORG_ID,
-          storageName: skill.storageName,
-        }),
+        readOwnedVolumeStorageState(skill.storageId),
       ).resolves.toMatchObject({
         s3_prefix: skill.s3Prefix,
         head_version_id: skill.versionId,
@@ -4724,33 +4910,22 @@ describe("connector catalog valid lifecycle", () => {
       connectorSlug,
       createHash("sha256").update(`shared:${randomUUID()}`).digest("hex"),
     );
-    const ownerStorageName = `connector-skill@owner-${randomUUID().slice(0, 8)}`;
+    const ownerStorageName = `connector-skill@owner-${randomUUID().replaceAll("-", "")}`;
     const ownerPrefix = `${SYSTEM_ORG_ID}/volume/${ownerStorageName}`;
-    const previousOwner = await readVolumeStorageState({
+    const ownerStorage = createOwnedVolumeStorageFixture(
+      ownerStorageName,
+      ownerPrefix,
+    );
+    await claimOwnedVolumeStorage({
       orgId: SYSTEM_ORG_ID,
-      storageName: ownerStorageName,
-    });
-    const previousCandidate = await readVolumeStorageState({
-      orgId: SYSTEM_ORG_ID,
-      storageName: skill.storageName,
+      ...ownerStorage,
     });
     onTestFinished(async () => {
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: ownerStorageName,
-        previous: previousOwner,
-      });
-      await restoreVolumeStorageState({
-        orgId: SYSTEM_ORG_ID,
-        storageName: skill.storageName,
-        previous: previousCandidate,
-      });
+      await cleanupOwnedVolumeStorages([ownerStorage.storageId]);
     });
-    await seedVolumeStorageVersion({
-      orgId: SYSTEM_ORG_ID,
-      storageName: ownerStorageName,
+    await seedOwnedVolumeStorageVersion({
+      storageId: ownerStorage.storageId,
       versionId: skill.versionId,
-      s3Prefix: ownerPrefix,
       s3Key: `${ownerPrefix}/${skill.versionId}`,
     });
     const release = buildRelease({
@@ -5100,7 +5275,10 @@ describe("connector catalog executable compatibility", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const unavailable = await accept(catalogClient.list({ headers }), [503]);
     expect(unavailable.body.error.code).toBe("PROVIDER_UNAVAILABLE");
 
@@ -5302,26 +5480,6 @@ describe("connector catalog executable compatibility", () => {
     });
   });
 
-  it("leaves feature-switch rollout out of executable compatibility", async () => {
-    configureSource();
-    const unknownSwitch = buildRelease({
-      version: "2026-07-15.unknown-feature-switch",
-      mutateCatalog: (artifact) => {
-        const method = firstRecord(
-          firstRecord(artifact.connectors, "connectors").authMethods,
-          "authMethods",
-        );
-        method.featureSwitch = "futureConnectorSwitch";
-      },
-    });
-    serveObjects(catalogObjects([unknownSwitch], unknownSwitch));
-
-    expect((await syncCatalog()).body.filtering).toMatchObject({
-      stale: false,
-      filteredAuthMethods: [],
-    });
-  });
-
   it("accepts inline confidential test clients and applies rollout at request time", async () => {
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
     const provider = mockTestOAuthAuthCodeProvider({
@@ -5332,7 +5490,6 @@ describe("connector catalog executable compatibility", () => {
       id: "oauth",
       grantKind: "auth-code",
     });
-    method.featureSwitch = "testOauthConnector";
     const release = buildRelease({
       version: "2026-07-24.inline-confidential-test-client",
       connectorSlug: "test-oauth",
@@ -5353,8 +5510,14 @@ describe("connector catalog executable compatibility", () => {
     onTestFinished(createConnectorCleanup(actor, "test-oauth"));
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
-    const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
+    const featureClient = setupApp({
+      context,
+      routes: zeroFeatureSwitchesRoutes,
+    })(zeroFeatureSwitchesContract);
 
     expect(
       (await accept(catalogClient.list({ headers }), [200])).body,
@@ -5466,7 +5629,9 @@ describe("connector catalog executable compatibility", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
-      setupApp({ context })(zeroConnectorCheckContract).check({
+      setupApp({ context, routes: connectorCheckRoutes })(
+        connectorCheckContract,
+      ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           mode: "environment",
@@ -5641,7 +5806,10 @@ describe("connector catalog executable compatibility", () => {
     });
     const firstDigest = missingConfiguration.body.filtering.capabilityDigest;
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
     expect(
       (await accept(catalogClient.list({ headers }), [200])).body,
@@ -5948,7 +6116,9 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
-      setupApp({ context })(zeroConnectorCheckContract).check({
+      setupApp({ context, routes: connectorCheckRoutes })(
+        connectorCheckContract,
+      ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           mode: "url",
@@ -6000,7 +6170,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           version: "legacy-pointer-reference",
           mutatePointer: (pointer) => {
             pointer.integrity = {
-              key: "connectors/v2/releases/legacy-pointer-reference/integrity/catalog.json",
+              key: "connectors/v3/releases/legacy-pointer-reference/integrity/catalog.json",
               digest: pointer.catalogDigest,
             };
             delete pointer.catalogDigest;
@@ -6027,7 +6197,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "unsupported-schema",
           mutateArtifact: (artifact) => {
-            artifact.artifactSchemaVersion = 3;
+            artifact.artifactSchemaVersion = 4;
           },
         });
       },
@@ -6305,7 +6475,8 @@ describe("connector catalog rejection and latest-valid retention", () => {
             const connector = firstRecord(artifact.connectors, "connectors");
             const skill = buildBundledSkill("wrong");
             skill.storageVersionPrefix =
-              "__system__/volume/connector-skill@other/" + "a".repeat(64);
+              `__system__/volume/connector-skill@other-${randomUUID().replaceAll("-", "")}/` +
+              createHash("sha256").update(randomUUID()).digest("hex");
             connector.skill = skill;
           },
         });

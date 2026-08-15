@@ -1,4 +1,4 @@
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";

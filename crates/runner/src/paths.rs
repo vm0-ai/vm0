@@ -19,6 +19,7 @@
 
 use std::path::{Path, PathBuf};
 
+pub use sandbox_fc::SnapshotOutputPaths as SnapshotPaths;
 use sha2::{Digest, Sha256};
 
 use crate::error::RunnerResult;
@@ -170,29 +171,6 @@ impl RunnerPaths {
     #[cfg(test)]
     pub fn workspace_image_cache_dir(&self) -> PathBuf {
         self.base_dir.join("workspace-image-cache")
-    }
-
-    #[cfg(test)]
-    pub fn workspace_image_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
-        self.workspace_image_cache_dir().join(cache_key)
-    }
-
-    #[cfg(test)]
-    pub fn workspace_image_cache_metadata(&self, cache_key: &str) -> PathBuf {
-        self.workspace_image_cache_entry_dir(cache_key)
-            .join("metadata.json")
-    }
-
-    #[cfg(test)]
-    pub fn workspace_image_cache_current_image(&self, cache_key: &str) -> PathBuf {
-        self.workspace_image_cache_entry_dir(cache_key)
-            .join("current.ext4")
-    }
-
-    #[cfg(test)]
-    pub fn workspace_image_cache_tmp_image(&self, cache_key: &str, run_id: RunId) -> PathBuf {
-        self.workspace_image_cache_entry_dir(cache_key)
-            .join(format!("current.ext4.tmp.{run_id}"))
     }
 }
 
@@ -411,61 +389,13 @@ impl RootfsPaths {
 
     /// Derive snapshot paths nested under this rootfs.
     pub fn snapshot(&self, snapshot_hash: &str) -> SnapshotPaths {
-        SnapshotPaths {
-            dir: self.dir.join("snapshots").join(snapshot_hash),
-        }
+        SnapshotPaths::new(self.dir.join("snapshots").join(snapshot_hash))
     }
 
     /// Parent directory for all snapshots under this rootfs.
     #[cfg(test)]
     pub fn snapshots_dir(&self) -> PathBuf {
         self.dir.join("snapshots")
-    }
-}
-
-/// Paths for a snapshot build output, nested under a [`RootfsPaths`].
-///
-/// Layout: `<images_dir>/<rootfs_hash>/snapshots/<snapshot_hash>/{snapshot.bin,memory.bin,cow.img,cow.img.bitmap,.snapshot-complete}`
-///
-/// Constructed via [`RootfsPaths::snapshot`].
-pub struct SnapshotPaths {
-    dir: PathBuf,
-}
-
-impl SnapshotPaths {
-    pub fn dir(&self) -> &Path {
-        &self.dir
-    }
-
-    pub fn snapshot_bin(&self) -> PathBuf {
-        self.dir.join("snapshot.bin")
-    }
-
-    pub fn memory_bin(&self) -> PathBuf {
-        self.dir.join("memory.bin")
-    }
-
-    pub fn cow_img(&self) -> PathBuf {
-        self.dir.join("cow.img")
-    }
-
-    pub fn cow_bitmap(&self) -> PathBuf {
-        self.dir.join("cow.img.bitmap")
-    }
-
-    pub fn complete_marker(&self) -> PathBuf {
-        self.dir.join(".snapshot-complete")
-    }
-
-    /// All files that must exist for the snapshot to be considered complete.
-    pub fn expected_files(&self) -> [PathBuf; 5] {
-        [
-            self.snapshot_bin(),
-            self.memory_bin(),
-            self.cow_img(),
-            self.cow_bitmap(),
-            self.complete_marker(),
-        ]
     }
 }
 
@@ -715,27 +645,6 @@ mod tests {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let sp = RootfsPaths::new(&home, "aaa").snapshot("bbb");
         assert_eq!(sp.dir(), Path::new("/test/images/aaa/snapshots/bbb"));
-        assert_eq!(
-            sp.snapshot_bin(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/snapshot.bin")
-        );
-        assert_eq!(
-            sp.memory_bin(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/memory.bin")
-        );
-        assert_eq!(
-            sp.cow_img(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/cow.img")
-        );
-        assert_eq!(
-            sp.cow_bitmap(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/cow.img.bitmap")
-        );
-        assert_eq!(
-            sp.complete_marker(),
-            PathBuf::from("/test/images/aaa/snapshots/bbb/.snapshot-complete")
-        );
-        assert_eq!(sp.expected_files().len(), 5);
     }
 
     #[test]

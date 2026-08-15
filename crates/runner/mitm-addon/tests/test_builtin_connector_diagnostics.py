@@ -515,6 +515,42 @@ def test_find_candidate_suppresses_multiple_shared_base_route_owners():
     assert candidate is None
 
 
+def test_find_candidate_distinguishes_repeated_slash_bases():
+    permissions = [{"name": "read", "rules": ["GET /{path+}"]}]
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "broader",
+                "BROADER_TOKEN",
+                base="https://api.example.com/v1",
+                permissions=permissions,
+            ),
+            _firewall(
+                "repeated",
+                "REPEATED_TOKEN",
+                base="https://api.example.com/v1//",
+                permissions=permissions,
+            ),
+        ]
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://api.example.com/v1//foo",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate == builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
+        connector_slug="repeated",
+        reason="not_configured_for_run",
+        env_names=("REPEATED_TOKEN",),
+        base="https://api.example.com/v1//",
+        auth_header_names=("Authorization",),
+        auth_query_param_names=(),
+    )
+
+
 def test_shared_base_ownership_selects_route_specific_inactive_sibling():
     snapshot = _diagnostic_snapshot(
         [

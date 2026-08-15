@@ -28,11 +28,78 @@ const storageStateSchema = z.object({
   head_version_id: z.string().nullable(),
 });
 
+const storageVersionStateSchema = z.object({
+  version_id: z.string(),
+  s3_key: z.string(),
+  size: z.number(),
+  archive_size: z.number(),
+  file_count: z.number(),
+  message: z.string().nullable(),
+  created_by: z.string(),
+});
+
+const ownedStorageSeedSchema = z.object({
+  storage_id: z.string().uuid(),
+  org_id: z.string(),
+  user_id: z.string(),
+  storage_name: z.string(),
+  s3_prefix: z.string(),
+});
+
+const cacheRefreshResultSchema = z.object({
+  due: z.number().int().nonnegative(),
+  refreshed: z.number().int().nonnegative(),
+  pruned: z.number().int().nonnegative(),
+});
+
 export const testSystemStoragePresignedUrlCacheStateActionBodySchema =
   z.discriminatedUnion("action", [
     z.object({
       action: z.literal("cleanup"),
       object_key_prefix: z.string(),
+    }),
+    z.object({
+      action: z.literal("claim-owned-storages"),
+      storages: z.array(ownedStorageSeedSchema).min(1),
+    }),
+    z.object({
+      action: z.literal("cleanup-owned-storages"),
+      storage_ids: z.array(z.string().uuid()).min(1),
+    }),
+    z.object({
+      action: z.literal("read-owned-storage-state"),
+      storage_id: z.string().uuid(),
+    }),
+    z.object({
+      action: z.literal("seed-owned-storage-version"),
+      storage_id: z.string().uuid(),
+      version_id: z.string(),
+      s3_key: z.string(),
+      archive_size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    }),
+    z.object({
+      action: z.literal("cleanup-owned-storage-cache"),
+      storage_id: z.string().uuid(),
+    }),
+    z.object({
+      action: z.literal("seed-owned-storage-cache-row"),
+      storage_id: z.string().uuid(),
+      storage_version_id: z.string(),
+      bucket: z.string(),
+      public_endpoint: z.boolean(),
+      ttl_seconds: z.number().int().positive(),
+      presigned_url: z.string(),
+      expires_at: z.string(),
+      refresh_after: z.string(),
+      last_requested_at: z.string().optional(),
+    }),
+    z.object({
+      action: z.literal("read-owned-storage-cache"),
+      storage_id: z.string().uuid(),
+    }),
+    z.object({
+      action: z.literal("refresh-owned-storage-cache"),
+      storage_id: z.string().uuid(),
     }),
     z.object({
       action: z.literal("read-storage-state"),
@@ -41,40 +108,19 @@ export const testSystemStoragePresignedUrlCacheStateActionBodySchema =
       storage_name: z.string(),
     }),
     z.object({
-      action: z.literal("restore-storage-state"),
-      org_id: z.string(),
-      user_id: z.string(),
-      storage_name: z.string(),
-      previous: storageStateSchema.nullable(),
-    }),
-    z.object({
-      action: z.literal("seed-storage-version"),
-      org_id: z.string(),
-      user_id: z.string(),
-      storage_name: z.string(),
-      version_id: z.string(),
-      s3_prefix: z.string(),
-      s3_key: z.string(),
-      archive_size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    }),
-    z.object({
-      action: z.literal("delete-storage-version"),
+      action: z.literal("read-storage-version"),
       org_id: z.string(),
       user_id: z.string(),
       storage_name: z.string(),
       version_id: z.string(),
     }),
     z.object({
-      action: z.literal("seed-cache-row"),
-      bucket: z.string(),
-      object_key: z.string(),
-      storage_version_id: z.string(),
-      public_endpoint: z.boolean(),
-      ttl_seconds: z.number(),
-      presigned_url: z.string(),
-      expires_at: z.string(),
-      refresh_after: z.string(),
-      last_requested_at: z.string().optional(),
+      action: z.literal("set-storage-version-archive-size"),
+      org_id: z.string(),
+      user_id: z.string(),
+      storage_name: z.string(),
+      version_id: z.string(),
+      archive_size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     }),
     z.object({
       action: z.literal("read-cache-by-object-key-prefix"),
@@ -87,6 +133,8 @@ export const testSystemStoragePresignedUrlCacheStateActionResponseSchema =
     ok: z.literal(true),
     rows: z.array(cacheRowSchema).optional(),
     storage_state: storageStateSchema.nullable().optional(),
+    storage_version: storageVersionStateSchema.nullable().optional(),
+    cache_refresh: cacheRefreshResultSchema.optional(),
   });
 
 export const testSystemStoragePresignedUrlCacheStateContract = c.router({

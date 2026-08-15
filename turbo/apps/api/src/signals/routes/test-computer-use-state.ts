@@ -1,22 +1,22 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { testComputerUseStateContract } from "@vm0/api-contracts/contracts/test-computer-use-state";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { testComputerUseStateContract } from "@okouai/api-contracts/contracts/test-computer-use-state";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { normalizeRunMetadata } from "../services/agent-run-metadata-write.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const postBody$ = bodyResultOf(testComputerUseStateContract.post);
 const getQuery$ = queryOf(testComputerUseStateContract.get);
@@ -45,13 +45,12 @@ async function loadRunState(db: Db, runId: string): Promise<RunState | null> {
       id: agentRuns.id,
       sessionId: agentRuns.sessionId,
       agentComposeId: agentSessions.agentComposeId,
-      triggerSource: zeroRuns.triggerSource,
-      chatThreadId: zeroRuns.chatThreadId,
+      triggerSource: agentRuns.triggerSource,
+      chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(agentRuns.id, runId))
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return run ?? null;
 }
@@ -85,6 +84,10 @@ async function seedBaseComputerUseRun(args: {
   const runId = randomUUID();
   const threadId =
     args.triggerSource === "web" || args.canonicalThread ? randomUUID() : null;
+  const metadata = normalizeRunMetadata({
+    triggerSource: args.triggerSource,
+    chatThreadId: threadId,
+  });
 
   await args.db.insert(agentComposes).values({
     id: composeId,
@@ -119,13 +122,7 @@ async function seedBaseComputerUseRun(args: {
     sessionId,
     status: "running",
     prompt: "Need Computer Use",
-  });
-  args.signal.throwIfAborted();
-
-  await args.db.insert(zeroRuns).values({
-    id: runId,
-    triggerSource: args.triggerSource,
-    chatThreadId: threadId,
+    ...metadata,
   });
   args.signal.throwIfAborted();
 
@@ -242,8 +239,6 @@ const deleteComputerUseState$ = command(
       return { status: 200 as const, body: { ok: true as const } };
     }
 
-    await db.delete(zeroRuns).where(eq(zeroRuns.id, run.id));
-    signal.throwIfAborted();
     await db.delete(agentRuns).where(eq(agentRuns.id, run.id));
     signal.throwIfAborted();
     await db.delete(agentSessions).where(eq(agentSessions.id, run.sessionId));

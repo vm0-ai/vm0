@@ -10,7 +10,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { zeroWorkflowAutomations } from "./zero-workflow";
+import { workflowAutomations } from "./workflow";
 
 export const strapiIntegrations = pgTable(
   "strapi_integrations",
@@ -41,14 +41,14 @@ export const strapiIntegrations = pgTable(
   },
 );
 
-export const zeroWorkflowStrapiAutomations = pgTable(
+export const strapiWorkflowAutomations = pgTable(
   "zero_workflow_strapi_automations",
   {
     automationId: uuid("automation_id")
       .primaryKey()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -111,7 +111,7 @@ export const strapiWorkflowPendingEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowAutomations.id;
+          return workflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

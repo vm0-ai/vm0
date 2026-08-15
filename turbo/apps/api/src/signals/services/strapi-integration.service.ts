@@ -3,15 +3,15 @@ import { createHash, randomBytes } from "node:crypto";
 import type {
   StrapiIntegration,
   StrapiIntegrationSecret,
-} from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+} from "@okouai/api-contracts/contracts/strapi-integrations";
 import {
   strapiIntegrations,
-  zeroWorkflowStrapiAutomations,
-} from "@vm0/db/schema/strapi-integration";
+  strapiWorkflowAutomations,
+} from "@okouai/db/schema/strapi-integration";
 import { and, asc, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 import { safeUrlParse } from "../utils";
 import {
@@ -23,7 +23,7 @@ type StrapiIntegrationRow = typeof strapiIntegrations.$inferSelect;
 
 function strapiWebhookUrl(integrationId: string): string {
   return new URL(
-    `/api/zero/strapi/events/${encodeURIComponent(integrationId)}`,
+    `/api/okou/strapi/events/${encodeURIComponent(integrationId)}`,
     env("VM0_WEB_URL"),
   ).toString();
 }
@@ -193,11 +193,11 @@ export async function removeStrapiIntegration(args: {
   readonly integrationId: string;
 }): Promise<RemoveStrapiIntegrationResult> {
   const [linked] = await args.db
-    .select({ automationId: zeroWorkflowStrapiAutomations.automationId })
-    .from(zeroWorkflowStrapiAutomations)
+    .select({ automationId: strapiWorkflowAutomations.automationId })
+    .from(strapiWorkflowAutomations)
     .innerJoin(
       strapiIntegrations,
-      eq(strapiIntegrations.id, zeroWorkflowStrapiAutomations.integrationId),
+      eq(strapiIntegrations.id, strapiWorkflowAutomations.integrationId),
     )
     .where(
       and(

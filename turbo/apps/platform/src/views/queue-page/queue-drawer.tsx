@@ -6,7 +6,8 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import type { ConcurrencyInfo } from "@vm0/api-contracts/contracts/runs";
+import type { ConcurrencyInfo } from "@okouai/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Sheet,
   SheetContent,
@@ -14,26 +15,32 @@ import {
   SheetHeader,
   SheetTitle,
   Button,
-} from "@vm0/ui";
-import { IconCrown, IconMinus, IconPlus } from "@tabler/icons-react";
+  Input,
+} from "@okouai/ui";
+import { Crown, Minus, Plus } from "lucide-react";
 import {
   CONCURRENCY_QUANTITY_MAX,
   CONCURRENCY_QUANTITY_MIN,
   concurrencyQuantity$,
   queueDrawerOpen$,
-  resetConcurrencyQuantity$,
   setConcurrencyQuantity$,
   setQueueDrawerOpen$,
 } from "../../signals/queue-page/queue-drawer-state.ts";
 import { queueData$ } from "../../signals/queue-page/queue-signals.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
+  billingStatusAsync$,
+  concurrencyConfirmDialog$,
+  type ConcurrencyConfirmDialogState,
+  openConcurrencyChangeReview$,
+  openConcurrencyPurchaseReview$,
   startCheckout$,
   startConcurrencyCheckout$,
 } from "../../signals/zero-page/billing.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
+import { orgPlanCapabilitiesFromBilling } from "../../signals/zero-page/org-plan-capabilities.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // Upgrade path config: free → pro, pro → team
@@ -140,7 +147,7 @@ function CheckCircleIcon() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="shrink-0 text-muted-foreground/40"
+      className="lucide shrink-0 text-muted-foreground/40"
     >
       <circle cx="12" cy="12" r="10" />
       <polyline points="16 9 10.5 15 8 12.5" />
@@ -154,19 +161,30 @@ function CheckCircleIcon() {
 
 function CurrentPlanStatus({
   concurrency,
+  showMemberUsage,
   tierColor,
   tierLabel,
 }: {
   readonly concurrency: ConcurrencyInfo;
+  readonly showMemberUsage: boolean;
   readonly tierColor: string;
   readonly tierLabel: string;
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
+  const { memberUsage } = concurrency;
+  const numberFormat = new Intl.NumberFormat(i18n.resolvedLanguage);
+  const slotCountLabel = (count: number): string => {
+    return t(
+      ($) => {
+        return $.billing.concurrency.slot;
+      },
+      { count, value: numberFormat.format(count) },
+    );
+  };
+
   return (
-    <div className="shrink-0 rounded-xl zero-border p-5">
-      <p
-        className={`text-sm font-semibold uppercase tracking-wider font-mono mb-3 ${tierColor}`}
-      >
+    <div className="shrink-0 rounded-[var(--zero-card-radius)] zero-border p-5">
+      <p className={`mb-3 text-sm font-mono font-semibold ${tierColor}`}>
         {tierLabel}
       </p>
       <div className="flex items-center gap-2 mb-2">
@@ -192,24 +210,70 @@ function CurrentPlanStatus({
           },
         )}
       </p>
-      <p className="text-[13px] font-light text-muted-foreground leading-relaxed mt-1.5">
-        {concurrency.available === 0
-          ? t(
-              ($) => {
-                return $.queue.status.atLimit;
-              },
-              {
-                count: concurrency.limit,
-                limit: concurrency.limit,
-              },
-            )
-          : t(
-              ($) => {
-                return $.queue.status.available;
-              },
-              { count: concurrency.available },
-            )}
-      </p>
+      {!showMemberUsage ? (
+        <p className="mt-1.5 text-[13px] font-light leading-relaxed text-muted-foreground">
+          {concurrency.available === 0
+            ? t(
+                ($) => {
+                  return $.queue.status.atLimit;
+                },
+                {
+                  count: concurrency.limit,
+                  limit: concurrency.limit,
+                },
+              )
+            : t(
+                ($) => {
+                  return $.queue.status.available;
+                },
+                { count: concurrency.available },
+              )}
+        </p>
+      ) : (
+        <div className="mt-3">
+          {memberUsage.length > 0 && (
+            <ul className="flex flex-col gap-2.5">
+              {memberUsage.map((member) => {
+                return (
+                  <li
+                    key={member.userId}
+                    className="flex min-w-0 items-center justify-between gap-4 text-sm"
+                  >
+                    <span className="flex min-w-0 items-center gap-3 text-foreground">
+                      <span
+                        aria-hidden="true"
+                        className="size-1.5 shrink-0 rounded-full bg-muted-foreground/65"
+                      />
+                      <span className="truncate font-light">
+                        {member.displayName}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-medium tabular-nums text-foreground">
+                      {slotCountLabel(member.active)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div
+            className={`flex items-center justify-between gap-4 text-sm ${
+              memberUsage.length > 0
+                ? "mt-4 border-t border-border/60 pt-3"
+                : "mt-3"
+            }`}
+          >
+            <span className="font-light text-muted-foreground">
+              {t(($) => {
+                return $.queue.status.availableNow;
+              })}
+            </span>
+            <span className="shrink-0 font-medium tabular-nums text-foreground">
+              {slotCountLabel(Math.max(0, concurrency.available))}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -232,15 +296,13 @@ function UpgradeCard({
     maximumFractionDigits: 0,
   });
   return (
-    <div className="flex-1 flex flex-col rounded-xl zero-border p-5">
+    <div className="flex-1 flex flex-col rounded-[var(--zero-card-radius)] zero-border p-5">
       <div className="flex items-start justify-between mb-2">
-        <h3
-          className={`text-sm font-semibold uppercase tracking-wider font-mono ${tierColor}`}
-        >
+        <h3 className={`text-sm font-mono font-semibold ${tierColor}`}>
           {upgrade.targetLabel}
         </h3>
         <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconCrown size={12} stroke={1.8} className="text-amber-500" />
+          <Crown size={12} className="text-amber-500" />
           {t(($) => {
             return $.queue.upgrade.recommended;
           })}
@@ -313,8 +375,8 @@ function ConcurrencyQuantityControl({
   quantity,
 }: {
   readonly loading: boolean;
-  readonly onQuantityChange: (quantity: number) => void;
-  readonly quantity: number;
+  readonly onQuantityChange: (quantity: number | null) => void;
+  readonly quantity: number | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -326,35 +388,76 @@ function ConcurrencyQuantityControl({
           })}
         </span>
         <div className="flex h-9 items-center rounded-lg border border-border/70 bg-background">
-          <button
+          <Button
             type="button"
             aria-label={t(($) => {
               return $.queue.purchase.decreaseQuantity;
             })}
-            disabled={quantity <= CONCURRENCY_QUANTITY_MIN || loading}
-            className="flex h-9 w-9 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={
+              quantity === null ||
+              quantity <= CONCURRENCY_QUANTITY_MIN ||
+              loading
+            }
+            variant="quiet"
+            size="icon"
+            className="rounded-l-lg disabled:opacity-40"
             onClick={() => {
-              onQuantityChange(quantity - 1);
+              if (quantity !== null) {
+                onQuantityChange(quantity - 1);
+              }
             }}
           >
-            <IconMinus size={14} stroke={2} />
-          </button>
-          <span className="flex h-9 w-12 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
-            {quantity}
-          </span>
-          <button
+            <Minus size={14} />
+          </Button>
+          <Input
+            type="text"
+            inputMode="numeric"
+            pattern="[1-9][0-9]*"
+            value={quantity ?? ""}
+            disabled={loading}
+            aria-label={t(($) => {
+              return $.queue.purchase.quantity;
+            })}
+            className="h-9 w-14 rounded-none border-y-0 border-x border-border/70 bg-transparent px-1 text-center text-sm font-medium tabular-nums shadow-none focus:border-border focus:ring-0"
+            onChange={(event) => {
+              const nextValue = event.currentTarget.value;
+              if (nextValue === "") {
+                onQuantityChange(null);
+                return;
+              }
+              if (!/^[1-9]\d*$/.test(nextValue)) {
+                return;
+              }
+              const nextQuantity = Number(nextValue);
+              if (
+                Number.isInteger(nextQuantity) &&
+                nextQuantity >= CONCURRENCY_QUANTITY_MIN &&
+                nextQuantity <= CONCURRENCY_QUANTITY_MAX
+              ) {
+                onQuantityChange(nextQuantity);
+              }
+            }}
+          />
+          <Button
             type="button"
             aria-label={t(($) => {
               return $.queue.purchase.increaseQuantity;
             })}
-            disabled={quantity >= CONCURRENCY_QUANTITY_MAX || loading}
-            className="flex h-9 w-9 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={
+              (quantity !== null && quantity >= CONCURRENCY_QUANTITY_MAX) ||
+              loading
+            }
+            variant="quiet"
+            size="icon"
+            className="rounded-r-lg disabled:opacity-40"
             onClick={() => {
-              onQuantityChange(quantity + 1);
+              onQuantityChange(
+                quantity === null ? CONCURRENCY_QUANTITY_MIN : quantity + 1,
+              );
             }}
           >
-            <IconPlus size={14} stroke={2} />
-          </button>
+            <Plus size={14} />
+          </Button>
         </div>
       </div>
     </div>
@@ -366,12 +469,14 @@ function ConcurrencyPurchaseCard({
   onCheckout,
   onQuantityChange,
   quantity,
+  reviewingInApp,
   tierColor,
 }: {
   readonly loading: boolean;
   readonly onCheckout: (newTab: boolean) => void;
-  readonly onQuantityChange: (quantity: number) => void;
-  readonly quantity: number;
+  readonly onQuantityChange: (quantity: number | null) => void;
+  readonly quantity: number | null;
+  readonly reviewingInApp: boolean;
   readonly tierColor: string;
 }) {
   const { i18n, t } = useTranslation();
@@ -380,19 +485,20 @@ function ConcurrencyPurchaseCard({
     currency: "USD",
     maximumFractionDigits: 0,
   });
-  const monthlyTotal = currencyFormat.format(concurrencyMonthlyTotal(quantity));
+  const effectiveQuantity = quantity ?? 0;
+  const monthlyTotal = currencyFormat.format(
+    concurrencyMonthlyTotal(effectiveQuantity),
+  );
   return (
-    <div className="flex-1 flex flex-col rounded-xl zero-border p-5">
+    <div className="flex-1 flex flex-col rounded-[var(--zero-card-radius)] zero-border p-5">
       <div className="flex items-start justify-between mb-2">
-        <h3
-          className={`text-sm font-semibold uppercase tracking-wider font-mono ${tierColor}`}
-        >
+        <h3 className={`text-sm font-mono font-semibold ${tierColor}`}>
           {t(($) => {
             return $.queue.purchase.title;
           })}
         </h3>
         <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconCrown size={12} stroke={1.8} className="text-amber-500" />
+          <Crown size={12} className="text-amber-500" />
           {t(($) => {
             return $.queue.purchase.addOn;
           })}
@@ -404,7 +510,7 @@ function ConcurrencyPurchaseCard({
           ($) => {
             return $.queue.purchase.subscription;
           },
-          { count: quantity },
+          { count: effectiveQuantity },
         )}
       </p>
       <p className="text-[13px] font-light text-muted-foreground leading-relaxed mb-4">
@@ -440,9 +546,13 @@ function ConcurrencyPurchaseCard({
         <li className="flex items-center gap-2">
           <CheckCircleIcon />
           <span className="text-[13px] font-light text-muted-foreground">
-            {t(($) => {
-              return $.queue.purchase.appliedAfterCheckout;
-            })}
+            {reviewingInApp
+              ? t(($) => {
+                  return $.billing.concurrency.reviewDescription;
+                })
+              : t(($) => {
+                  return $.queue.purchase.appliedAfterCheckout;
+                })}
           </span>
         </li>
       </ul>
@@ -450,15 +560,19 @@ function ConcurrencyPurchaseCard({
       <div className="mt-auto pt-5">
         <Button
           className="w-full h-11 text-sm font-medium"
-          disabled={loading}
+          disabled={loading || quantity === null}
           onClick={(e) => {
             onCheckout(e.metaKey || e.ctrlKey);
           }}
         >
           {loading
-            ? t(($) => {
-                return $.queue.redirecting;
-              })
+            ? reviewingInApp
+              ? t(($) => {
+                  return $.billing.common.updating;
+                })
+              : t(($) => {
+                  return $.queue.redirecting;
+                })
             : t(
                 ($) => {
                   return $.queue.purchase.buy;
@@ -471,6 +585,120 @@ function ConcurrencyPurchaseCard({
   );
 }
 
+function isQueueConcurrencyReviewOpen({
+  activeChangeReviewAvailable,
+  activeSubscriptionId,
+  confirmDialog,
+  purchaseReviewAvailable,
+}: {
+  readonly activeChangeReviewAvailable: boolean;
+  readonly activeSubscriptionId: string | undefined;
+  readonly confirmDialog: ConcurrencyConfirmDialogState | null;
+  readonly purchaseReviewAvailable: boolean;
+}): boolean {
+  if (confirmDialog?.action === "purchase") {
+    return purchaseReviewAvailable && confirmDialog.origin === "queue";
+  }
+  return (
+    activeChangeReviewAvailable &&
+    confirmDialog?.action === "change" &&
+    confirmDialog.subscriptionId === activeSubscriptionId
+  );
+}
+
+function ConcurrencyPurchaseCardMount({
+  canManageBilling,
+  tierColor,
+}: {
+  readonly canManageBilling: boolean;
+  readonly tierColor: string;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [checkoutLoadable, checkout] = useLoadableSet(
+    startConcurrencyCheckout$,
+  );
+  const [reviewLoadable, openReview] = useLoadableSet(
+    openConcurrencyChangeReview$,
+  );
+  const [purchaseReviewLoadable, openPurchaseReview] = useLoadableSet(
+    openConcurrencyPurchaseReview$,
+  );
+  const quantity = useGet(concurrencyQuantity$);
+  const confirmDialog = useGet(concurrencyConfirmDialog$);
+  const setQuantity = useSet(setConcurrencyQuantity$);
+  const billingStatus = useLastResolved(billingStatusAsync$);
+  const capabilities = billingStatus
+    ? orgPlanCapabilitiesFromBilling(billingStatus)
+    : undefined;
+  const activeSubscription = billingStatus?.concurrencySubscriptions.find(
+    (subscription) => {
+      return !subscription.cancelAtPeriodEnd;
+    },
+  );
+  // Old API responses omit this during the ~2-day web/app client version-skew
+  // window. Remove the legacy Checkout branch with #26152 after #26116 has
+  // been deployed beyond that window.
+  const activeChangeReviewAvailable =
+    activeSubscription?.canChangeInApp === true;
+  const purchaseReviewAvailable =
+    !activeSubscription &&
+    billingStatus?.concurrencyPurchaseReviewAvailable === true;
+  const reviewingInApp = activeChangeReviewAvailable || purchaseReviewAvailable;
+  const reviewDialogOpen = isQueueConcurrencyReviewOpen({
+    activeChangeReviewAvailable,
+    activeSubscriptionId: activeSubscription?.id,
+    confirmDialog,
+    purchaseReviewAvailable,
+  });
+  const loading =
+    checkoutLoadable.state === "loading" ||
+    reviewLoadable.state === "loading" ||
+    purchaseReviewLoadable.state === "loading" ||
+    reviewDialogOpen;
+
+  if (!canManageBilling || capabilities?.canBuyConcurrency !== true) {
+    return null;
+  }
+
+  return (
+    <ConcurrencyPurchaseCard
+      loading={loading}
+      onCheckout={(newTab) => {
+        if (quantity === null) {
+          return;
+        }
+        if (activeChangeReviewAvailable && activeSubscription) {
+          detach(
+            openReview(
+              {
+                subscriptionId: activeSubscription.id,
+                currentQuantity: activeSubscription.quantity,
+                targetQuantity: activeSubscription.quantity + quantity,
+                canReduce: activeSubscription.canReduce === true,
+              },
+              pageSignal,
+            ),
+            Reason.DomCallback,
+          );
+          return;
+        }
+        if (purchaseReviewAvailable) {
+          detach(
+            openPurchaseReview(quantity, newTab, "queue", pageSignal),
+            Reason.DomCallback,
+          );
+          return;
+        }
+        detach(checkout(quantity, newTab, pageSignal), Reason.DomCallback);
+      }}
+      onQuantityChange={setQuantity}
+      quantity={quantity}
+      reviewingInApp={reviewingInApp}
+      tierColor={tierColor}
+    />
+  );
+}
+
 function QueueDrawerContent() {
   const { t } = useTranslation();
   const dataLoadable = useLastLoadable(queueData$);
@@ -478,22 +706,15 @@ function QueueDrawerContent() {
   const pageSignal = useGet(pageSignal$);
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const [planCheckoutLoadable, checkout] = useLoadableSet(startCheckout$);
-  const [concurrencyCheckoutLoadable, concurrencyCheckout] = useLoadableSet(
-    startConcurrencyCheckout$,
-  );
-  const concurrencyQuantity = useGet(concurrencyQuantity$);
-  const setConcurrencyQuantity = useSet(setConcurrencyQuantity$);
-  const capabilities = useLastResolved(orgPlanCapabilities$);
+  const features = useGet(featureSwitch$);
   const planCheckoutLoading = planCheckoutLoadable.state === "loading";
-  const concurrencyCheckoutLoading =
-    concurrencyCheckoutLoadable.state === "loading";
   const upgrade = useUpgradePath(data?.concurrency.tier ?? "");
 
   if (!data) {
     return (
       <div className="flex flex-col gap-4">
-        <div className="h-24 animate-pulse rounded-xl bg-muted/20" />
-        <div className="h-48 animate-pulse rounded-xl bg-muted/20" />
+        <div className="h-24 animate-pulse rounded-[var(--zero-card-radius)] bg-muted/20" />
+        <div className="h-48 animate-pulse rounded-[var(--zero-card-radius)] bg-muted/20" />
       </div>
     );
   }
@@ -526,8 +747,6 @@ function QueueDrawerContent() {
   const canManageBilling =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const visibleUpgrade = canManageBilling ? upgrade : undefined;
-  const showConcurrencyPurchase =
-    canManageBilling && capabilities?.canBuyConcurrency === true;
 
   const tierColor = "text-[#D27939]";
 
@@ -535,6 +754,9 @@ function QueueDrawerContent() {
     <div className="flex flex-col gap-4 h-full">
       <CurrentPlanStatus
         concurrency={concurrency}
+        showMemberUsage={
+          features[FeatureSwitchKey.ConcurrencyMemberUsage] ?? false
+        }
         tierColor={tierColor}
         tierLabel={tierLabel}
       />
@@ -558,20 +780,10 @@ function QueueDrawerContent() {
         />
       )}
 
-      {showConcurrencyPurchase && (
-        <ConcurrencyPurchaseCard
-          loading={concurrencyCheckoutLoading}
-          onCheckout={(newTab) => {
-            detach(
-              concurrencyCheckout(concurrencyQuantity, newTab, pageSignal),
-              Reason.DomCallback,
-            );
-          }}
-          onQuantityChange={setConcurrencyQuantity}
-          quantity={concurrencyQuantity}
-          tierColor={tierColor}
-        />
-      )}
+      <ConcurrencyPurchaseCardMount
+        canManageBilling={canManageBilling}
+        tierColor={tierColor}
+      />
     </div>
   );
 }
@@ -579,17 +791,14 @@ function QueueDrawerContent() {
 export function QueueDrawer() {
   const { t } = useTranslation();
   const open = useGet(queueDrawerOpen$);
-  const pageSignal = useGet(pageSignal$);
   const setOpen = useSet(setQueueDrawerOpen$);
-  const resetConcurrencyQuantity = useSet(resetConcurrencyQuantity$);
 
   return (
     <Sheet
       open={open}
       onOpenChange={(v) => {
         if (!v) {
-          setOpen(false, pageSignal);
-          resetConcurrencyQuantity();
+          setOpen(false);
         }
       }}
     >

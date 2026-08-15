@@ -20,9 +20,12 @@
 //!
 //! ## Message Types
 //!
-//! Non-error message types are continuous and grouped by protocol domain:
-//! connection lifecycle, operation gates, file operations, exec operations, and
-//! the generic protocol error sentinel at `0xFF`.
+//! Non-error message types currently occupy the contiguous range `0x00..=0x17`
+//! in allocation order. Existing values are stable wire assignments: do not
+//! renumber or reuse them. Allocate new non-error messages at the next unused
+//! value below `0xFF`, even when related operations are not adjacent. `0xFF` is
+//! reserved for generic protocol errors. Changing an existing assignment
+//! requires an explicit, versioned host/guest protocol migration.
 //!
 //! | Type | Direction | Name              | Payload |
 //! |------|-----------|-------------------|---------|
@@ -46,13 +49,18 @@
 //! | 0x11 | G→H       | exec_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
 //! | 0x12 | H→G       | write_files       | `[2B file_count][file_entry]...`, where each file entry is `[2B path_len][path][4B content_len][content]` |
 //! | 0x13 | G→H       | write_files_result | `[1B success][2B error_len][error]` |
+//! | 0x14 | H→G       | memory_snapshot | (empty) |
+//! | 0x15 | G→H       | memory_snapshot_result | eighteen big-endian `[8B counter_bytes]` fields; see [`MemorySnapshot`] |
+//! | 0x16 | H→G       | guest_dns_readiness | `[4B positive timeout_ms][2B hostname_len][hostname]` |
+//! | 0x17 | G→H       | guest_dns_readiness_result | `[termination][4B duration_ms][1B flags][2B answer_len][answer][2B diagnostic_len][diagnostic]` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Request-scoped operation messages must use non-zero sequence numbers. This
-//! covers `write_file`, `write_files`, `exec_start`, `exec_cancel`, and
-//! `exec_control`; guest exec lifecycle frames reuse the original non-zero
-//! request sequence. `exec_output.output_seq` is per exec operation and starts
-//! at 0, incrementing by 1 for each output frame across stdout and stderr.
+//! covers `write_file`, `write_files`, `exec_start`, `exec_cancel`,
+//! `exec_control`, and `guest_dns_readiness`; operation replies reuse the
+//! original non-zero request sequence. `exec_output.output_seq` is per exec
+//! operation and starts at 0, incrementing by 1 for each output frame across
+//! stdout and stderr.
 //! `write_file_result.success` / `write_files_result.success` use 0=false and
 //! 1=true.
 //! `exec_control_result.status` is an [`ExecControlStatus`] wire value.
@@ -146,6 +154,29 @@
 //! - `0x01`: captured, followed by `[1B flags][4B bytes_len][bytes]`.
 //!
 //! Captured-output `flags` currently uses `TRUNCATED=0x01`.
+//!
+//! ### `guest_dns_readiness_result`
+//!
+//! ```text
+//! [termination]
+//! [4B duration_ms]
+//! [1B flags]
+//! [2B answer_len][answer]
+//! [2B diagnostic_len][diagnostic]
+//! ```
+//!
+//! `termination` values:
+//!
+//! - `0x00`: exited, followed by signed `[4B exit_code]`.
+//! - `0x01`: timed out.
+//! - `0x02`: cancelled by connection teardown.
+//! - `0x03`: start failed.
+//! - `0x04`: wait failed.
+//!
+//! Result `flags` currently uses `OUTPUT_TRUNCATED=0x01`. `answer` is raw
+//! resolver stdout bounded by [`GUEST_DNS_READINESS_MAX_ANSWER_BYTES`], while
+//! `diagnostic` is UTF-8 bounded by
+//! [`GUEST_DNS_READINESS_MAX_DIAGNOSTIC_BYTES`].
 
 #![deny(missing_docs)]
 
@@ -167,9 +198,21 @@ pub use payloads::exec_operation::{
     ExecTermination, ExecTimeoutPolicy, MAX_EXEC_STDIN_BYTES, decode_exec_cancel,
     decode_exec_control, decode_exec_control_result, decode_exec_output, decode_exec_result,
     decode_exec_start, decode_exec_started, encode_exec_cancel, encode_exec_control,
-    encode_exec_control_result, encode_exec_output, encode_exec_output_frame_into,
-    encode_exec_result, encode_exec_result_frame_into, encode_exec_start,
-    encode_exec_start_with_expected_exit_codes, encode_exec_started,
+    encode_exec_control_frame_into, encode_exec_control_result, encode_exec_output,
+    encode_exec_output_frame_into, encode_exec_result, encode_exec_result_frame_into,
+    encode_exec_start, encode_exec_start_with_expected_exit_codes, encode_exec_started,
+    validate_exec_control,
+};
+pub use payloads::guest_dns_readiness::{
+    DecodedGuestDnsReadinessRequest, DecodedGuestDnsReadinessResult,
+    GUEST_DNS_READINESS_MAX_ANSWER_BYTES, GUEST_DNS_READINESS_MAX_DIAGNOSTIC_BYTES,
+    GUEST_DNS_READINESS_MAX_HOSTNAME_BYTES, GuestDnsReadinessTermination,
+    decode_guest_dns_readiness_request, decode_guest_dns_readiness_result,
+    encode_guest_dns_readiness_request, encode_guest_dns_readiness_request_frame_into,
+    encode_guest_dns_readiness_result,
+};
+pub use payloads::memory_snapshot::{
+    MEMORY_SNAPSHOT_PAYLOAD_SIZE, MemorySnapshot, decode_memory_snapshot,
 };
 pub use payloads::write_file::{
     WriteFileBatchEntry, decode_write_file, decode_write_file_result, decode_write_files,
@@ -182,8 +225,10 @@ pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
     MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT,
-    WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
+    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_MEMORY_SNAPSHOT,
+    MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING,
+    MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
+    MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
+    MSG_WRITE_FILES_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE,
+    WRITE_FILE_FLAG_SUDO,
 };

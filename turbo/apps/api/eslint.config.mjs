@@ -1,5 +1,42 @@
-import { config, oxlint } from "@vm0/eslint-config/base";
-import { apiLintPlugin } from "@vm0/eslint-rules/api";
+import fs from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { config, oxlint } from "@okouai/eslint-config/base";
+import { apiLintPlugin } from "@okouai/eslint-rules/api";
+
+const packageRoot = dirname(fileURLToPath(import.meta.url));
+
+// The gateway type-check project (tsconfig.gateways.json) is the single source
+// of truth for which modules are allowed to resolve the isolated SDKs, so read
+// its file list rather than restating it here. Globs would silently under-
+// enforce the boundary, so reject them.
+const gatewayModules = JSON.parse(
+  fs.readFileSync(resolve(packageRoot, "tsconfig.gateways.json"), "utf8"),
+).include.map((entry) => {
+  if (entry.includes("*")) {
+    throw new Error(
+      `tsconfig.gateways.json must list files, not globs: ${entry}`,
+    );
+  }
+  return resolve(packageRoot, entry);
+});
+
+// Third-party declaration surfaces that only the gateway project may resolve.
+// Add a scope here once its clients move into tsconfig.gateways.json; see
+// the ablation numbers in PR #25714.
+const isolatedDependencies = [
+  "@aws-sdk",
+  "@clerk",
+  "@slack",
+  "@smithy",
+  "stripe",
+];
+
+const gatewayBoundaryOptions = {
+  modules: gatewayModules,
+  isolatedDependencies,
+};
 
 const restrictedSyntax = [
   {
@@ -95,7 +132,10 @@ const apiTestDirectDbImportMessage =
   "API tests must not import DB handles directly. Exercise setup and assertions through API endpoints; add a test route only when an external-behavior exception is justified.";
 
 const productionRouteTestImportMessage =
-  "Production route composition must not import test-only routes. Mount required test fixture routes explicitly from tests.";
+  "Production source must not import test-only routes. Mount required test fixture routes explicitly from tests through setupApp().";
+
+const lowerLayerRouteImportMessage =
+  "Lower layers must not import HTTP route or bootstrap aggregation modules. Move shared behavior to lib, command, computed, external, or service modules.";
 
 const apiTestDirectDbImportPatterns = [
   "./lib/db",
@@ -160,15 +200,12 @@ const apiTestServiceImportPatterns = [
 ];
 
 export default [
+  {
+    ignores: [".typecheck/**"],
+  },
   ...config,
   {
     files: ["src/**/*.ts"],
-    languageOptions: {
-      parserOptions: {
-        project: "./tsconfig.json",
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
     plugins: {
       api: apiLintPlugin,
     },
@@ -185,6 +222,36 @@ export default [
       "api/require-execute-row-schema": "error",
       "api/require-sql-result-mapping": "error",
       "api/signal-check-await": "error",
+    },
+  },
+  {
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**",
+      "src/**/test/**",
+      "src/**/tests/**",
+      "src/**/mocks/**",
+      "src/**/test-fixtures/**",
+      "src/**/*.test.ts",
+      "src/**/*.spec.ts",
+      "src/**/test-context.ts",
+      "src/signals/routes/test-*.ts",
+    ],
+    rules: {
+      "vm0/no-abort-signal-in-object-params": [
+        "error",
+        {
+          allowedFunctions: [
+            "createApp",
+            "createAppWithRoutes",
+            "readTextLines",
+            "createDir",
+            "remove",
+            "createTempFile",
+            "exec",
+          ],
+        },
+      ],
     },
   },
   {
@@ -213,6 +280,15 @@ export default [
     files: ["src/**/*.ts"],
     rules: {
       "api/no-package-variable": "error",
+    },
+  },
+  // Gateway boundary. Tests are exempt: they type-check in their own smaller
+  // program, so an SDK import there does not land in the core program.
+  {
+    files: ["src/**/*.ts"],
+    ignores: ["src/**/__tests__/**/*.ts", "src/**/*.test.ts"],
+    rules: {
+      "api/gateway-typecheck-boundary": ["error", gatewayBoundaryOptions],
     },
   },
   {
@@ -247,6 +323,21 @@ export default [
     ignores: ["src/__tests__/env-stub.ts", "src/__tests__/mocks.ts"],
     rules: {
       "api/no-test-vi-mocks": "error",
+    },
+  },
+  {
+    files: [
+      "src/**/__tests__/**/*.ts",
+      "src/**/*.test.ts",
+      "src/test-fixtures/**/*.ts",
+      "src/signals/routes/test-*.ts",
+    ],
+    rules: {
+      "api/no-cross-test-time-staggering": "error",
+      "api/no-global-sweep-test-routes": "error",
+      "api/no-legacy-shared-state-markers": "error",
+      "api/no-production-staff-entitlement-mutation": "error",
+      "api/no-unowned-usage-pricing": "error",
     },
   },
   {
@@ -297,10 +388,44 @@ export default [
     files: [
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
+      // A pre-migration schema cannot be constructed through a production API.
+      // This focused transaction validates the rollout contract against real
+      // PostgreSQL tables before and after the autonomy-budget columns exist.
+      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
+      // A pre-0835 table cannot be constructed through a production API. This
+      // focused transaction proves Calendar watch reads and initial writes stay
+      // legal on both sides of the transition-column migration.
+      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...restrictedSyntax],
+    },
+  },
+  {
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**/*.ts",
+      "src/signals/routes/test-*.ts",
+      "src/signals/routes/cli-auth-test.ts",
+      "src/signals/route.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/routes/test-*", "**/routes/test-*/**"],
+              message: productionRouteTestImportMessage,
+            },
+            {
+              group: ["**/routes/cli-auth-test"],
+              message: productionRouteTestImportMessage,
+            },
+          ],
+        },
+      ],
     },
   },
   {
@@ -311,7 +436,11 @@ export default [
         {
           patterns: [
             {
-              group: ["./routes/test-*", "./routes/test-*/**"],
+              group: ["**/routes/test-*", "**/routes/test-*/**"],
+              message: productionRouteTestImportMessage,
+            },
+            {
+              group: ["**/routes/cli-auth-test"],
               message: productionRouteTestImportMessage,
             },
             {
@@ -321,10 +450,49 @@ export default [
                 "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
             },
           ],
-          paths: [
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      "src/lib/**/*.ts",
+      "src/signals/commands/**/*.ts",
+      "src/signals/computed/**/*.ts",
+      "src/signals/external/**/*.ts",
+      "src/signals/services/**/*.ts",
+    ],
+    ignores: [
+      "src/**/__tests__/**/*.ts",
+      "src/**/__benches__/**/*.ts",
+      "src/**/*.bench.ts",
+      "src/**/*.spec.ts",
+      "src/**/*.suite.ts",
+      "src/**/*.test.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
             {
-              name: "./routes/cli-auth-test",
-              message: productionRouteTestImportMessage,
+              group: [
+                "**/routes/*",
+                "**/routes/**/*",
+                "**/signals/route",
+                "**/signals/route.ts",
+                "**/signals/e2e-routes",
+                "**/signals/e2e-routes.ts",
+                "**/production-bootstrap",
+                "**/production-bootstrap.ts",
+              ],
+              message: lowerLayerRouteImportMessage,
+            },
+            {
+              group: ["**/zero-runs-create.service"],
+              importNames: ["createTestFixtureZeroRun$"],
+              message:
+                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
             },
           ],
         },
@@ -337,14 +505,18 @@ export default [
       // Central test lifecycle owns connection-pool teardown; it does not
       // construct or assert API behavior.
       "src/__tests__/test-context.ts",
-      // A pre-0764 database cannot be constructed through a production API.
-      // This focused rollout test only redirects the real route to PostgreSQL's
-      // empty template database; setup is internal, but assertions remain HTTP.
-      "src/signals/routes/__tests__/zero-model-provider-gateways-rollout.test.ts",
       // A finite event-type matrix locks persisted payload rendering and
       // policy lookup byte-for-byte; individual provider routes cannot cover
       // every lookup-table row without duplicating the contract under test.
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
+      // A pre-migration schema cannot be constructed through a production API.
+      // This focused transaction validates the rollout contract against real
+      // PostgreSQL tables before and after the autonomy-budget columns exist.
+      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
+      // A pre-0835 table cannot be constructed through a production API. This
+      // focused transaction proves Calendar watch reads and initial writes stay
+      // legal on both sides of the transition-column migration.
+      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
     ],
     rules: {
       "no-restricted-imports": [
@@ -352,13 +524,13 @@ export default [
         {
           paths: [
             {
-              name: "@vm0/db/schema",
+              name: "@okouai/db/schema",
               message: apiTestExternalBehaviorMessage,
             },
           ],
           patterns: [
             {
-              group: ["@vm0/db/schema/*"],
+              group: ["@okouai/db/schema/*"],
               message: apiTestExternalBehaviorMessage,
             },
             {

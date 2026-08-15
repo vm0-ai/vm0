@@ -1,11 +1,13 @@
 """Registry VM firewall entry resolution."""
 
 import copy
+import uuid
 from dataclasses import dataclass
 
 import builtin_base_url
 import builtin_firewall_cache
 import builtin_host_policy
+import connector_runtime_metadata
 
 BuiltinFirewallCatalogFileKey = builtin_firewall_cache.CatalogFileKey
 BuiltinFirewallCatalogIdentity = builtin_firewall_cache.CatalogIdentity
@@ -22,6 +24,65 @@ class FirewallEntryResolutionError(ValueError):
     """Execution firewall entries could not be expanded into runtime configs."""
 
 
+def _custom_connector_id(entry: dict) -> str | None:
+    custom_connector_id = entry.get("customConnectorId")
+    if custom_connector_id is None:
+        return None
+    if not isinstance(custom_connector_id, str):
+        raise FirewallEntryResolutionError("inline firewall customConnectorId must be a UUID")
+    try:
+        uuid.UUID(custom_connector_id)
+    except ValueError as error:
+        raise FirewallEntryResolutionError(
+            "inline firewall customConnectorId must be a UUID"
+        ) from error
+    return custom_connector_id
+
+
+def _connector_runtime_target_ids(vm: dict) -> tuple[set[str], set[str]]:
+    raw_targets = vm.get("connectorRuntimeTargets", [])
+    if not isinstance(raw_targets, list):
+        raise FirewallEntryResolutionError("connectorRuntimeTargets must be a list")
+    builtin_slugs: set[str] = set()
+    custom_connector_ids: set[str] = set()
+    for target in raw_targets:
+        if not isinstance(target, dict):
+            raise FirewallEntryResolutionError("connector runtime targets must be objects")
+        kind = target.get("kind")
+        if kind == "builtin":
+            connector_slug = target.get("connectorSlug")
+            if not isinstance(connector_slug, str) or connector_slug == "":
+                raise FirewallEntryResolutionError(
+                    "builtin connector runtime target must have a connector slug"
+                )
+            if connector_slug in builtin_slugs:
+                raise FirewallEntryResolutionError(
+                    "builtin connector runtime targets must be unique"
+                )
+            builtin_slugs.add(connector_slug)
+            continue
+        if kind == "custom":
+            custom_connector_id = target.get("customConnectorId")
+            if not isinstance(custom_connector_id, str):
+                raise FirewallEntryResolutionError(
+                    "custom connector runtime target must have a UUID"
+                )
+            try:
+                uuid.UUID(custom_connector_id)
+            except ValueError as error:
+                raise FirewallEntryResolutionError(
+                    "custom connector runtime target must have a UUID"
+                ) from error
+            if custom_connector_id in custom_connector_ids:
+                raise FirewallEntryResolutionError(
+                    "custom connector runtime targets must be unique"
+                )
+            custom_connector_ids.add(custom_connector_id)
+            continue
+        raise FirewallEntryResolutionError("connector runtime targets must use a supported kind")
+    return builtin_slugs, custom_connector_ids
+
+
 @dataclass(frozen=True)
 class ResolvedFirewallEntries:
     """Resolved registry firewall configs and aligned builtin cache keys.
@@ -33,16 +94,20 @@ class ResolvedFirewallEntries:
     When firewalls are present, `builtin_cache_keys` is positionally aligned
     with them: `builtin_cache_keys[i]` describes `firewalls[i]`. A per-entry
     cache key of `None` means that firewall came from an inline entry and must
-    bypass builtin compiled-core cache reuse.
+    bypass builtin compiled-core cache reuse. `omitted_builtin_names` records
+    compact builtin references absent from the otherwise valid current catalog.
     """
 
     firewalls: list[dict] | None
     builtin_cache_keys: tuple[BuiltinFirewallCoreCacheKey | None, ...] | None
+    omitted_builtin_names: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if self.firewalls is None:
             if self.builtin_cache_keys is not None:
                 raise ValueError("builtin cache keys must be absent when firewalls are absent")
+            if self.omitted_builtin_names:
+                raise ValueError("omitted builtin names must be absent when firewalls are absent")
             return
         if self.builtin_cache_keys is None:
             raise ValueError("builtin cache keys must be present when firewalls are present")
@@ -117,7 +182,7 @@ def _resolution_error(error: Exception) -> FirewallEntryResolutionError:
 def _catalog_source_for_name(
     raw_name: str,
     catalog_snapshot: BuiltinFirewallCatalogSnapshot,
-) -> tuple[dict, BuiltinFirewallCatalogIdentity]:
+) -> tuple[dict, BuiltinFirewallCatalogIdentity] | None:
     cached_catalog = catalog_snapshot.catalog
     if cached_catalog is None:
         reason = catalog_snapshot.unavailable_reason or "cache_unavailable"
@@ -131,24 +196,20 @@ def _catalog_source_for_name(
         )
     catalog_firewall = cached_catalog.firewalls.get(raw_name)
     if catalog_firewall is None:
-        raise FirewallEntryResolutionError(
-            f'builtin firewall "{raw_name}" missing from catalog cache '
-            f"(catalog_digest={cached_catalog.identity.catalog_digest}, "
-            f"catalog_version={cached_catalog.identity.catalog_version})"
-        )
+        return None
     return catalog_firewall, cached_catalog.identity
 
 
 def _resolve_builtin_firewall_entry(
     entry: dict,
     *,
+    raw_name: str,
     catalog_snapshot: BuiltinFirewallCatalogSnapshot,
-) -> _ResolvedBuiltinFirewallEntry:
-    raw_name = entry.get("name")
-    if not isinstance(raw_name, str) or raw_name == "":
-        raise FirewallEntryResolutionError("builtin firewall entry name must be a non-empty string")
-
-    catalog_firewall, catalog_identity = _catalog_source_for_name(raw_name, catalog_snapshot)
+) -> _ResolvedBuiltinFirewallEntry | None:
+    catalog_source = _catalog_source_for_name(raw_name, catalog_snapshot)
+    if catalog_source is None:
+        return None
+    catalog_firewall, catalog_identity = catalog_source
 
     firewall, raw_apis = _copy_builtin_firewall_shell(
         firewall_name=raw_name,
@@ -239,9 +300,11 @@ def resolve_firewall_entries(
     IDs are preserved. Callers must validate `vm["runId"]` as a non-empty string
     before calling.
 
-    Raises `FirewallEntryResolutionError` for malformed firewall lists or
-    entries, unsupported entry kinds, unknown builtins, invalid builtin base URL
-    templates, and builtin host-policy validation failures.
+    Builtin names absent from a valid current catalog are omitted and returned
+    in `omitted_builtin_names`. Raises `FirewallEntryResolutionError` for an
+    unavailable catalog, malformed firewall lists or entries, unsupported entry
+    kinds, invalid builtin base URL templates, and builtin host-policy validation
+    failures.
     """
     raw_firewalls = vm.get("firewalls")
     if raw_firewalls is None:
@@ -251,20 +314,36 @@ def resolve_firewall_entries(
 
     resolved: list[dict] = []
     builtin_cache_keys: list[BuiltinFirewallCoreCacheKey | None] = []
+    omitted_builtin_names: set[str] = set()
+    builtin_target_slugs, custom_target_ids = _connector_runtime_target_ids(vm)
     for entry in raw_firewalls:
         if not isinstance(entry, dict):
             raise FirewallEntryResolutionError("firewall entries must be objects")
 
         kind = entry.get("kind")
         if kind == "builtin":
+            raw_name = entry.get("name")
+            if not isinstance(raw_name, str) or raw_name == "":
+                raise FirewallEntryResolutionError(
+                    "builtin firewall entry name must be a non-empty string"
+                )
             if builtin_firewall_catalog_snapshot is None:
                 builtin_firewall_catalog_snapshot = load_catalog_snapshot(
                     builtin_firewall_catalog_cache_path
                 )
             resolved_builtin = _resolve_builtin_firewall_entry(
                 entry,
+                raw_name=raw_name,
                 catalog_snapshot=builtin_firewall_catalog_snapshot,
             )
+            if resolved_builtin is None:
+                omitted_builtin_names.add(raw_name)
+                continue
+            connector_runtime_metadata.clear_connector_runtime_kind(resolved_builtin.firewall)
+            if raw_name in builtin_target_slugs:
+                connector_runtime_metadata.mark_connector_runtime_kind(
+                    resolved_builtin.firewall, "builtin"
+                )
             resolved.append(resolved_builtin.firewall)
             builtin_cache_keys.append(resolved_builtin.cache_key)
             continue
@@ -274,10 +353,29 @@ def resolve_firewall_entries(
                 raise FirewallEntryResolutionError(
                     "inline firewall entry firewall must be an object"
                 )
-            resolved.append(copy.deepcopy(firewall))
+            resolved_firewall = copy.deepcopy(firewall)
+            connector_runtime_metadata.clear_connector_runtime_kind(resolved_firewall)
+            custom_connector_id = _custom_connector_id(entry)
+            if custom_connector_id is not None:
+                resolved_firewall["customConnectorId"] = custom_connector_id
+                if custom_connector_id in custom_target_ids:
+                    connector_runtime_metadata.mark_connector_runtime_kind(
+                        resolved_firewall, "custom"
+                    )
+                raw_apis = resolved_firewall.get("apis")
+                if not isinstance(raw_apis, list):
+                    raise FirewallEntryResolutionError("inline firewall apis must be a list")
+                for api in raw_apis:
+                    if isinstance(api, dict):
+                        api["customConnectorId"] = custom_connector_id
+            resolved.append(resolved_firewall)
             builtin_cache_keys.append(None)
             continue
         raise FirewallEntryResolutionError("firewall entries must use a supported kind")
 
     _assign_firewall_api_ids(resolved, vm["runId"])
-    return ResolvedFirewallEntries(resolved, tuple(builtin_cache_keys))
+    return ResolvedFirewallEntries(
+        resolved,
+        tuple(builtin_cache_keys),
+        frozenset(omitted_builtin_names),
+    )

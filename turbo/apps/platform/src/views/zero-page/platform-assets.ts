@@ -8,15 +8,16 @@ export function avatarSvgAssetUrl(filename: string): string {
   return zeroPageAssetUrl(`assets/avatar-svg/${filename}`);
 }
 
-export const emptyActivityImg = zeroPageAssetUrl("assets/empty-activity.webp");
 export const emptyArtifactImg = zeroPageAssetUrl("assets/empty-artifact.webp");
 export const emptyChatImg = zeroPageAssetUrl("assets/empty-chat.webp");
-export const emptyInsightsImg = zeroPageAssetUrl("assets/empty-insights.webp");
 export const emptyAutomationsImg = zeroPageAssetUrl(
   "assets/empty-automations-fe7f603eaa3c.webp",
 );
 export const emptyWorkflowImg = zeroPageAssetUrl(
   "assets/empty-workflow-96e709d12911.webp",
+);
+export const emptyUsageImg = zeroPageAssetUrl(
+  "assets/empty-usage-a1f6d48793ba.webp",
 );
 export const computerUseIllustrationImg = zeroPageAssetUrl(
   "assets/computer-use-illustration-eecea534a3ac.png?v=568fa471",

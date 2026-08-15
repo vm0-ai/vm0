@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
-  chatEventResponse,
   chatEventsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
@@ -11,9 +10,8 @@ import {
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
-import { chatIdb$ } from "../../../signals/external/chat-idb-store.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { click, fill } from "../../../__tests__/page-helper.ts";
@@ -22,11 +20,11 @@ import {
   PLACEHOLDER,
   sendMessageInUI,
 } from "./chat-test-helpers.ts";
+import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import {
   context,
   detachedSetupPage,
   AGENT_ID,
-  HISTORY_THREAD_ID,
   EVENT_SOURCED_RENAME_THREAD_ID,
   KEYBOARD_PREV_THREAD_ID,
   KEYBOARD_CURRENT_THREAD_ID,
@@ -47,202 +45,6 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 describe("chat lifecycle", () => {
-  it("skips backward history fetch when persistent messages start at seq one", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000729";
-    const initialEvent = {
-      id: "00000000-0000-4000-8000-000000000729",
-      threadId,
-      eventType: "output.message",
-      content: "Complete history starts here",
-      createdAt: "2026-06-09T10:00:00.000Z",
-      seqId: 1,
-    } satisfies ChatEvent;
-    const beforeSeqIds: number[] = [];
-
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Complete history",
-    });
-    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      if (query.beforeSeqId !== undefined) {
-        beforeSeqIds.push(query.beforeSeqId);
-        return respond(200, { events: [] });
-      }
-      if (query.sinceSeqId === initialEvent.seqId) {
-        return respond(200, { events: [] });
-      }
-      if (query.sinceSeqId === undefined) {
-        return respond(200, {
-          events: [chatEventResponse(initialEvent)],
-        });
-      }
-      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
-    });
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    await expect(
-      screen.findByText(initialEvent.content),
-    ).resolves.toBeInTheDocument();
-    expect(beforeSeqIds).toStrictEqual([]);
-  });
-
-  it("renders history when deleted events leave a sequence gap", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000734";
-    const initialEvent = {
-      id: "00000000-0000-4000-8000-000000000731",
-      threadId,
-      eventType: "output.message",
-      content: "History remains visible after event cleanup",
-      createdAt: "2026-06-09T10:02:00.000Z",
-      seqId: 3,
-    } satisfies ChatEvent;
-    const beforeSeqIds: number[] = [];
-
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Sequence gap",
-    });
-    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      if (query.beforeSeqId !== undefined) {
-        beforeSeqIds.push(query.beforeSeqId);
-        return respond(200, { events: [] });
-      }
-      if (query.sinceSeqId === initialEvent.seqId) {
-        return respond(200, { events: [] });
-      }
-      if (query.sinceSeqId === undefined) {
-        return respond(200, { events: [chatEventResponse(initialEvent)] });
-      }
-      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
-    });
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    await expect(
-      screen.findByText(initialEvent.content),
-    ).resolves.toBeInTheDocument();
-    expect(beforeSeqIds).toStrictEqual([initialEvent.seqId]);
-  });
-
-  it("publishes the initial page before batching the remaining history", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000730";
-    const messages = Array.from({ length: 70 }, (_, index) => {
-      const itemNumber = index + 1;
-      return {
-        id: `00000000-0000-4000-8000-${String(itemNumber).padStart(12, "0")}`,
-        threadId,
-        eventType: "output.message" as const,
-        content: `Delayed history reply ${itemNumber}`,
-        createdAt: new Date(Date.UTC(2026, 5, 9, 10, index, 0)).toISOString(),
-        seqId: itemNumber,
-      } satisfies ChatEvent;
-    });
-    const initialPageGate = context.mocks.deferred<void>();
-    const beforePageGate = context.mocks.deferred<void>();
-    let initialPageRequested = false;
-    const beforeSeqIds: number[] = [];
-    const sinceSeqIds: number[] = [];
-
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Delayed history",
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, {
-        lastReadAt: null,
-      });
-    });
-    context.mocks.api(
-      chatThreadEventsContract.list,
-      async ({ query, respond }) => {
-        if (query.beforeSeqId) {
-          beforeSeqIds.push(query.beforeSeqId);
-          if (query.beforeSeqId === messages[10]!.seqId) {
-            await beforePageGate.promise;
-            return respond(200, {
-              events: messages.slice(0, 10).map(chatEventResponse),
-            });
-          }
-          return respond(200, {
-            events: messages.slice(10, 20).map(chatEventResponse),
-          });
-        }
-        if (query.sinceSeqId) {
-          sinceSeqIds.push(query.sinceSeqId);
-          return respond(200, { events: [] });
-        }
-
-        initialPageRequested = true;
-        await initialPageGate.promise;
-        return respond(200, {
-          events: messages.slice(20).map(chatEventResponse),
-        });
-      },
-    );
-    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-      return respond(200, { lastReadAt: null, unreads: [] });
-    });
-
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-      await waitFor(() => {
-        expect(initialPageRequested).toBeTruthy();
-      });
-      expect(beforeSeqIds).toStrictEqual([]);
-      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
-
-      initialPageGate.resolve();
-      await waitFor(() => {
-        expect(beforeSeqIds).toStrictEqual([
-          messages[20]!.seqId,
-          messages[10]!.seqId,
-        ]);
-      });
-      expect(screen.getByText("Delayed history reply 70")).toBeInTheDocument();
-      expect(
-        screen.queryByText("Delayed history reply 11"),
-      ).not.toBeInTheDocument();
-      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-
-      beforePageGate.resolve();
-    } finally {
-      if (!initialPageGate.settled()) {
-        initialPageGate.resolve();
-      }
-      if (!beforePageGate.settled()) {
-        beforePageGate.resolve();
-      }
-    }
-
-    await waitFor(() => {
-      expect(screen.getByText("Delayed history reply 1")).toBeInTheDocument();
-      expect(screen.getByText("Delayed history reply 60")).toBeInTheDocument();
-    });
-
-    const forwardRequestCount = sinceSeqIds.length;
-    const latestMessageSeqId = messages.at(-1)!.seqId;
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageCreated:${threadId}`,
-      ),
-    ).toBeFalsy();
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
-    await waitFor(() => {
-      expect(sinceSeqIds.slice(forwardRequestCount)).toStrictEqual([
-        latestMessageSeqId,
-      ]);
-    });
-    expect(beforeSeqIds).toStrictEqual([
-      messages[20]!.seqId,
-      messages[10]!.seqId,
-    ]);
-  });
-
   it("renders new messages after a payload-less created event", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000731";
     const initialMessage = {
@@ -262,7 +64,6 @@ describe("chat lifecycle", () => {
       seqId: 2,
     } satisfies ChatEvent;
     let exposeNewMessage = false;
-    let emptyForwardRequests = 0;
 
     mockChatLifecycle(context, {
       threadId,
@@ -271,27 +72,18 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
-    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      if (query.sinceSeqId === undefined) {
-        return respond(200, {
-          events: [chatEventResponse(initialMessage)],
-        });
-      }
-      if (query.sinceSeqId === initialMessage.seqId) {
-        if (!exposeNewMessage) {
-          emptyForwardRequests += 1;
-          return respond(200, { events: [] });
-        }
-        return respond(200, {
-          events: [chatEventResponse(newMessage)],
-        });
-      }
-      if (query.sinceSeqId === newMessage.seqId) {
-        return respond(200, { events: [] });
-      }
-      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      const events = exposeNewMessage
+        ? [initialMessage, newMessage]
+        : [initialMessage];
+      return respond(200, {
+        rows: mockChatEventRows(events).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
+      });
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, { lastReadAt: null, unreads: [] });
@@ -310,14 +102,6 @@ describe("chat lifecycle", () => {
         `chatThreadMessageCreated:${threadId}`,
       ),
     ).toBeFalsy();
-
-    const requestsBeforePayloadlessEvent = emptyForwardRequests;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
-    await waitFor(() => {
-      expect(emptyForwardRequests).toBeGreaterThan(
-        requestsBeforePayloadlessEvent,
-      );
-    });
 
     exposeNewMessage = true;
     context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
@@ -349,7 +133,6 @@ describe("chat lifecycle", () => {
       seqId: 3,
       runId,
     } satisfies ChatEvent;
-    const initialMessagesCaughtUp = context.mocks.deferred<void>();
     let persistedMessage: ChatEvent | null = null;
     let exposePersistedMessage = false;
 
@@ -357,28 +140,21 @@ describe("chat lifecycle", () => {
       threadId,
       threadTitle: "Optimistic realtime reconciliation",
     });
-    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      if (query.sinceSeqId === undefined) {
-        return respond(200, {
-          events: [chatEventResponse(initialMessage)],
-        });
-      }
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposePersistedMessage || persistedMessage === null) {
-          initialMessagesCaughtUp.resolve();
-          return respond(200, { events: [] });
+          return respond(200, { rows: [] });
         }
-        return respond(200, {
-          events: [
-            chatEventResponse(persistedMessage),
-            chatEventResponse(acknowledgement),
-          ],
-        });
       }
-      if (query.sinceSeqId === acknowledgement.seqId) {
-        return respond(200, { events: [] });
+      const events: ChatEvent[] = [initialMessage];
+      if (exposePersistedMessage && persistedMessage !== null) {
+        events.push(persistedMessage, acknowledgement);
       }
-      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+      return respond(200, {
+        rows: mockChatEventRows(events).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
+      });
     });
     context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       const clientEventId = body.clientEventId;
@@ -408,7 +184,6 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await initialMessagesCaughtUp.promise;
     await expect(
       screen.findByText(initialMessage.content),
     ).resolves.toBeInTheDocument();
@@ -431,90 +206,93 @@ describe("chat lifecycle", () => {
     expect(screen.getAllByText(prompt)).toHaveLength(1);
   });
 
-  it("renders synced messages when IndexedDB is unavailable", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000732";
-    const initialMessage = {
-      id: "00000000-0000-4000-8000-000000000743",
+  it("keeps a steered message singular when its delivery replacement syncs", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000735";
+    const runId = "d0000000-0000-4000-a000-000000000752";
+    const prompt = "Steer accepted by the running agent";
+    const initialUser = {
+      id: "00000000-0000-4000-8000-000000000760",
       threadId,
-      eventType: "output.message" as const,
-      content: "Reply visible before IndexedDB closes",
+      eventType: "input.prompt" as const,
+      content: null,
+      userMessage: {
+        version: 1 as const,
+        parts: [{ type: "text" as const, text: "Start the active run" }],
+      },
       createdAt: "2026-06-09T10:00:00.000Z",
       seqId: 1,
+      runId,
     } satisfies ChatEvent;
-    const newMessage = {
-      id: "00000000-0000-4000-8000-000000000744",
+    const activeReply = {
+      id: "00000000-0000-4000-8000-000000000761",
       threadId,
       eventType: "output.message" as const,
-      content: "Reply delivered without IndexedDB",
-      createdAt: "2026-06-09T10:01:00.000Z",
+      content: "Still working",
+      createdAt: "2026-06-09T10:00:01.000Z",
       seqId: 2,
+      runId,
     } satisfies ChatEvent;
-    const initialMessagesCaughtUp = context.mocks.deferred<void>();
-    let exposeNewMessage = false;
-    let uncursoredRequests = 0;
+    const pendingSteer = {
+      id: "00000000-0000-4000-8000-000000000762",
+      threadId,
+      eventType: "input.prompt" as const,
+      content: null,
+      userMessage: {
+        version: 1 as const,
+        parts: [{ type: "text" as const, text: prompt }],
+      },
+      createdAt: "2026-06-09T10:00:02.000Z",
+      seqId: 3,
+    } satisfies ChatEvent;
+    const deliveredSteer = {
+      id: "00000000-0000-4000-8000-000000000763",
+      threadId,
+      eventType: "input.prompt" as const,
+      content: null,
+      userMessage: pendingSteer.userMessage,
+      createdAt: "2026-06-09T10:00:03.000Z",
+      seqId: 4,
+      runId,
+      revokesEventId: pendingSteer.id,
+    } satisfies ChatEvent;
+    let exposeReplacement = false;
 
     mockChatLifecycle(context, {
       threadId,
-      threadTitle: "IndexedDB failure delivery",
+      threadTitle: "Durable steer projection",
+      activeRunIds: [runId],
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      const events = [
+        initialUser,
+        activeReply,
+        pendingSteer,
+        ...(exposeReplacement ? [deliveredSteer] : []),
+      ];
       return respond(200, {
-        lastReadAt: null,
+        rows: mockChatEventRows(events).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
       });
-    });
-    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      if (query.sinceSeqId === undefined) {
-        uncursoredRequests += 1;
-        return respond(200, {
-          events: (exposeNewMessage
-            ? [initialMessage, newMessage]
-            : [initialMessage]
-          ).map(chatEventResponse),
-        });
-      }
-      if (query.sinceSeqId === initialMessage.seqId) {
-        if (!exposeNewMessage) {
-          initialMessagesCaughtUp.resolve();
-          return respond(200, { events: [] });
-        }
-        return respond(200, {
-          events: [chatEventResponse(newMessage)],
-        });
-      }
-      if (query.sinceSeqId === newMessage.seqId) {
-        return respond(200, { events: [] });
-      }
-      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
-    });
-    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-      return respond(200, { lastReadAt: null, unreads: [] });
     });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await initialMessagesCaughtUp.promise;
-    await expect(
-      screen.findByText(initialMessage.content),
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText(prompt)).toHaveLength(1);
+    });
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
     });
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageCreated:${threadId}`,
-      ),
-    ).toBeFalsy();
 
-    const uncursoredRequestsBeforeEvent = uncursoredRequests;
-    const appDb = await context.store.get(chatIdb$);
-    appDb.close();
-    exposeNewMessage = true;
+    exposeReplacement = true;
     context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
 
-    await expect(
-      screen.findByText(newMessage.content),
-    ).resolves.toBeInTheDocument();
-    expect(uncursoredRequests).toBeGreaterThan(uncursoredRequestsBeforeEvent);
+    await waitFor(() => {
+      expect(screen.getAllByText(prompt)).toHaveLength(1);
+    });
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
   });
 
   it("delivers globally synced messages to the open sidebar thread", async () => {
@@ -544,46 +322,36 @@ describe("chat lifecycle", () => {
       createdAt: "2026-06-09T10:01:00.000Z",
       seqId: 2,
     } satisfies ChatEvent;
-    const sidebarMessagesCaughtUp = context.mocks.deferred<void>();
     let exposeSidebarMessage = false;
 
     mockKeyboardNavigationThreads();
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
         const initialMessage =
           params.threadId === KEYBOARD_CURRENT_THREAD_ID
             ? mainInitialMessage
             : sidebarInitialMessage;
-        if (query.sinceSeqId === undefined) {
-          return respond(200, {
-            events: [chatEventResponse(initialMessage)],
-          });
-        }
         if (query.sinceSeqId === initialMessage.seqId) {
           if (params.threadId !== KEYBOARD_NEXT_THREAD_ID) {
-            return respond(200, { events: [] });
+            return respond(200, { rows: [] });
           }
           if (!exposeSidebarMessage) {
-            sidebarMessagesCaughtUp.resolve();
-            return respond(200, { events: [] });
+            return respond(200, { rows: [] });
           }
-          return respond(200, {
-            events: [chatEventResponse(sidebarNewMessage)],
-          });
         }
-        if (
-          params.threadId === KEYBOARD_NEXT_THREAD_ID &&
-          query.sinceSeqId === sidebarNewMessage.seqId
-        ) {
-          return respond(200, { events: [] });
-        }
-        throw new Error(
-          `Unexpected message cursor: ${JSON.stringify({
-            threadId: params.threadId,
-            query,
-          })}`,
-        );
+        const events = [
+          initialMessage,
+          ...(params.threadId === KEYBOARD_NEXT_THREAD_ID &&
+          exposeSidebarMessage
+            ? [sidebarNewMessage]
+            : []),
+        ];
+        return respond(200, {
+          rows: mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+        });
       },
     );
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
@@ -595,7 +363,6 @@ describe("chat lifecycle", () => {
       path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}?sidebar=${KEYBOARD_NEXT_THREAD_ID}`,
     });
 
-    await sidebarMessagesCaughtUp.promise;
     await waitFor(() => {
       expect(screen.getByText(mainInitialMessage.content)).toBeInTheDocument();
       expect(
@@ -625,71 +392,6 @@ describe("chat lifecycle", () => {
       expect(
         within(threadRegions[1]!).getByText(sidebarNewMessage.content),
       ).toBeInTheDocument();
-    });
-  });
-
-  it("automatically loads older chat history after publishing recent messages", async () => {
-    const olderReply = "Earlier launch notes from last week.";
-    const beforeHistoryGate = context.mocks.deferred<void>();
-    let initialPageReturned = false;
-
-    mockChatLifecycle(context, {
-      threadId: HISTORY_THREAD_ID,
-      threadTitle: "History review",
-      beforeHistoryGate: beforeHistoryGate.promise,
-      afterInitialEventsList: () => {
-        initialPageReturned = true;
-      },
-      historyEvents: [
-        {
-          eventType: "output.message" as const,
-          role: "assistant",
-          content: olderReply,
-          runId: undefined,
-          createdAt: "2026-06-02T10:00:00Z",
-        },
-      ],
-      chatEvents: [
-        {
-          eventType: "input.prompt" as const,
-          role: "user",
-          content: "Continue the launch review",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          eventType: "output.message" as const,
-          role: "assistant",
-          content: "Current launch risks are ready.",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${HISTORY_THREAD_ID}` });
-
-    try {
-      await waitFor(() => {
-        expect(initialPageReturned).toBeTruthy();
-      });
-      expect(
-        screen.getByText("Current launch risks are ready."),
-      ).toBeInTheDocument();
-      expect(queryButtonByText("Load history")).toBeNull();
-      expect(screen.queryByText(olderReply)).not.toBeInTheDocument();
-
-      beforeHistoryGate.resolve();
-    } finally {
-      if (!beforeHistoryGate.settled()) {
-        beforeHistoryGate.resolve();
-      }
-    }
-
-    await waitFor(() => {
-      expect(screen.getByText(olderReply)).toBeInTheDocument();
-      expect(
-        screen.getByText("Current launch risks are ready."),
-      ).toBeInTheDocument();
-      expect(queryButtonByText("Load history")).toBeNull();
     });
   });
 
@@ -782,7 +484,7 @@ describe("chat lifecycle", () => {
   it("renders the latest chat groups first and prepends older in-memory groups near the top", async () => {
     mockResizeObserver();
     let markReadCalls = 0;
-    const threadId = "render-window-thread";
+    const threadId = "e5000000-0000-4000-a000-000000000001";
     const chatEvents: ChatEvent[] = Array.from({ length: 24 }, (_, index) => {
       return {
         id: `render-window-message-${index}`,
@@ -845,7 +547,7 @@ describe("chat lifecycle", () => {
   });
 
   it("counts a folded tail run group as one item in the initial chat window", async () => {
-    const threadId = "render-window-tail-run-group";
+    const threadId = "e5000000-0000-4000-a000-000000000002";
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Tail run group window",
@@ -881,7 +583,7 @@ describe("chat lifecycle", () => {
   });
 
   it("labels folded runs from their userMessage projection", async () => {
-    const threadId = "structured-run-group-label";
+    const threadId = "e5000000-0000-4000-a000-000000000003";
     const messages = makeRunGroupMessages({
       label: "legacy run label",
       count: 2,
@@ -930,7 +632,7 @@ describe("chat lifecycle", () => {
   });
 
   it("keeps the item before a folded middle run group in the initial chat window", async () => {
-    const threadId = "render-window-middle-run-group";
+    const threadId = "e5000000-0000-4000-a000-000000000004";
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Middle run group window",

@@ -16,10 +16,7 @@
     "connectorsLink": "コネクター",
     "connectorsSaved": "コネクターを保存しました",
     "customConnectors": {
-      "authorize": "このエージェントに{{connectorName}}を許可",
-      "description": "組織が登録したカスタムコネクターです。シークレットを設定したコネクターのみ有効にできます。",
-      "noSecret": "シークレットは設定されていません",
-      "noSecretSuffix": " — シークレットが設定されていません",
+      "description": "組織が登録したカスタムコネクターです。",
       "saved": "カスタムコネクターを保存しました"
     },
     "description": "実行中、エージェントは接続済みサービスを安全に利用できます。アクセスはいつでも管理または無効化できます。",
@@ -606,15 +603,12 @@
   },
   "sidebar": {
     "clearSearch": "検索をクリア",
-    "description": "エージェントを選択して会話を開始します。",
     "descriptionWithChats": "エージェントを選択するか、チャットにジャンプします。",
     "leadDescription": "あなたの主任アシスタントがいつでもあなたのためにここにいます",
     "markAllRead": "すべて既読としてマークする",
     "more": "もっと見る",
     "new": "新しい",
-    "noAgents": "エージェントが見つかりませんでした",
     "noResults": "結果が見つかりませんでした",
-    "noSubagents": "まだ利用可能なサブエージェントはありません。",
     "openConversation": "会話を開く",
     "openMenu": "エージェントメニューを開く",
     "pin": "サイドバーにピン留めする",
@@ -622,6 +616,7 @@
     "pinnedAgents": "ピン留めしたエージェント",
     "searchAgents": "エージェントを検索...",
     "searchAgentsAndChats": "エージェントとチャットを検索...",
+    "searching": "検索中...",
     "sections": {
       "chats": "チャット",
       "lead": "リード",

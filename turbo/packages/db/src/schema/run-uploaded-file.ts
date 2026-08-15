@@ -4,7 +4,6 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -13,7 +12,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
-import { chatEvents } from "./chat-event";
 import { chatThreads } from "./chat-thread";
 import type {
   CanonicalAssetDeliveryError,
@@ -21,11 +19,12 @@ import type {
   CanonicalAssetProvenance,
   CanonicalAssetSlackDeliveryDestination,
   RunUploadedFileMetadata,
-} from "@vm0/db/jsonb-contracts/run-uploaded-file";
+} from "@okouai/db/jsonb-contracts/run-uploaded-file";
 
 export const RUN_UPLOADED_FILE_SOURCES = [
-  "workflow-schedule",
-  "workflow-event",
+  "automation-schedule",
+  "automation-event",
+  "goal",
   "web",
   "slack",
   "teams",
@@ -139,43 +138,6 @@ export const runUploadedFiles = pgTable(
       index("run_uploaded_files_chat_thread_idx")
         .on(table.chatThreadId)
         .where(sql`${table.chatThreadId} IS NOT NULL`),
-    ];
-  },
-);
-
-export const chatEventAssetRefs = pgTable(
-  "chat_event_asset_refs",
-  {
-    chatEventId: uuid("chat_event_id")
-      .notNull()
-      .references(
-        () => {
-          return chatEvents.id;
-        },
-        { onDelete: "cascade" },
-      ),
-    assetId: uuid("asset_id")
-      .notNull()
-      .references(
-        () => {
-          return runUploadedFiles.id;
-        },
-        { onDelete: "cascade" },
-      ),
-    position: integer("position").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => {
-    return [
-      primaryKey({
-        name: "chat_event_asset_refs_pk",
-        columns: [table.chatEventId, table.assetId],
-      }),
-      uniqueIndex("chat_event_asset_refs_event_position_unique").on(
-        table.chatEventId,
-        table.position,
-      ),
-      index("chat_event_asset_refs_asset_idx").on(table.assetId),
     ];
   },
 );

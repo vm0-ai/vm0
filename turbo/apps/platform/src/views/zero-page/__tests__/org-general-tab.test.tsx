@@ -1,21 +1,17 @@
-import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
+import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-
-afterEach(() => {
-  toast.dismiss();
-});
 
 async function openGeneralTab(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=general" });
@@ -34,10 +30,9 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Old Name",
-      slug: "old-slug",
       role: "admin",
     });
-    context.mocks.http.get("*/api/zero/org/logo", () => {
+    context.mocks.http.get("*/api/okou/org/logo", () => {
       return new Response(JSON.stringify({ logoUrl, hasImage: true }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -47,7 +42,6 @@ describe("organization general settings", () => {
       return respond(200, {
         id: "org_1",
         name: "New Name",
-        slug: "old-slug",
         role: "admin",
       });
     });
@@ -55,7 +49,7 @@ describe("organization general settings", () => {
     await openGeneralTab();
 
     await waitFor(() => {
-      expect(screen.getByRole("img", { name: "old-slug" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Old Name" })).toHaveAttribute(
         "src",
         logoUrl,
       );
@@ -84,7 +78,6 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Old Name",
-      slug: "old-slug",
       role: "admin",
     });
     context.mocks.api(zeroOrgContract.update, ({ respond }) => {
@@ -118,10 +111,9 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Acme",
-      slug: "acme",
       role: "admin",
     });
-    context.mocks.http.get("*/api/zero/org/logo", () => {
+    context.mocks.http.get("*/api/okou/org/logo", () => {
       return new Response(
         JSON.stringify({ logoUrl: initialLogoUrl, hasImage: true }),
         {
@@ -129,7 +121,7 @@ describe("organization general settings", () => {
         },
       );
     });
-    context.mocks.http.post("*/api/zero/org/logo", async ({ request }) => {
+    context.mocks.http.post("*/api/okou/org/logo", async ({ request }) => {
       const formData = await request.formData();
       const file = formData.get("file");
       if (!(file instanceof File)) {
@@ -147,7 +139,7 @@ describe("organization general settings", () => {
     await openGeneralTab();
 
     await waitFor(() => {
-      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Acme" })).toHaveAttribute(
         "src",
         initialLogoUrl,
       );
@@ -166,7 +158,7 @@ describe("organization general settings", () => {
 
     await waitFor(() => {
       expect(capturedLogoName).toBe("workspace-logo.png");
-      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Acme" })).toHaveAttribute(
         "src",
         uploadedLogoUrl,
       );
@@ -183,7 +175,6 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Acme",
-      slug: "acme",
       role: "admin",
     });
 
@@ -195,7 +186,7 @@ describe("organization general settings", () => {
       new File(["first"], "first-logo.png", { type: "image/png" }),
     );
     await waitFor(() => {
-      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Acme" })).toHaveAttribute(
         "src",
         "blob:mock-image-2",
       );
@@ -206,7 +197,7 @@ describe("organization general settings", () => {
       new File(["second"], "second-logo.png", { type: "image/png" }),
     );
     await waitFor(() => {
-      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Acme" })).toHaveAttribute(
         "src",
         "blob:mock-image-4",
       );
@@ -232,7 +223,6 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Acme",
-      slug: "acme",
       role: "admin",
     });
 
@@ -268,5 +258,31 @@ describe("organization general settings", () => {
       expect(screen.getByText(/Logo is too large/u)).toBeInTheDocument();
       expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
     });
+  });
+
+  it("warns admins about prorated subscription refunds before deletion", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Acme",
+      role: "admin",
+    });
+
+    await openGeneralTab();
+    const deleteButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.trim() === "Delete";
+    });
+    if (!deleteButton) {
+      throw new Error("Delete button not found");
+    }
+    click(deleteButton);
+
+    await expect(
+      screen.findByText(
+        "All active subscriptions, including usage packs and add-ons, will be canceled immediately. Unused prepaid subscription time will be refunded proportionally. One-time and other non-subscription purchases will not be refunded.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Delete workspace?" }),
+    ).toBeInTheDocument();
   });
 });

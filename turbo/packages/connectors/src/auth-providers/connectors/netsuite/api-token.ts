@@ -4,13 +4,15 @@ import { ProviderHttpError, ProviderResponseError } from "../../provider-error";
 
 const ACCOUNT_SUBDOMAIN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i;
 
-export async function refreshNetSuiteAccessToken(args: {
-  readonly accountSubdomain: string;
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly refreshToken: string;
-  readonly signal: AbortSignal;
-}) {
+export async function refreshNetSuiteAccessToken(
+  args: {
+    readonly accountSubdomain: string;
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly refreshToken: string;
+  },
+  signal: AbortSignal,
+) {
   if (!ACCOUNT_SUBDOMAIN.test(args.accountSubdomain)) {
     throw new Error("Invalid NetSuite account domain prefix");
   }
@@ -25,7 +27,7 @@ export async function refreshNetSuiteAccessToken(args: {
       grant_type: "refresh_token",
       refresh_token: args.refreshToken,
     }),
-    signal: args.signal,
+    signal,
   });
   if (!response.ok) {
     throw new ProviderHttpError(

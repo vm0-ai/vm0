@@ -4,12 +4,15 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 # Required: Authentication (Clerk)
 CLERK_SECRET_KEY=op://Development/clerk/CLERK_SECRET_KEY
 CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
+CLERK_WEBHOOK_SIGNING_SECRET=op://Development/clerk/CLERK_WEBHOOK_SIGNING_SECRET
 
 # Required: API, web, and app URLs
 VM0_API_BACKEND_URL=https://api.vm7.ai:8443
 FEISHU_CALLBACK_BASE_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
+
+# CLI_PKG_URL is appended by scripts/sync-env.sh using the local machine identity.
 
 # Optional: Atom redeem service for onboarding codes
 ATOM_URL=https://atom-api.vm7.ai:8442
@@ -20,10 +23,6 @@ ENV=development
 
 # Required: git commit SHA used as OTel service.version and Sentry release
 GIT_COMMIT_SHA=local-dev
-
-# Required: Sandbox Runtime (E2B)
-E2B_API_KEY=op://Development/e2b/E2B_API_KEY
-E2B_TEMPLATE_NAME=vm0-claude-code-dev
 
 # Optional: Sandbox Runtime (Vercel Sandbox access-token auth)
 VERCEL_TEAM_ID=op://Development/vercel/VERCEL_TEAM_ID
@@ -92,6 +91,10 @@ OPENAI_WEBHOOK_SECRET=op://Development/openai/OPENAI_WEBHOOK_SECRET
 # Optional: fal media generation
 FAL_KEY=op://Development/fal/FAL_KEY
 
+# Optional: JoggAI talking-avatar video generation
+JOGGAI_API_KEY=op://Development/joggai/JOGGAI_API_KEY
+JOGGAI_WEBHOOK_SECRET=op://Development/joggai/JOGGAI_WEBHOOK_SECRET
+
 # Optional: BytePlus ModelArk video generation
 BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
 
@@ -100,9 +103,6 @@ BYTEPLUS_STT_API_KEY=op://Development/byteplus/BYTEPLUS_STT_API_KEY
 
 # Optional: Unsplash presentation image resolution
 UNSPLASH_ACCESS_KEY=op://Development/unsplash/UNSPLASH_ACCESS_KEY
-
-# Optional: Pexels presentation image resolution
-PEXELS_API_KEY=op://Development/pexels/PEXELS_API_KEY
 
 # Optional: Airtable OAuth Connector
 AIRTABLE_OAUTH_CLIENT_ID=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID
@@ -129,9 +129,6 @@ GMAIL_PUBSUB_TOPIC_NAME=op://Development/gmail/GMAIL_PUBSUB_TOPIC_NAME
 GMAIL_PUBSUB_PUSH_AUDIENCE=op://Development/gmail/GMAIL_PUBSUB_PUSH_AUDIENCE
 GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=op://Development/gmail/GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL
 
-# Enable Gmail reply follow-up rollout in development.
-ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=true
-
 # Optional: Google Ads API (developer token + login customer ID for MCC)
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_ID
@@ -142,15 +139,19 @@ ZERO_MAPS_GOOGLE_MAPS_TOKEN=op://Development/google/ZERO_MAPS_GOOGLE_MAPS_TOKEN
 # Optional: Google Weather and Air Quality APIs
 ZERO_WEATHER_GOOGLE_WEATHER_TOKEN=op://Development/google/ZERO_WEATHER_GOOGLE_WEATHER_TOKEN
 
-# Optional: Zero Scrape provider (Firecrawl)
+# Optional: Okou Scrape provider (Firecrawl)
 ZERO_SCRAPE_FIRECRAWL_TOKEN=op://Development/Firecrawl/FIRECRAWL_API_TOKEN
 
-# Optional: Zero Web Search provider (Perplexity)
+# Optional: Okou Web Search provider (Perplexity)
 ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKEN
 
-# Optional: Zero Finance provider (APIDojo via RapidAPI)
+# Optional: Okou Finance provider (APIDojo via RapidAPI)
 # 1Password: Development vault > APIDojo item > RAPIDAPI_KEY concealed field
 ZERO_FINANCE_APIDOJO_TOKEN=op://Development/APIDojo/RAPIDAPI_KEY
+
+# Optional: Okou SEO provider (DataForSEO)
+ZERO_SEO_DATAFORSEO_LOGIN=op://Development/DataForSEO/LOGIN
+ZERO_SEO_DATAFORSEO_PASSWORD=op://Development/DataForSEO/PASSWORD
 
 # Optional: Zero Browser provider (Browser Use)
 ZERO_BROWSER_USE_API_KEY=op://Development/browser-use/ZERO_BROWSER_USE_API_KEY
@@ -250,9 +251,16 @@ STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GA
 
 # Optional: Stripe Billing (subscription + credits)
 STRIPE_SECRET_KEY=op://Development/stripe/STRIPE_SECRET_KEY
+STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID=op://Development/stripe/STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID
 STRIPE_WEBHOOK_SECRET=op://Development/stripe/STRIPE_WEBHOOK_SECRET
 ZERO_PRICE_PRO=op://Development/stripe/ZERO_PRICE_PRO
 ZERO_PRICE_TEAM=op://Development/stripe/ZERO_PRICE_TEAM
+ZERO_PRICE_USAGE_PACK_PLAN_PRO=op://Development/stripe/ZERO_PRICE_USAGE_PACK_PLAN_PRO
+ZERO_PRICE_USAGE_PACK_PLAN_TEAM=op://Development/stripe/ZERO_PRICE_USAGE_PACK_PLAN_TEAM
+ZERO_PRICE_USAGE_PACK_20=op://Development/stripe/ZERO_PRICE_USAGE_PACK_20
+ZERO_PRICE_USAGE_PACK_50=op://Development/stripe/ZERO_PRICE_USAGE_PACK_50
+ZERO_PRICE_USAGE_PACK_100=op://Development/stripe/ZERO_PRICE_USAGE_PACK_100
+ZERO_PRICE_USAGE_PACK_200=op://Development/stripe/ZERO_PRICE_USAGE_PACK_200
 ATOM_GRANT_PRICE=op://Development/stripe/ATOM_GRANT_PRICE
 ZERO_PRICE_CUSTOM_CREDITS=op://Development/stripe/ZERO_PRICE_CUSTOM_CREDITS
 ZERO_PRICE_CUSTOM_CREDIT_UNIT=op://Development/stripe/ZERO_PRICE_CUSTOM_CREDIT_UNIT
@@ -265,9 +273,6 @@ AGENTPHONE_API_BASE_URL=https://api.agentphone.to
 AGENTPHONE_AGENT_ID=op://Development/agentphone/AGENTPHONE_AGENT_ID
 AGENTPHONE_PHONE_NUMBER=op://Development/agentphone/AGENTPHONE_PHONE_NUMBER
 AGENTPHONE_WEBHOOK_SECRET=op://Development/agentphone/AGENTPHONE_WEBHOOK_SECRET
-
-# Optional: Plain.com (Developer Support)
-PLAIN_API_KEY=op://Development/plain/PLAIN_API_KEY
 
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/ngrok/NGROK_API_KEY

@@ -2,8 +2,8 @@ import { command } from "ccstate";
 import {
   zeroTeamsBotContract,
   type TeamsInboundActivity,
-} from "@vm0/api-contracts/contracts/zero-teams-bot";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
+} from "@okouai/api-contracts/contracts/zero-teams-bot";
+import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 
 import {
   normalizeTeamsActivity,
@@ -21,7 +21,7 @@ import {
   type TeamsAdaptiveCard,
   type TeamsMentionEntity,
 } from "../external/teams-bot-client";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
   buildTeamsConnectUrlForActivity,
@@ -231,14 +231,16 @@ const sendTeamsInstallWelcome$ = command(
     }
 
     const welcome = buildTeamsInstallWelcomeContent(welcomeActivity);
-    const reply = await sendTeamsMessage({
-      serviceUrl: welcomeActivity.serviceUrl,
-      conversationId: welcomeActivity.conversationId,
-      tenantId: welcomeActivity.tenantId,
-      text: welcome.text,
-      ...(welcome.entities ? { entities: welcome.entities } : {}),
+    const reply = await sendTeamsMessage(
+      {
+        serviceUrl: welcomeActivity.serviceUrl,
+        conversationId: welcomeActivity.conversationId,
+        tenantId: welcomeActivity.tenantId,
+        text: welcome.text,
+        ...(welcome.entities ? { entities: welcome.entities } : {}),
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (reply.kind === "teams-error") {
@@ -280,15 +282,17 @@ const dispatchTeamsMessageAndReply$ = command(
       return;
     }
 
-    const reply = await sendTeamsMessageReply({
-      serviceUrl: args.activity.serviceUrl,
-      conversationId: args.activity.conversationId,
-      activityId: args.activity.activityId ?? undefined,
-      tenantId: args.activity.tenantId,
-      text: replyText,
-      ...(card ? { card } : {}),
+    const reply = await sendTeamsMessageReply(
+      {
+        serviceUrl: args.activity.serviceUrl,
+        conversationId: args.activity.conversationId,
+        activityId: args.activity.activityId ?? undefined,
+        tenantId: args.activity.tenantId,
+        text: replyText,
+        ...(card ? { card } : {}),
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (reply.kind === "teams-error") {
@@ -328,11 +332,14 @@ const handleZeroTeamsBot$ = command(
       );
     }
 
-    const auth = await verifyTeamsBotAuthorization({
-      authorization: get(authorization$),
-      serviceUrl,
-      channelId: readTeamsActivityChannelId(body),
-    });
+    const auth = await verifyTeamsBotAuthorization(
+      {
+        authorization: get(authorization$),
+        serviceUrl,
+        channelId: readTeamsActivityChannelId(body),
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
     if (!auth.ok) {

@@ -1,22 +1,18 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
-import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { slackChatIngress } from "@okouai/db/schema/slack-chat-ingress";
+import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { and, eq, inArray, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import type { Db } from "../external/db";
-import {
-  createSlackClient,
-  setThreadStatus,
-} from "../external/slack-message-client";
+import { createSlackClient } from "../external/slack-message-client";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 const ACTIVE_INGRESS_STATUSES = ["pending", "processing"] as const;
@@ -145,7 +141,7 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
       and(
         inArray(chatEvents.chatThreadId, chatThreadIds),
         chatEventTypeIn(["input.prompt"]),
-        eq(chatEvents.triggerSource, "slack"),
+        eq(chatEvents.contextType, "slack"),
         isNull(chatEvents.runId),
         notExists(
           db
@@ -169,11 +165,13 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
   }
   const activeRuns = await db
     .select({ payload: slackChatIngress.payload })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .from(agentRuns)
     .innerJoin(
       chatEvents,
-      and(eq(chatEvents.runId, zeroRuns.id), chatEventTypeIn(["input.prompt"])),
+      and(
+        eq(chatEvents.runId, agentRuns.id),
+        chatEventTypeIn(["input.prompt"]),
+      ),
     )
     .innerJoin(
       slackChatIngress,
@@ -181,9 +179,9 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
     )
     .where(
       and(
-        inArray(zeroRuns.chatThreadId, chatThreadIds),
+        inArray(agentRuns.chatThreadId, chatThreadIds),
         inArray(agentRuns.status, ACTIVE_RUN_STATUSES),
-        eq(zeroRuns.triggerSource, "slack"),
+        eq(agentRuns.triggerSource, "slack"),
       ),
     );
   return activeRuns.some((run) => {
@@ -274,8 +272,7 @@ export async function refreshCanonicalSlackThreadStatus(
     featureContext,
   );
   signal.throwIfAborted();
-  await setThreadStatus(
-    createSlackClient(botToken),
+  await createSlackClient(botToken).setThreadStatus(
     target.channelId,
     target.threadTs,
     "is thinking...",
@@ -320,8 +317,7 @@ export async function clearCanonicalSlackThreadStatusIfIdle(
   const client = createSlackClient(botToken);
   let appliedStatus = "";
   while (true) {
-    await setThreadStatus(
-      client,
+    await client.setThreadStatus(
       target.channelId,
       target.threadTs,
       appliedStatus,

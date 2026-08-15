@@ -8,7 +8,7 @@ import type {
   GithubPullRequestReviewState,
   GithubWorkflowRunConclusion,
   ZeroWorkflowAutomationSummary,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 
 import { i18n } from "../../i18n/index.ts";
 
@@ -21,6 +21,20 @@ export function workflowTitle(workflow: {
   readonly displayName: string | null;
 }): string {
   return workflow.displayName ?? workflow.name;
+}
+
+export function labelInitials(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return words
+      .slice(0, 2)
+      .map((word) => {
+        return word.charAt(0);
+      })
+      .join("")
+      .toUpperCase();
+  }
+  return (words[0]?.slice(0, 2) || "??").toUpperCase();
 }
 
 export function isMarkdownPath(path: string): boolean {
@@ -472,9 +486,9 @@ export function gmailAutomationTitle(
       return $.workflows.automations.gmail.newMessageTitle;
     });
   }
-  if (automation.eventType === "github-label-applied") {
+  if (automation.eventType === "github-pull-request") {
     return i18n.t(($) => {
-      return $.workflows.automations.github.labelAppliedTitle;
+      return $.workflows.automations.github.pullRequestTitle;
     });
   }
   if (automation.eventType === "github-workflow-job-completed") {
@@ -517,6 +531,11 @@ export function gmailAutomationTitle(
       return $.workflows.automations.calendar.cancelledTitle;
     });
   }
+  if (automation.eventType === "google-forms-response-submitted") {
+    return i18n.t(($) => {
+      return $.workflows.automations.forms.responseSubmittedTitle;
+    });
+  }
   if (automation.eventType === "google-meet-transcript-generated") {
     return i18n.t(($) => {
       return $.workflows.automations.meet.transcriptReadyTitle;
@@ -554,13 +573,9 @@ function githubAutomationSummary(
   >,
 ): string | null {
   switch (automation.eventType) {
-    case "github-label-applied": {
-      return i18n.t(
-        ($) => {
-          return $.workflows.automations.github.labelOnlySummary;
-        },
-        { label: quote(automation.eventConfig.labelName) },
-      );
+    case "github-pull-request": {
+      const config = automation.eventConfig;
+      return [config.repository, config.action].join(" · ");
     }
     case "github-workflow-run-completed":
     case "github-workflow-job-completed": {
@@ -641,6 +656,14 @@ export function gmailAutomationSummary(
         return $.workflows.automations.calendar.summary;
       },
       { calendar: quote(automation.eventConfig.calendarId) },
+    );
+  }
+  if (automation.eventType === "google-forms-response-submitted") {
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.forms.summary;
+      },
+      { form: quote(automation.eventConfig.form.title) },
     );
   }
   if (automation.eventType === "google-meet-transcript-generated") {

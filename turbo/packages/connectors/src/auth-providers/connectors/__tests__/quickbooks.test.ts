@@ -162,7 +162,7 @@ describe("connector/providers/quickbooks", () => {
       const userInfoHandler = http.get(
         "https://accounts.platform.intuit.com/v1/openid_connect/userinfo",
         () => {
-          return HttpResponse.json({});
+          return HttpResponse.json({ email: "mutable@example.com" });
         },
       );
       server.use(tokenHandler, userInfoHandler);

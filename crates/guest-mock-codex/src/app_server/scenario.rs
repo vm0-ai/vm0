@@ -28,12 +28,15 @@ pub(super) enum Scenario {
     NoActiveTurn,
     ExitOnTurnSteer,
     RuntimeTurnComplete,
+    RuntimeTurnFailed,
     RuntimeTurnCompleteAfterSteer,
     RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnStartedBeforeSteer,
+    WaitOnTurnSteerResponse,
     RuntimeTurnCompleteWithoutThreadStarted,
     RuntimeEventFlood,
     RuntimeLargeEventFlood,
+    RuntimeOversizedDelivery,
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
     ThreadStartInvalidThreadId,
@@ -79,16 +82,19 @@ impl Scenario {
                 "no-active-turn" => Ok(Self::NoActiveTurn),
                 "exit-on-turn-steer" => Ok(Self::ExitOnTurnSteer),
                 "runtime-turn-complete" => Ok(Self::RuntimeTurnComplete),
+                "runtime-turn-failed" => Ok(Self::RuntimeTurnFailed),
                 "runtime-turn-complete-after-steer" => Ok(Self::RuntimeTurnCompleteAfterSteer),
                 "runtime-turn-complete-before-steer-response" => {
                     Ok(Self::RuntimeTurnCompleteBeforeSteerResponse)
                 }
                 "runtime-turn-started-before-steer" => Ok(Self::RuntimeTurnStartedBeforeSteer),
+                "wait-on-turn-steer-response" => Ok(Self::WaitOnTurnSteerResponse),
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
                 "runtime-event-flood" => Ok(Self::RuntimeEventFlood),
                 "runtime-large-event-flood" => Ok(Self::RuntimeLargeEventFlood),
+                "runtime-oversized-delivery" => Ok(Self::RuntimeOversizedDelivery),
                 "resume-different-thread-id" => Ok(Self::ResumeDifferentThreadId),
                 "resume-rpc-error-with-thread-id" => Ok(Self::ResumeRpcErrorWithThreadId),
                 "thread-start-invalid-thread-id" => Ok(Self::ThreadStartInvalidThreadId),
@@ -121,6 +127,7 @@ impl Scenario {
                 | Self::NoActiveTurn
                 | Self::RuntimeTurnCompleteBeforeSteerResponse
                 | Self::RuntimeTurnStartedBeforeSteer
+                | Self::WaitOnTurnSteerResponse
                 | Self::StaleTurn
         )
     }

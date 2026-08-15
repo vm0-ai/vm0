@@ -16,14 +16,15 @@ import {
   DialogTitle,
   Input,
   Switch,
+  Textarea,
   cn,
-} from "@vm0/ui";
-import { IconAlertTriangle } from "@tabler/icons-react";
+} from "@okouai/ui";
+import { AlertTriangle } from "lucide-react";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-} from "@vm0/ui/components/ui/alert";
+} from "@okouai/ui/components/ui/alert";
 import { type Tone, TONE_OPTIONS } from "./zero-tone-constants.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
@@ -34,7 +35,7 @@ import {
   type AgentDeleteWorkflow,
   type AgentDeleteCopyTarget,
 } from "./components/zero-delete-agent-dialog.tsx";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { serializeAvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
@@ -332,7 +333,7 @@ export function ZeroSettingsTab({
               wideControls
             >
               <div className="min-w-0 w-full">
-                <textarea
+                <Textarea
                   id={`${inputId}-description`}
                   value={desc}
                   onChange={(e) => {
@@ -345,7 +346,7 @@ export function ZeroSettingsTab({
                     return $.profile.fields.description.placeholder;
                   })}
                   rows={3}
-                  className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+                  className="min-h-[72px] resize-y"
                   aria-label={t(($) => {
                     return $.profile.fields.description.label;
                   })}
@@ -501,7 +502,7 @@ export function ZeroSettingsTab({
             </DialogDescription>
           </DialogHeader>
           <Alert variant="destructive">
-            <IconAlertTriangle size={16} stroke={1.5} />
+            <AlertTriangle size={16} />
             <AlertTitle>
               {t(($) => {
                 return $.profile.makePrivate.warningTitle;

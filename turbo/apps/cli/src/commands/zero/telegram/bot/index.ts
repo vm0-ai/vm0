@@ -9,5 +9,5 @@ export const zeroTelegramBotCommand = new Command()
     "after",
     `
 Examples:
-  zero telegram bot list`,
+  okou telegram bot list`,
   );

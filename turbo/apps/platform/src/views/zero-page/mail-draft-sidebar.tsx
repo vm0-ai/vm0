@@ -1,34 +1,31 @@
 import {
-  IconCircleCheck,
-  IconExternalLink,
-  IconLoader2,
-  IconPaperclip,
-  IconPencil,
-  IconPlayerPlay,
-  IconRoute,
-  IconSend,
-  IconTrash,
-  IconX,
-} from "@tabler/icons-react";
+  CircleCheck,
+  ExternalLink,
+  Loader2,
+  Paperclip,
+  Pencil,
+  Play,
+  Send,
+  Trash,
+  X,
+} from "lucide-react";
 import type {
   ZeroMailAttachment,
   ZeroMailDraft,
   ZeroMailInlineImage,
-} from "@vm0/api-contracts/contracts/zero-mail";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { Button } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
+} from "@okouai/api-contracts/contracts/zero-mail";
+import { Button } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
-  MailDraftFollowUpState,
   MailDraftSignals,
+  MailInlineImagePreview,
 } from "../../signals/chat-page/mail-draft.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   openImageLightbox$,
@@ -54,16 +51,17 @@ interface MailDraftSidebarProps {
 function SidebarCloseButton({ close }: { readonly close: () => void }) {
   const { t } = useTranslation();
   return (
-    <button
+    <Button
       type="button"
       onClick={close}
       aria-label={t(($) => {
         return $.chat.mail.closeDetails;
       })}
-      className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      variant="quiet"
+      size="icon-sm"
     >
-      <IconX size={16} />
-    </button>
+      <X size={16} />
+    </Button>
   );
 }
 
@@ -159,7 +157,7 @@ function GmailReconnectButton({
       disabled={reconnectDisabled}
       onClick={reconnect}
     >
-      {reconnecting ? <IconLoader2 size={15} className="animate-spin" /> : null}
+      {reconnecting ? <Loader2 size={15} className="animate-spin" /> : null}
       {reconnecting
         ? t(($) => {
             return $.chat.mail.reconnecting;
@@ -199,11 +197,7 @@ function MailMessageHeader({
                 : "relative top-0.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400"
             }
           >
-            {active ? (
-              <IconPencil size={11} stroke={2} />
-            ) : (
-              <IconCircleCheck size={11} stroke={2} />
-            )}
+            {active ? <Pencil size={11} /> : <CircleCheck size={11} />}
             {active
               ? t(($) => {
                   return $.chat.mail.status.draft;
@@ -283,7 +277,7 @@ function AttachmentSummary({
 }) {
   return (
     <div className="inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-foreground/15 bg-background/80 px-1.5">
-      <IconPaperclip size={14} className="shrink-0 text-muted-foreground" />
+      <Paperclip size={14} className="shrink-0" />
       <span className="min-w-0 truncate text-xs font-medium">
         {attachment.filename}
       </span>
@@ -415,7 +409,7 @@ function MailMediaAttachmentPreview({
             className="h-full w-full object-contain"
           />
           <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition-colors group-hover:bg-black/30">
-            <IconPlayerPlay size={16} stroke={1.8} />
+            <Play size={16} />
           </span>
         </>
       )}
@@ -741,20 +735,21 @@ function isElementNode(node: ChildNode): node is Element {
 function renderMailImage(args: {
   readonly element: Element;
   readonly key: string;
-  readonly inlineImages: ReadonlyMap<string, ZeroMailInlineImage>;
-  readonly inlineImageUrls: ReadonlyMap<string, string | null> | null;
-  readonly inlineImageUrlsLoading: boolean;
+  readonly inlineImages: ReadonlyMap<string, MailInlineImagePreview>;
+  readonly inlineImagesLoading: boolean;
 }): ReactNode {
   const source = args.element.getAttribute("src");
-  const image = source?.toLowerCase().startsWith("cid:")
+  const preview = source?.toLowerCase().startsWith("cid:")
     ? args.inlineImages.get(normalizedContentId(source))
     : undefined;
-  if (image) {
-    const imageUrl = args.inlineImageUrlsLoading
-      ? undefined
-      : (args.inlineImageUrls?.get(image.partId) ?? null);
+  if (preview) {
+    const imageUrl = args.inlineImagesLoading ? undefined : preview.url;
     return (
-      <MailDraftInlineImage key={args.key} image={image} imageUrl={imageUrl} />
+      <MailDraftInlineImage
+        key={args.key}
+        image={preview.image}
+        imageUrl={imageUrl}
+      />
     );
   }
   const remoteSource = safeMailImageSrc(source);
@@ -846,9 +841,8 @@ function renderAllowedMailElement(args: {
 function renderMailHtmlNode(args: {
   readonly node: ChildNode;
   readonly key: string;
-  readonly inlineImages: ReadonlyMap<string, ZeroMailInlineImage>;
-  readonly inlineImageUrls: ReadonlyMap<string, string | null> | null;
-  readonly inlineImageUrlsLoading: boolean;
+  readonly inlineImages: ReadonlyMap<string, MailInlineImagePreview>;
+  readonly inlineImagesLoading: boolean;
 }): ReactNode {
   if (args.node.nodeType === 3) {
     return args.node.textContent;
@@ -866,8 +860,7 @@ function renderMailHtmlNode(args: {
       element,
       key: args.key,
       inlineImages: args.inlineImages,
-      inlineImageUrls: args.inlineImageUrls,
-      inlineImageUrlsLoading: args.inlineImageUrlsLoading,
+      inlineImagesLoading: args.inlineImagesLoading,
     });
   }
   const children = Array.from(element.childNodes).map((child, index) => {
@@ -875,8 +868,7 @@ function renderMailHtmlNode(args: {
       node: child,
       key: `${args.key}-${index}`,
       inlineImages: args.inlineImages,
-      inlineImageUrls: args.inlineImageUrls,
-      inlineImageUrlsLoading: args.inlineImageUrlsLoading,
+      inlineImagesLoading: args.inlineImagesLoading,
     });
   });
   const allowedTag = allowedMailHtmlElement(tag);
@@ -900,13 +892,13 @@ function renderMailHtmlNode(args: {
 }
 
 function MailDraftRichMessage({
-  attachmentUrls,
-  attachmentUrlsLoading,
+  inlineImages,
+  inlineImagesLoading,
   draft,
   signals,
 }: {
-  readonly attachmentUrls: ReadonlyMap<string, string | null> | null;
-  readonly attachmentUrlsLoading: boolean;
+  readonly inlineImages: readonly MailInlineImagePreview[] | null;
+  readonly inlineImagesLoading: boolean;
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
@@ -914,9 +906,16 @@ function MailDraftRichMessage({
     return null;
   }
   const document = new DOMParser().parseFromString(draft.bodyHtml, "text/html");
-  const inlineImages = new Map(
-    (draft.inlineImages ?? []).map((image) => {
-      return [normalizedContentId(image.contentId), image] as const;
+  // While previews load, the draft's own list stands in so cid: images render
+  // their placeholders; the walk keys its own input by content id.
+  const inlineImagePreviews =
+    inlineImages ??
+    (draft.inlineImages ?? []).map((image): MailInlineImagePreview => {
+      return { image, url: null };
+    });
+  const inlineImagesByContentId = new Map(
+    inlineImagePreviews.map((preview) => {
+      return [normalizedContentId(preview.image.contentId), preview] as const;
     }),
   );
   return (
@@ -932,9 +931,8 @@ function MailDraftRichMessage({
         return renderMailHtmlNode({
           node,
           key: `mail-html-${index}`,
-          inlineImages,
-          inlineImageUrls: attachmentUrls,
-          inlineImageUrlsLoading: attachmentUrlsLoading,
+          inlineImages: inlineImagesByContentId,
+          inlineImagesLoading,
         });
       })}
     </div>
@@ -942,13 +940,13 @@ function MailDraftRichMessage({
 }
 
 function MailDraftMessage({
-  attachmentUrls,
-  attachmentUrlsLoading,
+  inlineImages,
+  inlineImagesLoading,
   draft,
   signals,
 }: {
-  readonly attachmentUrls: ReadonlyMap<string, string | null> | null;
-  readonly attachmentUrlsLoading: boolean;
+  readonly inlineImages: readonly MailInlineImagePreview[] | null;
+  readonly inlineImagesLoading: boolean;
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
@@ -956,8 +954,8 @@ function MailDraftMessage({
   if (draft.bodyHtml && typeof DOMParser !== "undefined") {
     return (
       <MailDraftRichMessage
-        attachmentUrls={attachmentUrls}
-        attachmentUrlsLoading={attachmentUrlsLoading}
+        inlineImages={inlineImages}
+        inlineImagesLoading={inlineImagesLoading}
         draft={draft}
         signals={signals}
       />
@@ -996,9 +994,15 @@ function MailDraftDetails({
     attachmentPreviewsLoadable.state === "hasData"
       ? attachmentPreviewsLoadable.data
       : null;
-  const attachmentUrls = attachmentPreviews?.urls ?? null;
-  const attachmentUrlsLoading = attachmentPreviewsLoadable.state === "loading";
+  const attachmentPreviewsLoading =
+    attachmentPreviewsLoadable.state === "loading";
   const attachments = draft.version === 3 ? draft.attachments : [];
+  // While previews load, the draft's own list stands in with loading tiles.
+  const previewedAttachments =
+    attachmentPreviews?.attachments ??
+    attachments.map((attachment) => {
+      return { attachment, url: undefined, text$: undefined };
+    });
   return (
     <div ref={setAttachmentScopeRef} className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-5 pt-5">
@@ -1007,8 +1011,8 @@ function MailDraftDetails({
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
         <div className="py-5">
           <MailDraftMessage
-            attachmentUrls={attachmentUrls}
-            attachmentUrlsLoading={attachmentUrlsLoading}
+            inlineImages={attachmentPreviews?.inlineImages ?? null}
+            inlineImagesLoading={attachmentPreviewsLoading}
             draft={draft}
             signals={signals}
           />
@@ -1021,18 +1025,14 @@ function MailDraftDetails({
               })}
             </div>
             <div className="flex flex-wrap gap-3">
-              {attachments.map((attachment) => {
+              {previewedAttachments.map(({ attachment, text$, url }) => {
                 const key = `${attachment.filename}-${attachment.contentType}-${attachment.size}`;
                 return attachment.partId ? (
                   <MailAttachmentPreview
                     key={key}
                     attachment={attachment}
-                    text$={attachmentPreviews?.text.get(attachment.partId)}
-                    url={
-                      attachmentUrlsLoading
-                        ? undefined
-                        : (attachmentUrls?.get(attachment.partId) ?? null)
-                    }
+                    text$={text$}
+                    url={url}
                   />
                 ) : (
                   <AttachmentSummary key={key} attachment={attachment} />
@@ -1043,55 +1043,6 @@ function MailDraftDetails({
         ) : null}
       </div>
     </div>
-  );
-}
-
-function isReplyFollowUpEnabled(
-  featureSwitches: Readonly<Record<FeatureSwitchKey, boolean>>,
-): boolean {
-  return featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp];
-}
-
-function MailFollowUpButton({
-  state,
-  pending,
-  onClick,
-}: {
-  readonly state: MailDraftFollowUpState;
-  readonly pending: boolean;
-  readonly onClick: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Button
-      type="button"
-      size="sm"
-      disabled={pending || state !== "idle"}
-      onClick={onClick}
-    >
-      {state === "submitting" ? (
-        <IconLoader2 size={15} className="animate-spin" />
-      ) : state === "active" ? (
-        <IconCircleCheck size={15} />
-      ) : (
-        <IconRoute size={15} />
-      )}
-      {state === "active"
-        ? t(($) => {
-            return $.chat.mail.followUp.tracking;
-          })
-        : state === "paused"
-          ? t(($) => {
-              return $.chat.mail.followUp.paused;
-            })
-          : state === "submitting"
-            ? t(($) => {
-                return $.chat.mail.followUp.settingUp;
-              })
-            : t(($) => {
-                return $.chat.mail.followUp.action;
-              })}
-    </Button>
   );
 }
 
@@ -1106,22 +1057,11 @@ function MailDraftDetail({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const featureSwitches = useGet(featureSwitch$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
-  const localFollowUpState = useGet(signals.followUpState$);
-  const followUp = useSet(signals.followUp$);
-  const followUpState =
-    localFollowUpState === "submitting"
-      ? localFollowUpState
-      : (draft.followUp?.status ?? localFollowUpState);
-  const followUpSubmitting = followUpState === "submitting";
-  const followUpEnabled = isReplyFollowUpEnabled(featureSwitches);
   const active = draft.status === "draft";
   const pending =
-    deleteLoadable.state === "loading" ||
-    sendLoadable.state === "loading" ||
-    followUpSubmitting;
+    deleteLoadable.state === "loading" || sendLoadable.state === "loading";
   const gmailAccount = encodeURIComponent(draft.from);
   const openInGmail =
     draft.status === "draft"
@@ -1146,10 +1086,6 @@ function MailDraftDetail({
     };
     detach(sendAndNotify(), Reason.DomCallback);
   };
-  const onFollowUp = () => {
-    detach(followUp(pageSignal), Reason.DomCallback);
-  };
-
   return (
     <aside
       aria-label={t(($) => {
@@ -1171,9 +1107,9 @@ function MailDraftDetail({
             onClick={onDelete}
           >
             {deleteLoadable.state === "loading" ? (
-              <IconLoader2 size={15} className="animate-spin" />
+              <Loader2 size={15} className="animate-spin" />
             ) : (
-              <IconTrash size={15} />
+              <Trash size={15} />
             )}
             {t(($) => {
               return $.chat.actions.delete;
@@ -1185,7 +1121,7 @@ function MailDraftDetail({
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" size="sm">
             <a href={openInGmail} target="_blank" rel="noreferrer">
-              <IconExternalLink size={15} />
+              <ExternalLink size={15} />
               {t(($) => {
                 return $.chat.mail.openInGmail;
               })}
@@ -1194,21 +1130,14 @@ function MailDraftDetail({
           {active ? (
             <Button type="button" size="sm" disabled={pending} onClick={onSend}>
               {sendLoadable.state === "loading" ? (
-                <IconLoader2 size={15} className="animate-spin" />
+                <Loader2 size={15} className="animate-spin" />
               ) : (
-                <IconSend size={15} />
+                <Send size={15} />
               )}
               {t(($) => {
                 return $.chat.actions.send;
               })}
             </Button>
-          ) : null}
-          {!active && followUpEnabled ? (
-            <MailFollowUpButton
-              state={followUpState}
-              pending={pending}
-              onClick={onFollowUp}
-            />
           ) : null}
         </div>
       </footer>

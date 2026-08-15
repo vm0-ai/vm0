@@ -4,8 +4,8 @@ import { Command } from "commander";
 import {
   completeTelegramFileUpload,
   initTelegramFileUpload,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/integrations-telegram";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
@@ -51,9 +51,9 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:          zero telegram upload-file -f /tmp/report.pdf --bot-id 123456789 -c -1001234567890
-  Upload to a topic:      zero telegram upload-file -f /tmp/log.txt --bot-id 123456789 -c -1001234567890 --message-thread-id 42
-  With a caption:         zero telegram upload-file -f /tmp/data.csv --bot-id 123456789 -c @channel --caption "Daily report"
+  Upload a file:          okou telegram upload-file -f /tmp/report.pdf --bot-id 123456789 -c -1001234567890
+  Upload to a topic:      okou telegram upload-file -f /tmp/log.txt --bot-id 123456789 -c -1001234567890 --message-thread-id 42
+  With a caption:         okou telegram upload-file -f /tmp/data.csv --bot-id 123456789 -c @channel --caption "Daily report"
 
 Output:
   Prints a JSON object to stdout on success:
@@ -61,8 +61,8 @@ Output:
 
 Notes:
   - Uses the Telegram bot token on the server side
-  - Uploads through VM0 storage first, then asks Telegram to fetch the file URL
-  - VM0 does not apply file type or size restrictions before calling Telegram`,
+  - Uploads through Okou storage first, then asks Telegram to fetch the file URL
+  - Okou does not apply file type or size restrictions before calling Telegram`,
   )
   .action(
     withErrorHandler(
@@ -100,7 +100,6 @@ Notes:
           filename,
           contentType,
           length: fileSize,
-          supportsUploadHeaders: true,
         });
 
         const fileContent = readFileSync(options.file);

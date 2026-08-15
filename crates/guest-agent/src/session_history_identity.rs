@@ -15,12 +15,14 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ, SessionHistorySidecarExportMetadata,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
+    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistorySidecarExportFailure,
+    SessionHistorySidecarExportMetadata, SessionHistorySidecarIoErrorClass,
     SessionHistorySidecarRepresentation,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::Path;
 
 /// Build final session-history identity metadata for a successful checkpoint.
@@ -49,6 +51,7 @@ fn session_id_hash(framework: env::Framework, session_id: &str) -> Option<String
     let normalized = match framework {
         env::Framework::ClaudeCode => session_id.to_owned(),
         env::Framework::Codex => canonical_codex_thread_id(session_id)?,
+        env::Framework::Pi => session_id.to_owned(),
     };
     Some(hex::encode(Sha256::digest(normalized.as_bytes())))
 }
@@ -57,6 +60,7 @@ fn final_framework(framework: env::Framework) -> FinalSessionHistoryFramework {
     match framework {
         env::Framework::ClaudeCode => FinalSessionHistoryFramework::ClaudeCode,
         env::Framework::Codex => FinalSessionHistoryFramework::Codex,
+        env::Framework::Pi => FinalSessionHistoryFramework::Pi,
     }
 }
 
@@ -111,23 +115,14 @@ pub fn verify_final_session_history_identity_file(
 ///
 /// Returns:
 ///
-/// - [`FinalSessionHistoryIdentityVerifyError::MetadataRead`] when metadata
-///   cannot be read.
-/// - [`FinalSessionHistoryIdentityVerifyError::InvalidMetadata`] when metadata
-///   violates the shared identity contract.
-/// - [`FinalSessionHistoryIdentityVerifyError::FrameworkMismatch`] when the
-///   framework does not match the marker shape.
-/// - [`FinalSessionHistoryIdentityVerifyError::HistoryTooLarge`] when the
-///   declared decoded size exceeds the guest resume budget.
-/// - [`FinalSessionHistoryIdentityVerifyError::HistoryRead`] when the history
-///   cannot be resolved, read, or decoded, or when the output file cannot be
-///   created or written.
-/// - [`FinalSessionHistoryIdentityVerifyError::HistoryMismatch`] when the
-///   decoded size or SHA-256 identity differs from metadata.
+/// Returns [`FinalSessionHistorySidecarExportError::Verification`] when identity
+/// metadata or source history cannot be verified. Returns
+/// [`FinalSessionHistorySidecarExportError::OutputWrite`] when the verified
+/// sidecar bytes cannot be created or written at `export_path`.
 pub fn export_final_session_history_sidecar_file(
     metadata_path: impl AsRef<Path>,
     export_path: impl AsRef<Path>,
-) -> Result<SessionHistorySidecarExportMetadata, FinalSessionHistoryIdentityVerifyError> {
+) -> Result<SessionHistorySidecarExportMetadata, FinalSessionHistorySidecarExportError> {
     let identity = read_final_session_history_identity(metadata_path)?;
     verify_final_session_history_identity_constraints(&identity)?;
     let prepared = session_history::prepare_session_history_sidecar_from_payload_bounded(
@@ -147,8 +142,7 @@ pub fn export_final_session_history_sidecar_file(
         }
     };
     crate::paths::write_private(export_path.as_ref(), &bytes)
-        .map_err(AgentError::from)
-        .map_err(FinalSessionHistoryIdentityVerifyError::HistoryRead)?;
+        .map_err(FinalSessionHistorySidecarExportError::OutputWrite)?;
     Ok(SessionHistorySidecarExportMetadata {
         representation,
         encoded_size: bytes.len() as u64,
@@ -197,6 +191,13 @@ fn verify_final_session_history_identity_constraints(
         }
         FinalSessionHistoryFramework::Codex => {
             if !session_history::is_codex_marker(&identity.history_marker_payload) {
+                return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
+            }
+        }
+        FinalSessionHistoryFramework::Pi => {
+            if !crate::session_metadata::is_pi_session_history_path(
+                &identity.history_marker_payload,
+            ) {
                 return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
             }
         }
@@ -256,6 +257,62 @@ impl fmt::Display for FinalSessionHistoryIdentityBuildError {
 
 impl std::error::Error for FinalSessionHistoryIdentityBuildError {}
 
+/// Error returned while exporting a verified final session-history sidecar.
+#[derive(Debug)]
+pub enum FinalSessionHistorySidecarExportError {
+    /// Identity metadata or source history verification failed.
+    Verification(FinalSessionHistoryIdentityVerifyError),
+    /// The verified sidecar output could not be created or written.
+    OutputWrite(io::Error),
+}
+
+impl FinalSessionHistorySidecarExportError {
+    /// Return the stable helper exit code for this export failure.
+    pub fn helper_exit_code(&self) -> i32 {
+        match self {
+            Self::Verification(error) => error.helper_exit_code(),
+            Self::OutputWrite(_) => SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE,
+        }
+    }
+
+    /// Return safe output-failure metadata when the export write failed.
+    pub fn output_failure(&self) -> Option<SessionHistorySidecarExportFailure> {
+        let Self::OutputWrite(error) = self else {
+            return None;
+        };
+        Some(SessionHistorySidecarExportFailure {
+            io_error_class: sidecar_io_error_class(error),
+        })
+    }
+}
+
+impl From<FinalSessionHistoryIdentityVerifyError> for FinalSessionHistorySidecarExportError {
+    fn from(error: FinalSessionHistoryIdentityVerifyError) -> Self {
+        Self::Verification(error)
+    }
+}
+
+impl fmt::Display for FinalSessionHistorySidecarExportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Verification(error) => write!(f, "{error}"),
+            Self::OutputWrite(_) => f.write_str("session history sidecar could not be written"),
+        }
+    }
+}
+
+impl std::error::Error for FinalSessionHistorySidecarExportError {}
+
+fn sidecar_io_error_class(error: &io::Error) -> SessionHistorySidecarIoErrorClass {
+    match error.kind() {
+        io::ErrorKind::NotFound => SessionHistorySidecarIoErrorClass::NotFound,
+        io::ErrorKind::PermissionDenied => SessionHistorySidecarIoErrorClass::PermissionDenied,
+        io::ErrorKind::StorageFull => SessionHistorySidecarIoErrorClass::StorageFull,
+        io::ErrorKind::QuotaExceeded => SessionHistorySidecarIoErrorClass::QuotaExceeded,
+        _ => SessionHistorySidecarIoErrorClass::Unknown,
+    }
+}
+
 /// Error returned while verifying final identity metadata.
 #[derive(Debug)]
 pub enum FinalSessionHistoryIdentityVerifyError {
@@ -267,7 +324,7 @@ pub enum FinalSessionHistoryIdentityVerifyError {
     FrameworkMismatch,
     /// Metadata does not match the identity runner expected to verify.
     ExpectedIdentityMismatch,
-    /// Session history could not be read or an exported sidecar could not be written.
+    /// Session history could not be resolved, read, or decoded.
     HistoryRead(AgentError),
     /// Session history size or hash does not match metadata.
     HistoryMismatch,
@@ -343,6 +400,22 @@ mod tests {
         hex::encode(hasher.finalize())
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn classifies_sidecar_storage_exhaustion_without_error_text() {
+        let storage_full = io::Error::from_raw_os_error(libc::ENOSPC);
+        let unknown = io::Error::other("sensitive path");
+
+        assert_eq!(
+            sidecar_io_error_class(&storage_full),
+            SessionHistorySidecarIoErrorClass::StorageFull
+        );
+        assert_eq!(
+            sidecar_io_error_class(&unknown),
+            SessionHistorySidecarIoErrorClass::Unknown
+        );
+    }
+
     #[test]
     fn verifies_claude_literal_history() {
         let dir = tempfile::tempdir().unwrap();
@@ -361,6 +434,31 @@ mod tests {
         let metadata_path = write_metadata(&dir, &identity);
 
         verify_final_session_history_identity_file(metadata_path, None).unwrap();
+    }
+
+    #[test]
+    fn builds_pi_jsonl_history_identity() {
+        let session_id = "00000000-0000-4000-8000-000000000001";
+        let history = br#"{"type":"session","id":"00000000-0000-4000-8000-000000000001"}"#;
+        let history_path = format!(
+            "{}/restored-{session_id}.jsonl",
+            api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+        );
+        let identity = build_final_session_history_identity(
+            env::Framework::Pi,
+            session_id,
+            &hex::encode(Sha256::digest(history)),
+            history.len() as u64,
+            &history_path,
+        )
+        .unwrap();
+
+        assert_eq!(identity.framework, FinalSessionHistoryFramework::Pi);
+        assert_eq!(identity.history_marker_payload, history_path);
+        assert_eq!(
+            identity.session_id_hash,
+            hex::encode(Sha256::digest(session_id.as_bytes()))
+        );
     }
 
     #[test]

@@ -30,9 +30,7 @@ export const locale$ = computed((get) => {
 
 export const availableLocalePreferences$ = computed(async (get) => {
   const preferences = await get(userPreferences$);
-  return preferences.locale === undefined
-    ? []
-    : (preferences.supportedLocales ?? []);
+  return preferences.supportedLocales;
 });
 
 export const initLocale$ = command(async ({ set }, signal: AbortSignal) => {
@@ -79,23 +77,6 @@ export const syncLocalePreference$ = command(
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
     const supportedLocales = preferences.supportedLocales;
-    if (preferences.locale === undefined || supportedLocales === undefined) {
-      return;
-    }
-    if (
-      supportedLocales.every((supportedLocale) => {
-        return supportedLocale === DEFAULT_LOCALE;
-      })
-    ) {
-      await set(
-        applyLocalePreference$,
-        clerk.organization.id,
-        DEFAULT_LOCALE,
-        signal,
-      );
-      return;
-    }
-
     const preferredLocale = preferences.locale ?? resolveDocumentLocale();
     const locale = supportedLocales.includes(preferredLocale)
       ? preferredLocale

@@ -69,11 +69,25 @@ pub const MSG_EXEC_CONTROL: u8 = 0x10;
 /// Guest-to-host exec control delivery result.
 pub const MSG_EXEC_CONTROL_RESULT: u8 = 0x11;
 
+// Batched file operations.
+
 /// Host-to-guest multi-file write request.
 pub const MSG_WRITE_FILES: u8 = 0x12;
 
 /// Guest-to-host multi-file write completion response.
 pub const MSG_WRITE_FILES_RESULT: u8 = 0x13;
+
+/// Host-to-guest request for aggregate memory counters while fully quiesced.
+pub const MSG_MEMORY_SNAPSHOT: u8 = 0x14;
+
+/// Guest-to-host fixed-width aggregate memory snapshot response.
+pub const MSG_MEMORY_SNAPSHOT_RESULT: u8 = 0x15;
+
+/// Host-to-guest request for the fixed guest DNS readiness operation.
+pub const MSG_GUEST_DNS_READINESS: u8 = 0x16;
+
+/// Guest-to-host result of the fixed guest DNS readiness operation.
+pub const MSG_GUEST_DNS_READINESS_RESULT: u8 = 0x17;
 
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
@@ -106,34 +120,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn message_type_wire_values_are_grouped_by_domain() {
-        let non_error_types = [
-            MSG_READY,
-            MSG_PING,
-            MSG_PONG,
-            MSG_SHUTDOWN,
-            MSG_SHUTDOWN_ACK,
-            MSG_QUIESCE_OPERATIONS,
-            MSG_OPERATIONS_QUIESCED,
-            MSG_RESUME_OPERATIONS,
-            MSG_OPERATIONS_RESUMED,
-            MSG_WRITE_FILE,
-            MSG_WRITE_FILE_RESULT,
-            MSG_EXEC_START,
-            MSG_EXEC_STARTED,
-            MSG_EXEC_OUTPUT,
-            MSG_EXEC_RESULT,
-            MSG_EXEC_CANCEL,
-            MSG_EXEC_CONTROL,
-            MSG_EXEC_CONTROL_RESULT,
-            MSG_WRITE_FILES,
-            MSG_WRITE_FILES_RESULT,
+    fn message_type_wire_values_are_stable() {
+        let message_types = [
+            ("MSG_READY", MSG_READY, 0x00),
+            ("MSG_PING", MSG_PING, 0x01),
+            ("MSG_PONG", MSG_PONG, 0x02),
+            ("MSG_SHUTDOWN", MSG_SHUTDOWN, 0x03),
+            ("MSG_SHUTDOWN_ACK", MSG_SHUTDOWN_ACK, 0x04),
+            ("MSG_QUIESCE_OPERATIONS", MSG_QUIESCE_OPERATIONS, 0x05),
+            ("MSG_OPERATIONS_QUIESCED", MSG_OPERATIONS_QUIESCED, 0x06),
+            ("MSG_RESUME_OPERATIONS", MSG_RESUME_OPERATIONS, 0x07),
+            ("MSG_OPERATIONS_RESUMED", MSG_OPERATIONS_RESUMED, 0x08),
+            ("MSG_WRITE_FILE", MSG_WRITE_FILE, 0x09),
+            ("MSG_WRITE_FILE_RESULT", MSG_WRITE_FILE_RESULT, 0x0A),
+            ("MSG_EXEC_START", MSG_EXEC_START, 0x0B),
+            ("MSG_EXEC_STARTED", MSG_EXEC_STARTED, 0x0C),
+            ("MSG_EXEC_OUTPUT", MSG_EXEC_OUTPUT, 0x0D),
+            ("MSG_EXEC_RESULT", MSG_EXEC_RESULT, 0x0E),
+            ("MSG_EXEC_CANCEL", MSG_EXEC_CANCEL, 0x0F),
+            ("MSG_EXEC_CONTROL", MSG_EXEC_CONTROL, 0x10),
+            ("MSG_EXEC_CONTROL_RESULT", MSG_EXEC_CONTROL_RESULT, 0x11),
+            ("MSG_WRITE_FILES", MSG_WRITE_FILES, 0x12),
+            ("MSG_WRITE_FILES_RESULT", MSG_WRITE_FILES_RESULT, 0x13),
+            ("MSG_MEMORY_SNAPSHOT", MSG_MEMORY_SNAPSHOT, 0x14),
+            (
+                "MSG_MEMORY_SNAPSHOT_RESULT",
+                MSG_MEMORY_SNAPSHOT_RESULT,
+                0x15,
+            ),
+            ("MSG_GUEST_DNS_READINESS", MSG_GUEST_DNS_READINESS, 0x16),
+            (
+                "MSG_GUEST_DNS_READINESS_RESULT",
+                MSG_GUEST_DNS_READINESS_RESULT,
+                0x17,
+            ),
+            ("MSG_ERROR", MSG_ERROR, 0xFF),
         ];
 
-        for (expected, actual) in (0_u8..).zip(non_error_types) {
-            assert_eq!(actual, expected);
+        for (name, actual, expected) in message_types {
+            assert_eq!(actual, expected, "{name} wire value changed");
         }
-
-        assert_eq!(MSG_ERROR, 0xFF);
     }
 }

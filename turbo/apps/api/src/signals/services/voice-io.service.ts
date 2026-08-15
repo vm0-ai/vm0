@@ -1,10 +1,10 @@
 import { computed, type Computed } from "ccstate";
-import type { AudioInputQuotaResponse } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
-import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
+import type { AudioInputQuotaResponse } from "@okouai/api-contracts/contracts/voice-io-quota";
+import { userBehaviorCount } from "@okouai/db/schema/user-behavior-count";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
   sttDailyDurationKey,

@@ -1,7 +1,9 @@
 import { command, computed, state } from "ccstate";
+import { animationFrame } from "signal-timers";
 
 import { localStorageSignals } from "../external/local-storage.ts";
 import { resetSignal } from "../utils.ts";
+import { syncActiveBrowserFitAction$ } from "./thread-sidebar-coordinator.ts";
 
 // Smallest the sidebar may shrink to before its content stops being usable.
 export const CHAT_THREAD_SIDEBAR_MIN_WIDTH = 400;
@@ -65,9 +67,27 @@ export const startChatThreadSidebarResize$ = command(
     );
     const dragSignal = set(resetChatThreadSidebarResize$, pageSignal);
     const dragMaskEl = get(chatThreadSidebarDragMaskEl$);
+    let fitCheckScheduled = false;
 
     function resetResize(): void {
       set(resetChatThreadSidebarResize$);
+    }
+
+    function scheduleBrowserFitCheck(): void {
+      if (fitCheckScheduled) {
+        return;
+      }
+      fitCheckScheduled = true;
+      // React applies the width subscription after this native pointer event.
+      // Keep the final check alive through pointerup so it measures the
+      // committed sidebar size on the next frame.
+      animationFrame(
+        () => {
+          fitCheckScheduled = false;
+          set(syncActiveBrowserFitAction$);
+        },
+        { signal: pageSignal },
+      );
     }
 
     dragMaskEl.addEventListener(
@@ -78,6 +98,7 @@ export const startChatThreadSidebarResize$ = command(
           maxWidth,
         );
         set(setChatThreadSidebarWidth$, nextWidth);
+        scheduleBrowserFitCheck();
       },
       { signal: dragSignal },
     );

@@ -1,6 +1,7 @@
 mod claude;
 mod codex;
 mod identity;
+mod pi;
 mod validation;
 
 use sandbox::EXEC_OUTPUT_LIMIT_64_KIB;
@@ -97,6 +98,12 @@ fn claude_context() -> ExecutionContext {
 fn codex_context() -> ExecutionContext {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
+    ctx
+}
+
+fn pi_context() -> ExecutionContext {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "pi".into();
     ctx
 }
 

@@ -1,4 +1,4 @@
-import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connector-config";
+import type { ConnectorExternalCodeGrantConfig } from "@okouai/connectors/connector-config";
 import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import {
   NINTENDO_ACCOUNT_AUTHORIZATION_URL,
@@ -68,40 +68,55 @@ export function parseNintendoStoreSessionTokenCode(args: {
   });
 }
 
-export function exchangeNintendoStoreSessionTokenCode(args: {
-  readonly clientId: string;
-  readonly sessionTokenCode: string;
-  readonly codeVerifier: string;
-  readonly signal: AbortSignal;
-}): Promise<NintendoStoreSessionToken> {
-  return exchangeNintendoAccountSessionTokenCode({
-    ...args,
-    userAgent: NINTENDO_STORE_USER_AGENT,
-    providerLabel: NINTENDO_STORE_PROVIDER_LABEL,
-  });
+export function exchangeNintendoStoreSessionTokenCode(
+  args: {
+    readonly clientId: string;
+    readonly sessionTokenCode: string;
+    readonly codeVerifier: string;
+  },
+  signal: AbortSignal,
+): Promise<NintendoStoreSessionToken> {
+  return exchangeNintendoAccountSessionTokenCode(
+    {
+      ...args,
+      userAgent: NINTENDO_STORE_USER_AGENT,
+      providerLabel: NINTENDO_STORE_PROVIDER_LABEL,
+    },
+    signal,
+  );
 }
 
-export function exchangeNintendoStoreSessionToken(args: {
-  readonly clientId: string;
-  readonly sessionToken: string;
-  readonly signal: AbortSignal;
-}): Promise<NintendoStoreToken> {
-  return exchangeNintendoAccountSessionToken({
-    ...args,
-    userAgent: NINTENDO_STORE_USER_AGENT,
-    providerLabel: NINTENDO_STORE_PROVIDER_LABEL,
-  });
+export function exchangeNintendoStoreSessionToken(
+  args: {
+    readonly clientId: string;
+    readonly sessionToken: string;
+  },
+  signal: AbortSignal,
+): Promise<NintendoStoreToken> {
+  return exchangeNintendoAccountSessionToken(
+    {
+      ...args,
+      userAgent: NINTENDO_STORE_USER_AGENT,
+      providerLabel: NINTENDO_STORE_PROVIDER_LABEL,
+    },
+    signal,
+  );
 }
 
-export function fetchNintendoStoreLocale(args: {
-  readonly accessToken: string;
-  readonly signal: AbortSignal;
-}): Promise<NintendoStoreLocale> {
-  return fetchNintendoAccountProfile({
-    ...args,
-    userAgent: NINTENDO_STORE_USER_AGENT,
-    providerLabel: NINTENDO_STORE_PROVIDER_LABEL,
-  });
+export function fetchNintendoStoreLocale(
+  args: {
+    readonly accessToken: string;
+  },
+  signal: AbortSignal,
+): Promise<NintendoStoreLocale> {
+  return fetchNintendoAccountProfile(
+    {
+      ...args,
+      userAgent: NINTENDO_STORE_USER_AGENT,
+      providerLabel: NINTENDO_STORE_PROVIDER_LABEL,
+    },
+    signal,
+  );
 }
 
 export function nintendoStoreUserInfo(

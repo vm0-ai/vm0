@@ -1,9 +1,6 @@
 import { command } from "ccstate";
-import type {
-  AttachFile,
-  ChatPromptEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
+import type { ResolvedAttachFile } from "@okouai/api-contracts/contracts/chat-threads";
+import { getModelImageInputSupport } from "@okouai/api-contracts/contracts/model-providers";
 import type {
   DraftSignals,
   ZeroChatAttachment,
@@ -22,22 +19,20 @@ const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
  * Prepared send-message payload derived from a draft.
  *
  * - `prompt` — clean text (or `ATTACH_ONLY_PLACEHOLDER` for file-only sends).
- * - `attachFiles` — structured `AttachFile[]` for the outbound request body.
- * - `attachments` — optimistic-UI shape including resolved URLs, matching the
- *   server's paged response so the optimistic row looks identical to a refetch.
+ * - `attachments` — upload metadata used only to build canonical file parts.
  * - `hasTextContent` — whether the user typed any non-whitespace text;
  *   used by the server to decide prompt-only vs. attachment-only rendering.
  */
 interface PreparedUserMessage {
   prompt: string;
-  attachFiles: AttachFile[] | undefined;
-  attachments: ChatPromptEvent["attachFiles"];
+  attachments: ResolvedAttachFile[] | undefined;
   hasTextContent: boolean;
 }
 
 interface AttachmentFileInfo {
   id: string;
   url: string;
+  contentType: string;
 }
 
 interface ResolvedDraftAttachment {
@@ -131,8 +126,7 @@ function attachmentUploadFailureMessage(
 /**
  * Resolves a draft's pending attachments (waits for uploads to finish,
  * rejects failed entries) and shapes the result into both the
- * outbound `AttachFile[]` for the send contract and the optimistic-UI
- * `ChatEvent["attachFiles"]` shape.
+ * canonical file parts for the outbound user-message document.
  *
  * Returns `null` when the user has typed nothing and no attachments are
  * ready — callers should abort the send in that case.
@@ -179,29 +173,17 @@ export const prepareUserMessageFromDraft$ = command(
 
     // User prompt is clean text only — file description blocks are appended
     // server-side via buildFullPrompt so the agent gets the [Web file] [ID]
-    // format it knows how to download with `zero web download-file`.
+    // format it knows how to download with `okou web download-file`.
     const finalPrompt =
       trimmedPrompt || (ready.length > 0 ? ATTACH_ONLY_PLACEHOLDER : "");
 
-    const attachFiles: AttachFile[] | undefined =
+    const attachments: ResolvedAttachFile[] | undefined =
       ready.length > 0
         ? ready.map((r) => {
             return {
               id: r.info.id,
               filename: r.attachment.filename,
-              contentType: r.attachment.contentType,
-              size: r.attachment.size,
-            };
-          })
-        : undefined;
-
-    const attachments: ChatPromptEvent["attachFiles"] =
-      ready.length > 0
-        ? ready.map((r) => {
-            return {
-              id: r.info.id,
-              filename: r.attachment.filename,
-              contentType: r.attachment.contentType,
+              contentType: r.info.contentType,
               size: r.attachment.size,
               url: r.info.url,
             };
@@ -210,7 +192,6 @@ export const prepareUserMessageFromDraft$ = command(
 
     return {
       prompt: finalPrompt,
-      attachFiles,
       attachments,
       hasTextContent: trimmedPrompt.length > 0,
     };

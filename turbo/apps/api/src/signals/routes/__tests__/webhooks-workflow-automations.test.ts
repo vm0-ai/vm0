@@ -1,6 +1,7 @@
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
@@ -10,6 +11,13 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksWorkflowAutomationsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -22,7 +30,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,20 +98,20 @@ async function postWorkflowWebhook(args: {
   readonly signature?: string;
 }): Promise<{ readonly status: number; readonly body: unknown }> {
   const timestamp = args.timestamp ?? Math.floor(now() / 1000);
-  const response = await createApp({ signal: context.signal }).request(
-    `/api/webhooks/workflow-automations/${args.token}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-VM0-Timestamp": String(timestamp),
-        "X-VM0-Signature":
-          args.signature ??
-          computeHmacSignature(args.rawBody, args.secret, timestamp),
-      },
-      body: args.rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/webhooks/workflow-automations/${args.token}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-VM0-Timestamp": String(timestamp),
+      "X-VM0-Signature":
+        args.signature ??
+        computeHmacSignature(args.rawBody, args.secret, timestamp),
     },
-  );
+    body: args.rawBody,
+  });
   return {
     status: response.status,
     body: await response.json(),
@@ -169,7 +179,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const workflowClaim = await runsApi.claimRunnerJob(first.body.runId);
     const workflowPrompt = workflowClaim.appendSystemPrompt ?? "";
-    expect(workflowPrompt).toContain("zero slack message send --help");
+    expect(workflowPrompt).toContain("okou slack message send --help");
     expect(workflowPrompt).not.toContain(
       "normal replies are automatically sent to the originating thread",
     );
@@ -183,20 +193,20 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     );
     for (const actionType of [
       "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
-      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
-      "api_dispatch_pre_create_zero_workflow_event_match_automations",
-      "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
-      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
-      "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+      "api_dispatch_pre_create_zero_automation_event_load_source_state",
+      "api_dispatch_pre_create_zero_automation_event_match_automations",
+      "api_dispatch_pre_create_zero_automation_event_record_processed_event",
+      "api_dispatch_pre_create_zero_automation_event_build_run_input",
+      "api_dispatch_pre_create_zero_automation_event_handoff_run",
     ]) {
       expect(actionTypes).toContain(actionType);
     }
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
-          workflow_event_source: "webhook",
-          trigger_source: "workflow-event",
+          op_type: "api_dispatch_pre_create_zero_automation_event_handoff_run",
+          automation_event_source: "webhook",
+          trigger_source: "automation-event",
           zero_run_origin: "workflow_automation",
           span_kind: "nested",
         }),

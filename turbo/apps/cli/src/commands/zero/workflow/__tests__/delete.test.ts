@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow delete command
+ * Tests for okou workflow delete command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -56,7 +56,7 @@ function workflowSummary(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("zero workflow delete command", () => {
+describe("okou workflow delete command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -68,7 +68,7 @@ describe("zero workflow delete command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -82,13 +82,13 @@ describe("zero workflow delete command", () => {
     it("should delete with --yes flag without prompting", async () => {
       server.use(
         http.get(
-          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
           () => {
             return HttpResponse.json(detailResponse());
           },
         ),
         http.delete(
-          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
           () => {
             return new HttpResponse(null, { status: 204 });
           },
@@ -105,11 +105,11 @@ describe("zero workflow delete command", () => {
     it("should resolve a workflow name before deleting", async () => {
       let deletedWorkflowId: string | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json([workflowSummary()]);
         }),
         http.get(
-          `http://localhost:3000/api/zero/workflows/${RESOLVED_WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${RESOLVED_WORKFLOW_ID}`,
           () => {
             return HttpResponse.json(
               detailResponse({
@@ -121,7 +121,7 @@ describe("zero workflow delete command", () => {
           },
         ),
         http.delete(
-          "http://localhost:3000/api/zero/workflows/:workflowId",
+          "http://localhost:3000/api/okou/workflows/:workflowId",
           ({ params }) => {
             deletedWorkflowId = params.workflowId as string;
             return new HttpResponse(null, { status: 204 });
@@ -147,7 +147,7 @@ describe("zero workflow delete command", () => {
       const missingId = "99999999-9999-9999-9999-999999999999";
       server.use(
         http.get(
-          `http://localhost:3000/api/zero/workflows/${missingId}`,
+          `http://localhost:3000/api/okou/workflows/${missingId}`,
           () => {
             return HttpResponse.json(
               { error: { message: "Workflow not found", code: "NOT_FOUND" } },
@@ -167,7 +167,7 @@ describe("zero workflow delete command", () => {
     it("should require --yes in non-interactive mode", async () => {
       server.use(
         http.get(
-          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
           () => {
             return HttpResponse.json(detailResponse({ displayName: null }));
           },

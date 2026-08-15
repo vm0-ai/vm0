@@ -22,7 +22,7 @@ Lifecycle:
 - ``responseheaders()`` offers eligible 401/403 responses to
   ``install_response_stream_if_needed()`` before installing general response
   streaming. A diagnostic stream suppresses the upstream body and emits its
-  replacement body once.
+  replacement content once, except that HEAD remains bodyless.
 - ``response()`` completes streamed replacement or handles buffered 401/403
   replacement before network logging. ``error()`` may synthesize a diagnostic
   response unless response headers already installed a replacement.
@@ -46,15 +46,18 @@ import builtin_connector_diagnostics
 import connector_intent
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import http_local_responses
 import matching
-import network_log_sanitization
 import request_classification
 import runtime_url_parsing
-from logging_utils import log_proxy_entry
+from logging_utils import log_proxy_entry, project_url_for_proxy_log
 
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_FORBIDDEN = 403
 _HTTP_STATUS_FAILED_DEPENDENCY = 424
+
+MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS = 64 * 1024
+MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS = 8 * 1024
 
 _CONNECTOR_DIAGNOSTIC_ELIGIBLE = "_connector_diagnostic_eligible"
 _CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES = "_connector_diagnostic_active_firewall_names"
@@ -158,6 +161,7 @@ def maybe_make_local_response(
 
     Return ``True`` only after installing a local HTTP 424 response, recording
     failure/timing/firewall metadata, and emitting the diagnostic proxy entry.
+    HEAD keeps the same diagnostic status and metadata without response content.
     The caller must treat that response as terminal for request dispatch.
     """
     if _is_browser_diagnostic_skip(flow):
@@ -165,16 +169,16 @@ def maybe_make_local_response(
     candidate = _resolve_candidate(flow, original_url=original_url)
     if candidate is None:
         return False
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return False
 
     flow_metadata.start_request_timing(flow.metadata)
     _set_failure_metadata(flow, candidate)
     flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
-    flow.response = http.Response.make(
-        _HTTP_STATUS_FAILED_DEPENDENCY,
-        _response_body(candidate, upstream_status=0),
-        {"Content-Type": "application/json"},
+    flow.response = _make_local_response(
+        flow,
+        candidate,
+        upstream_status=0,
     )
     _log_proxy_entry(
         flow,
@@ -205,7 +209,8 @@ def maybe_make_firewall_allow_local_response(
     local response.
 
     Return ``True`` only after installing and logging a local HTTP 424 response
-    and recording the selected candidate and ownership metadata. The caller
+    and recording the selected candidate and ownership metadata. HEAD keeps the
+    same diagnostic status and metadata without response content. The caller
     must stop normal request dispatch on ``True``.
     """
     if _is_browser_diagnostic_skip(flow):
@@ -235,7 +240,7 @@ def maybe_make_firewall_allow_local_response(
         return False
 
     candidate = resolution.candidate
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return False
 
     flow.metadata[_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT] = diagnostic_snapshot
@@ -245,10 +250,10 @@ def maybe_make_firewall_allow_local_response(
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES] = resolution.candidate_connector_slugs
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS] = resolution.hint_status
     flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
-    flow.response = http.Response.make(
-        _HTTP_STATUS_FAILED_DEPENDENCY,
-        _response_body(candidate, upstream_status=0),
-        {"Content-Type": "application/json"},
+    flow.response = _make_local_response(
+        flow,
+        candidate,
+        upstream_status=0,
     )
     _log_proxy_entry(
         flow,
@@ -262,9 +267,10 @@ def install_response_stream_if_needed(flow: http.HTTPFlow) -> bool:
     """Install diagnostic replacement during the response-header phase.
 
     ``responseheaders()`` must call this before general response streaming. For
-    an eligible unauthenticated 401/403, it replaces the response body and its
-    framing headers, caches the diagnostic body, and installs a callback that
-    discards upstream chunks and emits that body once at end-of-stream.
+    an eligible unauthenticated 401/403, it replaces the response content and
+    framing headers, caches the diagnostic content, and installs a callback that
+    discards upstream chunks and emits that content once at end-of-stream. HEAD
+    caches and emits empty content without a Content-Length field.
 
     Return ``True`` only when this module owns ``flow.response.stream``; the
     caller must then skip installing another stream callback. ``False`` means no
@@ -287,7 +293,7 @@ def install_response_stream_if_needed(flow: http.HTTPFlow) -> bool:
     candidate = _resolve_candidate(flow, original_url=original_url)
     if candidate is None:
         return False
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return False
 
     upstream_status = flow.response.status_code
@@ -341,9 +347,11 @@ def maybe_replace_response(
         if isinstance(body, bytes) and not flow.metadata.get(
             _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT
         ):
-            flow.response.content = body
-            flow.response.headers["Content-Type"] = "application/json"
-            flow.response.headers["Content-Length"] = str(len(body))
+            http_local_responses.apply_synthetic_json_response_content(
+                flow,
+                flow.response,
+                lambda: body,
+            )
         _log_proxy_entry(
             flow,
             original_url=original_url,
@@ -362,7 +370,7 @@ def maybe_replace_response(
     if candidate is None:
         return
     upstream_status = flow.response.status_code
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return
 
     _set_failure_metadata(flow, candidate)
@@ -389,7 +397,8 @@ def maybe_make_error_response(
     already installed diagnostic replacement, it does not create or log another
     diagnostic and clears trailers when a response exists. Otherwise an
     eligible non-browser request without auth material receives a local HTTP 424
-    response with upstream status zero and one diagnostic proxy entry.
+    response with upstream status zero and one diagnostic proxy entry. HEAD keeps
+    that response bodyless.
     """
     if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS):
         if flow.response is not None:
@@ -400,13 +409,13 @@ def maybe_make_error_response(
     candidate = _resolve_candidate(flow, original_url=original_url)
     if candidate is None:
         return
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return
     _set_failure_metadata(flow, candidate)
-    flow.response = http.Response.make(
-        _HTTP_STATUS_FAILED_DEPENDENCY,
-        _response_body(candidate, upstream_status=0),
-        {"Content-Type": "application/json"},
+    flow.response = _make_local_response(
+        flow,
+        candidate,
+        upstream_status=0,
     )
     _log_proxy_entry(
         flow,
@@ -627,6 +636,36 @@ def _response_body(
     return json.dumps(body, separators=(",", ":")).encode()
 
 
+def _set_diagnostic_response_content(
+    flow: http.HTTPFlow,
+    response: http.Response,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    *,
+    upstream_status: int,
+) -> bytes:
+    return http_local_responses.apply_synthetic_json_response_content(
+        flow,
+        response,
+        lambda: _response_body(candidate, upstream_status=upstream_status),
+    )
+
+
+def _make_local_response(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    *,
+    upstream_status: int,
+) -> http.Response:
+    response = http.Response.make(_HTTP_STATUS_FAILED_DEPENDENCY)
+    _set_diagnostic_response_content(
+        flow,
+        response,
+        candidate,
+        upstream_status=upstream_status,
+    )
+    return response
+
+
 def _message(
     candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
 ) -> str:
@@ -643,11 +682,12 @@ def _message(
     )
 
 
-def _request_has_auth_material(
+def _request_may_have_auth_material(
     flow: http.HTTPFlow,
     candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
     original_url: str,
 ) -> bool:
+    """Return whether auth is present or bounded query inspection is inconclusive."""
     configured_headers = {name.lower() for name in candidate.auth_header_names}
     auth_headers = configured_headers | _GENERIC_AUTH_HEADER_NAMES
     for name in auth_headers:
@@ -660,15 +700,41 @@ def _request_has_auth_material(
         parsed = runtime_url_parsing.split_runtime_url(original_url)
     except ValueError:
         return False
-    for name, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
-        normalized_name = name.lower()
-        is_auth_param = (
-            name in configured_query_params
-            or normalized_name in normalized_configured_query_params
-            or normalized_name in _GENERIC_AUTH_QUERY_PARAM_NAMES
-        )
-        if is_auth_param and _query_param_has_auth_material(value):
-            return True
+
+    query = parsed.query
+    if len(query) > MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS:
+        return True
+
+    field_count = 0
+    field_start = 0
+    query_end = len(query)
+    while field_start < query_end:
+        field_end = query.find("&", field_start)
+        if field_end == -1:
+            field_end = query_end
+
+        if field_start < field_end:
+            field_count += 1
+            if field_count > MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS:
+                return True
+
+            separator_index = query.find("=", field_start, field_end)
+            name_end = field_end if separator_index == -1 else separator_index
+            name = urllib.parse.unquote_plus(query[field_start:name_end])
+            normalized_name = name.lower()
+            is_auth_param = (
+                name in configured_query_params
+                or normalized_name in normalized_configured_query_params
+                or normalized_name in _GENERIC_AUTH_QUERY_PARAM_NAMES
+            )
+            if is_auth_param:
+                value_start = field_end if separator_index == -1 else separator_index + 1
+                value = urllib.parse.unquote_plus(query[value_start:field_end])
+                if _query_param_has_auth_material(value):
+                    return True
+
+        field_start = field_end + 1
+
     return False
 
 
@@ -714,14 +780,12 @@ def _replace_response_content(
         if header in flow.response.headers:
             del flow.response.headers[header]
     flow.response.trailers = None
-    body = _response_body(
+    return _set_diagnostic_response_content(
+        flow,
+        flow.response,
         candidate,
         upstream_status=upstream_status,
     )
-    flow.response.content = body
-    flow.response.headers["Content-Type"] = "application/json"
-    flow.response.headers["Content-Length"] = str(len(body))
-    return body
 
 
 def _log_proxy_entry(
@@ -735,7 +799,7 @@ def _log_proxy_entry(
     candidate = _candidate_from_flow(flow)
     if candidate is None:
         return
-    safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+    url_projection = project_url_for_proxy_log(original_url)
     extra: dict[str, object] = {}
     ownership_reason = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON)
     if isinstance(ownership_reason, str) and ownership_reason:
@@ -748,15 +812,16 @@ def _log_proxy_entry(
     ownership_hint_status = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS)
     if isinstance(ownership_hint_status, str) and ownership_hint_status:
         extra["ownership_hint_status"] = ownership_hint_status
+    extra.update(url_projection.truncation_fields())
     log_proxy_entry(
         flow_metadata.proxy_log_path(flow.metadata),
         "warn",
-        f"{candidate.connector_slug} is not configured for this run: {safe_url}",
+        f"{candidate.connector_slug} is not configured for this run: {url_projection.value}",
         type="connector_diagnostic",
         connector=candidate.connector_slug,
         reason=candidate.reason,
         upstream_status=upstream_status,
-        url=original_url,
+        url=url_projection,
         **extra,
     )
     flow.metadata[_CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED] = True

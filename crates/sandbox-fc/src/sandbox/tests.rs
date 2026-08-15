@@ -11,11 +11,67 @@ use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 use vsock_proto::{
     Decoder, ExecControlStatus, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_EXEC_CONTROL,
-    MSG_EXEC_CONTROL_RESULT, MSG_PING, MSG_PONG, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
-    RawMessage,
+    MSG_EXEC_CONTROL_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_PING, MSG_PONG,
+    MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MemorySnapshot, RawMessage,
 };
 
 struct TestNormalOperationFence;
+
+fn test_severe_memory_retention_diagnostics() -> SevereMemoryRetentionDiagnostics {
+    SevereMemoryRetentionDiagnostics {
+        requested_target_mib: 0,
+        first_observed_target_mib: None,
+        observed_target_mib: None,
+        target_observed: false,
+        first_actual_mib: None,
+        actual_mib: None,
+        max_actual_mib: None,
+        deficit_mib: None,
+        actual_delta_mib: None,
+        elapsed_ms: 0,
+        sample_count: 0,
+        reported_free_memory_bytes: None,
+        reported_available_memory_bytes: None,
+        reported_total_memory_bytes: None,
+        reported_swap_in_bytes: None,
+        reported_swap_out_bytes: None,
+        reported_major_faults: None,
+        reported_minor_faults: None,
+        reported_disk_caches_bytes: None,
+        guest_memory_snapshot: None,
+    }
+}
+
+fn test_severe_memory_retention_outcome() -> SandboxParkOutcome {
+    SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention(
+        Box::new(test_severe_memory_retention_diagnostics()),
+    ))
+}
+
+fn expect_severe_memory_retention(outcome: SandboxParkOutcome) -> SevereMemoryRetentionDiagnostics {
+    match outcome {
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention(
+            diagnostics,
+        )) => *diagnostics,
+        other => panic!("expected severe memory retention, got {other:?}"),
+    }
+}
+
+#[derive(Default)]
+struct RecordingFinalExecParkObserver {
+    records: Vec<(SandboxFinalExecParkStage, bool)>,
+}
+
+impl SandboxFinalExecParkObserver for RecordingFinalExecParkObserver {
+    fn record_stage(
+        &mut self,
+        stage: SandboxFinalExecParkStage,
+        _duration: Duration,
+        success: bool,
+    ) {
+        self.records.push((stage, success));
+    }
+}
 
 async fn park_with_ready_for_park<Q, QF, P, PF>(
     log_id: &str,
@@ -100,7 +156,6 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         },
         cow_device: None,
         device_rate_limits: None,
-        guest_dns_network_baseline: None,
         runtime: SandboxRuntimeHandles::default(),
         process_group_pid: None,
         state: Arc::new(AtomicU8::new(state as u8)),
@@ -182,6 +237,50 @@ async fn attach_mock_shutdown_guest(sandbox: &FirecrackerSandbox) -> UnixStream 
     mock_vsock_handshake(&mut guest, &mut decoder).await;
     *sandbox.guest.lock().await = Some(Arc::new(host_task.await.unwrap()));
     guest
+}
+
+async fn connected_mock_guest() -> (Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>, UnixStream) {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let vsock_path = temp_dir
+        .path()
+        .join("memory-snapshot")
+        .to_string_lossy()
+        .into_owned();
+    let wait_vsock_path = vsock_path.clone();
+    let host_task = tokio::spawn(async move {
+        VsockHost::wait_for_connection(&wait_vsock_path, Duration::from_secs(5))
+            .await
+            .unwrap()
+    });
+    let mut guest = connect_mock_guest(&vsock_path).await;
+    let mut decoder = Decoder::new();
+    mock_vsock_handshake(&mut guest, &mut decoder).await;
+    let host = Arc::new(host_task.await.unwrap());
+
+    (Arc::new(tokio::sync::Mutex::new(Some(host))), guest)
+}
+
+fn test_guest_memory_snapshot() -> MemorySnapshot {
+    MemorySnapshot {
+        mem_total_bytes: 1,
+        mem_free_bytes: 2,
+        mem_available_bytes: 3,
+        buffers_bytes: 4,
+        cached_bytes: 5,
+        anon_pages_bytes: 6,
+        mapped_bytes: 7,
+        dirty_bytes: 8,
+        writeback_bytes: 9,
+        shmem_bytes: 10,
+        slab_bytes: 11,
+        slab_reclaimable_bytes: 12,
+        slab_unreclaimable_bytes: 13,
+        unevictable_bytes: 14,
+        kernel_stack_bytes: 15,
+        page_tables_bytes: 16,
+        swap_total_bytes: 17,
+        swap_free_bytes: 18,
+    }
 }
 
 async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
@@ -348,6 +447,47 @@ async fn send_mismatched_exec_control_result(stream: &mut UnixStream, request: R
     stream.write_all(&response).await.unwrap();
 }
 
+fn expect_process_control_delivered(outcome: ProcessControlOutcome) -> ProcessControlAck {
+    match outcome {
+        ProcessControlOutcome::Delivered(ack) => ack,
+        other => panic!("expected delivered process-control outcome, got {other:?}"),
+    }
+}
+
+fn expect_process_control_failure(
+    outcome: ProcessControlOutcome,
+    expected_kind: ProcessControlFailureKind,
+    expected_write_state: ProcessControlWriteState,
+) -> io::Error {
+    match outcome {
+        ProcessControlOutcome::Failed {
+            kind,
+            write_state,
+            error,
+        } => {
+            assert_eq!(kind, expected_kind);
+            assert_eq!(write_state, expected_write_state);
+            error
+        }
+        other => panic!("expected failed process-control outcome, got {other:?}"),
+    }
+}
+
+fn assert_process_control_guest_status(
+    outcome: &ProcessControlOutcome,
+    expected_status: ProcessControlGuestStatus,
+    expected_diagnostic: &str,
+) {
+    assert!(
+        matches!(
+            outcome,
+            ProcessControlOutcome::GuestStatus { status, diagnostic }
+                if *status == expected_status && diagnostic == expected_diagnostic
+        ),
+        "unexpected process-control outcome: {outcome:?}",
+    );
+}
+
 async fn send_exec_exit(stream: &mut UnixStream, exec_seq: u32) {
     let payload = vsock_proto::encode_exec_result(
         vsock_proto::ExecTermination::Exited { exit_code: 0 },
@@ -471,17 +611,27 @@ fn test_rate_limits() -> FirecrackerDeviceRateLimits {
     }
 }
 
-#[test]
-fn fresh_boot_config_omits_rate_limiters_when_disabled() {
+fn fresh_boot_config_json(
+    workspace_device_path: Option<String>,
+    rate_limits: Option<&FirecrackerDeviceRateLimits>,
+) -> serde_json::Value {
+    let invariant = InvariantConfig::new();
     let config = build_fresh_boot_firecracker_config(
+        &invariant,
         &test_resources(),
         "/kernel".to_string(),
         "/dev/nbd0".to_string(),
-        None,
+        workspace_device_path,
         "/run/vsock.sock".to_string(),
-        None,
+        rate_limits,
     )
     .unwrap();
+    serde_json::to_value(config).unwrap()
+}
+
+#[test]
+fn fresh_boot_config_omits_rate_limiters_when_disabled() {
+    let config = fresh_boot_config_json(None, None);
 
     assert!(config["drives"][0].get("rate_limiter").is_none());
     assert!(
@@ -499,15 +649,7 @@ fn fresh_boot_config_omits_rate_limiters_when_disabled() {
 #[test]
 fn fresh_boot_config_includes_rate_limiters_when_enabled() {
     let rate_limits = test_rate_limits();
-    let config = build_fresh_boot_firecracker_config(
-        &test_resources(),
-        "/kernel".to_string(),
-        "/dev/nbd0".to_string(),
-        None,
-        "/run/vsock.sock".to_string(),
-        Some(&rate_limits),
-    )
-    .unwrap();
+    let config = fresh_boot_config_json(None, Some(&rate_limits));
 
     assert_eq!(
         config["drives"][0]["rate_limiter"],
@@ -532,15 +674,7 @@ fn fresh_boot_config_includes_rate_limiters_when_enabled() {
 
 #[test]
 fn fresh_boot_config_includes_workspace_drive_without_rate_limiters() {
-    let config = build_fresh_boot_firecracker_config(
-        &test_resources(),
-        "/kernel".to_string(),
-        "/dev/nbd0".to_string(),
-        Some("/workspaces/test/workspace.ext4".to_string()),
-        "/run/vsock.sock".to_string(),
-        None,
-    )
-    .unwrap();
+    let config = fresh_boot_config_json(Some("/workspaces/test/workspace.ext4".to_string()), None);
 
     assert_eq!(config["drives"][0]["drive_id"], "rootfs");
     assert_eq!(config["drives"][1]["drive_id"], "workspace");
@@ -557,15 +691,10 @@ fn fresh_boot_config_includes_workspace_drive_without_rate_limiters() {
 #[test]
 fn fresh_boot_config_includes_workspace_drive_and_splits_block_limiters() {
     let rate_limits = test_rate_limits();
-    let config = build_fresh_boot_firecracker_config(
-        &test_resources(),
-        "/kernel".to_string(),
-        "/dev/nbd0".to_string(),
+    let config = fresh_boot_config_json(
         Some("/workspaces/test/workspace.ext4".to_string()),
-        "/run/vsock.sock".to_string(),
         Some(&rate_limits),
-    )
-    .unwrap();
+    );
 
     assert_eq!(config["drives"][0]["drive_id"], "rootfs");
     assert_eq!(config["drives"][1]["drive_id"], "workspace");
@@ -875,19 +1004,12 @@ async fn ready_for_park_boundary_preserves_non_reusable_outcome() {
         &coordinator,
         || async { Ok(TestNormalOperationFence) },
         || async { Ok(()) },
-        || async {
-            Ok(SandboxParkOutcome::NonReusable(
-                SandboxParkNonReusableReason::SevereMemoryRetention,
-            ))
-        },
+        || async { Ok(test_severe_memory_retention_outcome()) },
     )
     .await
     .unwrap();
 
-    assert_eq!(
-        outcome,
-        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
-    );
+    assert_eq!(outcome, test_severe_memory_retention_outcome());
     assert!(matches!(coordinator.state(), CoordinatorState::Parked));
 }
 
@@ -967,6 +1089,87 @@ async fn final_preparation_transport_failure_marks_dirty_without_quiesce_or_paus
         coordinator.state(),
         CoordinatorState::Dirty { .. }
     ));
+}
+
+#[tokio::test]
+async fn final_exec_park_observer_reports_completed_stages_in_order() {
+    let coordinator = ParkCoordinator::new();
+    let mut observer = RecordingFinalExecParkObserver::default();
+
+    super::park_with_ready_for_park_and_preparation_with_observer(
+        "test-sandbox",
+        &coordinator,
+        Some(&mut observer),
+        || async { Ok((TestNormalOperationFence, "prepared")) },
+        || async { Ok(()) },
+        || async { Ok(SandboxParkOutcome::Reusable) },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        observer.records,
+        vec![
+            (SandboxFinalExecParkStage::ReusePreparation, true),
+            (SandboxFinalExecParkStage::PhysicalPark, true),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn final_exec_park_observer_reports_preparation_failure_only() {
+    let coordinator = ParkCoordinator::new();
+    let mut observer = RecordingFinalExecParkObserver::default();
+
+    let result = super::park_with_ready_for_park_and_preparation_with_observer(
+        "test-sandbox",
+        &coordinator,
+        Some(&mut observer),
+        || async {
+            Err::<(TestNormalOperationFence, ()), _>(ParkNormalOperationFenceError::FinalOperation(
+                io::Error::new(io::ErrorKind::ConnectionReset, "final exec disconnected"),
+            ))
+        },
+        || async { Ok(()) },
+        || async { Ok(SandboxParkOutcome::Reusable) },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        observer.records,
+        vec![(SandboxFinalExecParkStage::ReusePreparation, false)]
+    );
+}
+
+#[tokio::test]
+async fn final_exec_park_observer_reports_physical_park_failure() {
+    let coordinator = ParkCoordinator::new();
+    let mut observer = RecordingFinalExecParkObserver::default();
+
+    let result = super::park_with_ready_for_park_and_preparation_with_observer(
+        "test-sandbox",
+        &coordinator,
+        Some(&mut observer),
+        || async { Ok((TestNormalOperationFence, ())) },
+        || async { Ok(()) },
+        || async {
+            Err::<SandboxParkOutcome, _>(idle_transition_error(
+                SandboxIdleTransition::Park,
+                "physical park failed",
+            ))
+        },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        observer.records,
+        vec![
+            (SandboxFinalExecParkStage::ReusePreparation, true),
+            (SandboxFinalExecParkStage::PhysicalPark, false),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -2498,6 +2701,26 @@ async fn file_operation_entrypoints_preserve_operation_context_for_start_rejecti
         .expect("abort prepare park");
 }
 
+#[test]
+fn process_control_latency_logs_only_material_delays() {
+    assert_eq!(
+        process_control_latency_level(Duration::from_millis(249)),
+        None
+    );
+    assert_eq!(
+        process_control_latency_level(Duration::from_millis(250)),
+        Some(ProcessControlLatencyLevel::Info)
+    );
+    assert_eq!(
+        process_control_latency_level(Duration::from_millis(749)),
+        Some(ProcessControlLatencyLevel::Info)
+    );
+    assert_eq!(
+        process_control_latency_level(Duration::from_millis(750)),
+        Some(ProcessControlLatencyLevel::Warn)
+    );
+}
+
 #[tokio::test]
 async fn process_control_rejects_closed_policy_gate_without_dirtying() {
     let ExecProcessControlFixture {
@@ -2513,7 +2736,7 @@ async fn process_control_rejects_closed_policy_gate_without_dirtying() {
         .expect("begin prepare park");
     let (state, state_tx) = running_process_state();
 
-    let error = FirecrackerSandbox::exec_process_control(
+    let outcome = FirecrackerSandbox::exec_process_control(
         coordinator.clone(),
         state,
         state_tx.subscribe(),
@@ -2522,8 +2745,12 @@ async fn process_control_rejects_closed_policy_gate_without_dirtying() {
         b"payload".to_vec(),
         Duration::from_secs(5),
     )
-    .await
-    .unwrap_err();
+    .await;
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::NotWritten,
+    );
 
     assert!(
         error.to_string().contains("sandbox operation gate closed"),
@@ -2548,7 +2775,7 @@ async fn process_control_rejects_stopped_state_without_dirtying() {
     let coordinator = ParkCoordinator::new();
     let (state, state_tx) = process_state(SandboxState::Stopped);
 
-    let error = FirecrackerSandbox::exec_process_control(
+    let outcome = FirecrackerSandbox::exec_process_control(
         coordinator.clone(),
         state,
         state_tx.subscribe(),
@@ -2557,11 +2784,53 @@ async fn process_control_rejects_stopped_state_without_dirtying() {
         b"payload".to_vec(),
         Duration::from_secs(5),
     )
-    .await
-    .unwrap_err();
+    .await;
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::NotWritten,
+    );
 
     assert!(
         error.to_string().contains("sandbox not running"),
+        "unexpected error: {error}",
+    );
+    assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+    send_exec_exit(&mut guest, exec_seq).await;
+    handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
+async fn process_control_reports_backend_crash_before_guest_write() {
+    let ExecProcessControlFixture {
+        host: _host,
+        handle,
+        mut guest,
+        exec_seq,
+    } = setup_exec_process_control_fixture().await;
+    let control = handle.control_handle().unwrap();
+    let coordinator = ParkCoordinator::new();
+    let (state, state_tx) = process_state(SandboxState::Crashed);
+
+    let outcome = FirecrackerSandbox::exec_process_control(
+        coordinator.clone(),
+        state,
+        state_tx.subscribe(),
+        control,
+        "crashed-before-write".to_owned(),
+        b"payload".to_vec(),
+        Duration::from_secs(5),
+    )
+    .await;
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::BackendCrashed,
+        ProcessControlWriteState::NotWritten,
+    );
+
+    assert!(
+        error.to_string().contains("firecracker process crashed"),
         "unexpected error: {error}",
     );
     assert_eq!(coordinator.state(), CoordinatorState::Open);
@@ -2583,7 +2852,7 @@ async fn process_control_local_validation_failure_keeps_gate_clean() {
     let (state, state_tx) = running_process_state();
     let too_large = vec![0; vsock_proto::EXEC_CONTROL_MAX_PAYLOAD_BYTES + 1];
 
-    let error = FirecrackerSandbox::exec_process_control(
+    let outcome = FirecrackerSandbox::exec_process_control(
         coordinator.clone(),
         Arc::clone(&state),
         state_tx.subscribe(),
@@ -2592,8 +2861,12 @@ async fn process_control_local_validation_failure_keeps_gate_clean() {
         too_large,
         Duration::from_secs(5),
     )
-    .await
-    .unwrap_err();
+    .await;
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::NotWritten,
+    );
 
     assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(coordinator.state(), CoordinatorState::Open);
@@ -2610,7 +2883,7 @@ async fn process_control_local_validation_failure_keeps_gate_clean() {
     let request = read_vsock_message(&mut guest).await;
     send_exec_control_result(&mut guest, request, ExecControlStatus::Delivered, "").await;
 
-    let ack = control_task.await.unwrap().unwrap();
+    let ack = expect_process_control_delivered(control_task.await.unwrap());
     assert_eq!(ack.message_id, "valid-after-local-failure");
     assert_eq!(coordinator.state(), CoordinatorState::Open);
 
@@ -2619,7 +2892,7 @@ async fn process_control_local_validation_failure_keeps_gate_clean() {
 }
 
 #[tokio::test]
-async fn process_control_guest_status_keeps_policy_open() {
+async fn process_control_preserves_guest_statuses_and_legacy_errors() {
     let ExecProcessControlFixture {
         host: _host,
         handle,
@@ -2630,12 +2903,85 @@ async fn process_control_guest_status_keeps_policy_open() {
     let coordinator = ParkCoordinator::new();
     let (state, state_tx) = running_process_state();
 
+    let cases = [
+        (
+            ExecControlStatus::Inactive,
+            ProcessControlGuestStatus::Inactive,
+            io::ErrorKind::NotFound,
+            "exec operation is not active",
+        ),
+        (
+            ExecControlStatus::NonceMismatch,
+            ProcessControlGuestStatus::NonceMismatch,
+            io::ErrorKind::PermissionDenied,
+            "exec operation nonce mismatch",
+        ),
+        (
+            ExecControlStatus::Unsupported,
+            ProcessControlGuestStatus::Unsupported,
+            io::ErrorKind::Unsupported,
+            "exec control is not supported by this operation",
+        ),
+        (
+            ExecControlStatus::Rejected,
+            ProcessControlGuestStatus::Rejected,
+            io::ErrorKind::PermissionDenied,
+            "exec control request rejected",
+        ),
+        (
+            ExecControlStatus::SinkUnavailable,
+            ProcessControlGuestStatus::SinkUnavailable,
+            io::ErrorKind::NotConnected,
+            "exec control sink is not connected",
+        ),
+        (
+            ExecControlStatus::SinkTimeout,
+            ProcessControlGuestStatus::SinkTimeout,
+            io::ErrorKind::TimedOut,
+            "exec control sink timed out",
+        ),
+        (
+            ExecControlStatus::QueueFull,
+            ProcessControlGuestStatus::QueueFull,
+            io::ErrorKind::WouldBlock,
+            "exec control queue is full",
+        ),
+        (
+            ExecControlStatus::SinkError,
+            ProcessControlGuestStatus::SinkError,
+            io::ErrorKind::BrokenPipe,
+            "exec control sink error",
+        ),
+    ];
+
+    for (index, (guest_status, status, error_kind, error_message)) in cases.into_iter().enumerate()
+    {
+        let message_id = format!("guest-status-{index}");
+        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
+            coordinator.clone(),
+            Arc::clone(&state),
+            state_tx.subscribe(),
+            control.clone(),
+            message_id,
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        send_exec_control_result(&mut guest, request, guest_status, "").await;
+
+        let outcome = control_task.await.unwrap();
+        assert_process_control_guest_status(&outcome, status, "");
+        let error = outcome.into_ack().unwrap_err();
+        assert_eq!(error.kind(), error_kind);
+        assert_eq!(error.to_string(), error_message);
+    }
+
     let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
         coordinator.clone(),
         state,
         state_tx.subscribe(),
         control,
-        "sink-timeout".to_owned(),
+        "guest-diagnostic".to_owned(),
         b"payload".to_vec(),
         Duration::from_secs(5),
     ));
@@ -2643,14 +2989,20 @@ async fn process_control_guest_status_keeps_policy_open() {
     send_exec_control_result(
         &mut guest,
         request,
-        ExecControlStatus::SinkTimeout,
-        "guest sink timed out",
+        ExecControlStatus::Rejected,
+        "guest rejected this request",
     )
     .await;
 
-    let error = control_task.await.unwrap().unwrap_err();
-    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
-    assert_eq!(error.to_string(), "guest sink timed out");
+    let outcome = control_task.await.unwrap();
+    assert_process_control_guest_status(
+        &outcome,
+        ProcessControlGuestStatus::Rejected,
+        "guest rejected this request",
+    );
+    let error = outcome.into_ack().unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "guest rejected this request");
     assert_eq!(coordinator.state(), CoordinatorState::Open);
 
     send_exec_exit(&mut guest, exec_seq).await;
@@ -2681,7 +3033,15 @@ async fn process_control_guest_error_keeps_policy_open() {
     let request = read_vsock_message(&mut guest).await;
     send_exec_control_error(&mut guest, request, "guest rejected control").await;
 
-    let error = control_task.await.unwrap().unwrap_err();
+    let outcome = control_task.await.unwrap();
+    assert!(
+        matches!(
+            &outcome,
+            ProcessControlOutcome::GuestError(message) if message == "guest rejected control"
+        ),
+        "unexpected process-control outcome: {outcome:?}",
+    );
+    let error = outcome.into_ack().unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::Other);
     assert_eq!(error.to_string(), "guest rejected control");
     assert_eq!(coordinator.state(), CoordinatorState::Open);
@@ -2739,8 +3099,8 @@ async fn process_control_allows_concurrent_requests_while_policy_open() {
     send_exec_control_result(&mut guest, second_request, ExecControlStatus::Delivered, "").await;
     send_exec_control_result(&mut guest, first_request, ExecControlStatus::Delivered, "").await;
 
-    let first_ack = first_task.await.unwrap().unwrap();
-    let second_ack = second_task.await.unwrap().unwrap();
+    let first_ack = expect_process_control_delivered(first_task.await.unwrap());
+    let second_ack = expect_process_control_delivered(second_task.await.unwrap());
     assert_eq!(first_ack.message_id, "concurrent-a");
     assert_eq!(second_ack.message_id, "concurrent-b");
     assert_eq!(coordinator.state(), CoordinatorState::Open);
@@ -2773,7 +3133,11 @@ async fn process_control_protocol_poison_after_guest_write_keeps_policy_open() {
     let request = read_vsock_message(&mut guest).await;
     send_mismatched_exec_control_result(&mut guest, request).await;
 
-    let error = control_task.await.unwrap().unwrap_err();
+    let error = expect_process_control_failure(
+        control_task.await.unwrap(),
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::PossiblyWritten,
+    );
     assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
     assert_eq!(coordinator.state(), CoordinatorState::Open);
 }
@@ -2805,11 +3169,15 @@ async fn process_control_backend_crash_after_guest_write_keeps_policy_open() {
     state.store(SandboxState::Crashed as u8, Ordering::Release);
     state_tx.send(SandboxState::Crashed).unwrap();
 
-    let error = tokio::time::timeout(Duration::from_secs(1), control_task)
+    let outcome = tokio::time::timeout(Duration::from_secs(1), control_task)
         .await
         .unwrap()
-        .unwrap()
-        .unwrap_err();
+        .unwrap();
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::BackendCrashed,
+        ProcessControlWriteState::PossiblyWritten,
+    );
     assert!(
         error.to_string().contains("firecracker process crashed"),
         "unexpected error: {error}",
@@ -2844,11 +3212,15 @@ async fn process_control_timeout_after_guest_write_keeps_policy_open() {
     let request = read_vsock_message(&mut guest).await;
     assert_eq!(request.msg_type, MSG_EXEC_CONTROL);
 
-    let error = tokio::time::timeout(Duration::from_secs(1), control_task)
+    let outcome = tokio::time::timeout(Duration::from_secs(1), control_task)
         .await
         .unwrap()
-        .unwrap()
-        .unwrap_err();
+        .unwrap();
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::PossiblyWritten,
+    );
     assert_eq!(error.kind(), io::ErrorKind::TimedOut);
     assert_eq!(coordinator.state(), CoordinatorState::Open);
 
@@ -3474,6 +3846,11 @@ struct MockBalloonStats {
     free_memory: Option<i64>,
     available_memory: Option<i64>,
     total_memory: Option<i64>,
+    swap_in: Option<i64>,
+    swap_out: Option<i64>,
+    major_faults: Option<i64>,
+    minor_faults: Option<i64>,
+    disk_caches: Option<i64>,
 }
 
 impl MockBalloonStats {
@@ -3484,6 +3861,11 @@ impl MockBalloonStats {
             free_memory: None,
             available_memory: None,
             total_memory: None,
+            swap_in: None,
+            swap_out: None,
+            major_faults: None,
+            minor_faults: None,
+            disk_caches: None,
         }
     }
 
@@ -3491,6 +3873,22 @@ impl MockBalloonStats {
         self.free_memory = Some(free_memory);
         self.available_memory = Some(available_memory);
         self.total_memory = Some(total_memory);
+        self
+    }
+
+    fn with_extended_counters(
+        mut self,
+        swap_in: i64,
+        swap_out: i64,
+        major_faults: i64,
+        minor_faults: i64,
+        disk_caches: i64,
+    ) -> Self {
+        self.swap_in = Some(swap_in);
+        self.swap_out = Some(swap_out);
+        self.major_faults = Some(major_faults);
+        self.minor_faults = Some(minor_faults);
+        self.disk_caches = Some(disk_caches);
         self
     }
 
@@ -3503,6 +3901,11 @@ impl MockBalloonStats {
             "free_memory": self.free_memory,
             "available_memory": self.available_memory,
             "total_memory": self.total_memory,
+            "swap_in": self.swap_in,
+            "swap_out": self.swap_out,
+            "major_faults": self.major_faults,
+            "minor_faults": self.minor_faults,
+            "disk_caches": self.disk_caches,
         })
         .to_string()
     }
@@ -3679,6 +4082,7 @@ where
     let guard = tracing::subscriber::set_default(subscriber);
     tracing::callsite::rebuild_interest_cache();
     tokio::pin!(future);
+    tokio::time::pause();
 
     loop {
         if has_captured_event(&captured.entries(), "waiting for balloon") {
@@ -3692,12 +4096,60 @@ where
         }
     }
 
-    tokio::time::pause();
     tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
     tokio::time::resume();
     let output = future.await;
     drop(guard);
     (output, captured.entries())
+}
+
+async fn advance_balloon_wait_to_progress_grace<F>(
+    mut future: std::pin::Pin<&mut F>,
+    captured: &CapturedEvents,
+) where
+    F: Future<Output = SandboxParkOutcome>,
+{
+    for expected_sample_count in 1..=2 {
+        if expected_sample_count == 2 {
+            tokio::time::advance(BALLOON_SETTLE_FAST_POLL_INTERVALS[0]).await;
+            tokio::time::resume();
+        }
+        loop {
+            let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+            if sample_count == expected_sample_count {
+                break;
+            }
+            tokio::select! {
+                outcome = future.as_mut() => {
+                    panic!(
+                        "balloon wait completed after {sample_count} samples, expected {expected_sample_count}; outcome={outcome:?}"
+                    );
+                }
+                () = tokio::task::yield_now() => {}
+            }
+        }
+        if expected_sample_count == 2 {
+            tokio::time::pause();
+        }
+    }
+
+    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::resume();
+    loop {
+        if has_captured_event(
+            &captured.entries(),
+            "balloon inflation still progressing, extending settle deadline",
+        ) {
+            tokio::time::pause();
+            return;
+        }
+        tokio::select! {
+            outcome = future.as_mut() => {
+                panic!("balloon wait completed without progress grace; outcome={outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
 }
 
 fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
@@ -3722,6 +4174,18 @@ fn captured_event_field<'a>(event: &'a CapturedEvent, field: &str) -> &'a str {
 fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
     let actual = captured_event_field(event, field);
     assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+}
+
+fn captured_message_count(events: &[CapturedEvent], message: &str) -> usize {
+    events
+        .iter()
+        .filter(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+        .count()
 }
 
 #[test]
@@ -3919,6 +4383,271 @@ fn balloon_statistics(target_mib: u32, actual_mib: u32) -> BalloonStatistics {
         minor_faults: None,
         disk_caches: None,
     }
+}
+
+#[tokio::test]
+async fn wait_for_balloon_rechecks_after_initial_25_ms_delay() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 0)),
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, target_mib)),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon(&client, target_mib, "fast-start");
+    tokio::pin!(wait);
+
+    loop {
+        if captured_message_count(&captured.entries(), "waiting for balloon") == 1 {
+            break;
+        }
+        tokio::select! {
+            outcome = &mut wait => {
+                panic!("balloon wait completed before the first deficient sample: {outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+
+    let mut requests = api.drain_requests();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+            .count(),
+        1
+    );
+
+    tokio::time::advance(Duration::from_millis(24)).await;
+    assert!(
+        api.drain_requests().is_empty(),
+        "the second statistics GET must not begin before 25 ms"
+    );
+
+    tokio::time::advance(Duration::from_millis(1)).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    requests.extend(api.drain_requests());
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+            .count(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let request_entered = Arc::new(Notify::new());
+    let response_release = Arc::new(Notify::new());
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::iter::repeat_with(|| MockBalloonStatsReply::GatedOk {
+            entered: Arc::clone(&request_entered),
+            release: Arc::clone(&response_release),
+            stats: MockBalloonStats::new(target_mib, 0),
+        })
+        .take(16)
+        .chain(std::iter::once(MockBalloonStatsReply::Status(500)))
+        .collect(),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let wait = wait_for_balloon(&client, target_mib, "bounded-schedule");
+    tokio::pin!(wait);
+
+    for (index, delay_ms) in [
+        0_u64, 25, 50, 100, 100, 100, 200, 200, 500, 500, 500, 500, 500, 500, 500, 500,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if delay_ms > 0 {
+            tokio::time::advance(Duration::from_millis(delay_ms - 1)).await;
+            assert!(
+                futures_util::poll!(wait.as_mut()).is_pending(),
+                "balloon wait completed before scheduled sample {}",
+                index + 1
+            );
+            assert_eq!(
+                captured_message_count(&captured.entries(), "waiting for balloon"),
+                index,
+                "statistics GET began before the scheduled delay of {delay_ms} ms"
+            );
+            tokio::time::advance(Duration::from_millis(1)).await;
+            tokio::time::resume();
+        }
+        loop {
+            tokio::select! {
+                () = request_entered.notified() => break,
+                outcome = &mut wait => {
+                    panic!(
+                        "balloon wait completed before statistics request {}; outcome={outcome:?}",
+                        index + 1
+                    );
+                }
+                () = tokio::task::yield_now() => {}
+            }
+        }
+        tokio::time::pause();
+        response_release.notify_one();
+        let expected_sample_count = index + 1;
+        loop {
+            let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+            if sample_count == expected_sample_count {
+                break;
+            }
+            tokio::select! {
+                outcome = &mut wait => {
+                    panic!(
+                        "balloon wait completed after {sample_count} samples, expected {expected_sample_count}; outcome={outcome:?}"
+                    );
+                }
+                () = tokio::task::yield_now() => {}
+            }
+        }
+    }
+
+    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+
+    expect_severe_memory_retention(outcome);
+    let requests = api.drain_requests();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+            .count(),
+        16
+    );
+}
+
+#[tokio::test]
+async fn wait_for_balloon_extends_deadline_for_recent_safe_progress() {
+    let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+    let initial_stats =
+        MockBalloonStats::new(target_mib, 256).with_memory(mib(3840), mib(3940), mib(3940));
+    let progressing_stats =
+        MockBalloonStats::new(target_mib, 2314).with_memory(mib(2136), mib(2265), mib(3940));
+    let api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(initial_stats),
+            MockBalloonStatsReply::Ok(progressing_stats),
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, target_mib)),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon(&client, target_mib, "progress-grace");
+    tokio::pin!(wait);
+
+    advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+    let events = captured.entries();
+
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    let event = captured_event(
+        &events,
+        "balloon inflation still progressing, extending settle deadline",
+    );
+    assert_eq!(event.level, Level::INFO);
+    assert_event_field(event, "actual", "Some(2314)");
+    assert_event_field(event, "target", "3584");
+    assert_event_field(event, "deficit_mib", "Some(1270)");
+    assert_event_field(event, "previous_actual_mib", "Some(256)");
+    assert_event_field(event, "reported_free_mib", "Some(2136)");
+    assert_event_field(event, "reported_available_mib", "Some(2265)");
+    assert_event_field(event, "grace_ms", "5000");
+    assert!(!has_captured_event(
+        &events,
+        "balloon inflate incomplete after 5s, pausing anyway"
+    ));
+}
+
+#[tokio::test]
+async fn wait_for_balloon_progress_grace_remains_bounded() {
+    let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+    let initial_stats =
+        MockBalloonStats::new(target_mib, 256).with_memory(mib(3840), mib(3940), mib(3940));
+    let progressing_stats =
+        MockBalloonStats::new(target_mib, 2314).with_memory(mib(2136), mib(2265), mib(3940));
+    let api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(initial_stats),
+            MockBalloonStatsReply::Ok(progressing_stats.clone()),
+            MockBalloonStatsReply::Ok(progressing_stats),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon(&client, target_mib, "bounded-progress-grace");
+    tokio::pin!(wait);
+
+    advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
+    loop {
+        let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+        if sample_count == 3 {
+            break;
+        }
+        tokio::select! {
+            outcome = &mut wait => {
+                panic!("balloon wait completed before the grace sample; outcome={outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+    tokio::time::advance(BALLOON_SETTLE_PROGRESS_GRACE).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+    let events = captured.entries();
+
+    expect_severe_memory_retention(outcome);
+    assert_eq!(
+        captured_message_count(
+            &events,
+            "balloon inflation still progressing, extending settle deadline"
+        ),
+        1
+    );
+    let event = captured_event(
+        &events,
+        "balloon inflate incomplete after 10s, pausing anyway",
+    );
+    assert_eq!(event.level, Level::WARN);
+    assert_event_field(event, "actual", "Some(2314)");
+    assert_event_field(event, "deficit_mib", "Some(1270)");
+    assert_event_field(event, "reason", "severe_deficit");
+    assert_event_field(event, "admission_action", "reject_and_destroy");
 }
 
 #[tokio::test]
@@ -4162,7 +4891,9 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
 #[tokio::test]
 async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
-    let stats = MockBalloonStats::new(target_mib, 900).with_memory(mib(32), mib(0), mib(2048));
+    let stats = MockBalloonStats::new(target_mib, 900)
+        .with_memory(mib(32), mib(0), mib(2048))
+        .with_extended_counters(11, 12, 13, 14, 15);
     let api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
@@ -4172,10 +4903,26 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     let (outcome, events) =
         capture_balloon_timeout_after_sample(wait_for_balloon(&client, target_mib, "severe")).await;
 
-    assert_eq!(
-        outcome,
-        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
-    );
+    let diagnostics = expect_severe_memory_retention(outcome);
+    assert_eq!(diagnostics.requested_target_mib, target_mib);
+    assert_eq!(diagnostics.first_observed_target_mib, Some(target_mib));
+    assert_eq!(diagnostics.observed_target_mib, Some(target_mib));
+    assert!(diagnostics.target_observed);
+    assert_eq!(diagnostics.first_actual_mib, Some(900));
+    assert_eq!(diagnostics.actual_mib, Some(900));
+    assert_eq!(diagnostics.max_actual_mib, Some(900));
+    assert_eq!(diagnostics.deficit_mib, Some(636));
+    assert_eq!(diagnostics.actual_delta_mib, Some(0));
+    assert_eq!(diagnostics.sample_count, 1);
+    assert_eq!(diagnostics.reported_free_memory_bytes, Some(mib(32)));
+    assert_eq!(diagnostics.reported_available_memory_bytes, Some(0));
+    assert_eq!(diagnostics.reported_total_memory_bytes, Some(mib(2048)));
+    assert_eq!(diagnostics.reported_swap_in_bytes, Some(11));
+    assert_eq!(diagnostics.reported_swap_out_bytes, Some(12));
+    assert_eq!(diagnostics.reported_major_faults, Some(13));
+    assert_eq!(diagnostics.reported_minor_faults, Some(14));
+    assert_eq!(diagnostics.reported_disk_caches_bytes, Some(15));
+    assert_eq!(diagnostics.guest_memory_snapshot, None);
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -4216,7 +4963,6 @@ async fn park_pauses_when_balloon_stats_are_unavailable() {
     assert_event_field(event, "deficit_mib", "None");
     assert_event_field(event, "sample_count", "0");
     assert_event_field(event, "reason", "stats_unavailable");
-
     let reqs = api.drain_requests();
     let ps = patches(&reqs);
     assert_eq!(ps.len(), 2, "expected balloon inflate + vm pause");
@@ -4459,15 +5205,15 @@ async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
     let mut controller = Some(original_controller);
     let mut is_parked = false;
 
-    park_inner(
+    let result = park_inner(
         &mut is_parked,
         512,
         &mut controller,
         api.socket_path(),
         "test-park-small",
     )
-    .await
-    .unwrap();
+    .await;
+    result.unwrap();
 
     assert!(is_parked, "is_parked should be set");
     let still_there = controller.as_ref().expect("controller must be preserved");
@@ -4810,7 +5556,6 @@ async fn park_balloon_failure_leaves_flag_false() {
     let ps = patches(&reqs);
     assert_eq!(ps.len(), 1, "only balloon inflate should be attempted");
     assert_eq!(ps[0].path, "/balloon");
-
     // A follow-up unpark must be a clean no-op because is_parked is false.
     let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
     unpark_inner(
@@ -5289,10 +6034,8 @@ async fn park_rejects_severe_balloon_retention_after_pausing() {
     .await;
     let outcome = result.unwrap();
 
-    assert_eq!(
-        outcome,
-        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
-    );
+    let diagnostics = expect_severe_memory_retention(outcome);
+    assert_eq!(diagnostics.guest_memory_snapshot, None);
     assert!(is_parked);
 
     let reqs = api.drain_requests();
@@ -5313,6 +6056,115 @@ async fn park_rejects_severe_balloon_retention_after_pausing() {
     assert_eq!(ps[0].path, "/balloon");
     assert_eq!(ps[1].path, "/vm");
     assert!(ps[1].body.contains("Paused"));
+}
+
+#[tokio::test]
+async fn severe_park_collects_terminal_guest_memory_before_pause() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 0)),
+            MockBalloonStatsReply::Status(500),
+        ]),
+    );
+    let socket_path = api.socket_path().to_path_buf();
+    let (guest, mut guest_stream) = connected_mock_guest().await;
+    let retained_guest = Arc::clone(&guest);
+
+    let park_task = tokio::spawn(async move {
+        let mut controller = Some(test_balloon_controller());
+        let mut is_parked = false;
+        let outcome = park_inner_with_guest(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            &socket_path,
+            "terminal-memory-snapshot",
+            guest,
+        )
+        .await;
+        (outcome, is_parked)
+    });
+
+    let request = read_vsock_message(&mut guest_stream).await;
+    assert_eq!(request.msg_type, MSG_MEMORY_SNAPSHOT);
+    assert!(request.payload.is_empty());
+    let requests_before_snapshot = api.drain_requests();
+    assert!(
+        patches(&requests_before_snapshot)
+            .iter()
+            .all(|request| request.path != "/vm"),
+        "Firecracker must not pause before the terminal guest snapshot"
+    );
+
+    let snapshot = test_guest_memory_snapshot();
+    let response = vsock_proto::encode(
+        MSG_MEMORY_SNAPSHOT_RESULT,
+        request.seq,
+        &snapshot.encode_payload(),
+    )
+    .unwrap();
+    guest_stream.write_all(&response).await.unwrap();
+
+    let (result, is_parked) = park_task.await.unwrap();
+    let diagnostics = expect_severe_memory_retention(result.unwrap());
+    assert_eq!(
+        diagnostics.guest_memory_snapshot,
+        Some(guest_memory_snapshot(snapshot))
+    );
+    assert!(is_parked);
+    assert!(retained_guest.lock().await.is_some());
+
+    let mut requests = requests_before_snapshot;
+    requests.extend(api.drain_requests());
+    let pause = patches(&requests)
+        .into_iter()
+        .find(|request| request.path == "/vm")
+        .expect("severe park should pause Firecracker after the guest snapshot");
+    assert!(pause.body.contains("Paused"));
+}
+
+#[tokio::test]
+async fn reusable_park_does_not_request_terminal_guest_memory() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
+            target_mib, target_mib,
+        ))]),
+    );
+    let (guest, guest_stream) = connected_mock_guest().await;
+    let retained_guest = Arc::clone(&guest);
+    let mut controller = Some(test_balloon_controller());
+    let mut is_parked = false;
+
+    let outcome = park_inner_with_guest(
+        &mut is_parked,
+        2048,
+        &mut controller,
+        api.socket_path(),
+        "reusable-no-memory-snapshot",
+        guest,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    assert!(is_parked);
+    assert!(retained_guest.lock().await.is_some());
+    let mut buffer = [0; HEADER_SIZE];
+    assert_eq!(
+        guest_stream.try_read(&mut buffer).unwrap_err().kind(),
+        io::ErrorKind::WouldBlock,
+        "reusable park must not send a terminal memory snapshot request"
+    );
+    let requests = api.drain_requests();
+    let pause = patches(&requests)
+        .into_iter()
+        .find(|request| request.path == "/vm")
+        .expect("reusable park should pause Firecracker");
+    assert!(pause.body.contains("Paused"));
 }
 
 #[tokio::test]

@@ -1,12 +1,24 @@
 import { command, computed, state } from "ccstate";
+import { timeout } from "signal-timers";
 import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
+import {
+  createMarkdownPreviewTree,
+  type MarkdownPreviewTreeComputed,
+} from "../markdown-preview-tree.ts";
+import type { ArtifactRefInput } from "../chat-page/thread-sidebar.ts";
+import { previewAttachmentFromUrl } from "../chat-page/parse-body-blocks.ts";
 import {
   createTextPreviewComputed,
   isTextPreviewKind,
   type TextPreviewComputed,
   type TextPreviewKind,
 } from "../text-preview.ts";
-import { onRef } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
+import {
+  createObjectUrlResource,
+  type ObjectUrlResource,
+} from "../object-url-resource.ts";
+import { rootSignal$ } from "../root-signal.ts";
 
 // ---------------------------------------------------------------------------
 // Lightbox state — tracks which attachment is open in the global preview UI
@@ -51,10 +63,27 @@ type AttachmentDocumentLightboxInput =
   | AttachmentTextDocumentLightboxInput
   | AttachmentFramedDocumentLightboxInput;
 
+type AttachmentImageLightboxInput = {
+  readonly url: string;
+  readonly file?: File;
+  readonly filename?: string;
+  readonly threadId?: string;
+  readonly artifact?: AttachmentArtifactMetadata;
+  readonly shareAvailable?: boolean;
+  readonly showSizeInSubtitle?: boolean;
+  readonly splitViewAvailable?: boolean;
+};
+
 export type AttachmentDocumentLightboxState =
   | (AttachmentDocumentLightboxBase & {
-      readonly kind: TextPreviewKind;
+      readonly kind: Exclude<TextPreviewKind, "markdown">;
       readonly text$: TextPreviewComputed;
+    })
+  | (AttachmentDocumentLightboxBase & {
+      readonly kind: "markdown";
+      readonly text$: TextPreviewComputed;
+      /** Prepared render tree, diagram signals embedded. */
+      readonly markdownTree$: MarkdownPreviewTreeComputed;
     })
   | AttachmentFramedDocumentLightboxInput;
 
@@ -64,17 +93,12 @@ function isAttachmentTextDocumentLightboxInput(
   return isTextPreviewKind(value.kind);
 }
 
+type AttachmentImageLightboxState = AttachmentImageLightboxInput & {
+  readonly kind: "image";
+};
+
 export type AttachmentLightboxState =
-  | {
-      kind: "image";
-      url: string;
-      filename?: string;
-      threadId?: string;
-      artifact?: AttachmentArtifactMetadata;
-      shareAvailable?: boolean;
-      showSizeInSubtitle?: boolean;
-      splitViewAvailable?: boolean;
-    }
+  | AttachmentImageLightboxState
   | AttachmentDocumentLightboxState
   | {
       kind: "audio" | "video";
@@ -90,6 +114,39 @@ const internalLightboxState$ = state<AttachmentLightboxState | null>(null);
 const internalLightboxDialogVisible$ = state(false);
 const internalLightboxDialogFullscreen$ = state(false);
 const internalLightboxDialogCloseToken$ = state(0);
+const internalLightboxDialogMountToken$ = state(0);
+const resetLightboxDialogCloseSignal$ = resetSignal();
+const resetLightboxPreviewSignal$ = resetSignal();
+const internalLightboxObjectUrlResources$ = state<readonly ObjectUrlResource[]>(
+  [],
+);
+
+const releaseLightboxObjectUrlResources$ = command(({ get, set }) => {
+  for (const resource of get(internalLightboxObjectUrlResources$)) {
+    resource.release();
+  }
+  set(internalLightboxObjectUrlResources$, []);
+});
+
+const disposeLightboxSession$ = command(({ set }) => {
+  set(internalLightboxDialogCloseToken$, (value) => {
+    return value + 1;
+  });
+  set(internalLightboxDialogVisible$, false);
+  set(internalLightboxDialogFullscreen$, false);
+  set(internalLightboxState$, null);
+  set(resetLightboxPreviewSignal$);
+  set(releaseLightboxObjectUrlResources$);
+});
+
+const disposeLightboxForDialogUnmountToken$ = command(
+  ({ get, set }, token: number) => {
+    if (get(internalLightboxDialogMountToken$) !== token) {
+      return;
+    }
+    set(disposeLightboxSession$);
+  },
+);
 
 export const lightboxUrl$ = computed((get) => {
   return get(internalLightboxState$);
@@ -118,17 +175,26 @@ const closeLightboxForDialogExitToken$ = command(
     set(internalLightboxDialogVisible$, false);
     set(internalLightboxDialogFullscreen$, false);
     set(internalLightboxState$, null);
+    set(resetLightboxPreviewSignal$);
+    set(releaseLightboxObjectUrlResources$);
   },
 );
 
-export const closeLightboxWithDialogExit$ = command(({ get, set }) => {
-  const token = get(internalLightboxDialogCloseToken$) + 1;
-  set(internalLightboxDialogCloseToken$, token);
-  set(internalLightboxDialogVisible$, false);
-  window.setTimeout(() => {
-    set(closeLightboxForDialogExitToken$, token);
-  }, LIGHTBOX_DIALOG_EXIT_DURATION_MS);
-});
+export const closeLightboxWithDialogExit$ = command(
+  ({ get, set }, signal: AbortSignal) => {
+    const closeSignal = set(resetLightboxDialogCloseSignal$, signal);
+    const token = get(internalLightboxDialogCloseToken$) + 1;
+    set(internalLightboxDialogCloseToken$, token);
+    set(internalLightboxDialogVisible$, false);
+    timeout(
+      () => {
+        set(closeLightboxForDialogExitToken$, token);
+      },
+      LIGHTBOX_DIALOG_EXIT_DURATION_MS,
+      { signal: closeSignal },
+    );
+  },
+);
 
 /**
  * An open artifact sidebar owns every artifact click that could live in it, so
@@ -136,46 +202,94 @@ export const closeLightboxWithDialogExit$ = command(({ get, set }) => {
  * Previews that cannot move into the sidebar keep the lightbox.
  *
  * This is opt-out: a new lightbox caller is routed unless it sets
- * `splitViewAvailable: false`. Set it whenever the preview is not a stored
- * thread artifact — a pending composer upload, or a synthetic `data:`/`blob:`
- * URL such as a rendered mermaid diagram — because the sidebar derives its
- * title and kind from the URL and offers artifact-only share, download, and
- * Drive-sync actions.
+ * `splitViewAvailable: false`. Set it for previews that do not belong in the
+ * thread sidebar, such as a pending composer upload. File-backed previews pass
+ * the File metadata so each destination can create an object URL for its own
+ * consumer lifetime while preserving the name and content type.
  */
+type AttachmentSidebarPreviewInput = {
+  readonly url: string;
+  readonly file?: File;
+  readonly filename?: string;
+  readonly contentType?: string;
+  readonly shareAvailable?: boolean;
+  readonly splitViewAvailable?: boolean;
+  readonly text$?: TextPreviewComputed;
+};
+
+export function attachmentSidebarRef(
+  value: AttachmentSidebarPreviewInput,
+): ArtifactRefInput {
+  const share =
+    value.shareAvailable === undefined
+      ? {}
+      : { shareAvailable: value.shareAvailable };
+  if (value.file) {
+    return { file: value.file, url: value.url, ...share };
+  }
+  if (value.filename) {
+    const contentType =
+      value.contentType ??
+      previewAttachmentFromUrl(value.url, value.filename).contentType;
+    return {
+      url: value.url,
+      filename: value.filename,
+      ...(contentType ? { contentType } : {}),
+      // The caller's preview content rides along, so the sidebar reuses the
+      // already-fetched text instead of fetching its own copy.
+      ...(value.text$ ? { text$: value.text$ } : {}),
+      ...share,
+    };
+  }
+  return value.url;
+}
+
 const routeToOpenArtifactSidebar$ = command(
-  ({ set }, value: { url: string; splitViewAvailable?: boolean }): boolean => {
+  ({ set }, value: AttachmentSidebarPreviewInput): boolean => {
     if (value.splitViewAvailable === false) {
       return false;
     }
-    return set(openArtifactInOpenSidebar$, value.url);
+    return set(openArtifactInOpenSidebar$, attachmentSidebarRef(value));
   },
 );
 
+function imageLightboxState(
+  input: AttachmentImageLightboxInput,
+): AttachmentImageLightboxState {
+  if (!input.file) {
+    return { kind: "image", ...input };
+  }
+  return {
+    kind: "image",
+    ...input,
+    filename: input.filename ?? input.file.name,
+  };
+}
+
 export const openImageLightbox$ = command(
-  (
-    { set },
-    value:
-      | string
-      | {
-          url: string;
-          filename?: string;
-          threadId?: string;
-          artifact?: AttachmentArtifactMetadata;
-          shareAvailable?: boolean;
-          showSizeInSubtitle?: boolean;
-          splitViewAvailable?: boolean;
-        },
-  ) => {
+  ({ get, set }, value: string | AttachmentImageLightboxInput) => {
     const input = typeof value === "string" ? { url: value } : value;
     if (set(routeToOpenArtifactSidebar$, input)) {
       return;
+    }
+    const previewSignal = set(resetLightboxPreviewSignal$, get(rootSignal$));
+    const resource = input.file
+      ? createObjectUrlResource(input.file, previewSignal)
+      : undefined;
+    if (resource) {
+      set(internalLightboxObjectUrlResources$, (current) => {
+        return [...current, resource];
+      });
     }
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, { kind: "image", ...input });
+    set(
+      internalLightboxState$,
+      imageLightboxState(resource ? { ...input, url: resource.url } : input),
+    );
   },
 );
 
@@ -187,7 +301,7 @@ export const openImageLightbox$ = command(
  */
 export const navigateImageLightbox$ = command(
   (
-    { set },
+    { get, set },
     value: {
       url: string;
       filename?: string;
@@ -198,25 +312,34 @@ export const navigateImageLightbox$ = command(
       splitViewAvailable?: boolean;
     },
   ) => {
+    set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxState$, { kind: "image", ...value });
   },
 );
 
 export const openDocumentLightbox$ = command(
-  ({ set }, value: AttachmentDocumentLightboxInput) => {
+  ({ get, set }, value: AttachmentDocumentLightboxInput) => {
     if (set(routeToOpenArtifactSidebar$, value)) {
       return;
     }
+    const previewSignal = set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
     if (isAttachmentTextDocumentLightboxInput(value)) {
-      set(internalLightboxState$, {
-        ...value,
-        text$: value.text$ ?? createTextPreviewComputed(value.url),
-      });
+      const text$ = value.text$ ?? createTextPreviewComputed(value.url);
+      if (value.kind === "markdown") {
+        set(internalLightboxState$, {
+          ...value,
+          kind: "markdown",
+          text$,
+          markdownTree$: createMarkdownPreviewTree(text$, previewSignal),
+        });
+        return;
+      }
+      set(internalLightboxState$, { ...value, kind: value.kind, text$ });
       return;
     }
     set(internalLightboxState$, value);
@@ -225,7 +348,7 @@ export const openDocumentLightbox$ = command(
 
 export const openVideoLightbox$ = command(
   (
-    { set },
+    { get, set },
     value: {
       url: string;
       filename: string;
@@ -238,6 +361,7 @@ export const openVideoLightbox$ = command(
     if (set(routeToOpenArtifactSidebar$, value)) {
       return;
     }
+    set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
@@ -249,7 +373,7 @@ export const openVideoLightbox$ = command(
 
 export const openAudioLightbox$ = command(
   (
-    { set },
+    { get, set },
     value: {
       url: string;
       filename: string;
@@ -262,6 +386,7 @@ export const openAudioLightbox$ = command(
     if (set(routeToOpenArtifactSidebar$, value)) {
       return;
     }
+    set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
@@ -272,25 +397,26 @@ export const openAudioLightbox$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Escape-key handler for global attachment preview — closes on Escape
+// Global attachment preview mount owner — releases resources on route unmount
 // ---------------------------------------------------------------------------
 
-const closeLightboxOnEscape$ = command(
-  ({ set }, el: HTMLDivElement, signal: AbortSignal) => {
-    document.addEventListener(
-      "keydown",
-      (e: KeyboardEvent) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          set(closeLightboxWithDialogExit$);
-        }
+const ownLightboxDialogMount$ = command(
+  ({ get, set }, _element: HTMLDivElement, signal: AbortSignal) => {
+    const mountToken = get(internalLightboxDialogMountToken$) + 1;
+    set(internalLightboxDialogMountToken$, mountToken);
+    signal.addEventListener(
+      "abort",
+      () => {
+        // React can detach and immediately reattach a callback ref during a
+        // render or StrictMode check. Defer disposal so that replacement mount
+        // can supersede this token; a real route unmount has no replacement.
+        queueMicrotask(() => {
+          set(disposeLightboxForDialogUnmountToken$, mountToken);
+        });
       },
-      { capture: true, signal },
+      { once: true },
     );
-    el.focus({ preventScroll: true });
   },
 );
 
-export const lightboxDialogRef$ = onRef(closeLightboxOnEscape$);
+export const lightboxDialogMountRef$ = onRef(ownLightboxDialogMount$);

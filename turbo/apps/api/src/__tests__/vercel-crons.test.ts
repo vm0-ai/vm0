@@ -2,9 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  cronAggregateInsightsContract,
   cronAggregateModelStatsContract,
-  cronAggregateUsageContract,
   cronBrowserReconcileContract,
   cronCompactChatThreadSnapshotsContract,
   cronCompactUsageEventsContract,
@@ -17,14 +15,19 @@ import {
   cronExecuteWorkflowAutomationsContract,
   cronMonitorChatEventQueueContract,
   cronProcessUsageEventsContract,
-  cronRenewGoogleCalendarWatchesContract,
+  cronProjectChatEventSearchContract,
   cronRenewGmailWatchesContract,
+  cronSnapshotChatEventsContract,
+  cronRetainChatEventsContract,
+  cronRenewGoogleFormsWatchesContract,
+  cronRenewGoogleCalendarWatchesContract,
   cronRenewGoogleWorkspaceEventSubscriptionsContract,
   cronReconcileBillingEntitlementsContract,
   cronRefreshStoragePresignedUrlsContract,
+  cronSteerRunTimeBudgetContract,
   cronSyncSkillsContract,
   cronTelegramCleanupContract,
-} from "@vm0/api-contracts/contracts/cron";
+} from "@okouai/api-contracts/contracts/cron";
 import { describe, expect, it } from "vitest";
 
 import { ROUTES } from "../signals/route";
@@ -55,6 +58,18 @@ const expectedVercelCrons = [
     schedule: "* * * * *",
   },
   {
+    path: cronProjectChatEventSearchContract.project.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronSnapshotChatEventsContract.snapshot.path,
+    schedule: "*/10 * * * *",
+  },
+  {
+    path: cronRetainChatEventsContract.retain.path,
+    schedule: "* * * * *",
+  },
+  {
     path: cronExecuteWorkflowAutomationsContract.execute.path,
     schedule: "* * * * *",
   },
@@ -67,20 +82,16 @@ const expectedVercelCrons = [
     schedule: "0 */12 * * *",
   },
   {
+    path: cronRenewGoogleFormsWatchesContract.renew.path,
+    schedule: "0 */12 * * *",
+  },
+  {
     path: cronRenewGoogleCalendarWatchesContract.renew.path,
     schedule: "0 */12 * * *",
   },
   {
     path: cronRenewGoogleWorkspaceEventSubscriptionsContract.renew.path,
     schedule: "0 */12 * * *",
-  },
-  {
-    path: cronAggregateUsageContract.aggregate.path,
-    schedule: "5 0 * * *",
-  },
-  {
-    path: cronAggregateInsightsContract.aggregate.path,
-    schedule: "0 * * * *",
   },
   {
     path: cronCompactChatThreadSnapshotsContract.compact.path,
@@ -133,6 +144,10 @@ const expectedVercelCrons = [
   {
     path: cronAggregateModelStatsContract.aggregate.path,
     schedule: "12 * * * *",
+  },
+  {
+    path: cronSteerRunTimeBudgetContract.steer.path,
+    schedule: "* * * * *",
   },
 ] satisfies readonly VercelCron[];
 

@@ -5,21 +5,34 @@ import {
   zeroOrgContract,
   zeroOrgDeleteContract,
   zeroOrgLeaveContract,
-} from "@vm0/api-contracts/contracts/zero-org";
-import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
+} from "@okouai/api-contracts/contracts/zero-org";
+import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/api-contracts/contracts/zero-org-members";
-import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { org$, refreshOrg$ } from "../../org.ts";
+} from "@okouai/api-contracts/contracts/zero-org-members";
+import type {
+  OrgInvitationPurchasePreviewResponse,
+  OrgRole,
+} from "@okouai/api-contracts/contracts/org-members";
+import type { UsagePackUsd } from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { isOrgAdmin$, org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
+import { featureSwitch$ } from "../../external/feature-switch.ts";
+import {
+  billingStatusAsync$,
+  reloadBillingStatus$,
+  reloadUsagePackManagement$,
+  usagePackCatalogAsync$,
+  usagePackManagementAsync$,
+} from "../billing.ts";
 
 const internalBillingScrollTarget$ = state<"buy-credits" | null>(null);
 
@@ -148,6 +161,12 @@ export const initProfileName$ = command(
 // Workspace danger zone
 // ---------------------------------------------------------------------------
 
+/**
+ * Literal the user must type to confirm workspace deletion. It is deliberately
+ * untranslated so the same token works in every locale.
+ */
+export const WORKSPACE_DELETE_CONFIRMATION = "confirm";
+
 const internalDeleteConfirm$ = state("");
 
 export const deleteConfirm$ = computed((get) => {
@@ -162,15 +181,36 @@ export const setDeleteConfirm$ = command(({ set }, value: string) => {
 // Billing sub-page
 // ---------------------------------------------------------------------------
 
-const internalBillingSubPage$ = state(false);
+type BillingSubPage = "plans" | "migration-pro" | "migration-team" | null;
+
+const internalBillingSubPage$ = state<BillingSubPage>(null);
 
 export const billingSubPage$ = computed((get) => {
-  return get(internalBillingSubPage$);
+  return get(internalBillingSubPage$) !== null;
+});
+
+export const billingMigrationSubPage$ = computed((get) => {
+  return get(internalBillingSubPage$)?.startsWith("migration-") ?? false;
+});
+
+export const billingMigrationTargetTier$ = computed((get) => {
+  const subPage = get(internalBillingSubPage$);
+  return subPage === "migration-pro"
+    ? "pro"
+    : subPage === "migration-team"
+      ? "team"
+      : null;
 });
 
 export const setBillingSubPage$ = command(({ set }, value: boolean) => {
-  set(internalBillingSubPage$, value);
+  set(internalBillingSubPage$, value ? "plans" : null);
 });
+
+export const openBillingMigrationSubPage$ = command(
+  ({ set }, targetTier: "pro" | "team") => {
+    set(internalBillingSubPage$, `migration-${targetTier}`);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Workspace members
@@ -216,10 +256,6 @@ export const inviteDialogOpen$ = computed((get) => {
   return get(internalInviteDialogOpen$);
 });
 
-export const setInviteDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalInviteDialogOpen$, open);
-});
-
 const internalInviteRole$ = state<OrgRole>("member");
 
 export const inviteRole$ = computed((get) => {
@@ -228,6 +264,75 @@ export const inviteRole$ = computed((get) => {
 
 export const setInviteRole$ = command(({ set }, value: OrgRole) => {
   set(internalInviteRole$, value);
+});
+
+const internalInviteUsagePackUsd$ = state<UsagePackUsd>(20);
+
+export const inviteUsagePackUsd$ = computed((get) => {
+  return get(internalInviteUsagePackUsd$);
+});
+
+export const setInviteUsagePackUsd$ = command(
+  ({ set }, value: UsagePackUsd) => {
+    set(internalInviteUsagePackUsd$, value);
+  },
+);
+
+export const setInviteDialogOpen$ = command(({ set }, open: boolean) => {
+  if (open) {
+    set(internalInviteEmail$, "");
+    set(internalInviteTouched$, false);
+    set(internalInviteRole$, "member");
+    set(internalInviteUsagePackUsd$, 20);
+  }
+  set(internalInviteDialogOpen$, open);
+});
+
+interface InvitePurchasePreview {
+  readonly email: string;
+  readonly role: OrgRole;
+  readonly payment: OrgInvitationPurchasePreviewResponse;
+}
+
+const internalInvitePurchasePreview$ = state<InvitePurchasePreview | null>(
+  null,
+);
+
+export const invitePurchasePreview$ = computed((get) => {
+  return get(internalInvitePurchasePreview$);
+});
+
+export const closeInvitePurchasePreview$ = command(({ set }) => {
+  set(internalInvitePurchasePreview$, null);
+});
+
+export const memberUsagePackManagement$ = computed((get) => {
+  if (!get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
+    return null;
+  }
+  return (async () => {
+    if (!(await get(isOrgAdmin$))) {
+      return null;
+    }
+    const billing = await get(billingStatusAsync$);
+    if (billing.memberInviteUsagePackRequired !== true) {
+      return null;
+    }
+    return await get(usagePackManagementAsync$);
+  })();
+});
+
+export const invitationUsagePackCatalog$ = computed((get) => {
+  if (!get(internalInviteDialogOpen$)) {
+    return null;
+  }
+  return (async () => {
+    const management = await get(memberUsagePackManagement$);
+    if (!management) {
+      return null;
+    }
+    return await get(usagePackCatalogAsync$);
+  })();
 });
 
 // ---------------------------------------------------------------------------
@@ -327,7 +432,7 @@ const uploadOrgLogo$ = command(
   ): Promise<{ readonly logoUrl: string | null }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const client = get(zeroClient$)(zeroOrgLogoContract);
+    const client = get(zeroClient$)(orgLogoContract);
     const result = await accept(
       client.post({
         body: formData,
@@ -342,7 +447,7 @@ const uploadOrgLogo$ = command(
 
 export const loadOrgLogo$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroOrgLogoContract);
+    const client = get(zeroClient$)(orgLogoContract);
     const result = await accept(
       client.get({
         fetchOptions: { signal },
@@ -427,11 +532,11 @@ export const leaveOrg$ = command(
 );
 
 export const deleteOrg$ = command(
-  async ({ get }, slug: string, signal: AbortSignal): Promise<void> => {
+  async ({ get }, signal: AbortSignal): Promise<void> => {
     const client = get(zeroClient$)(zeroOrgDeleteContract);
     await accept(
       client.delete({
-        body: { slug },
+        body: { confirm: WORKSPACE_DELETE_CONFIRMATION },
         fetchOptions: { signal },
       }),
       [200],
@@ -457,9 +562,36 @@ export const deleteOrg$ = command(
 // ---------------------------------------------------------------------------
 
 export const inviteMember$ = command(
-  async ({ get, set }, email: string, role: OrgRole, signal: AbortSignal) => {
+  async (
+    { get, set },
+    email: string,
+    role: OrgRole,
+    usagePackUsd: UsagePackUsd | null,
+    signal: AbortSignal,
+  ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgInviteContract);
+    if (usagePackUsd !== null) {
+      const result = await accept(
+        client.previewPurchase({
+          body: {
+            email,
+            role,
+            usagePackUsd,
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      set(internalInvitePurchasePreview$, {
+        email,
+        role,
+        payment: result.body,
+      });
+      set(internalInviteDialogOpen$, false);
+      return;
+    }
     await accept(
       client.invite({
         body: { email, role },
@@ -478,8 +610,41 @@ export const inviteMember$ = command(
     );
     set(refreshOrgMembers$);
     set(internalInviteDialogOpen$, false);
+  },
+);
+
+export const confirmInvitePurchase$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const preview = get(internalInvitePurchasePreview$);
+    if (!preview) {
+      throw new Error("Invitation purchase preview is not open");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgInviteContract);
+    await accept(
+      client.confirmPurchase({
+        params: { purchaseId: preview.payment.purchaseId },
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.invitationSent;
+        },
+        { email: preview.email },
+      ),
+    );
+    set(internalInvitePurchasePreview$, null);
     set(internalInviteEmail$, "");
     set(internalInviteRole$, "member");
+    set(internalInviteUsagePackUsd$, 20);
+    set(refreshOrgMembers$);
+    set(reloadUsagePackManagement$);
+    set(reloadBillingStatus$);
   },
 );
 
@@ -563,6 +728,8 @@ export const removeMember$ = command(
       ),
     );
     set(refreshOrgMembers$);
+    set(reloadBillingStatus$);
+    set(reloadUsagePackManagement$);
     set(internalRemoveMemberDialogTarget$, null);
   },
 );

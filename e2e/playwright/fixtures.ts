@@ -27,6 +27,17 @@ export const test = base.extend({
       });
     }
 
-    await use(context);
+    try {
+      await use(context);
+    } finally {
+      await context.unrouteAll({ behavior: "ignoreErrors" });
+    }
+  },
+  page: async ({ page }, use) => {
+    try {
+      await use(page);
+    } finally {
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
   },
 });

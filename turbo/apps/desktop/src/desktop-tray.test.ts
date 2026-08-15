@@ -92,7 +92,6 @@ const signedInAuth: DesktopAuthState = {
   organization: {
     id: "org_1",
     name: "Max & Zoe",
-    slug: "max-zoe",
   },
 };
 
@@ -147,6 +146,7 @@ function computerUseState(
 
 function installController(getState: () => DesktopComputerUseState) {
   const controller = new DesktopTrayController({
+    brandName: "Zero",
     displayName: "Zero Computer Use",
     iconPath,
     disabledIconPath,

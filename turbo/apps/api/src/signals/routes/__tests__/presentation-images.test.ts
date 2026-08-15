@@ -1,19 +1,20 @@
-import { presentationImagesContract } from "@vm0/api-contracts/contracts/presentation-images";
-import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { presentationImagesContract } from "@okouai/api-contracts/contracts/presentation-images";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { presentationImagesRoutes } from "../presentation-images";
 
 const context = testContext();
 const routeMocks = createZeroRouteMocks(context);
 const UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos";
-const PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search";
 
 interface PresentationImagesFixture {
   readonly orgId: string;
@@ -137,7 +138,9 @@ describe("POST /api/presentation/images/resolve", () => {
       ),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -249,7 +252,9 @@ describe("POST /api/presentation/images/resolve", () => {
       }),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -283,7 +288,9 @@ describe("POST /api/presentation/images/resolve", () => {
       }),
     );
 
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -310,7 +317,9 @@ describe("POST /api/presentation/images/resolve", () => {
   it("returns 503 when no image provider is configured", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: { authorization: "Bearer clerk-session" },
@@ -329,142 +338,12 @@ describe("POST /api/presentation/images/resolve", () => {
     });
   });
 
-  it("resolves directly through Pexels when Unsplash is not configured", async () => {
-    const fixture = createFixture("_pexels_only");
-    routeMocks.clerk.session(fixture.userId, fixture.orgId);
-    mockEnv("PEXELS_API_KEY", "test-pexels-key");
-
-    const pexelsQueries: string[] = [];
-    server.use(
-      http.get(PEXELS_SEARCH_URL, ({ request }) => {
-        expect(request.headers.get("authorization")).toBe("test-pexels-key");
-        const url = new URL(request.url);
-        pexelsQueries.push(url.searchParams.get("query") ?? "");
-        return HttpResponse.json({
-          photos: [
-            {
-              url: "https://www.pexels.com/photo/city-skyline-123/",
-              src: {
-                large: "https://images.pexels.com/photo-city-large",
-                medium: "https://images.pexels.com/photo-city-medium",
-              },
-              photographer: "City Shooter",
-              photographer_url: "https://www.pexels.com/@cityshooter",
-              alt: "A city skyline",
-              width: 1500,
-              height: 1000,
-              avg_color: "#334455",
-            },
-          ],
-        });
-      }),
-    );
-
-    const client = setupApp({ context })(presentationImagesContract);
-    const response = await accept(
-      client.resolve({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          items: [{ path: "$.pages[0].visual", query: "city skyline" }],
-        },
-      }),
-      [200],
-    );
-
-    expect(pexelsQueries).toStrictEqual(["city skyline"]);
-    expect(response.body.items).toStrictEqual([
-      {
-        path: "$.pages[0].visual",
-        query: "city skyline",
-        status: "resolved",
-        asset: {
-          src: "https://images.pexels.com/photo-city-large",
-          alt: "A city skyline",
-          source: "pexels",
-          sourceName: "Pexels",
-          sourceUrl: "https://www.pexels.com/photo/city-skyline-123/",
-          sourceAttributionUrl:
-            "https://www.pexels.com/photo/city-skyline-123/",
-          unsplashUrl: "https://www.pexels.com/photo/city-skyline-123/",
-          photographerName: "City Shooter",
-          photographerUrl: "https://www.pexels.com/@cityshooter",
-          license: "Pexels",
-          width: 1500,
-          height: 1000,
-          color: "#334455",
-        },
-      },
-    ]);
-  });
-
-  it("falls back to Pexels when Unsplash has no result", async () => {
-    const fixture = createFixture();
-    routeMocks.clerk.session(fixture.userId, fixture.orgId);
-    mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
-    mockEnv("PEXELS_API_KEY", "test-pexels-key");
-
-    let unsplashCalled = false;
-    server.use(
-      http.get(UNSPLASH_SEARCH_URL, () => {
-        unsplashCalled = true;
-        return HttpResponse.json({ results: [] });
-      }),
-      http.get(PEXELS_SEARCH_URL, () => {
-        return HttpResponse.json({
-          photos: [
-            {
-              url: "https://www.pexels.com/photo/forest-999/",
-              src: { large: "https://images.pexels.com/photo-forest-large" },
-              photographer: "Forest Fan",
-              photographer_url: "https://www.pexels.com/@forestfan",
-              alt: "A misty forest",
-              width: 1600,
-              height: 900,
-            },
-          ],
-        });
-      }),
-    );
-
-    const client = setupApp({ context })(presentationImagesContract);
-    const response = await accept(
-      client.resolve({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          items: [{ path: "$.pages[0].visual", query: "forest" }],
-        },
-      }),
-      [200],
-    );
-
-    expect(unsplashCalled).toBeTruthy();
-    expect(response.body.items).toStrictEqual([
-      {
-        path: "$.pages[0].visual",
-        query: "forest",
-        status: "resolved",
-        asset: {
-          src: "https://images.pexels.com/photo-forest-large",
-          alt: "A misty forest",
-          source: "pexels",
-          sourceName: "Pexels",
-          sourceUrl: "https://www.pexels.com/photo/forest-999/",
-          sourceAttributionUrl: "https://www.pexels.com/photo/forest-999/",
-          unsplashUrl: "https://www.pexels.com/photo/forest-999/",
-          photographerName: "Forest Fan",
-          photographerUrl: "https://www.pexels.com/@forestfan",
-          license: "Pexels",
-          width: 1600,
-          height: 900,
-        },
-      },
-    ]);
-  });
-
   it("requires file write capability for zero tokens", async () => {
     const fixture = createFixture();
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
-    const client = setupApp({ context })(presentationImagesContract);
+    const client = setupApp({ context, routes: presentationImagesRoutes })(
+      presentationImagesContract,
+    );
     const response = await accept(
       client.resolve({
         headers: {

@@ -6,16 +6,16 @@ import {
   useLastResolved,
   useSet,
 } from "ccstate-react";
-import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
 import {
-  IconArrowsSort,
-  IconChevronDown,
-  IconLock,
-  IconPlus,
-  IconRoute,
-  IconUser,
-  IconWorld,
-} from "@tabler/icons-react";
+  ArrowUpDown,
+  ChevronDown,
+  Lock,
+  Plus,
+  Route,
+  User,
+  Globe,
+} from "lucide-react";
 import {
   Button,
   DropdownMenu,
@@ -30,7 +30,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
 import { i18n } from "../../i18n/index.ts";
@@ -63,7 +63,11 @@ import {
   automationTypeLabel,
   WorkflowAutomationEnabledSwitch,
 } from "../zero-page/workflow-automations-page.tsx";
-import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
+import {
+  agentLabel,
+  labelInitials,
+  workflowTitle,
+} from "./workflow-shared.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
 type WorkflowAutomationEntryMap = ReadonlyMap<
@@ -85,14 +89,6 @@ function workflowAutomationEntryMap(
 
 function ownerLabel(workflow: ZeroWorkflowSummary): string {
   return workflow.ownerUserDisplayName?.trim() || workflow.ownerUserId;
-}
-
-function initials(label: string): string {
-  const words = label.trim().split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
-  }
-  return (words[0]?.slice(0, 2) || "??").toUpperCase();
 }
 
 function automationDotClass(entry: WorkflowAutomationEntry): string {
@@ -125,7 +121,7 @@ function connectorPillClassName({
     "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border-[0.7px] border-border/80 bg-white px-2 text-[11px] font-medium leading-none shadow-[0_0_2px_rgba(0,0,0,0.06)]",
     muted ? "text-muted-foreground" : "text-foreground/70",
     interactive &&
-      "cursor-pointer transition-colors hover:border-border hover:bg-gray-50 hover:text-foreground",
+      "cursor-pointer transition-colors hover:border-border hover:bg-state-hover hover:text-foreground",
   );
 }
 
@@ -176,7 +172,7 @@ function MemberAvatar({
   }
   return (
     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-gray-50 text-[10px] font-semibold text-muted-foreground">
-      {initials(label)}
+      {labelInitials(label)}
     </span>
   );
 }
@@ -187,11 +183,10 @@ function VisibilityIcon({
   readonly workflow: ZeroWorkflowSummary;
 }) {
   const isPublic = workflow.visibility === "public";
-  const Icon = isPublic ? IconWorld : IconLock;
+  const Icon = isPublic ? Globe : Lock;
   return (
     <Icon
       size={15}
-      stroke={1.7}
       className={cn("shrink-0", isPublic ? "text-blue-500" : "text-[#45A7A8]")}
       aria-label={
         isPublic
@@ -234,7 +229,7 @@ function ConnectorPopoverList({
         return (
           <div
             key={entry.automation.id}
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50"
+            className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-state-hover"
           >
             <span className={connectorPillClassName({})}>
               <ConnectorPillMarker dotClassName={automationDotClass(entry)} />
@@ -305,7 +300,7 @@ function ConnectorCell({
       </TooltipProvider>
       <PopoverContent
         align="end"
-        className="w-max min-w-[16rem] max-w-[min(28rem,var(--radix-popover-content-available-width))] p-1"
+        className="w-max min-w-[16rem] max-w-[min(28rem,var(--available-width))] p-1"
       >
         <ConnectorPopoverList
           entries={entries}
@@ -364,7 +359,7 @@ function WorkflowRowIcon({
   }
   return (
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-muted-foreground">
-      <IconRoute size={16} stroke={1.7} />
+      <Route size={16} />
     </span>
   );
 }
@@ -380,7 +375,7 @@ function WorkflowRow({
 }) {
   const title = workflowTitle(workflow);
   return (
-    <article className="flex items-center gap-3 px-5 py-3.5 text-left text-foreground transition-colors hover:bg-gray-50">
+    <article className="flex items-center gap-3 px-5 py-3.5 text-left text-foreground transition-colors hover:bg-state-hover">
       <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -784,7 +779,7 @@ function FilterPills<T extends string>({
               "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
               active
                 ? "bg-muted text-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                : "bg-background text-muted-foreground hover:bg-state-hover hover:text-foreground",
             )}
           >
             {option.label}
@@ -841,16 +836,12 @@ function SortDropdown({
           size="sm"
           className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
         >
-          <IconArrowsSort
-            size={15}
-            stroke={1.8}
-            className="text-muted-foreground"
-          />
+          <ArrowUpDown size={15} className="" />
           {current?.label ??
             i18n.t(($) => {
               return $.workflows.list.sort.label;
             })}
-          <IconChevronDown size={14} stroke={1.8} />
+          <ChevronDown size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -900,11 +891,7 @@ function AgentFilterDropdown({
               size={16}
             />
           ) : (
-            <IconUser
-              size={15}
-              stroke={1.8}
-              className="text-muted-foreground"
-            />
+            <User size={15} className="" />
           )}
           <span className="max-w-[8rem] truncate">
             {selected?.label ??
@@ -912,19 +899,19 @@ function AgentFilterDropdown({
                 return $.workflows.list.allAgents;
               })}
           </span>
-          <IconChevronDown size={14} stroke={1.8} />
+          <ChevronDown size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="max-h-[min(20rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
+        className="max-h-[min(20rem,var(--available-height))] overflow-y-auto"
       >
         <DropdownMenuItem
           onSelect={() => {
             onChange(WORKFLOW_ALL_AGENTS);
           }}
         >
-          <IconUser size={15} stroke={1.8} className="text-muted-foreground" />
+          <User size={15} className="" />
           {i18n.t(($) => {
             return $.workflows.list.allAgents;
           })}
@@ -1109,7 +1096,7 @@ export function WorkflowsPage() {
               openCreateWorkflowDialog();
             }}
           >
-            <IconPlus size={14} stroke={2} />
+            <Plus size={14} />
             {t(($) => {
               return $.workflows.list.createInChat;
             })}

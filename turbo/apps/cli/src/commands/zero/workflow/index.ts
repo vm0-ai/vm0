@@ -20,11 +20,11 @@ export const zeroWorkflowCommand = new Command("workflow")
     "after",
     `
 Examples:
-  Create under an agent:   zero workflow create my-workflow --agent <agent-id> --instruction "Do things"
-  List workflows:          zero workflow list
-  View workflow content:   zero workflow view <workflow> --agent <agent-id>
-  Update workflow content: zero workflow edit <workflow> --agent <agent-id> --instruction "New steps"
-  Copy onto another agent: zero workflow copy <workflow> --agent <source-agent-id> --to-agent <target-agent-id>
-  Manage automations:      zero workflow automation --help
-  Delete a workflow:       zero workflow delete <workflow> --agent <agent-id> -y`,
+  Create under an agent:   okou workflow create my-workflow --agent <agent-id> --instruction "Do things"
+  List workflows:          okou workflow list
+  View workflow content:   okou workflow view <workflow> --agent <agent-id>
+  Update workflow content: okou workflow edit <workflow> --agent <agent-id> --instruction "New steps"
+  Copy onto another agent: okou workflow copy <workflow> --agent <source-agent-id> --to-agent <target-agent-id>
+  Manage automations:      okou workflow automation --help
+  Delete a workflow:       okou workflow delete <workflow> --agent <agent-id> -y`,
   );

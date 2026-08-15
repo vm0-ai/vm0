@@ -1,14 +1,8 @@
-import type { SessionAuthObject } from "@clerk/backend";
 import { computed, type Computed } from "ccstate";
 
 import { request$ } from "../context/hono";
-import { clerk$ } from "../external/clerk";
+import { authenticateClerkSession } from "../external/clerk";
 import { ApiOrgRole } from "../../types/auth";
-
-type SignedInSessionAuthObject = Extract<
-  SessionAuthObject,
-  { isAuthenticated: true }
->;
 
 type ClerkSessionAuthContext =
   | {
@@ -24,9 +18,7 @@ type ClerkSessionAuthContext =
       readonly orgRole?: undefined;
     };
 
-function mapClerkOrgRole(
-  orgRole: SignedInSessionAuthObject["orgRole"],
-): ApiOrgRole | undefined {
+function mapClerkOrgRole(orgRole: string | null): ApiOrgRole | undefined {
   if (!orgRole) {
     return undefined;
   }
@@ -36,35 +28,31 @@ function mapClerkOrgRole(
 
 const requestState$ = computed((get) => {
   const request = get(request$);
-  const clerk = get(clerk$);
-  return clerk.authenticateRequest(request.raw, {
-    acceptsToken: "session_token",
-  });
+  return authenticateClerkSession(request.raw);
 });
 
 export const clerkSessionAuth$: Computed<
   Promise<ClerkSessionAuthContext | null>
 > = computed(async (get): Promise<ClerkSessionAuthContext | null> => {
-  const requestState = await get(requestState$);
+  const identity = await get(requestState$);
 
-  if (!requestState.isAuthenticated) {
+  if (!identity) {
     return null;
   }
 
-  const auth = requestState.toAuth();
-  const orgRole = mapClerkOrgRole(auth.orgRole);
+  const orgRole = mapClerkOrgRole(identity.orgRole);
 
-  if (auth.orgId && orgRole) {
+  if (identity.orgId && orgRole) {
     return {
       tokenType: "session",
-      userId: auth.userId,
-      orgId: auth.orgId,
+      userId: identity.userId,
+      orgId: identity.orgId,
       orgRole,
     };
   }
 
   return {
     tokenType: "session",
-    userId: auth.userId,
+    userId: identity.userId,
   };
 });

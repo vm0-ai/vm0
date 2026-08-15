@@ -56,7 +56,7 @@ use crate::ids::RunId;
 use crate::restored_session_identity::{RestoredSessionIdentity, RestoredSessionIdentityFields};
 
 use super::fs::{
-    ensure_workspace_cache_entry_dir, remove_workspace_cache_path_if_exists,
+    remove_workspace_cache_path_if_exists, secure_workspace_cache_publication_file,
     workspace_cache_existing_path_allocated_bytes,
 };
 use super::metadata::WorkspaceImageFileIdentity;
@@ -195,6 +195,31 @@ impl WorkspaceSessionHistorySidecarMetadata {
 }
 
 impl WorkspaceImageCache {
+    #[cfg(test)]
+    pub(super) fn fail_next_session_history_sidecar_metadata_commit(&self) {
+        self.inner
+            .fail_next_session_history_sidecar_metadata_commit
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    async fn commit_session_history_sidecar_metadata(
+        &self,
+        tmp_metadata_path: &Path,
+        sidecar_metadata_path: &Path,
+    ) -> std::io::Result<()> {
+        #[cfg(test)]
+        if self
+            .inner
+            .fail_next_session_history_sidecar_metadata_commit
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            return Err(std::io::Error::other(
+                "injected workspace session history sidecar metadata commit failure",
+            ));
+        }
+        fs::rename(tmp_metadata_path, sidecar_metadata_path).await
+    }
+
     pub(super) async fn probe_session_history_sidecar(
         &self,
         cache_key: &str,
@@ -276,6 +301,7 @@ impl WorkspaceImageCache {
         paths: &CacheEntryPaths,
         source: &WorkspaceSessionHistorySidecarPromotionSource,
     ) -> RunnerResult<()> {
+        self.ensure_workspace_cache_entry_dir(cache_key).await?;
         let tmp_metadata = fs::symlink_metadata(&source.tmp_path).await?;
         if !tmp_metadata.is_file()
             || tmp_metadata.len() != source.encoded_size
@@ -284,6 +310,10 @@ impl WorkspaceImageCache {
         {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             return Ok(());
+        }
+        if let Err(e) = secure_workspace_cache_publication_file(&source.tmp_path) {
+            let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
+            return Err(e);
         }
         let previous_metadata = self
             .read_session_history_sidecar_metadata(paths.session_history_sidecar_metadata())
@@ -296,7 +326,6 @@ impl WorkspaceImageCache {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             return Ok(());
         };
-        ensure_workspace_cache_entry_dir(paths.entry_dir()).await?;
         let tmp_metadata_path = self.workspace_image_cache_tmp_sidecar_metadata(cache_key, run_id);
         let sidecar_metadata_path = paths.session_history_sidecar_metadata();
         let sidecar_body_path = paths.entry_dir().join(body_slot.file_name());
@@ -309,12 +338,20 @@ impl WorkspaceImageCache {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             return Err(e.into());
         }
+        if let Err(e) = secure_workspace_cache_publication_file(&tmp_metadata_path) {
+            let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
+            let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
+            return Err(e);
+        }
         if let Err(e) = fs::rename(&source.tmp_path, &sidecar_body_path).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             return Err(e.into());
         }
-        if let Err(e) = fs::rename(&tmp_metadata_path, sidecar_metadata_path).await {
+        if let Err(e) = self
+            .commit_session_history_sidecar_metadata(&tmp_metadata_path, sidecar_metadata_path)
+            .await
+        {
             let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
             let _ = remove_workspace_cache_path_if_exists(&sidecar_body_path).await;
             return Err(e.into());

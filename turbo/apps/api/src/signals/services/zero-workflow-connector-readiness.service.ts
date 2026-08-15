@@ -2,16 +2,16 @@ import type {
   ZeroWorkflowConnectorReadinessEntry,
   ZeroWorkflowConnectorReadinessResponse,
   ZeroWorkflowConnectorReadinessStatus,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
-} from "@vm0/api-contracts/contracts/connector-identity";
-import type { getAllFeatureStates } from "@vm0/core/feature-switch";
+} from "@okouai/api-contracts/contracts/connector-identity";
+import type { getAllFeatureStates } from "@okouai/core/feature-switch";
 import {
-  zeroWorkflowAutomations,
-  type ZeroWorkflowEventType,
-} from "@vm0/db/schema/zero-workflow";
+  workflowAutomations,
+  type WorkflowAutomationEventType,
+} from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -61,7 +61,7 @@ interface AutomationConnectorDependency {
 }
 
 function automationConnectorDependency(
-  eventType: ZeroWorkflowEventType,
+  eventType: WorkflowAutomationEventType,
 ): AutomationConnectorDependency | null {
   switch (eventType) {
     case "gmail-new-message":
@@ -71,9 +71,9 @@ function automationConnectorDependency(
         reason: "This workflow has a Gmail event automation.",
       };
     }
-    case "github-label-applied":
     case "github-deployment-status-created":
     case "github-issue-comment-created":
+    case "github-pull-request":
     case "github-pull-request-review-submitted":
     case "github-workflow-job-completed":
     case "github-workflow-run-completed": {
@@ -88,6 +88,12 @@ function automationConnectorDependency(
       return {
         connectorSlug: "google-calendar",
         reason: "This workflow has a Google Calendar event automation.",
+      };
+    }
+    case "google-forms-response-submitted": {
+      return {
+        connectorSlug: "google-forms",
+        reason: "This workflow has a Google Forms response automation.",
       };
     }
     case "google-meet-transcript-generated": {
@@ -140,13 +146,13 @@ async function loadAutomationConnectorDependencies(
   },
 ): Promise<ReadonlyMap<ConnectorSlug, AutomationConnectorDependency>> {
   const automations = await db
-    .select({ eventType: zeroWorkflowAutomations.eventType })
-    .from(zeroWorkflowAutomations)
+    .select({ eventType: workflowAutomations.eventType })
+    .from(workflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowAutomations.orgId, args.orgId),
-        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
-        eq(zeroWorkflowAutomations.workflowId, args.workflowId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.workflowId, args.workflowId),
       ),
     );
 
@@ -169,13 +175,15 @@ interface ModelCatalogEntry {
   readonly description: string;
 }
 
-async function detectModelConnectorDependencies(args: {
-  readonly workflow: WorkflowConnectorReadinessInput;
-  readonly catalog: readonly ModelCatalogEntry[];
-  readonly signal: AbortSignal;
-}): Promise<ReadonlyMap<ConnectorSlug, string>> {
+async function detectModelConnectorDependencies(
+  args: {
+    readonly workflow: WorkflowConnectorReadinessInput;
+    readonly catalog: readonly ModelCatalogEntry[];
+  },
+  signalArg: AbortSignal,
+): Promise<ReadonlyMap<ConnectorSlug, string>> {
   const signal = AbortSignal.any([
-    args.signal,
+    signalArg,
     AbortSignal.timeout(CONNECTOR_READINESS_TIMEOUT_MS),
   ]);
   const content = await generateText(
@@ -203,10 +211,10 @@ async function detectModelConnectorDependencies(args: {
     ],
     undefined,
     {
-      signal,
       responseFormat: { type: "json_object" },
       temperature: 0,
     },
+    signal,
   );
   if (content === null) {
     throw new Error("OpenRouter is not configured");
@@ -280,7 +288,6 @@ export const detectWorkflowConnectorReadiness$ = command(
           zeroConnectorList({
             orgId: args.orgId,
             userId: args.userId,
-            featureStates: args.featureStates,
           }),
         ),
         loadAgentConnectorScope(db, {
@@ -319,11 +326,13 @@ export const detectWorkflowConnectorReadiness$ = command(
         };
       },
     );
-    const modelDependencies = await detectModelConnectorDependencies({
-      workflow: args.workflow,
-      catalog: modelCatalog,
+    const modelDependencies = await detectModelConnectorDependencies(
+      {
+        workflow: args.workflow,
+        catalog: modelCatalog,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     const automationFallbackMetadata = new Map(
       catalogRead.referenceMetadata.map((connector) => {

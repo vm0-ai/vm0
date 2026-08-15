@@ -1,13 +1,13 @@
-import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
-import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
-import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
-import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
-import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
-import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
-import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
+import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
+import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
+import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
+import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
+import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
+import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
+import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { command } from "ccstate";
 import {
   and,
@@ -17,20 +17,13 @@ import {
   isNull,
   lt,
   notExists,
-  notInArray,
   or,
-  sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-
-import {
-  nullableDriverValueDecoder,
-  pgTextDecoder,
-} from "../../lib/db-structured-result";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { STALE_QUEUE_ITEM_AGE_MS } from "./chat-thread-queue-drain.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
 
 const ORPHANED_CHAT_EVENT_ERROR_CODE = "ORPHANED_QUEUED_CHAT_MESSAGES";
 const monitoredEventRevoker = alias(chatEvents, "monitored_event_revoker");
@@ -153,20 +146,6 @@ function missingScheduledContextRowCondition(db: Db) {
       ),
     ),
     and(
-      eq(chatEvents.contextType, "goal"),
-      notExists(
-        db
-          .select({ id: chatGoalContext.id })
-          .from(chatGoalContext)
-          .where(
-            and(
-              eq(chatGoalContext.id, chatEvents.contextId),
-              eq(chatGoalContext.chatThreadId, chatEvents.chatThreadId),
-            ),
-          ),
-      ),
-    ),
-    and(
       eq(chatEvents.contextType, "morning_brief"),
       notExists(
         db
@@ -183,18 +162,37 @@ function missingScheduledContextRowCondition(db: Db) {
   );
 }
 
+function missingGoalRowCondition(db: Db) {
+  return and(
+    chatEventTypeIn(["input.goal"]),
+    notExists(
+      db
+        .select({ id: threadGoals.id })
+        .from(threadGoals)
+        .where(
+          and(
+            eq(chatEvents.contextType, "goal"),
+            eq(threadGoals.id, chatEvents.contextId),
+            eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
+          ),
+        ),
+    ),
+  );
+}
+
 async function monitorChatEventQueue(
   db: Db,
   signal: AbortSignal,
   eventIds?: readonly string[],
 ) {
   const staleBefore = new Date(nowDate().getTime() - STALE_QUEUE_ITEM_AGE_MS);
-  const orphanedSource =
-    sql`coalesce(${chatEvents.contextType}, ${chatEvents.triggerSource})`.mapWith(
-      nullableDriverValueDecoder(pgTextDecoder),
-    );
+  const orphanedSource = chatEvents.contextType;
   const results = await db
-    .select({ source: orphanedSource, orphanedMessages: count() })
+    .select({
+      eventType: chatEvents.eventType,
+      source: orphanedSource,
+      orphanedMessages: count(),
+    })
     .from(chatEvents)
     .where(
       and(
@@ -211,26 +209,24 @@ async function monitorChatEventQueue(
         ),
         lt(chatEvents.createdAt, staleBefore),
         or(
-          and(
-            isNull(chatEvents.contextType),
-            or(
-              chatEventTypeIn(["input.goal"]),
-              notInArray(chatEvents.triggerSource, ["web", "test", "agent"]),
-            ),
-          ),
           missingChatIntegrationContextRowCondition(db),
           missingScheduledContextRowCondition(db),
+          missingGoalRowCondition(db),
         ),
       ),
     )
-    .groupBy(orphanedSource);
+    .groupBy(orphanedSource, chatEvents.eventType);
   signal.throwIfAborted();
 
-  const orphanedMessagesBySource = Object.fromEntries(
-    results.map((result) => {
-      return [result.source ?? "(unknown)", result.orphanedMessages];
-    }),
-  );
+  const orphanedMessagesBySource: Record<string, number> = {};
+  for (const result of results) {
+    const source =
+      result.eventType === "input.goal"
+        ? "goal"
+        : (result.source ?? "(unknown)");
+    orphanedMessagesBySource[source] =
+      (orphanedMessagesBySource[source] ?? 0) + result.orphanedMessages;
+  }
   const orphanedMessages = Object.values(orphanedMessagesBySource).reduce(
     (total, sourceCount) => {
       return total + sourceCount;

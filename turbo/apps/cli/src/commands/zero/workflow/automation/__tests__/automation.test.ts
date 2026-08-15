@@ -1,5 +1,5 @@
 /**
- * Tests for `zero workflow automation` commands
+ * Tests for `okou workflow automation` commands
  * (add / update / list / show / rm / enable / disable).
  *
  * Tests command-level behavior via parseAsync() following CLI testing
@@ -15,7 +15,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
-import { automationCommand } from "../index";
+import { zeroWorkflowCommand } from "../../index";
+import { automationCommand, createAutomationAddCommand } from "../index";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import chalk from "chalk";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
@@ -25,8 +27,8 @@ const THREAD_ID = "44444444-4444-4444-8444-444444444444";
 const MODEL_ID = "gpt-5.6-sol";
 const STRAPI_INTEGRATION_ID = "55555555-5555-4555-8555-555555555556";
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-const THREAD_METADATA_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
-const MODEL_POLICIES_URL = "http://localhost:3000/api/zero/model-policies";
+const THREAD_METADATA_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/metadata`;
+const MODEL_POLICIES_URL = "http://localhost:3000/api/okou/model-policies";
 
 function zeroToken(orgId: string): string {
   const payload = Buffer.from(
@@ -34,7 +36,7 @@ function zeroToken(orgId: string): string {
       userId: "user-123",
       runId: "run-123",
       orgId,
-      scope: "zero",
+      scope: "okou",
       capabilities: [],
       iat: 1,
       exp: 4_102_444_800,
@@ -128,17 +130,18 @@ const gmailLabelAutomation = {
   nextRunAt: null,
 };
 
-const githubLabelAutomation = {
+const githubPullRequestAutomation = {
   ...automationBase,
   kind: "event",
-  eventType: "github-label-applied",
+  eventType: "github-pull-request",
   eventConfig: {
     provider: "github",
-    event: "label_applied",
-    labelName: "triage",
+    event: "pull_request",
+    repository: "vm0-ai/vm0",
+    action: "closed",
+    merged: true,
     filters: {
-      subject: "both",
-      actor: { type: "me" },
+      baseBranches: ["main"],
     },
   },
   schedule: null,
@@ -175,6 +178,41 @@ const googleCalendarAutomation = {
     provider: "google-calendar",
     event: "event_created",
     calendarId: "primary",
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
+const googleFormsAutomation = {
+  ...automationBase,
+  kind: "event",
+  eventType: "google-forms-response-submitted",
+  eventConfig: {
+    provider: "google-forms",
+    event: "response_submitted",
+    connectorId: "55555555-5555-4555-8555-555555555557",
+    form: {
+      id: "1FAIpQLScCliGoogleFormsTest",
+      title: "Customer survey",
+      url: "https://docs.google.com/forms/d/1FAIpQLScCliGoogleFormsTest/edit",
+    },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+  warning:
+    "This Google Form is not accepting responses yet. Publish it before expecting response events.",
+};
+
+const googleMeetAutomation = {
+  ...automationBase,
+  kind: "event",
+  eventType: "google-meet-transcript-generated",
+  eventConfig: {
+    provider: "google-meet",
+    event: "transcript_generated",
+    scope: { type: "organizer_user" },
   },
   schedule: null,
   scheduleSummary: null,
@@ -282,7 +320,30 @@ const strapiAutomation = {
   nextRunAt: null,
 };
 
-describe("zero workflow automation commands", () => {
+const stripeInvoicePaidAutomation = {
+  ...automationBase,
+  kind: "event",
+  eventType: "stripe-invoice-paid",
+  eventConfig: {
+    provider: "stripe",
+    event: "invoice_paid",
+    billingReasons: ["subscription_cycle"],
+    connectorId: "00000000-0000-4000-a000-000000000411",
+    stripeAccountId: "acct_cli_stripe_invoice_paid",
+    mode: "live",
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+  health: {
+    lastMatchingEventReceivedAt: "2026-08-07T08:00:00.000Z",
+    lastDeliveryStatus: "delivered",
+    lastDeliveryStatusAt: "2026-08-07T08:01:00.000Z",
+    warning: null,
+  },
+};
+
+describe("okou workflow automation commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -299,13 +360,14 @@ describe("zero workflow automation commands", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     server.use(
       http.get(THREAD_METADATA_URL, () => {
         return HttpResponse.json({
           id: THREAD_ID,
           title: "Tell a joke",
           selectedModel: MODEL_ID,
+          serviceTier: "priority",
         });
       }),
     );
@@ -335,7 +397,7 @@ describe("zero workflow automation commands", () => {
       {};
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/workflows/:workflowId/automations",
+        "http://localhost:3000/api/okou/workflows/:workflowId/automations",
         async ({ request, params }) => {
           captured.workflowId = params.workflowId as string;
           captured.body = (await request.json()) as Record<string, unknown>;
@@ -346,10 +408,19 @@ describe("zero workflow automation commands", () => {
     return captured;
   }
 
+  async function runStripeEnabledAdd(...args: string[]): Promise<void> {
+    vi.stubEnv("OKOU_TOKEN", zeroToken("org-stripe-enabled"));
+    await createAutomationAddCommand({
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
+      },
+    }).parseAsync(["node", "cli", ...args]);
+  }
+
   function mockWorkflowList() {
     let capturedUrl: string | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/workflows", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/workflows", ({ request }) => {
         capturedUrl = request.url;
         return HttpResponse.json([workflowSummary]);
       }),
@@ -435,12 +506,13 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("0 9 * * *");
       expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
-      expect(logCalls).toContain("Manage with Zero CLI:");
-      expect(logCalls).toContain(`zero workflow edit ${WORKFLOW_ID}`);
+      expect(logCalls).toContain("Thread priority:  enabled");
+      expect(logCalls).toContain("Manage with Okou CLI:");
+      expect(logCalls).toContain(`okou workflow edit ${WORKFLOW_ID}`);
       expect(logCalls).toContain('--expr "<cron-expression>" -z <timezone>');
       expect(logCalls).toContain("Pause automation:");
       expect(logCalls).toContain(
-        `zero workflow automation disable \\\n      ${AUTOMATION_ID}`,
+        `okou workflow automation disable \\\n      ${AUTOMATION_ID}`,
       );
       expect(logCalls).toContain("About model selection:");
       expect(logCalls).toContain(
@@ -451,7 +523,7 @@ describe("zero workflow automation commands", () => {
       );
       expect(logCalls).toContain("Model commands:");
       expect(logCalls).toContain(`--thread ${THREAD_ID}`);
-      expect(logCalls).toContain("zero model list");
+      expect(logCalls).toContain("okou model list");
     });
 
     it.each(["metadata", "model-policy"] as const)(
@@ -481,8 +553,8 @@ describe("zero workflow automation commands", () => {
       },
     );
 
-    it("should resolve a workflow name under ZERO_AGENT_ID", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+    it("should resolve a workflow name under OKOU_AGENT_ID", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
       const workflows = mockWorkflowList();
       const captured = captureCreateAutomation(loopAutomation);
 
@@ -558,7 +630,7 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain("all inbound messages");
       expect(logCalls).toContain("Edit automation:");
-      expect(logCalls).toContain("zero workflow automation update --help");
+      expect(logCalls).toContain("okou workflow automation update --help");
     });
 
     it("should add a Gmail new message automation with text match flags", async () => {
@@ -653,53 +725,68 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("Support");
     });
 
-    it("should add a GitHub label applied automation", async () => {
-      const captured = captureCreateAutomation({
-        ...githubLabelAutomation,
-        eventConfig: {
-          provider: "github",
-          event: "label_applied",
-          labelName: "triage",
-          filters: {
-            subject: "pull_requests",
-            actor: { type: "anyone" },
-          },
-        },
-      });
+    it("should add a GitHub pull request automation for the staff workspace", async () => {
+      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      const captured = captureCreateAutomation(githubPullRequestAutomation);
 
       await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
         WORKFLOW_ID,
-        "github-label-applied",
-        "--label",
-        "triage",
-        "--subject",
-        "pull-requests",
-        "--actor",
-        "anyone",
+        "github-pull-request",
+        "--repository",
+        "vm0-ai/vm0",
+        "--action",
+        "closed",
+        "--merged",
+        "yes",
+        "--base-branch",
+        "main",
       ]);
 
       expect(captured.workflowId).toBe(WORKFLOW_ID);
       expect(captured.body).toEqual({
         kind: "event",
-        eventType: "github-label-applied",
+        eventType: "github-pull-request",
         eventConfig: {
           provider: "github",
-          event: "label_applied",
-          labelName: "triage",
+          event: "pull_request",
+          repository: "vm0-ai/vm0",
+          action: "closed",
+          merged: true,
           filters: {
-            subject: "pull_requests",
-            actor: { type: "anyone" },
+            baseBranches: ["main"],
           },
         },
       });
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("GitHub label applied");
-      expect(logCalls).toContain("triage");
-      expect(logCalls).toContain("pull requests");
-      expect(logCalls).toContain("anyone");
+      expect(logCalls).toContain("GitHub pull request");
+      expect(logCalls).toContain("vm0-ai/vm0");
+      expect(logCalls).toContain("closed");
+    });
+
+    it("should reject --merged for non-closed GitHub pull request actions", async () => {
+      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "github-pull-request",
+          "--repository",
+          "vm0-ai/vm0",
+          "--action",
+          "opened",
+          "--merged",
+          "yes",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--merged only applies to the closed action"),
+      );
     });
 
     it("should add a GitHub workflow run completed automation", async () => {
@@ -746,26 +833,46 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("failure, startup_failure");
     });
 
-    it("should reject new GitHub webhook automation kinds outside enabled workspaces", async () => {
-      await expect(async () => {
-        await automationCommand.parseAsync([
-          "node",
-          "cli",
-          "add",
-          WORKFLOW_ID,
-          "github-issue-comment-created",
-        ]);
-      }).rejects.toThrow("process.exit called");
+    it("should add a GitHub issue comment automation without a staff workspace token", async () => {
+      const response = {
+        ...automationBase,
+        kind: "event",
+        eventType: "github-issue-comment-created",
+        eventConfig: {
+          provider: "github",
+          event: "issue_comment_created",
+          filters: { subject: "both" },
+        },
+        schedule: null,
+        scheduleSummary: null,
+        nextRunAt: null,
+      };
+      const captured = captureCreateAutomation(response);
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "GitHub webhook automations are not enabled for this workspace",
-        ),
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "github-issue-comment-created",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "github-issue-comment-created",
+        eventConfig: {
+          provider: "github",
+          event: "issue_comment_created",
+          filters: { subject: "both" },
+        },
+      });
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        "GitHub issue comment created",
       );
     });
 
     it("should add a GitHub issue comment automation for the staff workspace", async () => {
-      vi.stubEnv("ZERO_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
       const response = {
         ...automationBase,
         kind: "event",
@@ -842,7 +949,7 @@ describe("zero workflow automation commands", () => {
     });
 
     it("should add a Strapi entry-published automation for the staff workspace", async () => {
-      vi.stubEnv("ZERO_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
       const captured = captureCreateAutomation(strapiAutomation);
 
       await automationCommand.parseAsync([
@@ -873,6 +980,278 @@ describe("zero workflow automation commands", () => {
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
         "Strapi entry published: api::article.article, en",
       );
+    });
+
+    it("should add a Stripe invoice-paid automation without a billing filter", async () => {
+      const response = {
+        ...stripeInvoicePaidAutomation,
+        eventConfig: {
+          provider: "stripe",
+          event: "invoice_paid",
+          connectorId: "00000000-0000-4000-a000-000000000411",
+          stripeAccountId: "acct_cli_stripe_invoice_paid",
+          mode: "live",
+        },
+        health: {
+          ...stripeInvoicePaidAutomation.health,
+          lastDeliveryStatus: "failed",
+          warning: "delivery_failed",
+          internalError: "private create delivery failure details",
+        },
+      };
+      const captured = captureCreateAutomation(response);
+
+      await runStripeEnabledAdd(WORKFLOW_ID, "stripe-invoice-paid");
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "stripe-invoice-paid",
+        eventConfig: {
+          provider: "stripe",
+          event: "invoice_paid",
+        },
+      });
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain("Stripe invoice paid");
+      expect(output).toContain(
+        "Stripe account ID:  acct_cli_stripe_invoice_paid",
+      );
+      expect(output).toContain("Mode:               live");
+      expect(output).toContain("Billing reasons:    any");
+      expect(output).toContain("Last matched:");
+      expect(output).toContain("Delivery:           failed");
+      expect(output).toContain("Delivery at:");
+      expect(output).toContain("delete and recreate");
+      expect(output).not.toContain("okou workflow automation update --help");
+      expect(output).toContain(
+        `okou workflow automation add ${WORKFLOW_ID} stripe-invoice-paid`,
+      );
+      expect(output).not.toContain("--billing-reason");
+      expect(mockConsoleWarn.mock.calls.flat().join("\n")).toContain(
+        "The latest Stripe workflow delivery failed.",
+      );
+      expect(output).not.toContain("private create delivery failure details");
+      expect(mockConsoleWarn.mock.calls.flat().join("\n")).not.toContain(
+        "private create delivery failure details",
+      );
+      expect(JSON.stringify(captured.body)).not.toContain("connectorId");
+      expect(JSON.stringify(captured.body)).not.toContain("stripeAccountId");
+      expect(JSON.stringify(captured.body)).not.toContain('"mode"');
+    });
+
+    it("should add a Stripe invoice-paid automation with one billing reason", async () => {
+      const captured = captureCreateAutomation(stripeInvoicePaidAutomation);
+
+      await runStripeEnabledAdd(
+        WORKFLOW_ID,
+        "stripe-invoice-paid",
+        "--billing-reason",
+        "subscription_cycle",
+      );
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "stripe-invoice-paid",
+        eventConfig: {
+          provider: "stripe",
+          event: "invoice_paid",
+          billingReasons: ["subscription_cycle"],
+        },
+      });
+    });
+
+    it("should trim and stably deduplicate Stripe billing reasons", async () => {
+      const response = {
+        ...stripeInvoicePaidAutomation,
+        eventConfig: {
+          ...stripeInvoicePaidAutomation.eventConfig,
+          billingReasons: ["subscription_cycle", "subscription_create"],
+        },
+      };
+      const captured = captureCreateAutomation(response);
+
+      await runStripeEnabledAdd(
+        WORKFLOW_ID,
+        "stripe-invoice-paid",
+        "--billing-reason",
+        " subscription_cycle, subscription_create,subscription_cycle ",
+      );
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "stripe-invoice-paid",
+        eventConfig: {
+          provider: "stripe",
+          event: "invoice_paid",
+          billingReasons: ["subscription_cycle", "subscription_create"],
+        },
+      });
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        "subscription_cycle, subscription_create",
+      );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        `okou workflow automation add ${WORKFLOW_ID} stripe-invoice-paid --billing-reason subscription_cycle,subscription_create`,
+      );
+    });
+
+    it.each([
+      ["", "cannot contain empty values"],
+      [",manual", "cannot contain empty values"],
+      ["manual,", "cannot contain empty values"],
+      ["subscription_cycle,,manual", "cannot contain empty values"],
+      [
+        "subscription_cycle,unknown",
+        'Invalid --billing-reason value "unknown"',
+      ],
+    ])(
+      "should reject invalid Stripe billing reasons in %j",
+      async (billingReason, expectedMessage) => {
+        await expect(async () => {
+          await runStripeEnabledAdd(
+            WORKFLOW_ID,
+            "stripe-invoice-paid",
+            "--billing-reason",
+            billingReason,
+          );
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(expectedMessage),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
+
+    it.each(["--connector-id", "--stripe-account-id", "--mode"])(
+      "should not accept server-owned Stripe binding option %s",
+      async (option) => {
+        const captured = captureCreateAutomation(stripeInvoicePaidAutomation);
+
+        await expect(async () => {
+          await runStripeEnabledAdd(
+            WORKFLOW_ID,
+            "stripe-invoice-paid",
+            option,
+            "server-owned-value",
+          );
+        }).rejects.toThrow("process.exit called");
+
+        expect(captured.body).toBeUndefined();
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
+
+    it.each(["cron", "gmail-new-message"])(
+      "should reject --billing-reason for %s automations",
+      async (kind) => {
+        await expect(async () => {
+          await automationCommand.parseAsync([
+            "node",
+            "cli",
+            "add",
+            WORKFLOW_ID,
+            kind,
+            "--billing-reason",
+            "subscription_cycle",
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "--billing-reason only applies to stripe-invoice-paid automations",
+          ),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
+
+    it.each([
+      "Connect Stripe with OAuth in Live mode before adding a Stripe invoice-paid automation",
+      "Stripe invoice-paid automations require OAuth; reconnect Stripe using OAuth",
+      "Stripe invoice-paid automations require Live mode; reconnect Stripe in Live mode",
+      "Reconnect Stripe with OAuth before using Stripe invoice-paid automations",
+    ])("should surface Stripe readiness failure: %s", async (message) => {
+      server.use(
+        http.post(
+          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
+          () => {
+            return HttpResponse.json(
+              { error: { code: "BAD_REQUEST", message } },
+              { status: 400 },
+            );
+          },
+        ),
+      );
+
+      await expect(async () => {
+        await runStripeEnabledAdd(WORKFLOW_ID, "stripe-invoice-paid");
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(message),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should hide disabled Stripe creation and reject a directly typed kind", async () => {
+      const addCommand = automationCommand.commands.find((command) => {
+        return command.name() === "add";
+      });
+      if (!addCommand) {
+        throw new Error("add command not found");
+      }
+      let helpOutput = "";
+      addCommand.configureOutput({
+        writeOut: (value) => {
+          helpOutput += value;
+        },
+        writeErr: (value) => {
+          helpOutput += value;
+        },
+      });
+      addCommand.outputHelp();
+
+      expect(helpOutput).not.toContain("stripe-invoice-paid");
+      expect(helpOutput).not.toContain("--billing-reason");
+
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "stripe-invoice-paid",
+        ]);
+      }).rejects.toThrow("process.exit called");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Stripe invoice-paid workflow automations are not enabled for this workspace",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should show Stripe creation in help when the feature is enabled", async () => {
+      vi.stubEnv("OKOU_TOKEN", zeroToken("org-stripe-enabled"));
+      const addCommand = createAutomationAddCommand({
+        featureSwitchOverrides: {
+          [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
+        },
+      });
+      let helpOutput = "";
+      addCommand.configureOutput({
+        writeOut: (value) => {
+          helpOutput += value;
+        },
+        writeErr: (value) => {
+          helpOutput += value;
+        },
+      });
+
+      addCommand.outputHelp();
+
+      expect(helpOutput).toContain("stripe-invoice-paid");
+      expect(helpOutput).toContain("--billing-reason <reasons>");
     });
 
     it("should add a Google Calendar event-created automation", async () => {
@@ -980,6 +1359,85 @@ describe("zero workflow automation commands", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Google Calendar event cancelled");
       expect(logCalls).toContain("team@example.com");
+    });
+
+    it("should add a Google Forms response automation and print its warning", async () => {
+      const captured = captureCreateAutomation(googleFormsAutomation);
+
+      await zeroWorkflowCommand.parseAsync([
+        "node",
+        "cli",
+        "trigger",
+        "add",
+        WORKFLOW_ID,
+        "google-forms-response-submitted",
+        "--form-url",
+        "https://docs.google.com/forms/d/1FAIpQLScCliGoogleFormsTest/edit",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "google-forms-response-submitted",
+        eventConfig: {
+          provider: "google-forms",
+          event: "response_submitted",
+          formUrl:
+            "https://docs.google.com/forms/d/1FAIpQLScCliGoogleFormsTest/edit",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Google Forms response submitted");
+      expect(logCalls).toContain("Customer survey");
+      expect(mockConsoleWarn.mock.calls.flat().join("\n")).toContain(
+        "This Google Form is not accepting responses yet. Publish it before expecting response events.",
+      );
+    });
+
+    it("should add a Google Meet transcript-generated automation", async () => {
+      const captured = captureCreateAutomation(googleMeetAutomation);
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "google-meet-transcript-generated",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "google-meet-transcript-generated",
+        eventConfig: {
+          provider: "google-meet",
+          event: "transcript_generated",
+          scope: { type: "organizer_user" },
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Google Meet transcript ready");
+    });
+
+    it("should reject event filter options for Google Meet automations", async () => {
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "google-meet-transcript-generated",
+          "--calendar-id",
+          "team@example.com",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Google Meet transcript automations do not accept event filter options",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should add a Notion child page automation", async () => {
@@ -1220,6 +1678,25 @@ describe("zero workflow automation commands", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
+    it("should reject a Google Forms response automation without a form URL", async () => {
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "google-forms-response-submitted",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "google-forms-response-submitted automations require --form-url",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should reject a Notion database item automation without a database URL", async () => {
       await expect(async () => {
         await automationCommand.parseAsync([
@@ -1345,13 +1822,42 @@ describe("zero workflow automation commands", () => {
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
+
+    it("should document Google Forms and Meet automations in add help", () => {
+      const addCommand = automationCommand.commands.find((command) => {
+        return command.name() === "add";
+      });
+      if (!addCommand) {
+        throw new Error("add command not found");
+      }
+      let helpOutput = "";
+      addCommand.configureOutput({
+        writeOut: (value) => {
+          helpOutput += value;
+        },
+        writeErr: (value) => {
+          helpOutput += value;
+        },
+      });
+
+      addCommand.outputHelp();
+
+      expect(helpOutput).toContain("google-meet-transcript-generated");
+      expect(helpOutput).toContain("--form-url <url>");
+      expect(helpOutput).toContain(
+        "okou workflow trigger add triage --agent <agent-id> google-forms-response-submitted",
+      );
+      expect(helpOutput).toContain(
+        "okou workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated",
+      );
+    });
   });
 
   describe("update", () => {
     function mockExistingAutomation(existing: object) {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflow-automations/:id",
+          "http://localhost:3000/api/okou/workflow-automations/:id",
           ({ params }) => {
             expect(params.id).toBe(AUTOMATION_ID);
             return HttpResponse.json(existing);
@@ -1364,14 +1870,14 @@ describe("zero workflow automation commands", () => {
       const captured: { id?: string; body?: Record<string, unknown> } = {};
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflow-automations/:id",
+          "http://localhost:3000/api/okou/workflow-automations/:id",
           ({ params }) => {
             expect(params.id).toBe(AUTOMATION_ID);
             return HttpResponse.json(existing);
           },
         ),
         http.patch(
-          "http://localhost:3000/api/zero/workflow-automations/:id",
+          "http://localhost:3000/api/okou/workflow-automations/:id",
           async ({ request, params }) => {
             captured.id = params.id as string;
             captured.body = (await request.json()) as Record<string, unknown>;
@@ -1381,6 +1887,65 @@ describe("zero workflow automation commands", () => {
       );
       return captured;
     }
+
+    it("should reject Google Forms trigger updates with explicit guidance", async () => {
+      mockExistingAutomation(googleFormsAutomation);
+
+      await expect(async () => {
+        await zeroWorkflowCommand.parseAsync([
+          "node",
+          "cli",
+          "trigger",
+          "update",
+          AUTOMATION_ID,
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "this trigger has no updatable fields; delete it and create a new one",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject Stripe updates with delete-and-recreate guidance and no Stripe flags", async () => {
+      mockExistingAutomation(stripeInvoicePaidAutomation);
+      const updateCommand = automationCommand.commands.find((command) => {
+        return command.name() === "update";
+      });
+      if (!updateCommand) {
+        throw new Error("update command not found");
+      }
+      let helpOutput = "";
+      updateCommand.configureOutput({
+        writeOut: (value) => {
+          helpOutput += value;
+        },
+        writeErr: (value) => {
+          helpOutput += value;
+        },
+      });
+      updateCommand.outputHelp();
+
+      expect(helpOutput).not.toContain("--billing-reason");
+
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "update",
+          AUTOMATION_ID,
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Stripe billing reasons cannot be updated; delete and recreate the automation",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
 
     it("should switch to a cron schedule", async () => {
       const captured = captureUpdateAutomation(cronAutomation);
@@ -1409,7 +1974,7 @@ describe("zero workflow automation commands", () => {
       );
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
-      expect(logCalls).not.toContain("Manage with Zero CLI:");
+      expect(logCalls).not.toContain("Manage with Okou CLI:");
     });
 
     it("should preserve a successful update when thread model lookup fails", async () => {
@@ -1519,48 +2084,54 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("Escalated");
     });
 
-    it("should update a GitHub label applied automation", async () => {
+    it("should update a GitHub pull request automation", async () => {
       const updated = {
-        ...githubLabelAutomation,
+        ...githubPullRequestAutomation,
         eventConfig: {
           provider: "github",
-          event: "label_applied",
-          labelName: "triage",
+          event: "pull_request",
+          repository: "vm0-ai/vm0",
+          action: "closed",
+          merged: false,
           filters: {
-            subject: "issues",
-            actor: { type: "anyone" },
+            authors: ["pr-author"],
           },
         },
       };
-      const captured = captureUpdateAutomation(updated, githubLabelAutomation);
+      const captured = captureUpdateAutomation(
+        updated,
+        githubPullRequestAutomation,
+      );
 
       await automationCommand.parseAsync([
         "node",
         "cli",
         "update",
         AUTOMATION_ID,
-        "--subject",
-        "issues",
-        "--actor",
-        "anyone",
+        "--merged",
+        "no",
+        "--base-branch",
+        "any",
+        "--author",
+        "pr-author",
       ]);
 
       expect(captured.id).toBe(AUTOMATION_ID);
       expect(captured.body).toEqual({
         eventConfig: {
           provider: "github",
-          event: "label_applied",
-          labelName: "triage",
+          event: "pull_request",
+          repository: "vm0-ai/vm0",
+          action: "closed",
+          merged: false,
           filters: {
-            subject: "issues",
-            actor: { type: "anyone" },
+            authors: ["pr-author"],
           },
         },
       });
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("GitHub label applied");
-      expect(logCalls).toContain("issues");
-      expect(logCalls).toContain("anyone");
+      expect(logCalls).toContain("GitHub pull request");
+      expect(logCalls).toContain("pr-author");
     });
 
     it("should update and clear GitHub workflow run filters", async () => {
@@ -1695,18 +2266,19 @@ describe("zero workflow automation commands", () => {
     it("should display workflow automations", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflows/:workflowId/automations",
+          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
           ({ params }) => {
             expect(params.workflowId).toBe(WORKFLOW_ID);
             return HttpResponse.json([
               cronAutomation,
               loopAutomation,
               gmailAutomation,
-              githubLabelAutomation,
+              githubPullRequestAutomation,
               notionAutomation,
               notionDatabaseAutomation,
               notionContentUpdatedAutomation,
               strapiAutomation,
+              stripeInvoicePaidAutomation,
             ]);
           },
         ),
@@ -1720,10 +2292,10 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("every 15m");
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain('from contains "@acme.com"');
-      expect(logCalls).toContain("GitHub label applied");
+      expect(logCalls).toContain("GitHub pull request closed");
       expect(logCalls).toContain("Notion page content updated");
       expect(logCalls).toContain("Release plan");
-      expect(logCalls).toContain("triage");
+      expect(logCalls).toContain("vm0-ai/vm0, merged");
       expect(logCalls).toContain("New Notion child page");
       expect(logCalls).toContain("Product notes");
       expect(logCalls).toContain("New Notion database item");
@@ -1731,12 +2303,61 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain(
         "Strapi entry published: api::article.article, en",
       );
+      expect(logCalls).toContain("Stripe invoice paid");
+      expect(logCalls).toContain("acct_cli_stripe_invoice_paid (live)");
+      expect(logCalls).toContain("billing reasons: subscription_cycle");
+      expect(logCalls).toContain("last matched:");
+      expect(logCalls).toContain("delivery: delivered at");
+    });
+
+    it("should display nullable Stripe health and a generic delivery warning while creation is disabled", async () => {
+      const lastMatchedAt = new Date(
+        Date.now() - 2 * 60 * 60 * 1000,
+      ).toISOString();
+      const failedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const failedAutomation = {
+        ...stripeInvoicePaidAutomation,
+        eventConfig: {
+          ...stripeInvoicePaidAutomation.eventConfig,
+          billingReasons: [],
+        },
+        health: {
+          lastMatchingEventReceivedAt: lastMatchedAt,
+          lastDeliveryStatus: "failed",
+          lastDeliveryStatusAt: failedAt,
+          warning: "delivery_failed",
+          internalError: "do not expose this delivery error",
+        },
+      };
+      server.use(
+        http.get(
+          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
+          () => {
+            return HttpResponse.json([failedAutomation]);
+          },
+        ),
+      );
+
+      await automationCommand.parseAsync(["node", "cli", "list", WORKFLOW_ID]);
+
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain("acct_cli_stripe_invoice_paid (live)");
+      expect(output).toContain("any billing reason");
+      expect(output).toContain("last matched: 2h ago");
+      expect(output).toContain("delivery: failed at 1h ago");
+      expect(mockConsoleWarn.mock.calls.flat().join("\n")).toContain(
+        "The latest Stripe workflow delivery failed.",
+      );
+      expect(output).not.toContain("do not expose this delivery error");
+      expect(mockConsoleWarn.mock.calls.flat().join("\n")).not.toContain(
+        "do not expose this delivery error",
+      );
     });
 
     it("should display an empty state with an add hint", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflows/:workflowId/automations",
+          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
           () => {
             return HttpResponse.json([]);
           },
@@ -1747,7 +2368,7 @@ describe("zero workflow automation commands", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No automations");
-      expect(logCalls).toContain("zero workflow automation add");
+      expect(logCalls).toContain("okou workflow automation add");
     });
   });
 
@@ -1755,12 +2376,12 @@ describe("zero workflow automation commands", () => {
     it("should display automation details", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflow-automations/:id",
+          "http://localhost:3000/api/okou/workflow-automations/:id",
           () => {
             return HttpResponse.json({ ...gmailAutomation, enabled: false });
           },
         ),
-        http.get("http://localhost:3000/api/zero/workflow-automations", () => {
+        http.get("http://localhost:3000/api/okou/workflow-automations", () => {
           return HttpResponse.json([
             {
               workflow: workflowSummary,
@@ -1785,8 +2406,8 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain(`Workflow:     ${workflowSummary.name}`);
       expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
       expect(logCalls).toContain("Resume automation:");
-      expect(logCalls).toContain("zero workflow automation enable");
-      expect(logCalls).toContain("zero workflow automation update --help");
+      expect(logCalls).toContain("okou workflow automation enable");
+      expect(logCalls).toContain("okou workflow automation update --help");
     });
 
     it("should display an automation owned by another user on a visible workflow", async () => {
@@ -1796,13 +2417,13 @@ describe("zero workflow automation commands", () => {
       };
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflow-automations/:id",
+          "http://localhost:3000/api/okou/workflow-automations/:id",
           ({ params }) => {
             expect(params.id).toBe(AUTOMATION_ID);
             return HttpResponse.json(sharedAutomation);
           },
         ),
-        http.get("http://localhost:3000/api/zero/workflow-automations", () => {
+        http.get("http://localhost:3000/api/okou/workflow-automations", () => {
           return HttpResponse.json([]);
         }),
       );
@@ -1818,9 +2439,100 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("another-user");
       expect(logCalls).toContain("Gmail new message");
-      expect(logCalls).not.toContain("Manage with Zero CLI:");
+      expect(logCalls).not.toContain("Manage with Okou CLI:");
       expect(mockExit).not.toHaveBeenCalled();
     });
+
+    it.each([
+      ["pending", null],
+      ["delivered", null],
+      ["skipped", null],
+      ["failed", "delivery_failed"],
+      [null, null],
+    ] as const)(
+      "should display Stripe delivery status %s and immutable recreate guidance while creation is disabled",
+      async (deliveryStatus, warning) => {
+        const hasDelivery = deliveryStatus !== null;
+        const automation = {
+          ...stripeInvoicePaidAutomation,
+          eventConfig: {
+            ...stripeInvoicePaidAutomation.eventConfig,
+            billingReasons: undefined,
+          },
+          health: {
+            lastMatchingEventReceivedAt: hasDelivery
+              ? new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+              : null,
+            lastDeliveryStatus: deliveryStatus,
+            lastDeliveryStatusAt: hasDelivery
+              ? new Date(Date.now() - 60 * 60 * 1000).toISOString()
+              : null,
+            warning,
+            internalError: "private Stripe delivery failure details",
+          },
+        };
+        server.use(
+          http.get(
+            "http://localhost:3000/api/okou/workflow-automations/:id",
+            () => {
+              return HttpResponse.json(automation);
+            },
+          ),
+          http.get(
+            "http://localhost:3000/api/okou/workflow-automations",
+            () => {
+              return HttpResponse.json([
+                { workflow: workflowSummary, automation },
+              ]);
+            },
+          ),
+        );
+
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "show",
+          AUTOMATION_ID,
+        ]);
+
+        const output = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(output).toContain(
+          "Stripe account ID:  acct_cli_stripe_invoice_paid",
+        );
+        expect(output).toContain("Mode:               live");
+        expect(output).toContain("Billing reasons:    any");
+        expect(output).toContain(
+          `Delivery:           ${deliveryStatus ?? "-"}`,
+        );
+        expect(output).toContain("Last matched:");
+        expect(output).toContain("Delivery at:");
+        expect(output).toContain(
+          "Change billing reasons (delete and recreate)",
+        );
+        expect(output).toContain(
+          `okou workflow automation rm ${AUTOMATION_ID}`,
+        );
+        expect(output).toContain(
+          `okou workflow automation add ${WORKFLOW_ID} stripe-invoice-paid`,
+        );
+        expect(output).not.toContain("--billing-reason");
+        expect(output).not.toContain("okou workflow automation update --help");
+        expect(output).not.toContain("private Stripe delivery failure details");
+        const warningOutput = mockConsoleWarn.mock.calls.flat().join("\n");
+        if (warning === "delivery_failed") {
+          expect(warningOutput).toContain(
+            "The latest Stripe workflow delivery failed.",
+          );
+        } else {
+          expect(warningOutput).not.toContain(
+            "The latest Stripe workflow delivery failed.",
+          );
+        }
+        expect(warningOutput).not.toContain(
+          "private Stripe delivery failure details",
+        );
+      },
+    );
   });
 
   describe("rm", () => {
@@ -1828,7 +2540,7 @@ describe("zero workflow automation commands", () => {
       let removedId: string | undefined;
       server.use(
         http.delete(
-          "http://localhost:3000/api/zero/workflow-automations/:id",
+          "http://localhost:3000/api/okou/workflow-automations/:id",
           ({ params }) => {
             removedId = params.id as string;
             return new HttpResponse(null, { status: 204 });
@@ -1846,10 +2558,91 @@ describe("zero workflow automation commands", () => {
   });
 
   describe("enable / disable", () => {
+    it("should keep existing Stripe automations manageable while creation is disabled", async () => {
+      const actions: string[] = [];
+      server.use(
+        http.post(
+          "http://localhost:3000/api/okou/workflow-automations/:id/enable",
+          () => {
+            actions.push("enable");
+            return HttpResponse.json(stripeInvoicePaidAutomation);
+          },
+        ),
+        http.post(
+          "http://localhost:3000/api/okou/workflow-automations/:id/disable",
+          () => {
+            actions.push("disable");
+            return HttpResponse.json({
+              ...stripeInvoicePaidAutomation,
+              enabled: false,
+            });
+          },
+        ),
+        http.delete(
+          "http://localhost:3000/api/okou/workflow-automations/:id",
+          () => {
+            actions.push("delete");
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
+      );
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "enable",
+        AUTOMATION_ID,
+      ]);
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "disable",
+        AUTOMATION_ID,
+      ]);
+      await automationCommand.parseAsync(["node", "cli", "rm", AUTOMATION_ID]);
+
+      expect(actions).toEqual(["enable", "disable", "delete"]);
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain(`Automation ${AUTOMATION_ID} enabled`);
+      expect(output).toContain(`Automation ${AUTOMATION_ID} disabled`);
+      expect(output).toContain(`Automation ${AUTOMATION_ID} removed`);
+      expect(mockExit).not.toHaveBeenCalled();
+    });
+
+    it("should surface a Stripe binding-mismatch readiness failure on enable", async () => {
+      const message =
+        "The Stripe connection no longer matches this automation; delete and recreate the automation to bind the current Live-mode Stripe account";
+      server.use(
+        http.post(
+          "http://localhost:3000/api/okou/workflow-automations/:id/enable",
+          () => {
+            return HttpResponse.json(
+              { error: { code: "BAD_REQUEST", message } },
+              { status: 400 },
+            );
+          },
+        ),
+      );
+
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "enable",
+          AUTOMATION_ID,
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(message),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should enable a workflow automation", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflow-automations/:id/enable",
+          "http://localhost:3000/api/okou/workflow-automations/:id/enable",
           () => {
             return HttpResponse.json(cronAutomation);
           },
@@ -1874,7 +2667,7 @@ describe("zero workflow automation commands", () => {
     it("should disable a workflow automation", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflow-automations/:id/disable",
+          "http://localhost:3000/api/okou/workflow-automations/:id/disable",
           () => {
             return HttpResponse.json({ ...cronAutomation, enabled: false });
           },
@@ -1901,7 +2694,7 @@ describe("zero workflow automation commands", () => {
       async (command) => {
         server.use(
           http.post(
-            `http://localhost:3000/api/zero/workflow-automations/:id/${command}`,
+            `http://localhost:3000/api/okou/workflow-automations/:id/${command}`,
             () => {
               return HttpResponse.json({
                 ...cronAutomation,

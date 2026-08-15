@@ -1,10 +1,10 @@
-import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -161,7 +161,6 @@ async function loadTelegramLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "telegram"),
-        eq(chatEvents.triggerSource, "telegram"),
       ),
     )
     .limit(1);

@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../../mocks/server";
 import { zeroHostCommand } from "../index";
 
-const FILES_URL = "http://localhost:3000/api/zero/host/sites/:publicSlug/files";
+const FILES_URL = "http://localhost:3000/api/okou/host/sites/:publicSlug/files";
 const HOSTED_SITE_URL =
   "https://demo-site-a1b2c3d4-release-01.sites.example.com";
 const ARTIFACT_URL =
@@ -27,7 +27,7 @@ function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-describe("zero host clone command", () => {
+describe("okou host clone command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -41,7 +41,7 @@ describe("zero host clone command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     tempDir = join(tmpdir(), `zero-host-clone-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
   });

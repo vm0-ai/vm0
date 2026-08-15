@@ -6,8 +6,9 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio::time::{self, Instant};
 use vsock_proto::{
-    MSG_ERROR, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS,
-    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, RawMessage,
+    MSG_ERROR, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
+    MSG_SHUTDOWN_ACK, MemorySnapshot, RawMessage,
 };
 
 use crate::operation_tracker::{
@@ -16,11 +17,11 @@ use crate::operation_tracker::{
 };
 use crate::{FrameWriteObserver, VsockHost};
 
-use super::{ConnectionState, PendingNormalOperation, PendingResponse, Shared};
+use super::{ConnectionState, PendingNormalOperation, PendingResponse, RouteId, Shared};
 
 struct PendingRequestGuard {
     shared: Arc<Shared>,
-    seq: u32,
+    route_id: RouteId,
 }
 
 pub(crate) struct RequestWriteGuard {
@@ -30,14 +31,14 @@ pub(crate) struct RequestWriteGuard {
 }
 
 impl PendingRequestGuard {
-    fn new(shared: Arc<Shared>, seq: u32) -> Self {
-        Self { shared, seq }
+    fn new(shared: Arc<Shared>, route_id: RouteId) -> Self {
+        Self { shared, route_id }
     }
 }
 
 impl Drop for PendingRequestGuard {
     fn drop(&mut self) {
-        self.shared.remove_pending(self.seq);
+        self.shared.remove_pending(self.route_id);
     }
 }
 
@@ -121,8 +122,7 @@ async fn request_on_shared(
         return Err(request_timeout_error());
     }
     let deadline = deadline_after(timeout, "request timeout overflowed")?;
-    let seq = shared.next_seq();
-    request_raw_on_shared(shared, msg_type, seq, payload, deadline).await
+    request_raw_on_shared(shared, msg_type, payload, deadline).await
 }
 
 async fn write_request_frame(
@@ -179,38 +179,40 @@ fn encode_request_frame(msg_type: u8, seq: u32, payload: &[u8]) -> io::Result<Ve
 
 fn register_pending_response(
     shared: &Arc<Shared>,
-    seq: u32,
-    build_pending: impl FnOnce(oneshot::Sender<RawMessage>) -> io::Result<PendingResponse>,
-) -> io::Result<oneshot::Receiver<RawMessage>> {
+    build_pending: impl FnOnce(RouteId, oneshot::Sender<RawMessage>) -> io::Result<PendingResponse>,
+) -> io::Result<(RouteId, oneshot::Receiver<RawMessage>)> {
     // Register under the state lock: `Closed` short-circuits to an
     // immediate error, and insertion into `pending` is serialised with
     // the `Connected -> Closed` transition in `close()`. There is no
     // post-write `is_closed` check because close is observed via the
     // oneshot receiver becoming `Closed` when `close()` drops the map.
     let (tx, rx) = oneshot::channel();
-    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-    if let ConnectionState::Connected { pending, .. } = &mut *guard {
-        let pending_response = build_pending(tx)?;
-        pending.insert(seq, pending_response);
-        Ok(rx)
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::ConnectionReset,
-            "connection closed",
-        ))
-    }
+    let (route_id, ()) = shared.register_route(|route_id, state| {
+        let ConnectionState::Connected { pending, .. } = state else {
+            return Err(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            ));
+        };
+        let pending_response = build_pending(route_id, tx)?;
+        assert!(
+            pending
+                .insert(route_id.wire_seq(), pending_response)
+                .is_none(),
+            "pending response route must be vacant"
+        );
+        Ok(())
+    })?;
+    Ok((route_id, rx))
 }
 
 async fn write_registered_request_and_wait(
     shared: &Arc<Shared>,
-    seq: u32,
     data: &[u8],
     deadline: Instant,
     before_write: impl FnOnce() -> io::Result<()>,
     rx: oneshot::Receiver<RawMessage>,
 ) -> io::Result<RawMessage> {
-    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
-
     // The pending guard removes the pending entry on write failure, timeout,
     // or cancellation before reader_loop dispatches a response. The write
     // helper separately poisons the connection if cancellation interrupts an
@@ -230,8 +232,6 @@ async fn write_registered_request_and_wait_with_frame_builder(
     before_write: impl FnOnce() -> io::Result<()>,
     rx: oneshot::Receiver<RawMessage>,
 ) -> io::Result<RawMessage> {
-    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
-
     time::timeout_at(
         deadline,
         write_request_frame_with_builder(shared, seq, build_frame, before_write),
@@ -267,24 +267,25 @@ fn request_timeout_error() -> io::Error {
     io::Error::new(io::ErrorKind::TimedOut, "request timeout")
 }
 
-/// Send a request with a pre-allocated sequence number.
 async fn request_raw_on_shared(
     shared: &Arc<Shared>,
     msg_type: u8,
-    seq: u32,
     payload: &[u8],
     deadline: Instant,
 ) -> io::Result<RawMessage> {
-    let data = encode_request_frame(msg_type, seq, payload)?;
-    let rx = register_pending_response(shared, seq, |tx| {
+    let (route_id, rx) = register_pending_response(shared, |route_id, tx| {
         Ok(PendingResponse {
+            route_id,
             response_tx: tx,
             normal_operation: None,
             normal_terminal_msg_types: &[],
         })
     })?;
+    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), route_id);
+    let seq = route_id.wire_seq();
+    let data = encode_request_frame(msg_type, seq, payload)?;
 
-    write_registered_request_and_wait(shared, seq, &data, deadline, || Ok(()), rx).await
+    write_registered_request_and_wait(shared, &data, deadline, || Ok(()), rx).await
 }
 
 pub(crate) async fn normal_request_on_shared_with_write_observer_frame_builder(
@@ -298,15 +299,17 @@ pub(crate) async fn normal_request_on_shared_with_write_observer_frame_builder(
         return Err(request_timeout_error());
     }
     let deadline = deadline_after(timeout, "request timeout overflowed")?;
-    let seq = shared.next_seq();
     let normal_operation = shared.reserve_normal_operation()?;
-    let rx = register_pending_response(shared, seq, |tx| {
+    let (route_id, rx) = register_pending_response(shared, |route_id, tx| {
         Ok(PendingResponse {
+            route_id,
             response_tx: tx,
             normal_operation: Some(PendingNormalOperation::Owned(normal_operation)),
             normal_terminal_msg_types: terminal_msg_types,
         })
     })?;
+    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), route_id);
+    let seq = route_id.wire_seq();
 
     write_registered_request_and_wait_with_frame_builder(
         shared,
@@ -314,7 +317,7 @@ pub(crate) async fn normal_request_on_shared_with_write_observer_frame_builder(
         build_frame,
         deadline,
         || {
-            mark_pending_normal_operation_possible_guest_write(shared, seq, |_| Ok(()))?;
+            mark_pending_normal_operation_possible_guest_write(shared, route_id, |_| Ok(()))?;
             write_observer.record_write_start()
         },
         rx,
@@ -334,9 +337,9 @@ pub(crate) async fn request_on_shared_with_composite_operation_and_observer_fram
         return Err(request_timeout_error());
     }
     let deadline = deadline_after(timeout, "request timeout overflowed")?;
-    let seq = shared.next_seq();
-    let rx = register_pending_response(shared, seq, |tx| {
+    let (route_id, rx) = register_pending_response(shared, |route_id, tx| {
         Ok(PendingResponse {
+            route_id,
             response_tx: tx,
             normal_operation: Some(PendingNormalOperation::Composite(
                 normal_operation.transition_handle()?,
@@ -344,6 +347,8 @@ pub(crate) async fn request_on_shared_with_composite_operation_and_observer_fram
             normal_terminal_msg_types: terminal_msg_types,
         })
     })?;
+    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), route_id);
+    let seq = route_id.wire_seq();
 
     write_registered_request_and_wait_with_frame_builder(
         shared,
@@ -351,7 +356,7 @@ pub(crate) async fn request_on_shared_with_composite_operation_and_observer_fram
         build_frame,
         deadline,
         || {
-            mark_pending_normal_operation_possible_guest_write(shared, seq, |_| Ok(()))?;
+            mark_pending_normal_operation_possible_guest_write(shared, route_id, |_| Ok(()))?;
             write_observer.record_write_start()
         },
         rx,
@@ -361,19 +366,26 @@ pub(crate) async fn request_on_shared_with_composite_operation_and_observer_fram
 
 fn mark_pending_normal_operation_possible_guest_write(
     shared: &Arc<Shared>,
-    seq: u32,
+    route_id: RouteId,
     pre_write: impl FnOnce(&mut ConnectionState) -> io::Result<()>,
 ) -> io::Result<()> {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     pre_write(&mut guard)?;
     match &mut *guard {
         ConnectionState::Connected { pending, .. } => {
+            let seq = route_id.wire_seq();
             let Some(pending_response) = pending.get_mut(&seq) else {
                 return Err(io::Error::new(
                     io::ErrorKind::ConnectionReset,
                     "normal request closed before frame write",
                 ));
             };
+            if pending_response.route_id != route_id {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "normal request route was replaced before frame write",
+                ));
+            }
             let Some(normal_operation) = pending_response.normal_operation.as_mut() else {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -536,6 +548,26 @@ impl VsockHost {
         .await
     }
 
+    /// Read aggregate guest memory counters after operations are fully quiesced.
+    ///
+    /// This is a lifecycle request, so it remains available while a
+    /// [`NormalOperationFence`](crate::NormalOperationFence) is held. The
+    /// guest rejects it unless operation admission is fenced and no operations
+    /// remain pending.
+    pub async fn memory_snapshot(&self, timeout: Duration) -> io::Result<MemorySnapshot> {
+        let response = self.request(MSG_MEMORY_SNAPSHOT, &[], timeout).await?;
+        if response.msg_type == MSG_ERROR {
+            return Err(lifecycle_error_from_response(&response));
+        }
+        if response.msg_type != MSG_MEMORY_SNAPSHOT_RESULT {
+            return Err(protocol_invalid_data(format!(
+                "unexpected lifecycle response type: expected 0x{MSG_MEMORY_SNAPSHOT_RESULT:02X}, got 0x{:02X}",
+                response.msg_type,
+            )));
+        }
+        vsock_proto::decode_memory_snapshot(&response.payload).map_err(protocol_invalid_data)
+    }
+
     /// Resume guest operations after a failed or aborted quiesce attempt.
     ///
     /// Resume reopens guest admission immediately without waiting for
@@ -565,6 +597,23 @@ impl VsockHost {
     }
 
     /// Request graceful shutdown from guest.
+    ///
+    /// Once the guest receives a valid shutdown request, its connection loop
+    /// is terminal: after attempting to write `MSG_SHUTDOWN_ACK`, it stops
+    /// dispatching later frames and waits for the host to disconnect. This
+    /// remains true when the acknowledgement write fails and the host cannot
+    /// observe it.
+    ///
+    /// A transport error, timeout, or cancellation after the request may have
+    /// been written does not reveal whether the guest received it. This method
+    /// does not expose which side of that boundary a failure or cancellation
+    /// occurred on. Unless other synchronization proves that no frame started
+    /// writing, treat the guest lifecycle state as uncertain and do not attempt
+    /// later operations on this connection.
+    ///
+    /// `Ok(())` confirms that the host received a matching, valid
+    /// `MSG_SHUTDOWN_ACK`. It does not wait for or prove guest connection-loop
+    /// exit, guest-process termination, or VM termination.
     ///
     /// The timeout covers waiting for the shared writer, writing the request,
     /// and waiting for the acknowledgement.

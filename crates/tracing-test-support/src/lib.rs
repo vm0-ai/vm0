@@ -32,7 +32,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use tracing::field::{Field, Visit};
-use tracing::{Event, Level, Subscriber};
+use tracing::{Dispatch, Event, Level, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
 
 /// A structured tracing event captured by [`CapturedEvents`].
@@ -57,9 +57,22 @@ pub struct CapturedEvent {
 /// installed from any clone are therefore visible from every clone.
 ///
 /// [`Layer`]: tracing_subscriber::layer::Layer
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct CapturedEvents {
     events: Arc<Mutex<Vec<CapturedEvent>>>,
+    // Keep a second dispatch registered while a capture is active. Without it, tracing-core's
+    // single-dispatch fast path can cache Interest::Never when another thread first executes a
+    // callsite. See https://github.com/tokio-rs/tracing/issues/2874.
+    _callsite_interest_guard: Dispatch,
+}
+
+impl Default for CapturedEvents {
+    fn default() -> Self {
+        Self {
+            events: Arc::default(),
+            _callsite_interest_guard: Dispatch::new(tracing::subscriber::NoSubscriber::default()),
+        }
+    }
 }
 
 impl CapturedEvents {

@@ -9,31 +9,33 @@ import {
   type ModelProviderCredentialScope,
   type ModelProviderType,
   type SupportedRunModel,
-} from "@vm0/api-contracts/contracts/model-providers";
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   getModelProviderTypeForSurfaceProtocol,
   modelProviderSurfaceProtocolSchema,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-import type { SupportedFramework } from "@vm0/core/frameworks";
-import { modelProviders } from "@vm0/db/schema/model-provider";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { SupportedFramework } from "@okouai/core/frameworks";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { modelProviders } from "@okouai/db/schema/model-provider";
 import {
   modelProviderConnections,
   modelProviderSurfaces,
-} from "@vm0/db/schema/model-provider-gateway";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { and, eq, or, sql } from "drizzle-orm";
+} from "@okouai/db/schema/model-provider-gateway";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
+import { and, eq, or } from "drizzle-orm";
 
-import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
 import { ensureOrgModelPolicies } from "./zero-model-policy.service";
-import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 import { checkOrgCreditsForRunAdmission } from "./zero-run-admission.service";
 import {
   loadOrgPlanCapabilities,
   type OrgPlanCapabilities,
 } from "./org-plan-entitlement-read.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -44,6 +46,10 @@ export interface ModelFirstPin {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
+}
+
+export interface DefaultModelFirstPin extends ModelFirstPin {
+  readonly serviceTier: ChatThreadServiceTier | null;
 }
 
 interface ResolvedModelFirstPolicyRoute {
@@ -232,20 +238,13 @@ async function resolveValidPolicyRoute(params: {
     return null;
   }
 
-  const gatewaySchemaAvailable = await modelProviderGatewaySchemaAvailable(
-    params.db,
-  );
   const [policy] = await params.db
     .select({
       model: orgModelPolicies.model,
       defaultProviderType: orgModelPolicies.defaultProviderType,
       credentialScope: orgModelPolicies.credentialScope,
       modelProviderId: orgModelPolicies.modelProviderId,
-      modelProviderSurfaceId: gatewaySchemaAvailable
-        ? orgModelPolicies.modelProviderSurfaceId
-        : sql`NULL::uuid`.mapWith(
-            nullableDriverValueDecoder(orgModelPolicies.modelProviderSurfaceId),
-          ),
+      modelProviderSurfaceId: orgModelPolicies.modelProviderSurfaceId,
     })
     .from(orgModelPolicies)
     .where(
@@ -334,14 +333,17 @@ export async function resolveDefaultModelFirstPin(
   db: Db,
   orgId: string,
   userId: string,
-): Promise<ModelFirstPin> {
+): Promise<DefaultModelFirstPin> {
   if (userId !== "__no_preference__") {
     await ensureOrgModelPolicies(db, orgId, userId);
   }
   const capabilities = await orgModelCapabilities(db, orgId);
   if (userId !== "__no_preference__") {
     const [preference] = await db
-      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .select({
+        selectedModel: orgMembersMetadata.selectedModel,
+        serviceTier: orgMembersMetadata.serviceTier,
+      })
       .from(orgMembersMetadata)
       .where(
         and(
@@ -358,7 +360,22 @@ export async function resolveDefaultModelFirstPin(
         selectedModel: preference.selectedModel,
       });
       if (preferredRoute) {
-        return modelFirstPinFromRoute(preferredRoute);
+        const featureSwitchContext =
+          preference.serviceTier === "priority"
+            ? await loadUserFeatureSwitchContext(db, orgId, userId)
+            : null;
+        const serviceTier = isCodexFastServiceTierSupported({
+          selectedModel: preferredRoute.selectedModel,
+          codexFastModeEnabled:
+            featureSwitchContext !== null &&
+            isFeatureEnabled(
+              FeatureSwitchKey.CodexFastMode,
+              featureSwitchContext,
+            ),
+        })
+          ? "priority"
+          : null;
+        return { ...modelFirstPinFromRoute(preferredRoute), serviceTier };
       }
     }
   }
@@ -369,12 +386,13 @@ export async function resolveDefaultModelFirstPin(
     capabilities,
   });
   return route
-    ? modelFirstPinFromRoute(route)
+    ? { ...modelFirstPinFromRoute(route), serviceTier: null }
     : {
         modelProviderId: null,
         modelProviderType: null,
         modelProviderCredentialScope: null,
         selectedModel: null,
+        serviceTier: null,
       };
 }
 
@@ -581,11 +599,8 @@ export async function resolveModelFirstProviderAdmission(params: {
   const effectiveModelProvider =
     await resolveEffectiveModelProviderType(params);
   const selectedModel = params.modelPin.selectedModel;
-  const gatewaySchemaAvailable = await modelProviderGatewaySchemaAvailable(
-    params.db,
-  );
   const [customSurface] =
-    !gatewaySchemaAvailable || params.modelPin.modelProviderId === null
+    params.modelPin.modelProviderId === null
       ? []
       : await params.db
           .select({
@@ -640,6 +655,7 @@ export async function resolveModelFirstProviderAdmission(params: {
   const error = await checkOrgCreditsForRunAdmission({
     db: params.db,
     orgId: params.orgId,
+    userId: params.userId,
     modelProviderType: effectiveModelProvider,
     selectedModel,
   });
@@ -648,12 +664,42 @@ export async function resolveModelFirstProviderAdmission(params: {
 
 export function isCodexFastServiceTierSupported(params: {
   readonly selectedModel: string | null | undefined;
-  readonly effectiveModelProvider: string | null | undefined;
   readonly codexFastModeEnabled: boolean;
 }): boolean {
   return (
-    params.codexFastModeEnabled &&
-    params.effectiveModelProvider === "codex-oauth-token" &&
-    isCodexFastModeModel(params.selectedModel)
+    params.codexFastModeEnabled && isCodexFastModeModel(params.selectedModel)
+  );
+}
+
+export async function validateCodexServiceTier(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly pin: ModelFirstPin;
+  readonly codexServiceTier: "fast" | null;
+}): Promise<ReturnType<typeof badRequestMessage> | undefined> {
+  if (params.codexServiceTier !== "fast") {
+    return undefined;
+  }
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    params.db,
+    params.orgId,
+    params.userId,
+  );
+  if (!isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext)) {
+    return badRequestMessage(
+      "Codex fast mode is not enabled for this workspace",
+    );
+  }
+  if (
+    isCodexFastServiceTierSupported({
+      selectedModel: params.pin.selectedModel,
+      codexFastModeEnabled: true,
+    })
+  ) {
+    return undefined;
+  }
+  return badRequestMessage(
+    "Codex fast mode is only available for GPT 5.6 runs",
   );
 }

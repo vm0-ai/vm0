@@ -1,45 +1,32 @@
-import { eq } from "drizzle-orm";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { and, eq, isNotNull } from "drizzle-orm";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-
-/**
- * Fire the user-level "artifact catalog changed" signal. The artifacts page
- * subscribes to it and re-reads only its first page, because new artifacts
- * always sort to the head.
- */
-export async function publishArtifactCatalogChanged(
-  authorUserIds: readonly string[],
-): Promise<void> {
-  await publishUserSignal(
-    [...new Set(authorUserIds)],
-    "artifactCatalogChanged",
-  );
-}
+import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 
 export async function publishArtifactsChangedForRun(
   writeDb: Db,
   runId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const [zeroRunThread] = await writeDb
+  const [runThread] = await writeDb
     .select({
-      chatThreadId: zeroRuns.chatThreadId,
+      chatThreadId: agentRuns.chatThreadId,
       userId: chatThreads.userId,
     })
-    .from(zeroRuns)
-    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-    .where(eq(zeroRuns.id, runId))
+    .from(agentRuns)
+    .innerJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   signal.throwIfAborted();
 
-  if (zeroRunThread?.chatThreadId) {
+  if (runThread?.chatThreadId) {
     await publishUserSignal(
-      [zeroRunThread.userId],
-      `chatThreadArtifactsChanged:${zeroRunThread.chatThreadId}`,
+      [runThread.userId],
+      `chatThreadArtifactsChanged:${runThread.chatThreadId}`,
     );
     signal.throwIfAborted();
     return;
@@ -52,7 +39,7 @@ export async function publishArtifactsChangedForRun(
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
-    .where(eq(chatEvents.runId, runId))
+    .where(runOwnedChatEventForRunCondition({ runId }))
     .limit(1);
   signal.throwIfAborted();
 

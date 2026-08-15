@@ -14,18 +14,23 @@ command -v yq >/dev/null || fail "yq is required"
 workflow_json=$(yq -o=json '.' "$WORKFLOW")
 
 jq -e '
+  .jobs.prepare.outputs["turbo-runner-consumer-needed"] ==
+    "${{ steps.needed.outputs.turbo-runner-consumer-needed }}" and
   .jobs.prepare.outputs["playwright-runner-consumer-needed"] ==
     "${{ steps.needed.outputs.playwright-runner-consumer-needed }}" and
   any(.jobs.prepare.steps[];
     .id == "turbo" and
+    (.run | contains(".github/scripts/runner-image-context.sh turbo-consumer")) and
     (.run | contains(".github/scripts/runner-image-context.sh playwright-consumer"))
   ) and
   any(.jobs.prepare.steps[];
     .id == "needed" and
+    .env.TURBO_RUNNER_CONSUMER_NEEDED ==
+      "${{ steps.turbo.outputs.turbo-runner-consumer-needed }}" and
     .env.PLAYWRIGHT_RUNNER_CONSUMER_NEEDED ==
       "${{ steps.turbo.outputs.playwright-runner-consumer-needed }}"
   )
-' <<<"$workflow_json" >/dev/null || fail "Playwright dedicated-runner demand must reach runner image selection"
+' <<<"$workflow_json" >/dev/null || fail "Turbo and Playwright runner demand must reach runner image selection"
 
 jq -e '
   .jobs["cancel-superseded"].name == "Cancel superseded merge-group CI" and
@@ -150,6 +155,11 @@ jq -e '
   any(.jobs.asset.steps[];
     .name == "Publish runner binary cache object" and
     (. | has("if") | not)
+  ) and
+  any(.jobs.asset.steps[];
+    .name == "Upload reusable runner binary manifest" and
+    .with.path == "runner-binary-asset/manifest.json" and
+    .with["retention-days"] == 7
   )
 ' <<<"$workflow_json" >/dev/null || fail "reusable publication must run only for compiled misses"
 

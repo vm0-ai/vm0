@@ -280,6 +280,7 @@ fn recovery_checkpoint_derives_missing_codex_history_marker() -> TestResult {
         config,
         paths: fixture.paths().clone(),
         http,
+        workload_containment: None,
     };
     runtime.block_on(
         guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&guest_runtime),

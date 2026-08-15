@@ -9,8 +9,8 @@ import { command, computed, type Computed, state } from "ccstate";
 import {
   zeroAgentsByIdContract,
   type ZeroAgentResponse,
-} from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/zero-agents";
+import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
@@ -18,6 +18,7 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { localStorageSignals } from "./external/local-storage.ts";
 import { retryTransientLoad } from "./utils.ts";
+import { rootSignal$ } from "./root-signal.ts";
 
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
 
@@ -35,9 +36,12 @@ export function agentById(id: string): Computed<Promise<ZeroAgentResponse>> {
   return computed(async (get) => {
     get(internalAgentByIdReload$);
     const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await retryTransientLoad(() => {
-      return accept(client.get({ params: { id } }), [200]);
-    });
+    const result = await retryTransientLoad((signal) => {
+      return accept(
+        client.get({ params: { id }, fetchOptions: { signal } }),
+        [200],
+      );
+    }, get(rootSignal$));
     return result.body;
   });
 }
@@ -96,7 +100,7 @@ export const rememberLastUsedAgentId$ = command(({ set }, agentId: string) => {
 
 const internalReloadAgents$ = state(0);
 
-/** All agents in the user's org (from /api/zero/team). */
+/** All agents in the user's org (from /api/okou/team). */
 export const agents$ = computed(async (get) => {
   get(internalReloadAgents$);
   const zeroClient = get(zeroClient$)(zeroTeamContract);

@@ -28,6 +28,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             process_control_ipc::BOOTSTRAP_ENV,
             "runner-control-endpoint",
         );
+        std::env::set_var("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true");
         std::env::set_var("NODE_EXTRA_CA_CERTS", "/rootfs/vm0-proxy-ca.crt");
         std::env::set_var("SSL_CERT_FILE", "/etc/ssl/certs/ca-certificates.crt");
         std::env::set_var("REQUESTS_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt");
@@ -39,7 +40,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "60");
     }
 
-    let run_id = std::env::var("VM0_RUN_ID")?;
+    let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV)?;
     let runtime_dir = guest_contracts::runtime_paths::run_dir_from_env(&run_id)?;
     let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
     std::fs::create_dir_all(&user_env_dir)?;
@@ -70,9 +71,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var("HOME", tmp.path().join("stale-home"));
     }
 
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
         &runtime.config.run_id,
-        false,
         &runtime.config.prompt,
     );
     let result = cli::execute_cli_with_active_input_for_config(
@@ -134,7 +134,19 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));
     assert!(!cli_env.contains_key("VM0_USER_ENV_FILE"));
+    assert!(!cli_env.contains_key(guest_contracts::env::RUN_ID_ENV));
     assert!(!cli_env.contains_key("VM0_RUN_ID"));
+    for key in [
+        guest_contracts::env::PI_SESSION_ID_ENV,
+        guest_contracts::env::PI_LAUNCH_CONFIG_ENV,
+        guest_contracts::env::PI_LAUNCH_PAYLOAD_FILE_ENV,
+        guest_contracts::env::PI_MODEL_CONFIG_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains {key}"
+        );
+    }
     assert!(!cli_env.contains_key("VM0_PROMPT"));
     assert!(!cli_env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     assert!(!cli_env.contains_key("VM0_SANDBOX_ID"));
@@ -143,6 +155,11 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(!cli_env.contains_key(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV));
     assert!(!cli_env.contains_key("CLI_AGENT_TYPE"));
     assert!(!cli_env.contains_key(process_control_ipc::BOOTSTRAP_ENV));
+    assert!(!cli_env.contains_key("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL"));
+    assert!(
+        !cli_env
+            .contains_key(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
+    );
 
     Ok(())
 }

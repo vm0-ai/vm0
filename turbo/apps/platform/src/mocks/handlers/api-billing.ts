@@ -1,6 +1,9 @@
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCheckoutContract,
+  zeroBillingUsagePackCreditsContract,
+  zeroBillingUsagePackMigrationContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingPortalContract,
@@ -13,7 +16,7 @@ import {
   type BillingStatusResponse,
   type BillingInvoice,
   type RedeemResponse,
-} from "@vm0/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/zero-billing";
 import { mockApi } from "../msw-contract.ts";
 
 let mockBillingInvoices: BillingInvoice[] = [];
@@ -78,11 +81,71 @@ export const apiBillingHandlers = [
     return respond(200, { completed: true });
   }),
 
+  mockApi(zeroBillingUsagePackCheckoutContract.create, ({ body, respond }) => {
+    return respond(200, {
+      url: `https://checkout.stripe.com/test?usage-pack-tier=${body.tier}`,
+    });
+  }),
+
+  mockApi(zeroBillingUsagePackCreditsContract.get, ({ respond }) => {
+    return respond(200, {
+      totalCredits: 0,
+      purchasedCredits: 0,
+      bonusCredits: 0,
+      creditGrants: [],
+    });
+  }),
+
+  mockApi(zeroBillingUsagePackMigrationContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        message: "Legacy subscription migration is not available",
+        code: "NOT_FOUND",
+      },
+    });
+  }),
+
   mockApi(
     zeroBillingConcurrencyCheckoutContract.create,
     ({ body, respond }) => {
       return respond(200, {
         url: `https://checkout.stripe.com/test?concurrency=${body.quantity}`,
+      });
+    },
+  ),
+
+  mockApi(
+    zeroBillingConcurrencySubscriptionContract.previewChange,
+    ({ body, params, respond }) => {
+      const subscription = mockBillingStatus.concurrencySubscriptions.find(
+        (candidate) => {
+          return candidate.id === params.subscriptionId;
+        },
+      );
+      const currentQuantity = subscription?.quantity ?? 1;
+      return respond(200, {
+        currentQuantity,
+        targetQuantity: body.quantity,
+        immediateAmountCents:
+          Math.max(0, body.quantity - currentQuantity) * 10_000,
+        nextRecurringAmountCents: body.quantity * 10_000,
+        currency: "usd",
+      });
+    },
+  ),
+
+  mockApi(
+    zeroBillingConcurrencySubscriptionContract.confirmChange,
+    ({ body, params, respond }) => {
+      mockBillingStatus.concurrencySubscriptions =
+        mockBillingStatus.concurrencySubscriptions.map((subscription) => {
+          return subscription.id === params.subscriptionId
+            ? { ...subscription, quantity: body.quantity }
+            : subscription;
+        });
+      return respond(200, {
+        status: "processing",
+        hostedInvoiceUrl: null,
       });
     },
   ),
@@ -108,6 +171,15 @@ export const apiBillingHandlers = [
       return respond(200, {
         success: true,
         currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
+      });
+    },
+  ),
+
+  mockApi(
+    zeroBillingConcurrencySubscriptionContract.reduce,
+    ({ body, respond }) => {
+      return respond(200, {
+        url: `https://billing.stripe.com/test-concurrency-reduction?quantity=${body.quantity}`,
       });
     },
   ),

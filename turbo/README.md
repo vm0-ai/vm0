@@ -17,9 +17,9 @@ This Turborepo includes the following packages/apps:
 ### Apps and Packages
 
 - `web`: a [Next.js](https://nextjs.org/) app
-- `@vm0/ui`: a stub React component library
-- `@vm0/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@vm0/typescript-config`: `tsconfig.json`s used throughout the monorepo
+- `@okouai/ui`: a stub React component library
+- `@okouai/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
+- `@okouai/typescript-config`: `tsconfig.json`s used throughout the monorepo
 
 Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
 
@@ -74,17 +74,6 @@ npx turbo dev
 yarn exec turbo dev
 pnpm exec turbo dev
 ```
-
-#### Local Webhook Testing
-
-To test E2B webhook callbacks locally (without deploying to staging/production):
-
-```bash
-cd turbo
-pnpm dev:tunnel
-```
-
-This starts a Cloudflare Tunnel that exposes your local dev server, allowing E2B sandboxes to send webhook events to localhost. See [Local Webhook Testing Guide](./docs/LOCAL_WEBHOOK_TESTING.md) for details.
 
 You can develop a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
 

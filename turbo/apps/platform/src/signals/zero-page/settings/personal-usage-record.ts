@@ -1,16 +1,20 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroUsageRecordContract,
+  usageRecordContract,
   type UsageRecordRange,
   type UsageRecordScope,
-} from "@vm0/api-contracts/contracts/zero-usage-record";
-import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
+} from "@okouai/api-contracts/contracts/usage-record";
+import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
 
 export type CreditBalanceTab = "mine" | "team";
 
 const creditBalanceTabState$ = state<CreditBalanceTab>("mine");
+const usagePackMembersDialogOpenState$ = state(false);
+const usagePackMemberAdditionsExpandedMemberIdState$ = state<string | null>(
+  null,
+);
 
 export const creditBalanceTab$ = computed((get) => {
   return get(creditBalanceTabState$);
@@ -19,6 +23,35 @@ export const creditBalanceTab$ = computed((get) => {
 export const setCreditBalanceTab$ = command(
   ({ set }, tab: CreditBalanceTab) => {
     set(creditBalanceTabState$, tab);
+  },
+);
+
+export const usagePackMembersDialogOpen$ = computed((get) => {
+  return get(usagePackMembersDialogOpenState$);
+});
+
+export const usagePackMemberAdditionsExpandedMemberId$ = computed((get) => {
+  return get(usagePackMemberAdditionsExpandedMemberIdState$);
+});
+
+export const setUsagePackMembersDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    if (open) {
+      set(usagePackMemberAdditionsExpandedMemberIdState$, null);
+    }
+    set(usagePackMembersDialogOpenState$, open);
+  },
+);
+
+export const toggleUsagePackMemberAdditions$ = command(
+  ({ get, set }, memberId: string) => {
+    const expandedMemberId = get(
+      usagePackMemberAdditionsExpandedMemberIdState$,
+    );
+    set(
+      usagePackMemberAdditionsExpandedMemberIdState$,
+      expandedMemberId === memberId ? null : memberId,
+    );
   },
 );
 
@@ -69,7 +102,7 @@ export const myUsageRecordAsync$ = computed(async (get) => {
   const pageSize = get(myUsagePageSize$);
   const range = get(myUsageRangeState$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroUsageRecordContract);
+  const client = createClient(usageRecordContract);
   const result = await accept(
     client.get({
       query: {

@@ -11,7 +11,7 @@ use base64::Engine;
 use serde_json::{Map, Value};
 use std::{collections::HashSet, ops::Range};
 
-/// Minimum secret length to avoid false-positive masking.
+/// Minimum secret length in UTF-8 bytes to avoid false-positive masking.
 const MIN_SECRET_LEN: usize = 5;
 
 /// Holds compiled secret matchers for efficient masking.
@@ -35,9 +35,10 @@ impl SecretMasker {
 
     /// Build a masker from a raw comma-separated base64-encoded secret string.
     ///
-    /// For each secret ≥ 5 chars, the normal matcher stores plain,
-    /// base64-encoded, and percent-encoded variants. The diagnostic matcher
-    /// also stores multiline-only variants for bounded stderr masking.
+    /// For each secret of at least five UTF-8 bytes, the normal matcher stores
+    /// plain, base64-encoded, and percent-encoded variants. Diagnostic-only
+    /// multiline variants, including individual lines, use the same byte
+    /// threshold for bounded stderr masking.
     pub fn from_raw(raw: &str) -> Self {
         if raw.is_empty() {
             return Self::empty();
@@ -844,7 +845,7 @@ mod tests {
         // "hello-world-secret" is masked (all three variants)
         assert_eq!(masker.mask_string("hello-world-secret"), "***");
         assert_eq!(masker.mask_string(&s1), "***");
-        // "tiny" is < 5 chars, not masked
+        // "tiny" is < 5 UTF-8 bytes, not masked
         assert_eq!(masker.mask_string("tiny"), "tiny");
     }
 
@@ -869,7 +870,7 @@ mod tests {
     #[test]
     fn from_raw_skips_short_secrets() {
         let engine = base64::engine::general_purpose::STANDARD;
-        let short = engine.encode("abcd"); // 4 chars < MIN_SECRET_LEN
+        let short = engine.encode("abcd"); // 4 UTF-8 bytes < MIN_SECRET_LEN
         let masker = SecretMasker::from_raw(&short);
         assert_eq!(masker.mask_string("abcd"), "abcd");
     }

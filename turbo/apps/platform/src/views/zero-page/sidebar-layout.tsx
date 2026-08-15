@@ -6,9 +6,10 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { IconMenu2, IconPackage, IconUserPlus } from "@tabler/icons-react";
+import { Menu, Package, Share2, UserPlus } from "lucide-react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@okouai/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { AutomationMenuButton } from "./zero-chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
@@ -16,7 +17,7 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
@@ -42,6 +43,9 @@ import {
 } from "../pwa-install/install-banner.tsx";
 import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { ConcurrencyConfirmDialog } from "./components/org-manage/org-billing-tab.tsx";
+import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -70,22 +74,24 @@ function InviteButtonLeaf() {
     return null;
   }
   return (
-    <button
+    <Button
       type="button"
       onClick={() => {
         detach(openSettings("people", pageSignal), Reason.DomCallback);
       }}
-      className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
+      variant="quiet"
+      size="sm"
+      className="shrink-0 gap-1.5"
     >
-      <IconUserPlus size={14} stroke={1.5} />
+      <UserPlus size={14} />
       {t(($) => {
         return $.appShell.sidebar.mobile.invite;
       })}
-    </button>
+    </Button>
   );
 }
 
-function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
   const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openThreadArtifacts = useOpenThreadArtifacts(thread);
@@ -93,25 +99,25 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
   const open = sidebarTarget?.type === "artifacts";
 
   return (
-    <button
+    <Button
       type="button"
       onClick={() => {
         reloadArtifacts();
         openThreadArtifacts();
       }}
+      variant="quiet"
+      size="icon-sm"
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-        open
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+        "shrink-0",
+        open && "bg-primary/10 text-primary hover:text-primary",
       )}
       aria-label={t(($) => {
         return $.appShell.sidebar.mobile.openArtifacts;
       })}
       aria-pressed={open}
     >
-      <IconPackage size={16} stroke={1.5} />
-    </button>
+      <Package size={16} />
+    </Button>
   );
 }
 
@@ -147,11 +153,96 @@ function MobileAutomationButtonLeaf() {
   );
 }
 
+function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const start = useSet(thread.sharing.start$);
+  const pageSignal = useGet(pageSignal$);
+  const enabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
+  if (!enabled || phase !== "idle") {
+    return null;
+  }
+  return (
+    <Button
+      type="button"
+      onClick={() => {
+        detach(
+          start(pageSignal),
+          Reason.DomCallback,
+          "start shared thread selection",
+        );
+      }}
+      variant="quiet"
+      size="icon-sm"
+      className="shrink-0"
+      aria-label={t(($) => {
+        return $.chat.sharing.start;
+      })}
+    >
+      <Share2 size={16} />
+    </Button>
+  );
+}
+
+function MobileShareButtonLeaf() {
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const thread = leftThread ?? rightThread;
+  return thread ? <MobileShareButtonInner thread={thread} /> : null;
+}
+
+function MobileSharingOverlayInner({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const selectedCount = useGet(thread.sharing.selectedCount$);
+  const close = useSet(thread.sharing.close$);
+  const pageSignal = useGet(pageSignal$);
+  if (phase === "idle") {
+    return null;
+  }
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-between bg-background px-4">
+      <span className="text-sm font-medium text-foreground">
+        {t(
+          ($) => {
+            return $.chat.sharing.selectedCount;
+          },
+          { count: selectedCount },
+        )}
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          detach(
+            close(pageSignal),
+            Reason.DomCallback,
+            "close shared thread selection",
+          );
+        }}
+      >
+        {t(($) => {
+          return $.chat.sharing.cancel;
+        })}
+      </Button>
+    </div>
+  );
+}
+
+function MobileSharingOverlayLeaf() {
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const thread = leftThread ?? rightThread;
+  return thread ? <MobileSharingOverlayInner thread={thread} /> : null;
+}
+
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const inChatRoute = isChatRoute(activeId);
   const showInviteFallback = inChatRoute && activeId !== "chat";
   return (
     <>
+      {inChatRoute && <MobileShareButtonLeaf />}
       {inChatRoute && <MobileAutomationButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
       {showInviteFallback && <InviteButtonLeaf />}
@@ -170,31 +261,39 @@ function MobileTopBar() {
   const activeId = useGet(activeRoute$);
 
   return (
-    <div className="md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
-      <button
+    <div className="relative md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
+      <MobileSharingOverlayLeaf />
+      <Button
         type="button"
         onClick={() => {
           setExpanded(true);
         }}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        variant="quiet"
+        size="icon-sm"
+        iconSize="md"
+        className="shrink-0"
         aria-label={t(($) => {
           return $.appShell.sidebar.mobile.openMenu;
         })}
       >
-        <IconMenu2 size={18} stroke={1.8} />
-      </button>
+        <Menu size={18} />
+      </Button>
       {breadcrumb && (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}
           <div className="flex items-center gap-2 min-w-0">
             <div className="text-sm font-medium text-foreground flex items-center gap-1 min-w-0">
-              <Link
-                pathname={breadcrumb.sectionPath}
-                options={breadcrumb.sectionOptions}
-                className="hover:opacity-70 transition-opacity no-underline text-inherit"
-              >
-                {breadcrumb.section}
-              </Link>
+              {breadcrumb.sectionPath ? (
+                <Link
+                  pathname={breadcrumb.sectionPath}
+                  options={breadcrumb.sectionOptions}
+                  className="hover:opacity-70 transition-opacity no-underline text-inherit"
+                >
+                  {breadcrumb.section}
+                </Link>
+              ) : (
+                <span>{breadcrumb.section}</span>
+              )}
               {breadcrumb.name && (
                 <>
                   <span className="text-foreground/30 select-none">/</span>
@@ -238,6 +337,8 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
     <div className="zero-app zero-viewport-shell flex w-full bg-background">
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
+      <ConcurrencyConfirmDialog />
+      <CreditPurchaseConfirmDialog />
       <QueueDrawer />
       <ZeroSidebar />
       <div

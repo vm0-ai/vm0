@@ -8,9 +8,8 @@
 //! The `VM0_` namespace is runner-owned, including keys defined in sibling
 //! modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`]. User env
 //! filtering should treat current, future, and retired `VM0_` keys as
-//! protected. A small set of non-`VM0_` bootstrap keys is also runner-owned
-//! because existing runner, guest-agent, or integration contracts use those
-//! exact names.
+//! protected. Canonical bootstrap keys outside that retired namespace are
+//! listed explicitly below; the whole `OKOU_` namespace is not protected.
 //!
 //! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
 //! selected runner-owned keys may cross the local user-env boundary as
@@ -24,7 +23,7 @@ pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
 /// file path resolution.
-pub const RUN_ID_ENV: &str = "VM0_RUN_ID";
+pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
 
 /// Sensitive backend API bearer token for guest-agent calls.
 ///
@@ -40,6 +39,9 @@ pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 /// `reused` means an idle VM was unparked. Other values describe why reuse did
 /// not happen, such as `poolMiss` or `noReuseKey`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
+
+/// Wire value for the runner's final workspace-reuse decision.
+pub const WORKSPACE_REUSE_RESULT_ENV: &str = "VM0_WORKSPACE_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
 pub const PROMPT_ENV: &str = "VM0_PROMPT";
@@ -155,6 +157,33 @@ pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 /// Logical run-payload field name for API-owned Codex runtime metadata.
 pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
+/// Logical run-payload field name for non-secret Pi launch inputs.
+///
+/// The value is filesystem references only. It never reaches the Pi CLI child
+/// as an environment value; the guest-agent republishes it through
+/// [`PI_LAUNCH_PAYLOAD_FILE_ENV`].
+pub const PI_LAUNCH_CONFIG_ENV: &str = "OKOU_PI_LAUNCH_CONFIG";
+
+/// Path to the private guest-agent-owned Pi launch payload JSON file.
+///
+/// Prompt-sized Pi launch inputs use this file instead of the child's argv or
+/// environment. The guest-agent writes it inside the per-run private runtime
+/// directory before spawning its own Pi CLI. See `piLaunchPayloadSchema` in
+/// `turbo/packages/api-contracts/src/contracts/runners.ts` for the reader side.
+pub const PI_LAUNCH_PAYLOAD_FILE_ENV: &str = "OKOU_PI_LAUNCH_PAYLOAD_FILE";
+
+/// Private runtime subdirectory used by [`PI_LAUNCH_PAYLOAD_FILE_ENV`].
+pub const PI_LAUNCH_PAYLOAD_PRIVATE_DIR_NAME: &str = "pi-launch-payload";
+
+/// Private runtime filename used by [`PI_LAUNCH_PAYLOAD_FILE_ENV`].
+pub const PI_LAUNCH_PAYLOAD_FILENAME: &str = "payload.json";
+
+/// Logical run-payload field name for non-secret Pi model metadata.
+pub const PI_MODEL_CONFIG_ENV: &str = "OKOU_PI_MODEL_CONFIG";
+
+/// Logical run-payload field name for the Chat Thread-owned Pi session id.
+pub const PI_SESSION_ID_ENV: &str = "OKOU_PI_SESSION_ID";
+
 /// Runner-owned variable-length run payload sent through
 /// [`RUN_PAYLOAD_FILE_ENV`].
 ///
@@ -188,6 +217,15 @@ pub struct RunPayload {
     /// JSON object describing API-owned Codex provider/runtime metadata.
     #[serde(default)]
     pub codex_runtime_config: String,
+    /// JSON object describing non-secret Pi launch inputs.
+    #[serde(default)]
+    pub pi_launch_config: String,
+    /// JSON object describing non-secret Pi model metadata.
+    #[serde(default)]
+    pub pi_model_config: String,
+    /// Chat Thread id used as Pi's native session id.
+    #[serde(default)]
+    pub pi_session_id: String,
 }
 
 /// Borrowed logical string field from [`RunPayload`].
@@ -201,7 +239,7 @@ pub struct RunPayloadField<'a> {
 
 impl RunPayload {
     /// Return all logical string fields carried by this run payload.
-    pub fn fields(&self) -> [RunPayloadField<'_>; 9] {
+    pub fn fields(&self) -> [RunPayloadField<'_>; 12] {
         let Self {
             prompt,
             append_system_prompt,
@@ -212,6 +250,9 @@ impl RunPayload {
             artifacts,
             feature_flags,
             codex_runtime_config,
+            pi_launch_config,
+            pi_model_config,
+            pi_session_id,
         } = self;
 
         [
@@ -250,6 +291,18 @@ impl RunPayload {
             RunPayloadField {
                 name: CODEX_RUNTIME_CONFIG_ENV,
                 value: codex_runtime_config,
+            },
+            RunPayloadField {
+                name: PI_LAUNCH_CONFIG_ENV,
+                value: pi_launch_config,
+            },
+            RunPayloadField {
+                name: PI_MODEL_CONFIG_ENV,
+                value: pi_model_config,
+            },
+            RunPayloadField {
+                name: PI_SESSION_ID_ENV,
+                value: pi_session_id,
             },
         ]
     }
@@ -310,13 +363,6 @@ pub const USE_MOCK_CLAUDE_ENV: &str = "USE_MOCK_CLAUDE";
 /// guest-agent treats `true` or `1` as enabled.
 pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
 
-/// Experimental bootstrap switch for the Codex app-server backend.
-///
-/// The runner sets this only for local Codex active-input runs. Product/API
-/// provider paths do not set it; user-provided env cannot override it because
-/// the `VM0_` namespace is runner-owned.
-pub const CODEX_APP_SERVER_BACKEND_ENV: &str = "VM0_CODEX_APP_SERVER_BACKEND";
-
 /// Optional test/debug override for the mock Claude binary path.
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.
@@ -343,7 +389,12 @@ pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
     POST_RESULT_SIGKILL_GRACE_SECS_ENV,
 ];
 
-const NON_VM0_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
+const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
+    RUN_ID_ENV,
+    PI_SESSION_ID_ENV,
+    PI_LAUNCH_CONFIG_ENV,
+    PI_LAUNCH_PAYLOAD_FILE_ENV,
+    PI_MODEL_CONFIG_ENV,
     CLI_AGENT_TYPE_ENV,
     USE_MOCK_CLAUDE_ENV,
     USE_MOCK_CODEX_ENV,
@@ -380,12 +431,11 @@ pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
 /// Returns whether `key` belongs to the runner-owned bootstrap namespace.
 ///
 /// This covers every `VM0_` key, including future and retired names, plus the
-/// explicit non-`VM0_` bootstrap keys required by established runner,
-/// guest-agent, or integration contracts. Runner and local-submit code use
-/// this predicate to scrub or reject user-provided env keys before the
-/// guest-agent starts.
+/// explicit bootstrap keys required by established runner, guest-agent, or
+/// integration contracts. Runner and local-submit code use this predicate to
+/// scrub or reject user-provided env keys before the guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
-    key.starts_with("VM0_") || NON_VM0_RUNNER_OWNED_ENV_KEYS.contains(&key)
+    key.starts_with("VM0_") || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
 /// Escapes and bounds a user-controlled env key for diagnostics.
@@ -415,7 +465,13 @@ mod tests {
     #[test]
     fn contract_names_match_wire_values() {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
-        assert_eq!(RUN_ID_ENV, "VM0_RUN_ID");
+        assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
+        assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
+        assert_eq!(PI_LAUNCH_CONFIG_ENV, "OKOU_PI_LAUNCH_CONFIG");
+        assert_eq!(PI_LAUNCH_PAYLOAD_FILE_ENV, "OKOU_PI_LAUNCH_PAYLOAD_FILE");
+        assert_eq!(PI_LAUNCH_PAYLOAD_PRIVATE_DIR_NAME, "pi-launch-payload");
+        assert_eq!(PI_LAUNCH_PAYLOAD_FILENAME, "payload.json");
+        assert_eq!(PI_MODEL_CONFIG_ENV, "OKOU_PI_MODEL_CONFIG");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(
             AGENT_EXECUTION_TIMEOUT_SECS_ENV,
@@ -440,7 +496,10 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
+            pi_launch_config: "fixed Pi prompt".to_string(),
+            pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
+            pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
 
         let json = serde_json::to_value(&payload).unwrap();
@@ -450,7 +509,10 @@ mod tests {
         assert_eq!(json["secretValues"], "secret");
         assert_eq!(json["disallowedTools"], "WebFetch");
         assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
-        assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"minimax"}"#);
+        assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"deepseek"}"#);
+        assert_eq!(json["piLaunchConfig"], "fixed Pi prompt");
+        assert_eq!(json["piModelConfig"], r#"{"provider":"deepseek"}"#);
+        assert_eq!(json["piSessionId"], "22222222-2222-4222-8222-222222222222");
     }
 
     #[test]
@@ -464,7 +526,10 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
+            pi_launch_config: "fixed Pi prompt".to_string(),
+            pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
+            pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
 
         let fields = payload.fields();
@@ -506,7 +571,19 @@ mod tests {
                 },
                 RunPayloadField {
                     name: CODEX_RUNTIME_CONFIG_ENV,
-                    value: r#"{"providerId":"minimax"}"#
+                    value: r#"{"providerId":"deepseek"}"#
+                },
+                RunPayloadField {
+                    name: PI_LAUNCH_CONFIG_ENV,
+                    value: "fixed Pi prompt"
+                },
+                RunPayloadField {
+                    name: PI_MODEL_CONFIG_ENV,
+                    value: r#"{"provider":"deepseek"}"#
+                },
+                RunPayloadField {
+                    name: PI_SESSION_ID_ENV,
+                    value: "22222222-2222-4222-8222-222222222222"
                 },
             ]
         );
@@ -533,7 +610,8 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
+            ..RunPayload::default()
         };
 
         assert_eq!(payload.first_nul_field(), None);
@@ -581,6 +659,11 @@ mod tests {
     fn runner_owned_key_detection_covers_bootstrap_namespaces() {
         for key in [
             API_URL_ENV,
+            RUN_ID_ENV,
+            PI_SESSION_ID_ENV,
+            PI_LAUNCH_CONFIG_ENV,
+            PI_LAUNCH_PAYLOAD_FILE_ENV,
+            PI_MODEL_CONFIG_ENV,
             WORKING_DIR_ENV,
             USER_ENV_FILE_ENV,
             RUN_PAYLOAD_FILE_ENV,
@@ -591,6 +674,8 @@ mod tests {
         ] {
             assert!(is_runner_owned_env_key(key), "{key} should be runner-owned");
         }
+        assert!(!is_runner_owned_env_key("OKOU_TOKEN"));
+        assert!(!is_runner_owned_env_key("OKOU_UNRELATED"));
         assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
     }
 

@@ -13,7 +13,7 @@ function buildZeroToken(capabilities: readonly string[]): string {
       userId: "user-credit",
       runId: "run-credit",
       orgId: "org-credit",
-      scope: "zero",
+      scope: "okou",
       capabilities,
       iat: 1000,
       exp: 2000,
@@ -22,46 +22,18 @@ function buildZeroToken(capabilities: readonly string[]): string {
   return `vm0_sandbox_${header}.${body}.test-signature`;
 }
 
-function stubMembers(role: "admin" | "member") {
-  return http.get("http://localhost:3000/api/zero/org/members", () => {
-    return HttpResponse.json({
-      slug: "test-org",
-      role,
-      members: [
-        {
-          userId: "admin-1",
-          email: "admin@example.com",
-          firstName: "Admin",
-          lastName: "User",
-          imageUrl: "",
-          role: "admin",
-          joinedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-      pendingInvitations: [],
-      membershipRequests: [],
-      createdAt: "2026-01-01T00:00:00.000Z",
-    });
-  });
-}
-
 function stubBillingStatus(
   overrides: {
     readonly tier?: string;
     readonly canBuyCredits?: boolean;
     readonly videoGenerationAllowed?: boolean;
-    readonly omitPlanCapabilities?: boolean;
   } = {},
 ) {
-  return http.get("http://localhost:3000/api/zero/billing/status", () => {
+  return http.get("http://localhost:3000/api/okou/billing/status", () => {
     return HttpResponse.json({
       tier: overrides.tier ?? "pro",
-      ...(overrides.omitPlanCapabilities
-        ? {}
-        : {
-            canBuyCredits: overrides.canBuyCredits ?? true,
-            videoGenerationAllowed: overrides.videoGenerationAllowed ?? true,
-          }),
+      canBuyCredits: overrides.canBuyCredits ?? true,
+      videoGenerationAllowed: overrides.videoGenerationAllowed ?? true,
       credits: 12345,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",
@@ -86,13 +58,13 @@ function stubBillingStatus(
   });
 }
 
-describe("zero credit command", () => {
+describe("okou credit command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     server.use(stubBillingStatus());
   });
 
@@ -120,50 +92,47 @@ describe("zero credit command", () => {
     expect(output()).toContain("Built-in video generation: available");
   });
 
-  it("preserves legacy limited-free restrictions when capability fields are omitted", async () => {
+  it("surfaces the admin-only checkout rejection for non-admins", async () => {
+    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+      return undefined as never;
+    });
+    const mockConsoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     server.use(
-      stubBillingStatus({
-        tier: "limited-free-1",
-        omitPlanCapabilities: true,
-      }),
+      http.post(
+        "http://localhost:3000/api/okou/billing/credit-checkout",
+        () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Only org admins can buy credits",
+                code: "FORBIDDEN",
+              },
+            },
+            { status: 403 },
+          );
+        },
+      ),
     );
 
-    await zeroCreditCommand.parseAsync(["node", "cli"]);
+    try {
+      await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);
 
-    expect(output()).toContain("Tier: limited-free-1");
-    expect(output()).toContain("Can purchase credits: no");
-    expect(output()).toContain("Built-in video generation: unavailable");
-  });
-
-  it("preserves legacy free access when capability fields are omitted", async () => {
-    server.use(
-      stubBillingStatus({
-        tier: "free",
-        omitPlanCapabilities: true,
-      }),
-    );
-
-    await zeroCreditCommand.parseAsync(["node", "cli"]);
-
-    expect(output()).toContain("Tier: free");
-    expect(output()).toContain("Can purchase credits: yes");
-    expect(output()).toContain("Built-in video generation: available");
-  });
-
-  it("guides non-admins to zero doctor credit", async () => {
-    server.use(stubMembers("member"));
-
-    await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);
-
-    expect(output()).toContain("zero doctor credit");
+      const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+      expect(errorOutput).toContain("Only org admins can buy credits");
+      expect(mockExit).toHaveBeenCalledWith(1);
+    } finally {
+      mockConsoleError.mockRestore();
+      mockExit.mockRestore();
+    }
   });
 
   it("creates a credit checkout link for admins", async () => {
     let capturedBody: unknown = null;
     server.use(
-      stubMembers("admin"),
       http.post(
-        "http://localhost:3000/api/zero/billing/credit-checkout",
+        "http://localhost:3000/api/okou/billing/credit-checkout",
         async ({ request }) => {
           capturedBody = await request.json();
           return HttpResponse.json({
@@ -198,14 +167,13 @@ describe("zero credit command", () => {
   it("routes plans that cannot buy credits to the upgrade link", async () => {
     let checkoutRequests = 0;
     server.use(
-      stubMembers("admin"),
       stubBillingStatus({
         tier: "limited-free-1",
         canBuyCredits: false,
         videoGenerationAllowed: false,
       }),
       http.post(
-        "http://localhost:3000/api/zero/billing/credit-checkout",
+        "http://localhost:3000/api/okou/billing/credit-checkout",
         () => {
           checkoutRequests += 1;
           return HttpResponse.json({
@@ -233,7 +201,6 @@ describe("zero credit command", () => {
     const mockConsoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    server.use(stubMembers("admin"));
 
     try {
       await zeroCreditCommand.parseAsync([
@@ -264,7 +231,7 @@ describe("zero credit command", () => {
     const mockConsoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken(["billing:write"]));
+    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["billing:write"]));
 
     try {
       await zeroCreditCommand.parseAsync(["node", "cli"]);
@@ -287,7 +254,7 @@ describe("zero credit command", () => {
     const mockConsoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken(["billing:read"]));
+    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["billing:read"]));
 
     try {
       await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);

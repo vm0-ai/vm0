@@ -1,9 +1,9 @@
 import { command } from "ccstate";
 import { and, eq, ne } from "drizzle-orm";
-import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
+import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -14,17 +14,19 @@ import {
   fetchFeishuUserInfo,
   type FeishuUserInfo,
 } from "../external/feishu-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
-  claimCustomConnectorOAuthState,
+  claimConnectorOAuthState,
   readCustomConnectorOAuthState,
-  type StoredOAuthState,
+  type StoredCustomConnectorOAuthState,
 } from "../services/connector-oauth-state.service";
 import {
+  customConnectorOAuthStateMatchesDefinition,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
-  parseCustomConnectorOAuthStateContext,
+  lockCustomConnectorOAuth2CredentialContract,
+  parseValidCustomConnectorOAuthState,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
   type CustomConnectorOAuthStateContext,
@@ -42,12 +44,17 @@ import {
   verifyFeishuOAuthState,
 } from "../services/feishu-oauth-state";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
-import { addUserCustomConnector } from "../services/user-connectors.service";
+import {
+  addUserCustomConnector,
+  lockUserCustomConnectorGrantScope,
+} from "../services/user-connectors.service";
+import { commitConnectorRuntimeMutation } from "../services/connector-runtime-wakeup.service";
+import { publishCustomConnectorUserInvalidationAfterCommit } from "../services/connector-client-invalidation.service";
 import {
   getCustomConnectorById,
-  type CustomConnectorRow,
+  type CustomConnectorHttpRow,
 } from "../services/zero-custom-connector.service";
-import { publishFeishuOrgChanged } from "../services/zero-feishu-realtime.service";
+import { publishFeishuOrgChanged } from "../services/feishu-realtime.service";
 import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
 import { tapError } from "../utils";
 
@@ -167,33 +174,29 @@ function callbackRedirectResponse(
 }
 
 function validCustomFeishuState(
-  storedState: StoredOAuthState,
+  storedState: StoredCustomConnectorOAuthState,
 ): FeishuCustomConnectorOAuthContext | null {
-  const context = parseCustomConnectorOAuthStateContext(
-    storedState.oauthContext,
-  );
+  const context = parseValidCustomConnectorOAuthState(storedState);
   if (
     !context?.providerContext ||
-    context.providerContext.provider !== "feishu" ||
-    storedState.connectorSlug !== null ||
-    storedState.customConnectorId !== context.connectorId ||
-    storedState.connectorRevision !== context.connectorRevision ||
-    storedState.authMethod !== "oauth2"
+    context.providerContext.provider !== "feishu"
   ) {
     return null;
   }
   return { ...context, providerContext: context.providerContext };
 }
 
-async function exchangeOAuthTokenAndUserInfo(args: {
-  readonly connector: CustomConnectorRow;
-  readonly clientSecret: string;
-  readonly code: string;
-  readonly codeVerifier: string | null;
-  readonly redirectUri: string;
-  readonly installationId: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function exchangeOAuthTokenAndUserInfo(
+  args: {
+    readonly connector: CustomConnectorHttpRow;
+    readonly clientSecret: string;
+    readonly code: string;
+    readonly codeVerifier: string | null;
+    readonly redirectUri: string;
+    readonly installationId: string;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly token: OAuthTokenResult;
       readonly userInfo: FeishuUserInfo;
@@ -206,19 +209,23 @@ async function exchangeOAuthTokenAndUserInfo(args: {
   }
   return await tapError(
     (async () => {
-      const token = await exchangeCustomConnectorOAuth2Code({
-        config: oauthConfig,
-        clientSecret: args.clientSecret,
-        code: args.code,
-        codeVerifier: args.codeVerifier,
-        redirectUri: args.redirectUri,
-        signal: args.signal,
-      });
-      args.signal.throwIfAborted();
-      const userInfo = await fetchFeishuUserInfo({
-        userAccessToken: token.accessToken,
-        signal: args.signal,
-      });
+      const token = await exchangeCustomConnectorOAuth2Code(
+        {
+          config: oauthConfig,
+          clientSecret: args.clientSecret,
+          code: args.code,
+          codeVerifier: args.codeVerifier,
+          redirectUri: args.redirectUri,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      const userInfo = await fetchFeishuUserInfo(
+        {
+          userAccessToken: token.accessToken,
+        },
+        signal,
+      );
       return { token, userInfo };
     })(),
     (error) => {
@@ -230,12 +237,14 @@ async function exchangeOAuthTokenAndUserInfo(args: {
   );
 }
 
-async function upsertFeishuConnection(args: {
-  readonly db: Db;
-  readonly state: FeishuConnectionState;
-  readonly userInfo: FeishuUserInfo;
-  readonly signal: AbortSignal;
-}): Promise<
+async function upsertFeishuConnection(
+  args: {
+    readonly db: Db;
+    readonly state: FeishuConnectionState;
+    readonly userInfo: FeishuUserInfo;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly connected: false }
   | {
       readonly connected: true;
@@ -257,7 +266,7 @@ async function upsertFeishuConnection(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (existing && existing.vm0UserId !== args.state.userId) {
     return { connected: false };
   }
@@ -293,7 +302,7 @@ async function upsertFeishuConnection(args: {
         id: feishuOrgConnections.id,
         dmWelcomeSent: feishuOrgConnections.dmWelcomeSent,
       });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!inserted) {
       return { connected: false };
     }
@@ -310,7 +319,7 @@ async function upsertFeishuConnection(args: {
         ne(feishuOrgConnections.feishuOpenId, args.userInfo.openId),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { connected: true, connectionId, shouldNotify };
 }
 
@@ -344,16 +353,18 @@ async function loadInstallationForConnector(args: {
   return installation ?? null;
 }
 
-async function persistFeishuOAuthConnection(args: {
-  readonly db: Db;
-  readonly state: FeishuConnectionState;
-  readonly installation: FeishuInstallationOAuthRow;
-  readonly connector: CustomConnectorRow;
-  readonly token: OAuthTokenResult;
-  readonly userInfo: FeishuUserInfo;
-  readonly featureContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<
+async function persistFeishuOAuthConnection(
+  args: {
+    readonly db: Db;
+    readonly state: FeishuConnectionState;
+    readonly installation: FeishuInstallationOAuthRow;
+    readonly connector: CustomConnectorHttpRow;
+    readonly token: OAuthTokenResult;
+    readonly userInfo: FeishuUserInfo;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly connected: false }
   | {
       readonly connected: true;
@@ -362,24 +373,48 @@ async function persistFeishuOAuthConnection(args: {
     }
 > {
   return await args.db.transaction(async (tx) => {
-    const connection = await upsertFeishuConnection({
-      db: tx,
-      state: args.state,
-      userInfo: args.userInfo,
-      signal: args.signal,
+    const agentLocked = await lockUserCustomConnectorGrantScope(tx, {
+      orgId: args.state.orgId,
+      userId: args.state.userId,
+      agentId: args.installation.defaultAgentId,
     });
+    signal.throwIfAborted();
+    if (!agentLocked) {
+      throw new Error(
+        "Failed to authorize Feishu custom connector: agentNotFound",
+      );
+    }
+    await lockCustomConnectorOAuth2CredentialContract({
+      db: tx,
+      orgId: args.state.orgId,
+      connectorId: args.connector.id,
+      storageVersion: args.connector.storageVersion,
+    });
+    signal.throwIfAborted();
+    const connection = await upsertFeishuConnection(
+      {
+        db: tx,
+        state: args.state,
+        userInfo: args.userInfo,
+      },
+      signal,
+    );
     if (!connection.connected) {
       return connection;
     }
-    await storeCustomConnectorOAuth2Connection({
-      db: tx,
-      orgId: args.state.orgId,
-      userId: args.state.userId,
-      connectorId: args.connector.id,
-      token: args.token,
-      featureContext: args.featureContext,
-    });
-    args.signal.throwIfAborted();
+    await storeCustomConnectorOAuth2Connection(
+      {
+        db: tx,
+        orgId: args.state.orgId,
+        userId: args.state.userId,
+        connectorId: args.connector.id,
+        storageVersion: args.connector.storageVersion,
+        token: args.token,
+        featureContext: args.featureContext,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (!args.installation.tenantKey && args.userInfo.tenantKey) {
       await tx
         .update(feishuOrgInstallations)
@@ -389,33 +424,39 @@ async function persistFeishuOAuthConnection(args: {
         })
         .where(eq(feishuOrgInstallations.id, args.state.installationId));
     }
-    const grant = await addUserCustomConnector(tx, {
-      orgId: args.state.orgId,
-      userId: args.state.userId,
-      agentId: args.installation.defaultAgentId,
-      customConnectorId: args.connector.id,
-    });
+    const grant = await addUserCustomConnector(
+      tx,
+      {
+        orgId: args.state.orgId,
+        userId: args.state.userId,
+        agentId: args.installation.defaultAgentId,
+        customConnectorId: args.connector.id,
+      },
+      { deferRuntimeWakeupUntilOuterCommit: true },
+    );
     if (grant.status !== "added") {
       throw new Error(
         `Failed to authorize Feishu custom connector: ${grant.status}`,
       );
     }
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return connection;
   });
 }
 
-async function finishFeishuOAuthConnection(args: {
-  readonly db: Db;
-  readonly state: FeishuConnectionState;
-  readonly installation: FeishuInstallationOAuthRow;
-  readonly connector: CustomConnectorRow;
-  readonly token: OAuthTokenResult;
-  readonly userInfo: FeishuUserInfo;
-  readonly expectedOpenId?: string;
-  readonly featureContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<
+async function finishFeishuOAuthConnection(
+  args: {
+    readonly db: Db;
+    readonly state: FeishuConnectionState;
+    readonly installation: FeishuInstallationOAuthRow;
+    readonly connector: CustomConnectorHttpRow;
+    readonly token: OAuthTokenResult;
+    readonly userInfo: FeishuUserInfo;
+    readonly expectedOpenId?: string;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<
   "account_in_use" | "connected" | "identity_mismatch" | "tenant_mismatch"
 > {
   if (args.expectedOpenId && args.expectedOpenId !== args.userInfo.openId) {
@@ -428,11 +469,28 @@ async function finishFeishuOAuthConnection(args: {
   ) {
     return "tenant_mismatch";
   }
-  const connection = await persistFeishuOAuthConnection(args);
-  args.signal.throwIfAborted();
+  const connectionPersistence = persistFeishuOAuthConnection(args, signal);
+  const connection = await commitConnectorRuntimeMutation(
+    connectionPersistence,
+    (result) => {
+      return result.connected
+        ? {
+            db: args.db,
+            scope: { orgId: args.state.orgId, userId: args.state.userId },
+            targets: [{ kind: "custom", customConnectorId: args.connector.id }],
+          }
+        : undefined;
+    },
+  );
   if (!connection.connected) {
+    signal.throwIfAborted();
     return "account_in_use";
   }
+
+  await publishCustomConnectorUserInvalidationAfterCommit(
+    args.state.userId,
+    signal,
+  );
 
   await publishFeishuOrgChanged(
     args.db,
@@ -440,18 +498,20 @@ async function finishFeishuOAuthConnection(args: {
     args.installation.ownerUserId,
     [args.state.userId],
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (connection.shouldNotify) {
     const backgroundSignal = new AbortController().signal;
     waitUntil(
       tapError(
-        notifyFeishuConnect({
-          db: args.db,
-          installationId: args.state.installationId,
-          connectionId: connection.connectionId,
-          openId: args.userInfo.openId,
-          signal: backgroundSignal,
-        }),
+        notifyFeishuConnect(
+          {
+            db: args.db,
+            installationId: args.state.installationId,
+            connectionId: connection.connectionId,
+            openId: args.userInfo.openId,
+          },
+          backgroundSignal,
+        ),
         (error) => {
           L.warn("Failed to send Feishu connect welcome", {
             error,
@@ -612,7 +672,8 @@ const completeLegacyFeishuOAuth$ = command(
     );
     signal.throwIfAborted();
     if (
-      !connector?.oauthConfig ||
+      connector?.kind !== "http" ||
+      !connector.oauthConfig ||
       connector.oauthConfig.providerAdapter !== "feishu"
     ) {
       return callbackRedirectResponse(
@@ -620,15 +681,17 @@ const completeLegacyFeishuOAuth$ = command(
         query.responseMode,
       );
     }
-    const exchanged = await exchangeOAuthTokenAndUserInfo({
-      connector,
-      clientSecret: config.appSecret,
-      code: query.code,
-      codeVerifier: null,
-      redirectUri: oauthRedirectUri(state.oauthRedirectTarget),
-      installationId: state.installationId,
+    const exchanged = await exchangeOAuthTokenAndUserInfo(
+      {
+        connector,
+        clientSecret: config.appSecret,
+        code: query.code,
+        codeVerifier: null,
+        redirectUri: oauthRedirectUri(state.oauthRedirectTarget),
+        installationId: state.installationId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (!exchanged) {
       return callbackRedirectResponse(
@@ -643,15 +706,17 @@ const completeLegacyFeishuOAuth$ = command(
       userFeatureSwitchContext(state.orgId, state.userId),
     );
     signal.throwIfAborted();
-    const completed = await finishFeishuOAuthConnection({
-      db,
-      state,
-      installation,
-      connector,
-      ...exchanged,
-      featureContext,
+    const completed = await finishFeishuOAuthConnection(
+      {
+        db,
+        state,
+        installation,
+        connector,
+        ...exchanged,
+        featureContext,
+      },
       signal,
-    });
+    );
     if (completed !== "connected") {
       return callbackRedirectResponse(
         completionErrorUrl(target, connectionErrorMessage(completed)),
@@ -671,7 +736,7 @@ const completeClaimedCustomFeishuOAuth$ = command(
     args: {
       readonly db: Db;
       readonly query: FeishuOAuthCallbackQuery & { readonly state: string };
-      readonly state: StoredOAuthState;
+      readonly state: StoredCustomConnectorOAuthState;
       readonly context: FeishuCustomConnectorOAuthContext;
     },
     signal: AbortSignal,
@@ -696,9 +761,10 @@ const completeClaimedCustomFeishuOAuth$ = command(
     );
     signal.throwIfAborted();
     if (
-      !connector?.oauthConfig ||
+      connector?.kind !== "http" ||
+      !connector.oauthConfig ||
       connector.oauthConfig.providerAdapter !== "feishu" ||
-      connector.revision !== context.connectorRevision
+      !customConnectorOAuthStateMatchesDefinition(context, connector)
     ) {
       return callbackRedirectResponse(
         completionErrorUrl(
@@ -741,15 +807,17 @@ const completeClaimedCustomFeishuOAuth$ = command(
         query.responseMode,
       );
     }
-    const exchanged = await exchangeOAuthTokenAndUserInfo({
-      connector,
-      clientSecret: credentials.clientSecret,
-      code: query.code,
-      codeVerifier: state.codeVerifier,
-      redirectUri: state.redirectUri,
-      installationId: installation.installationId,
+    const exchanged = await exchangeOAuthTokenAndUserInfo(
+      {
+        connector,
+        clientSecret: credentials.clientSecret,
+        code: query.code,
+        codeVerifier: state.codeVerifier,
+        redirectUri: state.redirectUri,
+        installationId: installation.installationId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (!exchanged) {
       return callbackRedirectResponse(
@@ -765,16 +833,18 @@ const completeClaimedCustomFeishuOAuth$ = command(
       orgId: args.state.orgId,
       userId: args.state.userId,
     };
-    const completed = await finishFeishuOAuthConnection({
-      db,
-      state: connectionState,
-      installation,
-      connector,
-      ...exchanged,
-      expectedOpenId: context.providerContext.expectedOpenId,
-      featureContext,
+    const completed = await finishFeishuOAuthConnection(
+      {
+        db,
+        state: connectionState,
+        installation,
+        connector,
+        ...exchanged,
+        expectedOpenId: context.providerContext.expectedOpenId,
+        featureContext,
+      },
       signal,
-    });
+    );
     if (completed !== "connected") {
       return callbackRedirectResponse(
         completionErrorUrl(target, connectionErrorMessage(completed)),
@@ -819,9 +889,9 @@ const completeCustomFeishuOAuth$ = command(
       return redirectResponse(appCallbackUrl(query));
     }
 
-    const claimed = await claimCustomConnectorOAuthState(
+    const claimed = await claimConnectorOAuthState(
       db,
-      { state: query.state },
+      { state: query.state, target: { kind: "custom" } },
       signal,
     );
     signal.throwIfAborted();

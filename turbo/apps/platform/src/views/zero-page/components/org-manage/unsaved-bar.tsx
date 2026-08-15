@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { IconPencil, IconLoader2 } from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
+import { Pencil, Loader2 } from "lucide-react";
+import { Button } from "@okouai/ui";
 
 export function UnsavedBar({
   onDiscard,
@@ -28,11 +28,7 @@ export function UnsavedBar({
         className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
       >
         <div className="flex items-center gap-2 text-sm text-foreground">
-          <IconPencil
-            size={18}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <Pencil size={18} className="shrink-0" />
           <span>
             {t(($) => {
               return $.settings.workspace.unsaved.message;
@@ -55,16 +51,12 @@ export function UnsavedBar({
           <Button
             data-testid="save-button"
             size="sm"
-            className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+            className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary-hover"
             onClick={onSave}
             disabled={saving || saveDisabled}
           >
             {saving ? (
-              <IconLoader2
-                size={14}
-                stroke={1.5}
-                className="animate-spin mr-1.5"
-              />
+              <Loader2 size={14} className="animate-spin mr-1.5" />
             ) : null}
             {t(($) => {
               return $.settings.shared.save;

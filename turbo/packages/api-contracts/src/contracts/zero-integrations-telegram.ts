@@ -128,7 +128,7 @@ const telegramWebhookPathParamsSchema = z.object({
  * Zero integrations Telegram contract
  * Covers all Telegram integration endpoints.
  *
- * Path note: these endpoints use /api/integrations/ and /api/telegram/ (not /api/zero/)
+ * Path note: these endpoints use /api/integrations/ and /api/telegram/ (not /api/okou/)
  * because they are served by the platform app directly, not the Zero sub-application.
  * This is intentional and matches the real server routing.
  */

@@ -1,20 +1,16 @@
 import { command, computed } from "ccstate";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { getAllFeatureStates } from "@okouai/core/feature-switch";
 
-import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import {
   deleteUserFeatureSwitches$,
   updateUserFeatureSwitches$,
   userFeatureSwitchOverrides,
 } from "../services/feature-switches.service";
-import { modelProviderGatewaySchemaAvailable } from "../services/model-provider-gateway-schema.service";
 
 const featureSwitchesAuthOptions = {
   requireOrganization: true,
@@ -25,27 +21,15 @@ function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly switches: Record<string, boolean>;
-  readonly supportsStructuredInlineTemplates: boolean;
-  readonly supportsCustomConnectorOAuth2: boolean;
-  readonly supportsCustomModelGateways: boolean;
-  readonly supportsImageRecognition: boolean;
 }) {
-  const effectiveSwitches = getAllFeatureStates({
+  const registeredEffectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
     userId: params.userId,
     overrides: params.switches,
   });
-  effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] =
-    effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] &&
-    isZeroMailReplyFollowUpRolloutEnabled();
-
   return {
     switches: params.switches,
-    effectiveSwitches,
-    supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
-    supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
-    supportsCustomModelGateways: params.supportsCustomModelGateways,
-    supportsImageRecognition: params.supportsImageRecognition,
+    effectiveSwitches: registeredEffectiveSwitches,
   };
 }
 
@@ -54,19 +38,12 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
   const switches = await get(
     userFeatureSwitchOverrides(auth.orgId, auth.userId),
   );
-  const supportsCustomModelGateways = await modelProviderGatewaySchemaAvailable(
-    get(db$),
-  );
   return {
     status: 200 as const,
     body: featureSwitchResponseBody({
       orgId: auth.orgId,
       userId: auth.userId,
       switches,
-      supportsStructuredInlineTemplates: true,
-      supportsCustomConnectorOAuth2: true,
-      supportsCustomModelGateways,
-      supportsImageRecognition: true,
     }),
   };
 });
@@ -93,9 +70,6 @@ const updateFeatureSwitchesInner$ = command(
       },
       signal,
     );
-    const supportsCustomModelGateways =
-      await modelProviderGatewaySchemaAvailable(get(db$));
-    signal.throwIfAborted();
 
     return {
       status: 200 as const,
@@ -103,10 +77,6 @@ const updateFeatureSwitchesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         switches,
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways,
-        supportsImageRecognition: true,
       }),
     };
   },

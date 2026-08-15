@@ -2,8 +2,8 @@ import {
   compatibleStoredExecutionContextSchema,
   type CompatibleStoredExecutionContext,
   type StoredExecutionContext,
-} from "@vm0/api-contracts/contracts/runners";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+} from "@okouai/api-contracts/contracts/runners";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { z } from "zod";
 
 import {
@@ -41,7 +41,7 @@ interface CompatibleQueuedRunnerJobPayload extends Omit<
   readonly executionContext: CompatibleStoredExecutionContext;
 }
 
-function historyGenerationRunId(
+export function historyGenerationRunIdForStoredExecutionContext(
   executionContext: Pick<StoredExecutionContext, "resumeSession">,
 ): string | undefined {
   const resumeSession = executionContext.resumeSession;
@@ -95,7 +95,7 @@ export async function decryptQueuedRunnerJobPayload(
     profile: wirePayload.profile,
     cliAgentSessionId: wirePayload.sessionId,
     reuseKey: wirePayload.reuseKey ?? null,
-    historyGenerationRunId: historyGenerationRunId(
+    historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
       wirePayload.executionContext,
     ),
     executionContext: wirePayload.executionContext,
@@ -115,7 +115,9 @@ export function queuedRunnerJobPayload(args: {
     profile: args.profile,
     cliAgentSessionId: args.cliAgentSessionId,
     reuseKey: args.reuseKey,
-    historyGenerationRunId: historyGenerationRunId(args.executionContext),
+    historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
+      args.executionContext,
+    ),
     executionContext: args.executionContext,
   };
 }

@@ -1,4 +1,4 @@
-import { AVATAR_PRESET_PREFIX } from "@vm0/core/agent-avatar";
+import { AVATAR_PRESET_PREFIX } from "@okouai/core/agent-avatar";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import {
   AVATAR_SVG_PREFIX,

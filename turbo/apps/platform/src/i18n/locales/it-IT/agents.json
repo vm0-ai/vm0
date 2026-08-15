@@ -16,10 +16,7 @@
     "connectorsLink": "Connettori",
     "connectorsSaved": "Connettori salvati",
     "customConnectors": {
-      "authorize": "Autorizza {{connectorName}} per questo agente",
-      "description": "Connettori personalizzati registrati dalla tua organizzazione. Possono essere attivati solo i connettori per i quali hai fornito un segreto.",
-      "noSecret": "Nessun segreto configurato",
-      "noSecretSuffix": " — nessun segreto configurato",
+      "description": "Connettori personalizzati registrati dalla tua organizzazione.",
       "saved": "Connettori personalizzati salvati"
     },
     "description": "Quando è in esecuzione, l'agente può utilizzare in modo sicuro i servizi connessi. Puoi gestire o disattivare l'accesso in qualsiasi momento.",
@@ -606,15 +603,12 @@
   },
   "sidebar": {
     "clearSearch": "Cancella ricerca",
-    "description": "Scegli un agente per avviare una conversazione.",
     "descriptionWithChats": "Scegli un agente o passa a una chat.",
     "leadDescription": "Il tuo assistente principale, sempre qui per te",
     "markAllRead": "Segna tutti come letti",
     "more": "Altro",
     "new": "Nuovo",
-    "noAgents": "Nessun agente trovato",
     "noResults": "Nessun risultato trovato",
-    "noSubagents": "Nessun sub-agente ancora disponibile.",
     "openConversation": "Apri una conversazione",
     "openMenu": "Apri il menu dell'agente",
     "pin": "Fissa nella barra laterale",
@@ -622,6 +616,7 @@
     "pinnedAgents": "Agenti in evidenza",
     "searchAgents": "Cerca agenti...",
     "searchAgentsAndChats": "Cerca agenti e chat...",
+    "searching": "Ricerca in corso...",
     "sections": {
       "chats": "Chat",
       "lead": "Principale",

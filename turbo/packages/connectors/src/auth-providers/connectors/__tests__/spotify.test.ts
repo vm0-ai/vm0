@@ -53,7 +53,8 @@ describe("connector/providers/spotify", () => {
       );
       const meHandler = http.get("https://api.spotify.com/v1/me", () => {
         return HttpResponse.json({
-          id: "spotify-user-123",
+          account_id: "spotify-account-123",
+          id: "legacy-spotify-user-123",
           display_name: "Test Spotify User",
           email: "test@example.com",
         });
@@ -72,9 +73,32 @@ describe("connector/providers/spotify", () => {
       expect(result.refreshToken).toBe("spotify-refresh-token");
       expect(result.expiresIn).toBe(3600);
       expect(result.scopes).toEqual(["user-read-email", "user-read-private"]);
-      expect(result.userInfo.id).toBe("spotify-user-123");
+      expect(result.userInfo.id).toBe("spotify-account-123");
       expect(result.userInfo.username).toBe("Test Spotify User");
       expect(result.userInfo.email).toBe("test@example.com");
+    });
+
+    it("tolerates legacy profiles that only expose id", async () => {
+      const tokenHandler = http.post(
+        "https://accounts.spotify.com/api/token",
+        () => {
+          return HttpResponse.json({ access_token: "spotify-test-token" });
+        },
+      );
+      const meHandler = http.get("https://api.spotify.com/v1/me", () => {
+        return HttpResponse.json({ id: "legacy-spotify-user-123" });
+      });
+      server.use(tokenHandler, meHandler);
+
+      const result = await exchangeSpotifyCode(
+        authCodeGrant(),
+        "client-id",
+        "client-secret",
+        "test-code",
+        "https://example.com/callback",
+      );
+
+      expect(result.userInfo.id).toBe("legacy-spotify-user-123");
     });
 
     it("rejects user info without the required Spotify user id", async () => {

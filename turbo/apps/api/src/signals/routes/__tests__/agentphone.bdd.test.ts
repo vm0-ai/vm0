@@ -38,7 +38,6 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
-
 interface LinkedAgentPhoneActor {
   readonly actor: ApiTestUser;
   readonly phone: string;
@@ -82,7 +81,7 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
   readonly sandboxToken: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
-  readonly zeroToken: string | undefined;
+  readonly okouToken: string | undefined;
 }> {
   const runs = createRunsApi(context);
   await runs.heartbeatRunner(runnerGroup);
@@ -103,7 +102,7 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
     sandboxToken: claim.sandboxToken,
     prompt: claim.prompt,
     appendSystemPrompt: claim.appendSystemPrompt ?? "",
-    zeroToken: claim.environment?.ZERO_TOKEN,
+    okouToken: claim.environment?.OKOU_TOKEN,
   };
 }
 
@@ -303,7 +302,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     );
   });
 
-  it("dispatches linked iMessage DMs, refreshes typing, replies with plain-text completions, and controls sessions", async () => {
+  it("dispatches linked iMessage DMs, refreshes typing, and replies with plain-text completions", async () => {
     const webhooks = createWebhookCallbackApi(context);
     const ap = createAgentPhoneBddApi(context);
     const chat = createChatFilesBddApi(context);
@@ -320,8 +319,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     await waitForTyping(sends, [conversationId]);
 
-    const admitted =
-      await findAgentphoneChatEventByPromptFixture("summarize my inbox");
+    const admitted = await findAgentphoneChatEventByPromptFixture({
+      userId: actor.userId,
+      prompt: "summarize my inbox",
+    });
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
       throw new Error("Expected admitted AgentPhone input event");
@@ -422,6 +423,25 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(completionReply.body).toBe(EXPECTED_PLAIN_RUN_OUTPUT);
     expect(completionReply.body).not.toContain("Audit:");
     expect(completionReply.body).not.toContain("Responded by");
+  });
+
+  it("reuses and resets linked iMessage sessions", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    const conversationId = uniqueConversationId();
+
+    const beforeFirstCompletion = sends.messages.length;
+    const messageId1 = await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: phone,
+      body: "start session",
+      conversationId,
+      isGroup: false,
+    });
+    const run1 = await claimDispatchedRun(runnerGroup);
+    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
+    await waitForSendCount(sends, beforeFirstCompletion + 1);
+    expect(lastSend(sends).body).toBe("Task completed successfully.");
     // Session persistence happens in background callback processing, so
     // wait for the session id to be saved before reading it.
     const session1 = await waitForRunSessionIdPresent(actor, run1.runId);
@@ -470,8 +490,13 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
     const session3 = await waitForRunSessionIdPresent(actor, run3.runId);
     expect(session3).not.toBe(session1);
+  });
 
-    // A failed run replies with the Web-style generic failure text.
+  it("replies to failed linked iMessage runs", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { phone, runnerGroup, sends } = await entitledLinkedActor();
+    const conversationId = uniqueConversationId();
+
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: phone,
@@ -479,12 +504,12 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       conversationId,
       isGroup: false,
     });
-    const run4 = await claimDispatchedRun(runnerGroup);
-    const beforeRun4Completion = sends.messages.length;
-    await completeSandboxRun(run4.sandboxToken, run4.runId, 1, {
+    const run = await claimDispatchedRun(runnerGroup);
+    const beforeCompletion = sends.messages.length;
+    await completeSandboxRun(run.sandboxToken, run.runId, 1, {
       error: "AgentPhone bdd route failure",
     });
-    await waitForSendCount(sends, beforeRun4Completion + 1);
+    await waitForSendCount(sends, beforeCompletion + 1);
     expect(lastSend(sends).body).toBe(
       "Oops, something went wrong. Please try again later.",
     );
@@ -500,8 +525,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       from: phone,
       body: "start on my phone",
     });
-    const admittedSms =
-      await findAgentphoneChatEventByPromptFixture("start on my phone");
+    const admittedSms = await findAgentphoneChatEventByPromptFixture({
+      userId: actor.userId,
+      prompt: "start on my phone",
+    });
     if (!admittedSms) {
       throw new Error("Expected admitted AgentPhone SMS input event");
     }
@@ -565,7 +592,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       phoneEvents.events.some((event) => {
         return (
           event.eventType === "input.prompt" &&
-          event.triggerSource === "agentphone"
+          event.userMessage.parts.some((part) => {
+            return part.type === "source" && part.kind === "agentphone";
+          })
         );
       }),
     ).toBeTruthy();
@@ -589,10 +618,22 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(sends.messages).toHaveLength(sendsBeforeWebCompletion);
     await waitForRunSessionId(actor, webRun.runId, sharedSession);
 
+    // Provider history changes prompt context without rotating the canonical
+    // session shared by the phone and web surfaces.
     await ap.postAgentPhoneInboundMessage({
       channel: "sms",
       from: phone,
       body: "finish back on my phone",
+      recentHistory: [
+        {
+          messageId: "rh-shared-session",
+          content: "provider history before returning to the phone",
+          direction: "inbound",
+          channel: "sms",
+          from: phone,
+          at: "2026-06-01T08:00:00.000Z",
+        },
+      ],
     });
     const phoneRun2 = await claimDispatchedRun(runnerGroup);
     await completeSandboxRun(phoneRun2.sandboxToken, phoneRun2.runId, 0);
@@ -630,9 +671,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       from: phone,
       body: "second queued prompt",
     });
-    const secondEvent = await findAgentphoneChatEventByPromptFixture(
-      "second queued prompt",
-    );
+    const secondEvent = await findAgentphoneChatEventByPromptFixture({
+      userId: actor.userId,
+      prompt: "second queued prompt",
+    });
     if (!secondEvent) {
       throw new Error("Expected pending AgentPhone queue item");
     }
@@ -703,9 +745,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(sends.messages).toHaveLength(sendsAfterCompletion);
   });
 
-  it("renders media prompts, provider recent history, and restarts sessions when the model route changes", async () => {
+  it("renders media prompts", async () => {
     const ap = createAgentPhoneBddApi(context);
-    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    const { phone, runnerGroup } = await entitledLinkedActor();
 
     // A media DM walks both percent-decode branches of the filename.
     const mediaMessageId = await ap.postAgentPhoneInboundMessage({
@@ -721,10 +763,12 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         `[AgentPhone file] photo one+final%2zraw.png (image/png)\n   [ID] ${mediaMessageId}`,
       ].join("\n\n"),
     );
-    const beforeRun1Completion = sends.messages.length;
     await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
-    await waitForSendCount(sends, beforeRun1Completion + 1);
-    const mediaSession = await waitForRunSessionIdPresent(actor, run1.runId);
+  });
+
+  it("renders provider recent history", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { phone, runnerGroup } = await entitledLinkedActor();
 
     // Provider-sent recent history wins over stored context: full entries
     // keep channel and timestamp lines, media-only entries become file
@@ -746,25 +790,33 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         { direction: "inbound" },
       ],
     });
-    const run2 = await claimDispatchedRun(runnerGroup);
-    expect(run2.appendSystemPrompt).toContain("# AgentPhone Message Context");
-    expect(run2.appendSystemPrompt).toContain("MSG_ID: rh-full");
-    expect(run2.appendSystemPrompt).toContain("prior context from provider");
-    expect(run2.appendSystemPrompt).toContain("CHANNEL: sms");
-    expect(run2.appendSystemPrompt).toContain("AT: 2026-06-01T08:00:00.000Z");
-    expect(run2.appendSystemPrompt).toContain(
+    const run = await claimDispatchedRun(runnerGroup);
+    expect(run.appendSystemPrompt).toContain("# AgentPhone Message Context");
+    expect(run.appendSystemPrompt).toContain("MSG_ID: rh-full");
+    expect(run.appendSystemPrompt).toContain("prior context from provider");
+    expect(run.appendSystemPrompt).toContain("CHANNEL: sms");
+    expect(run.appendSystemPrompt).toContain("AT: 2026-06-01T08:00:00.000Z");
+    expect(run.appendSystemPrompt).toContain(
       "[AgentPhone file] https://media.agentphone.test/history-photo.png",
     );
     expect(
-      run2.appendSystemPrompt.match(/- RELATIVE_INDEX:/gu) ?? [],
+      run.appendSystemPrompt.match(/- RELATIVE_INDEX:/gu) ?? [],
     ).toHaveLength(2);
+    await completeSandboxRun(run.sandboxToken, run.runId, 0);
+  });
 
-    // Session continuity: the second DM reuses the session saved by the
-    // first completion.
-    const beforeRun2Completion = sends.messages.length;
-    await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
-    await waitForSendCount(sends, beforeRun2Completion + 1);
-    await waitForRunSessionId(actor, run2.runId, mediaSession);
+  it("restarts linked sessions when the model route changes", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { actor, phone, runnerGroup } = await entitledLinkedActor();
+
+    await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "establish model session",
+    });
+    const run1 = await claimDispatchedRun(runnerGroup);
+    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
+    const originalSession = await waitForRunSessionIdPresent(actor, run1.runId);
 
     // Re-pointing the default model policy at an incompatible provider
     // forces the next DM onto a fresh session.
@@ -774,10 +826,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       from: phone,
       body: "after provider switch",
     });
-    const run3 = await claimDispatchedRun(runnerGroup);
-    await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
-    await expect(ap.readRunSessionId(actor, run3.runId)).resolves.not.toBe(
-      mediaSession,
+    const run2 = await claimDispatchedRun(runnerGroup);
+    await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
+    await expect(ap.readRunSessionId(actor, run2.runId)).resolves.not.toBe(
+      originalSession,
     );
   });
 
@@ -825,14 +877,14 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const modelOptions = await commandReply("/model");
     expect(modelOptions).toContain("Available models");
     expect(modelOptions).toContain("Current: workspace default");
-    expect(modelOptions).toContain("/model claude-sonnet-4-6");
+    expect(modelOptions).toContain("/model claude-sonnet-5");
     expect(modelOptions).toContain("(workspace default)");
 
-    const switched = await commandReply("/model claude-sonnet-4-6");
+    const switched = await commandReply("/model claude-sonnet-5");
     expect(switched).toContain("Switched to ");
 
     const optionsAfterSwitch = await commandReply("/model");
-    expect(optionsAfterSwitch).toContain("Current: Claude Sonnet 4.6");
+    expect(optionsAfterSwitch).toContain("Current: Claude Sonnet 5");
     expect(optionsAfterSwitch).toContain("(current, workspace default)");
 
     const unknownModel = await commandReply("/model not-a-model");
@@ -891,9 +943,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         },
       ],
     });
-    const admittedGroup = await findAgentphoneChatEventByPromptFixture(
-      "summarize this thread",
-    );
+    const admittedGroup = await findAgentphoneChatEventByPromptFixture({
+      userId: actor.userId,
+      prompt: "summarize this thread",
+    });
     expect(admittedGroup).toMatchObject({ eventId: expect.any(String) });
     if (!admittedGroup) {
       throw new Error("Expected admitted AgentPhone group input event");
@@ -1137,13 +1190,13 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(run.runId);
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
-      throw new Error("Expected the claimed run to expose ZERO_TOKEN");
+    const okouToken = claim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error("Expected the claimed run to expose OKOU_TOKEN");
     }
 
     const init = await ap.requestPhoneUploadInitWithToken(
-      zeroToken,
+      okouToken,
       { filename: "screen shot.png", contentType: "image/png", length: 123 },
       [200],
     );
@@ -1162,7 +1215,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       size: 456,
     });
     const completed = await ap.requestPhoneUploadCompleteWithToken(
-      zeroToken,
+      okouToken,
       {
         uploadId: init.body.uploadId,
         toNumber: phone,
@@ -1193,7 +1246,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       }),
     );
     const downloaded = await ap.downloadPhoneFileRaw(
-      zeroToken,
+      okouToken,
       completed.body.messageId,
     );
     expect(downloaded.status).toBe(200);

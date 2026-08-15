@@ -1,7 +1,10 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-runtime-state";
+} from "@okouai/api-contracts/contracts/test-runtime-state";
+import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";
@@ -49,51 +52,59 @@ async function postAction(
   return await readJson<TestRuntimeStateActionResponse>(response);
 }
 
+interface Vm0ManagedModelKeyFixture {
+  readonly selectedModel: string;
+  release(): Promise<void>;
+}
+
+function vm0ManagedModelKeyFixture(
+  context: TestContext,
+  fixtureId: string,
+  selectedModel: string,
+): Vm0ManagedModelKeyFixture {
+  let released = false;
+  const release = async (): Promise<void> => {
+    if (released) {
+      return;
+    }
+    await postAction(context, {
+      action: "delete-vm0-managed-model-key",
+      fixture_id: fixtureId,
+    });
+    released = true;
+  };
+  onTestFinished(release);
+  return { selectedModel, release };
+}
+
 export async function seedVm0ManagedDefaultModelKey(
   context: TestContext,
-): Promise<string> {
+): Promise<Vm0ManagedModelKeyFixture> {
+  const fixtureId = randomUUID();
   const response = await postAction(context, {
     action: "seed-vm0-managed-default-model-key",
+    fixture_id: fixtureId,
   });
   if (!response.selected_model) {
     throw new Error("seedVm0ManagedDefaultModelKey missing selected_model");
   }
-  return response.selected_model;
+  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
 export async function seedVm0ManagedModelKey(
   context: TestContext,
   selectedModel: string,
-): Promise<string> {
+): Promise<Vm0ManagedModelKeyFixture> {
+  const fixtureId = randomUUID();
   const response = await postAction(context, {
     action: "seed-vm0-managed-model-key",
+    fixture_id: fixtureId,
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
     throw new Error("seedVm0ManagedModelKey missing selected_model");
   }
-  return response.selected_model;
-}
-
-export async function deleteVm0ManagedDefaultModelKey(
-  context: TestContext,
-): Promise<void> {
-  await postAction(context, { action: "delete-vm0-managed-default-model-key" });
-}
-
-export async function enableFakeKms(context: TestContext): Promise<void> {
-  await postAction(context, { action: "enable-fake-kms" });
-}
-
-export async function resetFakeKms(context: TestContext): Promise<void> {
-  await postAction(context, { action: "reset-fake-kms" });
-}
-
-export async function readFakeKmsDecryptCallCount(
-  context: TestContext,
-): Promise<number> {
-  const response = await postAction(context, { action: "read-fake-kms-state" });
-  return response.decrypt_call_count ?? 0;
+  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
 export async function readBrowserScreenshotSchemaAvailable(
@@ -108,6 +119,137 @@ export async function readBrowserScreenshotSchemaAvailable(
     );
   }
   return response.browser_screenshot_schema_available;
+}
+
+export async function readUsagePackInvitationSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-usage-pack-invitation-schema-state",
+  });
+  if (response.usage_pack_invitation_schema_available === undefined) {
+    throw new Error(
+      "readUsagePackInvitationSchemaAvailable missing schema availability",
+    );
+  }
+  return response.usage_pack_invitation_schema_available;
+}
+
+export async function setCustomConnectorAuthTemplateFixture(
+  context: TestContext,
+  args: {
+    readonly connectorId: string;
+    readonly valueTemplate: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-custom-connector-auth-template-fixture",
+    connector_id: args.connectorId,
+    value_template: args.valueTemplate,
+  });
+}
+
+export async function readRunAutonomyBudgetFixture(
+  context: TestContext,
+  runId: string,
+): Promise<number | null> {
+  const response = await postAction(context, {
+    action: "read-run-autonomy-budget",
+    run_id: runId,
+  });
+  if (!("autonomy_budget" in response)) {
+    throw new Error("readRunAutonomyBudgetFixture missing autonomy_budget");
+  }
+  return response.autonomy_budget ?? null;
+}
+
+export async function setRunAutonomyBudgetFixture(
+  context: TestContext,
+  runId: string,
+  autonomyBudget: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-run-autonomy-budget",
+    run_id: runId,
+    autonomy_budget: autonomyBudget,
+  });
+}
+
+export async function readWorkflowAutomationAutonomyFixture(
+  context: TestContext,
+  automationId: string,
+): Promise<{
+  readonly autonomyBudget: number;
+  readonly enabled: boolean;
+  readonly lastRunId: string | null;
+} | null> {
+  const response = await postAction(context, {
+    action: "read-workflow-automation-autonomy-state",
+    automation_id: automationId,
+  });
+  if (!("workflow_automation_state" in response)) {
+    throw new Error(
+      "readWorkflowAutomationAutonomyFixture missing workflow_automation_state",
+    );
+  }
+  const state = response.workflow_automation_state;
+  return state
+    ? {
+        autonomyBudget: state.autonomy_budget,
+        enabled: state.enabled,
+        lastRunId: state.last_run_id,
+      }
+    : null;
+}
+
+export async function setWorkflowAutomationAutonomyBudgetFixture(
+  context: TestContext,
+  automationId: string,
+  autonomyBudget: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-workflow-automation-autonomy-budget",
+    automation_id: automationId,
+    autonomy_budget: autonomyBudget,
+  });
+}
+
+export async function readLatestWorkflowAutomationRunFixture(
+  context: TestContext,
+  automationId: string,
+): Promise<{
+  readonly runId: string;
+  readonly autonomyBudget: number;
+} | null> {
+  const response = await postAction(context, {
+    action: "read-latest-workflow-automation-run",
+    automation_id: automationId,
+  });
+  if (!("workflow_automation_run" in response)) {
+    throw new Error(
+      "readLatestWorkflowAutomationRunFixture missing workflow_automation_run",
+    );
+  }
+  const run = response.workflow_automation_run;
+  return run
+    ? { runId: run.run_id, autonomyBudget: run.autonomy_budget }
+    : null;
+}
+
+export async function readThreadGoalAutonomyBudgetFixture(
+  context: TestContext,
+  threadId: string,
+): Promise<number | null> {
+  const response = await postAction(context, {
+    action: "read-thread-goal-autonomy-budget",
+    thread_id: threadId,
+  });
+  if (!("autonomy_budget" in response)) {
+    throw new Error(
+      "readThreadGoalAutonomyBudgetFixture missing autonomy_budget",
+    );
+  }
+  return response.autonomy_budget ?? null;
 }
 
 export async function resetDatabasePool(context: TestContext): Promise<void> {
@@ -219,18 +361,6 @@ export async function readStoragePersistenceState(
   return response.storage_persistence;
 }
 
-export async function replaceCustomConnectorPrefixes(
-  context: TestContext,
-  connectorId: string,
-  prefixes: readonly string[],
-): Promise<void> {
-  await postAction(context, {
-    action: "replace-custom-connector-prefixes",
-    connector_id: connectorId,
-    prefixes: [...prefixes],
-  });
-}
-
 export async function holdOrgAdmissionLock(
   context: TestContext,
   orgId: string,
@@ -274,6 +404,92 @@ export async function readRunUploadedFileSources(
     run_id: runId,
   });
   return response.uploaded_file_sources ?? [];
+}
+
+export async function setChatEventSnapshotHeadVersion(
+  context: TestContext,
+  threadId: string,
+  archiveSchemaVersion: number,
+  objectKey?: string,
+  lastSeqId?: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-chat-event-snapshot-head-version",
+    thread_id: threadId,
+    archive_schema_version: archiveSchemaVersion,
+    ...(objectKey === undefined ? {} : { object_key: objectKey }),
+    ...(lastSeqId === undefined ? {} : { last_seq_id: lastSeqId }),
+  });
+}
+
+export async function advanceChatEventSequenceAsPreviousApi(
+  context: TestContext,
+  threadId: string,
+  count: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "advance-chat-event-sequence-as-previous-api",
+    thread_id: threadId,
+    count,
+  });
+}
+
+export async function replaceChatEventSnapshotHeadAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly threadId: string;
+    readonly lastSeqId: number;
+    readonly archiveSchemaVersion: number;
+    readonly objectKey: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "replace-chat-event-snapshot-head-as-previous-api",
+    thread_id: args.threadId,
+    last_seq_id: args.lastSeqId,
+    archive_schema_version: args.archiveSchemaVersion,
+    object_key: args.objectKey,
+  });
+}
+
+export async function validateChatEventSnapshotRollout(
+  context: TestContext,
+  args: {
+    readonly threadId: string;
+    readonly lastSeqId: number;
+    readonly lastEventId: string;
+    readonly archiveSchemaVersion: number;
+  },
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["chat_event_snapshot_rollout"]>
+> {
+  const response = await postAction(context, {
+    action: "validate-chat-event-snapshot-rollout",
+    thread_id: args.threadId,
+    last_seq_id: args.lastSeqId,
+    last_event_id: args.lastEventId,
+    archive_schema_version: args.archiveSchemaVersion,
+  });
+  if (!response.chat_event_snapshot_rollout) {
+    throw new Error("validateChatEventSnapshotRollout missing rollout state");
+  }
+  return response.chat_event_snapshot_rollout;
+}
+
+export async function readChatEventSnapshotHead(
+  context: TestContext,
+  threadId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["chat_event_snapshot_head"]>
+> {
+  const response = await postAction(context, {
+    action: "read-chat-event-snapshot-head",
+    thread_id: threadId,
+  });
+  if (!response.chat_event_snapshot_head) {
+    throw new Error("readChatEventSnapshotHead missing snapshot head");
+  }
+  return response.chat_event_snapshot_head;
 }
 
 export async function insertHostedSiteAsPreviousApi(

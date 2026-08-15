@@ -1,5 +1,5 @@
 /**
- * Tests for zero telegram bot list command.
+ * Tests for okou telegram bot list command.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -9,9 +9,9 @@ import { listCommand } from "../bot/list";
 import chalk from "chalk";
 
 const TELEGRAM_BOTS_URL =
-  "http://localhost:3000/api/zero/integrations/telegram/bots";
+  "http://localhost:3000/api/okou/integrations/telegram/bots";
 
-describe("zero telegram bot list command", () => {
+describe("okou telegram bot list command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -23,7 +23,7 @@ describe("zero telegram bot list command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
   });

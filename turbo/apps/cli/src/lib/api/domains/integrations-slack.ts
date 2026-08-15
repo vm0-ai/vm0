@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
   integrationsSlackMessageContract,
   integrationsSlackUploadInitContract,
@@ -15,7 +15,7 @@ import {
   type SlackUploadMaterializeResponse,
   type SlackUploadCompleteBody,
   type SlackUploadCompleteResponse,
-} from "@vm0/api-contracts/contracts/integrations";
+} from "@okouai/api-contracts/contracts/integrations";
 import {
   ApiRequestError,
   getBaseUrl,
@@ -94,7 +94,7 @@ interface DownloadSlackFileResult {
 /**
  * Download a Slack file to a local path, streaming the response body to disk.
  * Uses the org bot token on the server side; the CLI just authenticates via
- * ZERO_TOKEN and writes the bytes. Response is binary, so this bypasses the
+ * OKOU_TOKEN and writes the bytes. Response is binary, so this bypasses the
  * typed contract client.
  */
 export async function downloadSlackFile(
@@ -107,7 +107,7 @@ export async function downloadSlackFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/zero/integrations/slack/download-file", baseUrl);
+  const url = new URL("/api/okou/integrations/slack/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
 
   const headers: Record<string, string> = {

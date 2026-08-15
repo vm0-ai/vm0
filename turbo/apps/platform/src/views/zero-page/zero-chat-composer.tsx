@@ -2,10 +2,10 @@
 // oxlint-disable max-lines-per-function
 import type {
   CSSProperties,
-  FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
+import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import {
   useGet,
   useSet,
@@ -18,65 +18,70 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
+import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
-import { softwareKeyboardOccludesViewport } from "../../lib/visual-viewport-keyboard.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
-  IconAdjustmentsHorizontal,
-  IconAlertTriangle,
-  IconArrowUp,
-  IconBolt,
-  IconColorSwatch,
-  IconDeviceDesktop,
-  IconDownload,
-  IconPresentation,
-  IconLink,
-  IconMicrophone,
-  IconPaperclip,
-  IconPalette,
-  IconPlayerPlay,
-  IconPlayerStop,
-  IconPlug,
-  IconPhoto,
-  IconPlus,
-  IconRoute,
-  IconSearch,
-  IconTarget,
-  IconTemplate,
-  IconUpload,
-  IconVideo,
-  IconWorld,
-  IconX,
-} from "@tabler/icons-react";
+  AlertTriangle,
+  ArrowUp,
+  Bolt,
+  Check,
+  Download,
+  Globe,
+  Image as ImageIcon,
+  LayoutTemplate,
+  Loader2,
+  Mic,
+  Monitor,
+  Paperclip,
+  Palette,
+  Play,
+  Plug,
+  Plus,
+  Presentation,
+  Route,
+  Search,
+  SlidersHorizontal,
+  Square,
+  SwatchBook,
+  Target,
+  User,
+  Video,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
+} from "@okouai/ui/components/ui/dialog";
+import { Button } from "@okouai/ui/components/ui/button";
+import { Card, CardContent } from "@okouai/ui/components/ui/card";
+import { Input } from "@okouai/ui/components/ui/input";
 import {
-  Button,
-  Card,
-  CardContent,
-  Input,
   Popover,
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
+} from "@okouai/ui/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+} from "@okouai/ui/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  cn,
-  processShortcut,
-  type KeyboardEventLike,
-} from "@vm0/ui";
+} from "@okouai/ui/components/ui/tooltip";
+import { cn } from "@okouai/ui/lib/utils";
+import { processShortcut, type KeyboardEventLike } from "@okouai/ui";
 import {
   bestEffort,
   detach,
@@ -91,12 +96,16 @@ import {
   isVisualAttachment,
   shouldExcludeVisualAttachmentsForModel,
 } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import { agents$ } from "../../signals/agent.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type {
+  ZeroAvatarVideoAvatar,
+  ZeroAvatarVideoVoice,
+} from "@okouai/api-contracts/contracts/zero-avatar-video";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
@@ -107,38 +116,47 @@ import {
 } from "./presentation-html-preview.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
+  type IllustrationTemplateItem,
+} from "@okouai/core/illustration-template-items";
+import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  type PresentationTemplateItem,
+} from "@okouai/core/presentation-template-items";
+import {
   VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+  type VideoTemplateItem,
+} from "@okouai/core/video-template-items";
+import {
   WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+  type WebsiteTemplateItem,
+} from "@okouai/core/website-template-items";
+import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
-  findWebsiteTemplateItem,
-  findVideoTemplateItem,
   findWorkflowTemplateItem,
-  r2ImageTransformUrl,
-  type IllustrationTemplateItem,
-  type PresentationTemplateItem,
-  type VideoTemplateItem,
-  type WebsiteTemplateItem,
   type WorkflowTemplateItem,
-} from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+} from "@okouai/core/workflow-template-items";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
+  type VideoModelPickerState,
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
+import { customConnectorTarget } from "./components/settings/custom-connector-display.ts";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
-  allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
   connectFlowConnectorSlug$,
@@ -147,35 +165,51 @@ import {
   pollingOAuthAuthCodeConnectorSlug$,
   pollingOAuthDeviceAuthConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
-import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
+import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
+import {
+  customConnectors$,
+  resetCustomConnectorConnectInput$,
+} from "../../signals/zero-page/settings/custom-connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { orgModelPolicies$ } from "../../signals/external/org-model-policies.ts";
+import {
+  updateUserModelPreference$,
+  userModelPreference$,
+} from "../../signals/external/user-model-preference.ts";
 import {
   codexFastModeEnabled$,
-  composerUploadPopoverEnabled$,
   composerConnectorPermissionsEnabled$,
-  featureSwitch$,
-  zeroImageRecognitionEnabled$,
+  customConnectorMcpEnabled$,
+  avatarTemplatesEnabled$,
+  imageRecognitionAvailable$,
+  videoModelSelectionEnabled$,
+  videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
   selectedComputerUseHostId,
   visibleComputerUseHosts,
-  ZERO_DESKTOP_DOWNLOAD_URL,
-  zeroDesktopDownloadSupportStatus$,
+  OKOU_DESKTOP_DOWNLOAD_URL,
+  desktopDownloadSupportStatus$,
 } from "../../signals/zero-page/computer-use-hosts.ts";
+import { computerUseProductName$ } from "../../signals/branding.ts";
 import type { ComposerConnectorAuthorizationState } from "../../signals/zero-page/zero-connectors.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
 import { PermissionsDialog } from "./components/settings/permissions-dialog.tsx";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import type { TemplateCardHtmlPreviewState } from "../../signals/zero-page/zero-chat-composer.ts";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import type {
+  TemplateCardHtmlPreviewState,
+  VideoTemplateOptionsAnchor,
+} from "../../signals/zero-page/zero-chat-composer.ts";
 import type {
   ComposerPendingEvent,
   ComposerPrimaryAction,
   ComposerSignals,
+  ComposerVideoModelSignals,
 } from "../../signals/zero-page/composer-signals.ts";
 import {
   audioInputAvailable$,
@@ -192,10 +226,32 @@ import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.
 import { shouldUseUserMessage } from "../../signals/zero-page/user-message-document-codec.ts";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
+import {
+  AvatarTemplatePickerContent,
+  AvatarTemplatePickerToolbar,
+} from "./avatar-template-picker.tsx";
+import {
+  VideoModelPickerRow,
+  VideoTemplateOptionsPopover,
+} from "./video-template-options-popover.tsx";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
+import {
+  avatarTemplateSelection,
+  toAvatarGenerationTemplate,
+} from "../../signals/zero-page/avatar-template-selection.ts";
+import { resolveModelFirstUserDefaultSelection } from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+// `Button` sizes its icons to 16px. These controls drew at 18px before they were
+// routed through `Button`, and icon sizing is owned by a separate workstream, so
+// pin the existing value here rather than change two things at once.
+const COMPOSER_CONTROL_ICON_CLASS = "[&_svg]:size-[18px]";
 
 function isHappyDomTestEnvironment(): boolean {
   return (
@@ -209,19 +265,23 @@ function isHappyDomTestEnvironment(): boolean {
 
 interface ZeroChatComposerProps {
   readonly signals: ComposerSignals;
+  readonly showPendingItems?: boolean;
 }
 
 interface ComposerConnectorReadState {
-  readonly catalogItems: Loadable<
+  readonly relatedCatalogItems: Loadable<
+    readonly PlatformConnectorCatalogStatusItem[]
+  >;
+  readonly addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
   readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
-  readonly agent: Loadable<ZeroAgentResponse>;
   readonly authorization: Loadable<ComposerConnectorAuthorizationState>;
 }
 
 interface ComposerComputerUseHost {
   id: string;
+  product: DesktopProduct;
   hostName: string;
   displayName: string;
   status: "online" | "offline";
@@ -243,7 +303,6 @@ interface ComposerComputerUse {
   readonly loading: boolean;
   readonly selectedHostId: string | null;
   readonly onChange: (hostId: string | null) => void;
-  readonly cloudBrowserAvailable: boolean;
   readonly cloudBrowserEnabled: boolean;
   readonly onCloudBrowserChange: (enabled: boolean) => void;
   readonly downloadUrl: string;
@@ -399,7 +458,7 @@ function ComposerQueueGlyph() {
   );
 }
 
-// A single strip row — a queued message, workflow event, or active goal. All
+// A single strip row — a queued message, automation event, or active goal. All
 // share one layout so they read as the same kind of pending item; only the
 // leading icon distinguishes them. Goals open a modal because their full
 // objective is fetched lazily by thread.
@@ -411,7 +470,7 @@ function ComposerStripRow({
   removeAriaLabel,
   cancellationRecoveryPending,
 }: {
-  kind: "queued" | "workflow-event" | "goal";
+  kind: "queued" | "automation-event" | "goal";
   text: string;
   onRemove?: () => void;
   onOpenDetail?: () => void;
@@ -420,12 +479,12 @@ function ComposerStripRow({
 }) {
   const { t } = useTranslation();
   const isGoal = kind === "goal";
-  const isWorkflowEvent = kind === "workflow-event";
+  const isAutomationEvent = kind === "automation-event";
   const itemAriaLabel = isGoal
     ? t(($) => {
         return $.chat.queue.activeGoal;
       })
-    : isWorkflowEvent
+    : isAutomationEvent
       ? t(($) => {
           return $.chat.queue.pendingAutomationEvent;
         })
@@ -436,7 +495,7 @@ function ComposerStripRow({
     ? t(($) => {
         return $.chat.queue.aboutGoal;
       })
-    : isWorkflowEvent
+    : isAutomationEvent
       ? t(($) => {
           return $.chat.queue.aboutAutomationEvent;
         })
@@ -447,7 +506,7 @@ function ComposerStripRow({
     ? t(($) => {
         return $.chat.queue.goal;
       })
-    : isWorkflowEvent
+    : isAutomationEvent
       ? t(($) => {
           return $.chat.queue.automationEvent;
         })
@@ -463,7 +522,7 @@ function ComposerStripRow({
         ? t(($) => {
             return $.chat.queue.goalDescription;
           })
-        : isWorkflowEvent
+        : isAutomationEvent
           ? t(($) => {
               return $.chat.queue.automationEventDescription;
             })
@@ -474,24 +533,26 @@ function ComposerStripRow({
     <div
       role="listitem"
       aria-label={itemAriaLabel}
-      className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
+      className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-state-hover"
     >
       {isGoal && onOpenDetail ? (
+        // This target spans almost the whole row, so it deliberately paints no
+        // background of its own — the row's hover carries the highlight and a
+        // second, near-coextensive surface would read as a box inside a box.
+        // Its icon sits in the same p-1 slot the other rows' leading button
+        // uses, keeping every row's glyph and text on one column.
         <button
           type="button"
-          className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left transition-colors hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onOpenDetail}
           aria-label={t(($) => {
             return $.chat.queue.openGoalDetails;
           })}
         >
-          <IconTarget
-            size={16}
-            stroke={1.5}
-            className="shrink-0 text-emerald-800"
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 truncate">{text}</span>
+          <span className="flex shrink-0 p-1 text-emerald-800">
+            <Target size={16} aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1 truncate py-1">{text}</span>
         </button>
       ) : (
         <>
@@ -499,13 +560,13 @@ function ComposerStripRow({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-[hsl(var(--gray-200))] focus-visible:bg-[hsl(var(--gray-200))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-state-selected-hover focus-visible:bg-state-selected-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={aboutAriaLabel}
               >
                 {isGoal ? (
-                  <IconTarget size={16} stroke={1.5} aria-hidden="true" />
-                ) : isWorkflowEvent ? (
-                  <IconBolt size={16} stroke={1.5} aria-hidden="true" />
+                  <Target size={16} aria-hidden="true" />
+                ) : isAutomationEvent ? (
+                  <Bolt size={16} aria-hidden="true" />
                 ) : (
                   <ComposerQueueGlyph />
                 )}
@@ -532,13 +593,13 @@ function ComposerStripRow({
       )}
       <button
         type="button"
-        className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-state-selected-hover hover:text-sidebar-foreground focus-visible:bg-state-selected-hover focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => {
           onRemove?.();
         }}
         aria-label={removeAriaLabel}
       >
-        <IconX size={16} stroke={1.5} />
+        <X size={16} />
       </button>
     </div>
   );
@@ -548,13 +609,13 @@ function PendingItemsStripHeader({
   label,
   cancellationRecoveryPending,
 }: {
-  label: string;
+  label: string | null;
   cancellationRecoveryPending: boolean;
 }) {
   const { t } = useTranslation();
   return (
     <div className="px-5 pt-3 pb-2">
-      <p className="text-sm text-muted-foreground">{label}</p>
+      {label ? <p className="text-sm text-muted-foreground">{label}</p> : null}
       {cancellationRecoveryPending ? (
         <p
           role="status"
@@ -581,7 +642,7 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
     signals.goal.activeGoalObjective$,
   );
   const removeQueuedMessage = useSet(signals.queue.removeQueuedMessage$);
-  const removeWorkflowEvent = useSet(signals.queue.removeWorkflowEvent$);
+  const removeAutomationEvent = useSet(signals.queue.removeAutomationEvent$);
   const cancelActiveGoal = useSet(signals.goal.cancelActiveGoal$);
   const openActiveGoal = useSet(signals.goal.openActiveGoal$);
   const pageSignal = useGet(pageSignal$);
@@ -648,7 +709,10 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
           cancellationRecoveryPending={cancellationRecoveryPending}
         />
       ) : null}
-      <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
+      <div
+        className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1"
+        role={count > 0 || activeGoal ? "list" : undefined}
+      >
         {queued.map((item) => {
           return (
             <ComposerStripRow
@@ -672,11 +736,11 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
           return (
             <ComposerStripRow
               key={event.id}
-              kind="workflow-event"
+              kind="automation-event"
               text={event.text}
               onRemove={() => {
                 detach(
-                  removeWorkflowEvent(event.id, pageSignal),
+                  removeAutomationEvent(event.id, pageSignal),
                   Reason.DomCallback,
                 );
               }}
@@ -687,7 +751,7 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             />
           );
         })}
-        {/* The active goal sits last — below queued messages and workflow events
+        {/* The active goal sits last — below queued messages and automation events
             — because it only runs once the queue drains. Like other pending
             items it can be cancelled from the strip. */}
         {activeGoal ? (
@@ -742,7 +806,10 @@ function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
 ): string | undefined {
   if (value?.type === "video") {
-    return selectedVideoTemplateItem(value)?.title;
+    return (
+      avatarTemplateSelection(value)?.title ??
+      selectedVideoTemplateItem(value)?.title
+    );
   }
   if (value?.type === "workflow") {
     return selectedWorkflowTemplateItem(value)?.title;
@@ -811,10 +878,16 @@ function isSelectedVideoTemplate(
 
 function toVideoGenerationTemplate(
   item: VideoTemplateItem,
+  model: VideoModel,
 ): GenerationTemplateRequest {
   return {
     type: "video",
-    selection: { stylePresetId: item.id },
+    selection: {
+      stylePresetId: item.id,
+      // Only a non-default model is worth storing; the rest follows the
+      // catalog so a later change of default is picked up.
+      ...(model === DEFAULT_VIDEO_MODEL ? {} : { videoOptions: { model } }),
+    },
   };
 }
 
@@ -1014,7 +1087,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
         }}
       >
         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-template-preview:scale-105">
-          <IconPlayerPlay size={20} stroke={1.8} />
+          <Play size={20} />
         </span>
       </button>
     </div>
@@ -1024,12 +1097,34 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
 /**
  * Soft, cool-tinted card shadow matching the home chat composer
  * (`--zero-card-shadow`). The token is scoped to `.zero-app`, but the template
- * picker renders through a Radix portal on `document.body` — outside that
+ * picker renders through a Base UI portal on `document.body` — outside that
  * scope — so the value is inlined here instead of referencing the CSS var.
  * Replaces Tailwind `shadow-sm`, whose hard black tint reads muddy on white.
  */
 const TEMPLATE_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
+
+/**
+ * Gallery tile. Hover feedback comes from the scrim and the Use pill alone —
+ * the card already carries a hairline border, so a hover ring only doubled it.
+ * The ring is reserved for the selected state, offset so it is drawn outside
+ * the card and keeps a gap from the artwork.
+ */
+const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
+const TEMPLATE_TILE_RING =
+  "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
+const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
+const TEMPLATE_TILE_MEDIA =
+  "relative overflow-hidden border border-gray-200 bg-muted";
+const TEMPLATE_TILE_SCRIM =
+  "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
+const TEMPLATE_TILE_USE =
+  "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-100 transition-opacity duration-150 hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover/tile:opacity-100";
+// Caption metrics track the illustration card: same text size, and enough
+// breathing room under the artwork that the title never crowds it.
+const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-2 pb-2 pt-2";
+const TEMPLATE_TILE_NAME =
+  "min-w-0 truncate text-sm font-medium leading-5 text-foreground";
 
 function VideoTemplateCard({
   item,
@@ -1042,49 +1137,44 @@ function VideoTemplateCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
-    >
-      <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9]",
+          selected && TEMPLATE_TILE_RING_SELECTED,
+        )}
+      >
         <VideoTemplatePreview item={item} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Check size={14} />
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectVideo;
+            },
+            {
+              title: item.title,
+            },
+          )}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={TEMPLATE_TILE_USE}
+        >
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
+        </button>
       </div>
-      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            aria-label={t(
-              ($) => {
-                return $.artifacts.templates.selectVideo;
-              },
-              {
-                title: item.title,
-              },
-            )}
-            aria-pressed={selected}
-            onClick={() => {
-              onSelect(item);
-            }}
-            className={cn(
-              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              selected
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-foreground hover:bg-muted",
-            )}
-          >
-            {t(($) => {
-              return $.artifacts.templates.use;
-            })}
-          </button>
-        </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
       </div>
     </div>
   );
@@ -1152,12 +1242,18 @@ function WebsiteTemplateCard({
         }
       }}
       className={cn(
-        "group flex cursor-zoom-in flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
+        TEMPLATE_TILE_WRAPPER,
+        "cursor-zoom-in focus-visible:outline-none",
       )}
     >
-      <div className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted">
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9] group-focus-visible/tile:ring-1 group-focus-visible/tile:ring-ring",
+          selected && TEMPLATE_TILE_RING_SELECTED,
+        )}
+      >
         <img
           alt={t(
             ($) => {
@@ -1182,13 +1278,12 @@ function WebsiteTemplateCard({
           draggable={false}
           className="pointer-events-none h-full w-full bg-background object-cover"
         />
-      </div>
-      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-        </div>
+        <div className={TEMPLATE_TILE_SCRIM} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Check size={14} />
+          </span>
+        ) : null}
         <button
           type="button"
           aria-label={t(
@@ -1204,17 +1299,15 @@ function WebsiteTemplateCard({
             event.stopPropagation();
             onSelect(item);
           }}
-          className={cn(
-            "h-8 shrink-0 cursor-pointer rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            selected
-              ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-border bg-background text-foreground hover:bg-muted",
-          )}
+          className={cn(TEMPLATE_TILE_USE, "cursor-pointer")}
         >
           {t(($) => {
             return $.artifacts.templates.use;
           })}
         </button>
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
       </div>
     </div>
   );
@@ -1259,7 +1352,9 @@ function WorkflowTemplateConnectorIcons({
   limit?: number;
   withDivider?: boolean;
 }) {
-  const catalogConnectors = useLastResolved(allConnectorCatalogItems$);
+  const catalogConnectors = useLastResolved(
+    connectorCatalogStatus$,
+  )?.connectors;
   const visibleConnectors = connectorSlugs.flatMap((connectorSlug) => {
     const connector = catalogConnectors?.find((candidate) => {
       return candidate.slug === connectorSlug;
@@ -1324,9 +1419,10 @@ function WorkflowTemplateCard({
   return (
     <div
       className={cn(
-        "group flex flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        "group/tile flex flex-col border border-gray-200 bg-card p-4",
         TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
+        TEMPLATE_TILE_RING,
+        selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
       <p className="text-sm font-semibold text-foreground">{item.title}</p>
@@ -1356,7 +1452,7 @@ function WorkflowTemplateCard({
             "ml-auto h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
               ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-border bg-background text-foreground hover:bg-muted",
+              : "border-border bg-background text-foreground hover:bg-state-hover",
           )}
         >
           {t(($) => {
@@ -1411,7 +1507,7 @@ function WorkflowTemplatePillRow({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+    <div className="flex flex-wrap items-center gap-1.5 px-6">
       {["all", ...pills].map((pill) => {
         const isActive = active === pill;
         return (
@@ -1423,7 +1519,7 @@ function WorkflowTemplatePillRow({
               "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
               isActive
                 ? "bg-muted text-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                : "bg-background text-muted-foreground hover:bg-state-hover hover:text-foreground",
             )}
             onClick={() => {
               onSelect(pill);
@@ -1475,10 +1571,7 @@ function TemplateEmptyPanel() {
   return (
     <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
       <div className="flex max-w-xl flex-col items-center">
-        <IconSearch
-          className="mb-4 h-8 w-8 text-muted-foreground/70"
-          stroke={1.7}
-        />
+        <Search className="mb-4 h-8 w-8" />
         <p className="text-sm font-semibold text-muted-foreground">
           {t(($) => {
             return $.artifacts.templates.noMatches;
@@ -3019,10 +3112,12 @@ function TemplatePreview({
 
     let pendingLoad = cache.pendingLoads.get(item.embedUrl);
     if (pendingLoad === undefined) {
-      pendingLoad = signals.template.loadPresentationTemplateHtmlPreview({
-        item,
-        signal: pageSignal,
-      });
+      pendingLoad = signals.template.loadPresentationTemplateHtmlPreview(
+        {
+          item,
+        },
+        pageSignal,
+      );
       cache.pendingLoads.set(item.embedUrl, pendingLoad);
     }
 
@@ -3425,7 +3520,7 @@ function TemplatePreviewPage({
     <>
       <DialogHeader
         data-presentation-template-detail-header=""
-        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left sm:pr-16"
+        className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none"
       >
         <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
@@ -3443,7 +3538,7 @@ function TemplatePreviewPage({
           </span>
         </DialogTitle>
       </DialogHeader>
-      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
@@ -3589,7 +3684,7 @@ function TemplatePreviewPage({
             </h3>
             <div className="my-5 border-t border-border" />
             <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <IconPalette size={14} stroke={1.9} />
+              <Palette size={14} />
               <span>
                 {t(($) => {
                   return $.artifacts.templates.theme;
@@ -3696,7 +3791,7 @@ function TemplatePreviewPage({
                 </div>
               </div>
             </div>
-            <button
+            <Button
               type="button"
               aria-label={t(
                 ($) => {
@@ -3706,7 +3801,7 @@ function TemplatePreviewPage({
                   title: item.title,
                 },
               )}
-              className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="mt-4 h-12 w-full font-semibold shadow-sm"
               onClick={() => {
                 setCardThemeId(item.slug, selectedTheme.id);
                 onSelect(
@@ -3718,7 +3813,7 @@ function TemplatePreviewPage({
               {t(($) => {
                 return $.artifacts.templates.useThisTemplate;
               })}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -3749,33 +3844,27 @@ function PptCard({
   );
 
   return (
-    <div
-      className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
-    >
-      <TemplatePreview
-        item={item}
-        onPreview={onPreview}
-        runtime={runtime}
-        signals={signals}
-        theme={selectedTheme}
-      />
-      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
-        <div className="min-w-0 flex-1">
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <p className="min-w-0 cursor-default truncate text-sm font-semibold leading-5 text-foreground">
-                  {item.title}
-                </p>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{item.title}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          selected && TEMPLATE_TILE_RING_SELECTED,
+        )}
+      >
+        <TemplatePreview
+          item={item}
+          onPreview={onPreview}
+          runtime={runtime}
+          signals={signals}
+          theme={selectedTheme}
+        />
+        <div className={TEMPLATE_TILE_SCRIM} />
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Check size={14} />
+          </span>
+        ) : null}
         <button
           type="button"
           aria-label={t(
@@ -3790,17 +3879,38 @@ function PptCard({
           onClick={() => {
             onSelect(item, presentationTemplateColorSystemId(selectedTheme.id));
           }}
-          className={cn(
-            "h-8 shrink-0 rounded-md border border-border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            selected
-              ? "bg-primary/10 text-primary"
-              : "bg-background text-foreground hover:bg-muted",
-          )}
+          className={TEMPLATE_TILE_USE}
         >
           {t(($) => {
             return $.artifacts.templates.use;
           })}
         </button>
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p className={cn(TEMPLATE_TILE_NAME, "cursor-default")}>
+                {item.title}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{item.title}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {presentationTemplateThemeAccentSwatches(item, selectedTheme).map(
+            (swatch) => {
+              return (
+                <span
+                  key={swatch.id}
+                  aria-hidden
+                  className="h-3 w-3 rounded-full ring-1 ring-inset ring-black/10"
+                  style={{ backgroundColor: swatch.color }}
+                />
+              );
+            },
+          )}
+        </span>
       </div>
     </div>
   );
@@ -3852,12 +3962,31 @@ function IllustrationTemplateHero({
         )}
         className={cn(
           "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
-          navigable && "cursor-pointer",
+          // Same affordance the detail preview uses for slide paging: the
+          // cursor points at the half that will be navigated to.
+          navigable &&
+            "data-[half=left]:cursor-w-resize data-[half=right]:cursor-e-resize",
         )}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
         fetchPriority={priority ? "high" : "low"}
         onMouseEnter={navigable ? preloadNeighbors : undefined}
+        onMouseMove={
+          navigable
+            ? (event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                event.currentTarget.dataset.half =
+                  event.clientX - rect.left < rect.width / 2 ? "left" : "right";
+              }
+            : undefined
+        }
+        onMouseLeave={
+          navigable
+            ? (event) => {
+                delete event.currentTarget.dataset.half;
+              }
+            : undefined
+        }
         onClick={
           navigable
             ? (event) => {
@@ -3896,7 +4025,7 @@ function IllustrationTemplateHero({
         hidden
         className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
       >
-        <IconTemplate size={28} stroke={1.5} />
+        <LayoutTemplate size={28} />
       </div>
     </div>
   );
@@ -4245,11 +4374,10 @@ function IllustrationTemplateCard({
     <div
       data-illustration-template-card=""
       className={cn(
-        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card transition-colors",
+        "group/tile mb-4 break-inside-avoid overflow-hidden border border-gray-200 bg-card",
         TEMPLATE_CARD_SHADOW,
-        selected
-          ? "border-primary ring-1 ring-primary"
-          : "border-border hover:border-muted-foreground/30",
+        TEMPLATE_TILE_RING,
+        selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
       <IllustrationTemplateHero
@@ -4359,7 +4487,7 @@ function IllustrationTemplateCard({
             "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
               ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-border bg-background text-foreground hover:bg-muted",
+              : "border-border bg-background text-foreground hover:bg-state-hover",
           )}
         >
           {t(($) => {
@@ -4376,12 +4504,14 @@ function resolveTemplatePickerCategory({
   hasPptTab,
   hasIllustrationTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
 }: {
   category: string;
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
 }): string {
   const categories: string[] = [];
@@ -4395,6 +4525,9 @@ function resolveTemplatePickerCategory({
   if (hasVideoTab) {
     categories.push("video");
   }
+  if (hasAvatarTab) {
+    categories.push("avatar");
+  }
   if (hasWorkflowTab) {
     categories.push("workflow");
   }
@@ -4407,6 +4540,7 @@ function TemplatePickerCategoryNav({
   hasPptTab,
   hasIllustrationTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
   onChange,
 }: {
@@ -4414,6 +4548,7 @@ function TemplatePickerCategoryNav({
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
   onChange: (value: string) => void;
 }) {
@@ -4421,7 +4556,7 @@ function TemplatePickerCategoryNav({
   const categoryOptions: {
     value: string;
     label: string;
-    Icon: typeof IconPresentation;
+    Icon: LucideIcon;
   }[] = [];
   if (hasPptTab) {
     categoryOptions.push({
@@ -4429,7 +4564,7 @@ function TemplatePickerCategoryNav({
       label: t(($) => {
         return $.artifacts.kinds.presentation;
       }),
-      Icon: IconPresentation,
+      Icon: Presentation,
     });
   }
   categoryOptions.push({
@@ -4437,7 +4572,7 @@ function TemplatePickerCategoryNav({
     label: t(($) => {
       return $.artifacts.templates.website;
     }),
-    Icon: IconWorld,
+    Icon: Globe,
   });
   if (hasIllustrationTab) {
     categoryOptions.push({
@@ -4445,7 +4580,7 @@ function TemplatePickerCategoryNav({
       label: t(($) => {
         return $.artifacts.templates.illustration;
       }),
-      Icon: IconPhoto,
+      Icon: ImageIcon,
     });
   }
   if (hasVideoTab) {
@@ -4454,7 +4589,16 @@ function TemplatePickerCategoryNav({
       label: t(($) => {
         return $.artifacts.kinds.video;
       }),
-      Icon: IconVideo,
+      Icon: Video,
+    });
+  }
+  if (hasAvatarTab) {
+    categoryOptions.push({
+      value: "avatar",
+      label: t(($) => {
+        return $.artifacts.templates.avatar;
+      }),
+      Icon: User,
     });
   }
   if (hasWorkflowTab) {
@@ -4463,7 +4607,7 @@ function TemplatePickerCategoryNav({
       label: t(($) => {
         return $.artifacts.templates.workflow;
       }),
-      Icon: IconRoute,
+      Icon: Route,
     });
   }
 
@@ -4484,7 +4628,7 @@ function TemplatePickerCategoryNav({
               return (
                 <SelectItem key={value} value={value}>
                   <span className="flex items-center gap-2">
-                    <Icon className="h-4 w-4" stroke={1.8} />
+                    <Icon className="h-4 w-4" />
                     {label}
                   </span>
                 </SelectItem>
@@ -4493,145 +4637,109 @@ function TemplatePickerCategoryNav({
           </SelectContent>
         </Select>
       </div>
-      <nav
-        role="tablist"
-        aria-label={t(($) => {
-          return $.artifacts.templates.categories;
-        })}
-        aria-orientation="vertical"
-        data-template-picker-sidebar=""
-        className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-gray-50 p-3 sm:flex"
-      >
-        <div className="flex min-h-[50px] items-center px-2">
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">
-            {t(($) => {
-              return $.artifacts.templates.template;
+      <div className="hidden shrink-0 sm:flex">
+        <div className="flex w-56 shrink-0 flex-col border-r border-border bg-card">
+          <TemplatePickerHeader />
+          <nav
+            role="tablist"
+            aria-label={t(($) => {
+              return $.artifacts.templates.categories;
             })}
-          </h2>
+            aria-orientation="vertical"
+            data-template-picker-sidebar=""
+            className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3"
+          >
+            {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
+              const selected = value === selectedCategory;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => {
+                    onChange(value);
+                  }}
+                  onKeyDown={(event) => {
+                    let nextIndex: number | null = null;
+                    if (event.key === "ArrowDown") {
+                      nextIndex = (categoryIndex + 1) % categoryOptions.length;
+                    } else if (event.key === "ArrowUp") {
+                      nextIndex =
+                        (categoryIndex - 1 + categoryOptions.length) %
+                        categoryOptions.length;
+                    } else if (event.key === "Home") {
+                      nextIndex = 0;
+                    } else if (event.key === "End") {
+                      nextIndex = categoryOptions.length - 1;
+                    }
+                    if (nextIndex === null) {
+                      return;
+                    }
+                    event.preventDefault();
+                    const nextTab = event.currentTarget.parentElement
+                      ?.querySelectorAll<HTMLElement>("[role=tab]")
+                      .item(nextIndex);
+                    nextTab?.focus();
+                    onChange(categoryOptions[nextIndex]?.value ?? value);
+                  }}
+                  className={cn(
+                    "group flex h-9 w-full shrink-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                    selected
+                      ? "bg-gray-50 font-medium text-foreground"
+                      : "text-gray-800 hover:bg-state-hover hover:text-foreground",
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-colors",
+                      selected
+                        ? "text-foreground"
+                        : "text-gray-700 group-hover:text-gray-800",
+                    )}
+                  />
+                  <span className="truncate">{label}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
-        {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
-          const selected = value === selectedCategory;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => {
-                onChange(value);
-              }}
-              onKeyDown={(event) => {
-                let nextIndex: number | null = null;
-                if (event.key === "ArrowDown") {
-                  nextIndex = (categoryIndex + 1) % categoryOptions.length;
-                } else if (event.key === "ArrowUp") {
-                  nextIndex =
-                    (categoryIndex - 1 + categoryOptions.length) %
-                    categoryOptions.length;
-                } else if (event.key === "Home") {
-                  nextIndex = 0;
-                } else if (event.key === "End") {
-                  nextIndex = categoryOptions.length - 1;
-                }
-                if (nextIndex === null) {
-                  return;
-                }
-                event.preventDefault();
-                const nextTab = event.currentTarget.parentElement
-                  ?.querySelectorAll<HTMLElement>("[role=tab]")
-                  .item(nextIndex);
-                nextTab?.focus();
-                onChange(categoryOptions[nextIndex]?.value ?? value);
-              }}
-              className={cn(
-                "flex h-8 w-full items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                selected
-                  ? "bg-gray-200 font-medium text-sidebar-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:bg-sidebar-accent",
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0 text-gray-700" stroke={1.8} />
-              <span className="truncate">{label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      </div>
     </>
   );
 }
 
-function TemplatePickerCategoryHeader({
-  selectedCategory,
-}: {
-  selectedCategory: string;
-}) {
+function TemplatePickerHeader() {
   const { t } = useTranslation();
-  const title =
-    selectedCategory === "slides"
-      ? t(($) => {
-          return $.artifacts.kinds.presentation;
-        })
-      : selectedCategory === "website"
-        ? t(($) => {
-            return $.artifacts.templates.website;
-          })
-        : selectedCategory === "illustration"
-          ? t(($) => {
-              return $.artifacts.templates.illustration;
-            })
-          : selectedCategory === "video"
-            ? t(($) => {
-                return $.artifacts.kinds.video;
-              })
-            : selectedCategory === "workflow"
-              ? t(($) => {
-                  return $.artifacts.templates.workflow;
-                })
-              : t(($) => {
-                  return $.artifacts.templates.template;
-                });
   return (
-    <header
-      className={cn(
-        "hidden min-h-[74px] shrink-0 items-center border-b border-border px-5 py-4 sm:flex",
-        selectedCategory === "workflow" ? "pr-[21rem]" : "pr-14",
-      )}
-    >
-      <div className="min-w-0">
-        <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
-          {title}
-        </h2>
-      </div>
+    <header className="flex h-[68px] shrink-0 items-center px-5">
+      <h2 className="text-lg font-semibold leading-6 tracking-tight text-foreground">
+        {t(($) => {
+          return $.artifacts.templates.template;
+        })}
+      </h2>
     </header>
   );
 }
 
 function TemplatePickerWorkflowSearch({
-  selectedCategory,
   search,
   onSearchChange,
 }: {
-  selectedCategory: string;
   search: string;
   onSearchChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
-  if (selectedCategory !== "workflow") {
-    return null;
-  }
   return (
-    <div className="shrink-0 border-b border-border px-4 py-3 sm:absolute sm:right-14 sm:top-[21px] sm:z-10 sm:w-64 sm:border-0 sm:p-0">
+    <div className="relative w-56 shrink-0">
       <div className="relative">
-        <IconSearch
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-          stroke={1.8}
-        />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           aria-label={t(($) => {
             return $.artifacts.templates.searchConnectors;
           })}
-          className="h-9 pl-9 text-sm sm:h-8"
+          className="h-9 pl-9 text-sm"
           value={search}
           onChange={(event) => {
             onSearchChange(event.target.value);
@@ -4726,6 +4834,7 @@ function TemplatePickerDialog({
   presentationItems,
   hasIllustrationTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
   runtime,
   signals,
@@ -4738,6 +4847,7 @@ function TemplatePickerDialog({
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
   signals: ComposerSignals;
@@ -4775,11 +4885,17 @@ function TemplatePickerDialog({
     signals.template.openWebsiteTemplatePreview$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
+  const videoModel = useGet(signals.template.videoTemplateModel$);
+  const setVideoModel = useSet(signals.template.setVideoTemplateModel$);
+  const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
   const illustrationVariantIndex = useGet(
     signals.template.illustrationVariantIndex$,
   );
   const setIllustrationVariantIndex = useSet(
     signals.template.setIllustrationVariantIndex$,
+  );
+  const clearAvatarVoiceSelection = useSet(
+    signals.template.clearAvatarTemplateVoiceSelection$,
   );
   const previewItem =
     presentationItems.find((item) => {
@@ -4788,15 +4904,9 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-    skipEnterAnimation && "data-[state=open]:!animate-none",
-    isPreviewing
-      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button]:top-[7px]"
-      : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:top-[7px] sm:[&>button]:top-[19px]",
+    skipEnterAnimation && "data-open:!animate-none",
+    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
-  const filteredPptItems = presentationItems;
-  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
-  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS;
-  const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS;
   // A persona pill filters the grid, ideation-gallery style.
   // resolveWorkflowCatalog() keeps that logic out of this component to stay
   // under the complexity budget.
@@ -4816,8 +4926,15 @@ function TemplatePickerDialog({
     hasPptTab,
     hasIllustrationTab,
     hasVideoTab,
+    hasAvatarTab,
     hasWorkflowTab,
   });
+  const showTemplatePickerSearch = selectedCategory === "workflow";
+  const showAvatarPickerToolbar = selectedCategory === "avatar" && hasAvatarTab;
+  // Video generation is the expensive decision, so the model sits in the
+  // dialog's own header band rather than in the scrolling template area.
+  const showVideoModelPicker =
+    selectedCategory === "video" && hasVideoTab && videoOptionsEnabled;
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -4851,6 +4968,7 @@ function TemplatePickerDialog({
 
   const closeTemplatePicker = () => {
     releasePreviewResources(runtime);
+    clearAvatarVoiceSelection();
     setPresentationGridScrollTop(0);
     onClose();
   };
@@ -4864,7 +4982,16 @@ function TemplatePickerDialog({
   };
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
-    onChange(toVideoGenerationTemplate(item));
+    onChange(toVideoGenerationTemplate(item, videoModel));
+    closeTemplatePicker();
+  };
+
+  const handleSelectAvatar = (
+    avatar: ZeroAvatarVideoAvatar,
+    voice: ZeroAvatarVideoVoice,
+    aspectRatio: "portrait" | "landscape",
+  ) => {
+    onChange(toAvatarGenerationTemplate(avatar, voice, aspectRatio));
     closeTemplatePicker();
   };
 
@@ -4974,6 +5101,9 @@ function TemplatePickerDialog({
   };
 
   const handleCategoryChange = (nextCategory: string) => {
+    if (nextCategory !== "avatar") {
+      clearAvatarVoiceSelection();
+    }
     setCategory(nextCategory);
     if (!isPreviewing) {
       prewarmTemplatePreviewsForCategory(nextCategory);
@@ -5013,7 +5143,7 @@ function TemplatePickerDialog({
         })}
         className={dialogContentClassName}
         overlayClassName={
-          skipEnterAnimation ? "data-[state=open]:!animate-none" : undefined
+          skipEnterAnimation ? "zero-dialog-overlay-instant" : undefined
         }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
@@ -5053,28 +5183,48 @@ function TemplatePickerDialog({
                 hasPptTab={hasPptTab}
                 hasIllustrationTab={hasIllustrationTab}
                 hasVideoTab={hasVideoTab}
+                hasAvatarTab={hasAvatarTab}
                 hasWorkflowTab={hasWorkflowTab}
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <TemplatePickerCategoryHeader
-                  selectedCategory={selectedCategory}
-                />
-                <TemplatePickerWorkflowSearch
-                  selectedCategory={selectedCategory}
-                  search={search}
-                  onSearchChange={handleSearchChange}
-                />
+                <div
+                  className={cn(
+                    "relative h-[68px] shrink-0 items-center px-6 pr-14",
+                    showTemplatePickerSearch ||
+                      showAvatarPickerToolbar ||
+                      showVideoModelPicker
+                      ? "flex"
+                      : "hidden sm:flex",
+                  )}
+                >
+                  {showTemplatePickerSearch ? (
+                    <TemplatePickerWorkflowSearch
+                      search={search}
+                      onSearchChange={handleSearchChange}
+                    />
+                  ) : null}
+                  {showAvatarPickerToolbar ? (
+                    <AvatarTemplatePickerToolbar signals={signals} />
+                  ) : null}
+                  {showVideoModelPicker ? (
+                    <VideoModelPickerRow
+                      model={videoModel}
+                      onChange={setVideoModel}
+                    />
+                  ) : null}
+                </div>
                 <TemplatePickerCategoryContent
                   signals={signals}
                   selectedCategory={selectedCategory}
                   hasPptTab={hasPptTab}
                   hasVideoTab={hasVideoTab}
+                  hasAvatarTab={hasAvatarTab}
                   hasWorkflowTab={hasWorkflowTab}
-                  filteredPptItems={filteredPptItems}
-                  filteredWebsiteItems={filteredWebsiteItems}
-                  filteredIllustrationItems={filteredIllustrationItems}
-                  filteredVideoItems={filteredVideoItems}
+                  pptItems={presentationItems}
+                  websiteItems={WEBSITE_TEMPLATE_ITEMS}
+                  illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
+                  videoItems={VIDEO_TEMPLATE_ITEMS}
                   workflowCatalog={workflowCatalog}
                   value={value}
                   illustrationVariantIndex={illustrationVariantIndex}
@@ -5089,6 +5239,7 @@ function TemplatePickerDialog({
                   onSelectIllustration={handleSelectIllustration}
                   onIllustrationVariantChange={setIllustrationVariantIndex}
                   onSelectVideo={handleSelectVideo}
+                  onSelectAvatar={handleSelectAvatar}
                   onWorkflowCategoryChange={setWorkflowCategoryFilter}
                   onSelectWorkflow={handleSelectWorkflow}
                   runtime={runtime}
@@ -5107,11 +5258,12 @@ function TemplatePickerCategoryContent({
   selectedCategory,
   hasPptTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
-  filteredPptItems,
-  filteredWebsiteItems,
-  filteredIllustrationItems,
-  filteredVideoItems,
+  pptItems,
+  websiteItems,
+  illustrationItems,
+  videoItems,
   workflowCatalog,
   value,
   illustrationVariantIndex,
@@ -5124,6 +5276,7 @@ function TemplatePickerCategoryContent({
   onSelectIllustration,
   onIllustrationVariantChange,
   onSelectVideo,
+  onSelectAvatar,
   onWorkflowCategoryChange,
   onSelectWorkflow,
   runtime,
@@ -5132,11 +5285,12 @@ function TemplatePickerCategoryContent({
   selectedCategory: string;
   hasPptTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
-  filteredPptItems: readonly PresentationTemplateItem[];
-  filteredWebsiteItems: readonly WebsiteTemplateItem[];
-  filteredIllustrationItems: readonly IllustrationTemplateItem[];
-  filteredVideoItems: readonly VideoTemplateItem[];
+  pptItems: readonly PresentationTemplateItem[];
+  websiteItems: readonly WebsiteTemplateItem[];
+  illustrationItems: readonly IllustrationTemplateItem[];
+  videoItems: readonly VideoTemplateItem[];
   workflowCatalog: ResolvedWorkflowTemplateCatalog;
   value: GenerationTemplateRequest | undefined;
   illustrationVariantIndex: Readonly<Record<string, number>>;
@@ -5155,6 +5309,11 @@ function TemplatePickerCategoryContent({
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
+  onSelectAvatar: (
+    avatar: ZeroAvatarVideoAvatar,
+    voice: ZeroAvatarVideoVoice,
+    aspectRatio: "portrait" | "landscape",
+  ) => void;
   onWorkflowCategoryChange: (category: string) => void;
   onSelectWorkflow: (item: WorkflowTemplateItem) => void;
   runtime: TemplatePreviewRuntime;
@@ -5164,14 +5323,14 @@ function TemplatePickerCategoryContent({
       <div
         data-presentation-template-grid-scroll=""
         ref={onRestorePresentationScroll}
-        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-5 py-4"
+        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-6 pb-6 pt-0.5"
         onScroll={(event) => {
           onPresentationScroll(event.currentTarget.scrollTop);
         }}
       >
-        {filteredPptItems.length > 0 ? (
+        {pptItems.length > 0 ? (
           <PptTemplateGrid
-            items={filteredPptItems}
+            items={pptItems}
             value={value}
             onSelect={onSelectPresentation}
             onPreview={onPreviewPresentation}
@@ -5189,11 +5348,11 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-website-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {filteredWebsiteItems.length > 0 ? (
+        {websiteItems.length > 0 ? (
           <WebsiteTemplateGrid
-            items={filteredWebsiteItems}
+            items={websiteItems}
             value={value}
             onSelect={onSelectWebsite}
             onPreview={onPreviewWebsite}
@@ -5209,19 +5368,19 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-illustration-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
         onScroll={(event) => {
           prewarmIllustrationPreviewImagesNearScroll({
-            items: filteredIllustrationItems,
+            items: illustrationItems,
             runtime,
             scrollContainer: event.currentTarget,
             variantIndexBySlug: illustrationVariantIndex,
           });
         }}
       >
-        {filteredIllustrationItems.length > 0 ? (
+        {illustrationItems.length > 0 ? (
           <IllustrationTemplateGrid
-            items={filteredIllustrationItems}
+            items={illustrationItems}
             value={value}
             variantIndexBySlug={illustrationVariantIndex}
             onSelect={onSelectIllustration}
@@ -5239,17 +5398,29 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-video-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {filteredVideoItems.length > 0 ? (
+        {videoItems.length > 0 ? (
           <VideoTemplateGrid
-            items={filteredVideoItems}
+            items={videoItems}
             value={value}
             onSelect={onSelectVideo}
           />
         ) : (
           <TemplateEmptyPanel />
         )}
+      </div>
+    );
+  }
+
+  if (selectedCategory === "avatar" && hasAvatarTab) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6">
+        <AvatarTemplatePickerContent
+          signals={signals}
+          value={value}
+          onSelect={onSelectAvatar}
+        />
       </div>
     );
   }
@@ -5267,7 +5438,7 @@ function TemplatePickerCategoryContent({
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             data-workflow-template-grid-scroll=""
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-4"
           >
             {workflowCatalog.items.length > 0 ? (
               <WorkflowTemplateGrid
@@ -5293,6 +5464,15 @@ function TemplatePickerCategoryContent({
 function selectedComposerTemplateAttachment(
   value: GenerationTemplateRequest | undefined,
 ): ComposerTemplateAttachment | undefined {
+  const avatar = avatarTemplateSelection(value);
+  if (avatar) {
+    return {
+      type: "avatar",
+      title: avatar.title,
+      category: "avatar",
+      previewImageUrl: avatar.previewUrl,
+    };
+  }
   const presentationItem = selectedPresentationTemplateItem(value);
   if (presentationItem && value?.type === "presentation") {
     const selectedTheme = findPresentationTemplateTheme(
@@ -5343,19 +5523,17 @@ function selectedComposerTemplateAttachment(
 
 function inlineComposerTemplatePicker({
   picker,
-  enabled,
   insertTemplate,
   onDraftChange,
 }: {
   picker: ComposerTemplatePicker | undefined;
-  enabled: boolean;
   insertTemplate: (
     value: GenerationTemplateRequest,
     attachment: ComposerTemplateAttachment,
   ) => void;
   onDraftChange: (() => void) | undefined;
 }): ComposerTemplatePicker | undefined {
-  if (!picker || !enabled) {
+  if (!picker) {
     return picker;
   }
   return {
@@ -5374,14 +5552,6 @@ function inlineComposerTemplatePicker({
   };
 }
 
-function userMessageInlineTemplatesEnabled(
-  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>,
-): boolean {
-  return (
-    featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] === true
-  );
-}
-
 function composerTemplateAttachmentLifecycleKey(
   attachment: ComposerTemplateAttachment | undefined,
 ): string {
@@ -5393,6 +5563,23 @@ function composerTemplateAttachmentLifecycleKey(
         attachment.previewImageUrl,
       ])
     : "none";
+}
+
+/** Serialized by the inline chip node view as "left,top,width,height". */
+function parseTemplateAnchor(
+  serialized: string | undefined,
+): VideoTemplateOptionsAnchor | undefined {
+  const parts = serialized?.split(",").map(Number);
+  if (parts?.length !== 4 || parts.some(Number.isNaN)) {
+    return undefined;
+  }
+  const [left, top, width, height] = parts;
+  return left === undefined ||
+    top === undefined ||
+    width === undefined ||
+    height === undefined
+    ? undefined
+    : { left, top, width, height };
 }
 
 function ComposerTemplateAttachmentSync({
@@ -5414,6 +5601,14 @@ function ComposerTemplateAttachmentSync({
     signals.template.setTemplatePickerReferenceValue$,
   );
   const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
+  const openVideoOptions = useSet(signals.template.openVideoTemplateOptions$);
+  const videoOptionsPosition = useGet(
+    signals.template.videoTemplateOptionsPosition$,
+  );
+  const updateTemplateAt = useSet(signals.template.updateTemplateAt$);
+  const setVideoOptionsValue = useSet(
+    signals.template.setVideoTemplateOptionsValue$,
+  );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
@@ -5436,25 +5631,60 @@ function ComposerTemplateAttachmentSync({
   };
 
   return (
-    <button
-      key={composerTemplateAttachmentLifecycleKey(attachment)}
-      ref={setLifecycleRef}
-      type="button"
-      hidden
-      data-template-type={attachment?.type}
-      data-template-title={attachment?.title}
-      data-template-category={attachment?.category}
-      data-template-preview-url={attachment?.previewImageUrl}
-      onClick={(event) => {
-        const action = event.currentTarget.dataset.templateAction;
-        if (action === "open") {
-          openPicker(event.currentTarget.dataset.templateCategory ?? "slides");
-        } else if (action === "remove") {
-          picker?.onChange(undefined);
+    <>
+      <VideoTemplateOptionsPopover
+        signals={signals}
+        onChange={(next) => {
+          const nextAttachment = selectedComposerTemplateAttachment(next);
+          if (videoOptionsPosition === null || !nextAttachment) {
+            return;
+          }
+          // Addressed by position: the editor selection does not survive
+          // repeated in-place updates, and the popover can outlive it.
+          updateTemplateAt(videoOptionsPosition, next, nextAttachment);
+          // The popover holds a snapshot; without this a second edit would be
+          // computed from the pre-edit value and undo the first one.
+          setVideoOptionsValue(next);
           onDraftChange?.();
-        }
-      }}
-    />
+        }}
+      />
+      <button
+        key={composerTemplateAttachmentLifecycleKey(attachment)}
+        ref={setLifecycleRef}
+        type="button"
+        hidden
+        data-template-type={attachment?.type}
+        data-template-title={attachment?.title}
+        data-template-category={attachment?.category}
+        data-template-preview-url={attachment?.previewImageUrl}
+        onClick={(event) => {
+          const action = event.currentTarget.dataset.templateAction;
+          if (action === "open") {
+            openPicker(
+              event.currentTarget.dataset.templateCategory ?? "slides",
+            );
+          } else if (action === "remove") {
+            picker?.onChange(undefined);
+            onDraftChange?.();
+          } else if (action === "options") {
+            const anchor = parseTemplateAnchor(
+              event.currentTarget.dataset.templateAnchor,
+            );
+            const position = Number(
+              event.currentTarget.dataset.templatePosition,
+            );
+            const selected = readSelectedTemplate();
+            if (anchor && selected && Number.isInteger(position)) {
+              // Base UI dismisses a popover mounted during the same external
+              // click as an outside press. Mount after that click dispatches.
+              queueMicrotask(() => {
+                openVideoOptions(anchor, selected, position);
+              });
+            }
+          }
+        }}
+      />
+    </>
   );
 }
 
@@ -5465,6 +5695,7 @@ function TemplatePickerButton({
   presentationItems,
   hasIllustrationTab,
   hasVideoTab,
+  hasAvatarTab,
   hasWorkflowTab,
   runtime,
   signals,
@@ -5475,6 +5706,7 @@ function TemplatePickerButton({
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
   signals: ComposerSignals;
@@ -5499,6 +5731,7 @@ function TemplatePickerButton({
     hasPptTab,
     hasIllustrationTab,
     hasVideoTab,
+    hasAvatarTab,
     hasWorkflowTab,
   });
   const prewarmPicker = () => {
@@ -5520,11 +5753,13 @@ function TemplatePickerButton({
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
+            <Button
               type="button"
+              variant="quiet"
+              size="icon-sm"
               className={cn(
-                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
-                COMPOSER_CONTROL_FOCUS_CLASS,
+                "shrink-0",
+                COMPOSER_CONTROL_ICON_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label={t(($) => {
@@ -5543,8 +5778,8 @@ function TemplatePickerButton({
                 setOpen(true);
               }}
             >
-              <IconColorSwatch size={18} stroke={1.5} aria-hidden="true" />
-            </button>
+              <SwatchBook size={18} aria-hidden="true" />
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
             {selectedTitle
@@ -5575,6 +5810,7 @@ function TemplatePickerButton({
           presentationItems={presentationItems}
           hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
+          hasAvatarTab={hasAvatarTab}
           hasWorkflowTab={hasWorkflowTab}
           runtime={runtime}
           signals={signals}
@@ -5589,6 +5825,7 @@ function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
   const hasPptTab = true;
   const hasIllustrationTab = true;
   const hasVideoTab = true;
+  const hasAvatarTab = useGet(avatarTemplatesEnabled$);
   const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   const prepareTemplateInsertion = useSet(
@@ -5602,6 +5839,7 @@ function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
       presentationItems={presentationItems}
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
+      hasAvatarTab={hasAvatarTab}
       hasWorkflowTab={hasWorkflowTab}
       runtime={signals.template.templatePreview}
       signals={signals}
@@ -5619,19 +5857,18 @@ function CreateWorkflowPromptButton({
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
-            className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
-              COMPOSER_CONTROL_FOCUS_CLASS,
-            )}
+            variant="quiet"
+            size="icon-sm"
+            className={cn("shrink-0", COMPOSER_CONTROL_ICON_CLASS)}
             aria-label={t(($) => {
               return $.chat.composer.createWorkflow;
             })}
             onClick={onCreateWorkflowPrompt}
           >
-            <IconRoute size={18} stroke={1.5} aria-hidden="true" />
-          </button>
+            <Route size={18} aria-hidden="true" />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           {t(($) => {
@@ -5680,16 +5917,23 @@ function ConnectorTriggerIcons({
       return { kind: "custom" as const, connector };
     }),
   ].slice(0, 3);
+  const hasComputerAccess = hasComputerUse || hasCloudBrowser;
   if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
-    return <IconPlug size={18} stroke={1.5} />;
+    return <Plug size={18} />;
   }
   return (
-    <span className="flex items-center -space-x-2 sm:-space-x-1.5">
-      {enabled.map((item) => {
+    <span className="flex items-center sm:-space-x-1.5">
+      {enabled.map((item, index) => {
         const key =
           item.kind === "builtin" ? item.connector.slug : item.connector.id;
         return (
-          <span key={key} className="relative shrink-0">
+          <span
+            key={key}
+            className={cn(
+              "relative shrink-0",
+              (index > 0 || hasComputerAccess) && "hidden sm:block",
+            )}
+          >
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
               {item.kind === "builtin" ? (
                 <ConnectorIcon icon={item.connector.icon} size={16} />
@@ -5707,14 +5951,14 @@ function ConnectorTriggerIcons({
       {hasComputerUse && (
         <span className="relative shrink-0">
           <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
-            <IconDeviceDesktop size={16} stroke={1.5} />
+            <Monitor size={16} />
           </span>
         </span>
       )}
       {hasCloudBrowser && (
         <span className="relative shrink-0">
           <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
-            <IconWorld size={16} stroke={1.5} />
+            <Globe size={16} />
           </span>
         </span>
       )}
@@ -5730,11 +5974,13 @@ function matchesCustomConnectorSearch(
   if (!normalizedSearch) {
     return true;
   }
-  return [connector.displayName, connector.slug, ...connector.prefixes].some(
-    (value) => {
-      return value.toLowerCase().includes(normalizedSearch);
-    },
-  );
+  return [
+    connector.displayName,
+    connector.slug,
+    customConnectorTarget(connector),
+  ].some((value) => {
+    return value.toLowerCase().includes(normalizedSearch);
+  });
 }
 
 function CustomConnectorCatalogCard({
@@ -5775,15 +6021,27 @@ function CustomConnectorCatalogCard({
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground"
           aria-hidden="true"
         >
-          <IconPlus size={14} stroke={1.5} />
+          <Plus size={14} />
         </span>
       </span>
       <span className="block px-5 pb-4 pt-1">
         <span
           data-testid="connector-help-text"
-          className="line-clamp-2 text-xs text-muted-foreground"
+          className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
         >
-          {connector.prefixes[0]}
+          <span className="shrink-0">
+            {connector.kind === "mcp"
+              ? t(($) => {
+                  return $.connectors.custom.mcpType;
+                })
+              : t(($) => {
+                  return $.connectors.custom.create.httpType;
+                })}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span className="min-w-0 truncate font-mono text-muted-foreground/60">
+            {customConnectorTarget(connector)}
+          </span>
         </span>
       </span>
     </button>
@@ -5812,6 +6070,9 @@ function AddConnectorsDialog({
   const { t } = useTranslation();
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const resetCustomConnectorConnectInput = useSet(
+    resetCustomConnectorConnectInput$,
+  );
   const search = connectorUi.addDialogSearch;
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
@@ -5876,6 +6137,7 @@ function AddConnectorsDialog({
                   key={item.id}
                   connector={item}
                   onConnect={() => {
+                    resetCustomConnectorConnectInput();
                     onConnectCustom(item);
                   }}
                 />
@@ -5898,54 +6160,48 @@ function ComputerUseConnectorMenuSection({
   const { t } = useTranslation();
   return (
     <div className="shrink-0 border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
-      {computerUse.cloudBrowserAvailable && (
-        <>
-          <div
-            onClick={() => {
-              computerUse.onCloudBrowserChange(
-                !computerUse.cloudBrowserEnabled,
-              );
-            }}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
-          >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-              <IconWorld size={16} stroke={1.5} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm text-foreground">
-                {t(($) => {
-                  return $.chat.computerUse.cloudBrowser;
-                })}
-              </span>
-            </span>
-            <span
-              className="flex shrink-0 items-center"
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-            >
-              <LoadingSwitch
-                checked={computerUse.cloudBrowserEnabled}
-                onCheckedChange={onDomEventFn((enabled) => {
-                  computerUse.onCloudBrowserChange(enabled);
-                })}
-                loading={false}
-                ariaLabel={
-                  computerUse.cloudBrowserEnabled
-                    ? t(($) => {
-                        return $.chat.computerUse.disableCloudBrowser;
-                      })
-                    : t(($) => {
-                        return $.chat.computerUse.enableCloudBrowser;
-                      })
-                }
-                size="sm"
-              />
-            </span>
-          </div>
-          <div className="mx-2 my-1 border-t border-border/50" />
-        </>
-      )}
+      <div
+        onClick={() => {
+          computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
+        }}
+        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover"
+      >
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+          <Globe size={16} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm text-foreground">
+            {t(($) => {
+              return $.chat.computerUse.cloudBrowser;
+            })}
+          </span>
+        </span>
+        <span
+          className="flex shrink-0 items-center"
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <LoadingSwitch
+            checked={computerUse.cloudBrowserEnabled}
+            onCheckedChange={onDomEventFn((enabled) => {
+              computerUse.onCloudBrowserChange(enabled);
+            })}
+            loading={false}
+            ariaLabel={
+              computerUse.cloudBrowserEnabled
+                ? t(($) => {
+                    return $.chat.computerUse.disableCloudBrowser;
+                  })
+                : t(($) => {
+                    return $.chat.computerUse.enableCloudBrowser;
+                  })
+            }
+            size="sm"
+          />
+        </span>
+      </div>
+      <div className="mx-2 my-1 border-t border-border/50" />
       <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
         {t(($) => {
           return $.chat.computerUse.yourComputer;
@@ -5979,14 +6235,18 @@ function ComputerUseConnectorMenuSection({
                 onClick={() => {
                   computerUse.onChange(checked ? null : host.id);
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover"
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                  <IconDeviceDesktop size={16} stroke={1.5} />
+                  <Monitor size={16} />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-foreground">
-                    {host.displayName}
+                    <span>{host.displayName}</span>
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      {" "}
+                      {desktopProductDisplayName(host.product)}
+                    </span>
                   </span>
                   {host.status === "offline" && (
                     <span className="block text-[11px] leading-3 text-muted-foreground">
@@ -6036,11 +6296,7 @@ function ComputerUseConnectorMenuSection({
         </div>
       ) : (
         <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
-          <IconDeviceDesktop
-            size={16}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <Monitor size={16} className="shrink-0" />
           {t(($) => {
             return $.chat.computerUse.noOnlineComputers;
           })}
@@ -6049,14 +6305,10 @@ function ComputerUseConnectorMenuSection({
       <PopoverClose asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-state-hover"
           onClick={onOpenDownloadDialog}
         >
-          <IconPlug
-            size={16}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <Plug size={16} className="shrink-0" />
           {t(($) => {
             return $.chat.computerUse.connectMyComputer;
           })}
@@ -6108,16 +6360,18 @@ function ComposerConnectorPermissionDialog({
       resetEnabled
       readOnly={false}
       onApply={async (intent, { metadata: appliedMetadata }) => {
-        await savePermissionDraftPolicies({
-          scope: { agentId },
-          connectorSlug: connector.slug,
-          metadata: appliedMetadata,
-          initialPolicies,
-          initialGrants: activeSnapshot.grants,
-          intent,
+        await savePermissionDraftPolicies(
+          {
+            scope: { agentId },
+            connectorSlug: connector.slug,
+            metadata: appliedMetadata,
+            initialPolicies,
+            initialGrants: activeSnapshot.grants,
+            intent,
+            applyGrantPolicies,
+          },
           pageSignal,
-          applyGrantPolicies,
-        });
+        );
         toast.success(
           t(($) => {
             return $.chat.permissions.updated;
@@ -6260,7 +6514,7 @@ function ConnectorsPopoverButton({
               <button
                 type="button"
                 className={cn(
-                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:min-w-9 sm:px-1.5",
                   COMPOSER_CONTROL_FOCUS_CLASS,
                 )}
                 aria-label={t(($) => {
@@ -6286,7 +6540,7 @@ function ConnectorsPopoverButton({
       <PopoverContent
         side="top"
         align="start"
-        className="flex max-h-[var(--radix-popover-content-available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
+        className="flex max-h-[var(--available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
       >
         {(connectorItems.length > 0 || connectorsLoading) && (
           <div className="flex min-h-0 flex-col py-1">
@@ -6327,7 +6581,7 @@ function ConnectorsPopoverButton({
                     return (
                       <label
                         key={connector.id}
-                        className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                        className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
                       >
                         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                           <CustomConnectorIcon
@@ -6373,7 +6627,7 @@ function ConnectorsPopoverButton({
                   return (
                     <label
                       key={connector.slug}
-                      className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                      className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                         <ConnectorIcon icon={connector.icon} size={16} />
@@ -6385,7 +6639,7 @@ function ConnectorsPopoverButton({
                         agentId &&
                         connector.authorized &&
                         connector.permissionSummary.hasPermissions && (
-                          <button
+                          <Button
                             type="button"
                             onClick={(event) => {
                               event.preventDefault();
@@ -6400,10 +6654,12 @@ function ConnectorsPopoverButton({
                               },
                               { connectorName: connector.label },
                             )}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            variant="quiet"
+                            size="icon-2xs"
+                            className="shrink-0"
                           >
-                            <IconAdjustmentsHorizontal size={15} stroke={1.5} />
-                          </button>
+                            <SlidersHorizontal size={15} />
+                          </Button>
                         )}
                       <LoadingSwitch
                         checked={connector.authorized}
@@ -6445,13 +6701,13 @@ function ConnectorsPopoverButton({
           )}
           <button
             type="button"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
             onClick={() => {
               return onOpenAddDialog();
             }}
           >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-              <IconPlus size={13} stroke={1.5} />
+              <Plus size={13} />
             </span>
             {t(($) => {
               return $.chat.connectors.addConnectors;
@@ -6499,9 +6755,8 @@ function ComputerUseDownloadDialog({
   downloadUrl: string;
 }) {
   const { t } = useTranslation();
-  const downloadSupportLoadable = useLoadable(
-    zeroDesktopDownloadSupportStatus$,
-  );
+  const computerUseProductName = useGet(computerUseProductName$);
+  const downloadSupportLoadable = useLoadable(desktopDownloadSupportStatus$);
   const downloadSupportStatus =
     downloadSupportLoadable.state === "hasData"
       ? downloadSupportLoadable.data
@@ -6519,14 +6774,20 @@ function ComputerUseDownloadDialog({
         </div>
         <DialogHeader className="space-y-2 px-6 pt-5 text-left">
           <DialogTitle className="text-xl leading-7">
-            {t(($) => {
-              return $.chat.computerUse.dialogTitle;
-            })}
+            {t(
+              ($) => {
+                return $.chat.computerUse.dialogTitle;
+              },
+              { desktopProductName: computerUseProductName },
+            )}
           </DialogTitle>
           <DialogDescription className="leading-6">
-            {t(($) => {
-              return $.chat.computerUse.dialogDescription;
-            })}
+            {t(
+              ($) => {
+                return $.chat.computerUse.dialogDescription;
+              },
+              { desktopProductName: computerUseProductName },
+            )}
           </DialogDescription>
           <p className="text-sm leading-5 text-muted-foreground">
             {t(($) => {
@@ -6537,7 +6798,7 @@ function ComputerUseDownloadDialog({
         <div className="px-6 pb-6 pt-4">
           {downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
-              <IconAlertTriangle size={16} stroke={1.5} />
+              <AlertTriangle size={16} />
               {t(($) => {
                 return $.chat.computerUse.unsupportedIntelMac;
               })}
@@ -6558,7 +6819,7 @@ function ComputerUseDownloadDialog({
                   onOpenChange(false);
                 }}
               >
-                <IconDownload size={16} stroke={1.5} />
+                <Download size={16} />
                 {t(($) => {
                   return $.chat.computerUse.downloadMacos;
                 })}
@@ -6672,15 +6933,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
       return;
     }
     if (recording) {
-      detach(
-        (async () => {
-          const text = await stopAndTranscribe(signal);
-          if (text) {
-            onTranscribed(text);
-          }
-        })(),
-        Reason.DomCallback,
-      );
+      detach(stopAndTranscribe(signal), Reason.DomCallback);
       return;
     }
     if (!quota) {
@@ -6700,14 +6953,15 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
             className={cn(
-              "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
-              COMPOSER_CONTROL_FOCUS_CLASS,
-              recording || starting || transcribing
-                ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              "relative shrink-0",
+              COMPOSER_CONTROL_ICON_CLASS,
+              (recording || starting || transcribing) &&
+                "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white",
             )}
             onClick={handleClick}
             disabled={disabled}
@@ -6726,12 +6980,12 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
                     } as CSSProperties
                   }
                 />
-                <IconMicrophone size={17} stroke={1.8} className="relative" />
+                <Mic size={17} className="relative" />
               </>
             ) : (
-              <IconMicrophone size={18} stroke={1.5} />
+              <Mic size={18} />
             )}
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           {micButtonTooltip(status)}
@@ -6748,12 +7002,11 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
-            className={cn(
-              "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
-              COMPOSER_CONTROL_FOCUS_CLASS,
-            )}
+            variant="quiet"
+            size="icon-sm"
+            className={cn("shrink-0", COMPOSER_CONTROL_ICON_CLASS)}
             aria-label={t(($) => {
               return $.chat.attachments.attach;
             })}
@@ -6761,8 +7014,8 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
               fileInput?.click();
             }}
           >
-            <IconPaperclip size={18} stroke={1.5} />
-          </button>
+            <Paperclip size={18} />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           {t(($) => {
@@ -6771,134 +7024,6 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  );
-}
-
-function ComposerUploadMenu({ signals }: { signals: ComposerSignals }) {
-  const { t } = useTranslation();
-  const uploadOpen = useGet(signals.draft.uploadPopoverOpen$);
-  const setUploadOpen = useSet(signals.draft.setUploadPopoverOpen$);
-  const appendText = useSet(signals.editor.appendText$);
-  const saveDraft = useSet(signals.draft.save$);
-  const fileInput = useGet(signals.draft.composerFileInput$);
-  const pageSignal = useGet(pageSignal$);
-  const addLink = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const trimmed = String(data.get("uploadLink") ?? "").trim();
-    if (!URL.canParse(trimmed)) {
-      toast.error(
-        t(($) => {
-          return $.chat.attachments.invalidLink;
-        }),
-      );
-      return;
-    }
-    const normalized = new URL(trimmed).toString();
-    appendText(normalized);
-    detach(saveDraft(pageSignal), Reason.DomCallback);
-    form.reset();
-    setUploadOpen(false);
-  };
-
-  return (
-    <div className="relative inline-flex">
-      <button
-        type="button"
-        className={cn(
-          "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
-          COMPOSER_CONTROL_FOCUS_CLASS,
-          uploadOpen && "bg-accent text-foreground",
-        )}
-        aria-label={t(($) => {
-          return $.chat.attachments.upload;
-        })}
-        aria-expanded={uploadOpen}
-        aria-haspopup="dialog"
-        title={t(($) => {
-          return $.chat.attachments.upload;
-        })}
-        data-testid="composer-upload"
-        onClick={() => {
-          setUploadOpen(!uploadOpen);
-        }}
-      >
-        <IconUpload size={18} stroke={1.5} />
-      </button>
-      {uploadOpen && (
-        <div
-          role="dialog"
-          aria-label={t(($) => {
-            return $.chat.attachments.upload;
-          })}
-          className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-2 text-foreground shadow-lg"
-        >
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent"
-            data-testid="composer-upload-local"
-            onClick={() => {
-              setUploadOpen(false);
-              fileInput?.click();
-            }}
-          >
-            <IconPaperclip size={16} stroke={1.6} />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">
-                {t(($) => {
-                  return $.chat.attachments.uploadFromComputer;
-                })}
-              </span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {t(($) => {
-                  return $.chat.attachments.supportedTypes;
-                })}
-              </span>
-            </span>
-          </button>
-          <form
-            className="mt-2 rounded-lg border border-border/70 p-3"
-            onSubmit={addLink}
-          >
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <IconLink size={15} stroke={1.7} />
-              {t(($) => {
-                return $.chat.attachments.uploadFromLink;
-              })}
-            </div>
-            <Input
-              className="mt-2 h-9 text-sm"
-              name="uploadLink"
-              placeholder={t(($) => {
-                return $.chat.attachments.linkPlaceholder;
-              })}
-              type="url"
-              data-testid="composer-upload-link-input"
-            />
-            <Button
-              type="submit"
-              size="sm"
-              className="mt-2 h-8 w-full rounded-lg text-xs font-medium"
-              data-testid="composer-upload-link-add"
-            >
-              {t(($) => {
-                return $.chat.attachments.addLink;
-              })}
-            </Button>
-          </form>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ComposerUploadControl({ signals }: { signals: ComposerSignals }) {
-  const uploadPopoverEnabled = useGet(composerUploadPopoverEnabled$);
-  return uploadPopoverEnabled ? (
-    <ComposerUploadMenu signals={signals} />
-  ) : (
-    <ComposerAttachButton signals={signals} />
   );
 }
 
@@ -6928,23 +7053,17 @@ function toPersistedAttachments(
 
 function restoreChatClipboardPayload({
   event,
-  inlineTemplatesEnabled,
   visualAttachmentUnsupported,
   insertPromptMarkdown,
   insertUserMessage,
   restoreAttachments,
-  onTemplateChange,
   onDraftChange,
 }: {
   event: ComposerPasteEvent;
-  inlineTemplatesEnabled: boolean;
   visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
   insertUserMessage: (value: UserMessageDocument) => void;
   restoreAttachments: (attachments: PersistedAttachment[]) => void;
-  onTemplateChange:
-    | ((value: GenerationTemplateRequest | undefined) => void)
-    | undefined;
   onDraftChange: (() => void) | undefined;
 }): boolean {
   if (!event.clipboardData) {
@@ -6980,19 +7099,13 @@ function restoreChatClipboardPayload({
       part.type === "chat_thread" ||
       part.type === "agent" ||
       part.type === "feedback" ||
-      (inlineTemplatesEnabled && part.type === "template")
+      part.type === "template"
     );
   });
   if (userMessage && hasInsertableUserMessagePart) {
     insertUserMessage(userMessage);
   } else if (payload.text) {
     insertPromptMarkdown(payload.text);
-  }
-  const templatePart = userMessage?.parts.find((part) => {
-    return part.type === "template";
-  });
-  if (!inlineTemplatesEnabled && templatePart?.type === "template") {
-    onTemplateChange?.(templatePart.template);
   }
   if (allowedAttachments.length > 0) {
     restoreAttachments(allowedAttachments);
@@ -7013,7 +7126,7 @@ function useComposerVisualAttachmentUnsupported(
   signals: ComposerSignals,
 ): VisualAttachmentUnsupportedState | null {
   const modelSelection = useLastResolved(signals.model.modelSelection$) ?? null;
-  const imageRecognitionEnabled = useGet(zeroImageRecognitionEnabled$);
+  const imageRecognitionEnabled = useGet(imageRecognitionAvailable$);
   return getVisualAttachmentUnsupportedState(
     {
       value: modelSelection,
@@ -7026,7 +7139,6 @@ function useComposerVisualAttachmentUnsupported(
 function useComposerTemplatePicker(
   signals: ComposerSignals,
 ): ComposerTemplatePicker {
-  const featureSwitches = useGet(featureSwitch$);
   const value = useGet(signals.template.generationTemplate$);
   const setValue = useSet(signals.template.setGenerationTemplate$);
   const insertTemplate = useSet(signals.template.insertTemplate$);
@@ -7034,7 +7146,6 @@ function useComposerTemplatePicker(
   return (
     inlineComposerTemplatePicker({
       picker: { value, onChange: setValue },
-      enabled: userMessageInlineTemplatesEnabled(featureSwitches),
       insertTemplate,
       onDraftChange: notifyDraftChanged,
     }) ?? { value, onChange: setValue }
@@ -7051,24 +7162,33 @@ function useComposerPrimaryAction(
   return selectedModelOauthAvailable ? action : "disabled";
 }
 
-function startComposerSubmission({
-  action,
-  activate,
-  ensurePushSubscription,
-  signal,
-}: {
-  action: ComposerPrimaryAction;
-  activate: (signal: AbortSignal) => Promise<boolean>;
-  ensurePushSubscription: (signal: AbortSignal) => Promise<void>;
-  signal: AbortSignal;
-}): void {
+function startComposerSubmission(
+  {
+    action,
+    activate,
+    completeVoiceInput,
+    ensurePushSubscription,
+  }: {
+    action: ComposerPrimaryAction;
+    activate: (signal: AbortSignal) => Promise<boolean>;
+    completeVoiceInput: (signal: AbortSignal) => Promise<void>;
+    ensurePushSubscription: (signal: AbortSignal) => Promise<void>;
+  },
+  signal: AbortSignal,
+): void {
   if (action === "disabled" || action === "stop") {
     return;
   }
   if (action === "send") {
     detach(ensurePushSubscription(signal), Reason.DomCallback);
   }
-  detach(activate(signal), Reason.DomCallback);
+  detach(
+    (async () => {
+      await completeVoiceInput(signal);
+      await activate(signal);
+    })(),
+    Reason.DomCallback,
+  );
 }
 
 function useComposerFileUpload(
@@ -7105,16 +7225,13 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const notifyDraftChanged = useComposerDraftChange(signals);
   const visualAttachmentUnsupported =
     useComposerVisualAttachmentUnsupported(signals);
-  const inlineTemplatesEnabled = userMessageInlineTemplatesEnabled(
-    useGet(featureSwitch$),
-  );
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
   const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
   const insertUserMessage = useSet(signals.editor.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
-  const templatePicker = useComposerTemplatePicker(signals);
   const primaryAction = useComposerPrimaryAction(signals);
   const submitCurrentInput = useSet(signals.submission.submitCurrentInput$);
+  const completeVoiceInput = useSet(stopAndTranscribe$);
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const sendModeLoadable = useLastLoadable(sendMode$);
@@ -7125,12 +7242,10 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
     if (
       restoreChatClipboardPayload({
         event,
-        inlineTemplatesEnabled,
         visualAttachmentUnsupported,
         insertPromptMarkdown,
         insertUserMessage,
         restoreAttachments,
-        onTemplateChange: templatePicker.onChange,
         onDraftChange: notifyDraftChanged,
       })
     ) {
@@ -7168,23 +7283,22 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   };
 
   const submit = () => {
-    startComposerSubmission({
-      action: primaryAction,
-      activate: (signal) => {
-        return submitCurrentInput(primaryAction, signal);
+    startComposerSubmission(
+      {
+        action: primaryAction,
+        activate: (signal) => {
+          return submitCurrentInput(primaryAction, signal);
+        },
+        completeVoiceInput,
+        ensurePushSubscription,
       },
-      ensurePushSubscription,
-      signal: rootSignal,
-    });
+      rootSignal,
+    );
   };
 
   const handleKeyDown = (event: KeyboardEventLike) => {
     const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
-    const isTouchOnlyDevice =
-      isTouchDevice &&
-      (!window.matchMedia("(any-pointer: fine)").matches ||
-        softwareKeyboardOccludesViewport());
-    if (isTouchOnlyDevice) {
+    if (isMobileTextInputDevice()) {
       processShortcut({ "mod+enter": submit }, event);
       return;
     }
@@ -7225,29 +7339,29 @@ function ComposerSendButton({
   if (action === "stop") {
     return (
       <Button
-        size="sm"
+        size="icon-sm"
         variant="destructive"
-        className="rounded-lg h-9 w-9 p-0 shrink-0"
+        className="shrink-0"
         onClick={onActivate}
         aria-label={t(($) => {
           return $.chat.actions.stop;
         })}
       >
-        <IconPlayerStop size={16} />
+        <Square />
       </Button>
     );
   }
   return (
     <Button
-      size="sm"
-      className="rounded-lg h-9 w-9 p-0 shrink-0"
+      size="icon-sm"
+      className="shrink-0"
       onClick={onActivate}
       disabled={action === "disabled"}
       aria-label={t(($) => {
         return $.chat.actions.send;
       })}
     >
-      <IconArrowUp size={18} stroke={2} />
+      <ArrowUp size={18} />
     </Button>
   );
 }
@@ -7257,6 +7371,7 @@ function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
   const activatePrimaryAction = useSet(
     signals.submission.activatePrimaryAction$,
   );
+  const completeVoiceInput = useSet(stopAndTranscribe$);
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const activate = () => {
@@ -7264,14 +7379,17 @@ function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
       detach(activatePrimaryAction(action, rootSignal), Reason.DomCallback);
       return;
     }
-    startComposerSubmission({
-      action,
-      activate: (signal) => {
-        return activatePrimaryAction(action, signal);
+    startComposerSubmission(
+      {
+        action,
+        activate: (signal) => {
+          return activatePrimaryAction(action, signal);
+        },
+        completeVoiceInput,
+        ensurePushSubscription,
       },
-      ensurePushSubscription,
-      signal: rootSignal,
-    });
+      rootSignal,
+    );
   };
   return <ComposerSendButton action={action} onActivate={activate} />;
 }
@@ -7291,7 +7409,7 @@ function ModelConfigurationWarning({
             aria-label={`${blocker.actionLabel}: ${blocker.message}`}
             className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
           >
-            <IconAlertTriangle size={15} stroke={1.75} />
+            <AlertTriangle size={15} />
             <span className="hidden sm:inline">{blocker.actionLabel}</span>
           </button>
         </TooltipTrigger>
@@ -7303,7 +7421,13 @@ function ModelConfigurationWarning({
   );
 }
 
-function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
+function ComposerModelPickerSlotBase({
+  signals,
+  videoModel,
+}: {
+  signals: ComposerSignals;
+  videoModel: VideoModelPickerState | undefined;
+}) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
@@ -7314,7 +7438,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const setModelSelection = useSet(signals.model.setModelSelection$);
   const configureSelectedModel = useSet(signals.model.configureSelectedModel$);
   const attachments = useGet(signals.draft.attachments$);
-  const imageRecognitionEnabled = useGet(zeroImageRecognitionEnabled$);
+  const imageRecognitionEnabled = useGet(imageRecognitionAvailable$);
   const pageSignal = useGet(pageSignal$);
   const value = modelSelection.state === "hasData" ? modelSelection.data : null;
   const modelPickerLoading = modelSelection.state === "loading";
@@ -7355,51 +7479,196 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
           },
         }
       : undefined;
-  if (modelPickerLoading) {
+  if (modelPickerLoading || modelPicker.value === null) {
     return null;
   }
-  const shouldRenderModelPicker = modelPicker.value !== null;
 
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
-      {shouldRenderModelPicker && (
-        <ModelProviderPicker
-          value={modelPicker.value}
-          onChange={onModelPickerChange}
-          placeholder={t(($) => {
-            return $.chat.composer.selectModel;
-          })}
-          triggerClassName={cn(
-            "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
-            "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
-            COMPOSER_CONTROL_FOCUS_CLASS,
-          )}
-          compactTrigger
-          mobileIconTrigger
-          codexFastModeEnabled={codexFastModeEnabled}
-          open={modelPickerOpen}
-          onOpenChange={setModelPickerOpen}
-          disabled={modelPicker.disabled}
-          resolveDefaultSelection={false}
-        />
-      )}
+      <ModelProviderPicker
+        value={modelPicker.value}
+        onChange={onModelPickerChange}
+        placeholder={t(($) => {
+          return $.chat.composer.selectModel;
+        })}
+        triggerClassName={cn(
+          "h-8 w-8 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
+          "[&>[data-slot=select-value]]:flex [&>[data-slot=select-value]]:items-center [&>[data-slot=select-value]]:justify-center sm:[&>[data-slot=select-value]]:justify-start",
+          "[&>[data-slot=select-icon]]:hidden sm:[&>[data-slot=select-icon]]:block",
+          "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
+          COMPOSER_CONTROL_FOCUS_CLASS,
+        )}
+        compactTrigger
+        mobileIconTrigger
+        open={modelPickerOpen}
+        onOpenChange={setModelPickerOpen}
+        disabled={modelPicker.disabled}
+        resolveDefaultSelection={false}
+        codexFastModeEnabled={codexFastModeEnabled}
+        {...(videoModel ? { videoModel } : {})}
+      />
+      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
   );
+}
+
+/**
+ * Choosing a video model writes the thread pin and closes the popover, which
+ * also returns the picker to its run model panel.
+ */
+function ComposerVideoModelPickerSlot({
+  signals,
+  videoModelSignals,
+}: {
+  signals: ComposerSignals;
+  videoModelSignals: ComposerVideoModelSignals;
+}) {
+  const panelOpen = useGet(signals.model.videoModelPanelOpen$);
+  const setPanelOpen = useSet(signals.model.setVideoModelPanelOpen$);
+  const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
+  const selectedVideoModel =
+    useLastResolved(videoModelSignals.selectedVideoModel$) ?? null;
+  const setVideoModel = useSet(videoModelSignals.setVideoModel$);
+  const pageSignal = useGet(pageSignal$);
+  const videoModel: VideoModelPickerState = {
+    value: selectedVideoModel,
+    onChange: (next) => {
+      detach(setVideoModel(next, pageSignal), Reason.DomCallback);
+      setModelPickerOpen(false);
+    },
+    panelOpen,
+    onPanelOpenChange: setPanelOpen,
+  };
+  return (
+    <ComposerModelPickerSlotBase signals={signals} videoModel={videoModel} />
+  );
+}
+
+function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
+  const videoModelEnabled = useGet(videoModelSelectionEnabled$);
+  const videoModelSignals = signals.videoModel;
+  if (videoModelEnabled && videoModelSignals) {
+    return (
+      <ComposerVideoModelPickerSlot
+        signals={signals}
+        videoModelSignals={videoModelSignals}
+      />
+    );
+  }
+  return (
+    <ComposerModelPickerSlotBase signals={signals} videoModel={undefined} />
+  );
+}
+
+function ComposerTemporaryModelNotice({
+  signals,
+}: {
+  signals: ComposerSignals;
+}) {
+  const { t } = useTranslation();
+  const selection = useLastResolved(signals.model.modelSelection$);
+  const policies = useLastResolved(orgModelPolicies$);
+  const userPreference = useLastResolved(userModelPreference$);
+  const [updateLoadable, updatePreference] = useLoadableSet(
+    updateUserModelPreference$,
+  );
+  const codexFastModeEnabled = useGet(codexFastModeEnabled$);
+  const pageSignal = useGet(pageSignal$);
+  const defaultSelection = resolveModelFirstUserDefaultSelection({
+    userPreference,
+    policies,
+    codexFastModeEnabled,
+  });
+  const selectionServiceTier =
+    selection?.codexServiceTier === "fast" ? "priority" : null;
+  const defaultServiceTier =
+    defaultSelection?.codexServiceTier === "fast" ? "priority" : null;
+  const modelChanged =
+    selection?.selectedModel !== defaultSelection?.selectedModel;
+  const serviceTierChanged = selectionServiceTier !== defaultServiceTier;
+  if (
+    !selection ||
+    !defaultSelection ||
+    (!modelChanged && !serviceTierChanged)
+  ) {
+    return null;
+  }
+  const updating = updateLoadable.state === "loading";
+  const modelName = getModelDisplayName(selection.selectedModel);
+  const runSpeedLabel = t(($) => {
+    return selectionServiceTier === "priority"
+      ? $.settings.models.picker.fast
+      : $.settings.models.picker.standard;
+  });
+  const notice = !modelChanged
+    ? t(($) => {
+        return selectionServiceTier === "priority"
+          ? $.chat.composer.temporaryFastModeEnabledNotice
+          : $.chat.composer.temporaryFastModeDisabledNotice;
+      })
+    : t(
+        ($) => {
+          return $.chat.composer.temporaryModelNotice;
+        },
+        {
+          model: serviceTierChanged
+            ? `${modelName} ${runSpeedLabel}`
+            : modelName,
+        },
+      );
+  const setAsDefault = () => {
+    if (updating) {
+      return;
+    }
+    detach(
+      updatePreference(
+        {
+          selectedModel: selection.selectedModel,
+          serviceTier: selectionServiceTier,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+  return (
+    <div
+      className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 px-3 text-xs leading-5 text-muted-foreground sm:px-4"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span>{notice}</span>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline-offset-2 transition-colors hover:text-foreground/70 hover:underline focus-visible:text-foreground/70 focus-visible:underline disabled:pointer-events-none disabled:opacity-70"
+        disabled={updating}
+        aria-busy={updating}
+        onClick={setAsDefault}
+      >
+        {updating && (
+          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+        )}
+        {t(($) => {
+          return $.chat.composer.setAsDefault;
+        })}
+      </button>
+    </div>
+  );
+}
+
+function ComposerTemporaryModelNoticeSlot({
+  signals,
+}: {
+  signals: ComposerSignals;
+}) {
+  const enabled = useGet(signals.model.temporaryModelNoticeEnabled$);
+  return enabled ? <ComposerTemporaryModelNotice signals={signals} /> : null;
 }
 
 // ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
-
-function loadableDataOrNull<T>(loadable: Loadable<T>): T | null {
-  return loadable.state === "hasData" ? loadable.data : null;
-}
-
-function nullToUndefined<T>(value: T | null): T | undefined {
-  return value === null ? undefined : value;
-}
 
 function equalComposerConnectorAuthorizationState(
   left: ComposerConnectorAuthorizationState,
@@ -7408,7 +7677,27 @@ function equalComposerConnectorAuthorizationState(
   return (
     left.agentId === right.agentId &&
     equalArrays(left.enabledConnectorSlugs, right.enabledConnectorSlugs) &&
-    equalArrays(left.enabledCustomConnectorIds, right.enabledCustomConnectorIds)
+    equalCustomConnectorGrants(
+      left.customConnectorGrants,
+      right.customConnectorGrants,
+    )
+  );
+}
+
+function equalCustomConnectorGrants(
+  left: readonly AgentCustomConnectorGrant[],
+  right: readonly AgentCustomConnectorGrant[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((grant, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        grant.customConnectorId === other.customConnectorId &&
+        equalArrays(grant.permissionNames, other.permissionNames)
+      );
+    })
   );
 }
 
@@ -7416,9 +7705,13 @@ function useComposerConnectorReadState(
   signals: ComposerSignals,
 ): ComposerConnectorReadState {
   return {
-    catalogItems: useLastLoadable(allConnectorCatalogItems$),
+    relatedCatalogItems: useLastLoadable(
+      signals.connector.relatedCatalogItems$,
+    ),
+    addDialogCatalogItems: useLastLoadable(
+      signals.connector.addDialogCatalogItems$,
+    ),
     customConnectors: useLastLoadable(customConnectors$),
-    agent: useLoadable(signals.agent$),
     authorization: useLastLoadable(signals.connector.connectorAuthorization$, {
       equalityFn: equalComposerConnectorAuthorizationState,
     }),
@@ -7426,29 +7719,29 @@ function useComposerConnectorReadState(
 }
 
 function matchingAuthorizedConnectorSlugs(
-  agent: Loadable<ZeroAgentResponse>,
+  agentId: string,
   authorization: Loadable<ComposerConnectorAuthorizationState>,
 ): readonly ConnectorSlug[] | null {
-  if (agent.state !== "hasData" || authorization.state !== "hasData") {
+  if (authorization.state !== "hasData") {
     return null;
   }
-  if (authorization.data.agentId !== agent.data.agentId) {
+  if (authorization.data.agentId !== agentId) {
     return null;
   }
   return authorization.data.enabledConnectorSlugs;
 }
 
-function matchingAuthorizedCustomConnectorIds(
-  agent: Loadable<ZeroAgentResponse>,
+function matchingCustomConnectorGrants(
+  agentId: string,
   authorization: Loadable<ComposerConnectorAuthorizationState>,
-): readonly string[] | null {
-  if (agent.state !== "hasData" || authorization.state !== "hasData") {
+): readonly AgentCustomConnectorGrant[] | null {
+  if (authorization.state !== "hasData") {
     return null;
   }
-  if (authorization.data.agentId !== agent.data.agentId) {
+  if (authorization.data.agentId !== agentId) {
     return null;
   }
-  return authorization.data.enabledCustomConnectorIds;
+  return authorization.data.customConnectorGrants;
 }
 
 interface ResolvedComposerConnectorCollections {
@@ -7465,40 +7758,64 @@ interface ResolvedComposerConnectorCollections {
 }
 
 function resolveComposerConnectorCollections({
-  catalogItems,
+  relatedCatalogItems,
+  addDialogCatalogItems,
   customConnectors,
   authorizedConnectorSlugs,
-  authorizedCustomConnectorIds,
+  customConnectorGrants,
   optimisticConnected,
   selectedCustomConnectorId,
+  mcpEnabled,
 }: {
-  catalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
+  relatedCatalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
+  addDialogCatalogItems: Loadable<
+    readonly PlatformConnectorCatalogStatusItem[]
+  >;
   customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
-  authorizedCustomConnectorIds: readonly string[] | null;
+  customConnectorGrants: readonly AgentCustomConnectorGrant[] | null;
   optimisticConnected: ReadonlySet<ConnectorSlug>;
   selectedCustomConnectorId: string | null;
+  mcpEnabled: boolean;
 }): ResolvedComposerConnectorCollections {
-  const resolvedCatalogItems =
-    catalogItems.state === "hasData" ? catalogItems.data : [];
-  const resolvedCustomConnectors =
-    customConnectors.state === "hasData" ? customConnectors.data : [];
+  const resolvedRelatedCatalogItems =
+    relatedCatalogItems.state === "hasData" ? relatedCatalogItems.data : [];
+  const resolvedAddDialogCatalogItems =
+    addDialogCatalogItems.state === "hasData" ? addDialogCatalogItems.data : [];
   const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
-  const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);
-  const connectorMap = new Map(
-    resolvedCatalogItems.map((connector) => {
-      return [connector.slug, connector];
-    }),
+  const authorizedCustomSet = new Set(
+    customConnectorGrants?.map((grant) => {
+      return grant.customConnectorId;
+    }) ?? [],
   );
-  const unconnectedConnectors = resolvedCatalogItems.filter((connector) => {
-    return !connector.connected && !optimisticConnected.has(connector.slug);
-  });
-  const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
+  const resolvedCustomConnectors =
+    customConnectors.state === "hasData"
+      ? customConnectors.data.filter((connector) => {
+          return (
+            connector.kind === "http" ||
+            mcpEnabled ||
+            authorizedCustomSet.has(connector.id)
+          );
+        })
+      : [];
+  const connectorMap = new Map(
+    [...resolvedRelatedCatalogItems, ...resolvedAddDialogCatalogItems].map(
+      (connector) => {
+        return [connector.slug, connector];
+      },
+    ),
+  );
+  const unconnectedConnectors = resolvedAddDialogCatalogItems.filter(
     (connector) => {
-      return !connector.connected;
+      return !connector.connected && !optimisticConnected.has(connector.slug);
     },
   );
-  const agentConnectors = resolvedCatalogItems
+  const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
+    (connector) => {
+      return !connector.connected && (connector.kind === "http" || mcpEnabled);
+    },
+  );
+  const agentConnectors = resolvedRelatedCatalogItems
     .filter((connector) => {
       return connector.connected || optimisticConnected.has(connector.slug);
     })
@@ -7544,7 +7861,6 @@ function ComposerFileInput({ signals }: { signals: ComposerSignals }) {
       ref={setFileInput}
       type="file"
       className="hidden"
-      accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.tsv,.md,.json,.xml,.yaml,.yml,.html,.htm,.doc,.docx,.docm,.dotx,.dotm,.odt,.rtf,.xls,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ods,.ppt,.pptx,.pptm,.potx,.potm,.ppsx,.ppsm,.odp,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.gz,.bz2,.xz,.pages,.numbers,.key,.heic,.heif,.tif,.tiff,.bmp,.parquet,.sqlite,.sqlite3,.db,.epub,.psd,.ai"
       multiple
       onChange={(event) => {
         const files = event.target.files;
@@ -7590,7 +7906,9 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
 
 function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const connectorReadState = useComposerConnectorReadState(signals);
+  const agents = useLastResolved(agents$) ?? [];
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
   const storedComputerUseHostId = useGet(signals.computer.computerUseHostId$);
@@ -7609,9 +7927,6 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     computerUseHosts,
     storedComputerUseHostId,
   );
-  const featureSwitches = useGet(featureSwitch$);
-  const cloudBrowserAvailable =
-    featureSwitches[FeatureSwitchKey.ZeroBrowser] ?? false;
   const composerPageSignal = useGet(pageSignal$);
   const computerUse: ComposerComputerUse = {
     hosts: visibleComputerUseHosts(computerUseHosts, resolvedComputerUseHostId),
@@ -7625,21 +7940,21 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         Reason.DomCallback,
       );
     },
-    cloudBrowserAvailable,
-    cloudBrowserEnabled: cloudBrowserAvailable && cloudBrowserEnabled,
+    cloudBrowserEnabled,
     onCloudBrowserChange: (enabled) => {
       detach(
         setCloudBrowserEnabled(enabled, composerPageSignal),
         Reason.DomCallback,
       );
     },
-    downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+    downloadUrl: OKOU_DESKTOP_DOWNLOAD_URL,
   };
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
-  const connectorCatalogItemsLoadable = connectorReadState.catalogItems;
+  const relatedCatalogItemsLoadable = connectorReadState.relatedCatalogItems;
+  const addDialogCatalogItemsLoadable =
+    connectorReadState.addDialogCatalogItems;
   const customConnectorsLoadable = connectorReadState.customConnectors;
-  const agentLoadable = connectorReadState.agent;
   const authorizationLoadable = connectorReadState.authorization;
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorSlug = connectorUi.selectedConnectorSlug;
@@ -7658,24 +7973,26 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const optimisticConnected = useGet(justConnectedSlugs$);
   const savingConnectorSlug = connectorUi.savingConnectorSlug;
   const savingCustomConnectorId = connectorUi.savingCustomConnectorId;
-  const agent = loadableDataOrNull(agentLoadable);
-  const agentRecordId = agent?.agentId ?? null;
-  const displayName = agent?.displayName ?? "";
+  const agentRecordId = signals.agentId;
+  const displayName =
+    agents.find((agent) => {
+      return agent.id === agentRecordId;
+    })?.displayName ?? "";
 
   const authorizedConnectors = matchingAuthorizedConnectorSlugs(
-    agentLoadable,
+    agentRecordId,
     authorizationLoadable,
   );
-  const authorizedCustomConnectors = matchingAuthorizedCustomConnectorIds(
-    agentLoadable,
+  const customConnectorGrants = matchingCustomConnectorGrants(
+    agentRecordId,
     authorizationLoadable,
   );
 
   const connectorsLoading =
-    connectorCatalogItemsLoadable.state !== "hasData" ||
+    relatedCatalogItemsLoadable.state !== "hasData" ||
     customConnectorsLoadable.state !== "hasData" ||
     authorizedConnectors === null ||
-    authorizedCustomConnectors === null;
+    customConnectorGrants === null;
 
   const {
     authorizedSet,
@@ -7686,13 +8003,18 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     agentCustomConnectors,
     selectedCustomConnector,
   } = resolveComposerConnectorCollections({
-    catalogItems: connectorCatalogItemsLoadable,
+    relatedCatalogItems: relatedCatalogItemsLoadable,
+    addDialogCatalogItems: addDialogCatalogItemsLoadable,
     customConnectors: customConnectorsLoadable,
     authorizedConnectorSlugs: authorizedConnectors,
-    authorizedCustomConnectorIds: authorizedCustomConnectors,
+    customConnectorGrants,
     optimisticConnected,
     selectedCustomConnectorId,
+    mcpEnabled,
   });
+  const selectedConnector = selectedConnectorSlug
+    ? connectorMap.get(selectedConnectorSlug)
+    : undefined;
 
   const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
     const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
@@ -7777,7 +8099,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
           {
             connectorLabel: connector.label,
             connectorIcon: connector.icon,
-            agentId: nullToUndefined(agentRecordId),
+            agentId: agentRecordId,
           },
           pageSignal,
         );
@@ -7796,7 +8118,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
             authMethod,
             options: {
               connectorLabel: connector.label,
-              agentId: nullToUndefined(agentRecordId),
+              agentId: agentRecordId,
             },
           },
           pageSignal,
@@ -7827,10 +8149,20 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   };
 
   const handleCustomToggle = async (connectorId: string, checked: boolean) => {
+    const connector = agentCustomConnectors.find((candidate) => {
+      return candidate.id === connectorId;
+    });
+    if (checked && connector?.permissionBundleRef) {
+      return;
+    }
     updateConnectorUi({ savingCustomConnectorId: connectorId });
     await bestEffort(
       setConnectorAuthorization(
-        { kind: "custom", connectorId },
+        {
+          kind: "custom",
+          connectorId,
+          permissionBundleRef: connector?.permissionBundleRef ?? null,
+        },
         checked,
         pageSignal,
       ),
@@ -7856,10 +8188,10 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         onToggle={handleToggle}
         onToggleCustom={handleCustomToggle}
       />
-      {selectedConnectorSlug && (
+      {selectedConnector && (
         <ConnectModal
-          selectedConnectorSlug={selectedConnectorSlug}
-          agentId={nullToUndefined(agentRecordId)}
+          item={selectedConnector}
+          agentId={agentRecordId}
           onClose={() => {
             return updateConnectorUi({ selectedConnectorSlug: null });
           }}
@@ -7943,16 +8275,18 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerTemplateAttachmentSync signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} />
-          <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
+          {/* Edge inset is 16px on all four sides so it matches the editor's
+              `px-4 pt-4` above and stays concentric with the 24px shell: a
+              control 16px in from a 24px corner needs exactly an 8px radius. */}
+          <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
             <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-              <ComposerUploadControl signals={signals} />
+              <ComposerAttachButton signals={signals} />
               <ComposerTemplatePickerSlot signals={signals} />
               <ComposerWorkflowPromptSlot signals={signals} />
               <ComposerConnectorsSlot signals={signals} />
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
               <ComposerModelPickerSlot signals={signals} />
-              <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
               <MicButton signals={signals} />
               <ComposerSendControl signals={signals} />
             </div>
@@ -7963,13 +8297,20 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerSurface({ signals }: { signals: ComposerSignals }) {
+function ComposerSurface({
+  signals,
+  showPendingItems,
+}: {
+  signals: ComposerSignals;
+  showPendingItems: boolean;
+}) {
   return (
     <>
       <ComposerFileInput signals={signals} />
       <div className="relative flex w-full min-w-0 flex-col">
-        <PendingItemsStrip signals={signals} />
+        {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
         <ComposerCard signals={signals} />
+        <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
         <WebsiteTemplatePreviewDialogSlot signals={signals} />
       </div>
@@ -7977,6 +8318,11 @@ function ComposerSurface({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-export function ZeroChatComposer({ signals }: ZeroChatComposerProps) {
-  return <ComposerSurface signals={signals} />;
+export function ZeroChatComposer({
+  signals,
+  showPendingItems = true,
+}: ZeroChatComposerProps) {
+  return (
+    <ComposerSurface signals={signals} showPendingItems={showPendingItems} />
+  );
 }

@@ -96,8 +96,10 @@ impl VsockHost {
             frame_builder: tokio::sync::Mutex::new(()),
             file_write_gate: tokio::sync::Mutex::new(()),
             fd,
-            seq: AtomicU32::new(2),
+            temp_seq: AtomicU32::new(2),
             state: std::sync::Mutex::new(ConnectionState::Connected {
+                next_route_id: 2,
+                route_reservations: HashMap::new(),
                 pending: HashMap::new(),
                 operations: exec_operation::Operations::new(),
             }),

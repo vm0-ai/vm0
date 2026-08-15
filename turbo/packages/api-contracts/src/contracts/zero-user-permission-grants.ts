@@ -66,7 +66,7 @@ export const applyUserPermissionGrantsRequestSchema = z
 export const zeroUserPermissionGrantsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/user-permission-grants",
+    path: "/api/okou/user-permission-grants",
     headers: authHeadersSchema,
     query: listUserPermissionGrantsQuerySchema,
     responses: {
@@ -80,7 +80,7 @@ export const zeroUserPermissionGrantsContract = c.router({
   },
   apply: {
     method: "PUT",
-    path: "/api/zero/user-permission-grants/apply",
+    path: "/api/okou/user-permission-grants/apply",
     headers: authHeadersSchema,
     body: applyUserPermissionGrantsRequestSchema,
     responses: {

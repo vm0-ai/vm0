@@ -4,14 +4,14 @@ import {
   FEISHU_OAUTH_SCOPES,
   type FeishuConnectStatus,
   type FeishuInstallationStatus,
-} from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   fetchFeishuBotInfo,
   fetchFeishuTenantAccessToken,
@@ -25,6 +25,10 @@ import {
   ensureFeishuCustomConnector$,
   hasFeishuCustomConnectorOAuthConnection,
 } from "./feishu-custom-connector.service";
+import {
+  publishCustomConnectorUserInvalidationAfterCommit,
+  type CapturedConnectorClientInvalidationAbort,
+} from "./connector-client-invalidation.service";
 import { feishuCallbackUrl, feishuOAuthAppCallbackUrl } from "./feishu-config";
 import { buildFeishuOAuthConnectUrl } from "./feishu-oauth-state";
 
@@ -253,11 +257,13 @@ async function prepareFeishuInstallation(
   input: ConfigureFeishuArgs,
   signal: AbortSignal,
 ): Promise<PreparedFeishuInstallation> {
-  const tenantToken = await fetchFeishuTenantAccessToken({
-    appId: input.appId,
-    appSecret: input.appSecret,
+  const tenantToken = await fetchFeishuTenantAccessToken(
+    {
+      appId: input.appId,
+      appSecret: input.appSecret,
+    },
     signal,
-  });
+  );
   const context = {
     orgId: input.orgId,
     userId: input.userId,
@@ -285,13 +291,15 @@ async function prepareFeishuInstallation(
   };
 }
 
-async function persistFeishuInstallation(args: {
-  readonly db: Pick<Db, "insert" | "update">;
-  readonly input: ConfigureFeishuArgs;
-  readonly prepared: PreparedFeishuInstallation;
-  readonly targetInstallationId: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<ConfigureFeishuResult> {
+async function persistFeishuInstallation(
+  args: {
+    readonly db: Pick<Db, "insert" | "update">;
+    readonly input: ConfigureFeishuArgs;
+    readonly prepared: PreparedFeishuInstallation;
+    readonly targetInstallationId: string | undefined;
+  },
+  signal: AbortSignal,
+): Promise<ConfigureFeishuResult> {
   if (args.targetInstallationId) {
     await args.db
       .update(feishuOrgInstallations)
@@ -314,7 +322,7 @@ async function persistFeishuInstallation(args: {
         updatedAt: nowDate(),
       })
       .where(eq(feishuOrgInstallations.id, args.targetInstallationId));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return {
       kind: "ok",
       installationId: args.targetInstallationId,
@@ -337,7 +345,7 @@ async function persistFeishuInstallation(args: {
       target: feishuOrgInstallations.appId,
     })
     .returning({ id: feishuOrgInstallations.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return created
     ? { kind: "ok", installationId: created.id }
     : { kind: "app_in_use" };
@@ -445,13 +453,15 @@ export const configureFeishuInstallation$ = command(
       if (target.kind !== "target") {
         return target;
       }
-      return await persistFeishuInstallation({
-        db: tx,
-        input: args,
-        prepared,
-        targetInstallationId: target.installationId,
+      return await persistFeishuInstallation(
+        {
+          db: tx,
+          input: args,
+          prepared,
+          targetInstallationId: target.installationId,
+        },
         signal,
-      });
+      );
     });
     signal.throwIfAborted();
     if (result.kind === "ok") {
@@ -526,7 +536,17 @@ export const disconnectFeishuConnection$ = command(
     if (installations.length === 0) {
       return false;
     }
+    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const rows = await db.transaction(async (tx) => {
+      await disconnectFeishuCustomConnectorOAuthConnection(
+        tx,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          installationId: args.installationId,
+        },
+        signal,
+      );
       const deleted = await tx
         .delete(feishuOrgConnections)
         .where(
@@ -541,15 +561,22 @@ export const disconnectFeishuConnection$ = command(
           ),
         )
         .returning({ id: feishuOrgConnections.id });
-      await disconnectFeishuCustomConnectorOAuthConnection(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        installationId: args.installationId,
-      });
+      signal.throwIfAborted();
       return deleted;
     });
-    signal.throwIfAborted();
-    return rows.length > 0;
+    if (signal.aborted) {
+      postCommitAbort = { reason: signal.reason };
+    }
+    if (rows.length === 0) {
+      signal.throwIfAborted();
+      return false;
+    }
+    await publishCustomConnectorUserInvalidationAfterCommit(
+      args.userId,
+      signal,
+      postCommitAbort,
+    );
+    return true;
   },
 );
 
@@ -592,14 +619,18 @@ export const updateFeishuInstallationAgent$ = command(
     const botInfo = args.setupCompleted
       ? await tapError(
           (async () => {
-            return await fetchFeishuBotInfo({
-              tenantAccessToken: await getFeishuTenantAccessToken({
-                db,
-                installationId: args.installationId,
-                signal,
-              }),
+            return await fetchFeishuBotInfo(
+              {
+                tenantAccessToken: await getFeishuTenantAccessToken(
+                  {
+                    db,
+                    installationId: args.installationId,
+                  },
+                  signal,
+                ),
+              },
               signal,
-            });
+            );
           })(),
           (error) => {
             L.warn("Failed to load Feishu bot profile", {

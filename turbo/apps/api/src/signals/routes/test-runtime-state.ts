@@ -1,48 +1,36 @@
 import {
-  getProviderRuntimeModel,
   getVm0Vendor,
   MODEL_PROVIDER_TYPES,
-} from "@vm0/api-contracts/contracts/model-providers";
-import {
-  DecryptCommand,
-  type DecryptCommandOutput,
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-} from "@aws-sdk/client-kms";
+} from "@okouai/api-contracts/contracts/model-providers";
 import { command } from "ccstate";
 import {
   testRuntimeStateContract,
   type TestRuntimeStateActionBody,
-} from "@vm0/api-contracts/contracts/test-runtime-state";
-import { compatibleStoredExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
+} from "@okouai/api-contracts/contracts/test-runtime-state";
+import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
 import {
   browserSessionTabSnapshots,
   browserSessions,
-} from "@vm0/db/schema/browser-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { hostedSites } from "@vm0/db/schema/hosted-site";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, sql, type SQL } from "drizzle-orm";
+} from "@okouai/db/schema/browser-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
+import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { hostedSites } from "@okouai/db/schema/hosted-site";
+import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
+import { and, count, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
-
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
-import {
-  resetSecretKmsClientForTests,
-  setSecretKmsClientForTests,
-  type SecretKmsClient,
-} from "../../lib/secret-kms-client";
+import { nowDate } from "../../lib/time";
 import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -50,22 +38,28 @@ import {
   onRejection,
   settleIncludingAbort,
 } from "../utils";
+import {
+  acquireVm0ManagedModelKeyFixture,
+  releaseVm0ManagedModelKeyFixture,
+} from "../services/test-vm0-managed-model-key-fixture.service";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
+import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
+import { saveRunSummary } from "../services/run-summary.service";
+import {
+  chatEventSnapshotCursorSchemaAvailable,
+  chatEventSnapshotLastEventId,
+} from "../services/chat-event-snapshot-schema.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 // Test-only support actions for generic infrastructure fixtures.
 
 const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
-const fakeKmsDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
-const RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY =
-  "vm0-key-run-lifecycle-bdd-default-model";
-const fakeKmsDecryptCallCount = testOverride<number>(() => {
-  return 0;
-});
+const VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
 
 interface OrgAdmissionLockGate {
   holderPid: number | null;
@@ -82,6 +76,35 @@ const orgAdmissionLockStateRowSchema = z.object({
   held: z.boolean(),
   waiting: z.boolean(),
 });
+type RunSummaryFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "save-run-summary" }
+>;
+
+function isRunSummaryFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is RunSummaryFixtureAction {
+  return body.action === "save-run-summary";
+}
+
+async function runSummaryFixtureActionResponse(
+  db: Db,
+  body: RunSummaryFixtureAction,
+  signal: AbortSignal,
+) {
+  await saveRunSummary(
+    db,
+    {
+      runId: body.run_id,
+      triggerSource: body.trigger_source,
+      prompt: body.prompt,
+      resultText: body.result_text,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
+}
 
 function createOrgAdmissionLockGate(signal: AbortSignal): OrgAdmissionLockGate {
   const released = createDeferredPromise<void>(signal);
@@ -184,69 +207,102 @@ async function readOrgAdmissionLockState(
   return state;
 }
 
-function fakeSecretKmsClient(): SecretKmsClient {
-  function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  function send(
-    command: GenerateDataKeyCommand | DecryptCommand,
-  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
-    if (command instanceof GenerateDataKeyCommand) {
-      return Promise.resolve({
-        $metadata: {},
-        KeyId: command.input.KeyId,
-        CiphertextBlob: Buffer.from(
-          `encrypted-data-key:${command.input.KeyId}`,
-          "utf8",
-        ),
-        Plaintext: fakeKmsDataKey,
-      });
-    }
-    fakeKmsDecryptCallCount.set(fakeKmsDecryptCallCount.get() + 1);
-    return Promise.resolve({ $metadata: {}, Plaintext: fakeKmsDataKey });
-  }
-  return { send };
-}
-
 async function seedVm0ManagedDefaultModelKey(
   db: Db,
+  fixtureId: string,
   signal: AbortSignal,
 ): Promise<string> {
   const selectedModel = MODEL_PROVIDER_TYPES.vm0.defaultModel;
   if (!selectedModel) {
     throw new Error("Expected vm0 to define a default model");
   }
-  return await seedVm0ManagedModelKey(db, selectedModel, signal);
+  return await seedVm0ManagedModelKey(db, fixtureId, selectedModel, signal);
 }
 
 async function seedVm0ManagedModelKey(
   db: Db,
+  fixtureId: string,
   selectedModel: string,
   signal: AbortSignal,
 ): Promise<string> {
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY));
-  signal.throwIfAborted();
-  await db.insert(vm0ApiKeys).values({
-    vendor: getVm0Vendor(selectedModel),
-    model: getProviderRuntimeModel("vm0", selectedModel),
-    apiKey: RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY,
-    label: "run-lifecycle-bdd",
-  });
+  const vendor = getVm0Vendor(selectedModel);
+  await acquireVm0ManagedModelKeyFixture(db, fixtureId, [
+    {
+      vendor,
+      apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
+    },
+  ]);
   signal.throwIfAborted();
   return selectedModel;
 }
 
-async function deleteVm0ManagedDefaultModelKey(
+async function deleteVm0ManagedModelKey(
   db: Db,
+  fixtureId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY));
+  await releaseVm0ManagedModelKeyFixture(db, fixtureId);
   signal.throwIfAborted();
+}
+
+type Vm0ManagedModelKeyAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "seed-vm0-managed-default-model-key"
+      | "seed-vm0-managed-model-key"
+      | "delete-vm0-managed-model-key";
+  }
+>;
+
+function isVm0ManagedModelKeyAction(
+  body: TestRuntimeStateActionBody,
+): body is Vm0ManagedModelKeyAction {
+  return (
+    body.action === "seed-vm0-managed-default-model-key" ||
+    body.action === "seed-vm0-managed-model-key" ||
+    body.action === "delete-vm0-managed-model-key"
+  );
+}
+
+async function vm0ManagedModelKeyActionResponse(
+  db: Db,
+  body: Vm0ManagedModelKeyAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "seed-vm0-managed-default-model-key": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0ManagedDefaultModelKey(
+            db,
+            body.fixture_id,
+            signal,
+          ),
+        },
+      };
+    }
+    case "seed-vm0-managed-model-key": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0ManagedModelKey(
+            db,
+            body.fixture_id,
+            body.selected_model,
+            signal,
+          ),
+        },
+      };
+    }
+    case "delete-vm0-managed-model-key": {
+      await deleteVm0ManagedModelKey(db, body.fixture_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+  }
 }
 
 async function clearRunApiStart(
@@ -254,11 +310,10 @@ async function clearRunApiStart(
   runId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const [cleared] = await db
-    .update(zeroRuns)
-    .set({ apiStartedAt: null })
-    .where(eq(zeroRuns.id, runId))
-    .returning({ id: zeroRuns.id });
+  const [cleared] = await writeRunMetadata(db, {
+    patch: { apiStartedAt: null },
+    where: eq(agentRuns.id, runId),
+  });
   signal.throwIfAborted();
   if (!cleared) {
     throw new Error("Expected a Zero run timing row");
@@ -271,9 +326,9 @@ async function readRunApiStart(
   signal: AbortSignal,
 ): Promise<string | null> {
   const [run] = await db
-    .select({ apiStartedAt: zeroRuns.apiStartedAt })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
+    .select({ apiStartedAt: agentRuns.apiStartedAt })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   signal.throwIfAborted();
   if (!run) {
@@ -325,6 +380,148 @@ async function clearThreadSessionBinding(
   signal.throwIfAborted();
   if (!thread) {
     throw new Error("Expected a chat thread session binding row");
+  }
+}
+
+type AutonomyBudgetFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "set-run-autonomy-budget"
+      | "read-run-autonomy-budget"
+      | "set-workflow-automation-autonomy-budget"
+      | "read-workflow-automation-autonomy-state"
+      | "read-latest-workflow-automation-run"
+      | "read-thread-goal-autonomy-budget";
+  }
+>;
+
+function isAutonomyBudgetFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is AutonomyBudgetFixtureAction {
+  return [
+    "set-run-autonomy-budget",
+    "read-run-autonomy-budget",
+    "set-workflow-automation-autonomy-budget",
+    "read-workflow-automation-autonomy-state",
+    "read-latest-workflow-automation-run",
+    "read-thread-goal-autonomy-budget",
+  ].includes(body.action);
+}
+
+async function autonomyBudgetFixtureActionResponse(
+  db: Db,
+  body: AutonomyBudgetFixtureAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "set-run-autonomy-budget": {
+      const rows = await writeRunMetadata(db, {
+        patch: { autonomyBudget: body.autonomy_budget },
+        where: eq(agentRuns.id, body.run_id),
+      });
+      signal.throwIfAborted();
+      if (rows.length === 0) {
+        throw new Error("Expected the autonomy-budget run fixture");
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-run-autonomy-budget": {
+      const [run] = await db
+        .select({ autonomyBudget: agentRuns.autonomyBudget })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, body.run_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          autonomy_budget: run?.autonomyBudget ?? null,
+        },
+      };
+    }
+    case "set-workflow-automation-autonomy-budget": {
+      const [automation] = await db
+        .update(workflowAutomations)
+        .set({ autonomyBudget: body.autonomy_budget })
+        .where(eq(workflowAutomations.id, body.automation_id))
+        .returning({ id: workflowAutomations.id });
+      signal.throwIfAborted();
+      if (!automation) {
+        throw new Error("Expected the autonomy-budget automation fixture");
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-workflow-automation-autonomy-state": {
+      const [automation] = await db
+        .select({
+          autonomyBudget: workflowAutomations.autonomyBudget,
+          enabled: workflowAutomations.enabled,
+          lastRunId: workflowAutomations.lastRunId,
+        })
+        .from(workflowAutomations)
+        .where(eq(workflowAutomations.id, body.automation_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          workflow_automation_state: automation
+            ? {
+                autonomy_budget: automation.autonomyBudget,
+                enabled: automation.enabled,
+                last_run_id: automation.lastRunId,
+              }
+            : null,
+        },
+      };
+    }
+    case "read-latest-workflow-automation-run": {
+      const [run] = await db
+        .select({
+          runId: agentRuns.id,
+          autonomyBudget: agentRuns.autonomyBudget,
+        })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.workflowAutomationId, body.automation_id),
+            isNotNull(agentRuns.triggerSource),
+          ),
+        )
+        .orderBy(desc(agentRuns.createdAt))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          workflow_automation_run: run
+            ? {
+                run_id: run.runId,
+                autonomy_budget: run.autonomyBudget,
+              }
+            : null,
+        },
+      };
+    }
+    case "read-thread-goal-autonomy-budget": {
+      const [goal] = await db
+        .select({ autonomyBudget: threadGoals.autonomyBudget })
+        .from(threadGoals)
+        .where(eq(threadGoals.chatThreadId, body.thread_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          autonomy_budget: goal?.autonomyBudget ?? null,
+        },
+      };
+    }
   }
 }
 
@@ -546,6 +743,10 @@ type ReadBrowserScreenshotSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-browser-screenshot-schema-state" }
 >;
+type ReadUsagePackInvitationSchemaStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-usage-pack-invitation-schema-state" }
+>;
 type ResetDatabasePoolAction = Extract<
   TestRuntimeStateActionBody,
   { action: "reset-database-pool" }
@@ -556,6 +757,7 @@ type PersistenceStateAction =
   | ReadRunnerJobStorageStateAction
   | ReadRunClaimOwnerAction
   | ReadBrowserScreenshotSchemaStateAction
+  | ReadUsagePackInvitationSchemaStateAction
   | ResetDatabasePoolAction;
 
 function isPersistenceStateAction(
@@ -571,6 +773,9 @@ function isPersistenceStateAction(
       return true;
     }
     case "read-browser-screenshot-schema-state": {
+      return true;
+    }
+    case "read-usage-pack-invitation-schema-state": {
       return true;
     }
     case "reset-database-pool": {
@@ -638,6 +843,17 @@ async function persistenceStateActionResponse(
         body: {
           ok: true as const,
           browser_screenshot_schema_available: available,
+        },
+      };
+    }
+    case "read-usage-pack-invitation-schema-state": {
+      const available = await usagePackInvitationPurchaseSchemaAvailable(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          usage_pack_invitation_schema_available: available,
         },
       };
     }
@@ -1001,6 +1217,7 @@ async function setRunnerJobContextProfileAsPreviousApi(
 }
 
 type CompatibilityFixtureAction =
+  | AutonomyBudgetFixtureAction
   | LegacyArtifactCatalogFileAction
   | PreviousApiHostedSiteAction
   | PreviousApiHostedDeploymentAction
@@ -1009,10 +1226,436 @@ type CompatibilityFixtureAction =
   | PreviousApiRunnerJobContextProfileAction
   | ConnectorPermissionBaselineMutationAction;
 
+type CustomConnectorAuthTemplateFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-custom-connector-auth-template-fixture" }
+>;
+
+function isCustomConnectorAuthTemplateFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is CustomConnectorAuthTemplateFixtureAction {
+  return body.action === "set-custom-connector-auth-template-fixture";
+}
+
+async function customConnectorAuthTemplateFixtureActionResponse(
+  db: Db,
+  body: CustomConnectorAuthTemplateFixtureAction,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(orgCustomConnectors)
+    .set({
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: body.value_template,
+        },
+      ],
+    })
+    .where(eq(orgCustomConnectors.id, body.connector_id))
+    .returning({ id: orgCustomConnectors.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a Custom Connector definition fixture");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+type ChatEventFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "advance-chat-event-sequence-as-previous-api"
+      | "read-chat-event-snapshot-head"
+      | "replace-chat-event-snapshot-head-as-previous-api"
+      | "set-chat-event-snapshot-head-version"
+      | "validate-chat-event-snapshot-rollout";
+  }
+>;
+
+function isChatEventFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is ChatEventFixtureAction {
+  return (
+    body.action === "advance-chat-event-sequence-as-previous-api" ||
+    body.action === "read-chat-event-snapshot-head" ||
+    body.action === "replace-chat-event-snapshot-head-as-previous-api" ||
+    body.action === "set-chat-event-snapshot-head-version" ||
+    body.action === "validate-chat-event-snapshot-rollout"
+  );
+}
+
+type ChatEventSnapshotRolloutAction = Extract<
+  ChatEventFixtureAction,
+  { readonly action: "validate-chat-event-snapshot-rollout" }
+>;
+
+interface ChatEventSnapshotRolloutState {
+  readonly lastEventId: string;
+  readonly snapshotCount: number;
+}
+
+async function validatePreMigrationChatEventSnapshotRollout(
+  db: Db,
+  body: ChatEventSnapshotRolloutAction,
+): Promise<
+  ChatEventSnapshotRolloutState & { readonly schemaAvailable: boolean }
+> {
+  const initialObjectKey = `rollout-initial-${body.thread_id}`;
+  const replacementObjectKey = `rollout-replacement-${body.thread_id}`;
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE chat_event_snapshots
+      (LIKE public.chat_event_snapshots INCLUDING ALL)
+      ON COMMIT DROP
+    `);
+    await tx.execute(
+      sql`ALTER TABLE chat_event_snapshots DROP COLUMN last_event_id`,
+    );
+    await tx.execute(sql`
+      INSERT INTO chat_event_snapshots (
+        chat_thread_id,
+        parent_snapshot_id,
+        last_seq_id,
+        archive_schema_version,
+        object_key,
+        is_head
+      ) VALUES (
+        ${body.thread_id},
+        NULL,
+        ${body.last_seq_id},
+        ${body.archive_schema_version},
+        ${initialObjectKey},
+        true
+      )
+    `);
+    await tx.execute(sql`
+      WITH previous_head AS (
+        UPDATE chat_event_snapshots
+        SET is_head = false
+        WHERE chat_thread_id = ${body.thread_id}
+          AND archive_schema_version = ${body.archive_schema_version}
+          AND is_head = true
+        RETURNING id
+      )
+      INSERT INTO chat_event_snapshots (
+        chat_thread_id,
+        parent_snapshot_id,
+        last_seq_id,
+        archive_schema_version,
+        object_key,
+        is_head
+      )
+      SELECT
+        ${body.thread_id},
+        previous_head.id,
+        ${body.last_seq_id},
+        ${body.archive_schema_version},
+        ${replacementObjectKey},
+        true
+      FROM previous_head
+    `);
+    const schemaAvailable = await chatEventSnapshotCursorSchemaAvailable(tx);
+    const [head] = await tx
+      .select({ lastEventId: chatEventSnapshotLastEventId })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .limit(1);
+    const [snapshotCount] = await tx
+      .select({ value: count() })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id));
+    if (!head?.lastEventId || !snapshotCount) {
+      throw new Error("Pre-migration Snapshot rollout fixture is incomplete");
+    }
+    return {
+      schemaAvailable,
+      lastEventId: head.lastEventId,
+      snapshotCount: snapshotCount.value,
+    };
+  });
+}
+
+async function validateMigratedChatEventSnapshotRollout(
+  db: Db,
+  body: ChatEventSnapshotRolloutAction,
+): Promise<ChatEventSnapshotRolloutState> {
+  const initialObjectKey = `rollout-initial-${body.thread_id}`;
+  const replacementObjectKey = `rollout-replacement-${body.thread_id}`;
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE chat_event_snapshots
+      (LIKE public.chat_event_snapshots INCLUDING ALL)
+      ON COMMIT DROP
+    `);
+    await tx.execute(sql`
+      CREATE TRIGGER chat_event_snapshots_fill_last_event_id
+      BEFORE INSERT OR UPDATE OF last_seq_id ON chat_event_snapshots
+      FOR EACH ROW
+      EXECUTE FUNCTION public.set_chat_event_snapshot_last_event_id()
+    `);
+    await tx.execute(sql`
+      INSERT INTO chat_event_snapshots (
+        chat_thread_id,
+        parent_snapshot_id,
+        last_seq_id,
+        last_event_id,
+        archive_schema_version,
+        object_key,
+        is_head
+      ) VALUES (
+        ${body.thread_id},
+        NULL,
+        ${body.last_seq_id},
+        ${body.last_event_id},
+        ${body.archive_schema_version},
+        ${initialObjectKey},
+        true
+      )
+    `);
+    await tx.execute(sql`
+      WITH previous_head AS (
+        UPDATE chat_event_snapshots
+        SET is_head = false
+        WHERE chat_thread_id = ${body.thread_id}
+          AND archive_schema_version = ${body.archive_schema_version}
+          AND is_head = true
+        RETURNING id
+      )
+      INSERT INTO chat_event_snapshots (
+        chat_thread_id,
+        parent_snapshot_id,
+        last_seq_id,
+        archive_schema_version,
+        object_key,
+        is_head
+      )
+      SELECT
+        ${body.thread_id},
+        previous_head.id,
+        ${body.last_seq_id},
+        ${body.archive_schema_version},
+        ${replacementObjectKey},
+        true
+      FROM previous_head
+    `);
+    const [head] = await tx
+      .select({ lastEventId: chatEventSnapshots.lastEventId })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .limit(1);
+    const [snapshotCount] = await tx
+      .select({ value: count() })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id));
+    if (!head?.lastEventId || !snapshotCount) {
+      throw new Error("Migrated Snapshot rollout fixture is incomplete");
+    }
+    return {
+      lastEventId: head.lastEventId,
+      snapshotCount: snapshotCount.value,
+    };
+  });
+}
+
+async function validateChatEventSnapshotRollout(
+  db: Db,
+  body: ChatEventSnapshotRolloutAction,
+  signal: AbortSignal,
+) {
+  const preMigration = await validatePreMigrationChatEventSnapshotRollout(
+    db,
+    body,
+  );
+  signal.throwIfAborted();
+  const migrated = await validateMigratedChatEventSnapshotRollout(db, body);
+  signal.throwIfAborted();
+
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      chat_event_snapshot_rollout: {
+        pre_migration_schema_available: preMigration.schemaAvailable,
+        pre_migration_last_event_id: preMigration.lastEventId,
+        pre_migration_snapshot_count: preMigration.snapshotCount,
+        migrated_last_event_id: migrated.lastEventId,
+        migrated_snapshot_count: migrated.snapshotCount,
+      },
+    },
+  };
+}
+
+async function replaceChatEventSnapshotHeadAsPreviousApi(
+  db: Db,
+  body: Extract<
+    ChatEventFixtureAction,
+    { action: "replace-chat-event-snapshot-head-as-previous-api" }
+  >,
+  signal: AbortSignal,
+) {
+  await db.transaction(async (tx) => {
+    const [previousHead] = await tx
+      .update(chatEventSnapshots)
+      .set({ isHead: false })
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .returning({ id: chatEventSnapshots.id });
+    if (previousHead === undefined) {
+      throw new Error(
+        "replace-chat-event-snapshot-head-as-previous-api missing head",
+      );
+    }
+    await tx.insert(chatEventSnapshots).values({
+      chatThreadId: body.thread_id,
+      parentSnapshotId: previousHead.id,
+      lastSeqId: body.last_seq_id,
+      archiveSchemaVersion: body.archive_schema_version,
+      objectKey: body.object_key,
+      isHead: true,
+    });
+  });
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+async function chatEventFixtureActionResponse(
+  db: Db,
+  body: ChatEventFixtureAction,
+  signal: AbortSignal,
+) {
+  if (body.action === "validate-chat-event-snapshot-rollout") {
+    return await validateChatEventSnapshotRollout(db, body, signal);
+  }
+  if (body.action === "advance-chat-event-sequence-as-previous-api") {
+    const [updated] = await db
+      .update(chatThreads)
+      .set({
+        lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + ${body.count}`,
+      })
+      .where(eq(chatThreads.id, body.thread_id))
+      .returning({ id: chatThreads.id });
+    signal.throwIfAborted();
+    if (!updated) {
+      throw new Error(
+        "advance-chat-event-sequence-as-previous-api missing thread",
+      );
+    }
+    return { status: 200 as const, body: { ok: true as const } };
+  }
+  if (body.action === "replace-chat-event-snapshot-head-as-previous-api") {
+    return await replaceChatEventSnapshotHeadAsPreviousApi(db, body, signal);
+  }
+  if (body.action === "set-chat-event-snapshot-head-version") {
+    const [pointer] = await db
+      .select({ id: chatEventSnapshots.id })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
+      .orderBy(
+        desc(chatEventSnapshots.archiveSchemaVersion),
+        desc(chatEventSnapshots.lastSeqId),
+        desc(chatEventSnapshots.createdAt),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!pointer) {
+      throw new Error("set-chat-event-snapshot-head-version missing pointer");
+    }
+    const updated = await db
+      .update(chatEventSnapshots)
+      .set({
+        archiveSchemaVersion: body.archive_schema_version,
+        ...(body.object_key === undefined
+          ? {}
+          : { objectKey: body.object_key }),
+        ...(body.last_seq_id === undefined
+          ? {}
+          : { lastSeqId: body.last_seq_id }),
+      })
+      .where(eq(chatEventSnapshots.id, pointer.id))
+      .returning({ id: chatEventSnapshots.id });
+    signal.throwIfAborted();
+    if (updated.length === 0) {
+      throw new Error("set-chat-event-snapshot-head-version missing pointer");
+    }
+    return { status: 200 as const, body: { ok: true as const } };
+  }
+  const [[head], [snapshotCount]] = await Promise.all([
+    db
+      .select({
+        archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+        lastEventId: chatEventSnapshotLastEventId,
+        lastSeqId: chatEventSnapshots.lastSeqId,
+        objectKey: chatEventSnapshots.objectKey,
+      })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .orderBy(
+        desc(chatEventSnapshots.archiveSchemaVersion),
+        desc(chatEventSnapshots.lastSeqId),
+        desc(chatEventSnapshots.createdAt),
+      )
+      .limit(1),
+    db
+      .select({ value: count() })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id)),
+  ]);
+  signal.throwIfAborted();
+  if (!snapshotCount) {
+    throw new Error("read-chat-event-snapshot-head missing snapshot count");
+  }
+  if (head?.lastEventId === null) {
+    throw new Error("read-chat-event-snapshot-head missing terminal event ID");
+  }
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      chat_event_snapshot_head: head
+        ? {
+            archive_schema_version: head.archiveSchemaVersion,
+            last_event_id: head.lastEventId,
+            last_seq_id: head.lastSeqId,
+            object_key: head.objectKey,
+            snapshot_count: snapshotCount.value,
+          }
+        : null,
+    },
+  };
+}
+
 function isCompatibilityFixtureAction(
   body: TestRuntimeStateActionBody,
 ): body is CompatibilityFixtureAction {
   return [
+    "set-run-autonomy-budget",
+    "read-run-autonomy-budget",
+    "set-workflow-automation-autonomy-budget",
+    "read-workflow-automation-autonomy-state",
+    "read-latest-workflow-automation-run",
+    "read-thread-goal-autonomy-budget",
     "insert-legacy-artifact-catalog-file",
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",
@@ -1028,6 +1671,9 @@ async function compatibilityFixtureActionResponse(
   body: CompatibilityFixtureAction,
   signal: AbortSignal,
 ) {
+  if (isAutonomyBudgetFixtureAction(body)) {
+    return await autonomyBudgetFixtureActionResponse(db, body, signal);
+  }
   switch (body.action) {
     case "insert-legacy-artifact-catalog-file": {
       return await insertLegacyArtifactCatalogFile(db, body, signal);
@@ -1077,55 +1723,26 @@ const postRuntimeStateAction$ = command(
     if (isThreadSessionStateAction(body)) {
       return await threadSessionStateActionResponse(db, body, signal);
     }
+    if (isChatEventFixtureAction(body)) {
+      return await chatEventFixtureActionResponse(db, body, signal);
+    }
+    if (isRunSummaryFixtureAction(body)) {
+      return await runSummaryFixtureActionResponse(db, body, signal);
+    }
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
+    if (isVm0ManagedModelKeyAction(body)) {
+      return await vm0ManagedModelKeyActionResponse(db, body, signal);
+    }
+    if (isCustomConnectorAuthTemplateFixtureAction(body)) {
+      return await customConnectorAuthTemplateFixtureActionResponse(
+        db,
+        body,
+        signal,
+      );
+    }
     switch (body.action) {
-      case "seed-vm0-managed-default-model-key": {
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            selected_model: await seedVm0ManagedDefaultModelKey(db, signal),
-          },
-        };
-      }
-      case "seed-vm0-managed-model-key": {
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            selected_model: await seedVm0ManagedModelKey(
-              db,
-              body.selected_model,
-              signal,
-            ),
-          },
-        };
-      }
-      case "delete-vm0-managed-default-model-key": {
-        await deleteVm0ManagedDefaultModelKey(db, signal);
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "enable-fake-kms": {
-        fakeKmsDecryptCallCount.set(0);
-        setSecretKmsClientForTests(fakeSecretKmsClient());
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "reset-fake-kms": {
-        resetSecretKmsClientForTests();
-        fakeKmsDecryptCallCount.set(0);
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "read-fake-kms-state": {
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            decrypt_call_count: fakeKmsDecryptCallCount.get(),
-          },
-        };
-      }
       case "mutate-runner-job-secret-value-environment-keys": {
         await mutateRunnerJobSecretValueEnvironmentKeys(
           db,
@@ -1133,17 +1750,6 @@ const postRuntimeStateAction$ = command(
           body.mode,
           signal,
         );
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "replace-custom-connector-prefixes": {
-        await db
-          .update(orgCustomConnectors)
-          .set({
-            prefixes: body.prefixes,
-            prefixTemplates: body.prefixes,
-          })
-          .where(eq(orgCustomConnectors.id, body.connector_id));
-        signal.throwIfAborted();
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "hold-org-admission-lock": {

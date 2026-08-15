@@ -1,18 +1,18 @@
 import { randomUUID } from "node:crypto";
-
-import { MODEL_PROVIDER_ENV_PLACEHOLDERS } from "@vm0/api-contracts/contracts/model-providers";
+import { MODEL_PROVIDER_ENV_PLACEHOLDERS } from "@okouai/api-contracts/contracts/model-providers";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
   type CreateModelProviderConnectionRequest,
-} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -31,11 +31,34 @@ function useSession(role: "org:admin" | "org:member" = "org:admin") {
 }
 
 function mainClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsMainContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsMainContract,
+  );
 }
 
 function byIdClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsByIdContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsByIdContract,
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function runContextSnapshotForRun(runId: string): Record<string, unknown> {
+  for (const [dataset, events] of context.mocks.axiom.ingest.mock.calls) {
+    if (dataset !== "run-context" || !Array.isArray(events)) {
+      continue;
+    }
+    const snapshot = events.find((event) => {
+      return isRecord(event) && event.runId === runId;
+    });
+    if (isRecord(snapshot)) {
+      return snapshot;
+    }
+  }
+  throw new Error(`Expected a run-context snapshot for ${runId}`);
 }
 
 describe("custom model provider gateway routes", () => {
@@ -104,7 +127,7 @@ describe("custom model provider gateway routes", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "company-sonnet",
+                "claude-sonnet-5": "company-sonnet",
               },
             },
             {
@@ -113,7 +136,7 @@ describe("custom model provider gateway routes", () => {
               authHeaderName: "x-api-key",
               authHeaderTemplate: "{{secret}}",
               modelMappings: {
-                "gpt-5.5": "company-codex",
+                "gpt-5.6-sol": "company-codex",
               },
             },
           ],
@@ -157,7 +180,7 @@ describe("custom model provider gateway routes", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "company-sonnet-v2",
+                "claude-sonnet-5": "company-sonnet-v2",
               },
             },
           ],
@@ -234,7 +257,7 @@ describe("custom model provider gateway routes", () => {
         apiBaseUrl: "https://gateway.example.com",
         authHeaderName: "Authorization",
         authHeaderTemplate: "Bearer {{secret}}",
-        modelMappings: { "gpt-5.5": "openai/gpt-5.5" },
+        modelMappings: { "gpt-5.6-sol": "openai/gpt-5.6-sol" },
       },
     },
   ] satisfies readonly {
@@ -298,7 +321,7 @@ describe("custom model provider gateway routes", () => {
               authHeaderName: "x-api-key",
               authHeaderTemplate: "{{secret}}",
               modelMappings: {
-                "gpt-5.5": "company-gpt-production",
+                "gpt-5.6-sol": "company-gpt-production",
               },
             },
           ],
@@ -372,13 +395,36 @@ describe("custom model provider gateway routes", () => {
         ],
       },
     });
+    const runContextSnapshot = runContextSnapshotForRun(runId);
+    expect(runContextSnapshot.firewalls).toContainEqual({
+      kind: "inline",
+      name: firewallName,
+      apis: [
+        {
+          base: "https://gateway.example.com/anthropic/v1/messages",
+          hostPolicy: { kind: "publicDestination" },
+          auth: {
+            headerEntries: [
+              {
+                name: "Authorization",
+                value: `Bearer \${{ secrets.VM0_MODEL_PROVIDER_API_KEY }}`,
+              },
+            ],
+          },
+          permissions: [],
+        },
+      ],
+    });
+    expect(JSON.stringify(runContextSnapshot)).not.toContain(
+      "runtime-gateway-secret",
+    );
     expect(claim.secretValues).not.toContain("runtime-gateway-secret");
 
     await runs.requestCancelRun(actor, runId, [200]);
 
     await runs.updateOrgModelPolicies(actor, [
       {
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
         isDefault: true,
         defaultProviderType: "vercel-ai-gateway-codex",
         credentialScope: "org",
@@ -392,7 +438,7 @@ describe("custom model provider gateway routes", () => {
         clientEventId: randomUUID(),
         agentId: agent.agentId,
         prompt: "exercise the custom Responses gateway",
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
       },
       [201],
     );

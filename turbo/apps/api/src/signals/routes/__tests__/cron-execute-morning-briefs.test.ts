@@ -1,30 +1,26 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
-
 import { HttpResponse, http } from "msw";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { cronExecuteMorningBriefsContract } from "@okouai/api-contracts/contracts/cron";
+import type { TestEmailOutboxStateItem } from "@okouai/api-contracts/contracts/test-email-outbox-state";
 import {
-  cronDrainEmailOutboxContract,
-  cronExecuteMorningBriefsContract,
-} from "@vm0/api-contracts/contracts/cron";
-import {
-  chatThreadEventsContract,
   chatThreadsContract,
   type GenerationTemplateRequest,
-  type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morning-brief";
-import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+  type UserMessageInputDocument,
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
+import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { createStore } from "ccstate";
 import { Cron } from "croner";
 import { describe, expect, it, onTestFinished } from "vitest";
-
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -34,9 +30,11 @@ import {
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createEmailOutboxStateApi } from "./helpers/email-outbox-state";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
+import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -52,6 +50,21 @@ import {
   setMorningBriefTriggeredAtFixture,
 } from "../../../test-fixtures/morning-brief";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
+import { cronExecuteMorningBriefsRoutes } from "../cron-execute-morning-briefs";
+import { emailMorningBriefUnsubscribeRoutes } from "../email-morning-brief-unsubscribe";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroModelProvidersRoutes } from "../zero-model-providers";
+import { morningBriefRoutes } from "../morning-brief";
+import { userPreferencesRoutes } from "../user-preferences";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronExecuteMorningBriefsRoutes,
+  ...emailMorningBriefUnsubscribeRoutes,
+  ...zeroChatThreadRoutes,
+  ...zeroModelProvidersRoutes,
+  ...morningBriefRoutes,
+  ...userPreferencesRoutes,
+]);
 
 /**
  * MORNING-BRIEF: the daily 7:00 local-time brief end to end.
@@ -70,6 +83,7 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const connectors = createConnectorBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const outbox = createEmailOutboxStateApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const callbackStore = createStore();
 const CRON_SECRET = "test-morning-brief-cron-secret";
@@ -87,14 +101,18 @@ const BRIEF_DATE = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
   timeZone: TIMEZONE,
 }).format(SEVEN_LOCAL);
-const BRIEF_DATE_LABEL = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  timeZone: TIMEZONE,
-}).format(SEVEN_LOCAL);
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function morningBriefSubject(timestampMs: number = SEVEN_LOCAL): string {
+  const dateLabel = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: TIMEZONE,
+  }).format(timestampMs);
+  return `Morning Briefing - ${dateLabel}`;
+}
 
 function mockTimedMorningBriefSignedUrls(): void {
   context.mocks.s3.getSignedUrl.mockImplementation(
@@ -207,23 +225,27 @@ function actorHeaders() {
 }
 
 function morningBriefCronClient() {
-  return setupApp({ context })(cronExecuteMorningBriefsContract);
-}
-
-function drainOutboxClient() {
-  return setupApp({ context })(cronDrainEmailOutboxContract);
+  return setupApp({ context, routes: cronExecuteMorningBriefsRoutes })(
+    cronExecuteMorningBriefsContract,
+  );
 }
 
 function preferencesClient() {
-  return setupApp({ context })(zeroUserPreferencesContract);
+  return setupApp({ context, routes: userPreferencesRoutes })(
+    userPreferencesContract,
+  );
 }
 
 function morningBriefTriggerClient() {
-  return setupApp({ context })(zeroMorningBriefContract);
+  return setupApp({ context, routes: morningBriefRoutes })(
+    morningBriefContract,
+  );
 }
 
 function modelProvidersByTypeClient() {
-  return setupApp({ context })(zeroModelProvidersByTypeContract);
+  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+    zeroModelProvidersByTypeContract,
+  );
 }
 
 // Counts cover every due member in the shared test database, so assertions
@@ -473,7 +495,9 @@ async function findMorningBriefThreadIdOrNull(
 ): Promise<string | null> {
   routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
   const threadEvents = await accept(
-    setupApp({ context })(chatThreadsContract).events({
+    setupApp({ context, routes: zeroChatThreadRoutes })(
+      chatThreadsContract,
+    ).events({
       headers: actorHeaders(),
       query: {},
     }),
@@ -492,15 +516,10 @@ async function readMorningBriefThreadEvents(
   scenario: Scenario,
   threadId: string,
 ) {
-  const messages = await accept(
-    setupApp({ context })(chatThreadEventsContract).list({
-      headers: actorHeaders(),
-      params: { threadId },
-      query: { limit: 50 },
-    }),
-    [200],
-  );
-  return messages.body.events;
+  return await readProjectedChatEvents(context, {
+    threadId,
+    headers: actorHeaders(),
+  });
 }
 
 async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
@@ -655,8 +674,27 @@ async function primeMorningBriefThread(scenario: Scenario): Promise<void> {
   await completeMorningBriefRun(scenario, previous.body.runId, 1);
 }
 
-async function drainOutbox(): Promise<void> {
-  await accept(drainOutboxClient().drain({ headers: cronHeaders() }), [200]);
+async function morningBriefOutboxItems(
+  scenario: Scenario,
+  timestampMs: number = SEVEN_LOCAL,
+): Promise<readonly TestEmailOutboxStateItem[]> {
+  return await outbox.findItems({
+    toAddress: scenario.actor.email,
+    subject: morningBriefSubject(timestampMs),
+  });
+}
+
+async function drainMorningBriefOutbox(
+  scenario: Scenario,
+  timestampMs: number = SEVEN_LOCAL,
+): Promise<void> {
+  const item = await outbox.findItem({
+    toAddress: scenario.actor.email,
+    subject: morningBriefSubject(timestampMs),
+  });
+  const sendsBeforeDrain = context.mocks.resend.send.mock.calls.length;
+  await expect(outbox.drainItems([item.id])).resolves.toBe(1);
+  expect(context.mocks.resend.send).toHaveBeenCalledTimes(sendsBeforeDrain + 1);
 }
 
 function sentMorningBriefEmails(): readonly {
@@ -788,6 +826,23 @@ describe("cron execute morning briefs", () => {
       scenario,
       threadId,
     );
+    const morningBriefRunMessage = threadMessages.find((message) => {
+      return (
+        message.eventType === "input.prompt" &&
+        chatEventDisplayText(message) === chatMessage &&
+        message.runId !== undefined
+      );
+    });
+    expect(morningBriefRunMessage).toMatchObject({
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: chatMessage },
+          { type: "morning_brief", briefDate: BRIEF_DATE },
+          { type: "model", selectedModel: "claude-sonnet-5" },
+        ],
+      },
+    });
     expect(
       threadMessages.filter((message) => {
         return (
@@ -805,7 +860,7 @@ describe("cron execute morning briefs", () => {
       runId,
       0,
     );
-    await drainOutbox();
+    await drainMorningBriefOutbox(scenario);
 
     expect(appendSystemPrompt).toContain("Begin exactly with `Good morning.`");
 
@@ -829,7 +884,7 @@ describe("cron execute morning briefs", () => {
       throw new Error("Expected a morning brief email");
     }
     expect(email.from).toBe("Zero <zero@vm0.bot>");
-    expect(email.subject).toBe(`Morning Briefing - ${BRIEF_DATE_LABEL}`);
+    expect(email.subject).toBe(morningBriefSubject());
     // Generic preheader only; specifics stay inside the body.
     expect(email.html).toContain(
       "Your schedule, action items, and updates for today.",
@@ -869,6 +924,7 @@ describe("cron execute morning briefs", () => {
 
     const unsubscribeResponse = await createApp({
       signal: context.signal,
+      routes: TEST_APP_ROUTES,
     }).request(`/api/email/morning-brief/unsubscribe?token=${token}`, {
       method: "POST",
     });
@@ -886,7 +942,9 @@ describe("cron execute morning briefs", () => {
     // The next day nothing fires for the unsubscribed member.
     mockNow(AFTER_SEVEN_LOCAL + DAY_MS);
     await executeMorningBriefsCron();
-    await drainOutbox();
+    await expect(
+      morningBriefOutboxItems(scenario, AFTER_SEVEN_LOCAL + DAY_MS),
+    ).resolves.toHaveLength(0);
     expect(sentMorningBriefEmails()).toHaveLength(1);
     clearMockNow();
   });
@@ -933,7 +991,7 @@ describe("cron execute morning briefs", () => {
       }),
     );
     await completeMorningBriefRun(scenario, runId, 0);
-    await drainOutbox();
+    await drainMorningBriefOutbox(scenario);
 
     const emails = sentMorningBriefEmails();
     expect(emails).toHaveLength(1);
@@ -976,7 +1034,7 @@ describe("cron execute morning briefs", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -995,7 +1053,6 @@ describe("cron execute morning briefs", () => {
         agentId: agent.agentId,
         threadId: thread.id,
         prompt: "stale morning brief content",
-        generationTemplate,
         userMessage,
       },
       [201],
@@ -1017,7 +1074,9 @@ describe("cron execute morning briefs", () => {
     const sourceThread = threads?.find((item) => {
       return item.threadId === thread.id;
     });
-    const userMessageContent = `[Template: ${style.title}]\n\nReview the structured brief`;
+    // Templates render inline in the text flow, so the marker sits directly
+    // against the following text instead of forming its own block.
+    const userMessageContent = `[Template: ${style.title}]Review the structured brief`;
     const legacyContent = "stale morning brief content";
     expect(sourceThread?.recentMessages).toContainEqual({
       role: "user",
@@ -1086,7 +1145,7 @@ describe("cron execute morning briefs", () => {
 
     mockUploadedBriefOutput(VALID_OUTPUT);
     await completeMorningBriefRun(scenario, triggeredRunId, 0, null);
-    await drainOutbox();
+    await drainMorningBriefOutbox(scenario);
     expect(sentMorningBriefEmails()).toHaveLength(1);
 
     // Repeat triggers on the same local date return the admitted delivery
@@ -1100,7 +1159,7 @@ describe("cron execute morning briefs", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    await drainOutbox();
+    await expect(morningBriefOutboxItems(scenario)).resolves.toHaveLength(1);
     expect(second.body).toStrictEqual({
       runId: triggeredRunId,
       briefDate: BRIEF_DATE,
@@ -1614,7 +1673,7 @@ describe("cron execute morning briefs", () => {
 
     mockUploadedBriefOutput(VALID_OUTPUT);
     await completeMorningBriefRun(scenario, briefRunId, 0);
-    await drainOutbox();
+    await drainMorningBriefOutbox(scenario);
 
     let userRunId: string | null = null;
     await expect
@@ -1664,7 +1723,7 @@ describe("cron execute morning briefs", () => {
     const { runId } = await findMorningBriefThread(scenario);
     mockUploadedBriefOutput('{"version": 999, "nonsense": true}');
     await completeMorningBriefRun(scenario, runId, 0);
-    await drainOutbox();
+    await expect(morningBriefOutboxItems(scenario)).resolves.toHaveLength(0);
 
     expect(sentMorningBriefEmails()).toHaveLength(0);
     clearMockNow();

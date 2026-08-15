@@ -5,21 +5,18 @@ import {
   integrationsPhoneUploadInitContract,
   type PhoneUploadCompleteBody,
   type PhoneUploadInitBody,
-} from "@vm0/api-contracts/contracts/integrations";
-import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
-import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+} from "@okouai/api-contracts/contracts/integrations";
+import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
+import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 
 import { createApp } from "../../../../app-factory";
 import { env } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { server } from "../../../../mocks/server";
 import { flushWaitUntilForTest } from "../../../context/wait-until";
 import type { ApiTestUser } from "./api-bdd";
@@ -29,6 +26,21 @@ import {
 } from "./api-bdd-integrations";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-upload-complete";
+import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
+import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
+import { logsRoutes } from "../../logs";
+import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...integrationsPhoneDownloadFileRoutes,
+  ...integrationsPhoneUploadCompleteRoutes,
+  ...integrationsPhoneUploadInitRoutes,
+  ...logsRoutes,
+  ...zeroModelPoliciesRoutes,
+  ...zeroModelProvidersRoutes,
+]);
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
 export const AGENTPHONE_BDD_PHONE_NUMBER = "+19039853128";
@@ -286,7 +298,10 @@ export function createAgentPhoneBddApi(context: TestContext) {
       body: PhoneUploadInitBody,
       statuses: readonly Status[],
     ) {
-      const client = setupApp({ context })(integrationsPhoneUploadInitContract);
+      const client = setupApp({
+        context,
+        routes: integrationsPhoneUploadInitRoutes,
+      })(integrationsPhoneUploadInitContract);
       return await accept(
         client.init({
           headers: { authorization: `Bearer ${token}` },
@@ -303,9 +318,10 @@ export function createAgentPhoneBddApi(context: TestContext) {
       body: PhoneUploadCompleteBody,
       statuses: readonly Status[],
     ) {
-      const client = setupApp({ context })(
-        integrationsPhoneUploadCompleteContract,
-      );
+      const client = setupApp({
+        context,
+        routes: integrationsPhoneUploadCompleteRoutes,
+      })(integrationsPhoneUploadCompleteContract);
       return await accept(
         client.complete({
           headers: { authorization: `Bearer ${token}` },
@@ -317,11 +333,13 @@ export function createAgentPhoneBddApi(context: TestContext) {
 
     /**
      * Read a run's agent session id through the public activity-detail API
-     * (GET /api/zero/logs/:id) — the only session projection visible without
+     * (GET /api/okou/logs/:id) — the only session projection visible without
      * checkpoints.
      */
     async readRunSessionId(actor: ApiTestUser, runId: string): Promise<string> {
-      const client = setupApp({ context })(logsByIdContract);
+      const client = setupApp({ context, routes: logsRoutes })(
+        logsByIdContract,
+      );
       const response = await accept(
         client.getById({
           headers: authenticate(context, actor),
@@ -343,7 +361,10 @@ export function createAgentPhoneBddApi(context: TestContext) {
       readonly headers: Headers;
       readonly text: string;
     }> {
-      const response = await createApp({ signal: context.signal }).request(
+      const response = await createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      }).request(
         `/api/zero/integrations/phone/download-file?file_id=${encodeURIComponent(fileId)}`,
         {
           method: "GET",
@@ -424,7 +445,9 @@ export function createAgentPhoneBddApi(context: TestContext) {
     async switchDefaultModelRouteToOpenRouter(
       actor: ApiTestUser,
     ): Promise<void> {
-      const providers = setupApp({ context })(zeroModelProvidersMainContract);
+      const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
+        zeroModelProvidersMainContract,
+      );
       const upserted = await accept(
         providers.upsert({
           headers: authenticate(context, actor),
@@ -434,7 +457,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
       );
       const policies: OrgModelPolicyUpdateBody["policies"] = [
         {
-          model: "claude-sonnet-4-6",
+          model: "claude-sonnet-5",
           isDefault: true,
           defaultProviderType: "openrouter-api-key",
           credentialScope: "org",
@@ -442,7 +465,9 @@ export function createAgentPhoneBddApi(context: TestContext) {
         },
       ];
       await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
+        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+          zeroModelPoliciesMainContract,
+        ).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),

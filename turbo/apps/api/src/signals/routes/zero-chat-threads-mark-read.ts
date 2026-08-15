@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
-import { chatThreadMarkReadContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatThreadMarkReadContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -9,7 +9,7 @@ import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import { latestRunFinishEventSubquery } from "../services/zero-chat-thread-read-state-query";
+import { latestRunFinishEventSubquery } from "../services/chat-thread-read-state-query";
 import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route-entry";
 

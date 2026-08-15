@@ -1,4 +1,4 @@
-import { cronCompactUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronCompactUsageEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";

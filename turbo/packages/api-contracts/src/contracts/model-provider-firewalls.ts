@@ -1,4 +1,4 @@
-import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
+import type { ExpandedFirewallConfig } from "@okouai/connectors/firewall-types";
 
 import type {
   ModelProviderFramework,
@@ -20,6 +20,17 @@ interface SingleSecretFirewallProviderConfig {
   readonly anthropicBaseUrl?: string;
   readonly openaiBaseUrl?: string;
   readonly firewallBaseUrl?: string;
+  /**
+   * Chat-completions endpoint used by the in-sandbox Pi agent loop.
+   *
+   * The firewall injects the real key only for bases it lists, and `base`
+   * matching is a prefix match. The Codex-era bases above point at
+   * `/responses`, which does not prefix `/chat/completions`, so a Pi sandbox
+   * turn would forward the placeholder verbatim and be rejected upstream.
+   * Listing the exact inference path keeps injection scoped: it does not widen
+   * to vendor admin endpoints on the same host.
+   */
+  readonly piChatCompletionsUrl?: string;
 }
 
 export const MODEL_PROVIDER_ENV_PLACEHOLDERS = {
@@ -66,31 +77,11 @@ const MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS: Record<
     secretName: "OPENROUTER_API_KEY",
     anthropicBaseUrl: "https://openrouter.ai/api",
   },
-  "moonshot-api-key": {
-    framework: "claude-code",
-    secretName: "MOONSHOT_API_KEY",
-    anthropicBaseUrl: "https://api.moonshot.ai/anthropic",
-  },
-  "minimax-api-key": {
-    framework: "claude-code",
-    secretName: "MINIMAX_API_KEY",
-    anthropicBaseUrl: "https://api.minimax.io/anthropic",
-  },
-  "deepseek-api-key": {
-    framework: "claude-code",
-    secretName: "DEEPSEEK_API_KEY",
-    anthropicBaseUrl: "https://api.deepseek.com/anthropic",
-  },
-  "deepseek-codex": {
+  deepseek: {
     framework: "codex",
     secretName: "DEEPSEEK_API_KEY",
-    openaiBaseUrl: "https://api.deepseek.com",
+    openaiBaseUrl: "https://api.deepseek.com/",
     firewallBaseUrl: "https://api.deepseek.com/responses",
-  },
-  "zai-api-key": {
-    framework: "claude-code",
-    secretName: "ZAI_API_KEY",
-    anthropicBaseUrl: "https://api.z.ai/api/anthropic",
   },
   "vercel-ai-gateway": {
     framework: "claude-code",
@@ -110,6 +101,7 @@ const MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS: Record<
   "openai-api-key": {
     framework: "codex",
     secretName: "OPENAI_API_KEY",
+    piChatCompletionsUrl: "https://api.openai.com/v1/chat/completions",
   },
 };
 
@@ -155,14 +147,16 @@ function mpFirewall(
   const headerValue = authHeader.valuePrefix
     ? `${authHeader.valuePrefix} ${secretRef}`
     : secretRef;
+  const auth = { headers: { [authHeader.name]: headerValue } };
+  const piChatCompletionsUrl =
+    MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS[type].piChatCompletionsUrl;
   return {
     name: `model-provider:${type}`,
     apis: [
-      {
-        base: getFirewallBaseUrl(type),
-        auth: { headers: { [authHeader.name]: headerValue } },
-        permissions: [],
-      },
+      { base: getFirewallBaseUrl(type), auth, permissions: [] },
+      ...(piChatCompletionsUrl === undefined
+        ? []
+        : [{ base: piChatCompletionsUrl, auth, permissions: [] }]),
     ],
     placeholders: { [secretName]: placeholderValue },
   };
@@ -192,30 +186,10 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
     { name: "Authorization", valuePrefix: "Bearer" },
     MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
-  "moonshot-api-key": mpFirewall(
-    "moonshot-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "minimax-api-key": mpFirewall(
-    "minimax-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "deepseek-api-key": mpFirewall(
-    "deepseek-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "deepseek-codex": mpFirewall(
-    "deepseek-codex",
+  deepseek: mpFirewall(
+    "deepseek",
     { name: "Authorization", valuePrefix: "Bearer" },
     MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-  ),
-  "zai-api-key": mpFirewall(
-    "zai-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
   "vercel-ai-gateway": mpFirewall(
     "vercel-ai-gateway",
@@ -288,6 +262,34 @@ function isFirewallSupported(
   type: ModelProviderType,
 ): type is FirewallSupportedProvider {
   return type in MODEL_PROVIDER_FIREWALL_CONFIGS;
+}
+
+/**
+ * Chat-completions URL the in-sandbox Pi agent loop calls for a provider, or
+ * undefined when the provider is not Pi-capable. `pi-sandbox-config` derives the
+ * Pi base URL from this same table so the firewall rule and the runtime call
+ * cannot drift apart.
+ */
+export function getModelProviderPiChatCompletionsUrl(
+  type: ModelProviderType,
+): string | undefined {
+  const config = (
+    MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS as Partial<
+      Record<ModelProviderType, SingleSecretFirewallProviderConfig>
+    >
+  )[type];
+  if (config?.piChatCompletionsUrl !== undefined) {
+    return config.piChatCompletionsUrl;
+  }
+  // Codex subscription (codex-oauth-token) is a multi-secret provider, so it
+  // lives outside the single-secret table above. The Pi runtime calls
+  // `${base}/codex/responses`, which is prefix-covered by the firewall base
+  // `https://chatgpt.com/backend-api/codex` (see MODEL_PROVIDER_FIREWALL_CONFIGS),
+  // so this base and that rule cannot drift apart.
+  if (type === "codex-oauth-token") {
+    return "https://chatgpt.com/backend-api";
+  }
+  return undefined;
 }
 
 export function getModelProviderFirewall(

@@ -108,23 +108,40 @@
         "title": "네트워크 로그 없음"
       },
       "notFound": {
-        "back": "활동으로 돌아가기",
+        "back": "채팅으로 돌아가기",
         "description": "이 로그가 존재하지 않거나 현재 워크스페이스에서 볼 권한이 없습니다.",
         "title": "로그를 찾을 수 없음"
       },
       "runner": {
+        "cacheMiss": "재사용 키와 일치하는 캐시된 작업 공간이 없습니다.",
         "deviceLimitMismatch": "유휴 풀 항목이 존재하지만 장치 속도 제한기 상태가 일치하지 않습니다.",
+        "diskPressure": "러너의 디스크 여유 공간이 부족하여 작업 공간 재사용을 건너뛰었습니다.",
         "featureDisabled": "이 실행에 대해 샌드박스 재사용이 비활성화되었습니다.",
+        "invalidMetadata": "캐시된 작업 공간 메타데이터가 유효하지 않습니다.",
+        "invalidWorkingDir": "요청한 작업 디렉터리를 재사용할 수 없습니다.",
+        "lockBusy": "다른 실행이 동일한 작업 공간을 준비하고 있었습니다.",
         "noReuseKey": "유휴 샌드박스와 일치시킬 재사용 키가 없었습니다.",
         "noSessionId": "레거시 결과: 샌드박스가 재사용되지 않은 정확한 이유를 확인할 수 없습니다.",
+        "notConfigured": "이 실행에는 작업 공간 재사용이 구성되지 않았습니다.",
         "notReused": "재사용되지 않음",
         "poolMiss": "유휴 풀에서 일치하는 샌드박스를 찾을 수 없습니다.",
         "profileMismatch": "유휴 풀 항목이 존재하지만 프로필이 일치하지 않습니다.",
+        "provisioning": "프로비저닝 중",
         "reused": "재사용됨",
         "reusedDescription": "샌드박스가 유휴 풀에서 활성화되었습니다.",
         "sandbox": "샌드박스",
-        "unknown": "알 수 없음 (샌드박스 재사용 추적이 추가되기 이전에 기록된 오래된 실행).",
-        "unparkFailed": "활성화 시도가 실패하여 새 샌드박스가 프로비저닝되었습니다."
+        "sandboxPrepareFallback": "캐시된 작업 공간을 찾았지만 샌드박스 준비 후 사용할 수 없었습니다.",
+        "sandboxReusedDescription": "재사용된 샌드박스 안에서 작업 공간을 계속 사용할 수 있었습니다.",
+        "startup": "시작",
+        "startupCold": "콜드 스타트",
+        "startupSandbox": "샌드박스 재사용",
+        "startupUnknown": "알 수 없음",
+        "startupWorkspace": "작업 공간 재사용",
+        "unavailable": "사용할 수 없음",
+        "unparkFailed": "활성화 시도가 실패하여 새 샌드박스가 프로비저닝되었습니다.",
+        "workspace": "작업 공간",
+        "workspaceNoReuseKey": "작업 공간 재사용 키가 없었습니다.",
+        "workspaceReusedDescription": "작업 공간이 러너 캐시에서 복원되었습니다."
       },
       "steps": {
         "matched": "({{matched}}/{{total}} 일치)",
@@ -204,22 +221,6 @@
         "title": "로그가 로드되지 않음",
         "upload": "JSON 업로드"
       }
-    },
-    "list": {
-      "description": "에이전트의 로그 및 실행 기록입니다.",
-      "errors": {
-        "description": "문제가 발생했습니다. 나중에 다시 시도하세요.",
-        "title": "활동 데이터를 불러오지 못했습니다."
-      },
-      "filters": {
-        "agent": "에이전트 필터",
-        "allAgents": "모든 에이전트",
-        "allSources": "모든 소스",
-        "allStatuses": "모든 상태",
-        "source": "소스 필터",
-        "status": "상태 필터"
-      },
-      "title": "활동"
     },
     "network": {
       "actions": {
@@ -320,30 +321,21 @@
       "unknown": "알 수 없음",
       "yes": "예"
     },
-    "pagination": {
-      "backTwo": "2페이지 뒤로",
-      "forwardTwo": "2페이지 앞으로",
-      "next": "다음 페이지",
-      "page": "{{current}} 페이지",
-      "pageOf": "{{total}} 중 {{current}} 페이지",
-      "previous": "이전 페이지",
-      "rowsPerPage": "페이지당 행 수"
-    },
     "sources": {
       "agent": "에이전트",
       "agentphone": "AgentPhone",
-      "agentWithName": "에이전트 ({{name}})",
+      "automationEvent": "자동화 이벤트",
+      "automationSchedule": "자동화 일정",
       "email": "이메일",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "목표",
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
       "test": "테스트",
       "web": "웹",
-      "webhook": "Webhook",
-      "workflowEvent": "워크플로 이벤트",
-      "workflowSchedule": "워크플로 일정"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "취소됨",
@@ -353,34 +345,6 @@
       "queued": "대기열",
       "running": "실행 중",
       "timeout": "시간 초과"
-    },
-    "statusFilters": {
-      "cancelled": "취소됨",
-      "completed": "완료",
-      "failed": "실패",
-      "pending": "대기 중",
-      "queued": "대기열",
-      "running": "실행 중",
-      "timeout": "시간 초과"
-    },
-    "table": {
-      "empty": {
-        "description": "에이전트가 작업을 시작하면 활동이 여기에 표시됩니다.",
-        "title": "현재 활동 없음"
-      },
-      "filteredEmpty": {
-        "description": "다른 필터를 사용해 보세요.",
-        "title": "해당 필터에 일치하는 항목이 없습니다"
-      },
-      "headers": {
-        "agent": "에이전트",
-        "description": "설명",
-        "duration": "소요 시간",
-        "session": "세션",
-        "source": "출처",
-        "startTime": "시작 시간",
-        "status": "상태"
-      }
     }
   },
   "appShell": {
@@ -472,19 +436,15 @@
         "overlay": "사이드바 오버레이"
       },
       "navigation": {
-        "activity": "활동 로그",
         "agents": "에이전트",
         "artifacts": "아티팩트",
         "connectors": "커넥터",
-        "insights": "인사이트",
-        "insightsAndUsage": "인사이트 및 사용량",
         "newChat": "새 채팅",
         "settings": "설정",
         "workflows": "워크플로",
         "works": "{{agentName}}가(이) 작업하는 곳"
       },
       "rail": {
-        "activity": "활동",
         "new": "새로 만들기",
         "workflows": "워크플로",
         "works": "작업"
@@ -506,7 +466,6 @@
       "backToArtifacts": "아티팩트로 돌아가기",
       "close": "닫기",
       "closeArtifact": "아티팩트 닫기",
-      "closeDownloadMenu": "다운로드 메뉴 닫기",
       "closeNamed": "{{title}} 닫기",
       "closePreviewMenu": "미리보기 메뉴 닫기",
       "download": "다운로드",
@@ -538,6 +497,8 @@
       "emptyTitle": "아티팩트를 찾을 수 없습니다",
       "error": "아티팩트를 불러올 수 없습니다. 나중에 다시 시도하세요.",
       "filters": {
+        "avatar": "아바타",
+        "avatarAria": "아바타 아티팩트 표시",
         "file": "파일",
         "fileAria": "파일 아티팩트 표시",
         "image": "이미지",
@@ -545,6 +506,8 @@
         "label": "아티팩트 종류 필터",
         "presentation": "프레젠테이션",
         "presentationAria": "프레젠테이션 아티팩트 표시",
+        "sharedConversation": "공유된 대화",
+        "sharedConversationAria": "공유된 대화 아티팩트 표시",
         "video": "비디오",
         "videoAria": "비디오 아티팩트 표시",
         "website": "웹사이트",
@@ -579,6 +542,7 @@
     },
     "kinds": {
       "audio": "오디오",
+      "avatar": "아바타",
       "code": "코드",
       "csv": "CSV",
       "data": "데이터",
@@ -589,6 +553,7 @@
       "json": "JSON",
       "markdown": "마크다운",
       "presentation": "프레젠테이션",
+      "sharedConversation": "공유된 대화",
       "text": "텍스트",
       "video": "비디오"
     },
@@ -619,6 +584,7 @@
       "videoLabel": "{{filename}} 비디오 미리보기"
     },
     "sidebar": {
+      "openSharedConversation": "공유된 대화 열기",
       "panelTitle": "아티팩트",
       "singularTitle": "아티팩트",
       "unavailable": "이 아티팩트는 더 이상 사용할 수 없습니다."
@@ -626,8 +592,25 @@
     "templates": {
       "activeHtmlPreview": "{{title}} 활성 HTML 미리보기",
       "all": "전체",
+      "avatar": "아바타",
+      "avatarWithId": "아바타 {{id}}",
+      "backToAvatars": "아바타로 돌아가기",
       "categories": "템플릿 카테고리",
       "category": "템플릿 카테고리",
+      "chooseVoice": "{{title}}의 음성 선택",
+      "filters": {
+        "age": "연령",
+        "all": "전체",
+        "aspectRatio": "화면 비율",
+        "clear": "지우기",
+        "ethnicity": "인종",
+        "gender": "성별",
+        "language": "언어",
+        "scene": "장면",
+        "style": "스타일",
+        "title": "필터",
+        "useCase": "사용 사례"
+      },
       "fullPreview": "{{title}} 웹사이트 전체 미리보기",
       "htmlPreview": "{{title}} HTML 미리보기",
       "illustration": "일러스트레이션",
@@ -637,17 +620,21 @@
       "noMatches": "일치하는 항목 없음",
       "placeholder": "{{title}} 웹사이트 미리보기 자리 표시자",
       "playVideo": "비디오 템플릿 미리보기 재생 {{title}}",
+      "previewAvatarVideo": "아바타 동영상 {{title}} 미리보기",
       "previewCurrentSlide": "현재 슬라이드에서 {{title}} 미리보기",
       "previewSlide": "슬라이드 {{slideNumber}} 미리보기",
+      "previewVoice": "음성 {{title}} 미리 듣기",
       "previewWebsite": "웹사이트 템플릿 {{title}} 미리보기",
       "previousHtmlPreview": "{{title}} 이전 HTML 미리보기",
       "previousSlide": "이전 슬라이드 미리보기",
-      "searchConnector": "커넥터 검색...",
-      "searchConnectors": "커넥터 검색",
+      "recommended": "추천",
+      "searchConnector": "템플릿 검색",
+      "searchConnectors": "템플릿 검색",
       "selected": "템플릿: {{title}}",
       "selectStyle": "스타일 선택 {{style}}",
       "selectTemplate": "템플릿 선택 {{title}}",
       "selectVideo": "비디오 템플릿 선택 {{title}}",
+      "selectVoice": "음성 {{title}} 선택",
       "selectWebsite": "웹사이트 템플릿 선택 {{title}}",
       "selectWorkflow": "워크플로 템플릿 선택 {{title}}",
       "showVariant": "변형 보기 {{variantNumber}}",
@@ -722,7 +709,7 @@
       "lastSeen": "마지막 접속 {{date}}",
       "linkExpires": "링크는 {{date}}에 만료됩니다.",
       "macRequirement": "Apple 실리콘 Mac과 macOS 14 이상 필요합니다. Intel Mac은 지원되지 않습니다.",
-      "noHostsDescription": "Mac에서 Zero 컴퓨터 사용을 열고 온라인 상태가 되면 이 페이지를 새로고침하세요.",
+      "noHostsDescription": "Mac에서 {{desktopApplicationName}}을 열고 온라인 상태가 되면 이 페이지를 새로고침하세요.",
       "noHostsTitle": "온라인 컴퓨터 없음",
       "sources": {
         "chat": "이 채팅 스레드",
@@ -799,8 +786,10 @@
     "common": {
       "back": "뒤로",
       "cancel": "취소",
+      "confirm": "확인",
       "credits": "크레딧",
       "manage": "관리",
+      "preparing": "준비 중...",
       "redirecting": "리디렉션 중...",
       "restore": "복원",
       "retry": "재시도",
@@ -812,20 +801,37 @@
       "billedMonthly": "월별 청구",
       "buyAmount": "{{amount}} 구매",
       "buyButton": "동시 실행 구매",
-      "buyDescription": "더 많은 동시 실행을 위해 월간 구독을 추가하세요.",
+      "buyDescription": "추가할 슬롯 수를 선택하세요.",
       "buyTitle": "동시 실행 구매",
       "cancelDescription": "현재 청구 기간 종료 시 갱신이 중지됩니다. 기존 슬롯은 그때까지 활성 상태입니다.",
+      "cancelEntireOption": "전체 구독 취소",
       "cancellationScheduled": "취소 예정",
-      "cancelTitle": "동시 실행 구독을 취소하시겠습니까?",
+      "changeButton": "변경",
+      "changeDescription": "새로운 총 슬롯 수를 선택하거나 갱신을 중지하세요.",
+      "changeOptionsAria": "동시 실행 구독 변경 옵션",
+      "changeQuantityOption": "슬롯 변경",
+      "changeQuantityOptionDescription": "증가는 즉시 적용됩니다. 감소는 다음 결제일부터 시작됩니다.",
+      "changeTitle": "동시 실행 변경",
       "concurrentRun_one": "{{value}}개의 동시 실행",
       "concurrentRun_other": "{{value}}개의 동시 실행",
+      "continueToStripe": "Stripe로 계속",
       "decreaseAria": "추가 동시 실행 수 감소",
+      "dueNow": "지금 결제",
       "emptyDescription": "이 워크스페이스에 추가 동시 실행을 구매하세요.",
       "emptyTitle": "동시 실행 구독 없음",
       "increaseAria": "추가 동시 실행 수 증가",
+      "monthlyTotal": "월 합계",
+      "newQuantity": "새 총 슬롯 수",
+      "orderSummary": "주문 요약",
+      "quantityRange": "{{minimum}}에서 {{maximum}} 사이의 값을 입력하세요. 현재 {{current}}개 슬롯이 있습니다.",
       "restoreDescription": "이 동시 실행 구독의 갱신을 재개합니다.",
       "restoreSubscription": "구독 복원",
       "restoreTitle": "동시 실행 구독을 복원하시겠습니까?",
+      "reviewChange": "변경 검토",
+      "reviewDescription": "지금 결제할 금액과 업데이트된 월간 구독을 검토하세요.",
+      "reviewTitle": "동시 실행 변경 검토",
+      "scheduledChange": "{{date}}에 {{quantity}}(으)로 변경",
+      "scheduledReviewDescription": "현재 슬롯은 이번 결제 기간이 끝날 때까지 유지됩니다. 더 적은 수량은 갱신 시 적용되며 환불이나 계정 크레딧은 제공되지 않습니다.",
       "slot_one": "{{value}} 슬롯",
       "slot_other": "{{value}} 슬롯",
       "slots": "슬롯",
@@ -840,6 +846,9 @@
       "exchangeRate": "크레딧은 만료되지 않습니다. 1 USD = {{credits}} 크레딧.",
       "quickBuy": "빠른 구매",
       "quickBuyAmount": "빠른 구매 {{amount}}",
+      "reviewDescription": "저장된 결제 수단으로 이번 일회성 결제를 확인하세요.",
+      "reviewError": "크레딧 구매를 완료할 수 없습니다. 결제 정보를 확인한 후 다시 시도하세요.",
+      "reviewTitle": "크레딧 구매 검토",
       "title": "크레딧 구매"
     },
     "downgrade": {
@@ -869,15 +878,30 @@
       "selectMonth": "월 선택",
       "to": "종료"
     },
-    "manage": {
-      "description": "Stripe에서 구독, 결제 수단 및 청구서 관리.",
-      "title": "청구 관리"
+    "paymentMethods": {
+      "description": "Stripe에서 청구에 사용되는 결제 수단을 관리합니다.",
+      "title": "결제 수단"
     },
     "plans": {
       "cancellationNotice": "{{plan}} 플랜이 취소되어 {{date}}에 종료됩니다.",
       "changeAnytime": "언제든지 업그레이드 또는 다운그레이드 가능.",
       "compare": "플랜 비교",
       "compareAll": "모든 플랜 비교",
+      "comparison": {
+        "addOnConcurrency": "동시 실행 추가 구매",
+        "available": "구매 가능",
+        "concurrentRuns": "동시 실행",
+        "included": "지원",
+        "ownLlmKeys": "자체 LLM 키",
+        "privateAgents": "비공개 에이전트",
+        "sharedAgents": "공유 에이전트",
+        "support": "지원",
+        "supportEmail": "이메일",
+        "supportPriority": "우선",
+        "unlimited": "무제한",
+        "voiceInput": "음성 입력",
+        "voiceInputValue": "{{requests}}회/일 · {{minutes}}분"
+      },
       "currentPlan": "현재 플랜",
       "custom": {
         "name": "사용자 지정"
@@ -895,20 +919,21 @@
         "communitySupport": "커뮤니티 지원",
         "emailSupport": "이메일 지원",
         "existingCredits": "기존 무료 크레딧만",
-        "monthlyCredits": "월 {{value}} 크레딧",
         "oneConcurrentRun": "1 동시 실행",
-        "payAsYouGo": "이후 사용량 기반 결제",
         "prioritySupport": "우선 지원",
+        "sharedAndPrivateAgents": "공유 에이전트 7개, 비공개 에이전트 무제한",
         "tenConcurrentRuns": "10 동시 실행",
         "twoConcurrentRuns": "2 동시 실행",
         "unlimitedAgents": "무제한 에이전트",
-        "voiceInput": "음성 입력",
-        "voiceInputLifetime": "음성 입력 (회원당 평생 10회 사용)"
+        "voiceInputFree": "음성 입력 (회원당 총 10회 요청 · 하루 10분)",
+        "voiceInputPro": "음성 입력 (회원당 하루 300회 요청 · 200분)",
+        "voiceInputTeam": "음성 입력 (회원당 하루 500회 요청 · 500분)"
       },
       "free": {
         "description": "기존 워크스페이스용 레거시 무료 액세스.",
         "name": "무료"
       },
+      "legacy": "기존",
       "limitedFree": {
         "name": "제한된 무료"
       },
@@ -924,7 +949,7 @@
       "popular": "인기",
       "pricePerMonth": "{{price}}/월",
       "pro": {
-        "description": "팀을 위한 더 강력한 기능과 원활한 협업.",
+        "description": "매일 AI 에이전트를 실행하는 팀을 위한 더 많은 크레딧과 동시 실행 수.",
         "name": "Pro"
       },
       "renews": "{{date}}에 갱신됨",
@@ -932,11 +957,72 @@
       "sectionTitle": "플랜",
       "selectedPlan": "선택한 플랜",
       "team": {
-        "description": "마찰 없이 빠르게 확장하고 완전한 유연성을 누리세요.",
+        "description": "AI 직원 팀을 위한 충분한 공간: 많은 크레딧과 에이전트 10개 동시 실행.",
         "name": "팀"
       },
       "upgrade": "업그레이드",
-      "upgradeTo": "{{plan}}으로 업그레이드"
+      "upgradeTo": "{{plan}}으로 업그레이드",
+      "usagePacks": {
+        "bonusCredits": "보너스 크레딧",
+        "bonusIncluded": "보너스 {{credits}} 포함",
+        "choosePlan": "플랜 선택",
+        "concurrentSlots": "동시 실행 슬롯",
+        "configurePackages": "구성원 패키지 설정",
+        "credits": "크레딧",
+        "currentMember": "현재 구성원",
+        "existingPackagesUnchanged": "기존 멤버 패키지는 변경되지 않습니다.",
+        "management": {
+          "comparison": "현재 및 새 구독 비교",
+          "current": "현재",
+          "downgradeDescription": "하위 패키지는 다음 결제일부터 시작됩니다. 기존 크레딧은 만료될 때까지 사용할 수 있습니다.",
+          "downgradesToDate": "{{date}}에 {{package}}(으)로 다운그레이드됩니다.",
+          "downgradesToPeriod": "다음 결제일에 {{package}}(으)로 다운그레이드됩니다.",
+          "everyMonth": "매월",
+          "immediateAmount": "지금 결제",
+          "immediateAmountNote": "이번 청구 기간의 남은 기간분",
+          "immediateCredits": "결제 후 추가되는 크레딧",
+          "new": "신규",
+          "processing": "변경 처리 중",
+          "reviewDescription": "확인하면 저장된 결제 수단으로 청구됩니다.",
+          "reviewTitle": "패키지 변경 검토",
+          "scheduledFor": "{{date}}에 변경 예정",
+          "today": "오늘"
+        },
+        "memberExclusive": "각 패키지는 한 구성원에게만 속하며 공유할 수 없습니다. 패키지를 모두 사용하면 종량제 크레딧으로 전환됩니다. 나중에 새 패키지로 업그레이드할 수 있습니다.",
+        "memberPackages": "구성원 패키지",
+        "memberUsage": "구성원 사용량",
+        "migration": {
+          "action": "플랜 전환",
+          "confirmDescription": "현재 플랜과 권한은 이번 결제 기간이 끝날 때까지 유지됩니다. 새 플랜이 시작되면 Stripe가 새로운 정기 결제 합계를 청구합니다.",
+          "convertPlan": "플랜 전환",
+          "description": "기존 {{plan}} 워크스페이스를 각 구성원의 개별 월간 사용량 패키지가 포함된 새 플랜으로 전환합니다.",
+          "error": "이 구독을 마이그레이션하지 못했습니다. 페이지를 새로고침한 후 다시 시도하세요.",
+          "invoice": "청구서 보기",
+          "processing": "Stripe에서 전환을 예약하고 있습니다.",
+          "ready": "각 구성원과 대기 중인 초대에 필수 월간 패키지를 하나씩 선택하세요.",
+          "review": "전환 검토",
+          "reviewDescription": "전환을 예약하기 전에 현재 기존 플랜과 새로운 정기 플랜을 비교하세요.",
+          "reviewTitle": "플랜 전환 검토",
+          "scheduled": "전환은 {{date}}로 예약되었습니다. 그때까지 현재 플랜과 권한이 유지됩니다.",
+          "switchesOn": "{{date}}에 {{plan}} 플랜으로 전환됩니다",
+          "title": "기존 플랜 전환"
+        },
+        "monthlyTotal": "월간 합계",
+        "orderSummary": "주문 요약",
+        "packagePerMemberNote": "모든 멤버에게 패키지가 필요합니다. 다음 단계에서 멤버별로 선택합니다.",
+        "packCredits": "{{credits}} 크레딧",
+        "packCreditsDiscount": "{{credits}} 크레딧 · {{discount}}% 할인",
+        "packOption": "{{price}} · {{credits}} 크레딧 · {{discount}}% 할인",
+        "planChangeError": "구독 변경을 준비하지 못했습니다. 다시 시도하세요.",
+        "planPlusPackages": "플랜 {{plan}} · 멤버 패키지 각 {{lowest}}~{{highest}}",
+        "planStep": "플랜",
+        "priceFrom": "최소",
+        "purchasedCredits": "구매 크레딧",
+        "selectPlan": "{{plan}} 시작하기",
+        "selectUsage": "{{name}} 사용량",
+        "stepOfTotal": "{{total}}단계 중 {{current}}단계",
+        "totalCreditsWithBonus": "{{credits}} 크레딧 · 보너스 {{bonus}}"
+      }
     },
     "restore": {
       "cancellationDescription": "{{plan}} 플랜의 예약된 취소를 취소합니다.",
@@ -957,20 +1043,25 @@
       "concurrencyAdded": "동시 실행이 추가되었습니다. 새 슬롯은 Stripe가 구독을 확인한 후 사용 가능합니다.",
       "concurrencyCanceled": "동시 실행 구독이 취소되었습니다.",
       "concurrencyCanceledDate": "동시 실행 구독이 취소되었습니다. 슬롯은 {{date}}까지 활성 상태입니다.",
+      "concurrencyChanged": "동시 실행 변경이 확인되었습니다. Stripe에서 변경을 처리한 후 슬롯 수가 업데이트됩니다.",
+      "concurrencyReduced": "동시 실행 축소가 다음 결제일로 예약되었습니다.",
       "concurrencyRestored": "동시 실행 구독이 복원되었습니다.",
+      "creditPurchaseConfirmed": "결제가 확인되었습니다. Stripe에서 청구서를 처리한 후 크레딧이 표시됩니다.",
       "creditsAdded": "크레딧이 추가되었습니다. Zero와 계속 대화할 수 있습니다.",
       "downgradeScheduledDate": "다운그레이드가 예약되었습니다. 현재 플랜은 {{date}}까지 활성 상태입니다.",
       "downgradeScheduledPeriod": "다운그레이드가 예약되었습니다. 현재 플랜은 청구 기간 종료 시까지 활성 상태입니다.",
       "planRestored": "플랜이 복원되었습니다. 구독이 정상적으로 갱신됩니다.",
       "preparingReceiptDownload": "영수증 다운로드 준비 중...",
       "receiptDownloadFailed": "영수증 다운로드에 실패했습니다",
-      "receiptsDownloaded": "영수증이 다운로드되었습니다"
+      "receiptsDownloaded": "영수증이 다운로드되었습니다",
+      "subscriptionChangeConfirmed": "구독 변경이 확인되었습니다."
     },
     "usage": {
       "added": "{{date}}에 추가됨",
       "allowance": {
         "day": "{{value}}일",
         "hour": "{{value}}시간",
+        "left": "{{value}} 남음",
         "minute": "{{value}}분",
         "remaining": "{{remaining}} / {{total}} 크레딧",
         "remainingAria": "사용 한도 {{label}} 남음",
@@ -979,6 +1070,7 @@
         "title": "사용 한도",
         "week": "{{value}}주"
       },
+      "autoRechargeOn": "자동 충전 켜짐",
       "breakdown": {
         "currentPlanDescription": "월간 플랜 크레딧, 청구 주기마다 초기화",
         "freeDescription": "스타터 크레딧, 소진 시까지 사용 가능",
@@ -995,12 +1087,33 @@
       "creditsRemaining_one": "{{value}} 크레딧 남음",
       "creditsRemaining_other": "{{value}} 크레딧 남음",
       "expires": "{{date}}에 만료",
+      "grantsTable": {
+        "added": "추가일",
+        "amount": "금액",
+        "expires": "만료",
+        "left": "남음",
+        "source": "출처"
+      },
       "left": "{{value}} 남음",
       "member": "멤버",
       "neverExpires": "만료되지 않음",
+      "orgCredits": "조직 크레딧",
+      "seeUsageRecords": "크레딧이 어디에 쓰였는지 보기",
       "unavailable": "크레딧 잔액을 사용할 수 없습니다.",
       "upgradeDescription": "Pro에는 월간 크레딧이 포함되어 있으며, 추가 크레딧 옵션을 이용할 수 있습니다.",
       "upgradeTitle": "더 많은 크레딧을 위해 Pro로 업그레이드하세요",
+      "usagePack": {
+        "bonus": "보너스",
+        "members": "멤버",
+        "membersDescription": "각 구성원의 사용량 팩 잔액과 크레딧 추가 내역을 확인합니다.",
+        "membersTitle": "구성원 사용량 팩 크레딧",
+        "nextExpiry": "다음 만료일",
+        "purchased": "구매",
+        "remaining": "남음",
+        "title": "사용량 팩 크레딧",
+        "totalRemaining": "총 잔액",
+        "viewMembers": "구성원 잔액 보기"
+      },
       "used": "사용됨"
     }
   },
@@ -1008,9 +1121,10 @@
     "cardTitle": "클라우드 브라우저",
     "close": "라이브 브라우저 닫기",
     "documentTitle": "라이브 브라우저",
+    "fitAction": "맞춤",
     "fitWindow": "브라우저 창에 맞춤",
     "iframeTitle": "라이브 브라우저: {{name}}",
-    "invalidLink": "잘못된 브라우저 링크",
+    "notFound": "브라우저를 찾을 수 없습니다",
     "open": "{{name}} 브라우저 열기",
     "openAction": "열기",
     "openNewPage": "이 브라우저를 새 페이지에서 열기",
@@ -1027,7 +1141,6 @@
       "starting": "시작 중",
       "stopped": "중지됨"
     },
-    "stop": "브라우저 중지",
     "title": "라이브 브라우저",
     "unavailable": {
       "description": "이 브라우저는 이 채팅에 속하지 않거나 제거되었습니다.",
@@ -1038,7 +1151,6 @@
     "actions": {
       "authorize": "승인",
       "cancel": "취소",
-      "configure": "구성",
       "confirm": "확인",
       "continue": "계속",
       "copied": "복사됨!",
@@ -1087,24 +1199,14 @@
       "viewAgentProfile": "에이전트 프로필 보기"
     },
     "attachments": {
-      "addLink": "링크 추가",
       "attach": "첨부",
-      "file": "파일 {{filename}}",
       "fileTooLarge": "{{filename}} 파일이 1GB 제한을 초과했습니다",
       "imageUnavailable": "[이미지 없음: {{filename}}]",
-      "importing": "첨부파일 가져오는 중",
-      "invalidLink": "유효한 링크를 입력하세요",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "{{filename}} 불러오는 중",
       "previewFile": "{{filename}} 미리보기",
-      "supportedTypes": "이미지, 문서, 오디오, 비디오, 압축 파일",
       "title": "첨부파일",
-      "unavailable": "첨부파일을 사용할 수 없습니다",
-      "upload": "업로드",
       "uploadFailed": "{{filename}} 업로드 실패",
       "uploadFailedRetry": "{{filename}} 업로드 실패. 다시 시도하세요.",
-      "uploadFromComputer": "컴퓨터에서 업로드",
-      "uploadFromLink": "링크에서 업로드",
       "uploadsFailed": "일부 첨부파일 업로드에 실패했습니다. 다시 시도하세요."
     },
     "automations": {
@@ -1123,7 +1225,7 @@
       "events": {
         "githubDeploymentStatus": "GitHub 배포 상태 생성됨",
         "githubIssueComment": "GitHub 이슈 댓글 생성됨",
-        "githubLabelApplied": "GitHub 라벨 적용됨",
+        "githubPullRequest": "GitHub 풀 리퀘스트",
         "githubReviewSubmitted": "GitHub 풀 리퀘스트 리뷰 제출됨",
         "githubWorkflowCompleted": "GitHub 워크플로 완료됨",
         "githubWorkflowJobCompleted": "GitHub 워크플로 작업 완료됨",
@@ -1132,6 +1234,7 @@
         "googleCalendarCancelled": "Google 캘린더 이벤트 취소됨",
         "googleCalendarCreated": "Google 캘린더 이벤트 생성됨",
         "googleCalendarUpdated": "Google 캘린더 이벤트 업데이트됨",
+        "googleFormsResponseSubmitted": "Google Forms 응답이 제출됨",
         "googleMeetTranscript": "Google Meet 녹취 준비 완료",
         "notionChildPage": "새 Notion 하위 페이지",
         "notionDatabaseItem": "새 Notion 데이터베이스 항목",
@@ -1232,6 +1335,10 @@
       "selectedModelUnavailable": "선택한 모델을 사용할 수 없습니다. 전송 전에 구성하세요.",
       "selectedModelUnavailableToast": "선택한 모델을 사용할 수 없습니다",
       "selectModel": "모델 선택",
+      "setAsDefault": "기본값으로 설정",
+      "temporaryFastModeDisabledNotice": "이 실행에서는 빠른 모드가 일시적으로 비활성화되었습니다",
+      "temporaryFastModeEnabledNotice": "이 실행에서는 빠른 모드가 일시적으로 활성화되었습니다",
+      "temporaryModelNotice": "일시적으로 {{model}}(으)로 전환됨",
       "threadSuggestions": "채팅 스레드",
       "visualAttachmentsUnsupported": "{{modelName}}은 이미지나 비디오를 인식할 수 없습니다. 첨부하려면 비전 기능이 있는 모델로 전환하세요.",
       "workflows": {
@@ -1248,8 +1355,8 @@
       "cloudBrowser": "클라우드 브라우저",
       "connectHost": "{{hostName}} 연결",
       "connectMyComputer": "내 컴퓨터 연결",
-      "dialogDescription": "Zero가 LinkedIn이나 Reddit 같은 커넥터가 없는 브라우저와 앱에서도 작업할 수 있도록 허용하세요.",
-      "dialogTitle": "Zero가 컴퓨터를 사용하도록 허용",
+      "dialogDescription": "{{desktopProductName}}가 LinkedIn이나 Reddit 같은 커넥터가 없는 브라우저와 앱에서도 작업할 수 있도록 허용하세요.",
+      "dialogTitle": "{{desktopProductName}}가 컴퓨터를 사용하도록 허용",
       "disableCloudBrowser": "클라우드 브라우저 비활성화",
       "disconnectHost": "{{hostName}} 연결 해제",
       "downloadMacos": "macOS용 다운로드",
@@ -1270,7 +1377,6 @@
       "available_other": "연결 가능한 커넥터 ({{count}})",
       "configurePermissions": "{{connectorName}} 권한 구성",
       "customAuthorizeDescription": "이 맞춤 커넥터를 검토하고 연결한 후 에이전트에 권한을 부여하세요.",
-      "customConnectDescription": "이 맞춤 커넥터를 검토하고 연결하세요.",
       "find": "커넥터 찾기...",
       "remove": "{{connectorName}} 제거",
       "title": "커넥터"
@@ -1306,13 +1412,25 @@
       "partsHeading_one": "답변 {{count}}개 부분에 대한 피드백:",
       "partsHeading_other": "답변 {{count}}개 부분에 대한 피드백:",
       "placeholder": "무엇을 변경해야 하나요?",
-      "provide": "피드백 제공",
+      "quote": "인용",
       "remove": "피드백 제거",
       "sentEmailDescription": "발송된 이메일 (메일 ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", 발송 ID: {{sentId}}",
       "sourcePartHeading": "{{description}} 이 부분에 대한 피드백:",
       "sourcePartsHeading_one": "{{description}} {{count}}개 부분에 대한 피드백:",
       "sourcePartsHeading_other": "{{description}} {{count}}개 부분에 대한 피드백:"
+    },
+    "forward": {
+      "action": "전달",
+      "agents": "에이전트",
+      "back": "뒤로",
+      "content": "내용",
+      "description": "선택한 내용을 에이전트 또는 채팅으로 전달합니다.",
+      "noResults": "에이전트 또는 채팅을 찾을 수 없습니다",
+      "search": "에이전트 및 채팅 검색...",
+      "sent": "전달했습니다",
+      "threads": "채팅",
+      "title": "전달 대상"
     },
     "mail": {
       "bcc": "숨은 참조",
@@ -1322,18 +1440,6 @@
       "deletedEmail": "삭제된 이메일: {{subject}}",
       "details": "이메일 세부정보",
       "email": "이메일",
-      "followUp": {
-        "action": "후속 조치",
-        "active": "답장 추적 중",
-        "activeDescription": "답장이 추적되어 이 채팅에 보고됩니다.",
-        "idleDescription": "답장 추적 및 알림 받기",
-        "paused": "추적 일시 중지됨",
-        "pausedDescription": "답장 추적이 현재 일시 중지되었습니다.",
-        "settingUp": "설정 중...",
-        "submitting": "설정 중...",
-        "submittingDescription": "답장 추적 설정 중...",
-        "tracking": "답장 추적 중"
-      },
       "loadingDetails": "이메일 세부정보 로딩 중",
       "needReconnect": "다시 연결 필요",
       "noMessage": "(메시지 없음)",
@@ -1463,13 +1569,20 @@
       "durationFor": "{{label}}에 대해 {{duration}}",
       "expandGroupedHistory": "그룹화된 실행 기록 펼치기",
       "expandWorkHistory": "작업 기록 펼치기",
+      "fastModelName": "{{model}} Fast",
+      "fastModeOff": "Fast 모드 꺼짐",
+      "fastModeOn": "Fast 모드 켜짐",
+      "fastModeWillBeOff": "Fast 모드가 꺼집니다",
+      "fastModeWillBeOn": "Fast 모드가 켜집니다",
       "goalFor": "{{label}}의 목표",
       "groupedRunsFor_one": "{{source}}의 {{count}}회 실행",
       "groupedRunsFor_other": "{{source}}의 {{count}}회 실행",
       "justNow": "방금",
       "keepGoing": "계속 진행",
       "keepGoingAt": "계속 진행 · {{timestamp}}",
+      "modelChangedTo": "모델을 {{model}}로 변경했습니다",
       "queueEllipsis": "대기 중...",
+      "selectedModelAppliesAfterCurrentRun": "선택한 {{model}} 모델은 이번 실행 후에 적용됩니다",
       "thinking": {
         "assembling": "조립 중...",
         "brewing": "응답 준비 중...",
@@ -1487,6 +1600,21 @@
       "waitingIn": "대기 중",
       "worked": "작업 완료",
       "workedFor": "{{duration}} 동안 작업 완료"
+    },
+    "sharing": {
+      "cancel": "취소",
+      "close": "닫기",
+      "copyFailed": "링크를 복사하지 못했습니다",
+      "copyLink": "링크 복사",
+      "create": "공유",
+      "createFailed": "공유된 대화를 만들지 못했습니다. 다시 시도하세요.",
+      "deselectGroup": "메시지 그룹 선택 해제",
+      "linkCopied": "링크가 복사되었습니다",
+      "selectedCount_other": "{{count}}개 선택됨",
+      "selectGroup": "메시지 그룹 선택",
+      "shareLink": "공유된 대화 링크",
+      "start": "메시지 공유",
+      "tooLarge": "공유할 메시지를 더 적게 선택하세요"
     },
     "shortcuts": {
       "number": "번호"
@@ -1521,7 +1649,6 @@
         "website": "웹사이트",
         "workflow": "워크플로"
       },
-      "messageTemplate": "메시지 템플릿 {{title}}",
       "previewTemplate": "템플릿 미리보기 {{title}}",
       "previewVideo": "비디오 템플릿 미리보기 {{title}}",
       "previewWebsite": "웹사이트 템플릿 미리보기 {{title}}",
@@ -1529,7 +1656,17 @@
       "removeTemplate": "템플릿 삭제 {{title}}",
       "removeVideo": "비디오 템플릿 삭제 {{title}}",
       "removeWebsite": "웹사이트 템플릿 삭제 {{title}}",
-      "removeWorkflow": "워크플로 템플릿 삭제 {{title}}"
+      "removeWorkflow": "워크플로 템플릿 삭제 {{title}}",
+      "videoModelLabel": "동영상 모델 {{model}}",
+      "videoOptions": "동영상 옵션",
+      "videoOptionsAudio": "오디오 생성",
+      "videoOptionsDuration": "길이",
+      "videoOptionsLabel": "동영상 옵션 {{spec}}",
+      "videoOptionsModel": "모델",
+      "videoOptionsRatio": "비율",
+      "videoOptionsResolution": "해상도",
+      "videoSpecAudioOff": "음소거",
+      "videoSpecAudioOn": "오디오"
     },
     "thread": {
       "ariaLabel": "채팅 스레드",
@@ -1545,17 +1682,24 @@
         "waiting": "대기 중",
         "watching": "관찰 중"
       },
+      "emojiCategories": "이모지 카테고리",
       "empty": "대화를 시작하려면 메시지를 보내세요",
       "frequentlyUsed": "자주 사용하는 항목",
       "icon": "채팅 스레드 아이콘",
-      "loadingEarlier": "이전 메시지 불러오는 중",
+      "locator": {
+        "you": "나"
+      },
       "noEmojiFound": "이모지가 없습니다",
+      "notFound": "채팅 스레드를 찾을 수 없습니다",
       "openArtifacts": "아티팩트 열기",
       "openBrowser": "브라우저 열기",
       "openNamedAgent": "에이전트 {{name}} 열기",
       "openNamedChat": "채팅 {{title}} 열기",
+      "pickEmoji": "이모지 선택",
       "scrollToBottom": "맨 아래로 스크롤",
-      "searchEmoji": "이모지 검색"
+      "searchEmoji": "이모지 검색",
+      "steerAcknowledgement_one": "실행 중에 반영했습니다. 이전 작업은 그대로 유지됩니다",
+      "steerAcknowledgement_other": "{{count}}개 메시지를 모두 실행 중에 반영했습니다. 이전 작업은 그대로 유지됩니다"
     },
     "threadSidebar": {
       "resize": "사이드바 크기 조절"
@@ -1568,6 +1712,10 @@
       "checkingLimit": "음성 입력 제한 확인 중",
       "input": "음성 입력",
       "inputLimitReached": "음성 입력 한도에 도달했습니다. 더 높은 한도를 원하시면 Pro 또는 Team으로 업그레이드하세요.",
+      "inputLimitReachedMember": "음성 입력 한도에 도달했습니다. 더 높은 한도를 위해 워크스페이스 관리자에게 업그레이드를 요청하세요.",
+      "inputLimitReachedPro": "음성 입력 한도에 도달했습니다. 더 높은 한도를 원하시면 Team으로 업그레이드하세요.",
+      "inputLimitReachedProMember": "음성 입력 한도에 도달했습니다. 더 높은 한도를 위해 워크스페이스 관리자에게 Team으로 업그레이드를 요청하세요.",
+      "inputLimitReachedReset": "음성 입력 한도에 도달했습니다. 한도가 재설정될 때까지 기다려 주세요.",
       "microphoneAccessDenied": "마이크 접근이 거부되었습니다. 마이크 접근을 허용하고 다시 시도하세요.",
       "openingMicrophone": "마이크 열기 중...",
       "starting": "음성 입력 시작",
@@ -1614,7 +1762,6 @@
       "edit": "편집",
       "grant": "부여",
       "reconnect": "재연결",
-      "rename": "이름 변경",
       "revoke": "권한 취소",
       "save": "저장",
       "saving": "저장 중...",
@@ -1718,6 +1865,7 @@
       },
       "categoriesAria": "커넥터 카테고리",
       "description": "에이전트가 사용할 수 있도록 타사 서비스를 연결하세요.",
+      "descriptionWithCount": "에이전트가 사용할 수 있도록 {{value}}개의 서비스를 연결하세요.",
       "empty": {
         "agent": "이 에이전트에 연결된 커넥터가 없습니다",
         "connected": "연결된 커넥터가 없습니다",
@@ -1791,24 +1939,14 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "어떤 에이전트에서도 사용하지 않음",
-        "usedBy": "{{agents}}에서 사용 중",
-        "usedByOverflow_one": "{{agents}}에서 사용 중 +{{value}}",
-        "usedByOverflow_other": "{{agents}}에서 사용 중 +{{value}}"
-      },
       "connect": {
-        "apiAuthentication": "API 인증",
-        "apiDescription": "제공자가 발급한 API 비밀 키를 입력하세요.",
-        "back": "뒤로",
+        "configured": "구성됨",
         "connecting": "연결 중…",
         "continue": "계속",
         "continueToProvider": "접근 권한 승인을 위해 제공자 페이지로 이동합니다.",
         "description": "비밀 키는 저장 시 암호화되며 방화벽에서 아웃바운드 요청에 주입됩니다. 에이전트에 환경 변수로 노출되지 않습니다.",
-        "oauthDescription": "커넥터의 OAuth 앱으로 접근 권한을 승인하세요.",
         "save": "저장",
         "saving": "저장 중…",
-        "secret": "비밀 키",
         "title": "{{connector}} 연결"
       },
       "create": {
@@ -1822,13 +1960,18 @@
         "authorizationUrl": "인증 URL",
         "clientId": "클라이언트 ID",
         "clientSecret": "클라이언트 비밀 키",
+        "connectorType": "커넥터 유형",
         "displayName": "표시 이름",
         "headerName": "헤더 이름",
         "headerTemplate": "헤더 템플릿",
         "headerTemplateHint": "(반드시 {{placeholder}} 포함)",
         "httpBasicAuthentication": "HTTP 기본 인증",
+        "httpType": "HTTP API",
         "keepClientSecret": "클라이언트 비밀 키를 유지하려면 빈 칸으로 두세요.",
         "keepClientSecretPlaceholder": "유지하려면 빈 칸으로 두기",
+        "mcpEndpoint": "MCP 엔드포인트",
+        "mcpEndpointHint": "(Streamable HTTP, HTTPS만)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "새 클라이언트 비밀 키",
         "none": "없음",
         "oauthChangesDisconnect": "OAuth 설정 또는 클라이언트 자격 증명 변경 시 기존 OAuth 연결이 끊어집니다.",
@@ -1863,18 +2006,15 @@
       },
       "emptyAdmin": "아직 커스텀 커넥터가 없습니다. 모든 멤버가 사용할 API를 등록하려면 새로 만드세요.",
       "emptyMember": "조직에 등록된 커스텀 커넥터가 없습니다.",
+      "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "추가 옵션",
-      "rename": {
-        "displayName": "표시 이름",
-        "title": "커스텀 커넥터 이름 변경"
-      },
       "statusConnected": "연결됨",
       "toasts": {
         "connected": "연결됨",
         "created": "\"{{connector}}\" 생성됨",
         "deleted": "커스텀 커넥터가 삭제되었습니다",
         "disconnected": "연결 해제됨",
-        "renamed": "이름이 \"{{connector}}\"(으)로 변경됨",
         "updated": "\"{{connector}}\" 업데이트됨"
       },
       "updateConfirm": {
@@ -1882,19 +2022,6 @@
         "description": "이 OAuth 변경 사항은 현재 OAuth로 연결된 모든 멤버의 연결을 해제합니다. 멤버는 이 커스텀 커넥터에 다시 연결해야 합니다.",
         "title": "기존 OAuth 연결을 해제하시겠습니까?"
       }
-    },
-    "customProposal": {
-      "configure": "{{connector}} 구성",
-      "descriptionAgent": "저장하면 값이 연결되고 {{agent}} 권한이 부여됩니다.",
-      "descriptionUser": "저장하면 이 커스텀 커넥터가 귀하의 계정에 연결됩니다.",
-      "documentTitle": "커스텀 커넥터 구성",
-      "invalid": "이 커스텀 커넥터 제안 링크가 유효하지 않거나 만료되었습니다.",
-      "requestScope": "요청 범위",
-      "returnToChat": "채팅으로 돌아가서 ACK를 회신하여 에이전트가 커넥터를 확인할 수 있게 하세요.",
-      "saved": "저장됨",
-      "savedToast": "{{connector}} 저장됨",
-      "targetFallback": "이 에이전트",
-      "update": "{{connector}} 업데이트"
     },
     "directed": {
       "authorizeAgent": "{{agent}} 권한 부여",
@@ -2211,19 +2338,14 @@
           "challengeQuestion": "Feishu가 \"챌린지 코드에 응답이 없습니다\"를 표시하는 이유는 무엇인가요?",
           "title": "설정 FAQ"
         },
-        "guide": {
-          "next": "다음 Feishu 가이드 이미지 보기",
-          "previous": "이전 Feishu 가이드 이미지 보기",
-          "show": "Feishu 가이드 이미지 {{number}} 보기"
-        },
         "loadError": "Feishu 설정을 불러올 수 없습니다.",
         "manage": "관리",
         "manageDialogTitle": "Feishu 봇 관리",
         "moreOptions": "{{bot}}에 대한 추가 옵션",
         "pageDescription": "이 워크스페이스의 봇 라우팅 관리",
         "permissions": {
-          "description": "Feishu 개발자 콘솔에서 '권한 및 범위'를 열고 '일괄 가져오기/내보내기 > 가져오기'를 선택한 다음 아래 JSON을 붙여넣으세요. 관리형 커넥터에 필요한 모든 범위가 사용자 ID로 가져와집니다.",
-          "hint": "가져온 사용자 ID 권한을 확인한 후 OAuth 동의 화면에서 권한을 부여할 수 있도록 새 앱 버전을 생성하고 게시하세요.",
+          "description": "Feishu 개발자 콘솔에서 '권한 및 범위'를 열고 '일괄 가져오기/내보내기 > 가져오기'를 선택한 다음 아래 JSON을 붙여넣으세요. 관리형 커넥터에 필요한 모든 범위가 사용자 ID로 가져와집니다. 이는 연동이 작동하는 데 필요한 최소 권한입니다.",
+          "hint": "가져온 사용자 ID 권한을 모두 유지한 후 OAuth 동의 화면에서 권한을 부여할 수 있도록 새 앱 버전을 생성하고 게시하세요. 권한을 하나라도 제거하면 연동이 작동하지 않으며 Feishu 관리자의 승인이 필요할 수 있습니다.",
           "label": "사용자 토큰 범위 JSON",
           "menuAlt": "일괄 범위 가져오기/내보내기 메뉴가 강조 표시된 Feishu 권한 및 범위 페이지",
           "menuLabel": "일괄 범위 가져오기/내보내기 열기",
@@ -2449,95 +2571,21 @@
       "requestFailed": "요청 실패"
     },
     "realtime": {
-      "degraded": "실시간 업데이트에 문제가 발생했습니다. 페이지를 새로고침하세요."
+      "degraded": "실시간 업데이트에 문제가 발생했습니다. 페이지를 새로고침하세요.",
+      "disconnected": "실시간 연결이 끊어졌습니다",
+      "reconnecting": "실시간 연결을 다시 연결하는 중"
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "다음 달",
-      "previousMonth": "이전 달"
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "다른 계정으로 초대를 수락했습니다"
     },
-    "cards": {
-      "agents": "에이전트",
-      "agentsRan_one": "{{agents}}이(가) {{runs}} 실행함",
-      "agentsRan_other": "{{agents}}이(가) {{runs}} 실행함",
-      "allowed": "허용됨",
-      "allowedSummary_one": "{{permissions}} 권한 내에서 {{calls}} 호출됨",
-      "allowedSummary_other": "{{permissions}} 권한 내에서 {{calls}} 호출됨",
-      "automations": "자동화",
-      "automationsUsed_one": "{{automations}}이(가) {{credits}} 사용함",
-      "automationsUsed_other": "{{automations}}이(가) {{credits}} 사용함",
-      "balance": "잔액",
-      "byAgent": "{{agent}}별",
-      "chats": "채팅",
-      "chatsUsed_one": "{{chats}}이(가) {{credits}} 사용함",
-      "chatsUsed_other": "{{chats}}이(가) {{credits}} 사용함",
-      "clickToOpen": "열려면 클릭",
-      "consumedToday": "오늘 사용됨",
-      "moreAutomations_one": "+{{value}}개 자동화 더 보기",
-      "moreAutomations_other": "+{{value}}개 자동화 더 보기",
-      "moreChats_one": "+{{value}}개 채팅 더 보기",
-      "moreChats_other": "+{{value}}개 채팅 더 보기",
-      "protected": "보호됨",
-      "protectedSummary_one": "{{permissions}} 권한에서 {{calls}} 보호됨",
-      "protectedSummary_other": "{{permissions}} 권한에서 {{calls}} 보호됨",
-      "rejected_one": "{{value}}개 거부됨",
-      "rejected_other": "{{value}}개 거부됨",
-      "rejectedOf": "{{total}} 중 {{denied}} 거부됨",
-      "services": "서비스",
-      "servicesReceived_one": "{{services}}이(가) {{calls}} 받음",
-      "servicesReceived_other": "{{services}}이(가) {{calls}} 받음",
-      "team": "팀",
-      "teamCreditUsage": "팀 크레딧 사용량",
-      "untitled": "(제목 없음)",
-      "yourCreditUsage": "내 크레딧 사용량"
+    "actions": {
+      "switchAccount": "계정 전환",
+      "switchWorkspace": "워크스페이스 전환"
     },
-    "common": {
-      "loadMore": "더 보기",
-      "showLess": "간략히 보기"
-    },
-    "page": {
-      "description": "에이전트가 무엇에 접근하는지, 크레딧이 어떻게 사용되는지, 어떤 권한을 사용하는지 모니터링하고 이상 징후를 확인하세요.",
-      "documentTitle": "인사이트 및 사용량",
-      "empty": "에이전트를 실행하여 인사이트를 확인하세요.",
-      "emptyRange": "이 기간에 활동이 없습니다.",
-      "lastUpdated": "마지막 업데이트 — {{date}}",
-      "loadError": "네트워크 활동을 불러올 수 없습니다.",
-      "title": "인사이트"
-    },
-    "range": {
-      "custom": "사용자 지정 기간",
-      "last28Days": "최근 28일",
-      "last30Days": "최근 30일",
-      "last7Days": "최근 7일",
-      "today": "오늘",
-      "yesterday": "어제"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}}개의 요청이 권한 규칙에 의해 차단되었습니다. 중요한 내용이 차단되지 않았는지 검토하세요.",
-      "blocked_other": "{{blocked}}개의 요청이 권한 규칙에 의해 차단되었습니다. 중요한 내용이 차단되지 않았는지 검토하세요.",
-      "blockedCaption": "{{calls}} · {{blocked}} 차단됨",
-      "busy_one": "바쁜 하루 — {{agentCount}}명의 에이전트가 {{runs}} 실행했습니다. 네트워크가 열심히 작동 중입니다.",
-      "busy_other": "바쁜 하루 — {{agentCount}}명의 에이전트가 {{runs}} 실행했습니다. 네트워크가 열심히 작동 중입니다.",
-      "distributed_one": "{{agents}} 활성, 총 {{credits}} 사용. 균형 잡힌 작업 부하입니다.",
-      "distributed_other": "{{agents}} 활성, 총 {{credits}} 사용. 균형 잡힌 작업 부하입니다.",
-      "highTraffic_one": "{{callCount}}개의 서비스 호출, {{services}} 서비스. 트래픽이 많은 날입니다.",
-      "highTraffic_other": "{{callCount}}개의 서비스 호출, {{services}} 서비스. 트래픽이 많은 날입니다.",
-      "light_one": "활동 적음 — 단지 {{runs}} 실행과 {{calls}} 호출. 조용한 하루입니다.",
-      "light_other": "활동 적음 — 단지 {{runs}} 실행과 {{calls}} 호출. 조용한 하루입니다.",
-      "quietCaption": "{{runs}} · 조용한 하루",
-      "smooth": "오늘 {{runs}} 실행과 {{callCount}} 서비스 호출. 모든 것이 원활히 작동 중입니다."
-    },
-    "units": {
-      "agent_one": "{{value}} 에이전트",
-      "agent_other": "{{value}} 에이전트",
-      "call_one": "{{value}} 호출",
-      "call_other": "{{value}} 호출",
-      "run_one": "{{value}} 실행",
-      "run_other": "{{value}} 실행",
-      "service_one": "{{value}} 서비스",
-      "service_other": "{{value}} 서비스"
+    "success": {
+      "title": "{{workspace}} 초대를 수락했습니다"
     }
   },
   "lifecycle": {
@@ -3898,6 +3946,7 @@
       "atLimit_other": "한 번에 {{limit}}개의 작업만 실행할 수 있습니다. 새 실행은 하나가 완료될 때까지 대기열에서 기다립니다.",
       "available_one": "{{count}}개의 슬롯 사용 가능",
       "available_other": "{{count}}개의 슬롯 사용 가능",
+      "availableNow": "현재 사용 가능",
       "inUse_one": "{{active}}개 사용 중, 총 {{limit}}개 슬롯",
       "inUse_other": "{{active}}개 사용 중, 총 {{limit}}개 슬롯"
     },
@@ -3924,40 +3973,6 @@
       "recommended": "추천",
       "teamDescription": "10개 병렬 실행과 더 많은 크레딧으로 팀을 확장하세요."
     }
-  },
-  "reportError": {
-    "description": "이 실패한 실행에 대한 진단 정보를 개발팀에 전송하세요. 조사 후 연락드리겠습니다.",
-    "disclosure": {
-      "agentConfiguration": "에이전트 구성",
-      "agentTelemetry": "에이전트 원격 측정 및 실행 로그",
-      "chatHistory": "채팅 기록 및 에이전트 이벤트",
-      "connectedServices": "연결된 서비스(자격 증명 제외)",
-      "networkLogs": "네트워크 요청 로그",
-      "runContext": "실행 컨텍스트 및 환경",
-      "title": "전송되는 내용"
-    },
-    "documentTitle": "오류 신고",
-    "error": {
-      "loadFailed": "실행 세부 정보를 불러오지 못했습니다",
-      "notFailed": "이 실행은 실패하지 않아 신고할 수 없습니다",
-      "title": "오류",
-      "tryAgain": "다시 시도"
-    },
-    "fields": {
-      "description": "설명",
-      "descriptionPlaceholder": "무슨 일이 있었나요? 무엇을 기대했나요?",
-      "title": "제목",
-      "titlePlaceholder": "문제에 대한 간략한 요약"
-    },
-    "loading": "실행 세부 정보 불러오는 중",
-    "send": "보고서 보내기",
-    "sending": "전송 중...",
-    "success": {
-      "description": "오류 보고서가 개발팀에 전송되었습니다. 팀에서 조사 후 후속 조치를 진행합니다.",
-      "reference": "참조: {{reference}}",
-      "title": "보고서 전송 완료"
-    },
-    "title": "개발자에게 오류 보고"
   },
   "settings": {
     "accountMenu": {
@@ -4031,8 +4046,9 @@
           "title": "환경설정"
         },
         "usage": {
-          "balanceDescription": "팀의 크레딧 잔액과 사용량입니다.",
+          "balanceDescription": "팀이 사용할 수 있는 잔액입니다.",
           "balanceTitle": "크레딧 잔액",
+          "balanceUsageDescription": "팀의 크레딧 잔액 및 사용량입니다.",
           "usageDescription": "채팅, 자동화, 채널에서의 크레딧 사용량입니다.",
           "usageTitle": "크레딧 사용량"
         }
@@ -4190,12 +4206,18 @@
         "title": "공급자 연결"
       },
       "personal": {
+        "accountFallback": "계정 {{number}}",
         "actionForProvider": "{{provider}} {{action}}",
+        "activeAccount": "활성",
+        "addAccount": "계정 추가",
         "claudeDescription": "Claude 지원 모델 경로를 위한 Claude Code 로그인 연결",
         "claudeTitle": "Claude Code OAuth",
         "codexDescription": "Codex 지원 모델 경로를 위한 Codex 기기 로그인 연결",
         "codexTitle": "ChatGPT (Codex)",
         "description": "본인의 자격 증명으로 실행 시에만 사용됩니다.",
+        "noAccounts": "연결된 계정이 없습니다.",
+        "reconnectAccount": "다시 연결",
+        "removeAccount": "삭제",
         "sectionTitle": "개인",
         "status": {
           "connected": "연결됨",
@@ -4204,18 +4226,19 @@
           "left": "{{percent}} 남음",
           "stale": "주의 필요",
           "week": "주간"
-        }
+        },
+        "useAccount": "사용"
       },
       "picker": {
-        "balancedUse": "균형 잡힌 사용",
         "builtInModel": "내장 모델",
         "byokHelp": "구성된 공급자 사용",
         "fast": "빠름",
+        "fastImpact": "모델 속도 1.5× · 크레딧 사용량 2.5×",
         "inheritDefault": "조직 기본값 상속",
         "loadError": "모델을 불러올 수 없습니다.",
         "loading": "모델 불러오는 중...",
+        "manageMoreModels": "더 많은 모델 관리",
         "models": "모델",
-        "moreCodexCredits": "Codex 크레딧을 더 많이 사용합니다.",
         "noConfiguredModels": "구성된 모델 없음",
         "priceTiers": {
           "balanced": "비용과 성능의 균형",
@@ -4223,15 +4246,14 @@
           "frontier": "최첨단 프런티어 모델",
           "premium": "가장 어려운 작업용 프리미엄 프런티어 모델"
         },
-        "prioritizeSpeed": "속도 우선",
         "pro": "프로",
         "providerLabels": {
           "azureFoundryPortal": "Azure 파운드리 포털",
           "claudeCodeOauth": "Claude Code (OAuth 토큰)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "실행 속도",
-        "standard": "표준"
+        "standard": "표준",
+        "videoModels": "동영상 모델"
       },
       "policies": {
         "actionsFor": "{{model}}에 대한 작업",
@@ -4287,6 +4309,8 @@
         "codexTitle": "ChatGPT 세션 재연결 필요"
       },
       "toasts": {
+        "accountRemoved": "계정이 삭제되었습니다",
+        "accountSwitched": "활성 계정이 변경되었습니다",
         "disconnected": "{{provider}} 연결 해제됨",
         "policiesUpdated": "모델 공급자 설정이 업데이트되었습니다.",
         "reset": "Codex 사용량이 재설정되었습니다.",
@@ -4330,6 +4354,24 @@
           "enabled_one": "다음 {{count}}회 실행 동안 활성화됨",
           "enabled_other": "다음 {{count}}회 실행 동안 활성화됨",
           "title": "네트워크 본문 캡처"
+        },
+        "connectionDiagnostics": {
+          "activeWaits": "활성 대기",
+          "blurred": "포커스 없음",
+          "channel": "채널",
+          "clear": "지우기",
+          "connection": "연결",
+          "copyJson": "JSON 복사",
+          "description": "브라우저 수명 주기, 인증 복구 및 Ably 연결 신호를 확인합니다.",
+          "empty": "기록된 진단 이벤트가 없습니다.",
+          "events": "이벤트",
+          "focused": "포커스됨",
+          "log": "이벤트 로그",
+          "offline": "오프라인",
+          "online": "온라인",
+          "recovery": "복구",
+          "title": "실시간 연결 진단",
+          "unavailable": "사용 불가"
         },
         "tab": "디버그"
       },
@@ -4429,8 +4471,9 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "사용량 패키지와 추가 기능을 포함한 모든 활성 구독이 즉시 취소됩니다. 사용하지 않은 선불 구독 기간은 비례 계산하여 환불됩니다. 일회성 구매 및 기타 비구독 구매는 환불되지 않습니다.",
           "button": "워크스페이스 삭제",
-          "confirmDescription": "{{workspace}}와 모든 데이터를 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다. 확인하려면 워크스페이스 이름을 입력하세요.",
+          "confirmDescription": "이 워크스페이스와 모든 데이터를 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하려면 confirm을 입력하세요.",
           "description": "이 워크스페이스와 모든 데이터를 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
           "progress": "삭제 중...",
           "title": "워크스페이스 삭제",
@@ -4456,9 +4499,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "유효한 이메일 주소를 입력하세요",
           "progress": "전송 중...",
+          "purchase": {
+            "description": "아래의 일할 계산 금액을 확인하세요. 확인하면 저장된 결제 수단으로 청구되고 초대가 전송됩니다.",
+            "error": "이 멤버 패키지를 구매할 수 없습니다. 결제 정보를 확인하고 다시 시도하세요.",
+            "invitee": "초대 대상",
+            "title": "초대 검토"
+          },
           "roleLabel": "역할",
           "send": "초대장 보내기",
-          "title": "멤버 초대"
+          "title": "멤버 초대",
+          "upgrade": {
+            "action": "Pro로 업그레이드",
+            "description": "멤버 초대는 Pro 플랜에서 사용할 수 있습니다. 이 워크스페이스를 업그레이드하여 멤버를 초대하고 역할을 관리하세요.",
+            "title": "멤버를 초대하려면 업그레이드하세요"
+          }
         },
         "joined": "참여함",
         "joinRequests": "참여 요청",
@@ -4473,7 +4527,10 @@
           "action": "워크스페이스에서 제거",
           "confirmDescription": "{{email}}가 이 워크스페이스에서 제거되어 모든 리소스 접근 권한을 잃게 됩니다.",
           "progress": "제거 중...",
-          "title": "멤버를 제거하시겠습니까?"
+          "title": "멤버를 제거하시겠습니까?",
+          "usagePackImpactDescription": "이 멤버의 사용량 패키지에 남아 있는 크레딧은 즉시 사용할 수 없게 됩니다. 패키지는 현재 청구 기간이 끝날 때 제거됩니다. 이로 인해 워크스페이스에 사용량 패키지가 하나도 남지 않으면 워크스페이스 플랜도 청구 기간 종료 시 취소됩니다.",
+          "usagePackImpactTitle": "사용량 패키지에 미치는 영향",
+          "usagePackRefundDescription": "환불: 구매한 크레딧 중 사용하지 않은 부분은 원래 결제 수단으로 환불됩니다. 사용한 크레딧과 보너스 크레딧은 환불되지 않습니다."
         },
         "revoke": {
           "action": "초대 취소",
@@ -4495,6 +4552,7 @@
           "progress": "전환 중...",
           "title": "멤버로 전환하시겠습니까?"
         },
+        "usagePack": "사용량 패키지",
         "user": "사용자",
         "you": "나"
       },
@@ -4556,40 +4614,21 @@
       "title": "페이지를 찾을 수 없습니다"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "이 공유된 대화는 존재하지 않습니다.",
+    "notFoundTitle": "공유된 대화를 찾을 수 없습니다",
+    "tryOkou": "Okou 사용해 보기"
+  },
   "usage": {
-    "automations": {
-      "empty": "이 기간에 사용된 자동화가 없습니다",
-      "more_one": "+{{value}}개의 자동화 더 보기",
-      "more_other": "+{{value}}개의 자동화 더 보기",
-      "summary_one": "{{automations}}개 자동화가 {{credits}} 크레딧을 사용했습니다",
-      "summary_other": "{{automations}}개 자동화가 {{credits}} 크레딧을 사용했습니다",
-      "title": "자동화"
-    },
-    "chart": {
-      "ariaLabel": "크레딧 합계",
-      "credits": "크레딧",
-      "groupBy": {
-        "agent": "에이전트",
-        "source": "출처"
-      },
-      "noUsage": "사용 내역 없음",
-      "showDetails": "{{date}} 사용 내역 보기"
-    },
-    "chats": {
-      "clickToOpen": "열려면 클릭",
-      "empty": "이 기간에 채팅이 없습니다",
-      "more_one": "+{{value}}개의 채팅 더 보기",
-      "more_other": "+{{value}}개의 채팅 더 보기",
-      "summary_one": "{{chats}}개 채팅이 {{credits}} 크레딧을 사용했습니다",
-      "summary_other": "{{chats}}개 채팅이 {{credits}} 크레딧을 사용했습니다",
-      "title": "채팅",
-      "untitled": "(제목 없음)"
-    },
     "displayNames": {
-      "auto": "자동",
+      "avatar": "아바타",
       "finance": "금융",
+      "imageRecognize": "이미지 인식",
       "maps": "지도",
       "peopleSearch": "사람 검색",
+      "seo": "SEO",
+      "translation": "번역",
       "usage": "사용량",
       "weather": "날씨",
       "webFetch": "웹 가져오기",
@@ -4602,29 +4641,25 @@
       "other": "기타",
       "video": "비디오"
     },
-    "page": {
-      "description": "채팅, 자동화, 채널 전반의 크레딧 사용량입니다.",
-      "loadError": "사용량 정보를 불러오지 못했습니다. 나중에 다시 시도해 주세요.",
-      "title": "사용량"
-    },
     "range": {
-      "ariaLabel": "날짜 범위",
       "billingPeriod": "청구 기간",
       "last24Hours": "지난 24시간",
-      "last28Days": "지난 28일",
-      "last30Days": "지난 30일",
       "last7Days": "지난 7일",
-      "selectedDay": "선택한 날짜",
       "today": "오늘",
       "yesterday": "어제"
     },
     "records": {
-      "emptyBillingPeriod": "이 청구 기간에 사용 내역이 없습니다.",
-      "emptyRange": "이 기간에 사용 내역이 없습니다.",
+      "empty": {
+        "billingPeriodTitle": "이 청구 기간에 사용 내역이 없습니다",
+        "description": "채팅, 자동화, 채널에서 사용한 크레딧이 여기에 표시됩니다.",
+        "noBillingPeriodDescription": "청구 기간이 시작되면 팀 사용량이 표시됩니다.",
+        "noBillingPeriodTitle": "활성 청구 기간이 없습니다",
+        "rangeTitle": "이 기간에 사용 내역이 없습니다",
+        "teamDescription": "팀이 채팅, 자동화, 채널에서 사용한 크레딧이 여기에 표시됩니다."
+      },
       "loadError": "사용량을 불러올 수 없습니다.",
       "loadMore": "더 불러오기",
       "myUsage": "내 사용량",
-      "noActiveBillingPeriod": "활성 청구 기간이 없습니다.",
       "teamLoadError": "팀 사용량을 불러올 수 없습니다.",
       "teamUsage": "팀 사용량",
       "untitled": "(제목 없음)"
@@ -4636,16 +4671,12 @@
       "email": "이메일",
       "github": "GitHub",
       "other": "기타",
-      "others": "기타",
       "phone": "전화",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "알 수 없음"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}}개 자동화",
-      "automation_other": "{{value}}개 자동화",
       "chat_one": "{{value}}개 채팅",
       "chat_other": "{{value}}개 채팅",
       "credit_one": "{{value}} 크레딧",
@@ -4726,17 +4757,21 @@
         "second_one": "{{count}}초",
         "second_other": "{{count}}초"
       },
+      "forms": {
+        "addAction": "Google Forms 자동화 추가",
+        "addAria": "Google Forms 응답 자동화 추가",
+        "addDescription": "선택한 Google 양식에 새 응답이 제출되면 이 워크플로를 실행합니다.",
+        "addTitle": "Google Forms 자동화 추가",
+        "formUrl": "양식 링크",
+        "formUrlPlaceholder": "https://docs.google.com/forms/d/<form-id>/edit",
+        "responseSubmittedDescription": "Google 양식에 새 응답이 제출되면 실행합니다.",
+        "responseSubmittedTitle": "Google Forms 응답이 제출됨",
+        "rule": "{{form}}에 응답이 제출될 때",
+        "summary": "양식 {{form}}"
+      },
       "github": {
-        "accountConnect": "GitHub 연결",
-        "accountRequired": "Me를 사용하려면 GitHub 계정을 연결하세요.",
-        "actorAnyone": "누구나",
-        "actorMe": "나",
         "actors": "행위자",
         "actorsPlaceholder": "octocat, dependabot[bot]",
-        "addLabelAction": "라벨 자동화 추가",
-        "addLabelAria": "GitHub 라벨 자동화 추가",
-        "addLabelDescription": "GitHub 라벨이 적용될 때 이 워크플로를 실행합니다.",
-        "addLabelTitle": "GitHub 라벨 자동화 추가",
         "addWebhookAction": "자동화 추가",
         "addWebhookAria": "{{title}} 자동화 추가",
         "addWebhookDescription": "일치하는 GitHub 웹훅 이벤트가 도착할 때 이 워크플로를 실행합니다.",
@@ -4798,13 +4833,6 @@
         "jobs": "작업",
         "jobsPlaceholder": "테스트, 빌드",
         "jobsSummary": "작업 {{values}}",
-        "labelAppliedDescription": "이슈 또는 풀 리퀘스트에 라벨이 적용되면 실행합니다.",
-        "labelAppliedRule": "GitHub 라벨 {{label}}이(가) 적용될 때",
-        "labelAppliedTitle": "GitHub 라벨 적용됨",
-        "labelName": "라벨 이름",
-        "labelOnlySummary": "라벨 {{label}}",
-        "labelPlaceholder": "분류",
-        "labelSummary": "라벨 {{label}} · {{subject}} · 실행자 {{actor}}",
         "loadError": "GitHub 설정을 불러올 수 없습니다.",
         "nonProductionOnly": "비프로덕션 전용",
         "option": {
@@ -4829,12 +4857,36 @@
         },
         "productionEnvironment": "프로덕션 환경",
         "productionOnly": "프로덕션 전용",
+        "pullRequestAction": "액션",
+        "pullRequestActionClosed": "닫힘",
+        "pullRequestActionConvertedToDraft": "초안으로 전환",
+        "pullRequestActionDequeued": "병합 대기열에서 제거",
+        "pullRequestActionEnqueued": "병합 대기열에 추가",
+        "pullRequestActionLabeled": "라벨 적용",
+        "pullRequestActionOpened": "열림",
+        "pullRequestActionReadyForReview": "리뷰 준비 완료",
+        "pullRequestActionReopened": "다시 열림",
+        "pullRequestActionSynchronize": "새 커밋 푸시",
+        "pullRequestActionUnlabeled": "라벨 제거",
+        "pullRequestAuthors": "작성자",
+        "pullRequestClosedWithoutMergeOnly": "병합 없이 닫힘",
+        "pullRequestDescription": "한 리포지토리의 풀 리퀘스트가 열리거나 병합되거나 라벨이 지정되거나 상태가 바뀔 때 실행합니다.",
+        "pullRequestLabels": "라벨",
+        "pullRequestLabelsPlaceholder": "ready-to-merge",
+        "pullRequestMerged": "병합됨",
+        "pullRequestMergedOnly": "병합된 경우만",
+        "pullRequestNumbers": "풀 리퀘스트 번호",
+        "pullRequestNumbersPlaceholder": "42, 128",
+        "pullRequestRule": "{{repository}}의 풀 리퀘스트 {{action}} 시",
         "pullRequestsOnly": "풀 리퀘스트 전용",
+        "pullRequestTitle": "GitHub 풀 리퀘스트",
         "refs": "참조",
         "refsPlaceholder": "main, v1.0.0",
         "repositories": "저장소",
         "repositoriesPlaceholder": "vm0-ai/vm0, owner/another-repo",
         "repositoriesSummary": "저장소 {{values}}",
+        "repository": "리포지토리",
+        "repositoryPlaceholder": "owner/name",
         "reviewDescription": "일치하는 리뷰가 제출되면 실행합니다.",
         "reviewRule": "일치하는 GitHub 풀 리퀘스트 리뷰가 제출될 때",
         "reviewStates": "리뷰 상태",
@@ -4846,10 +4898,8 @@
         "saveFilters": "필터 저장",
         "selectNoneAny": "아무 것도 선택하지 않으면 모든 값과 일치합니다.",
         "selectNoneConclusion": "아무 것도 선택하지 않으면 모든 완료된 결론과 일치합니다.",
-        "startedBy": "시작자",
         "subject": "주제",
         "trustedAuthors": "신뢰하는 작성자",
-        "updateLabelAria": "GitHub 라벨 자동화 업데이트",
         "updateWebhookAria": "{{title}} 자동화 업데이트",
         "updateWorkflowAria": "GitHub 워크플로 자동화 업데이트",
         "withConclusions": " {{values}} 포함",
@@ -4967,6 +5017,7 @@
       "picker": {
         "calendar": "캘린더",
         "email": "이메일",
+        "forms": "Google Forms",
         "integrations": "통합",
         "notion": "Notion",
         "schedule": "일정"
@@ -5043,14 +5094,53 @@
         "localeSummary": "로케일 {{locale}}",
         "rule": "일치하는 Strapi 항목이 게시될 때"
       },
+      "stripe": {
+        "addAction": "Stripe 자동화 추가",
+        "addAria": "Stripe 인보이스 결제 완료 자동화 추가",
+        "addDescription": "연결된 Stripe Live 계정에서 일치하는 인보이스가 결제되면 이 워크플로를 실행합니다.",
+        "addTitle": "Stripe 자동화 추가",
+        "anyBillingReason": "모든 청구 사유",
+        "billingReason": {
+          "automaticPendingInvoiceItemInvoice": "대기 중 인보이스 항목 자동 청구",
+          "manual": "수동",
+          "quoteAccept": "견적 승인",
+          "subscription": "구독",
+          "subscriptionCreate": "구독 생성",
+          "subscriptionCycle": "구독 주기",
+          "subscriptionThreshold": "구독 임계값",
+          "subscriptionUpdate": "구독 업데이트",
+          "upcoming": "예정"
+        },
+        "billingReasons": "청구 사유",
+        "billingReasonsHint": "아무것도 선택하지 않으면 모든 청구 사유와 일치합니다.",
+        "bindingSummary": "Stripe 계정 {{accountId}} · Live 모드 · {{billingReasons}}",
+        "delivery": "전달",
+        "deliveryStatus": {
+          "delivered": "전달됨",
+          "failed": "실패",
+          "pending": "대기 중",
+          "skipped": "건너뜀"
+        },
+        "deliveryWarning": "최근 최종 전달이 실패했습니다. 다시 시도하기 전에 워크플로 활동을 확인하세요.",
+        "immutableHint": "Stripe 계정과 청구 사유는 고정되어 있습니다. 변경하려면 이 자동화를 삭제하고 다시 만드세요.",
+        "invoicePaidDescription": "일치하는 Stripe 인보이스가 결제되면 실행합니다.",
+        "invoicePaidTitle": "Stripe 인보이스 결제 완료",
+        "lastEvent": "최근 이벤트",
+        "manageConnection": "Stripe 연결 관리",
+        "noDeliveries": "아직 전달 없음",
+        "noMatchingEvents": "아직 일치하는 이벤트 없음",
+        "rule": "일치하는 Stripe 인보이스가 결제될 때"
+      },
       "types": {
         "chat": "채팅",
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google 캘린더",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "웹후크"
       },
       "webhook": {
@@ -5291,6 +5381,12 @@
     "connectedWithDetail": "연결됨 ({{detail}})",
     "documentTitle": "작업",
     "feishuConnected": "Feishu가 성공적으로 연결되었습니다",
+    "github": {
+      "adminInstall": "조직 관리자에게 GitHub 앱 설치를 요청하세요",
+      "description": "GitHub 이벤트로 워크플로 자동화 실행",
+      "install": "GitHub 앱 설치",
+      "title": "GitHub"
+    },
     "header": {
       "description": "{{displayName}}와(과) 다음 채널을 통해 연결됨",
       "title": "{{displayName}}가(이) 작동하는 곳"

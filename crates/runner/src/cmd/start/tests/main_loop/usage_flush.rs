@@ -41,17 +41,16 @@ fn write_usage_pending_state(
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {
-    use std::os::unix::fs::PermissionsExt;
     use tokio::io::AsyncBufReadExt;
 
     std::fs::create_dir_all(config.paths.base_dir.join("mitm-addon")).unwrap();
-    let script = config.paths.base_dir.join("usage-flush-child.sh");
-    std::fs::write(
-        &script,
-        r#"#!/usr/bin/env bash
+    let mut child = tokio::process::Command::new("bash")
+        .arg("-c")
+        .arg(
+            r#"
 set -euo pipefail
-fifo="$0.fifo"
-base_dir="$(dirname "$0")"
+base_dir="$1"
+fifo="$base_dir/usage-flush-child.fifo"
 request="$base_dir/mitm-addon/usage-flush-request"
 pending="$base_dir/mitm-addon/usage-pending"
 jsonl_request="$base_dir/mitm-addon/jsonl-flush-request"
@@ -87,14 +86,13 @@ while true; do
   write_jsonl_flush_state
 done
 "#,
-    )
-    .unwrap();
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-    let mut child = tokio::process::Command::new(&script)
+        )
+        .arg("usage-flush-child")
+        .arg(&config.paths.base_dir)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
         .spawn()
         .unwrap();
     let stdout = child.stdout.take().unwrap();

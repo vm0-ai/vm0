@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import { z } from "zod";
 
 import { safeJsonParse, safeSync } from "../../utils";
@@ -11,11 +11,14 @@ import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
   connectorCatalogArtifactSchema,
-  connectorCatalogVersionSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
 } from "./artifacts";
-import { artifactKeySchema, digestSchema } from "./common";
+import {
+  connectorCatalogVersionSchema,
+  artifactKeySchema,
+  digestSchema,
+} from "./common";
 import { validateConnectorCatalogPublicProjection } from "./public-leak";
 import { validateConnectorCatalogArtifact } from "./relationships";
 

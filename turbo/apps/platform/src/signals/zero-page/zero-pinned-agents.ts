@@ -2,7 +2,7 @@ import { command, computed } from "ccstate";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import { defaultAgentId$, sortedAgents$, subagents$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
-import { unreadAgentIds$ } from "../chat-page/sidebar-unread-threads.ts";
+import { unreadAgentIds$ } from "../chat-page/chat-thread-indicators.ts";
 import {
   updateUserPreference$,
   userPreferences$,

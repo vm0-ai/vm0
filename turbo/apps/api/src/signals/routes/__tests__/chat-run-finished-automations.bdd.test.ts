@@ -1,17 +1,25 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
-import { accept, setupApp } from "../../../__tests__/test-helpers";
-import { testContext } from "../../../__tests__/test-context";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import {
+  readLatestWorkflowAutomationRunFixture,
+  readWorkflowAutomationAutonomyFixture,
+  setRunAutonomyBudgetFixture,
+  setWorkflowAutomationAutonomyBudgetFixture,
+} from "./helpers/runtime-state";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 
 /**
  * chat-run-finished workflow automations: creation validation and dispatch
@@ -25,9 +33,12 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const wf = createWorkflowsBddApi(context);
+const WATCHED_THREAD_TITLE = "Watched chat run";
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function authHeaders() {
@@ -35,7 +46,7 @@ function authHeaders() {
 }
 
 interface ChatAutomationFixture {
-  readonly actor: ApiTestUser;
+  readonly actor: ApiTestUser & { readonly orgId: string };
   readonly agentId: string;
   readonly workflowId: string;
   readonly runnerGroup: string;
@@ -43,6 +54,9 @@ interface ChatAutomationFixture {
 
 async function setupChatAutomationFixture(): Promise<ChatAutomationFixture> {
   const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped workflow actor");
+  }
   chatCallbacks.acceptChatObjectStorage();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
@@ -61,7 +75,12 @@ async function setupChatAutomationFixture(): Promise<ChatAutomationFixture> {
     name: "chat-run-finished-workflow",
   });
   context.mocks.s3.send.mockResolvedValue({});
-  return { actor, agentId: agent.agentId, workflowId, runnerGroup };
+  return {
+    actor: { ...actor, orgId: actor.orgId },
+    agentId: agent.agentId,
+    workflowId,
+    runnerGroup,
+  };
 }
 
 /**
@@ -132,13 +151,18 @@ async function startWatchedChatRun(
       agentId: fixture.agentId,
       prompt,
       clientEventId: randomUUID(),
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     },
     [201],
   );
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected the chat send to create a run");
   }
+  await chat.renameThread(
+    fixture.actor,
+    sent.body.threadId,
+    WATCHED_THREAD_TITLE,
+  );
   return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
@@ -221,6 +245,67 @@ async function expectAutomationFired(automationId: string): Promise<void> {
     .toBeTruthy();
 }
 
+async function expectAutomationSourceAnnotation(
+  fixture: ChatAutomationFixture,
+  automationId: string,
+  sourceRun: { readonly runId: string; readonly threadId: string },
+  expectedDisplayMessage?: string,
+): Promise<void> {
+  const automation = await accept(
+    automationsClient().get({
+      headers: authHeaders(),
+      params: { id: automationId },
+    }),
+    [200],
+  );
+  const automationThreadId = automation.body.chatThreadId;
+  if (!automationThreadId) {
+    throw new Error("Expected the automation chat thread");
+  }
+  const automationRun = await readLatestWorkflowAutomationRunFixture(
+    context,
+    automationId,
+  );
+  if (!automationRun) {
+    throw new Error("Expected the triggered automation run");
+  }
+  const automationEvents = await chat.listThreadEvents(
+    fixture.actor,
+    automationThreadId,
+  );
+  const automationInput = automationEvents.events.find((event) => {
+    return (
+      event.eventType === "input.prompt" && event.runId === automationRun.runId
+    );
+  });
+  if (!automationInput || automationInput.eventType !== "input.prompt") {
+    throw new Error("Expected the triggered automation input");
+  }
+  if (expectedDisplayMessage) {
+    expect(chatEventDisplayText(automationInput)).toBe(expectedDisplayMessage);
+  }
+  expect(
+    automationInput.userMessage.parts.filter((part) => {
+      return (
+        part.type === "source" ||
+        part.type === "automation" ||
+        part.type === "goal" ||
+        part.type === "morning_brief"
+      );
+    }),
+  ).toStrictEqual([
+    {
+      type: "source",
+      kind: "agent",
+      runId: sourceRun.runId,
+      threadId: sourceRun.threadId,
+      agentId: fixture.agentId,
+      titleSnapshot: WATCHED_THREAD_TITLE,
+      href: `/chats/${sourceRun.threadId}#run-${sourceRun.runId}`,
+    },
+  ]);
+}
+
 describe("chat-run-finished workflow automations", () => {
   it("requires the watched chat thread to belong to the automation owner", async () => {
     const fixture = await setupChatAutomationFixture();
@@ -253,7 +338,7 @@ describe("chat-run-finished workflow automations", () => {
     });
     const otherThread = await chat.createThread(otherUser, {
       agentId: otherAgent.agentId,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     // Restore the fixture actor's session after acting as the other member.
     await bdd.readMe(fixture.actor);
@@ -276,12 +361,46 @@ describe("chat-run-finished workflow automations", () => {
     expect(foreignThread.body.error.message).toContain("Chat thread not found");
   });
 
+  it("prevents a workflow from watching its own chat thread", async () => {
+    const fixture = await setupChatAutomationFixture();
+    const workflowThread = await chat.createThread(fixture.actor, {
+      agentId: fixture.agentId,
+      model: "claude-sonnet-5",
+    });
+    const workflowId = await wf.createWorkflow(fixture.actor, {
+      agentId: fixture.agentId,
+      name: `self-watching-${randomUUID().slice(0, 8)}`,
+      chatThreadId: workflowThread.id,
+    });
+
+    const response = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "chat-run-finished",
+          eventConfig: {
+            provider: "chat",
+            event: "run_finished",
+            chatThreadId: workflowThread.id,
+          },
+        },
+      }),
+      [400],
+    );
+    expect(response.body.error.message).toBe(
+      "A workflow cannot watch run-finished events from its own chat thread",
+    );
+  });
+
   it(
     "fires claimable matching automations when a watched run completes",
     { timeout: 30_000 },
     async () => {
       const fixture = await setupChatAutomationFixture();
       const run = await startWatchedChatRun(fixture, "watched completed run");
+      await setRunAutonomyBudgetFixture(context, run.runId, 2);
 
       const fireAlways = await createChatRunFinishedAutomation(fixture, {
         chatThreadId: run.threadId,
@@ -299,6 +418,11 @@ describe("chat-run-finished workflow automations", () => {
         chatThreadId: run.threadId,
         outputPattern: "*all systems nominal*",
       });
+      await setWorkflowAutomationAutonomyBudgetFixture(
+        context,
+        patternMatch,
+        0,
+      );
 
       chatCallbacks.mockChatOutputEvents([
         {
@@ -320,6 +444,29 @@ describe("chat-run-finished workflow automations", () => {
       await expectAutomationFired(patternMatch);
       await expect(automationLastRunAt(failedOnly)).resolves.toBeNull();
       await expect(automationLastRunAt(patternMiss)).resolves.toBeNull();
+      const fireAlwaysState = await readWorkflowAutomationAutonomyFixture(
+        context,
+        fireAlways,
+      );
+      const patternMatchState = await readWorkflowAutomationAutonomyFixture(
+        context,
+        patternMatch,
+      );
+      expect(fireAlwaysState).toMatchObject({ autonomyBudget: 10 });
+      expect(patternMatchState).toMatchObject({ autonomyBudget: 0 });
+      await expect(
+        readLatestWorkflowAutomationRunFixture(context, fireAlways),
+      ).resolves.toMatchObject({ autonomyBudget: 1 });
+      await expect(
+        readLatestWorkflowAutomationRunFixture(context, patternMatch),
+      ).resolves.toMatchObject({ autonomyBudget: 1 });
+
+      await expectAutomationSourceAnnotation(
+        fixture,
+        fireAlways,
+        run,
+        "A run in the watched chat thread completed.",
+      );
 
       const automationRuns = await api.listAgentRuns(fixture.actor, {
         status: "pending",
@@ -331,6 +478,64 @@ describe("chat-run-finished workflow automations", () => {
         throw new Error("Expected a triggered automation run");
       }
       await claimChatRun(fixture.runnerGroup, automationRunId);
+    },
+  );
+
+  it(
+    "shows an error instead of firing when the watched run exhausts its budget",
+    { timeout: 30_000 },
+    async () => {
+      const fixture = await setupChatAutomationFixture();
+      const run = await startWatchedChatRun(fixture, "exhausted watched run");
+      const automationId = await createChatRunFinishedAutomation(fixture, {
+        chatThreadId: run.threadId,
+      });
+      await setRunAutonomyBudgetFixture(context, run.runId, 0);
+
+      const sandboxHeaders = await claimChatRun(fixture.runnerGroup, run.runId);
+      await completeChatRunOk(run.runId, sandboxHeaders);
+
+      let automationThreadId: string | null = null;
+      await expect
+        .poll(async () => {
+          const automation = await accept(
+            automationsClient().get({
+              headers: authHeaders(),
+              params: { id: automationId },
+            }),
+            [200],
+          );
+          automationThreadId = automation.body.chatThreadId;
+          return automationThreadId;
+        })
+        .toStrictEqual(expect.any(String));
+      const exhaustedAutomationThreadId = automationThreadId;
+      if (!exhaustedAutomationThreadId) {
+        throw new Error("Expected the automation chat thread");
+      }
+
+      await expect
+        .poll(async () => {
+          const messages = await chat.listThreadEvents(
+            fixture.actor,
+            exhaustedAutomationThreadId,
+          );
+          return messages.events.find((event) => {
+            return event.eventType === "output.error";
+          });
+        })
+        .toMatchObject({
+          eventType: "output.error",
+          error: "AUTONOMY_BUDGET_EXHAUSTED",
+        });
+      await expect(
+        readWorkflowAutomationAutonomyFixture(context, automationId),
+      ).resolves.toMatchObject({
+        autonomyBudget: 10,
+        enabled: true,
+        lastRunId: null,
+      });
+      await expect(automationLastRunAt(automationId)).resolves.toBeNull();
     },
   );
 
@@ -363,6 +568,7 @@ describe("chat-run-finished workflow automations", () => {
       );
 
       await expectAutomationFired(failedOnly);
+      await expectAutomationSourceAnnotation(fixture, failedOnly, run);
       await expect(automationLastRunAt(completedOnly)).resolves.toBeNull();
       // Error messages are not matchable output, so pattern automations stay
       // silent even when the error text would match.

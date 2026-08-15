@@ -1,5 +1,5 @@
 /**
- * Tests for zero telegram message send command.
+ * Tests for okou telegram message send command.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -9,9 +9,9 @@ import { sendCommand } from "../message/send";
 import chalk from "chalk";
 
 const TELEGRAM_MESSAGE_URL =
-  "http://localhost:3000/api/zero/integrations/telegram/message";
+  "http://localhost:3000/api/okou/integrations/telegram/message";
 
-describe("zero telegram message send command", () => {
+describe("okou telegram message send command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -23,7 +23,7 @@ describe("zero telegram message send command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
   });

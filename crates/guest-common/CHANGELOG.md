@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.3.8](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.7...guest-common-v0.3.8) (2026-08-14)
+
+## [0.3.7](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.6...guest-common-v0.3.7) (2026-08-14)
+
+## [0.3.6](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.5...guest-common-v0.3.6) (2026-08-14)
+
+## [0.3.5](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.4...guest-common-v0.3.5) (2026-08-14)
+
+## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.3...guest-common-v0.3.4) (2026-08-14)
+
+## [0.3.3](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.2...guest-common-v0.3.3) (2026-08-13)
+
+## [0.3.2](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.1...guest-common-v0.3.2) (2026-08-13)
+
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.0...guest-common-v0.3.1) (2026-08-13)
+
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.72...guest-common-v0.3.0) (2026-08-13)
+
+
+### Features
+
+* **runner:** migrate run identity env to okou ([#26796](https://github.com/vm0-ai/vm0/issues/26796)) ([88850c3](https://github.com/vm0-ai/vm0/commit/88850c33b9bb20018d9e0fd12097cc5eb7fb2bde))
+
+## [0.2.72](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.71...guest-common-v0.2.72) (2026-08-12)
+
+## [0.2.71](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.70...guest-common-v0.2.71) (2026-08-12)
+
+## [0.2.70](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.69...guest-common-v0.2.70) (2026-08-11)
+
+## [0.2.69](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.68...guest-common-v0.2.69) (2026-08-11)
+
+## [0.2.68](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.67...guest-common-v0.2.68) (2026-08-10)
+
+## [0.2.67](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.66...guest-common-v0.2.67) (2026-08-09)
+
+## [0.2.66](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.65...guest-common-v0.2.66) (2026-08-09)
+
+## [0.2.65](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.64...guest-common-v0.2.65) (2026-08-07)
+
+
+### Bug Fixes
+
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+## [0.2.64](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.63...guest-common-v0.2.64) (2026-08-07)
+
+## [0.2.63](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.62...guest-common-v0.2.63) (2026-08-06)
+
+## [0.2.62](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.61...guest-common-v0.2.62) (2026-08-05)
+
+## [0.2.61](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.60...guest-common-v0.2.61) (2026-08-04)
+
+## [0.2.60](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.59...guest-common-v0.2.60) (2026-08-04)
+
 ## [0.2.59](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.58...guest-common-v0.2.59) (2026-08-03)
 
 ## [0.2.58](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.57...guest-common-v0.2.58) (2026-08-03)

@@ -45,7 +45,10 @@ mod workspace_session_history_materializer;
 
 pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
 pub(crate) use cli_framework::effective_cli_framework;
-pub(crate) use guest_state::{is_valid_guest_timezone_name, restore_guest_state_with_timezone};
+pub(crate) use guest_state::{
+    is_shell_safe_guest_timezone_name, restore_guest_state_with_intent,
+    restore_guest_state_with_timezone, try_sync_guest_timezone_intent,
+};
 pub(crate) use session_history_cpu::SessionHistoryCpuPool;
 pub(crate) use session_history_download::{SessionHistoryMaterializer, SessionHistoryProbe};
 pub(crate) use session_history_restore_plan::{
@@ -54,13 +57,16 @@ pub(crate) use session_history_restore_plan::{
 };
 
 use crate::active_input::ActiveInputSource;
-use agent_run::{ProcessCancelTimeouts, RunControls};
+use agent_run::{PreparedRunInputs, ProcessCancelTimeouts, RunControls};
 use env::validate_execution_context_before_sandbox;
 pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
     NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
 };
-pub(crate) use telemetry::{RunnerPreSpawnPhase, RunnerPreSpawnTiming};
+pub(crate) use telemetry::{
+    ExactReuseSpeculationTiming, RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase,
+    RunnerPreSpawnTiming,
+};
 use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
 
 use crate::ids::RunId;
@@ -69,6 +75,7 @@ use api_contracts::generated::constants::runners::{
     RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
     paths::{CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR},
 };
+use guest_contracts::exec_terminal::EXEC_TERMINAL_CLEANUP_BUDGET;
 
 /// Maximum guest-side runtime budget for a single agent process (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
@@ -79,20 +86,25 @@ const JOB_TIMEOUT_EXIT_CODE: i32 = guest_contracts::diagnostics::AGENT_EXECUTION
 /// plus a full presigned-upload timeout without letting an unavailable backend
 /// hold runner capacity indefinitely.
 const JOB_FINALIZATION_GRACE_TIMEOUT: Duration = Duration::from_secs(90);
-/// Extra time for the host to receive guest timeout terminal proof.
-///
-/// The sandbox supervisor receives the execution budget plus finalization
-/// grace. This additional host grace covers vsock-guest's bounded
-/// supervised-process cleanup, its 5s stdout/stderr drain deadline, and normal
-/// scheduling overhead before it sends terminal proof.
-const JOB_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Host-owned allowance beyond guest terminal cleanup for scheduling,
+/// observation, and terminal proof delivery after the supervisor timeout.
+const JOB_TERMINAL_HOST_SLACK: Duration = Duration::from_millis(3_250);
+const JOB_TERMINAL_GRACE_TIMEOUT: Duration =
+    EXEC_TERMINAL_CLEANUP_BUDGET.saturating_add(JOB_TERMINAL_HOST_SLACK);
 /// Maximum time to spend writing a guest control or cancellation frame.
 const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
-/// Grace period for the guest to report a terminal status after cancel is sent.
-/// This covers vsock-guest's bounded supervised-process cleanup (500ms TERM
-/// grace, 1s cgroup.kill empty wait, and 250ms cgroup removal), its 5s
-/// stdout/stderr drain deadline, and normal scheduling overhead.
-const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(8);
+/// Host-owned allowance beyond guest terminal cleanup after cancel is sent.
+const PROCESS_CANCEL_TERMINAL_HOST_SLACK: Duration = Duration::from_millis(1_250);
+const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration =
+    EXEC_TERMINAL_CLEANUP_BUDGET.saturating_add(PROCESS_CANCEL_TERMINAL_HOST_SLACK);
+const _: () = assert!(
+    JOB_TERMINAL_GRACE_TIMEOUT.as_nanos() == 10_000_000_000,
+    "job terminal grace changed; review guest cleanup and host slack"
+);
+const _: () = assert!(
+    PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT.as_nanos() == 8_000_000_000,
+    "process cancellation terminal grace changed; review guest cleanup and host slack"
+);
 const PROCESS_CANCEL_TIMEOUTS: ProcessCancelTimeouts = ProcessCancelTimeouts {
     write: PROCESS_CANCEL_WRITE_TIMEOUT,
     terminal_grace: PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT,
@@ -122,7 +134,6 @@ fn job_supervisor_timeout() -> Duration {
 fn job_terminal_wait_timeout() -> Duration {
     job_supervisor_timeout() + JOB_TERMINAL_GRACE_TIMEOUT
 }
-const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
 const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "BASH_ENV",
     "ENV",
@@ -146,7 +157,7 @@ use crate::network_log_manager::NetworkLogSession;
 use crate::paths::{HomePaths, LogPaths};
 use crate::proxy::{MitmJsonlFlushHandle, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, SandboxReuseResult};
+use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::{
     WorkspaceImageActiveLeaseRequest, WorkspaceImageCache, WorkspaceImageLease,
     WorkspaceImageLeaseIdentity, WorkspaceImagePromotionContext,
@@ -182,7 +193,7 @@ pub struct ExecutorConfig {
     pub network_log_manager: NetworkLogManager,
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
-    pub(crate) network_policy_refresh: Option<crate::provider::NetworkPolicyRefreshHandle>,
+    pub(crate) connector_runtime_sync: Option<crate::provider::ConnectorRuntimeSyncHandle>,
     pub(crate) session_history_cpu: SessionHistoryCpuPool,
     pub(crate) session_history_probe: SessionHistoryProbe,
     pub(crate) fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission,
@@ -238,16 +249,107 @@ impl ExecutionHooks {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SandboxReuseDisposition {
+    Eligible(SandboxReuseTerminal),
+    Ineligible(SandboxReuseRejection),
+}
+
+impl SandboxReuseDisposition {
+    #[must_use]
+    pub(crate) fn is_eligible(self) -> bool {
+        matches!(self, Self::Eligible(_))
+    }
+
+    #[must_use]
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Eligible(SandboxReuseTerminal::Success) => "eligible_success",
+            Self::Eligible(SandboxReuseTerminal::NonzeroExit) => "eligible_nonzero_exit",
+            Self::Eligible(SandboxReuseTerminal::ExecutionTimeout) => "eligible_execution_timeout",
+            Self::Eligible(SandboxReuseTerminal::CooperativeCancellation) => {
+                "eligible_cooperative_cancellation"
+            }
+            Self::Ineligible(SandboxReuseRejection::ExecutionUncertain) => "execution_uncertain",
+            Self::Ineligible(SandboxReuseRejection::HardCancellation) => "hard_cancellation",
+            Self::Ineligible(SandboxReuseRejection::UnconfirmedTimeout) => "unconfirmed_timeout",
+            Self::Ineligible(SandboxReuseRejection::ResourceFailure) => "resource_failure",
+            Self::Ineligible(SandboxReuseRejection::PostJobCleanupFailure) => {
+                "post_job_cleanup_failure"
+            }
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn telemetry_action(self) -> &'static str {
+        match self {
+            Self::Eligible(SandboxReuseTerminal::Success) => {
+                "runner_terminal_sandbox_reuse_eligible_success"
+            }
+            Self::Eligible(SandboxReuseTerminal::NonzeroExit) => {
+                "runner_terminal_sandbox_reuse_eligible_nonzero_exit"
+            }
+            Self::Eligible(SandboxReuseTerminal::ExecutionTimeout) => {
+                "runner_terminal_sandbox_reuse_eligible_execution_timeout"
+            }
+            Self::Eligible(SandboxReuseTerminal::CooperativeCancellation) => {
+                "runner_terminal_sandbox_reuse_eligible_cooperative_cancellation"
+            }
+            Self::Ineligible(SandboxReuseRejection::ExecutionUncertain) => {
+                "runner_terminal_sandbox_reuse_rejected_execution_uncertain"
+            }
+            Self::Ineligible(SandboxReuseRejection::HardCancellation) => {
+                "runner_terminal_sandbox_reuse_rejected_hard_cancellation"
+            }
+            Self::Ineligible(SandboxReuseRejection::UnconfirmedTimeout) => {
+                "runner_terminal_sandbox_reuse_rejected_unconfirmed_timeout"
+            }
+            Self::Ineligible(SandboxReuseRejection::ResourceFailure) => {
+                "runner_terminal_sandbox_reuse_rejected_resource_failure"
+            }
+            Self::Ineligible(SandboxReuseRejection::PostJobCleanupFailure) => {
+                "runner_terminal_sandbox_reuse_rejected_post_job_cleanup_failure"
+            }
+        }
+    }
+}
+
+impl Default for SandboxReuseDisposition {
+    fn default() -> Self {
+        Self::Ineligible(SandboxReuseRejection::ExecutionUncertain)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SandboxReuseTerminal {
+    Success,
+    NonzeroExit,
+    ExecutionTimeout,
+    CooperativeCancellation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SandboxReuseRejection {
+    ExecutionUncertain,
+    HardCancellation,
+    UnconfirmedTimeout,
+    ResourceFailure,
+    PostJobCleanupFailure,
+}
+
 /// Outcome of a job execution and ownership of any sandbox still alive afterward.
 pub struct ExecuteOutcome {
     pub failure: Option<ExecutionFailure>,
+    /// Backend-accepted active-input deliveries not already confirmed through
+    /// the direct receipt route. Provider completion settles these IDs.
+    pub(crate) active_input_delivery_ids: Vec<String>,
+    pub(crate) sandbox_reuse_disposition: SandboxReuseDisposition,
     /// Sandbox ownership after execution.
     ///
     /// `Some` transfers a still-live sandbox to the caller for finalization; it
-    /// does not imply the sandbox is eligible for reuse. Finalization considers
-    /// parking only when the exit code is zero, cancellation is not active, the
-    /// parking gate is open, and a reuse key is available. Cancellation before
-    /// ownership transfer or an unsuccessful park still destroys the sandbox.
+    /// does not imply the sandbox is eligible for reuse. Finalization consumes
+    /// `sandbox_reuse_disposition` and still enforces hard cancellation, the
+    /// parking gate, a reuse key, reuse preparation, and ownership transfer.
     ///
     /// `None` means no live sandbox ownership is returned, either because no
     /// sandbox was created or because executor-side cleanup already consumed
@@ -256,6 +358,8 @@ pub struct ExecuteOutcome {
     pub source_ip: String,
     pub network_log_session: Option<NetworkLogSession>,
     pub workspace_image: Option<WorkspaceImageLease>,
+    /// Final workspace-reuse outcome, when execution reached `RunStart`.
+    pub workspace_reuse_result: Option<WorkspaceReuseResult>,
     /// CLI-generated session ID read from the guest after execution.
     /// Used for late session tracking and finalization when `resume_session`
     /// is absent.
@@ -272,10 +376,13 @@ impl ExecuteOutcome {
     ) -> Self {
         Self {
             failure: Some(failure),
+            active_input_delivery_ids: Vec::new(),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             sandbox: Some(sandbox),
             source_ip,
             network_log_session: None,
             workspace_image,
+            workspace_reuse_result: None,
             discovered_cli_agent_session_id: None,
             restored_session_identity: None,
         }
@@ -499,23 +606,25 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
     let sandbox_id = dispatch.id.to_string();
-    let outcome = if let Err(error) = validate_execution_context_before_sandbox(
+    let outcome = match validate_execution_context_before_sandbox(
         &context,
         &config.api_url,
         &sandbox_id,
         dispatch.reuse_result,
     ) {
-        ExecuteOutcome {
+        Err(error) => ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
+            active_input_delivery_ids: Vec::new(),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             sandbox: None,
             source_ip: String::new(),
             network_log_session: None,
             workspace_image: None,
+            workspace_reuse_result: None,
             discovered_cli_agent_session_id: None,
             restored_session_identity: None,
-        }
-    } else {
-        match execute_new_sandbox_with_prepared_notifier(
+        },
+        Ok(prepared_run_payload) => match execute_new_sandbox_with_prepared_notifier(
             factory,
             &context,
             dispatch,
@@ -526,6 +635,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
                 controls: RunControls::from_cancellation(cancellation, active_input_source)
                     .with_spawn_timing(spawn_timing)
                     .with_session_history_restore_plan(session_history_restore_plan),
+                prepared_run_payload,
                 sandbox_prepared: sandbox_prepared.as_ref(),
             },
         )
@@ -534,14 +644,17 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             Ok(outcome) => outcome,
             Err(e) => ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(e.to_string())),
+                active_input_delivery_ids: Vec::new(),
+                sandbox_reuse_disposition: SandboxReuseDisposition::default(),
                 sandbox: None,
                 source_ip: String::new(),
                 network_log_session: None,
                 workspace_image: None,
+                workspace_reuse_result: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
             },
-        }
+        },
     };
 
     (outcome, telemetry)
@@ -604,6 +717,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         storage_fingerprints: prev_storage,
         restored_session_identity: _restored_session_identity,
         workspace_promotion,
+        guest_state_prepared,
     } = idle_sandbox.into_parts();
 
     let resume_session_error = validate_resume_session_id(&context).err();
@@ -667,33 +781,38 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
     let sandbox_id_string = sandbox_id.to_string();
-    let outcome = if let Err(error) = validate_execution_context_before_sandbox(
+    let outcome = match validate_execution_context_before_sandbox(
         &context,
         &config.api_url,
         &sandbox_id_string,
         SandboxReuseResult::Reused,
     ) {
-        ExecuteOutcome::reused_sandbox_failure(
+        Err(error) => ExecuteOutcome::reused_sandbox_failure(
             ExecutionFailure::from_error(error),
             sandbox,
             source_ip,
             workspace_image,
-        )
-    } else {
-        let mut outcome = execute_reused_sandbox(
-            sandbox,
-            &source_ip,
-            &context,
-            config,
-            &prev_storage,
-            &mut telemetry,
-            RunControls::from_cancellation(cancellation, active_input_source)
-                .with_spawn_timing(spawn_timing)
-                .with_session_history_restore_plan(session_history_restore_plan),
-        )
-        .await;
-        outcome.workspace_image = workspace_image;
-        outcome
+        ),
+        Ok(prepared_run_payload) => {
+            let mut outcome = execute_reused_sandbox(
+                sandbox,
+                &source_ip,
+                &context,
+                config,
+                &prev_storage,
+                &mut telemetry,
+                PreparedRunInputs::new(
+                    RunControls::from_cancellation(cancellation, active_input_source)
+                        .with_spawn_timing(spawn_timing)
+                        .with_session_history_restore_plan(session_history_restore_plan)
+                        .with_guest_state_prepared(guest_state_prepared),
+                    prepared_run_payload,
+                ),
+            )
+            .await;
+            outcome.workspace_image = workspace_image;
+            outcome
+        }
     };
 
     (outcome, telemetry)

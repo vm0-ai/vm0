@@ -3,15 +3,23 @@ import { randomUUID } from "node:crypto";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorsBySlugContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import {
+  deleteApiTestConnectorCatalogCompatibility,
+  installApiTestConnectorCatalog,
+} from "../../../test-fixtures/connector-catalog";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
+import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 
 const context = testContext();
 const store = createStore();
@@ -52,7 +60,9 @@ async function seedSandboxJwtFixture(): Promise<AuthenticatedFixture> {
 async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorManualGrantContract).connect({
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    ).connect({
       params: { connectorSlug: "openai" },
       body: {
         authMethod: "api-token",
@@ -67,7 +77,9 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
 async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorsBySlugContract).delete({
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    ).delete({
       params: { connectorSlug: "openai" },
       headers: authHeaders(),
     }),
@@ -88,7 +100,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({ params: { connectorSlug: "github" }, headers: {} }),
       [401],
@@ -100,7 +114,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "github" },
@@ -116,7 +132,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     const fixture = seedAuthenticatedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "github" },
@@ -134,7 +152,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     await connectOpenai(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "openai" },
@@ -148,6 +168,55 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
       authMethod: "api-token",
       connectionStatus: "connected",
     });
+  });
+
+  it("returns 404 when the stored connector runtime method is unavailable", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "openai",
+      authMethod: "unavailable-method",
+      storageVersion: 1,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
+    const response = await accept(
+      client.get({
+        params: { connectorSlug: "openai" },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the external catalog is unavailable", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await connectOpenai(fixture);
+    mockOptionalEnv("DROPBOX_OAUTH_CLIENT_ID", undefined);
+    await installApiTestConnectorCatalog();
+    await deleteApiTestConnectorCatalogCompatibility();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
+    const response = await accept(
+      client.get({
+        params: { connectorSlug: "openai" },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("allows access with a sandbox JWT carrying connector:read capability", async () => {
@@ -166,7 +235,9 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
       exp: seconds + 60,
     });
 
-    const client = setupApp({ context })(zeroConnectorsBySlugContract);
+    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsBySlugContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "openai" },

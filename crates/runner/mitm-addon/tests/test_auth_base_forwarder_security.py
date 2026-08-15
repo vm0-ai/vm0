@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 import auth_base_forwarder as forwarder
-from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+import auth_base_transport as transport
+from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstream
 
 
 class TestAuthBaseForwarderSecurity:
@@ -68,7 +69,7 @@ class TestAuthBaseForwarderSecurity:
         with (
             fake_forwarder_upstream(addresses=(resolved_address,)) as upstream,
             pytest.raises(
-                forwarder.UnsafeAuthBaseDestinationError,
+                transport.UnsafeAuthBaseDestinationError,
                 match=r"Unsafe auth\.base upstream destination",
             ),
         ):
@@ -80,7 +81,7 @@ class TestAuthBaseForwarderSecurity:
     async def test_rejects_dns_private_destination_without_opening_connection(self):
         with (
             fake_forwarder_upstream(addresses=("10.0.0.1",)) as upstream,
-            pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
+            pytest.raises(transport.UnsafeAuthBaseDestinationError),
         ):
             await forwarder.forward_request("https://hooks.example.com/path", "GET", [], None)
 
@@ -90,7 +91,7 @@ class TestAuthBaseForwarderSecurity:
     async def test_rejects_mixed_dns_answers_without_opening_connection(self):
         with (
             fake_forwarder_upstream(addresses=("93.184.216.34", "127.0.0.1")) as upstream,
-            pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
+            pytest.raises(transport.UnsafeAuthBaseDestinationError),
         ):
             await forwarder.forward_request("https://hooks.example.com/path", "GET", [], None)
 
@@ -264,14 +265,14 @@ class TestAuthBaseForwarderTransportSecurity:
         context = MagicMock()
         context.wrap_socket.return_value = wrapped_sock
         abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
-        conn = forwarder._make_validated_https_connection(
+        conn = transport._make_validated_https_connection(
             "hooks.example.com",
             port=None,
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                forwarder._ValidatedAddress(
-                    forwarder.socket.AF_INET,
+                transport.ValidatedAddress(
+                    transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
                 ),
@@ -279,17 +280,17 @@ class TestAuthBaseForwarderTransportSecurity:
         )
         vars(conn)["_context"] = context
 
-        with patch.object(forwarder.socket, "socket", return_value=raw_sock) as create_socket:
+        with patch.object(transport.socket, "socket", return_value=raw_sock) as create_socket:
             conn.connect()
 
         create_socket.assert_called_once_with(
-            forwarder.socket.AF_INET,
-            forwarder.socket.SOCK_STREAM,
+            transport.socket.AF_INET,
+            transport.socket.SOCK_STREAM,
         )
         raw_sock.connect.assert_called_once_with(("93.184.216.34", 443))
         raw_sock.setsockopt.assert_called_once_with(
-            forwarder.socket.IPPROTO_TCP,
-            forwarder.socket.TCP_NODELAY,
+            transport.socket.IPPROTO_TCP,
+            transport.socket.TCP_NODELAY,
             1,
         )
         context.wrap_socket.assert_called_once_with(
@@ -300,6 +301,46 @@ class TestAuthBaseForwarderTransportSecurity:
         wrapped_sock.do_handshake.assert_called_once_with()
         assert conn.sock is wrapped_sock
 
+    def test_validated_connection_cleans_up_wrapped_socket_when_tls_handshake_fails(self):
+        raw_sock = MagicMock()
+        handshake_error = ssl.SSLError("handshake failed")
+        wrapped_sock = FakeSocket(b"", handshake_side_effect=handshake_error)
+        context = MagicMock()
+        context.wrap_socket.return_value = wrapped_sock
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
+        conn = transport._make_validated_https_connection(
+            "hooks.example.com",
+            port=None,
+            deadline=time.monotonic() + 30,
+            abort_handle=abort_handle,
+            validated_addresses=(
+                transport.ValidatedAddress(
+                    transport.socket.AF_INET,
+                    "93.184.216.34",
+                    443,
+                ),
+            ),
+        )
+        vars(conn)["_context"] = context
+
+        with (
+            patch.object(transport.socket, "socket", return_value=raw_sock),
+            pytest.raises(ssl.SSLError) as raised,
+        ):
+            conn.request("GET", "/")
+
+        assert raised.value is handshake_error
+        assert wrapped_sock.handshake_count == 1
+        assert conn.sock is None
+        assert wrapped_sock.closed
+        assert wrapped_sock.close_count == 1
+        assert wrapped_sock.sent == b""
+        raw_sock.close.assert_not_called()
+
+        assert abort_handle.abort_for_shutdown()
+        assert wrapped_sock.shutdown_calls == []
+        assert wrapped_sock.close_count == 1
+
     def test_validated_connection_retries_checked_addresses_without_new_dns(self):
         failed_sock = MagicMock()
         failed_sock.connect.side_effect = OSError("no route")
@@ -308,19 +349,19 @@ class TestAuthBaseForwarderTransportSecurity:
         context = MagicMock()
         context.wrap_socket.return_value = wrapped_sock
         abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
-        conn = forwarder._make_validated_https_connection(
+        conn = transport._make_validated_https_connection(
             "hooks.example.com",
             port=None,
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                forwarder._ValidatedAddress(
-                    forwarder.socket.AF_INET6,
+                transport.ValidatedAddress(
+                    transport.socket.AF_INET6,
                     "2001:4860:4860::8888",
                     443,
                 ),
-                forwarder._ValidatedAddress(
-                    forwarder.socket.AF_INET,
+                transport.ValidatedAddress(
+                    transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
                 ),
@@ -329,7 +370,7 @@ class TestAuthBaseForwarderTransportSecurity:
         vars(conn)["_context"] = context
 
         with patch.object(
-            forwarder.socket,
+            transport.socket,
             "socket",
             side_effect=[failed_sock, raw_sock],
         ) as create_socket:
@@ -337,16 +378,16 @@ class TestAuthBaseForwarderTransportSecurity:
 
         create_socket.assert_has_calls(
             [
-                call(forwarder.socket.AF_INET6, forwarder.socket.SOCK_STREAM),
-                call(forwarder.socket.AF_INET, forwarder.socket.SOCK_STREAM),
+                call(transport.socket.AF_INET6, transport.socket.SOCK_STREAM),
+                call(transport.socket.AF_INET, transport.socket.SOCK_STREAM),
             ]
         )
         failed_sock.connect.assert_called_once_with(("2001:4860:4860::8888", 443, 0, 0))
         failed_sock.close.assert_called_once_with()
         raw_sock.connect.assert_called_once_with(("93.184.216.34", 443))
         raw_sock.setsockopt.assert_called_once_with(
-            forwarder.socket.IPPROTO_TCP,
-            forwarder.socket.TCP_NODELAY,
+            transport.socket.IPPROTO_TCP,
+            transport.socket.TCP_NODELAY,
             1,
         )
         context.wrap_socket.assert_called_once_with(
@@ -358,7 +399,7 @@ class TestAuthBaseForwarderTransportSecurity:
         assert conn.sock is wrapped_sock
 
     def test_validated_connection_context_keeps_https_security_defaults(self):
-        context = forwarder._create_https_context()
+        context = transport._create_https_context()
 
         assert context.verify_mode is ssl.CERT_REQUIRED
         assert context.check_hostname is True
@@ -372,14 +413,14 @@ class TestAuthBaseForwarderTransportSecurity:
         context = MagicMock()
         context.wrap_socket.return_value = wrapped_sock
         abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
-        conn = forwarder._make_validated_https_connection(
+        conn = transport._make_validated_https_connection(
             "hooks.example.com",
             port=None,
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                forwarder._ValidatedAddress(
-                    forwarder.socket.AF_INET,
+                transport.ValidatedAddress(
+                    transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
                 ),
@@ -387,7 +428,7 @@ class TestAuthBaseForwarderTransportSecurity:
         )
         vars(conn)["_context"] = context
 
-        with patch.object(forwarder.socket, "socket", return_value=raw_sock):
+        with patch.object(transport.socket, "socket", return_value=raw_sock):
             conn.connect()
 
         raw_sock.close.assert_not_called()
@@ -406,14 +447,14 @@ class TestAuthBaseForwarderTransportSecurity:
         raw_sock.close.side_effect = OSError("close failed")
         context = MagicMock()
         abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
-        conn = forwarder._make_validated_https_connection(
+        conn = transport._make_validated_https_connection(
             "hooks.example.com",
             port=None,
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                forwarder._ValidatedAddress(
-                    forwarder.socket.AF_INET,
+                transport.ValidatedAddress(
+                    transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
                 ),
@@ -422,7 +463,7 @@ class TestAuthBaseForwarderTransportSecurity:
         vars(conn)["_context"] = context
 
         with (
-            patch.object(forwarder.socket, "socket", return_value=raw_sock),
+            patch.object(transport.socket, "socket", return_value=raw_sock),
             pytest.raises(OSError, match="setsockopt failed"),
         ):
             conn.connect()
@@ -437,14 +478,14 @@ class TestAuthBaseForwarderTransportSecurity:
         context = MagicMock()
         context.wrap_socket.side_effect = OSError("tls failed")
         abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
-        conn = forwarder._make_validated_https_connection(
+        conn = transport._make_validated_https_connection(
             "hooks.example.com",
             port=None,
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                forwarder._ValidatedAddress(
-                    forwarder.socket.AF_INET,
+                transport.ValidatedAddress(
+                    transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
                 ),
@@ -453,7 +494,7 @@ class TestAuthBaseForwarderTransportSecurity:
         vars(conn)["_context"] = context
 
         with (
-            patch.object(forwarder.socket, "socket", return_value=raw_sock),
+            patch.object(transport.socket, "socket", return_value=raw_sock),
             pytest.raises(OSError, match="tls failed"),
         ):
             conn.connect()
@@ -466,14 +507,14 @@ class TestAuthBaseForwarderTransportSecurity:
         context = MagicMock()
         context.wrap_socket.side_effect = OSError("tls failed")
         abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
-        conn = forwarder._make_validated_https_connection(
+        conn = transport._make_validated_https_connection(
             "hooks.example.com",
             port=None,
             deadline=time.monotonic() + 30,
             abort_handle=abort_handle,
             validated_addresses=(
-                forwarder._ValidatedAddress(
-                    forwarder.socket.AF_INET,
+                transport.ValidatedAddress(
+                    transport.socket.AF_INET,
                     "93.184.216.34",
                     443,
                 ),
@@ -482,7 +523,7 @@ class TestAuthBaseForwarderTransportSecurity:
         vars(conn)["_context"] = context
 
         with (
-            patch.object(forwarder.socket, "socket", return_value=raw_sock),
+            patch.object(transport.socket, "socket", return_value=raw_sock),
             pytest.raises(OSError, match="tls failed"),
         ):
             conn.connect()

@@ -259,7 +259,8 @@ All HTTP calls via `zeroClient$` must use the `accept` utility function. This is
 `accept` takes a ts-rest call promise and a **required non-empty** array of accepted status codes. It returns a type-narrowed result containing only the accepted status codes. Any response **not** in the accept list is automatically:
 
 1. Shown as a `toast.error` (with the server's error message), except for 401
-   responses handled by the authenticated client's sign-in recovery
+   responses handled by the authenticated client's sign-in recovery and the
+   dedicated force-upgrade response handled by the blocking update dialog
 2. Thrown as an `ApiError` (so the calling code stops executing)
 
 ```typescript
@@ -319,7 +320,7 @@ export const getAgent$ = computed(async (get) => {
 
 ### Fail fast for background fetches
 
-For `computed` (background data fetching), call `accept` directly and let errors propagate. `accept` already handles API errors by showing the server message (except for 401 responses owned by sign-in recovery) and throwing an `ApiError`; application code should not catch or replace that error handling.
+For `computed` (background data fetching), call `accept` directly and let errors propagate. `accept` already handles API errors by showing the server message (except for 401 responses owned by sign-in recovery and the dedicated force-upgrade response owned by the blocking update dialog) and throwing an `ApiError`; application code should not catch or replace that error handling.
 
 ```typescript
 export const billingStatus$ = computed(async (get) => {
@@ -591,6 +592,13 @@ const doSomething$ = command(async ({ set }, signal: AbortSignal) => {
 ### Handling AbortSignal in sub-commands
 
 **Pass `signal` explicitly and use `fetchOptions: { signal }` for HTTP calls.** This ensures the request is cancelled when the caller's signal aborts.
+
+Keep `AbortSignal` out of args objects, options objects, and React props. For
+repository-owned functions, pass it as the final positional parameter. React
+components should read the lifecycle signal from its owning ccstate signal
+(for example, `useGet(pageSignal$)`) instead of receiving it as a prop. Object
+members remain appropriate only at fixed boundaries such as `fetchOptions` or
+third-party SDK request options.
 
 ```typescript
 const sendRequest$ = command(

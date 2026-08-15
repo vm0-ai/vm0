@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -52,12 +52,12 @@ function agentCard(name: string): HTMLElement {
   return card;
 }
 
-function tab(label: "Public" | "Private"): HTMLElement {
-  const found = queryAllByRoleFast("tab").find((element) => {
+function visibilitySegment(label: "Public" | "Private"): HTMLElement {
+  const found = queryAllByRoleFast("radio").find((element) => {
     return element.textContent === label;
   });
   if (!found) {
-    throw new Error(`Tab not found: ${label}`);
+    throw new Error(`Segment not found: ${label}`);
   }
   return found;
 }
@@ -108,11 +108,11 @@ describe("agents page (redesign)", () => {
     });
 
     await waitFor(() => {
-      expect(tab("Private")).toBeInTheDocument();
+      expect(visibilitySegment("Private")).toBeInTheDocument();
     });
 
     // Private tab: only private agents, no creator tooltip.
-    await user.click(tab("Private"));
+    await user.click(visibilitySegment("Private"));
     await waitFor(() => {
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
@@ -122,7 +122,7 @@ describe("agents page (redesign)", () => {
     ).not.toBeInTheDocument();
 
     // Public tab: only public agents, each surfacing the creator on hover.
-    await user.click(tab("Public"));
+    await user.click(visibilitySegment("Public"));
     await waitFor(() => {
       expect(agentCard("Research Agent")).toBeInTheDocument();
     });
@@ -148,9 +148,9 @@ describe("agents page (redesign)", () => {
     });
 
     await waitFor(() => {
-      expect(tab("Private")).toBeInTheDocument();
+      expect(visibilitySegment("Private")).toBeInTheDocument();
     });
-    await user.click(tab("Private"));
+    await user.click(visibilitySegment("Private"));
     await waitFor(() => {
       expect(screen.getByText("No private agents yet")).toBeInTheDocument();
     });
@@ -161,9 +161,13 @@ describe("agents page (redesign)", () => {
     context.mocks.data.team(agents);
     context.mocks.data.orgMembers({ members: [] });
 
-    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
       return respond(200, {
-        agentIds: [agents[0].id, agents[1].id],
+        agents: {
+          [agents[0].id]: "unread",
+          [agents[1].id]: "unread",
+        },
+        threads: {},
       });
     });
 
@@ -173,10 +177,10 @@ describe("agents page (redesign)", () => {
     });
 
     await waitFor(() => {
-      expect(tab("Private")).toBeInTheDocument();
+      expect(visibilitySegment("Private")).toBeInTheDocument();
     });
 
-    await user.click(tab("Private"));
+    await user.click(visibilitySegment("Private"));
     await waitFor(() => {
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
@@ -184,7 +188,7 @@ describe("agents page (redesign)", () => {
       within(agentCard("Private Ops")).getByLabelText("Unread"),
     ).toHaveClass("border-card");
 
-    await user.click(tab("Public"));
+    await user.click(visibilitySegment("Public"));
     await waitFor(() => {
       expect(agentCard("Research Agent")).toBeInTheDocument();
     });

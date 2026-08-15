@@ -53,7 +53,7 @@ sheet for drift.
 import json
 import re
 from collections.abc import Callable
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 import matching
 from host_normalization import UnsafeIdnaCompatibilityMappingError, normalize_idna_label
@@ -271,6 +271,17 @@ _INCLUDES_TO_BUCKET: dict[str, str] = {
     "spaces": "space.read",
 }
 
+MAX_UNKNOWN_INCLUDE_CATEGORIES = 64
+INCLUDES_OVERFLOW_CATEGORY = "includes.__overflow__"
+_MAX_USAGE_CATEGORY_CHARS = 100
+_SYNTHETIC_INCLUDE_CATEGORY_PREFIX = "includes."
+_SAFE_SYNTHETIC_INCLUDE_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+class IncludeBillingCategory(NamedTuple):
+    category: str
+    kind: Literal["known", "synthetic", "overflow"]
+
 
 def classify_includes_bucket(key: str) -> str | None:
     """Return the billing bucket for an ``includes.<key>`` resource type.
@@ -282,6 +293,29 @@ def classify_includes_bucket(key: str) -> str | None:
     categories, records ``fallback_pricing``, and emits underbilling telemetry.
     """
     return _INCLUDES_TO_BUCKET.get(key)
+
+
+def _synthetic_include_category(key: str) -> str | None:
+    max_key_chars = _MAX_USAGE_CATEGORY_CHARS - len(_SYNTHETIC_INCLUDE_CATEGORY_PREFIX)
+    if not key or len(key) > max_key_chars:
+        return None
+    if _SAFE_SYNTHETIC_INCLUDE_KEY_RE.fullmatch(key) is None:
+        return None
+    if f"{_SYNTHETIC_INCLUDE_CATEGORY_PREFIX}{key}" == INCLUDES_OVERFLOW_CATEGORY:
+        return None
+    return f"{_SYNTHETIC_INCLUDE_CATEGORY_PREFIX}{key}"
+
+
+def include_billing_category(key: str) -> IncludeBillingCategory:
+    """Classify one known, safe synthetic, or overflow include category."""
+    bucket = classify_includes_bucket(key)
+    if bucket is not None:
+        return IncludeBillingCategory(bucket, "known")
+
+    category = _synthetic_include_category(key)
+    if category is None:
+        return IncludeBillingCategory(INCLUDES_OVERFLOW_CATEGORY, "overflow")
+    return IncludeBillingCategory(category, "synthetic")
 
 
 # URL detector for tweet body refinement.  Billing needs a conservative

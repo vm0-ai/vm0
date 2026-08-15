@@ -12,11 +12,11 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { HostedSiteManifest } from "@vm0/db/jsonb-contracts/hosted-site";
+import type { HostedSiteManifest } from "@okouai/db/jsonb-contracts/hosted-site";
 export type {
   HostedSiteManifest,
   HostedSiteManifestFile,
-} from "@vm0/db/jsonb-contracts/hosted-site";
+} from "@okouai/db/jsonb-contracts/hosted-site";
 
 export const HOSTED_DEPLOYMENT_STATUSES = [
   "uploading",

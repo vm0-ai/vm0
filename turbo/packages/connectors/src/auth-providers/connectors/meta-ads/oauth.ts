@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const META_ADS_TOKEN_URL =
@@ -204,8 +204,12 @@ async function fetchMetaAdsUserInfo(
     })
     .parse(await response.json());
 
+  if (!data.id) {
+    throw new Error("No user id in Meta Ads user info response");
+  }
+
   return {
-    id: data.id ?? "",
+    id: data.id,
     username: data.name ?? null,
     email: data.email ?? null,
   };

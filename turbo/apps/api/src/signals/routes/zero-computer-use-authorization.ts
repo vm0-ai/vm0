@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroComputerUseAuthorizationRequestsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
+import { zeroComputerUseAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

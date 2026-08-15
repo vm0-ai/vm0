@@ -38,6 +38,13 @@ class TlsAdmission:
     sni: str | None = None
 
 
+@dataclass(frozen=True)
+class _ApiDestination:
+    scheme: Literal["http", "https"]
+    host: str
+    port: int
+
+
 def _client_connection_id(client: object) -> str | None:
     client_id = getattr(client, "id", None)
     if isinstance(client_id, str) and client_id:
@@ -128,47 +135,60 @@ def request_path_uses_platform_firewall(path: str) -> bool:
     return path.startswith(_TEST_ENDPOINT_PATH_PREFIX)
 
 
-def api_destination_matches(api_url: str, hostname: str, port: int) -> bool:
+def api_destination_matches(
+    api_url: str,
+    *,
+    scheme: str,
+    hostname: str,
+    port: int,
+) -> bool:
     api_destination = _api_destination(api_url)
     if api_destination is None:
         return False
-    return _hostname_port_matches_api_destination(
+    return _scheme_hostname_port_matches_api_destination(
+        scheme=scheme,
         hostname=hostname,
         port=port,
         api_destination=api_destination,
     )
 
 
-def _hostname_port_matches_api_destination(
+def _scheme_hostname_port_matches_api_destination(
     *,
+    scheme: str,
     hostname: str,
     port: int,
-    api_destination: upstream_destination_binding.NormalizedUpstreamDestination,
+    api_destination: _ApiDestination,
 ) -> bool:
-    return port == api_destination.port and (
-        hostname == api_destination.host or hostname.endswith(f".{api_destination.host}")
+    return (
+        scheme.lower() == api_destination.scheme
+        and port == api_destination.port
+        and (hostname == api_destination.host or hostname.endswith(f".{api_destination.host}"))
     )
 
 
 def _api_destination(
     api_url: str,
-) -> upstream_destination_binding.NormalizedUpstreamDestination | None:
+) -> _ApiDestination | None:
     if not api_url:
         return None
     parsed_api = urllib.parse.urlparse(api_url)
     if not parsed_api.hostname:
         return None
+    api_scheme = parsed_api.scheme.lower()
+    if api_scheme == "http":
+        default_port = 80
+    elif api_scheme == "https":
+        default_port = 443
+    else:
+        return None
     try:
         api_hostname = normalize_trusted_hostname(parsed_api.hostname)
     except (UnicodeError, ValueError):
         return None
-    if parsed_api.port is not None:
-        api_port = parsed_api.port
-    elif parsed_api.scheme.lower() == "http":
-        api_port = 80
-    else:
-        api_port = 443
-    return upstream_destination_binding.NormalizedUpstreamDestination(
+    api_port = parsed_api.port if parsed_api.port is not None else default_port
+    return _ApiDestination(
+        scheme=api_scheme,
         host=api_hostname,
         port=api_port,
     )
@@ -233,8 +253,9 @@ def _bind_privileged_upstream_destination(
         return
     is_api_destination = api_destination_matches(
         api_url,
-        destination.host,
-        destination.port,
+        scheme="https",
+        hostname=destination.host,
+        port=destination.port,
     )
     reusable_kind: upstream_destination_binding.BindingKind = (
         "api_allow" if is_api_destination else "connector_auth"
@@ -289,7 +310,28 @@ def handle_server_connect(
     registry_path: str,
     api_url: str,
 ) -> None:
-    """Bind privileged HTTPS upstream connections to their trusted SNI host."""
+    """Prebind an eligible privileged HTTPS upstream from trusted connection identity.
+
+    The event must expose client and server connections, a client peer IP registered in the
+    current available registry, and usable SNI. The hook prefers client SNI and falls back to
+    recorded ClientHello SNI. Any TLS admission record must identify the same client IP and a valid
+    registry VM, and its recorded run identity must match the current run. Missing, stale,
+    malformed, or untrusted inputs return without retargeting the server or creating or extending
+    a binding.
+
+    The normalized SNI host and current server destination port select one binding purpose. The
+    configured HTTPS platform API host and its subdomains at the configured port qualify for
+    ``api_allow``. Every other exact HTTPS authority qualifies for ``connector_auth`` only when the
+    current VM's compiled firewall set admits ordinary credential mutation there. A matching
+    direct binding that already has the selected kind may be reused; otherwise the selected purpose
+    must currently qualify before a matching binding is extended or a new binding is recorded. A
+    nonmatching binding is preserved.
+
+    Without a matching binding, only an unconnected server may be retargeted and bound; SNI alone
+    never binds an already-connected server. This connection-phase binding records eligibility,
+    not HTTP request authorization. Request handling must still authorize the current request
+    before platform API allowance or connector credential mutation.
+    """
     client = getattr(data, "client", None)
     server = getattr(data, "server", None)
     if client is None or server is None:
@@ -478,9 +520,10 @@ def ensure_bound_destination(
 
     ``flow`` must already carry validated trusted-authority metadata and the
     request, client, and server connection state to bind. ``kind`` selects the
-    privileged purpose, while ``api_url`` identifies the platform API authority
-    where ``connector_auth`` requires the gated test-endpoint bypass before
-    either binding or reusing a destination.
+    privileged purpose, while ``api_url`` identifies the platform API origin.
+    ``api_allow`` requires the current scheme and authority to match that origin;
+    ``connector_auth`` on that origin requires the gated test-endpoint bypass
+    before either binding or reusing a destination.
 
     A direct server binding may be reused, extended with ``kind``, or refreshed
     only while its authority and current destination remain valid. Otherwise an
@@ -508,18 +551,24 @@ def ensure_bound_destination(
     except (UnicodeError, ValueError):
         return False
 
-    api_destination = _api_destination(api_url) if kind == "connector_auth" else None
+    api_destination = _api_destination(api_url)
+    is_api_destination = api_destination is not None and (
+        _scheme_hostname_port_matches_api_destination(
+            scheme=flow.request.scheme,
+            hostname=destination.host,
+            port=destination.port,
+            api_destination=api_destination,
+        )
+    )
+    if kind == "api_allow" and not is_api_destination:
+        return False
     # Synthetic test providers live on the platform API preview host but
     # intentionally exercise connector auth injection instead of API auto-allow.
     # Keep this path limited to test endpoints gated by the same internal
     # bypass secret that the API route validates.
     if (
-        api_destination is not None
-        and _hostname_port_matches_api_destination(
-            hostname=destination.host,
-            port=destination.port,
-            api_destination=api_destination,
-        )
+        kind == "connector_auth"
+        and is_api_destination
         and not _request_has_platform_test_endpoint_bypass(flow)
     ):
         return False

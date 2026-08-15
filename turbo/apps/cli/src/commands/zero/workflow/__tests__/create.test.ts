@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow create command
+ * Tests for okou workflow create command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -33,7 +33,7 @@ const mockWorkflow = {
   canPublish: true,
 };
 
-describe("zero workflow create command", () => {
+describe("okou workflow create command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -47,9 +47,9 @@ describe("zero workflow create command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
-    vi.stubEnv("ZERO_AGENT_ID", "");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_AGENT_ID", "");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
 
     workflowDir = join(tmpdir(), `test-workflow-${Date.now()}`);
     mkdirSync(workflowDir, { recursive: true });
@@ -73,7 +73,7 @@ describe("zero workflow create command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflows",
+          "http://localhost:3000/api/okou/workflows",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockWorkflow, { status: 201 });
@@ -118,13 +118,13 @@ describe("zero workflow create command", () => {
       expect(logCalls).toContain("1 file(s)");
     });
 
-    it("should resolve agent from ZERO_AGENT_ID env var", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+    it("should resolve agent from OKOU_AGENT_ID env var", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
 
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflows",
+          "http://localhost:3000/api/okou/workflows",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockWorkflow, { status: 201 });
@@ -143,14 +143,14 @@ describe("zero workflow create command", () => {
       expect(capturedBody?.agentId).toBe(AGENT_ID);
     });
 
-    it("should forward ZERO_CHAT_THREAD_ID when creating from a chat thread", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
-      vi.stubEnv("ZERO_CHAT_THREAD_ID", CHAT_THREAD_ID);
+    it("should forward OKOU_CHAT_THREAD_ID when creating from a chat thread", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", CHAT_THREAD_ID);
 
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflows",
+          "http://localhost:3000/api/okou/workflows",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockWorkflow, { status: 201 });
@@ -212,7 +212,7 @@ describe("zero workflow create command", () => {
 
     it("should handle authentication error", async () => {
       server.use(
-        http.post("http://localhost:3000/api/zero/workflows", () => {
+        http.post("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },

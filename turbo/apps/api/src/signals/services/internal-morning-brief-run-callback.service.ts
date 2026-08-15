@@ -1,9 +1,9 @@
 import { command, createStore } from "ccstate";
-import { emailOutbox } from "@vm0/db/schema/email-outbox";
+import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import {
   morningBriefDeliveries,
   morningBriefSchedules,
-} from "@vm0/db/schema/morning-brief";
+} from "@okouai/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -12,7 +12,7 @@ import { logger } from "../../lib/log";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { downloadS3BufferWithMaxBytes } from "../external/s3";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse, safeUrlParse, settle } from "../utils";
 import type {
   InternalRunCallbackDispatchResult,

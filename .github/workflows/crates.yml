@@ -96,7 +96,7 @@ jobs:
           BASE_REF=$(.github/scripts/changed-base-ref.sh)
           echo "${{ github.event_name }} mode: comparing against base $BASE_REF"
           # Check if the workflow file or ansible playbooks changed
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/|^ansible/"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/(crates|runner-image)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision|report-memory-peak)/|^\.github/scripts/|^ansible/"; then
             echo "ci-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "ci-changed=false" >> "$GITHUB_OUTPUT"
@@ -127,22 +127,24 @@ jobs:
             echo "any-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # The api-contracts Rust bindings are generated from selected
-          # TypeScript contract files, and the checked artifacts live under
-          # crates/api-contracts.
-          # Keep this output separate from any-changed so a TS-only contract
-          # edit runs the drift check without forcing every Rust crate job to
-          # run.
+          # The api-contracts cross-language bindings are generated from
+          # selected TypeScript contract files. Keep this legacy-named output
+          # separate from any-changed so a TS-only contract edit runs the
+          # drift check without forcing every Rust crate job to run.
           api_contracts_rust_bindings_changed=false
           changed_files="$(mktemp)"
           git diff --name-only "$BASE_REF" HEAD > "$changed_files"
           while IFS= read -r changed_file; do
             case "$changed_file" in
               crates/api-contracts/* | \
+              crates/runner/mitm-addon/src/generated/* | \
               turbo/packages/api-contracts/package.json | \
               turbo/packages/api-contracts/tsconfig.json | \
+              turbo/packages/api-contracts/tsconfig.python-bindings.json | \
               turbo/packages/api-contracts/src/contracts/* | \
+              turbo/packages/api-contracts/src/python-bindings/* | \
               turbo/packages/api-contracts/src/rust-bindings/* | \
+              turbo/packages/connectors/src/public-destination-policy.ts | \
               turbo/pnpm-lock.yaml)
                 api_contracts_rust_bindings_changed=true
                 break
@@ -155,7 +157,7 @@ jobs:
           # Shared firewall contracts are stored under turbo but are read by
           # mitm-addon tests. Keep this separate from any-changed so a turbo-only
           # contract edit runs mitm-addon-test without forcing every crate job.
-          if git diff --name-only "$BASE_REF" HEAD | grep -Eqx "turbo/packages/connectors/src/__tests__/(firewall-semantics-contract|firewall-base-url-validation-contract)\\.json"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -Eqx "turbo/packages/connectors/src/__tests__/(firewall-semantics-contract|firewall-base-url-validation-contract|public-destination-policy-contract)\\.json"; then
             echo "mitm-addon-test-inputs-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "mitm-addon-test-inputs-changed=false" >> "$GITHUB_OUTPUT"
@@ -387,6 +389,19 @@ jobs:
             cargo test -p vsock-guest --release --no-default-features \
               --test production_identity -- \
               --ignored --exact production_write_file_identity_matches_sudo_policy
+          HOME=/root USER=root LOGNAME=root \
+            cargo test -p vsock-guest --release --no-default-features \
+              --test production_identity -- \
+              --ignored --exact production_exec_identity_matches_sandbox_user
+          HOME=/root USER=root LOGNAME=root \
+            cargo test -p vsock-guest --release --no-default-features \
+              --test production_identity -- \
+              --ignored --exact production_env_script_remains_until_operation_cleanup
+
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/report-memory-peak
 
   coverage:
     runs-on: ubuntu-latest-8-cores
@@ -445,6 +460,11 @@ jobs:
           files: crates/lcov.info
           flags: rust
 
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/report-memory-peak
+
   api-contracts-rust-bindings:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -457,11 +477,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
-      - name: Check API Contracts Rust Bindings
+      - name: Check API Contracts Bindings
         working-directory: turbo
         run: |
-          pnpm -F @vm0/api-contracts generate:rust
-          git diff --exit-code -- ../crates/api-contracts/src/generated
+          pnpm -F @okouai/api-contracts generate:rust
+          pnpm -F @okouai/api-contracts generate:python
+          git diff --exit-code -- \
+            ../crates/api-contracts/src/generated \
+            ../crates/runner/mitm-addon/src/generated
 
   runner-firewall-contract-test:
     runs-on: ubuntu-latest
@@ -484,6 +507,11 @@ jobs:
       - name: Check runner firewall base URL contract
         working-directory: crates
         run: cargo test -p runner types::tests::firewall_base_url_validation_matches_shared_contract -- --exact
+
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/report-memory-peak
 
   mitm-addon-test:
     runs-on: ubuntu-latest
@@ -596,6 +624,11 @@ jobs:
           scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
           # shellcheck disable=SC2029
           ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo modprobe nbd nbds_max=4096 && sudo ${REMOTE_BIN} --ignored --test-threads=1"
+
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/report-memory-peak
 
   runner-build:
     runs-on: ubuntu-latest
@@ -857,20 +890,6 @@ jobs:
         env:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-benchmark.sh
-
-      - name: Test local active input with real Codex
-        timeout-minutes: 8
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: .github/scripts/runner-behavior-local-codex-active-input-smoke.sh
-
-      - name: Test local active input with real Claude Code
-        timeout-minutes: 5
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-        run: .github/scripts/runner-behavior-local-claude-active-input-smoke.sh
 
       - name: Test VM keep-alive across conversation turns
         timeout-minutes: 5

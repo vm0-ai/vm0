@@ -2,28 +2,26 @@ import type { ReactNode } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
-  IconChartLine,
-  IconLayoutGrid,
-  IconPackage,
-  IconRoute,
-  IconUsers,
-  IconEdit,
-  IconChevronRight,
-  IconLayoutSidebarLeftCollapse,
-  IconPlug,
-  IconSparkles,
-  IconSearch,
-} from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+  LayoutGrid,
+  Package,
+  Route,
+  Users,
+  Edit,
+  ChevronRight,
+  PanelLeftClose,
+  Plug,
+  Search,
+} from "lucide-react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
+  Button,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
   cn,
-} from "@vm0/ui";
+} from "@okouai/ui";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   sidebarOff$,
   toggleSidebarOff$,
@@ -48,31 +46,22 @@ import {
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
-
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
 
-export { AccountDropdown } from "./zero-sidebar-account.tsx";
-
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 const slackIcon = settingsIconAssetUrl("slack");
 
-type ManageNavId =
-  | "activities"
-  | "agents"
-  | "artifacts"
-  | "connectors"
-  | "workflows";
+type ManageNavId = "agents" | "artifacts" | "connectors" | "workflows";
 
 interface ManageNavItem {
   readonly id: ManageNavId;
   readonly activeKeys: readonly RouteKey[];
   readonly pathname: string;
   readonly icon: NavIcon;
-  readonly featureGate?: FeatureSwitchKey;
 }
 
 const MANAGE_NAV: readonly ManageNavItem[] = [
@@ -80,7 +69,7 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     id: "agents",
     activeKeys: ["agents", "agentDetail", "agentPermissions"],
     pathname: "/agents",
-    icon: IconUsers as NavIcon,
+    icon: Users as NavIcon,
   },
   {
     id: "workflows",
@@ -92,26 +81,19 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
       "workflowDetailInfo",
     ],
     pathname: "/workflows",
-    icon: IconRoute as NavIcon,
+    icon: Route as NavIcon,
   },
   {
     id: "connectors",
     activeKeys: ["connectors"],
     pathname: "/connectors",
-    icon: IconPlug as NavIcon,
+    icon: Plug as NavIcon,
   },
   {
     id: "artifacts",
     activeKeys: ["artifacts"],
     pathname: "/artifacts",
-    icon: IconPackage as NavIcon,
-  },
-  {
-    id: "activities",
-    activeKeys: ["activities", "activityDetail", "activityInspect"],
-    pathname: "/activities",
-    icon: IconChartLine as NavIcon,
-    featureGate: FeatureSwitchKey.ZeroDebug,
+    icon: Package as NavIcon,
   },
 ];
 
@@ -128,7 +110,7 @@ const FOOTER_NAV = [
     id: "works",
     activeKeys: ["works"],
     pathname: "/works",
-    icon: IconLayoutGrid as NavIcon,
+    icon: LayoutGrid as NavIcon,
     iconImg: slackIcon,
   },
 ] as const satisfies readonly FooterNavItem[];
@@ -138,15 +120,9 @@ const FOOTER_NAV = [
 
 function useResolvedNavItems() {
   const { t } = useTranslation();
-  const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const manageLabel = (id: ManageNavId): string => {
     switch (id) {
-      case "activities": {
-        return t(($) => {
-          return $.appShell.sidebar.navigation.activity;
-        });
-      }
       case "agents": {
         return t(($) => {
           return $.appShell.sidebar.navigation.agents;
@@ -169,9 +145,7 @@ function useResolvedNavItems() {
       }
     }
   };
-  const manageNav = MANAGE_NAV.filter((item) => {
-    return !item.featureGate || features?.[item.featureGate];
-  }).map((item) => {
+  const manageNav = MANAGE_NAV.map((item) => {
     return { ...item, label: manageLabel(item.id) };
   });
   const footerNav = FOOTER_NAV.map((item) => {
@@ -191,9 +165,8 @@ function useResolvedNavItems() {
 function useNavSelect() {
   const rawOnSelect = useSet(handleZeroNavSelect$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const pageSignal = useGet(pageSignal$);
   return (id: SidebarNavId) => {
-    rawOnSelect(id, pageSignal);
+    rawOnSelect(id);
     setExpanded(false);
   };
 }
@@ -253,14 +226,17 @@ function CollapsedExpandButton() {
       <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground"
+              variant="quiet"
+              size="icon-sm"
+              iconSize="md"
+              className="shrink-0"
               onClick={onCollapse}
               aria-label={expandLabel}
             >
-              <IconLayoutSidebarLeftCollapse size={18} className="rotate-180" />
-            </button>
+              <PanelLeftClose size={18} className="rotate-180 opacity-50" />
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="right">
             <p className="text-xs">{expandLabel}</p>
@@ -288,7 +264,7 @@ function CollapsedNavList() {
       label: t(($) => {
         return $.appShell.sidebar.navigation.newChat;
       }),
-      icon: IconEdit as NavIcon,
+      icon: Edit as NavIcon,
     },
     ...footerNav.map(({ id, activeKeys, pathname: p, label, icon }) => {
       return { id, activeKeys, pathname: p, label, icon };
@@ -324,13 +300,13 @@ function CollapsedNavList() {
                       }}
                       className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                         isActive
-                          ? "bg-gray-200 text-gray-900"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent"
+                          ? "bg-state-selected text-sidebar-foreground"
+                          : "text-sidebar-foreground hover:bg-state-hover"
                       }`}
                       aria-label={label}
                     >
                       <span className="relative inline-flex">
-                        <Icon size={16} className="shrink-0" />
+                        <Icon size={16} className="shrink-0 opacity-70" />
                         {id === "works" && slackScopeMismatch && (
                           <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
                         )}
@@ -351,41 +327,8 @@ function CollapsedNavList() {
 }
 
 function CollapsedFooter() {
-  const activeId = useGet(activeRoute$);
-  const onSelect = useNavSelect();
-  const { t } = useTranslation();
-  const insightsLabel = t(($) => {
-    return $.appShell.sidebar.navigation.insightsAndUsage;
-  });
   return (
     <div className="flex w-full shrink-0 flex-col items-center gap-1 pb-2 pt-1">
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              pathname="/insights"
-              onClick={(e) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                  return;
-                }
-                e.preventDefault();
-                onSelect("insights");
-              }}
-              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                activeId === "insights"
-                  ? "bg-gray-200 text-gray-900"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent"
-              }`}
-              aria-label={insightsLabel}
-            >
-              <IconSparkles size={16} className="shrink-0" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            <p className="text-xs">{insightsLabel}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
       <AccountDropdownContainer collapsed />
     </div>
   );
@@ -434,14 +377,17 @@ function ExpandedHeader() {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="shrink-0"
                 onClick={onCollapse}
                 aria-label={collapseLabel}
               >
-                <IconLayoutSidebarLeftCollapse size={18} />
-              </button>
+                <PanelLeftClose className="opacity-50" size={18} />
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">{collapseLabel}</p>
@@ -460,7 +406,7 @@ function ExpandedMainNav() {
       aria-label={t(($) => {
         return $.appShell.sidebar.ariaLabel;
       })}
-      className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1"
+      className="flex-1 flex flex-col min-h-0 overflow-hidden px-2 pt-1"
     >
       <ExpandedManageSection />
       <ExpandedSidebarSections />
@@ -478,7 +424,7 @@ function ExpandedManageSection() {
   return (
     <div className="shrink-0">
       <div
-        className="group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent transition-colors"
+        className="group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-state-hover transition-colors"
         onClick={() => {
           return setManageCollapsed(!manageCollapsed);
         }}
@@ -488,10 +434,9 @@ function ExpandedManageSection() {
             return $.appShell.sidebar.manage;
           })}
           <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <IconChevronRight
+            <ChevronRight
+              className={`opacity-35 ${manageCollapsed ? "" : "rotate-90"}`}
               size={12}
-              stroke={2}
-              className={manageCollapsed ? "" : "rotate-90"}
             />
           </span>
         </span>
@@ -517,8 +462,8 @@ function ExpandedManageSection() {
                   aria-current={isActive ? "page" : undefined}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                     isActive
-                      ? "bg-gray-200 text-gray-900 font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                      ? "bg-state-selected text-sidebar-foreground font-medium"
+                      : "text-sidebar-foreground hover:bg-state-hover"
                   }`}
                 >
                   <Icon size={16} className="shrink-0" />
@@ -543,8 +488,10 @@ function ExpandedSidebarSections() {
 }
 
 function ExpandedUpgradeSection() {
+  // The nav above has no bottom padding, so the card carries its own top gap.
+  // Collapses to nothing when SidebarUpgradeCard renders null.
   return (
-    <div className="px-2">
+    <div className="px-2 pt-2 empty:hidden">
       <SidebarUpgradeCard />
     </div>
   );
@@ -583,8 +530,8 @@ function ExpandedFooter() {
                 }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                   isActive
-                    ? "bg-gray-200 text-gray-900 font-medium"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    ? "bg-state-selected text-sidebar-foreground font-medium"
+                    : "text-sidebar-foreground hover:bg-state-hover"
                 }`}
               >
                 {iconImg ? (
@@ -612,51 +559,8 @@ function ExpandedFooter() {
           },
         )}
         <div className="h-px bg-border/30 mx-1 my-1" />
-        <ExpandedFooterAccountInsights />
-      </div>
-    </div>
-  );
-}
-
-function ExpandedFooterAccountInsights() {
-  const activeId = useGet(activeRoute$);
-  const onSelect = useNavSelect();
-  const { t } = useTranslation();
-  const insightsLabel = t(($) => {
-    return $.appShell.sidebar.navigation.insightsAndUsage;
-  });
-  return (
-    <div className="flex items-center gap-1">
-      <div className="flex-1 min-w-0">
         <AccountDropdownContainer />
       </div>
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              pathname="/insights"
-              onClick={(e) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                  return;
-                }
-                e.preventDefault();
-                onSelect("insights");
-              }}
-              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                activeId === "insights"
-                  ? "bg-gray-200 text-gray-900"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent"
-              }`}
-              aria-label={insightsLabel}
-            >
-              <IconSparkles size={16} className="shrink-0" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p className="text-xs">{insightsLabel}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
     </div>
   );
 }
@@ -688,11 +592,6 @@ function LabeledRailLink({
       case "chat": {
         return t(($) => {
           return $.appShell.sidebar.rail.new;
-        });
-      }
-      case "activities": {
-        return t(($) => {
-          return $.appShell.sidebar.rail.activity;
         });
       }
       case "workflows": {
@@ -727,8 +626,8 @@ function LabeledRailLink({
       <span
         className={`relative inline-flex h-9 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
           isActive
-            ? "bg-gray-200 text-gray-900"
-            : "text-sidebar-foreground group-hover:bg-sidebar-accent"
+            ? "bg-state-selected text-sidebar-foreground"
+            : "text-sidebar-foreground group-hover:bg-state-hover"
         }`}
       >
         {iconImg ? (
@@ -742,7 +641,7 @@ function LabeledRailLink({
             />
           </span>
         ) : (
-          <Icon size={19} className="shrink-0" />
+          <Icon size={19} className="shrink-0 opacity-70" />
         )}
         {showBadge && (
           <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500" />
@@ -782,7 +681,7 @@ function LabeledNavRail() {
       label: t(($) => {
         return $.appShell.sidebar.navigation.newChat;
       }),
-      icon: IconEdit as NavIcon,
+      icon: Edit as NavIcon,
     },
     ...manageNav,
     ...footerNav,
@@ -821,16 +720,6 @@ function LabeledNavRail() {
         })}
       </nav>
       <div className="flex w-full shrink-0 flex-col items-center gap-2 pt-1">
-        <LabeledRailLink
-          id="insights"
-          navPath="/insights"
-          label={t(($) => {
-            return $.appShell.sidebar.navigation.insights;
-          })}
-          icon={IconSparkles as NavIcon}
-          isActive={activeId === "insights"}
-          onSelect={onSelect}
-        />
         <AccountDropdownContainer collapsed />
       </div>
     </aside>
@@ -867,16 +756,17 @@ function ChatListColumn() {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   openAgentList();
                 }}
                 aria-label={searchLabel}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                variant="quiet"
+                size="icon-sm"
               >
-                <IconSearch size={17} stroke={1.8} />
-              </button>
+                <Search className="opacity-50" size={17} />
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">{searchLabel}</p>
@@ -895,9 +785,9 @@ function ChatListColumn() {
                 }}
                 aria-label={newChatLabel}
                 aria-current={isNewChatActive ? "page" : undefined}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 no-underline transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground no-underline transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
               >
-                <IconEdit size={17} stroke={1.8} />
+                <Edit className="opacity-50" size={17} />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">

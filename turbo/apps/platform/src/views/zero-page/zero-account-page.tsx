@@ -3,19 +3,19 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconSun,
-  IconMoon,
-  IconDeviceDesktop,
-  IconPalette,
-  IconKeyboard,
-  IconLoader2,
-  IconBug,
-} from "@tabler/icons-react";
-import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
-import { Switch } from "@vm0/ui/components/ui/switch";
-import { cn } from "@vm0/ui";
-import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+  Sun,
+  Moon,
+  Monitor,
+  Palette,
+  Keyboard,
+  Loader2,
+  Bug,
+} from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
+import { Switch } from "@okouai/ui/components/ui/switch";
+import { SegmentControl, SegmentControlItem } from "@okouai/ui";
+import type { SendMode } from "@okouai/api-contracts/contracts/user-preferences";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";
 import { PersonalProvidersTab } from "./components/preferences/personal-providers-tab.tsx";
@@ -41,11 +41,11 @@ import { LanguageSettings } from "./components/settings/language-settings.tsx";
 function AppearanceSettings() {
   const { t } = useTranslation();
   const THEME_OPTIONS = [
-    { value: "light" as ThemePreference, icon: IconSun },
-    { value: "dark" as ThemePreference, icon: IconMoon },
+    { value: "light" as ThemePreference, icon: Sun },
+    { value: "dark" as ThemePreference, icon: Moon },
     {
       value: "system" as ThemePreference,
-      icon: IconDeviceDesktop,
+      icon: Monitor,
     },
   ] as const;
   const prefLoadable = useLoadable(themePreference$);
@@ -64,11 +64,7 @@ function AppearanceSettings() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <IconPalette
-                size={22}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
+              <Palette size={22} className="text-muted-foreground" />
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
@@ -84,7 +80,14 @@ function AppearanceSettings() {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
+        <SegmentControl
+          className="shrink-0"
+          aria-label={t(($) => {
+            return $.settings.preferences.appearance.theme.title;
+          })}
+          value={currentPref}
+          onValueChange={setTheme}
+        >
           {THEME_OPTIONS.map(({ value, icon: Icon }) => {
             const label =
               value === "light"
@@ -99,26 +102,13 @@ function AppearanceSettings() {
                       return $.settings.preferences.appearance.theme.system;
                     });
             return (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={currentPref === value}
-                onClick={() => {
-                  return setTheme(value);
-                }}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  currentPref === value
-                    ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
-                    : "zero-chip text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon size={15} stroke={1.5} />
+              <SegmentControlItem key={value} value={value}>
+                <Icon />
                 {label}
-              </button>
+              </SegmentControlItem>
             );
           })}
-        </div>
+        </SegmentControl>
       </div>
     </div>
   );
@@ -150,11 +140,7 @@ function SendModeSettings() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <IconKeyboard
-                size={22}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
+              <Keyboard size={22} className="text-muted-foreground" />
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
@@ -174,10 +160,18 @@ function SendModeSettings() {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
+        <SegmentControl
+          className="shrink-0"
+          aria-label={t(($) => {
+            return $.settings.preferences.send.title;
+          })}
+          // The pending mode wins so the selection moves on click rather than
+          // after the round trip; the group locks until the write settles.
+          value={saving ?? current}
+          disabled={saving !== null}
+          onValueChange={handleChange}
+        >
           {SEND_OPTIONS.map((value) => {
-            const isActive =
-              saving === value ? true : saving === null && current === value;
             const label =
               value === "enter"
                 ? t(($) => {
@@ -187,30 +181,13 @@ function SendModeSettings() {
                     return $.settings.preferences.send.cmdEnter;
                   });
             return (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={isActive}
-                disabled={saving !== null}
-                onClick={() => {
-                  return handleChange(value);
-                }}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  isActive
-                    ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
-                    : "zero-chip text-muted-foreground hover:text-foreground",
-                  saving !== null && "opacity-60 cursor-not-allowed",
-                )}
-              >
-                {saving === value && (
-                  <IconLoader2 size={14} className="animate-spin" />
-                )}
+              <SegmentControlItem key={value} value={value}>
+                {saving === value && <Loader2 className="animate-spin" />}
                 {label}
-              </button>
+              </SegmentControlItem>
             );
           })}
-        </div>
+        </SegmentControl>
       </div>
     </div>
   );
@@ -247,7 +224,7 @@ function CaptureNetworkBodiesSettings() {
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
-            <IconBug size={22} stroke={1.5} className="text-muted-foreground" />
+            <Bug size={22} className="text-muted-foreground" />
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
@@ -334,38 +311,26 @@ export function ZeroPreferencesPage() {
               return setTab(v);
             }}
           >
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-              <TabsTrigger
-                value="appearance"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
+            <TabsList>
+              <TabsTrigger value="appearance">
                 {t(($) => {
                   return $.settings.preferences.tabs.appearance;
                 })}
               </TabsTrigger>
-              <TabsTrigger
-                value="timezone"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
+              <TabsTrigger value="timezone">
                 {t(($) => {
                   return $.settings.preferences.tabs.timezone;
                 })}
               </TabsTrigger>
               {showModelConfiguration && (
-                <TabsTrigger
-                  value="model-configuration"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
+                <TabsTrigger value="model-configuration">
                   {t(($) => {
                     return $.settings.preferences.tabs.models;
                   })}
                 </TabsTrigger>
               )}
               {showDebug && (
-                <TabsTrigger
-                  value="debug"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
+                <TabsTrigger value="debug">
                   {t(($) => {
                     return $.settings.preferences.debug.tab;
                   })}

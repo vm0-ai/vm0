@@ -1,16 +1,20 @@
 import { randomUUID } from "node:crypto";
 
-import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { zeroChatEventsRoutes } from "../zero-chat-events";
 
 const context = testContext();
 
 function client() {
-  return setupApp({ context })(chatEventsContract);
+  return setupApp({ context, routes: zeroChatEventsRoutes })(
+    chatEventsContract,
+  );
 }
 
 describe("POST /api/zero/chat/events authorization", () => {
@@ -25,7 +29,7 @@ describe("POST /api/zero/chat/events authorization", () => {
       iat: seconds,
       exp: seconds + 60,
     });
-    const prompt = "Send from Zero CLI";
+    const prompt = "Send from Okou CLI";
 
     const response = await accept(
       client().send({
@@ -33,6 +37,7 @@ describe("POST /api/zero/chat/events authorization", () => {
         body: {
           agentId: randomUUID(),
           prompt,
+          hasTextContent: true,
           userMessage: {
             version: 1,
             parts: [{ type: "text", text: prompt }],

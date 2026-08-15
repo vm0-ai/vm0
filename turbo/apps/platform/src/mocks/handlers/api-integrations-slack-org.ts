@@ -1,8 +1,8 @@
 import {
   type SlackOrgStatus,
   zeroIntegrationsSlackContract,
-} from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
+} from "@okouai/api-contracts/contracts/zero-integrations-slack";
+import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
 import { mockApi } from "../msw-contract.ts";
 
 let mockSlackOrgData: SlackOrgStatus = {
@@ -10,7 +10,6 @@ let mockSlackOrgData: SlackOrgStatus = {
   isInstalled: true,
   workspaceName: "Test Org Workspace",
   isAdmin: true,
-  agentOrgSlug: "test-org",
   environment: {
     requiredSecrets: [],
     requiredVars: [],
@@ -25,7 +24,6 @@ export function resetMockSlackOrgIntegration(): void {
     isInstalled: true,
     workspaceName: "Test Org Workspace",
     isAdmin: true,
-    agentOrgSlug: "test-org",
     environment: {
       requiredSecrets: [],
       requiredVars: [],
@@ -36,12 +34,12 @@ export function resetMockSlackOrgIntegration(): void {
 }
 
 export const apiIntegrationsSlackOrgHandlers = [
-  // GET /api/zero/integrations/slack
+  // GET /api/okou/integrations/slack
   mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
     return respond(200, mockSlackOrgData);
   }),
 
-  // DELETE /api/zero/integrations/slack
+  // DELETE /api/okou/integrations/slack
   mockApi(zeroIntegrationsSlackContract.disconnect, ({ query, respond }) => {
     if (query.action === "uninstall") {
       mockSlackOrgData = {
@@ -55,8 +53,8 @@ export const apiIntegrationsSlackOrgHandlers = [
     return respond(200, { ok: true });
   }),
 
-  // GET /api/zero/slack/channels
-  mockApi(zeroSlackChannelsContract.list, ({ respond }) => {
+  // GET /api/okou/slack/channels
+  mockApi(slackChannelsContract.list, ({ respond }) => {
     if (!mockSlackOrgData.isInstalled) {
       return respond(404, {
         error: { message: "No Slack installation", code: "NOT_FOUND" },

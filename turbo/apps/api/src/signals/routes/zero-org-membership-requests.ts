@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroOrgMembershipRequestsContract } from "@vm0/api-contracts/contracts/zero-org-members";
+import { zeroOrgMembershipRequestsContract } from "@okouai/api-contracts/contracts/zero-org-members";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -7,7 +7,7 @@ import { bodyResultOf } from "../context/request";
 import {
   acceptMembershipRequest$,
   rejectMembershipRequest$,
-} from "../services/zero-org-membership-requests.service";
+} from "../services/org-membership-requests.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({

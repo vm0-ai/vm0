@@ -251,6 +251,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn start_factories_creates_each_configured_profile() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(temp.path().join("home"));
+        let base_dir = temp.path().join("base");
+        let firecracker = config::FirecrackerConfig {
+            binary: temp.path().join("firecracker"),
+            kernel: temp.path().join("vmlinux"),
+        };
+        let mut profiles = BTreeMap::new();
+        profiles.insert(
+            crate::profile::DEFAULT_PROFILE.into(),
+            profile("rootfs-1", "snapshot-1"),
+        );
+        profiles.insert("vm0/large".into(), profile("rootfs-2", "snapshot-2"));
+        let mut runtime = RecordingRuntime::new(usize::MAX);
+
+        let factories = start_factories(&profiles, &firecracker, &base_dir, &home, &mut runtime)
+            .await
+            .unwrap();
+
+        assert_eq!(runtime.create_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            factories.keys().cloned().collect::<Vec<_>>(),
+            vec![
+                crate::profile::DEFAULT_PROFILE.to_string(),
+                "vm0/large".to_string()
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn start_factories_shuts_down_started_factories_after_create_error() {
         let temp = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(temp.path().join("home"));

@@ -1,4 +1,4 @@
-import { IconBan, IconCheck, IconCircleHalf2 } from "@tabler/icons-react";
+import { Ban, Check, Contrast } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 type PermissionPolicyToggleValue = "allow" | "deny";
@@ -11,7 +11,7 @@ export function PermissionPolicyMixedBadge() {
   const { t } = useTranslation();
   return (
     <span className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-muted/60 px-2 text-[11px] font-medium text-muted-foreground">
-      <IconCircleHalf2 size={12} className="shrink-0" />
+      <Contrast size={12} className="shrink-0" />
       <span>
         {t(($) => {
           return $.connectors.permissions.actions.mixed;
@@ -37,7 +37,7 @@ function permissionPolicyButtonClass({
         : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
       : disabled
         ? "text-muted-foreground/50"
-        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+        : "text-muted-foreground hover:text-foreground hover:bg-state-hover"
   } ${disabled ? "cursor-default" : "cursor-pointer"}`;
 }
 
@@ -66,7 +66,7 @@ export function PermissionPolicyToggle({
           tone: "allow",
         })}
       >
-        <IconCheck size={12} stroke={2.5} />
+        <Check size={12} />
         {t(($) => {
           return $.connectors.permissions.actions.allow;
         })}
@@ -83,7 +83,7 @@ export function PermissionPolicyToggle({
           tone: "deny",
         })}
       >
-        <IconBan size={12} stroke={2.5} />
+        <Ban size={12} />
         {t(($) => {
           return $.connectors.permissions.actions.deny;
         })}

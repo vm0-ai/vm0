@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 
 export type OnboardingChoice =
   | "workflow"
@@ -31,6 +32,26 @@ export interface OnboardingDraft {
   readonly videoNote: string;
   readonly prompt: string;
 }
+
+interface OnboardingCheckoutDraft {
+  readonly prompt: string;
+  readonly note: string;
+}
+
+export const ONBOARDING_CHECKOUT_STATE_PARAM = "onboarding_checkout_state";
+
+const ONBOARDING_CHECKOUT_STATE_STORAGE_KEY = "vm0:onboarding:checkout-state";
+const ONBOARDING_CHECKOUT_PROMPT_STORAGE_KEY = "vm0:onboarding:checkout-prompt";
+const ONBOARDING_CHECKOUT_NOTE_STORAGE_KEY = "vm0:onboarding:checkout-note";
+const onboardingCheckoutStateStorage = sessionStorageSignals(
+  ONBOARDING_CHECKOUT_STATE_STORAGE_KEY,
+);
+const onboardingCheckoutPromptStorage = sessionStorageSignals(
+  ONBOARDING_CHECKOUT_PROMPT_STORAGE_KEY,
+);
+const onboardingCheckoutNoteStorage = sessionStorageSignals(
+  ONBOARDING_CHECKOUT_NOTE_STORAGE_KEY,
+);
 
 interface OnboardingUiState {
   readonly workflowPreviewId: string | null;
@@ -68,6 +89,39 @@ function emptyOnboardingUiState(): OnboardingUiState {
   };
 }
 
+export const storeOnboardingCheckoutDraft$ = command(
+  ({ set }, draft: OnboardingCheckoutDraft): string => {
+    const stateId = crypto.randomUUID();
+    set(onboardingCheckoutStateStorage.set$, stateId);
+    set(onboardingCheckoutPromptStorage.set$, draft.prompt);
+    set(onboardingCheckoutNoteStorage.set$, draft.note);
+    return stateId;
+  },
+);
+
+export const readOnboardingCheckoutDraft$ = command(
+  ({ get }, searchParams: URLSearchParams): OnboardingCheckoutDraft | null => {
+    const stateId = searchParams.get(ONBOARDING_CHECKOUT_STATE_PARAM);
+    if (!stateId || get(onboardingCheckoutStateStorage.get$) !== stateId) {
+      return null;
+    }
+
+    const prompt = get(onboardingCheckoutPromptStorage.get$);
+    const note = get(onboardingCheckoutNoteStorage.get$);
+    if (prompt === null || note === null) {
+      return null;
+    }
+
+    return { prompt, note };
+  },
+);
+
+const clearOnboardingCheckoutDraft$ = command(({ set }) => {
+  set(onboardingCheckoutStateStorage.clear$);
+  set(onboardingCheckoutPromptStorage.clear$);
+  set(onboardingCheckoutNoteStorage.clear$);
+});
+
 const internalOnboardingDraft$ = state<OnboardingDraft>(emptyOnboardingDraft());
 const internalOnboardingUi$ = state<OnboardingUiState>(
   emptyOnboardingUiState(),
@@ -90,6 +144,7 @@ export const updateOnboardingDraft$ = command(
 );
 
 export const resetOnboardingDraft$ = command(({ set }) => {
+  set(clearOnboardingCheckoutDraft$);
   set(internalOnboardingDraft$, emptyOnboardingDraft());
 });
 
@@ -132,6 +187,19 @@ function onboardingChoice(value: string | null): OnboardingChoice | null {
   return null;
 }
 
+function onboardingRouteText(
+  searchParams: URLSearchParams,
+  checkoutDraft: OnboardingCheckoutDraft | null,
+): {
+  readonly prompt: string | null;
+  readonly note: string | null;
+} {
+  return {
+    prompt: searchParams.get("prompt") ?? checkoutDraft?.prompt ?? null,
+    note: searchParams.get("onboarding_note") ?? checkoutDraft?.note ?? null,
+  };
+}
+
 export const hydrateOnboardingRoute$ = command(
   ({ get, set }, step: OnboardingRouteStep, searchParams: URLSearchParams) => {
     set(resetOnboardingUi$);
@@ -141,15 +209,17 @@ export const hydrateOnboardingRoute$ = command(
     }
 
     const current = get(internalOnboardingDraft$);
-    const prompt = searchParams.get("prompt");
+    const routeText = onboardingRouteText(
+      searchParams,
+      set(readOnboardingCheckoutDraft$, searchParams),
+    );
     const categoryId = searchParams.get("category");
     const workflowId = searchParams.get("workflow");
-    const onboardingNote = searchParams.get("onboarding_note");
     const templateSlug =
       searchParams.get("onboarding_template") ?? searchParams.get("template");
     const patch: OnboardingDraftUpdate = {
       ...(choice ? { choice } : {}),
-      ...(prompt !== null ? { prompt } : {}),
+      ...(routeText.prompt !== null ? { prompt: routeText.prompt } : {}),
     };
 
     if (step === "workflow-picker" || step === "workflow-run") {
@@ -169,8 +239,8 @@ export const hydrateOnboardingRoute$ = command(
     if (step === "video-template" || step === "video-run") {
       patch.choice = "video";
       patch.videoTemplateSlug = templateSlug ?? current.videoTemplateSlug;
-      if (onboardingNote !== null) {
-        patch.videoNote = onboardingNote;
+      if (routeText.note !== null) {
+        patch.videoNote = routeText.note;
       }
     }
 

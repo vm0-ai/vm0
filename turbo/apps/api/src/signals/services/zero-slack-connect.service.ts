@@ -1,11 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
+import { slackUserAgentPreferences } from "@okouai/db/schema/slack-user-agent-preference";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq, isNull } from "drizzle-orm";
 
 import {
@@ -18,16 +18,14 @@ import { clerk$ } from "../external/clerk";
 import { publishUserSignal } from "../external/realtime";
 import {
   createSlackClient,
-  postEphemeral,
-  postMessage,
+  type SlackClient,
 } from "../external/slack-message-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type Db } from "../external/db";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 type SlackInstallation = typeof slackOrgInstallations.$inferSelect;
-type SlackClient = ReturnType<typeof createSlackClient>;
 
 type ConnectResult =
   | { readonly kind: "not_found"; readonly message: string }
@@ -196,9 +194,9 @@ async function refreshSlackAppHome(args: {
     .limit(1);
 
   if (!connection) {
-    await args.client.views.publish({
-      user_id: args.slackUserId,
-      view: buildAppHomeView({
+    await args.client.publishAppHome(
+      args.slackUserId,
+      buildAppHomeView({
         appUrl: env("APP_URL"),
         isLinked: false,
         loginUrl: buildSlackConnectUrl(
@@ -206,7 +204,7 @@ async function refreshSlackAppHome(args: {
           args.slackUserId,
         ),
       }),
-    });
+    );
     return;
   }
 
@@ -238,9 +236,9 @@ async function refreshSlackAppHome(args: {
     canSwitch = Boolean(defaultComposeId);
   }
 
-  await args.client.views.publish({
-    user_id: args.slackUserId,
-    view: buildAppHomeView({
+  await args.client.publishAppHome(
+    args.slackUserId,
+    buildAppHomeView({
       appUrl: env("APP_URL"),
       isLinked: true,
       vm0UserId: connection.vm0UserId,
@@ -252,7 +250,7 @@ async function refreshSlackAppHome(args: {
       isOverrideActive,
       canSwitch,
     }),
-  });
+  );
 }
 
 export function zeroSlackConnectStatus(args: {
@@ -492,7 +490,7 @@ export const notifySlackConnect$ = command(
 
     let sentEphemeral = false;
     if (args.channelId) {
-      const result = await postEphemeral(client, {
+      const result = await client.postEphemeral({
         channel: args.channelId,
         user: args.slackUserId,
         text: "You're connected!",
@@ -504,15 +502,14 @@ export const notifySlackConnect$ = command(
     }
 
     if (!sentEphemeral) {
-      const connectMessage = await postMessage(
-        client,
+      const connectMessage = await client.postMessage(
         args.slackUserId,
         "You're connected!",
         { blocks },
       );
       signal.throwIfAborted();
       if (connectMessage.kind === "ok") {
-        await postMessage(client, args.slackUserId, "Hi! I'm Zero.", {
+        await client.postMessage(args.slackUserId, "Hi! I'm Zero.", {
           threadTs: connectMessage.ts,
           blocks: buildWelcomeMessage(agentName),
         });
@@ -520,8 +517,7 @@ export const notifySlackConnect$ = command(
 
         if (args.pendingPrompt) {
           const safePrompt = `\`\`\`${args.pendingPrompt.replaceAll("`", "'")}\`\`\``;
-          await postMessage(
-            client,
+          await client.postMessage(
             args.slackUserId,
             `By the way, would you like me to run this for you?\n\n${safePrompt}\n\nJust paste it in a message and I'll get started!`,
             { threadTs: connectMessage.ts },

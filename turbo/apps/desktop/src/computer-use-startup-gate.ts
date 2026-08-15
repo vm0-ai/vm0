@@ -10,7 +10,7 @@ export const COMPUTER_USE_UNAUTHENTICATED_MESSAGE =
   "Desktop host could not authenticate with the API session. Sign in and retry.";
 
 export const COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE =
-  "Zero Desktop is signed in but no workspace is active. Select a workspace and retry.";
+  "Desktop is signed in but no workspace is active. Select a workspace and retry.";
 
 type ComputerUseStartupGate =
   | {

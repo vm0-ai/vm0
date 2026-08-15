@@ -3,13 +3,13 @@ import { createHmac, hkdfSync } from "node:crypto";
 import {
   ZERO_CAPABILITIES,
   ZeroCapability,
-} from "@vm0/api-contracts/contracts/composes";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+} from "@okouai/api-contracts/contracts/composes";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { safeJsonParse } from "../utils";
 import {
   CliAuth,
@@ -27,10 +27,6 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
-  ["browser:read", FeatureSwitchKey.ZeroBrowser],
-  ["browser:write", FeatureSwitchKey.ZeroBrowser],
-  ["connector:write", FeatureSwitchKey.CustomConnectorCliCreate],
-  ["image-recognition:write", FeatureSwitchKey.ZeroImageRecognition],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -38,6 +34,7 @@ const AGENT_EXCLUDED_CAPABILITIES = [
 ] as const satisfies readonly ZeroCapability[];
 
 interface ZeroTokenOptions {
+  readonly scope?: "zero" | "okou";
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: boolean;
   readonly imageRecognitionAvailable?: boolean;
@@ -73,14 +70,15 @@ const zeroCapabilitiesSchema = z
   .readonly();
 
 const zeroTokenPayloadSchema = jwtBaseSchema.extend({
-  scope: z.literal("zero"),
+  scope: z.enum(["zero", "okou"]),
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
-  featureSwitchOverrides: z.record(z.string(), z.boolean()).optional(),
   computerUseHostId: z.string().uuid().optional(),
   cloudBrowserEnabled: z.literal(true).optional(),
 });
+
+type ZeroTokenClaims = Omit<z.infer<typeof zeroTokenPayloadSchema>, "scope">;
 
 const cliTokenPayloadSchema = jwtBaseSchema.extend({
   scope: z.literal("cli"),
@@ -324,6 +322,19 @@ export function generateZeroToken(
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
   options?: ZeroTokenOptions,
 ): string {
+  return signZeroToken(
+    options?.scope ?? "zero",
+    buildZeroTokenClaims(userId, runId, orgId, overrides, options),
+  );
+}
+
+function buildZeroTokenClaims(
+  userId: string,
+  runId: string,
+  orgId: string,
+  overrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
+  options: Omit<ZeroTokenOptions, "scope"> | undefined,
+): ZeroTokenClaims {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
@@ -334,14 +345,11 @@ export function generateZeroToken(
       capabilities.push(capability);
     }
   }
-
-  const payload: z.infer<typeof zeroTokenPayloadSchema> = {
-    scope: "zero",
+  return {
     userId,
     runId,
     orgId,
     capabilities,
-    ...(overrides === undefined ? {} : { featureSwitchOverrides: overrides }),
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }
@@ -353,7 +361,13 @@ export function generateZeroToken(
     iat: nowSeconds,
     exp: nowSeconds + 2 * 60 * 60,
   };
+}
 
+function signZeroToken(
+  scope: "zero" | "okou",
+  claims: ZeroTokenClaims,
+): string {
+  const payload: z.infer<typeof zeroTokenPayloadSchema> = { scope, ...claims };
   return SANDBOX_TOKEN_PREFIX + signJwt(payload);
 }
 

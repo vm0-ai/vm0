@@ -1,44 +1,47 @@
-import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   agentComposes,
   agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { artifacts } from "@vm0/db/schema/artifact";
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { composeJobs } from "@vm0/db/schema/compose-job";
-import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
-import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
-import { connectors } from "@vm0/db/schema/connector";
-import { deviceCodes } from "@vm0/db/schema/device-codes";
-import { exportJobs } from "@vm0/db/schema/export-job";
-import { githubUserLinks } from "@vm0/db/schema/github-user-link";
-import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { secrets } from "@vm0/db/schema/secret";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { storages } from "@vm0/db/schema/storage";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { usageDaily } from "@vm0/db/schema/usage-daily";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { users } from "@vm0/db/schema/user";
-import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import { variables } from "@vm0/db/schema/variable";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+} from "@okouai/db/schema/agent-compose";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { artifacts } from "@okouai/db/schema/artifact";
+import { cliTokens } from "@okouai/db/schema/cli-tokens";
+import { composeJobs } from "@okouai/db/schema/compose-job";
+import { connectorExternalCodeSessions } from "@okouai/db/schema/connector-external-code-session";
+import { connectorOauthDeviceAuthorizationSessions } from "@okouai/db/schema/connector-oauth-device-authorization-session";
+import { connectors } from "@okouai/db/schema/connector";
+import { deviceCodes } from "@okouai/db/schema/device-codes";
+import { exportJobs } from "@okouai/db/schema/export-job";
+import { githubUserLinks } from "@okouai/db/schema/github-user-link";
+import { modelProviderAuthSessions } from "@okouai/db/schema/model-provider-auth-session";
+import { modelProviders } from "@okouai/db/schema/model-provider";
+import { orgCache } from "@okouai/db/schema/org-cache";
+import { orgConcurrencyEntitlements } from "@okouai/db/schema/org-concurrency-entitlement";
+import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { secrets } from "@okouai/db/schema/secret";
+import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
+import { sharedThreads } from "@okouai/db/schema/shared-thread";
+import { storages } from "@okouai/db/schema/storage";
+import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { users } from "@okouai/db/schema/user";
+import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
+import { variables } from "@okouai/db/schema/variable";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm";
-
+import { and, count, eq, inArray, isNotNull, like, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { pgTextDecoder } from "../../lib/db-structured-result";
+import {
+  sharedThreadArtifactAuthorUserId,
+  SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
+} from "../../lib/shared-thread-artifact";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -46,20 +49,26 @@ import {
   listS3Objects,
   listS3ObjectsUnderPrefix,
 } from "../external/s3";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { publishCancelToRunnerGroup } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
 import { getStripeClient } from "../external/stripe-client";
 import { settle, tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { cancelAndRefundOrgBillingForDeletion } from "./org-deletion-billing.service";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
+import { removeUsagePackMemberAllocation } from "./usage-pack-allocation-change.service";
+import { refundUsagePackMemberCredits } from "./usage-pack-credit-refund.service";
 import {
   deleteOrgUsageData,
   deleteUserUsageData,
 } from "./usage-event-cleanup.service";
-import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
-import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import {
+  deleteZeroConnectorLocalState$,
+  loadStoredConnectorRuntimeSnapshot,
+} from "./zero-connector-data.service";
+import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
 
 const L = logger("WebhookClerkCleanup");
 const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
@@ -372,33 +381,28 @@ const revokeOrgConnectorTokens$ = command(
     orgId: string,
     signal: AbortSignal,
   ): Promise<void> => {
-    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    const snapshot = await loadStoredConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
       .select({
         userId: connectors.userId,
-        connectorSlug: connectors.connectorSlug,
+        connectorSlug: sql`${connectors.connectorSlug}`
+          .mapWith(pgTextDecoder)
+          .as("connector_slug"),
       })
       .from(connectors)
-      .where(eq(connectors.orgId, orgId));
+      .where(
+        and(eq(connectors.orgId, orgId), isNotNull(connectors.connectorSlug)),
+      );
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorSlugSchema.safeParse(row.connectorSlug);
-      if (!parsed.success) {
-        L.warn("unknown connector slug, skipping revocation", {
-          orgId,
-          connectorSlug: row.connectorSlug,
-        });
-        continue;
-      }
-
       await set(
         deleteZeroConnectorLocalState$,
         {
           orgId,
           userId: row.userId,
-          connectorSlug: parsed.data,
+          connectorSlug: row.connectorSlug,
           snapshot,
         },
         signal,
@@ -414,33 +418,28 @@ const revokeUserConnectorTokens$ = command(
     userId: string,
     signal: AbortSignal,
   ): Promise<void> => {
-    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    const snapshot = await loadStoredConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
       .select({
         orgId: connectors.orgId,
-        connectorSlug: connectors.connectorSlug,
+        connectorSlug: sql`${connectors.connectorSlug}`
+          .mapWith(pgTextDecoder)
+          .as("connector_slug"),
       })
       .from(connectors)
-      .where(eq(connectors.userId, userId));
+      .where(
+        and(eq(connectors.userId, userId), isNotNull(connectors.connectorSlug)),
+      );
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorSlugSchema.safeParse(row.connectorSlug);
-      if (!parsed.success) {
-        L.warn("unknown connector slug, skipping revocation", {
-          userId,
-          connectorSlug: row.connectorSlug,
-        });
-        continue;
-      }
-
       await set(
         deleteZeroConnectorLocalState$,
         {
           orgId: row.orgId,
           userId,
-          connectorSlug: parsed.data,
+          connectorSlug: row.connectorSlug,
           snapshot,
         },
         signal,
@@ -460,12 +459,6 @@ const cleanupOrgExternalServices$ = command(
       readonly name: string;
       readonly run: () => Promise<void>;
     }[] = [
-      {
-        name: "stripe subscriptions",
-        run: () => {
-          return cancelStripeSubscriptionsForDeletedOrg(db, orgId);
-        },
-      },
       {
         name: "telegram webhooks",
         run: () => {
@@ -742,7 +735,11 @@ function deleteUserS3Data(db: Db, userId: string): Computed<Promise<void>> {
   });
 }
 
-async function deleteOrgData(db: Db, orgId: string): Promise<void> {
+async function deleteOrgData(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
   await cancelOrgRuns(db, orgId);
 
   const installations = await db
@@ -754,9 +751,27 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   }
 
   await deleteOrgUsageData(db, orgId);
+  await db.delete(sharedThreads).where(
+    inArray(
+      sharedThreads.id,
+      db
+        .select({ id: artifacts.entityId })
+        .from(artifacts)
+        .where(
+          and(
+            eq(artifacts.orgId, orgId),
+            like(
+              artifacts.logicalKey,
+              `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+            ),
+          ),
+        ),
+    ),
+  );
   await db.delete(artifacts).where(eq(artifacts.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
+  await deleteConnectorOwnerState(db, { kind: "organization", orgId }, signal);
   await db.delete(storages).where(eq(storages.orgId, orgId));
   await db.delete(modelProviders).where(eq(modelProviders.orgId, orgId));
   await db
@@ -764,14 +779,12 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
     .where(eq(modelProviderAuthSessions.orgId, orgId));
   await db.delete(secrets).where(eq(secrets.orgId, orgId));
   await db.delete(variables).where(eq(variables.orgId, orgId));
-  await db.delete(connectors).where(eq(connectors.orgId, orgId));
   await db
     .delete(connectorOauthDeviceAuthorizationSessions)
     .where(eq(connectorOauthDeviceAuthorizationSessions.orgId, orgId));
   await db
     .delete(connectorExternalCodeSessions)
     .where(eq(connectorExternalCodeSessions.orgId, orgId));
-  await db.delete(usageDaily).where(eq(usageDaily.orgId, orgId));
   await db.delete(exportJobs).where(eq(exportJobs.orgId, orgId));
   await db.delete(zeroAgents).where(eq(zeroAgents.orgId, orgId));
   await db
@@ -788,7 +801,11 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
 }
 
-async function deleteUserData(db: Db, userId: string): Promise<void> {
+async function deleteUserData(
+  db: Db,
+  userId: string,
+  signal: AbortSignal,
+): Promise<void> {
   await cancelUserRuns(db, userId);
 
   await db
@@ -802,7 +819,15 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
     .delete(telegramInstallations)
     .where(eq(telegramInstallations.ownerUserId, userId));
   await deleteUserUsageData(db, userId);
-  await db.delete(artifacts).where(eq(artifacts.authorUserId, userId));
+  await db
+    .delete(artifacts)
+    .where(
+      inArray(artifacts.authorUserId, [
+        userId,
+        sharedThreadArtifactAuthorUserId(userId),
+      ]),
+    );
+  await db.delete(sharedThreads).where(eq(sharedThreads.userId, userId));
   await db.delete(agentRuns).where(eq(agentRuns.userId, userId));
 
   const composeRows = await db
@@ -824,10 +849,9 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
   await db
     .delete(modelProviderAuthSessions)
     .where(eq(modelProviderAuthSessions.userId, userId));
+  await deleteConnectorOwnerState(db, { kind: "user", userId }, signal);
   await db.delete(secrets).where(eq(secrets.userId, userId));
   await db.delete(variables).where(eq(variables.userId, userId));
-  await db.delete(connectors).where(eq(connectors.userId, userId));
-  await db.delete(usageDaily).where(eq(usageDaily.userId, userId));
   await db.delete(exportJobs).where(eq(exportJobs.userId, userId));
   await db.delete(cliTokens).where(eq(cliTokens.userId, userId));
   await db.delete(composeJobs).where(eq(composeJobs.userId, userId));
@@ -856,7 +880,15 @@ export const cleanupClerkDeletedOrg$ = command(
     signal.throwIfAborted();
     await get(deleteOrgS3Data(db, orgId));
     signal.throwIfAborted();
-    await deleteOrgData(db, orgId);
+    await deleteOrgData(db, orgId, signal);
+  },
+);
+
+export const cleanupClerkDeletedOrgBilling$ = command(
+  async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
+    const db = set(writeDb$);
+    await cancelAndRefundOrgBillingForDeletion(db, orgId, signal);
+    signal.throwIfAborted();
   },
 );
 
@@ -874,6 +906,13 @@ export const cleanupClerkDeletedUser$ = command(
     await set(cleanupUserExternalServices$, db, userId, signal);
     signal.throwIfAborted();
     for (const orgId of emptyOrgIds) {
+      await tapError(
+        cancelStripeSubscriptionsForDeletedOrg(db, orgId),
+        (error) => {
+          L.warn("failed to cleanup stripe subscriptions", { orgId, error });
+        },
+      );
+      signal.throwIfAborted();
       await set(cleanupOrgExternalServices$, db, orgId, signal);
       signal.throwIfAborted();
     }
@@ -885,14 +924,27 @@ export const cleanupClerkDeletedUser$ = command(
       signal.throwIfAborted();
     }
 
-    await deleteUserData(db, userId);
+    await deleteUserData(db, userId, signal);
     signal.throwIfAborted();
     for (const orgId of emptyOrgIds) {
-      await deleteOrgData(db, orgId);
+      await deleteOrgData(db, orgId, signal);
       signal.throwIfAborted();
     }
   },
 );
+
+async function commitClerkDeletedOrgMembershipCleanup(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<void> {
+  const commitSignal = new AbortController().signal;
+  await removeUsagePackMemberAllocation(db, args, commitSignal);
+  commitSignal.throwIfAborted();
+  await refundUsagePackMemberCredits(db, args, commitSignal);
+  commitSignal.throwIfAborted();
+  await cleanupOrgMemberResources(db, args, commitSignal);
+  commitSignal.throwIfAborted();
+}
 
 export const cleanupClerkDeletedOrgMembership$ = command(
   async (
@@ -903,7 +955,9 @@ export const cleanupClerkDeletedOrgMembership$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    await cleanupOrgMemberResources(set(writeDb$), args, signal);
+    const db = set(writeDb$);
+    await commitClerkDeletedOrgMembershipCleanup(db, args);
+    signal.throwIfAborted();
   },
 );
 

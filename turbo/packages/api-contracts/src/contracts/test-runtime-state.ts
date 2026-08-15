@@ -11,25 +11,55 @@ export const testRuntimeStateErrorSchema = z.object({
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("seed-vm0-managed-default-model-key"),
+    fixture_id: z.uuid(),
   }),
   z.object({
     action: z.literal("seed-vm0-managed-model-key"),
+    fixture_id: z.uuid(),
     selected_model: z.string(),
   }),
   z.object({
-    action: z.literal("delete-vm0-managed-default-model-key"),
-  }),
-  z.object({
-    action: z.literal("enable-fake-kms"),
-  }),
-  z.object({
-    action: z.literal("reset-fake-kms"),
-  }),
-  z.object({
-    action: z.literal("read-fake-kms-state"),
+    action: z.literal("delete-vm0-managed-model-key"),
+    fixture_id: z.uuid(),
   }),
   z.object({
     action: z.literal("read-browser-screenshot-schema-state"),
+  }),
+  z.object({
+    action: z.literal("read-usage-pack-invitation-schema-state"),
+  }),
+  z.object({
+    action: z.literal("set-run-autonomy-budget"),
+    run_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
+  }),
+  z.object({
+    action: z.literal("read-run-autonomy-budget"),
+    run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("save-run-summary"),
+    run_id: z.uuid(),
+    trigger_source: z.string(),
+    prompt: z.string(),
+    result_text: z.string(),
+  }),
+  z.object({
+    action: z.literal("set-workflow-automation-autonomy-budget"),
+    automation_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
+  }),
+  z.object({
+    action: z.literal("read-workflow-automation-autonomy-state"),
+    automation_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-latest-workflow-automation-run"),
+    automation_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-thread-goal-autonomy-budget"),
+    thread_id: z.uuid(),
   }),
   z.object({
     action: z.literal("reset-database-pool"),
@@ -71,11 +101,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     checkpoint_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("replace-custom-connector-prefixes"),
-    connector_id: z.uuid(),
-    prefixes: z.array(z.string()).min(1),
-  }),
-  z.object({
     action: z.literal("hold-org-admission-lock"),
     org_id: z.string(),
   }),
@@ -88,6 +113,36 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("read-run-uploaded-file-sources"),
     run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-chat-event-snapshot-head"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("advance-chat-event-sequence-as-previous-api"),
+    thread_id: z.uuid(),
+    count: z.int().positive(),
+  }),
+  z.object({
+    action: z.literal("set-chat-event-snapshot-head-version"),
+    thread_id: z.uuid(),
+    archive_schema_version: z.int().positive(),
+    object_key: z.string().optional(),
+    last_seq_id: z.int().nonnegative().optional(),
+  }),
+  z.object({
+    action: z.literal("replace-chat-event-snapshot-head-as-previous-api"),
+    thread_id: z.uuid(),
+    last_seq_id: z.int().positive(),
+    archive_schema_version: z.int().positive(),
+    object_key: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("validate-chat-event-snapshot-rollout"),
+    thread_id: z.uuid(),
+    last_seq_id: z.int().positive(),
+    last_event_id: z.uuid(),
+    archive_schema_version: z.int().positive(),
   }),
   z.object({
     action: z.literal("clear-run-api-start"),
@@ -142,16 +197,56 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
     profile: z.string(),
   }),
+  z.object({
+    action: z.literal("set-custom-connector-auth-template-fixture"),
+    connector_id: z.uuid(),
+    value_template: z.string(),
+  }),
 ]);
 
 export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
   selected_model: z.string().optional(),
-  decrypt_call_count: z.number().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
+  usage_pack_invitation_schema_available: z.boolean().optional(),
+  autonomy_budget: z.int().min(0).max(10).nullable().optional(),
+  workflow_automation_state: z
+    .object({
+      autonomy_budget: z.int().min(0).max(10),
+      enabled: z.boolean(),
+      last_run_id: z.uuid().nullable(),
+    })
+    .nullable()
+    .optional(),
+  workflow_automation_run: z
+    .object({
+      run_id: z.uuid(),
+      autonomy_budget: z.int().min(0).max(10),
+    })
+    .nullable()
+    .optional(),
   admission_lock_held: z.boolean().optional(),
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
+  chat_event_snapshot_head: z
+    .object({
+      archive_schema_version: z.int().positive(),
+      last_event_id: z.uuid(),
+      last_seq_id: z.int().nonnegative(),
+      object_key: z.string(),
+      snapshot_count: z.int().positive(),
+    })
+    .nullable()
+    .optional(),
+  chat_event_snapshot_rollout: z
+    .object({
+      pre_migration_schema_available: z.boolean(),
+      pre_migration_last_event_id: z.uuid(),
+      pre_migration_snapshot_count: z.int().positive(),
+      migrated_last_event_id: z.uuid(),
+      migrated_snapshot_count: z.int().positive(),
+    })
+    .optional(),
   api_started_at: z.string().nullable().optional(),
   thread_session_binding: z
     .object({

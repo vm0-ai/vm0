@@ -3,8 +3,9 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   executionFirewallBuiltinEntrySchema,
+  executionFirewallInlineEntrySchema,
   networkPoliciesSchema,
-} from "@vm0/connectors/firewall-types";
+} from "@okouai/connectors/firewall-types";
 import {
   getRunResponseSchema,
   cancelRunResponseSchema,
@@ -12,13 +13,12 @@ import {
   queueResponseSchema,
   unifiedRunRequestSchema,
   networkLogsResponseSchema,
-  systemLogResponseSchema,
-  metricsResponseSchema,
-  logsSearchQuerySchema,
-  logsSearchResponseSchema,
   createLogPaginationQuerySchema,
 } from "./runs";
-import { sandboxReuseResultSchema } from "./webhooks";
+import {
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+} from "./webhooks";
 
 /**
  * Zero run request schema — subset of unified schema.
@@ -47,7 +47,7 @@ export const zeroRunCreateBodySchema = unifiedRunRequestSchema
 
 const c = initContract();
 
-const zeroLogPaginationQuerySchema = createLogPaginationQuerySchema({
+const zeroAgentEventPaginationQuerySchema = createLogPaginationQuerySchema({
   cursorKind: "sequence",
 });
 
@@ -58,17 +58,13 @@ const zeroNetworkLogPaginationQuerySchema = createLogPaginationQuerySchema({
   defaultOrder: "asc",
 });
 
-const zeroTelemetryTimePaginationQuerySchema = createLogPaginationQuerySchema({
-  cursorKind: "time",
-});
-
 /**
- * Zero runs by ID contract (GET /api/zero/runs/:id)
+ * Zero runs by ID contract (GET /api/okou/runs/:id)
  */
 export const zeroRunsByIdContract = c.router({
   getById: {
     method: "GET",
-    path: "/api/zero/runs/:id",
+    path: "/api/okou/runs/:id",
     headers: authHeadersSchema,
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
@@ -85,12 +81,12 @@ export const zeroRunsByIdContract = c.router({
 });
 
 /**
- * Zero runs cancel contract (POST /api/zero/runs/:id/cancel)
+ * Zero runs cancel contract (POST /api/okou/runs/:id/cancel)
  */
 export const zeroRunsCancelContract = c.router({
   cancel: {
     method: "POST",
-    path: "/api/zero/runs/:id/cancel",
+    path: "/api/okou/runs/:id/cancel",
     headers: authHeadersSchema,
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
@@ -108,12 +104,12 @@ export const zeroRunsCancelContract = c.router({
 });
 
 /**
- * Zero runs queue contract (GET /api/zero/runs/queue)
+ * Zero runs queue contract (GET /api/okou/runs/queue)
  */
 export const zeroRunsQueueContract = c.router({
   getQueue: {
     method: "GET",
-    path: "/api/zero/runs/queue",
+    path: "/api/okou/runs/queue",
     headers: authHeadersSchema,
     responses: {
       200: queueResponseSchema,
@@ -125,18 +121,17 @@ export const zeroRunsQueueContract = c.router({
 });
 
 /**
- * Zero run agent events contract (GET /api/zero/runs/:id/telemetry/agent)
- * Zero-namespaced agent events read (same response shape as the retired /api/agent telemetry route)
+ * Zero run agent events contract (GET /api/okou/runs/:id/telemetry/agent)
  */
 export const zeroRunAgentEventsContract = c.router({
   getAgentEvents: {
     method: "GET",
-    path: "/api/zero/runs/:id/telemetry/agent",
+    path: "/api/okou/runs/:id/telemetry/agent",
     headers: authHeadersSchema,
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: zeroLogPaginationQuerySchema,
+    query: zeroAgentEventPaginationQuerySchema,
     responses: {
       200: agentEventsResponseSchema,
       400: apiErrorSchema,
@@ -144,58 +139,14 @@ export const zeroRunAgentEventsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get agent events with pagination (zero proxy)",
+    summary: "Get agent events with pagination",
   },
 });
 
 /**
- * Zero run system log contract (GET /api/zero/runs/:id/telemetry/system-log)
- */
-export const zeroRunSystemLogContract = c.router({
-  getSystemLog: {
-    method: "GET",
-    path: "/api/zero/runs/:id/telemetry/system-log",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    query: zeroTelemetryTimePaginationQuerySchema,
-    responses: {
-      200: systemLogResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get system log with pagination",
-  },
-});
-
-/**
- * Zero run metrics contract (GET /api/zero/runs/:id/telemetry/metrics)
- */
-export const zeroRunMetricsContract = c.router({
-  getMetrics: {
-    method: "GET",
-    path: "/api/zero/runs/:id/telemetry/metrics",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    query: zeroTelemetryTimePaginationQuerySchema,
-    responses: {
-      200: metricsResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get metrics with pagination",
-  },
-});
-
-/**
- * Run context snapshot — sanitized execution context for debugging.
+ * Run context snapshot — launch-time execution context for debugging.
+ * Environment secret values are redacted. Firewall auth retains the prepared
+ * execution templates, including secret references, but never resolves them.
  * Dynamic fields (environment, firewalls, volumes, artifact) are stored in Axiom.
  * Static fields (prompt, vars, secretNames) are merged from agent_runs at query time.
  */
@@ -230,8 +181,18 @@ const runContextSanitizedFirewallSchema = z.object({
   ),
 });
 
+// Keep name/apis at the top level so the previous web client can parse a new
+// inline response through runContextSanitizedFirewallSchema during rollout.
+const runContextExecutionInlineFirewallSchema =
+  executionFirewallInlineEntrySchema.shape.firewall.extend({
+    kind: z.literal("inline"),
+    customConnectorId:
+      executionFirewallInlineEntrySchema.shape.customConnectorId,
+  });
+
 const runContextFirewallSchema = z.union([
   executionFirewallBuiltinEntrySchema,
+  runContextExecutionInlineFirewallSchema,
   runContextSanitizedFirewallSchema,
 ]);
 
@@ -252,13 +213,13 @@ export const runContextResponseSchema = z.object({
 });
 
 /**
- * Zero run context contract (GET /api/zero/runs/:id/context)
- * Returns sanitized execution context snapshot for debugging
+ * Zero run context contract (GET /api/okou/runs/:id/context)
+ * Returns a launch-time execution context snapshot for debugging
  */
 export const zeroRunContextContract = c.router({
   getContext: {
     method: "GET",
-    path: "/api/zero/runs/:id/context",
+    path: "/api/okou/runs/:id/context",
     headers: authHeadersSchema,
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
@@ -275,13 +236,13 @@ export const zeroRunContextContract = c.router({
 });
 
 /**
- * Zero run network logs contract (GET /api/zero/runs/:id/network)
+ * Zero run network logs contract (GET /api/okou/runs/:id/network)
  * Returns mitmproxy network logs for a run
  */
 export const zeroRunNetworkLogsContract = c.router({
   getNetworkLogs: {
     method: "GET",
-    path: "/api/zero/runs/:id/network",
+    path: "/api/okou/runs/:id/network",
     headers: authHeadersSchema,
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
@@ -299,7 +260,7 @@ export const zeroRunNetworkLogsContract = c.router({
 });
 
 /**
- * Zero run runner contract (GET /api/zero/runs/:id/runner)
+ * Zero run runner contract (GET /api/okou/runs/:id/runner)
  * Returns runner-level metadata about how the run was provisioned
  * (sandbox reuse decision, etc.). Kept separate from logDetailSchema
  * so runner-tab fields can grow without polluting the generic log
@@ -307,12 +268,13 @@ export const zeroRunNetworkLogsContract = c.router({
  */
 const runRunnerResponseSchema = z.object({
   sandboxReuseResult: sandboxReuseResultSchema.nullable(),
+  workspaceReuseResult: workspaceReuseResultSchema.nullable().optional(),
 });
 
 export const zeroRunRunnerContract = c.router({
   getRunner: {
     method: "GET",
-    path: "/api/zero/runs/:id/runner",
+    path: "/api/okou/runs/:id/runner",
     headers: authHeadersSchema,
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
@@ -328,38 +290,15 @@ export const zeroRunRunnerContract = c.router({
   },
 });
 
-/**
- * Zero logs search contract (GET /api/zero/logs/search)
- * Search agent events across runs via zero token auth
- */
-export const zeroLogsSearchContract = c.router({
-  searchLogs: {
-    method: "GET",
-    path: "/api/zero/logs/search",
-    headers: authHeadersSchema,
-    query: logsSearchQuerySchema,
-    responses: {
-      200: logsSearchResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "Search agent events across runs (zero proxy)",
-  },
-});
-
 // Inferred types from Zod schemas
 export type RunContextResponse = z.infer<typeof runContextResponseSchema>;
 export type RunRunnerResponse = z.infer<typeof runRunnerResponseSchema>;
 
 // Type exports
-export type ZeroLogsSearchContract = typeof zeroLogsSearchContract;
 export type ZeroRunsByIdContract = typeof zeroRunsByIdContract;
 export type ZeroRunsCancelContract = typeof zeroRunsCancelContract;
 export type ZeroRunsQueueContract = typeof zeroRunsQueueContract;
 export type ZeroRunAgentEventsContract = typeof zeroRunAgentEventsContract;
-export type ZeroRunSystemLogContract = typeof zeroRunSystemLogContract;
-export type ZeroRunMetricsContract = typeof zeroRunMetricsContract;
 export type ZeroRunContextContract = typeof zeroRunContextContract;
 export type ZeroRunNetworkLogsContract = typeof zeroRunNetworkLogsContract;
 export type ZeroRunRunnerContract = typeof zeroRunRunnerContract;

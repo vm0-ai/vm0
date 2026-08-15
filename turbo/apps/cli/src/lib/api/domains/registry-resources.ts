@@ -1,5 +1,5 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
-import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/registry-resources";
+import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
+import { registryResourceDownloadContract } from "@okouai/api-contracts/contracts/registry-resources";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 

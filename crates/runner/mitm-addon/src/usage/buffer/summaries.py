@@ -54,7 +54,10 @@ def _build_flush_summaries(batches: Iterable[_FlushBatch]) -> list[_FlushSummary
 def _pending_flush_from_batches(flush_sequence: int, batches: list[_FlushBatch]) -> _PendingFlush:
     return _pending_flush_from_pending_batches(
         flush_sequence,
-        [_PendingBatch(batch=batch) for batch in batches],
+        [
+            _PendingBatch(batch=batch, flush_batch_index=index)
+            for index, batch in enumerate(batches)
+        ],
     )
 
 

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { AlertCircle } from "lucide-react";
 import { useLastLoadable, useSet } from "ccstate-react";
 import type { DesktopAuthState } from "../desktop-bridge";
 import { hasReadyDesktopAuth } from "../computer-use-startup-gate";
@@ -17,6 +17,8 @@ import {
 } from "./computer-use-state";
 import { Panel, ZeroFace } from "./components";
 import { ReadyExperience } from "./hero";
+import { currentDesktopIdentity } from "./desktop-identity";
+import { ZeroMigrationNotice } from "./zero-migration-notice";
 import {
   AuthStepCard,
   PermissionAutoRefresh,
@@ -40,7 +42,7 @@ function BridgeSubscription() {
 
 function UnsupportedPanel({ platform }: { readonly platform: string }) {
   return (
-    <Panel title="Unsupported Platform" icon={<IconAlertCircle size={18} />}>
+    <Panel title="Unsupported Platform" icon={<AlertCircle size={18} />}>
       <div className="empty-state">
         Computer Use is available on macOS. Current platform: {platform}.
       </div>
@@ -114,7 +116,7 @@ function ComputerUsePage() {
 
   if (!hasDesktopComputerUseBridge()) {
     return (
-      <Panel title="Desktop Bridge" icon={<IconAlertCircle size={18} />}>
+      <Panel title="Desktop Bridge" icon={<AlertCircle size={18} />}>
         <div className="empty-state">Desktop bridge unavailable.</div>
       </Panel>
     );
@@ -137,9 +139,9 @@ function ComputerUsePage() {
 
   if (loadable.state === "hasError") {
     return (
-      <Panel title="Computer Use" icon={<IconAlertCircle size={18} />}>
+      <Panel title="Computer Use" icon={<AlertCircle size={18} />}>
         <div className="inline-alert">
-          <IconAlertCircle size={16} />
+          <AlertCircle size={16} />
           <span>
             {loadable.error instanceof Error
               ? loadable.error.message
@@ -158,10 +160,11 @@ function ComputerUsePage() {
 }
 
 function Header() {
+  const identity = currentDesktopIdentity();
   return (
     <header className="app-header">
       <div className="titlebar-title">
-        <h1>Zero Computer Use</h1>
+        <h1>{identity.displayName}</h1>
       </div>
     </header>
   );
@@ -173,6 +176,7 @@ export function App() {
       <BridgeSubscription />
       <Header />
       <main className="content">
+        <ZeroMigrationNotice />
         <ComputerUsePage />
       </main>
     </div>

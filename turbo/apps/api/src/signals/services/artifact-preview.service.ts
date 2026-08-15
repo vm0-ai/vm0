@@ -1,8 +1,6 @@
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { eq } from "drizzle-orm";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -15,7 +13,6 @@ import { tapError } from "../utils";
 import { allocateArtifactObject$ } from "./artifact-storage.service";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 const log = logger("artifacts:preview");
 
@@ -126,7 +123,7 @@ async function renderArtifactSnapshot(
   signal: AbortSignal,
 ): Promise<Buffer> {
   const previewUrl = new URL(url);
-  const hostDomain = env("ZERO_HOST_DOMAIN");
+  const hostDomain = env("OKOU_HOST_DOMAIN");
   if (
     previewUrl.protocol !== "https:" ||
     !previewUrl.hostname.endsWith(`.${hostDomain}`)
@@ -228,7 +225,6 @@ const renderAndStoreArtifactPreview$ = command(
       allocateArtifactObject$,
       {
         userId: args.userId,
-        orgId: args.orgId,
         id: args.id,
         filename,
         variant: filename,
@@ -279,60 +275,7 @@ export const scheduleArtifactPreviewRender$ = command(
           log.warn("Failed to render artifact preview", {
             artifactId: args.id,
             url: args.url,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        },
-      ),
-    );
-  },
-);
-
-export type VideoArtifactPreviewRenderArgs = RenderArtifactPreviewArgs;
-
-const renderVideoArtifactPreviewIfEnabled$ = command(
-  async (
-    { get, set },
-    args: VideoArtifactPreviewRenderArgs,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const overrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {
-        orgId: args.orgId,
-        userId: args.userId,
-        overrides,
-      })
-    ) {
-      return false;
-    }
-    return await set(renderAndStoreArtifactPreview$, args, signal);
-  },
-);
-
-/**
- * Fire-and-forget a video poster render when the owner's feature switch is
- * enabled. The switch lookup stays in the detached task so Artifact creation
- * never waits on poster eligibility or rendering.
- */
-export const scheduleVideoArtifactPreviewRender$ = command(
-  ({ set }, args: VideoArtifactPreviewRenderArgs | null): void => {
-    if (!args) {
-      return;
-    }
-    waitUntil(
-      tapError(
-        set(
-          renderVideoArtifactPreviewIfEnabled$,
-          args,
-          new AbortController().signal,
-        ),
-        (error) => {
-          log.warn("Failed to render video artifact preview", {
-            artifactId: args.id,
-            url: args.url,
+            contentType: args.contentType,
             error: error instanceof Error ? error.message : String(error),
           });
         },

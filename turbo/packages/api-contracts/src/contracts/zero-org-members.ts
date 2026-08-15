@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
@@ -8,18 +9,20 @@ import {
   revokeInvitationRequestSchema,
   membershipRequestActionSchema,
   orgMessageResponseSchema,
+  orgInvitationPurchasePreviewResponseSchema,
+  previewOrgInvitationPurchaseRequestSchema,
 } from "./org-members";
 
 const c = initContract();
 
 /**
- * Zero contract for /api/zero/org/members
+ * Zero contract for /api/okou/org/members
  * Proxies to /api/org/members
  */
 export const zeroOrgMembersContract = c.router({
   members: {
     method: "GET",
-    path: "/api/zero/org/members",
+    path: "/api/okou/org/members",
     headers: authHeadersSchema,
     responses: {
       200: orgMembersResponseSchema,
@@ -33,7 +36,7 @@ export const zeroOrgMembersContract = c.router({
   },
   updateRole: {
     method: "PATCH",
-    path: "/api/zero/org/members",
+    path: "/api/okou/org/members",
     headers: authHeadersSchema,
     body: updateOrgMemberRoleRequestSchema,
     responses: {
@@ -48,7 +51,7 @@ export const zeroOrgMembersContract = c.router({
   },
   removeMember: {
     method: "DELETE",
-    path: "/api/zero/org/members",
+    path: "/api/okou/org/members",
     headers: authHeadersSchema,
     body: removeOrgMemberRequestSchema,
     responses: {
@@ -66,13 +69,13 @@ export const zeroOrgMembersContract = c.router({
 export type ZeroOrgMembersContract = typeof zeroOrgMembersContract;
 
 /**
- * Zero contract for POST /api/zero/org/invite
+ * Zero contract for POST /api/okou/org/invite
  * Proxies to POST /api/org/invite
  */
 export const zeroOrgInviteContract = c.router({
   invite: {
     method: "POST",
-    path: "/api/zero/org/invite",
+    path: "/api/okou/org/invite",
     headers: authHeadersSchema,
     body: inviteOrgMemberRequestSchema,
     responses: {
@@ -80,13 +83,50 @@ export const zeroOrgInviteContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
+      503: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Invite a member to the org (zero proxy)",
   },
+  previewPurchase: {
+    method: "POST",
+    path: "/api/okou/org/invite/purchase/preview",
+    headers: authHeadersSchema,
+    body: previewOrgInvitationPurchaseRequestSchema,
+    responses: {
+      200: orgInvitationPurchasePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      503: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Preview a prorated usage pack purchase for an org invitation",
+  },
+  confirmPurchase: {
+    method: "POST",
+    path: "/api/okou/org/invite/purchase/:purchaseId/confirm",
+    pathParams: z.object({ purchaseId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: orgMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      503: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Confirm an org invitation usage pack purchase",
+  },
   revoke: {
     method: "DELETE",
-    path: "/api/zero/org/invite",
+    path: "/api/okou/org/invite",
     headers: authHeadersSchema,
     body: revokeInvitationRequestSchema,
     responses: {
@@ -94,6 +134,7 @@ export const zeroOrgInviteContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Revoke a pending invitation (zero proxy)",
@@ -103,12 +144,12 @@ export const zeroOrgInviteContract = c.router({
 export type ZeroOrgInviteContract = typeof zeroOrgInviteContract;
 
 /**
- * Zero contract for /api/zero/org/membership-requests
+ * Zero contract for /api/okou/org/membership-requests
  */
 export const zeroOrgMembershipRequestsContract = c.router({
   accept: {
     method: "POST",
-    path: "/api/zero/org/membership-requests",
+    path: "/api/okou/org/membership-requests",
     headers: authHeadersSchema,
     body: membershipRequestActionSchema,
     responses: {
@@ -122,7 +163,7 @@ export const zeroOrgMembershipRequestsContract = c.router({
   },
   reject: {
     method: "DELETE",
-    path: "/api/zero/org/membership-requests",
+    path: "/api/okou/org/membership-requests",
     headers: authHeadersSchema,
     body: membershipRequestActionSchema,
     responses: {

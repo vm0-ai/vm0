@@ -1,4 +1,4 @@
-import type { JsonObject } from "@vm0/db/jsonb-contracts/shared";
+import type { JsonObject } from "@okouai/db/jsonb-contracts/shared";
 import {
   index,
   jsonb,

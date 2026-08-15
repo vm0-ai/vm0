@@ -1,0 +1,1 @@
+ALTER TABLE "chat_telegram_context" DROP COLUMN "is_dm";

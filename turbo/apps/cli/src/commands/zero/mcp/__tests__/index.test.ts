@@ -1,0 +1,985 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import {
+  isJSONRPCNotification,
+  isJSONRPCRequest,
+  type CallToolResult,
+  type RequestId,
+  type RequestParams,
+  type Tool,
+} from "@modelcontextprotocol/client";
+import chalk from "chalk";
+import { delay, http, HttpResponse } from "msw";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+import { server } from "../../../../mocks/server";
+import {
+  runMcpConnector,
+  stubRunMcpConnectors,
+} from "../../__tests__/helpers/custom-connectors";
+import { zeroMcpCommand } from "../index";
+
+const CONNECTOR_ID = "44444444-4444-4444-8444-444444444444";
+const MCP_ENDPOINT = "https://mcp.example.test/server";
+const SESSION_ID = "mcp-session-test";
+
+type ProtocolEra = "modern" | "legacy";
+
+interface SeenMcpRequest {
+  readonly httpMethod: string;
+  readonly method?: string;
+  readonly params?: RequestParams;
+  readonly intent: string | null;
+}
+
+interface McpServerOptions {
+  readonly era: ProtocolEra;
+  readonly pages?: readonly (readonly Tool[])[];
+  readonly callResult?: CallToolResult;
+  readonly callResponse?: () => Response;
+  readonly listResponse?: (requestId: RequestId) => Response;
+  readonly deleteResponse?: () => Response | Promise<Response>;
+}
+
+function processExit(): never {
+  throw new Error("process.exit called");
+}
+
+function pageCursor(params: RequestParams | undefined): string | undefined {
+  if (params === undefined || !("cursor" in params)) {
+    return undefined;
+  }
+  const cursor: unknown = params.cursor;
+  return typeof cursor === "string" ? cursor : undefined;
+}
+
+function stubMcpServer(options: McpServerOptions): SeenMcpRequest[] {
+  const seen: SeenMcpRequest[] = [];
+  const pages = options.pages ?? [[]];
+  const callResult = options.callResult ?? {
+    content: [{ type: "text", text: "tool completed" }],
+  };
+
+  server.use(
+    http.all(MCP_ENDPOINT, async ({ request }) => {
+      const intent = request.headers.get("x-vm0-connector-intent");
+      if (request.method === "DELETE") {
+        seen.push({ httpMethod: request.method, intent });
+        if (options.deleteResponse) {
+          return options.deleteResponse();
+        }
+        return new HttpResponse(null, { status: 204 });
+      }
+
+      const message: unknown = await request.json();
+      if (isJSONRPCNotification(message)) {
+        seen.push({
+          httpMethod: request.method,
+          method: message.method,
+          params: message.params,
+          intent,
+        });
+        return new HttpResponse(null, { status: 204 });
+      }
+      if (!isJSONRPCRequest(message)) {
+        return HttpResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: -32600, message: "Invalid request" },
+          },
+          { status: 400 },
+        );
+      }
+
+      seen.push({
+        httpMethod: request.method,
+        method: message.method,
+        params: message.params,
+        intent,
+      });
+
+      if (message.method === "server/discover") {
+        if (options.era === "legacy") {
+          return HttpResponse.json({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32601, message: "Method not found" },
+          });
+        }
+        return HttpResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: message.id,
+            result: {
+              supportedVersions: ["2026-07-28"],
+              capabilities: { tools: {} },
+            },
+          },
+          { headers: { "mcp-session-id": SESSION_ID } },
+        );
+      }
+
+      if (message.method === "initialize") {
+        return HttpResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: message.id,
+            result: {
+              protocolVersion: "2025-06-18",
+              capabilities: { tools: {} },
+              serverInfo: { name: "test-mcp", version: "1.0.0" },
+            },
+          },
+          { headers: { "mcp-session-id": SESSION_ID } },
+        );
+      }
+
+      if (message.method === "tools/list") {
+        if (options.listResponse) {
+          return options.listResponse(message.id);
+        }
+        const cursor = pageCursor(message.params);
+        const pageIndex = cursor === undefined ? 0 : Number(cursor);
+        const tools = pages[pageIndex];
+        if (tools === undefined) {
+          return HttpResponse.json({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32602, message: "Unknown cursor" },
+          });
+        }
+        return HttpResponse.json({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            ...(options.era === "modern" ? { resultType: "complete" } : {}),
+            ttlMs: 0,
+            cacheScope: "private",
+            tools,
+            ...(pageIndex + 1 < pages.length
+              ? { nextCursor: String(pageIndex + 1) }
+              : {}),
+          },
+        });
+      }
+
+      if (message.method === "tools/call") {
+        if (options.callResponse) {
+          return options.callResponse();
+        }
+        return HttpResponse.json({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            ...(options.era === "modern" ? { resultType: "complete" } : {}),
+            ...callResult,
+          },
+        });
+      }
+
+      return HttpResponse.json({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: { code: -32601, message: "Method not found" },
+      });
+    }),
+  );
+  return seen;
+}
+
+function stubConnectorList(
+  overrides: Parameters<typeof runMcpConnector>[0] = {},
+): void {
+  server.use(stubRunMcpConnectors([runMcpConnector(overrides)]));
+}
+
+function outputText(spy: ReturnType<typeof vi.spyOn>): string {
+  return spy.mock.calls.flat().join("\n");
+}
+
+describe("okou mcp command", () => {
+  const exit = vi.spyOn(process, "exit").mockImplementation(processExit);
+  const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  let inputDirectory: string;
+
+  beforeAll(async () => {
+    inputDirectory = await mkdtemp(join(process.cwd(), ".zero-mcp-test-"));
+  });
+
+  beforeEach(() => {
+    chalk.level = 0;
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+  });
+
+  afterEach(() => {
+    exit.mockClear();
+    consoleLog.mockClear();
+    consoleError.mockClear();
+    vi.unstubAllEnvs();
+  });
+
+  afterAll(async () => {
+    await rm(inputDirectory, { recursive: true, force: true });
+  });
+
+  it("lists server-authorized MCP definitions with safe JSON fields", async () => {
+    const secondId = "55555555-5555-4555-8555-555555555555";
+    server.use(
+      stubRunMcpConnectors([
+        runMcpConnector({
+          id: secondId,
+          slug: "_alpha",
+          displayName: "Alpha MCP",
+          endpoint: "https://alpha-mcp.example.test/server",
+          connected: false,
+        }),
+        runMcpConnector({ slug: "_zulu" }),
+      ]),
+    );
+
+    await zeroMcpCommand.parseAsync(["node", "okou", "list", "--json"]);
+
+    expect(consoleLog).toHaveBeenCalledWith(
+      JSON.stringify({
+        connectors: [
+          {
+            slug: "_alpha",
+            displayName: "Alpha MCP",
+            transport: "streamable-http",
+            endpoint: "https://alpha-mcp.example.test/server",
+            connected: false,
+          },
+          {
+            slug: "_zulu",
+            displayName: "Acme MCP",
+            transport: "streamable-http",
+            endpoint: MCP_ENDPOINT,
+            connected: true,
+          },
+        ],
+      }),
+    );
+    const output = outputText(consoleLog);
+    expect(output).not.toContain("Authorization");
+    expect(output).not.toContain("secrets.secret");
+  });
+
+  it("discovers modern tools page by page with exact intent and cleanup", async () => {
+    const searchTool = {
+      name: "search",
+      description: "Search documents",
+      inputSchema: {
+        type: "object",
+        properties: { query: { type: "string" } },
+      },
+    } satisfies Tool;
+    const fetchTool = {
+      name: "fetch",
+      inputSchema: {
+        type: "object",
+        properties: { id: { type: "string" } },
+      },
+    } satisfies Tool;
+    const tools = [searchTool, fetchTool];
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      pages: [[searchTool], [fetchTool]],
+    });
+
+    await zeroMcpCommand.parseAsync([
+      "node",
+      "okou",
+      "list-tools",
+      "_acme-mcp",
+      "--json",
+    ]);
+
+    expect(consoleLog).toHaveBeenCalledWith(
+      JSON.stringify({ connectorSlug: "_acme-mcp", tools }),
+    );
+    expect(
+      seen.map((request) => {
+        return request.method ?? request.httpMethod;
+      }),
+    ).toEqual(["server/discover", "tools/list", "tools/list"]);
+    expect(seen[2]?.params).toMatchObject({ cursor: "1" });
+    expect(
+      seen.every((request) => {
+        return request.intent === CONNECTOR_ID;
+      }),
+    ).toBe(true);
+  });
+
+  it("falls back to the 2025 handshake and calls the exact tool once", async () => {
+    const tool = {
+      name: "search",
+      description: "Search documents",
+      inputSchema: {
+        type: "object",
+        properties: { query: { type: "string" } },
+        required: ["query"],
+      },
+    } satisfies Tool;
+    const callResult = {
+      content: [{ type: "text", text: "one result" }],
+    } satisfies CallToolResult;
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "legacy",
+      pages: [[tool]],
+      callResult,
+    });
+
+    await zeroMcpCommand.parseAsync([
+      "node",
+      "okou",
+      "call",
+      "_acme-mcp",
+      "search",
+      "--input",
+      '{"query":"vm0"}',
+      "--json",
+    ]);
+
+    expect(consoleLog).toHaveBeenCalledWith(JSON.stringify(callResult));
+    expect(
+      seen.map((request) => {
+        return request.method ?? request.httpMethod;
+      }),
+    ).toEqual([
+      "server/discover",
+      "initialize",
+      "notifications/initialized",
+      "tools/list",
+      "tools/call",
+      "DELETE",
+    ]);
+    const calls = seen.filter((request) => {
+      return request.method === "tools/call";
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.params).toMatchObject({
+      name: "search",
+      arguments: { query: "vm0" },
+    });
+    expect(
+      seen.every((request) => {
+        return request.intent === CONNECTOR_ID;
+      }),
+    ).toBe(true);
+  });
+
+  it("reads call input from a file without exposing its contents", async () => {
+    const inputPath = join(inputDirectory, "input.json");
+    await writeFile(inputPath, '{"query":"from-file"}', "utf8");
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      pages: [
+        [
+          {
+            name: "search",
+            inputSchema: { type: "object" },
+          },
+        ],
+      ],
+    });
+
+    await zeroMcpCommand.parseAsync([
+      "node",
+      "okou",
+      "call",
+      "_acme-mcp",
+      "search",
+      "--input-file",
+      inputPath,
+      "--json",
+    ]);
+
+    const call = seen.find((request) => {
+      return request.method === "tools/call";
+    });
+    expect(call?.params).toMatchObject({
+      arguments: { query: "from-file" },
+    });
+  });
+
+  it("reads call input from piped stdin", async () => {
+    const stdinIterator = vi
+      .spyOn(process.stdin, Symbol.asyncIterator)
+      .mockImplementation(async function* (): AsyncGenerator<
+        Buffer,
+        undefined,
+        unknown
+      > {
+        yield Buffer.from('{"query":"from-stdin"}');
+        return undefined;
+      });
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      pages: [
+        [
+          {
+            name: "search",
+            inputSchema: { type: "object" },
+          },
+        ],
+      ],
+    });
+
+    try {
+      await zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "search",
+        "--json",
+      ]);
+    } finally {
+      stdinIterator.mockRestore();
+    }
+
+    const call = seen.find((request) => {
+      return request.method === "tools/call";
+    });
+    expect(call?.params).toMatchObject({
+      arguments: { query: "from-stdin" },
+    });
+  });
+
+  it("rejects conflicting input sources before resolving the connector", async () => {
+    const inputPath = join(inputDirectory, "conflicting-input.json");
+    await writeFile(inputPath, "{}", "utf8");
+    let apiCalls = 0;
+    server.use(
+      http.get("http://localhost:3000/api/okou/custom-connectors", () => {
+        apiCalls++;
+        return HttpResponse.json({ connectors: [] });
+      }),
+    );
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "search",
+        "--input",
+        "{}",
+        "--input-file",
+        inputPath,
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(apiCalls).toBe(0);
+  });
+
+  it("rejects invalid JSON before opening an MCP connection", async () => {
+    stubConnectorList();
+    const seen = stubMcpServer({ era: "modern" });
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "search",
+        "--input",
+        "{",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(seen).toHaveLength(0);
+    expect(outputText(consoleError)).toContain(
+      "MCP tool input must be valid JSON",
+    );
+  });
+
+  it("rejects non-object JSON before opening an MCP connection", async () => {
+    stubConnectorList();
+    const seen = stubMcpServer({ era: "modern" });
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "search",
+        "--input",
+        "[]",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(seen).toHaveLength(0);
+    expect(outputText(consoleError)).toContain(
+      "MCP tool input must be a JSON object",
+    );
+  });
+
+  it("does not retry a failed tool call or expose its upstream body", async () => {
+    const upstreamSecret = "upstream-secret-value";
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      pages: [
+        [
+          {
+            name: "side-effect",
+            inputSchema: { type: "object" },
+          },
+        ],
+      ],
+      callResponse: () => {
+        return HttpResponse.text(upstreamSecret, { status: 500 });
+      },
+    });
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "side-effect",
+        "--input",
+        "{}",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(
+      seen.filter((request) => {
+        return request.method === "tools/call";
+      }),
+    ).toHaveLength(1);
+    const errors = outputText(consoleError);
+    expect(errors).toContain("MCP server request failed");
+    expect(errors).not.toContain(upstreamSecret);
+    expect(errors).not.toContain("Error POSTing");
+  });
+
+  it("rejects an unknown tool without sending tools/call", async () => {
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      pages: [
+        [
+          {
+            name: "search",
+            inputSchema: { type: "object" },
+          },
+        ],
+      ],
+    });
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "missing",
+        "--input",
+        "{}",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(
+      seen.filter((request) => {
+        return request.method === "tools/call";
+      }),
+    ).toHaveLength(0);
+    expect(outputText(consoleError)).toContain(
+      'MCP tool "missing" was not found',
+    );
+  });
+
+  it("refuses MCP endpoint redirects", async () => {
+    stubConnectorList();
+    server.use(
+      http.post(MCP_ENDPOINT, () => {
+        return HttpResponse.redirect(
+          "https://redirected.example.test/server",
+          307,
+        );
+      }),
+    );
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain("MCP server request failed");
+  });
+
+  it("treats an empty discovery response as an ordinary empty result", async () => {
+    server.use(stubRunMcpConnectors([]));
+
+    await zeroMcpCommand.parseAsync(["node", "okou", "list", "--json"]);
+
+    expect(consoleLog).toHaveBeenCalledWith('{"connectors":[]}');
+  });
+
+  it("reports a discovery server error", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/mcp-connectors", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Discovery failed",
+            },
+          },
+          { status: 500 },
+        );
+      }),
+    );
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain("Discovery failed");
+  });
+
+  it("rejects malformed discovery responses", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/okou/mcp-connectors", () => {
+        return HttpResponse.json({ connectors: [{ id: CONNECTOR_ID }] });
+      }),
+    );
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list"]),
+    ).rejects.toThrow("process.exit called");
+  });
+
+  it("rejects an unknown slug before opening an MCP connection", async () => {
+    stubConnectorList();
+    const seen = stubMcpServer({ era: "modern" });
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "list-tools",
+        "_not-admitted",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(seen).toHaveLength(0);
+    expect(outputText(consoleError)).toContain(
+      'MCP connector "_not-admitted" is not authorized for this Agent',
+    );
+  });
+
+  it("rejects tool input above 1 MiB before opening an MCP connection", async () => {
+    stubConnectorList();
+    const seen = stubMcpServer({ era: "modern" });
+    const oversizedInput = JSON.stringify({
+      value: "x".repeat(1024 * 1024),
+    });
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "search",
+        "--input",
+        oversizedInput,
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(seen).toHaveLength(0);
+    expect(outputText(consoleError)).toContain("exceeds the 1 MiB limit");
+    expect(outputText(consoleError)).not.toContain("xxxx");
+  });
+
+  it("returns tool-level MCP errors without retrying", async () => {
+    const toolError = {
+      content: [{ type: "text", text: "invalid query" }],
+      isError: true,
+    } satisfies CallToolResult;
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      pages: [
+        [
+          {
+            name: "search",
+            inputSchema: { type: "object" },
+          },
+        ],
+      ],
+      callResult: toolError,
+    });
+
+    await zeroMcpCommand.parseAsync([
+      "node",
+      "okou",
+      "call",
+      "_acme-mcp",
+      "search",
+      "--input",
+      "{}",
+      "--json",
+    ]);
+
+    expect(consoleLog).toHaveBeenCalledWith(JSON.stringify(toolError));
+    expect(
+      seen.filter((request) => {
+        return request.method === "tools/call";
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("warns instead of failing after a successful call whose legacy cleanup fails", async () => {
+    stubConnectorList();
+    stubMcpServer({
+      era: "legacy",
+      pages: [
+        [
+          {
+            name: "side-effect",
+            inputSchema: { type: "object" },
+          },
+        ],
+      ],
+      deleteResponse: () => {
+        return HttpResponse.text("cleanup failed", { status: 500 });
+      },
+    });
+
+    await zeroMcpCommand.parseAsync([
+      "node",
+      "okou",
+      "call",
+      "_acme-mcp",
+      "side-effect",
+      "--input",
+      "{}",
+      "--json",
+    ]);
+
+    expect(exit).not.toHaveBeenCalled();
+    expect(outputText(consoleLog)).toContain("tool completed");
+    const errors = outputText(consoleError);
+    expect(errors).toContain("MCP session cleanup did not complete");
+    expect(errors).not.toContain("cleanup failed");
+  });
+
+  it("preserves the primary failure when cleanup reaches the deadline", async () => {
+    stubConnectorList();
+    stubMcpServer({
+      era: "legacy",
+      pages: [
+        [
+          {
+            name: "search",
+            inputSchema: { type: "object" },
+          },
+        ],
+      ],
+      deleteResponse: async () => {
+        await delay(2_000);
+        return new HttpResponse(null, { status: 204 });
+      },
+    });
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "missing",
+        "--input",
+        "{}",
+        "--timeout",
+        "1s",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = outputText(consoleError);
+    expect(errors).toContain('MCP tool "missing" was not found');
+    expect(errors).not.toContain("timed out");
+  });
+
+  it("rejects repeated pagination cursors", async () => {
+    let listRequests = 0;
+    stubConnectorList();
+    stubMcpServer({
+      era: "modern",
+      listResponse: (requestId) => {
+        listRequests++;
+        return HttpResponse.json({
+          jsonrpc: "2.0",
+          id: requestId,
+          result: {
+            resultType: "complete",
+            ttlMs: 0,
+            cacheScope: "private",
+            tools: [],
+            nextCursor: "same-cursor",
+          },
+        });
+      },
+    });
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(listRequests).toBe(2);
+    expect(outputText(consoleError)).toContain("repeated a tool page cursor");
+  });
+
+  it("rejects discovery above 2,000 tools", async () => {
+    const tools = Array.from({ length: 2_001 }, (_, index): Tool => {
+      return {
+        name: `tool-${index}`,
+        inputSchema: { type: "object" },
+      };
+    });
+    stubConnectorList();
+    stubMcpServer({ era: "modern", pages: [tools] });
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain("2,000 tool limit");
+  });
+
+  it("rejects discovery above 100 pages", async () => {
+    let listRequests = 0;
+    stubConnectorList();
+    stubMcpServer({
+      era: "modern",
+      listResponse: (requestId) => {
+        listRequests++;
+        return HttpResponse.json({
+          jsonrpc: "2.0",
+          id: requestId,
+          result: {
+            resultType: "complete",
+            ttlMs: 0,
+            cacheScope: "private",
+            tools: [],
+            nextCursor: `cursor-${listRequests}`,
+          },
+        });
+      },
+    });
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(listRequests).toBe(100);
+    expect(outputText(consoleError)).toContain("100 page limit");
+  });
+
+  it("rejects aggregate discovery above 16 MiB", async () => {
+    const largeDescription = "d".repeat(8 * 1024 * 1024);
+    stubConnectorList();
+    stubMcpServer({
+      era: "modern",
+      pages: [
+        [
+          {
+            name: "first",
+            description: largeDescription,
+            inputSchema: { type: "object" },
+          },
+        ],
+        [
+          {
+            name: "second",
+            description: largeDescription,
+            inputSchema: { type: "object" },
+          },
+        ],
+      ],
+    });
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain("16 MiB aggregate limit");
+    expect(outputText(consoleError)).not.toContain("dddd");
+  });
+
+  it("rejects an oversized streamed response without buffering it", async () => {
+    stubConnectorList();
+    stubMcpServer({
+      era: "modern",
+      listResponse: () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(16 * 1024 * 1024 + 1));
+            controller.close();
+          },
+        });
+        return new HttpResponse(body, {
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain(
+      "MCP response exceeds the 16 MiB limit",
+    );
+  });
+
+  it("uses one overall deadline", async () => {
+    stubConnectorList();
+    server.use(
+      http.post(MCP_ENDPOINT, async () => {
+        await delay(2_000);
+        return HttpResponse.json({});
+      }),
+    );
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "search",
+        "--input",
+        "{}",
+        "--timeout",
+        "1s",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain("timed out after 1s");
+  });
+});

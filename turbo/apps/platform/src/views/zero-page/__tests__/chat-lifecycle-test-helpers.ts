@@ -9,12 +9,12 @@ import {
   chatThreadsContract,
   type ChatEvent,
   type UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationUpdateRequest,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/zero-workflows";
 import {
   createMockWorkflowAutomation,
   setMockWorkflowAutomations,
@@ -27,6 +27,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
 import {
+  mockChatEventRows,
   normalizeMockChatEvents,
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
@@ -371,8 +372,8 @@ export function mockKeyboardNavigationThreads({
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-    return respond(200, { threadIds: [] });
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, { agents: {}, threads: {} });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
     const thread = byId.get(params.id);
@@ -383,17 +384,15 @@ export function mockKeyboardNavigationThreads({
     }
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(
-    chatThreadEventsContract.list,
+    chatThreadEventsContract.rows,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId || query.sinceId) {
-        return respond(200, { events: [] });
-      }
       const thread = byId.get(params.threadId);
-      return respond(200, {
-        events: normalizeMockChatEvents(
+      const rows = mockChatEventRows(
+        normalizeMockChatEvents(
           thread
             ? [
                 {
@@ -405,6 +404,11 @@ export function mockKeyboardNavigationThreads({
               ]
             : [],
         ),
+      ).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      });
+      return respond(200, {
+        rows,
       });
     },
   );
@@ -581,23 +585,19 @@ export function mockServerQueuedThreadStories(): void {
     }
     return respond(200, {
       lastReadAt: "2026-06-09T10:00:00Z",
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(
-    chatThreadEventsContract.list,
+    chatThreadEventsContract.rows,
     ({ params, query, respond }) => {
-      if (
-        query.sinceSeqId ||
-        query.beforeSeqId ||
-        query.sinceId ||
-        query.beforeId
-      ) {
-        return respond(200, { events: [] });
-      }
+      const rows = mockChatEventRows(
+        normalizeMockChatEvents(byId.get(params.threadId)?.messages ?? []),
+      ).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      });
       return respond(200, {
-        events: normalizeMockChatEvents(
-          byId.get(params.threadId)?.messages ?? [],
-        ),
+        rows,
       });
     },
   );

@@ -15,7 +15,7 @@ const GRANTED_PERMISSIONS: ComputerUsePermissionState = {
 const SIGNED_IN_AUTH_STATE: DesktopAuthState = {
   status: "signed_in",
   user: { userId: "user-1", email: "user@vm0.ai" },
-  organization: { id: "org-1", name: "vm0", slug: null },
+  organization: { id: "org-1", name: "vm0" },
 };
 
 function hostState(
@@ -31,6 +31,12 @@ function createFakeRuntime(options: { readonly hangOnStop?: boolean } = {}) {
       state = hostState("online");
     }),
     stop: vi.fn(async () => {
+      if (options.hangOnStop) {
+        await new Promise<void>(() => {});
+      }
+      state = hostState("offline");
+    }),
+    drainAndStop: vi.fn(async () => {
       if (options.hangOnStop) {
         await new Promise<void>(() => {});
       }
@@ -141,6 +147,18 @@ describe("ComputerUseRuntimeController", () => {
     await controller.start({ userInitiated: true });
     expect(runtime.start).toHaveBeenCalledTimes(2);
     expect(createRuntime).toHaveBeenCalledOnce();
+  });
+
+  it("drains active work before marking the host offline", async () => {
+    const { controller, runtime, setHostRuntimeOnline } = createController();
+    await controller.start();
+
+    await controller.drainAndStop();
+
+    expect(runtime.drainAndStop).toHaveBeenCalledOnce();
+    expect(setHostRuntimeOnline).toHaveBeenLastCalledWith(false);
+    await controller.start();
+    expect(runtime.start).toHaveBeenCalledOnce();
   });
 
   it("detaches on auth change so the next start builds a fresh runtime", async () => {

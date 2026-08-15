@@ -1,5 +1,4 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, it } from "vitest";
 
 import { noSqlRaw } from "../rules/no-sql-raw.ts";
@@ -8,23 +7,7 @@ RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 
-const dbPackageRoot = fileURLToPath(
-  new URL("../../../../db/", import.meta.url),
-);
-const ruleTester = new RuleTester({
-  defaultFilenames: {
-    ts: `${dbPackageRoot}rule-test.ts`,
-    tsx: `${dbPackageRoot}rule-test.tsx`,
-  },
-  languageOptions: {
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["rule-test.ts", "rule-test.tsx"],
-      },
-      tsconfigRootDir: dbPackageRoot,
-    },
-  },
-});
+const ruleTester = new RuleTester();
 
 ruleTester.run("no-sql-raw", noSqlRaw, {
   valid: [
@@ -38,6 +21,12 @@ ruleTester.run("no-sql-raw", noSqlRaw, {
     {
       code: `
         const sql = { raw(value: string) { return value; } };
+        sql.raw("SELECT 1");
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm-wrapper";
         sql.raw("SELECT 1");
       `,
     },

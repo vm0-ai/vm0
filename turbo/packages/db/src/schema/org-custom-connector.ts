@@ -1,7 +1,8 @@
 import {
+  bigint,
   boolean,
   check,
-  integer,
+  foreignKey,
   pgTable,
   uuid,
   varchar,
@@ -16,15 +17,17 @@ import { sql } from "drizzle-orm";
 import type {
   OrgCustomConnectorFields,
   OrgCustomConnectorHeaderInjections,
-  OrgCustomConnectorPrefixes,
   OrgCustomConnectorPrefixTemplates,
   OrgCustomConnectorQueryInjections,
-} from "@vm0/db/jsonb-contracts/org-custom-connector";
+} from "@okouai/db/jsonb-contracts/org-custom-connector";
+
+import { storageVersions } from "./storage";
+
 export type {
   OrgCustomConnectorField,
   OrgCustomConnectorHeaderInjection,
   OrgCustomConnectorQueryInjection,
-} from "@vm0/db/jsonb-contracts/org-custom-connector";
+} from "@okouai/db/jsonb-contracts/org-custom-connector";
 
 export type OrgCustomConnectorAuthMode = "manual" | "oauth";
 export type OrgCustomConnectorMcpTransport = "streamable-http";
@@ -43,9 +46,6 @@ export const orgCustomConnectors = pgTable(
     orgId: text("org_id").notNull(),
     slug: varchar("slug", { length: 64 }).notNull(),
     displayName: varchar("display_name", { length: 128 }).notNull(),
-    prefixes: jsonb("prefixes").notNull().$type<OrgCustomConnectorPrefixes>(),
-    headerName: varchar("header_name", { length: 128 }).notNull(),
-    headerTemplate: text("header_template").notNull(),
     prefixTemplates: jsonb("prefix_templates")
       .notNull()
       .default(sql`'[]'::jsonb`)
@@ -72,9 +72,13 @@ export const orgCustomConnectors = pgTable(
     mcpTransport: varchar("mcp_transport", {
       length: 32,
     }).$type<OrgCustomConnectorMcpTransport>(),
-    mcpResource: text("mcp_resource"),
     skillMarkdown: text("skill_markdown"),
-    revision: integer("revision").notNull().default(1),
+    skillStorageVersionId: varchar("skill_storage_version_id", {
+      length: 64,
+    }),
+    storageVersion: bigint("storage_version", { mode: "number" })
+      .notNull()
+      .default(1),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -87,6 +91,14 @@ export const orgCustomConnectors = pgTable(
         table.slug,
       ),
       unique("idx_org_custom_connectors_id_org").on(table.id, table.orgId),
+      index("idx_org_custom_connectors_skill_storage_version").on(
+        table.skillStorageVersionId,
+      ),
+      foreignKey({
+        name: "fk_org_custom_connectors_skill_storage_version",
+        columns: [table.skillStorageVersionId],
+        foreignColumns: [storageVersions.id],
+      }).onDelete("restrict"),
       check(
         "chk_org_custom_connectors_slug",
         sql`left(${table.slug}, 1) = '_'`,
@@ -98,20 +110,51 @@ export const orgCustomConnectors = pgTable(
       check(
         "chk_org_custom_connectors_mcp",
         sql`(
-          ${table.mcpEndpoint} IS NULL
-          AND ${table.mcpTransport} IS NULL
-        ) OR (
-          ${table.mcpEndpoint} IS NOT NULL
-          AND ${table.mcpTransport} = 'streamable-http'
+          jsonb_typeof(${table.prefixTemplates}) = 'array'
+          AND jsonb_typeof(${table.fields}) = 'array'
+          AND jsonb_typeof(${table.headerInjections}) = 'array'
+          AND jsonb_typeof(${table.queryInjections}) = 'array'
+          AND (
+            (
+              ${table.mcpEndpoint} IS NULL
+              AND ${table.mcpTransport} IS NULL
+              AND ${table.prefixTemplates} <> '[]'::jsonb
+              AND (
+                ${table.headerInjections} <> '[]'::jsonb
+                OR ${table.queryInjections} <> '[]'::jsonb
+              )
+            ) OR (
+              ${table.mcpEndpoint} IS NOT NULL
+              AND btrim(${table.mcpEndpoint}) <> ''
+              AND ${table.mcpTransport} IS NOT NULL
+              AND ${table.mcpTransport} = 'streamable-http'
+              AND ${table.prefixTemplates} = '[]'::jsonb
+              AND (
+                ${table.headerInjections} <> '[]'::jsonb
+                OR ${table.queryInjections} <> '[]'::jsonb
+              )
+              AND ${table.permissionBundleRef} IS NULL
+            )
+          )
         )`,
       ),
       check(
-        "chk_org_custom_connectors_revision_positive",
-        sql`${table.revision} > 0`,
+        "chk_org_custom_connectors_storage_version_positive",
+        sql`${table.storageVersion} > 0`,
       ),
       check(
         "chk_org_custom_connectors_skill_size",
         sql`${table.skillMarkdown} IS NULL OR octet_length(${table.skillMarkdown}) <= 65536`,
+      ),
+      check(
+        "chk_org_custom_connectors_skill_version_pair",
+        sql`(
+          (${table.skillMarkdown} IS NULL AND ${table.skillStorageVersionId} IS NULL)
+          OR (
+            ${table.skillMarkdown} IS NOT NULL
+            AND ${table.skillStorageVersionId} IS NOT NULL
+          )
+        )`,
       ),
     ];
   },

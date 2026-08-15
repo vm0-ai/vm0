@@ -64,6 +64,7 @@
    * =================================== */
   --color-white: hsl(var(--white));
   --color-black: hsl(var(--black));
+  --color-overlay: hsl(var(--overlay));
 
   /* ===================================
    * Semantic Colors
@@ -91,7 +92,6 @@
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-primary: hsl(var(--sidebar-primary));
   --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
-  --color-sidebar-accent: hsl(var(--sidebar-accent));
   --color-semantic-foreground: hsl(var(--semantic-foreground));
   --color-on-filled: hsl(var(--on-filled));
   --color-background-50: hsl(var(--background-50));
@@ -129,9 +129,95 @@
   --input-focus-ring-opacity: 0.1;
 
   /* ===================================
-   * Button System
+   * Interaction States
+   *
+   * One ladder for every hover / selected / pressed background in the product.
+   *
+   * `state-*` are translucent layers, so the same token reads with the same
+   * weight on any surface (page, card, popover, nav) and reverses automatically
+   * in dark mode. Use them on elements that have no opaque background of their
+   * own -- rows, menu items, icon buttons, ghost buttons.
+   *
+   * Elements that do carry an opaque fill cannot use a translucent layer
+   * (the layer would replace the fill instead of sitting on it), so each fill
+   * gets its own pre-mixed pair below.
    * =================================== */
-  --color-button-hover: hsl(var(--button-hover));
+  --color-state-hover: hsl(var(--state-layer) / var(--state-hover-alpha));
+  --color-state-selected: hsl(var(--state-layer) / var(--state-selected-alpha));
+  --color-state-selected-hover: hsl(
+    var(--state-layer) / var(--state-selected-hover-alpha)
+  );
+  --color-state-pressed: hsl(var(--state-layer) / var(--state-pressed-alpha));
+
+  --color-background-hover: color-mix(
+    in srgb,
+    hsl(var(--background)),
+    hsl(var(--state-layer)) var(--state-hover-alpha)
+  );
+  --color-card-hover: color-mix(
+    in srgb,
+    hsl(var(--card)),
+    hsl(var(--state-layer)) var(--state-hover-alpha)
+  );
+  --color-input-hover: color-mix(
+    in srgb,
+    hsl(var(--input)),
+    hsl(var(--state-layer)) var(--state-hover-alpha)
+  );
+  /* Neutral-dark page primary ("Add schedule" style). Already at maximum
+     contrast against the page, so its states step toward the surface. */
+  --color-foreground-hover: color-mix(
+    in srgb,
+    hsl(var(--foreground)),
+    hsl(var(--white)) var(--state-on-filled-hover-alpha)
+  );
+  --color-foreground-pressed: color-mix(
+    in srgb,
+    hsl(var(--foreground)),
+    hsl(var(--white)) var(--state-on-filled-pressed-alpha)
+  );
+  --color-secondary-hover: color-mix(
+    in srgb,
+    hsl(var(--secondary)),
+    hsl(var(--state-layer)) var(--state-hover-alpha)
+  );
+  --color-secondary-pressed: color-mix(
+    in srgb,
+    hsl(var(--secondary)),
+    hsl(var(--state-layer)) var(--state-pressed-alpha)
+  );
+  --color-primary-hover: color-mix(
+    in srgb,
+    hsl(var(--primary)),
+    hsl(var(--black)) var(--state-on-filled-hover-alpha)
+  );
+  --color-primary-pressed: color-mix(
+    in srgb,
+    hsl(var(--primary)),
+    hsl(var(--black)) var(--state-on-filled-pressed-alpha)
+  );
+  --color-destructive-hover: color-mix(
+    in srgb,
+    hsl(var(--destructive)),
+    hsl(var(--black)) var(--state-on-filled-hover-alpha)
+  );
+  --color-destructive-pressed: color-mix(
+    in srgb,
+    hsl(var(--destructive)),
+    hsl(var(--black)) var(--state-on-filled-pressed-alpha)
+  );
+
+  /* ===================================
+   * Segment Control
+   *
+   * The track reuses `--muted`, which already steps down the ramp in both
+   * themes (gray-100 light, gray-200 dark). The selected segment has to read
+   * as raised above that track, and `--card` cannot carry it: in dark, card
+   * sits *below* gray-200, so a card-filled segment would look recessed
+   * instead of selected. It gets its own pair of tokens instead.
+   * =================================== */
+  --color-segment-selected: hsl(var(--segment-selected));
+  --shadow-segment-selected: var(--segment-selected-shadow);
 }
 
 @layer base {
@@ -175,6 +261,11 @@
     --white: 0 0% 100%; /* #FFFFFF */
     --black: 240 3% 10%; /* #19191B */
 
+    /* Dialog scrim. Deliberately NOT theme-aware: --black inverts to #FFFFFF
+       in dark, which would lighten the backdrop instead of dimming it. The
+       dark theme reuses this value and only raises the alpha. */
+    --overlay: 240 3% 10%; /* #19191B */
+
     /* ===================================
      * Semantic Colors (Light Theme)
      * =================================== */
@@ -217,17 +308,33 @@
     --sidebar-foreground: var(--gray-950); /* gray-950 */
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
-    --sidebar-accent: var(--gray-100); /* gray-100 */
-
     --semantic-foreground: var(--gray-0); /* gray-0 */
 
     --background-50: var(
       --gray-50
     ); /* gray-50 - lighter background for code blocks */
 
-    --button-hover: var(
-      --gray-50
-    ); /* gray-50 - subtle hover for outline buttons */
+    /* Interaction state ladder (light).
+
+       The layer colour is chosen so that compositing it onto a surface lands
+       back on the neutral ramp rather than just darkening it. The ramp falls
+       away from white at roughly R:G:B = 1 : 0.84 : 0.62 (gray-50 -> gray-200),
+       and this colour falls at 1 : 0.842 : 0.620 -- so every state keeps the
+       ramp's cool cast at hue 215 / ~23% saturation instead of washing out to
+       a flat 2% grey. `--state-hover` over white is exactly gray-50. */
+    --state-layer: 215 100% 19%;
+
+    --state-hover-alpha: 5%;
+    --state-selected-alpha: 8.5%;
+    --state-selected-hover-alpha: 11.5%;
+    --state-pressed-alpha: 13%;
+    --state-on-filled-hover-alpha: 10%;
+    --state-on-filled-pressed-alpha: 16%;
+
+    /* Segment control (light): white lifts off the gray-100 track. */
+    --segment-selected: 0 0% 100%;
+    --segment-selected-shadow:
+      0 1px 2px hsl(220 12% 20% / 0.06), 0 1px 3px hsl(220 12% 20% / 0.08);
 
     --radius: 0.5rem;
   }
@@ -321,10 +428,6 @@
     --sidebar-foreground: var(--gray-950); /* gray-950 */
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
-    --sidebar-accent: var(
-      --gray-300
-    ); /* gray-300 - visible hover against sidebar */
-
     --tooltip-bg: hsl(
       var(--gray-300)
     ); /* tooltip - visible against dark surfaces */
@@ -335,9 +438,25 @@
       --gray-50
     ); /* gray-50 - lighter background for code blocks */
 
-    --button-hover: var(
-      --gray-50
-    ); /* gray-50 - subtle hover for outline buttons */
+    /* Interaction state ladder (dark).
+       Dark surfaces need a wider ladder than light ones to read as the same
+       step, so the alphas are raised rather than mirrored. The dark ramp is a
+       much quieter cool (hue 240 at 3% saturation), so the layer matches that
+       hue and stays just saturated enough to hold it as the alpha climbs. */
+    --state-layer: 240 100% 97%;
+
+    --state-hover-alpha: 7%;
+    --state-selected-alpha: 12%;
+    --state-selected-hover-alpha: 16%;
+    --state-pressed-alpha: 19%;
+    --state-on-filled-hover-alpha: 12%;
+    --state-on-filled-pressed-alpha: 20%;
+
+    /* Segment control (dark): the selection steps *up* the grey ramp from the
+       gray-200 track, and the veil turns black so it still reads as a lift. */
+    --segment-selected: var(--gray-400);
+    --segment-selected-shadow:
+      0 1px 3px hsl(0 0% 0% / 0.3), 0 2px 6px hsl(0 0% 0% / 0.2);
   }
 }
 
@@ -362,9 +481,17 @@
       sans-serif;
   }
 
-  /* Global icon stroke width for Tabler Icons */
-  svg[class*="tabler-icon"] {
+  /* Lucide emits stroke-width="2" when no override is supplied. Normalize
+   * that default while preserving explicit strokeWidth props; intentional
+   * 2px call sites opt out with data-stroke. */
+  svg[class*="lucide"][stroke-width="2"]:not([data-stroke]) {
     stroke-width: var(--icon-stroke-width);
+  }
+
+  /* More icons are dots, not hollow rings. */
+  svg.lucide-ellipsis circle,
+  svg.lucide-ellipsis-vertical circle {
+    fill: currentColor;
   }
 }
 
@@ -398,37 +525,76 @@
     background-color: rgba(128, 128, 128, 0.5);
   }
 
-  .zero-dialog-overlay[data-state="open"] {
+  .zero-dialog-overlay[data-open] {
     animation: zero-dialog-overlay-in 180ms ease;
   }
 
-  .zero-dialog-overlay[data-state="closed"] {
+  /* Base UI can briefly retain the previous ending style while a controlled
+     dialog mounts open again. Only let the ending style win after the dialog
+     is no longer open, otherwise the first frame flashes fully visible before
+     the enter animation starts. */
+  .zero-dialog-overlay[data-ending-style]:not([data-open]) {
     animation: zero-dialog-overlay-out 180ms ease;
   }
 
-  .zero-dialog-content[data-state="open"] {
+  /* The scrim carries its blur on a separate layer. A backdrop-filter costs
+     nothing while the page behind it holds still, but any frame that repaints
+     a pixel — including the scrim fading its own opacity — re-blurs the whole
+     viewport. So the blur waits out the fade and drops again the moment the
+     dialog starts closing, which leaves both transitions blur-free. */
+  .zero-dialog-overlay::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .zero-dialog-overlay[data-open]::after {
+    animation: zero-dialog-blur-in 180ms step-end;
+  }
+
+  .zero-dialog-overlay[data-ending-style]:not([data-open])::after {
+    visibility: hidden;
+  }
+
+  /* Dialogs that skip the enter animation have no fade to wait out, so the
+     blur lands with the scrim instead of trailing it. */
+  .zero-dialog-overlay-instant[data-open],
+  .zero-dialog-overlay-instant[data-open]::after {
+    animation: none;
+  }
+
+  /* Same reason: a blurred backdrop only stays cached while nothing moves
+     underneath it, and the page keeps a breathing dot per running thread. Park
+     them for as long as a scrim is mounted — indicators inside the dialog keep
+     running, since those still carry state the user is looking at. */
+  html:has(.zero-dialog-overlay)
+    :is(.running-indicator-center, .running-indicator-ripple):not(
+      .zero-dialog-content *
+    ) {
+    animation-play-state: paused;
+  }
+
+  .zero-dialog-content[data-open] {
     animation: zero-dialog-content-in 180ms ease;
   }
 
-  .zero-dialog-content[data-state="closed"] {
+  .zero-dialog-content[data-ending-style]:not([data-open]) {
     animation: zero-dialog-content-out 180ms ease;
   }
 
-  .zero-dialog-enter-overlay {
-    animation: zero-dialog-overlay-in 180ms ease;
-  }
-
-  .zero-dialog-enter-content {
-    animation: zero-dialog-content-in 180ms ease;
-  }
-
   @media (prefers-reduced-motion: reduce) {
-    .zero-dialog-overlay[data-state="open"],
-    .zero-dialog-overlay[data-state="closed"],
-    .zero-dialog-content[data-state="open"],
-    .zero-dialog-content[data-state="closed"],
-    .zero-dialog-enter-overlay,
-    .zero-dialog-enter-content {
+    .zero-dialog-overlay[data-open],
+    .zero-dialog-overlay[data-ending-style],
+    .zero-dialog-content[data-open],
+    .zero-dialog-content[data-ending-style] {
+      animation: none;
+    }
+
+    /* Without the fade there is nothing to wait for, so the blur can land
+       with the scrim. */
+    .zero-dialog-overlay[data-open]::after {
       animation: none;
     }
   }
@@ -490,6 +656,15 @@
   }
   to {
     opacity: 0;
+  }
+}
+
+@keyframes zero-dialog-blur-in {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: visible;
   }
 }
 

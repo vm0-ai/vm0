@@ -7,20 +7,24 @@ import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 export const checkBillableOperationCredits$ = command(
   async (
     { set },
-    args: { readonly orgId: string },
+    args: { readonly orgId: string; readonly userId: string },
     signal: AbortSignal,
   ): Promise<boolean> => {
     const writeDb = set(writeDb$);
     const availability = await resolveOrgCreditAvailability({
       db: writeDb,
       orgId: args.orgId,
+      userId: args.userId,
     });
     signal.throwIfAborted();
 
     if (!availability || availability.status !== "active") {
       return false;
     }
-    if (availability.spendableCredits > 0) {
+    if (
+      availability.usagePackCredits > 0 ||
+      availability.spendableCredits > 0
+    ) {
       return true;
     }
 

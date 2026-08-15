@@ -1,8 +1,7 @@
 import { command, computed, state } from "ccstate";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import type { PresentationTemplateItem } from "@vm0/core";
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
-import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { jsonParseOr, tapError } from "../utils.ts";
 import type { TemplatePreviewRuntime } from "./template-preview-runtime.ts";
 import {
@@ -11,6 +10,11 @@ import {
   type PresentationPreviewDraft,
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
+import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -35,16 +39,10 @@ const internalNewThreadComputerAccess$ = state<NewThreadComputerAccess | null>(
 export const newThreadComputerAccess$ = computed(
   (get): NewThreadComputerAccess => {
     const selection = get(internalNewThreadComputerAccess$);
-    const cloudBrowserAvailable = get(zeroBrowserEnabled$);
     if (selection === null) {
-      // Cloud browser is the default surface wherever Zero Browser is on.
-      return cloudBrowserAvailable
-        ? { kind: "cloudBrowser" }
-        : { kind: "none" };
+      return { kind: "cloudBrowser" };
     }
-    return selection.kind === "cloudBrowser" && !cloudBrowserAvailable
-      ? { kind: "none" }
-      : selection;
+    return selection;
   },
 );
 
@@ -233,16 +231,18 @@ function revokeUnusedTemplateDetailFrameUrls(
   }
 }
 
-async function loadPresentationTemplateHtmlPreview(params: {
-  readonly item: PresentationTemplateItem;
-  readonly signal: AbortSignal;
-}): Promise<PresentationPreviewDraft | null> {
+async function loadPresentationTemplateHtmlPreview(
+  params: {
+    readonly item: PresentationTemplateItem;
+  },
+  signal: AbortSignal,
+): Promise<PresentationPreviewDraft | null> {
   const response = await fetch(
     readableAttachmentResourceUrl(params.item.embedUrl),
     {
       credentials: "omit",
       mode: "cors",
-      signal: params.signal,
+      signal,
     },
   );
   if (!response.ok) {
@@ -254,31 +254,42 @@ async function loadPresentationTemplateHtmlPreview(params: {
 
 function createBasicComposerUiSignals() {
   const internalModelPickerOpen$ = state(false);
+  // The video model list is a second panel inside the same popover, so its
+  // state is scoped to the picker being open: closing the picker always
+  // returns it to the run model list.
+  const internalVideoModelPanelOpen$ = state(false);
   const modelPickerOpen$ = computed((get) => {
     return get(internalModelPickerOpen$);
   });
   const setModelPickerOpen$ = command(({ set }, open: boolean) => {
     set(internalModelPickerOpen$, open);
+    if (!open) {
+      set(internalVideoModelPanelOpen$, false);
+    }
   });
-
-  const internalUploadPopoverOpen$ = state(false);
-  const uploadPopoverOpen$ = computed((get) => {
-    return get(internalUploadPopoverOpen$);
+  const videoModelPanelOpen$ = computed((get) => {
+    return get(internalVideoModelPanelOpen$);
   });
-  const setUploadPopoverOpen$ = command(({ set }, open: boolean) => {
-    set(internalUploadPopoverOpen$, open);
+  const setVideoModelPanelOpen$ = command(({ set }, open: boolean) => {
+    set(internalVideoModelPanelOpen$, open);
   });
 
   return {
     model: {
       modelPickerOpen$,
       setModelPickerOpen$,
-    },
-    draft: {
-      uploadPopoverOpen$,
-      setUploadPopoverOpen$,
+      videoModelPanelOpen$,
+      setVideoModelPanelOpen$,
     },
   };
+}
+
+/** Viewport-space box of the chip a video options popover is anchored to. */
+export interface VideoTemplateOptionsAnchor {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 function createTemplatePickerDialogSignals() {
@@ -311,6 +322,59 @@ function createTemplatePickerDialogSignals() {
     },
   );
 
+  /**
+   * The video model the next template pick will use. Video generation is the
+   * most expensive thing the composer can start, so the choice is made up
+   * front on the template picker rather than inside the chip after the fact.
+   */
+  const internalVideoTemplateModel$ = state<VideoModel>(DEFAULT_VIDEO_MODEL);
+  const videoTemplateModel$ = computed((get) => {
+    return get(internalVideoTemplateModel$);
+  });
+  const setVideoTemplateModel$ = command(({ set }, model: VideoModel) => {
+    set(internalVideoTemplateModel$, model);
+  });
+
+  const internalVideoOptionsAnchor$ = state<VideoTemplateOptionsAnchor | null>(
+    null,
+  );
+  const internalVideoOptionsValue$ = state<GenerationTemplateRequest | null>(
+    null,
+  );
+  const internalVideoOptionsPosition$ = state<number | null>(null);
+  const videoTemplateOptionsAnchor$ = computed((get) => {
+    return get(internalVideoOptionsAnchor$);
+  });
+  const videoTemplateOptionsValue$ = computed((get) => {
+    return get(internalVideoOptionsValue$);
+  });
+  const videoTemplateOptionsPosition$ = computed((get) => {
+    return get(internalVideoOptionsPosition$);
+  });
+  const openVideoTemplateOptions$ = command(
+    (
+      { set },
+      anchor: VideoTemplateOptionsAnchor,
+      value: GenerationTemplateRequest,
+      position: number,
+    ) => {
+      set(internalVideoOptionsValue$, value);
+      set(internalVideoOptionsPosition$, position);
+      set(internalVideoOptionsAnchor$, anchor);
+    },
+  );
+  /** Keeps the open popover in step with the node it just rewrote. */
+  const setVideoTemplateOptionsValue$ = command(
+    ({ set }, value: GenerationTemplateRequest) => {
+      set(internalVideoOptionsValue$, value);
+    },
+  );
+  const closeVideoTemplateOptions$ = command(({ set }) => {
+    set(internalVideoOptionsAnchor$, null);
+    set(internalVideoOptionsValue$, null);
+    set(internalVideoOptionsPosition$, null);
+  });
+
   const websiteTemplatePreviewId$ = computed((get) => {
     return get(internalWebsiteTemplatePreviewId$);
   });
@@ -337,6 +401,14 @@ function createTemplatePickerDialogSignals() {
     setTemplatePickerOpen$,
     templatePickerReferenceValue$,
     setTemplatePickerReferenceValue$,
+    videoTemplateModel$,
+    setVideoTemplateModel$,
+    videoTemplateOptionsAnchor$,
+    videoTemplateOptionsValue$,
+    videoTemplateOptionsPosition$,
+    openVideoTemplateOptions$,
+    setVideoTemplateOptionsValue$,
+    closeVideoTemplateOptions$,
     websiteTemplatePreviewId$,
     websiteTemplatePreviewLoaded$,
     markWebsiteTemplatePreviewLoaded$,
@@ -346,6 +418,7 @@ function createTemplatePickerDialogSignals() {
 }
 
 function createTemplatePickerListSignals() {
+  const avatarTemplates = createAvatarTemplatePickerSignals();
   const internalTemplatePickerCategory$ = state("slides");
   const templatePickerCategory$ = computed((get) => {
     return get(internalTemplatePickerCategory$);
@@ -428,6 +501,7 @@ function createTemplatePickerListSignals() {
       restoreTemplatePickerPresentationScroll$,
       illustrationVariantIndex$,
       setIllustrationVariantIndex$,
+      ...avatarTemplates,
     },
     internalTemplatePickerPreviewSlug$,
   };
@@ -720,10 +794,12 @@ function createOpenPresentationTemplateDetailPreviewSignal(
 
       let pendingLoad = cache.pendingLoads.get(params.item.embedUrl);
       if (pendingLoad === undefined) {
-        pendingLoad = loadPresentationTemplateHtmlPreview({
-          item: params.item,
+        pendingLoad = loadPresentationTemplateHtmlPreview(
+          {
+            item: params.item,
+          },
           signal,
-        });
+        );
         cache.pendingLoads.set(params.item.embedUrl, pendingLoad);
       }
 
@@ -823,7 +899,6 @@ export function createComposerUiSignals() {
 
   return {
     model: basic.model,
-    draft: basic.draft,
     template: {
       ...createTemplatePickerDialogSignals(),
       ...list.signals,
@@ -842,17 +917,3 @@ export function createComposerUiSignals() {
 }
 
 export type ComposerUiSignalGroups = ReturnType<typeof createComposerUiSignals>;
-
-// -- Per-message generation template selections --------------------------------
-
-const internalNewThreadGenerationTemplate$ = state<
-  GenerationTemplateRequest | undefined
->(undefined);
-export const newThreadGenerationTemplate$ = computed((get) => {
-  return get(internalNewThreadGenerationTemplate$);
-});
-export const setNewThreadGenerationTemplate$ = command(
-  ({ set }, value: GenerationTemplateRequest | undefined) => {
-    set(internalNewThreadGenerationTemplate$, value);
-  },
-);

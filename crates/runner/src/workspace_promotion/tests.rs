@@ -1,6 +1,8 @@
 use super::test_support::{TEST_WORKSPACE_IMAGE_SIZE_BYTES, WorkspacePromotionFixture};
 use super::*;
 
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,7 +12,9 @@ use api_contracts::generated::constants::runners::{
 use async_trait::async_trait;
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ, SessionHistorySidecarExportMetadata,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistorySidecarExportFailure,
+    SessionHistorySidecarExportMetadata, SessionHistorySidecarIoErrorClass,
     SessionHistorySidecarRepresentation,
 };
 use sandbox::{
@@ -27,6 +31,10 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
+
+fn mode(path: &Path) -> u32 {
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
 
 async fn mock_sandbox_with_overrides(
     sandbox_id: SandboxId,
@@ -366,10 +374,16 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     assert_eq!(copy_calls.len(), 1);
     assert!(copy_calls[0].path.ends_with("/session-history-sidecar"));
     assert_eq!(copy_calls[0].max_bytes, RESUME_SESSION_HISTORY_MAX_BYTES);
-    let sidecar_entry_dir = copy_calls[0].host_path.parent().unwrap();
-    let sidecar_metadata_path = sidecar_entry_dir.join("session-history.metadata.json");
+    let inspection = fixture.cache.inspect().await.unwrap();
+    let entry = inspection.entries.first().unwrap();
+    let entry_paths = fixture.cache.entry_paths(&entry.cache_key);
+    assert_eq!(
+        copy_calls[0].host_path.parent(),
+        Some(entry_paths.entry_dir())
+    );
+    let sidecar_metadata_path = entry_paths.session_history_sidecar_metadata();
     if !sidecar_metadata_path.is_file() {
-        let entries = std::fs::read_dir(sidecar_entry_dir)
+        let entries = std::fs::read_dir(entry_paths.entry_dir())
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
             .collect::<Vec<_>>();
@@ -398,23 +412,17 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     assert_eq!(tokio::fs::read(sidecar.path).await.unwrap(), history);
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn active_workspace_promotion_keeps_history_read_failure_warning() {
-    let reuse_key = "thread:active-sidecar-read-failure";
-    let session_id = "sess-active-sidecar-read-failure";
-    let history = br#"{"type":"message","content":"read failure"}"#;
-    let restored_identity = test_restored_session_identity(session_id, history);
-    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
-        reuse_key,
-        Some(&restored_identity),
-    )
-    .await;
+#[tokio::test]
+async fn active_workspace_permission_failure_skips_cache_publication() {
+    let fixture = WorkspacePromotionFixture::new("sess-active-permission-failure").await;
+    let paths = crate::paths::RunnerPaths::new(fixture._dir.path().join("runner"));
+    let active_image = paths.active_workspace_image(&fixture.sandbox_id);
+    tokio::fs::set_permissions(&active_image, std::fs::Permissions::from_mode(0o660))
+        .await
+        .unwrap();
+    let cache = fixture.cache.clone();
+    let reuse_key = fixture.reuse_key.clone();
     let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
-    sandbox.push_exec_result(Ok(ExecResult::new(
-        SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
-        Vec::new(),
-        Vec::new(),
-    )));
 
     let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
         &sandbox,
@@ -422,15 +430,108 @@ async fn active_workspace_promotion_keeps_history_read_failure_warning() {
     ))
     .await;
 
-    assert!(promoted);
-    assert!(sandbox.copy_file_calls().is_empty());
-    captured_event(
-        &events,
-        "workspace image cache session history sidecar export failed",
+    assert!(!promoted);
+    let event = captured_event(&events, "workspace image cache promotion failed");
+    assert!(
+        event
+            .fields
+            .get("error")
+            .is_some_and(|error| error.contains("group/other writable"))
     );
-    let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 3);
-    assert!(exec_calls[0].expected_exit_codes.is_empty());
+    assert_eq!(
+        WorkspacePromotionFixture::checkout_result(&cache, &reuse_key).await,
+        WorkspaceCacheCheckoutResult::Miss
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn active_workspace_promotion_classifies_sidecar_export_failures() {
+    let storage_full = serde_json::to_vec(&SessionHistorySidecarExportFailure {
+        io_error_class: SessionHistorySidecarIoErrorClass::StorageFull,
+    })
+    .unwrap();
+    let private_helper_output = b"/home/user/private/session.jsonl".to_vec();
+    for (name, exit_code, stdout, expected_stage, expected_io_class) in [
+        (
+            "source-read",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+            Vec::new(),
+            "source-history",
+            "unknown",
+        ),
+        (
+            "output-storage-full",
+            SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE,
+            storage_full,
+            "output-write",
+            "storage-full",
+        ),
+        (
+            "output-malformed",
+            SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE,
+            private_helper_output.clone(),
+            "output-write",
+            "unknown",
+        ),
+    ] {
+        let reuse_key = format!("thread:active-sidecar-{name}");
+        let session_id = format!("sess-active-sidecar-{name}");
+        let history = br#"{"type":"message","content":"failure"}"#;
+        let restored_identity = test_restored_session_identity(&session_id, history);
+        let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+            &reuse_key,
+            Some(&restored_identity),
+        )
+        .await;
+        let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+        sandbox.push_exec_result(Ok(ExecResult::new(exit_code, stdout, Vec::new())));
+
+        let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+            &sandbox,
+            fixture.promotion,
+        ))
+        .await;
+
+        assert!(promoted, "{name}");
+        assert!(sandbox.copy_file_calls().is_empty(), "{name}");
+        let event = captured_event(
+            &events,
+            "workspace image cache session history sidecar export failed",
+        );
+        let expected_exit_code = exit_code.to_string();
+        let expected_error =
+            format!("session history sidecar export failed (exit code {exit_code})");
+        assert_eq!(
+            event.fields.get("helper_exit_code").map(String::as_str),
+            Some(expected_exit_code.as_str()),
+            "{name}: {event:#?}"
+        );
+        assert_eq!(
+            event.fields.get("failure_stage").map(String::as_str),
+            Some(expected_stage),
+            "{name}: {event:#?}"
+        );
+        assert_eq!(
+            event.fields.get("io_error_class").map(String::as_str),
+            Some(expected_io_class),
+            "{name}: {event:#?}"
+        );
+        assert_eq!(
+            event.fields.get("error").map(String::as_str),
+            Some(expected_error.as_str()),
+            "{name}: {event:#?}"
+        );
+        assert!(
+            event
+                .fields
+                .values()
+                .all(|value| !value.contains("/home/user/private")),
+            "{name}: {event:#?}"
+        );
+        let exec_calls = sandbox.exec_calls();
+        assert_eq!(exec_calls.len(), 3, "{name}");
+        assert!(exec_calls[0].expected_exit_codes.is_empty(), "{name}");
+    }
 }
 
 #[tokio::test]
@@ -468,6 +569,9 @@ async fn session_history_sidecar_staging_is_protected_from_gc() {
                 let entry_dir = tmp_path.parent().unwrap();
                 assert!(tmp_path.is_file());
                 assert!(entry_dir.is_dir());
+                assert_eq!(mode(entry_dir.parent().unwrap()), 0o700);
+                assert_eq!(mode(entry_dir), 0o700);
+                assert_eq!(mode(tmp_path), 0o600);
 
                 let freed = cache.gc(false).await.unwrap();
 

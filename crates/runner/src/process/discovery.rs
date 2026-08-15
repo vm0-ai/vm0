@@ -36,9 +36,9 @@ fn parse_mitmdump_cmdline(argv: &[String]) -> Option<u16> {
 /// Parse a dnsmasq argv for the listen port.
 ///
 /// Identifies dnsmasq by binary name and extracts the `--port` value.
-fn parse_dnsmasq_cmdline(argv: &[String]) -> Option<u16> {
+pub(crate) fn parse_dnsmasq_cmdline(argv: &[String]) -> Option<u16> {
     let binary = argv.first()?;
-    if !binary.ends_with("dnsmasq") {
+    if Path::new(binary).file_name().and_then(|name| name.to_str()) != Some("dnsmasq") {
         return None;
     }
     let pos = argv.iter().position(|t| t == "--port")?;
@@ -435,27 +435,55 @@ mod tests {
     }
 
     #[test]
-    fn parse_dnsmasq_port() {
-        let a = argv(&[
-            "dnsmasq",
-            "--no-daemon",
-            "--no-resolv",
-            "--port",
-            "5353",
-            "--server",
-            "8.8.8.8",
-        ]);
-        assert_eq!(parse_dnsmasq_cmdline(&a), Some(5353));
-    }
+    fn parse_dnsmasq_cmdline_matches_exact_basename_and_port() {
+        let cases: &[(&str, &[&str], Option<u16>)] = &[
+            (
+                "bare executable",
+                &[
+                    "dnsmasq",
+                    "--no-daemon",
+                    "--no-resolv",
+                    "--port",
+                    "5353",
+                    "--server",
+                    "8.8.8.8",
+                ],
+                Some(5353),
+            ),
+            (
+                "full executable path",
+                &["/usr/sbin/dnsmasq", "--port", "5354"],
+                Some(5354),
+            ),
+            ("empty argv", &[], None),
+            (
+                "unrelated executable",
+                &["mitmdump", "--port", "5353"],
+                None,
+            ),
+            ("missing port", &["dnsmasq", "--no-daemon"], None),
+            ("invalid port", &["dnsmasq", "--port", "invalid"], None),
+            ("out-of-range port", &["dnsmasq", "--port", "65536"], None),
+            (
+                "executable name prefix collision",
+                &["dnsmasq-wrapper", "--port", "5353"],
+                None,
+            ),
+            (
+                "executable name suffix collision",
+                &["not-dnsmasq", "--port", "5353"],
+                None,
+            ),
+            (
+                "full-path basename suffix collision",
+                &["/tmp/notdnsmasq", "--port", "5353"],
+                None,
+            ),
+        ];
 
-    #[test]
-    fn parse_dnsmasq_not_dnsmasq_returns_none() {
-        assert!(parse_dnsmasq_cmdline(&argv(&["mitmdump", "--port", "5353"])).is_none());
-    }
-
-    #[test]
-    fn parse_dnsmasq_no_port_returns_none() {
-        assert!(parse_dnsmasq_cmdline(&argv(&["dnsmasq", "--no-daemon"])).is_none());
+        for (name, parts, expected) in cases {
+            assert_eq!(parse_dnsmasq_cmdline(&argv(parts)), *expected, "{name}");
+        }
     }
 
     #[test]

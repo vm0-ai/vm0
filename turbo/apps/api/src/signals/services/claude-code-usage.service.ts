@@ -70,6 +70,7 @@ type UsageResponse = z.infer<typeof usageResponseSchema>;
 type UsageWindow = z.infer<typeof usageWindowSchema>;
 
 interface ClaudeCodeSubscriptionMetadata {
+  readonly accountEmail?: string | null;
   readonly workspaceName?: string | null;
   readonly planType?: string | null;
   readonly subscriptionResetPeriod?: string | null;
@@ -114,13 +115,12 @@ function planTypeFromProfile(profile: ProfileResponse): string | null {
   return null;
 }
 
-function accountNameFromProfile(profile: ProfileResponse): string | null {
+function workspaceNameFromProfile(profile: ProfileResponse): string | null {
   return (
-    nonEmptyString(profile.account?.email) ??
-    nonEmptyString(profile.account?.display_name) ??
-    nonEmptyString(profile.account?.full_name) ??
     nonEmptyString(profile.organization?.name) ??
-    nonEmptyString(profile.organization?.organization_name)
+    nonEmptyString(profile.organization?.organization_name) ??
+    nonEmptyString(profile.account?.display_name) ??
+    nonEmptyString(profile.account?.full_name)
   );
 }
 
@@ -287,11 +287,13 @@ function resetMetadataFromUsage(
   return {};
 }
 
-async function fetchClaudeCodeJson(args: {
-  readonly accessToken: string;
-  readonly path: string;
-  readonly signal: AbortSignal;
-}): Promise<unknown> {
+async function fetchClaudeCodeJson(
+  args: {
+    readonly accessToken: string;
+    readonly path: string;
+  },
+  signal: AbortSignal,
+): Promise<unknown> {
   const response = await fetch(`${CLAUDE_CODE_API_BASE_URL}${args.path}`, {
     method: "GET",
     headers: {
@@ -301,7 +303,7 @@ async function fetchClaudeCodeJson(args: {
       "content-type": "application/json",
       "user-agent": CLAUDE_CODE_USER_AGENT,
     },
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -313,43 +315,56 @@ async function fetchClaudeCodeJson(args: {
   return await response.json();
 }
 
-async function fetchProfileMetadata(args: {
-  readonly accessToken: string;
-  readonly signal: AbortSignal;
-}): Promise<
-  Pick<ClaudeCodeSubscriptionMetadata, "workspaceName" | "planType">
+async function fetchProfileMetadata(
+  args: {
+    readonly accessToken: string;
+  },
+  signal: AbortSignal,
+): Promise<
+  Pick<
+    ClaudeCodeSubscriptionMetadata,
+    "accountEmail" | "workspaceName" | "planType"
+  >
 > {
   const parsed = profileResponseSchema.safeParse(
-    await fetchClaudeCodeJson({
-      accessToken: args.accessToken,
-      path: "/api/oauth/profile",
-      signal: args.signal,
-    }),
+    await fetchClaudeCodeJson(
+      {
+        accessToken: args.accessToken,
+        path: "/api/oauth/profile",
+      },
+      signal,
+    ),
   );
   if (!parsed.success) {
     throw new Error("Claude Code profile response shape unrecognized");
   }
   return {
-    workspaceName: accountNameFromProfile(parsed.data),
+    accountEmail:
+      nonEmptyString(parsed.data.account?.email)?.toLowerCase() ?? null,
+    workspaceName: workspaceNameFromProfile(parsed.data),
     planType: planTypeFromProfile(parsed.data),
   };
 }
 
-async function fetchUsageMetadata(args: {
-  readonly accessToken: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function fetchUsageMetadata(
+  args: {
+    readonly accessToken: string;
+  },
+  signal: AbortSignal,
+): Promise<
   Pick<
     ClaudeCodeSubscriptionMetadata,
     "subscriptionResetPeriod" | "subscriptionNextResetAt" | "subscriptionUsage"
   >
 > {
   const parsed = usageResponseSchema.safeParse(
-    await fetchClaudeCodeJson({
-      accessToken: args.accessToken,
-      path: "/api/oauth/usage",
-      signal: args.signal,
-    }),
+    await fetchClaudeCodeJson(
+      {
+        accessToken: args.accessToken,
+        path: "/api/oauth/usage",
+      },
+      signal,
+    ),
   );
   if (!parsed.success) {
     throw new Error("Claude Code usage response shape unrecognized");
@@ -367,15 +382,17 @@ function hasMetadata(metadata: ClaudeCodeSubscriptionMetadata): boolean {
   });
 }
 
-export async function fetchClaudeCodeSubscriptionMetadata(args: {
-  readonly accessToken: string;
-  readonly signal: AbortSignal;
-}): Promise<ClaudeCodeSubscriptionMetadata | undefined> {
+export async function fetchClaudeCodeSubscriptionMetadata(
+  args: {
+    readonly accessToken: string;
+  },
+  signal: AbortSignal,
+): Promise<ClaudeCodeSubscriptionMetadata | undefined> {
   const [profile, usage] = await Promise.allSettled([
-    fetchProfileMetadata(args),
-    fetchUsageMetadata(args),
+    fetchProfileMetadata(args, signal),
+    fetchUsageMetadata(args, signal),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const metadata: ClaudeCodeSubscriptionMetadata = {
     ...(profile.status === "fulfilled" ? profile.value : {}),

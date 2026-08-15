@@ -1,27 +1,14 @@
-import {
-  command,
-  computed,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
+import { command, type Command, type Computed } from "ccstate";
 import type {
-  AttachFile,
-  ChatPromptEvent,
   ChatRunOptionsRequest,
-  GenerationTemplateRequest,
   UserMessageDocument,
+  UserMessageInputDocument,
   ChatEvent as PersistedChatEvent,
-} from "@vm0/api-contracts/contracts/chat-threads";
+} from "@okouai/api-contracts/contracts/chat-threads";
 import type { ChatEvent } from "./chat-event-types.ts";
-import {
-  listEventsAfter$,
-  listEventsBefore$,
-} from "./remote-chat-event-data-source.ts";
 import {
   createChatEventStorageSignals,
   type AppendOptimisticEventCommand,
-  type ChatEventDataSource,
 } from "./chat-event-storage-signals.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -33,8 +20,48 @@ import {
 } from "./chat-thread-event-sourcing.ts";
 import { registerActiveChatEventSignals$ } from "./chat-event-signal-registry.ts";
 import { logger } from "../log.ts";
+import {
+  chatEventDebugSummaries,
+  chatEventTraceTime,
+} from "./chat-event-debug.ts";
+import { withSelectedModelAnnotation } from "./model-selection-request.ts";
 
 const L = logger("ChatEventSignals");
+
+export interface ChatAgentRunSource {
+  readonly runId: string;
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly titleSnapshot: string;
+}
+
+export function withOptimisticAgentRunSource(
+  document: UserMessageDocument,
+  source: ChatAgentRunSource,
+): UserMessageDocument {
+  return {
+    version: 1,
+    parts: [
+      ...document.parts.filter((part) => {
+        return (
+          part.type !== "source" &&
+          part.type !== "automation" &&
+          part.type !== "goal" &&
+          part.type !== "morning_brief"
+        );
+      }),
+      {
+        type: "source",
+        kind: "agent",
+        runId: source.runId,
+        threadId: source.threadId,
+        agentId: source.agentId,
+        titleSnapshot: source.titleSnapshot,
+        href: `/chats/${source.threadId}#run-${source.runId}`,
+      },
+    ],
+  };
+}
 
 export interface SendInputChatEvent {
   readonly kind: "input";
@@ -42,15 +69,15 @@ export interface SendInputChatEvent {
   readonly agentId: string;
   readonly prompt: string;
   readonly hasTextContent: boolean;
-  readonly attachFiles: AttachFile[] | undefined;
-  readonly attachments: ChatPromptEvent["attachFiles"];
-  readonly generationTemplate: GenerationTemplateRequest | undefined;
-  readonly userMessage: UserMessageDocument;
+  readonly userMessage: UserMessageInputDocument;
+  readonly selectedModel?: string | null;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly realAgentInPreview?: boolean;
   readonly computerUseHostId?: string | null;
   readonly cloudBrowserEnabled?: boolean;
   readonly revokesEventId?: string;
+  readonly source?: ChatAgentRunSource;
+  readonly onOptimisticSend?: () => void;
 }
 
 export interface SendRevokeChatEvent {
@@ -68,7 +95,7 @@ export interface SendInterruptChatEvent {
 export interface SendBrowserLifecycleChatEvent {
   readonly kind: "browser-lifecycle";
   readonly eventId: string;
-  readonly eventType: "browser.started" | "browser.stopped";
+  readonly eventType: "browser.open" | "browser.close";
 }
 
 export type SendChatEventInput =
@@ -100,6 +127,26 @@ function createSendInputChatEvent({
       const clientEventId = crypto.randomUUID();
       const createdAt = nowDate().toISOString();
       const chatThreadSortEventId = crypto.randomUUID();
+      const userMessage =
+        input.delivery === "run"
+          ? withSelectedModelAnnotation(
+              input.userMessage,
+              input.selectedModel,
+              input.runOptions?.codexServiceTier === "fast"
+                ? "priority"
+                : undefined,
+            )
+          : input.userMessage;
+      const optimisticUserMessage = input.source
+        ? withOptimisticAgentRunSource(userMessage, input.source)
+        : userMessage;
+      L.debug("send input prepared", {
+        traceTime: chatEventTraceTime(),
+        threadId,
+        clientEventId,
+        delivery: input.delivery,
+        createdAt,
+      });
       set(touchOptimisticChatThreadSort$, {
         id: chatThreadSortEventId,
         threadId,
@@ -116,9 +163,7 @@ function createSendInputChatEvent({
             threadId,
             eventType: "input.prompt",
             content: null,
-            attachFiles: input.attachments,
-            generationTemplate: input.generationTemplate,
-            userMessage: input.userMessage,
+            userMessage: optimisticUserMessage,
             ...(input.revokesEventId === undefined
               ? {}
               : { revokesEventId: input.revokesEventId }),
@@ -128,6 +173,12 @@ function createSendInputChatEvent({
         signal,
       );
       signal.throwIfAborted();
+      L.debug("send input optimistic change notified", {
+        traceTime: chatEventTraceTime(),
+        threadId,
+        clientEventId,
+      });
+      input.onOptimisticSend?.();
       const result = await sendChatEvent(
         get(zeroClient$),
         {
@@ -143,15 +194,14 @@ function createSendInputChatEvent({
           ...(input.realAgentInPreview === true
             ? { realAgentInPreview: true }
             : {}),
-          generationTemplate: input.generationTemplate,
-          userMessage: input.userMessage,
+          userMessage,
+          ...(input.source ? { sourceRunId: input.source.runId } : {}),
           ...(input.computerUseHostId === undefined
             ? {}
             : { computerUseHostId: input.computerUseHostId }),
           ...(input.cloudBrowserEnabled === undefined
             ? {}
             : { cloudBrowserEnabled: input.cloudBrowserEnabled }),
-          attachFiles: input.attachFiles,
           ...(input.revokesEventId === undefined
             ? {}
             : { revokesEventId: input.revokesEventId }),
@@ -159,6 +209,12 @@ function createSendInputChatEvent({
         signal,
       );
       signal.throwIfAborted();
+      L.debug("send input accepted", {
+        traceTime: chatEventTraceTime(),
+        threadId,
+        clientEventId,
+        runId: result.runId,
+      });
       if (input.delivery === "run" && result.runId === null) {
         set(reloadBillingStatus$);
         await set(syncRemoteEvents$, signal);
@@ -317,13 +373,11 @@ function createSendChatEvent(
 
 function createChatEventSetup({
   threadId,
-  initialRemoteEventsResolved$,
   initializeIndexedDbEvents$,
   mergePersistentEvents$,
   syncRemoteEvents$,
 }: {
   readonly threadId: string;
-  readonly initialRemoteEventsResolved$: State<boolean>;
   readonly initializeIndexedDbEvents$: Command<Promise<void>, [AbortSignal]>;
   readonly mergePersistentEvents$: Command<
     Promise<void>,
@@ -341,8 +395,10 @@ function createChatEventSetup({
       signal: AbortSignal,
     ): Promise<void> => {
       L.debug("receive synced chat events", {
+        traceTime: chatEventTraceTime(),
         threadId,
         count: events.length,
+        events: chatEventDebugSummaries(events),
       });
       await set(mergePersistentEvents$, [...events], signal);
       signal.throwIfAborted();
@@ -353,7 +409,13 @@ function createChatEventSetup({
 
   const setup$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(registerActiveChatEventSignals$, threadId, receive$, signal);
+      set(
+        registerActiveChatEventSignals$,
+        threadId,
+        receive$,
+        syncRemoteEvents$,
+        signal,
+      );
       await set(initializeIndexedDbEvents$, signal);
       signal.throwIfAborted();
     },
@@ -362,7 +424,6 @@ function createChatEventSetup({
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       signal.throwIfAborted();
       if (get(optimisticCreateUnsettled$)) {
-        set(initialRemoteEventsResolved$, true);
         return;
       }
       await set(syncRemoteEvents$, signal);
@@ -373,8 +434,9 @@ function createChatEventSetup({
 }
 
 export interface ChatEventSignals {
+  readonly threadId: string;
   readonly chatEvents$: Computed<ChatEvent[]>;
-  readonly initialRemoteEventsResolved$: Computed<boolean>;
+  readonly hasOptimisticUserMessage$: Computed<boolean>;
   readonly setup$: Command<Promise<void>, [AbortSignal]>;
   readonly catchUp$: Command<Promise<void>, [AbortSignal]>;
   readonly sendEvent$: Command<
@@ -384,14 +446,7 @@ export interface ChatEventSignals {
 }
 
 export function createChatEventSignals(threadId: string): ChatEventSignals {
-  const dataSource: ChatEventDataSource = {
-    listEventsAfter$,
-    listEventsBefore$,
-  };
-  const events = createChatEventStorageSignals({
-    threadId,
-    dataSource,
-  });
+  const events = createChatEventStorageSignals({ threadId });
   const sendEvent$ = createSendChatEvent({
     threadId,
     appendOptimisticEvent$: events.appendOptimisticEvent$,
@@ -399,17 +454,14 @@ export function createChatEventSignals(threadId: string): ChatEventSignals {
   });
   const setup = createChatEventSetup({
     threadId,
-    initialRemoteEventsResolved$: events.initialRemoteEventsResolved$,
     initializeIndexedDbEvents$: events.initializeIndexedDbEvents$,
     mergePersistentEvents$: events.mergePersistentEvents$,
     syncRemoteEvents$: events.syncRemoteEvents$,
   });
-  const initialRemoteEventsResolved$ = computed((get): boolean => {
-    return get(events.initialRemoteEventsResolved$);
-  });
   return {
+    threadId,
     chatEvents$: events.chatEvents$,
-    initialRemoteEventsResolved$,
+    hasOptimisticUserMessage$: events.hasOptimisticUserMessage$,
     ...setup,
     sendEvent$,
   };

@@ -23,7 +23,6 @@ fn abandoned_cleanup_preserves_active_claim_state() {
         .write_active_input_sync(&local_queue::ActiveInputEntry {
             run_id: job_id,
             sequence: 1,
-            message_id: "msg-1".to_string(),
             text: "one".to_string(),
         })
         .unwrap();
@@ -65,7 +64,6 @@ fn abandoned_cleanup_removes_unclaimed_job_without_claim_marker() {
         .write_active_input_sync(&local_queue::ActiveInputEntry {
             run_id: job_id,
             sequence: 1,
-            message_id: "msg-1".to_string(),
             text: "one".to_string(),
         })
         .unwrap();
@@ -167,7 +165,6 @@ fn abandoned_cleanup_removes_unclaimed_active_inputs_when_job_already_absent() {
         .write_active_input_sync(&local_queue::ActiveInputEntry {
             run_id: job_id,
             sequence: 1,
-            message_id: "msg-1".to_string(),
             text: "one".to_string(),
         })
         .unwrap();
@@ -196,7 +193,6 @@ fn abandoned_cleanup_removes_late_unclaimed_active_inputs_after_job_cleanup() {
         .write_active_input_sync(&local_queue::ActiveInputEntry {
             run_id: job_id,
             sequence: 1,
-            message_id: "msg-1".to_string(),
             text: "late".to_string(),
         })
         .unwrap();

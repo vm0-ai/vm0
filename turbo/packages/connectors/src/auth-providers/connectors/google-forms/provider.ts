@@ -47,7 +47,7 @@ export const googleFormsProvider: AuthCodeConnectorAuthProvider<"google-forms"> 
     },
     access: {
       kind: "refresh-token",
-      refresh: async (args) => {
+      refresh: async (args, signal: AbortSignal) => {
         const { clientId, clientSecret } = args.authClient;
         return oauthRefreshResultToProviderResult(
           await refreshGoogleToken(
@@ -55,7 +55,7 @@ export const googleFormsProvider: AuthCodeConnectorAuthProvider<"google-forms"> 
             clientId,
             clientSecret,
             args.inputs.refreshToken,
-            args.signal,
+            signal,
           ),
         );
       },

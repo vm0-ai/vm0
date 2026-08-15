@@ -1,23 +1,21 @@
-import { command, computed, state, type Command } from "ccstate";
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import { command, state, type Command } from "ccstate";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 
 type ReceiveChatEventsCommand = Command<
   Promise<void>,
   [readonly ChatEvent[], AbortSignal]
 >;
+type SyncChatEventsCommand = Command<Promise<void>, [AbortSignal]>;
 
 interface ActiveChatEventSignals {
   readonly id: string;
   readonly receive$: ReceiveChatEventsCommand;
+  readonly sync$: SyncChatEventsCommand;
 }
 
 const activeChatEventSignals$ = state(
   new Map<string, readonly ActiveChatEventSignals[]>(),
 );
-
-export const activeChatEventThreadIds$ = computed((get): string[] => {
-  return Array.from(get(activeChatEventSignals$).keys());
-});
 
 const unregisterActiveChatEventSignals$ = command(
   ({ get, set }, threadId: string, id: string): void => {
@@ -44,13 +42,17 @@ export const registerActiveChatEventSignals$ = command(
     { get, set },
     threadId: string,
     receive$: ReceiveChatEventsCommand,
+    sync$: SyncChatEventsCommand,
     signal: AbortSignal,
   ): void => {
     signal.throwIfAborted();
     const id = crypto.randomUUID();
     const current = get(activeChatEventSignals$);
     const next = new Map(current);
-    next.set(threadId, [...(current.get(threadId) ?? []), { id, receive$ }]);
+    next.set(threadId, [
+      ...(current.get(threadId) ?? []),
+      { id, receive$, sync$ },
+    ]);
     set(activeChatEventSignals$, next);
     signal.addEventListener(
       "abort",
@@ -72,6 +74,21 @@ export const receiveActiveChatEvents$ = command(
     await Promise.all(
       (get(activeChatEventSignals$).get(threadId) ?? []).map((registration) => {
         return set(registration.receive$, events, signal);
+      }),
+    );
+    signal.throwIfAborted();
+  },
+);
+
+export const syncActiveChatEvents$ = command(
+  async (
+    { get, set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await Promise.all(
+      (get(activeChatEventSignals$).get(threadId) ?? []).map((registration) => {
+        return set(registration.sync$, signal);
       }),
     );
     signal.throwIfAborted();

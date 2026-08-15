@@ -1,5 +1,1744 @@
 # Changelog
 
+## [8.562.0](https://github.com/vm0-ai/vm0/compare/core-v8.561.1...core-v8.562.0) (2026-08-14)
+
+
+### Features
+
+* **platform:** add shared worker chat database facade ([#27270](https://github.com/vm0-ai/vm0/issues/27270)) ([8474271](https://github.com/vm0-ai/vm0/commit/8474271fa52d8874fa7b40f2cb90fdac08b54788))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.3
+
+## [8.561.1](https://github.com/vm0-ai/vm0/compare/core-v8.561.0...core-v8.561.1) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.2
+
+## [8.561.0](https://github.com/vm0-ai/vm0/compare/core-v8.560.5...core-v8.561.0) (2026-08-14)
+
+
+### Features
+
+* **chat:** smooth automatic tail scrolling ([#27290](https://github.com/vm0-ai/vm0/issues/27290)) ([f5352bd](https://github.com/vm0-ai/vm0/commit/f5352bd9d3079a713918f325480ac9ea0cdad806))
+
+
+### Refactoring
+
+* **pi:** use official resources and jsonl sessions ([#27288](https://github.com/vm0-ai/vm0/issues/27288)) ([b287f72](https://github.com/vm0-ai/vm0/commit/b287f7270f0fd0613adff61ab91289b73e39e7f6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.1
+
+## [8.560.5](https://github.com/vm0-ai/vm0/compare/core-v8.560.4...core-v8.560.5) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.0
+
+## [8.560.4](https://github.com/vm0-ai/vm0/compare/core-v8.560.3...core-v8.560.4) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.1
+
+## [8.560.3](https://github.com/vm0-ai/vm0/compare/core-v8.560.2...core-v8.560.3) (2026-08-14)
+
+
+### Refactoring
+
+* remove rolled-out automation feature switches ([#27256](https://github.com/vm0-ai/vm0/issues/27256)) ([91119e4](https://github.com/vm0-ai/vm0/commit/91119e4ff88250028c24e79d8b8045cc2c90f896))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.332.0
+
+## [8.560.2](https://github.com/vm0-ai/vm0/compare/core-v8.560.1...core-v8.560.2) (2026-08-14)
+
+
+### Refactoring
+
+* **slack:** neutralize channels source shell ([#27231](https://github.com/vm0-ai/vm0/issues/27231)) ([bb501a7](https://github.com/vm0-ai/vm0/commit/bb501a7c5dbecf280e1bde08a931bd0b60726c3d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.331.1
+
+## [8.560.1](https://github.com/vm0-ai/vm0/compare/core-v8.560.0...core-v8.560.1) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.331.0
+
+## [8.560.0](https://github.com/vm0-ai/vm0/compare/core-v8.559.13...core-v8.560.0) (2026-08-14)
+
+
+### Features
+
+* roll out automation feature switches ([#27142](https://github.com/vm0-ai/vm0/issues/27142)) ([c24a2fb](https://github.com/vm0-ai/vm0/commit/c24a2fb503dbdc725c7dfc2a75257e39c5140195))
+
+## [8.559.13](https://github.com/vm0-ai/vm0/compare/core-v8.559.12...core-v8.559.13) (2026-08-14)
+
+
+### Bug Fixes
+
+* **core:** disable video model selection by default ([#27190](https://github.com/vm0-ai/vm0/issues/27190)) ([a6dcb19](https://github.com/vm0-ai/vm0/commit/a6dcb193d5cf0904b9c2769860a0a8726df731c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.9
+
+## [8.559.12](https://github.com/vm0-ai/vm0/compare/core-v8.559.11...core-v8.559.12) (2026-08-14)
+
+
+### Bug Fixes
+
+* **platform:** fit presentation artifact previews ([#27081](https://github.com/vm0-ai/vm0/issues/27081)) ([d16bb8b](https://github.com/vm0-ai/vm0/commit/d16bb8b4cdccb028b777b343663272de143266f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.8
+
+## [8.559.11](https://github.com/vm0-ai/vm0/compare/core-v8.559.10...core-v8.559.11) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.7
+
+## [8.559.10](https://github.com/vm0-ai/vm0/compare/core-v8.559.9...core-v8.559.10) (2026-08-14)
+
+
+### Bug Fixes
+
+* route vm0 claude models directly through anthropic ([#27116](https://github.com/vm0-ai/vm0/issues/27116)) ([52f19f9](https://github.com/vm0-ai/vm0/commit/52f19f9fa74a375dfcb19a4bf2ed4ccb4245d395))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.6
+
+## [8.559.9](https://github.com/vm0-ai/vm0/compare/core-v8.559.8...core-v8.559.9) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.5
+
+## [8.559.8](https://github.com/vm0-ai/vm0/compare/core-v8.559.7...core-v8.559.8) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.4
+
+## [8.559.7](https://github.com/vm0-ai/vm0/compare/core-v8.559.6...core-v8.559.7) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.3
+
+## [8.559.6](https://github.com/vm0-ai/vm0/compare/core-v8.559.5...core-v8.559.6) (2026-08-14)
+
+
+### Refactoring
+
+* **queue-position:** neutralize api shell ([#27065](https://github.com/vm0-ai/vm0/issues/27065)) ([8a504ad](https://github.com/vm0-ai/vm0/commit/8a504ad7efba1fd5f3e9a6f1c423ec1780dec869))
+* **user-preferences:** neutralize the user preferences api shell ([#27075](https://github.com/vm0-ai/vm0/issues/27075)) ([a99b31b](https://github.com/vm0-ai/vm0/commit/a99b31be509880d93d1e53bae60bbb849cbca916))
+* **voice-io:** neutralize voice io naming ([#27071](https://github.com/vm0-ai/vm0/issues/27071)) ([28c0cb5](https://github.com/vm0-ai/vm0/commit/28c0cb5713c0ad7da688315236f4f48fec19cee7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.2
+
+## [8.559.5](https://github.com/vm0-ai/vm0/compare/core-v8.559.4...core-v8.559.5) (2026-08-14)
+
+
+### Bug Fixes
+
+* route vm0 claude models through openrouter ([#27077](https://github.com/vm0-ai/vm0/issues/27077)) ([964b19e](https://github.com/vm0-ai/vm0/commit/964b19eb456c63794c2041c1eb69cfd475a6b078))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.1
+
+## [8.559.4](https://github.com/vm0-ai/vm0/compare/core-v8.559.3...core-v8.559.4) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.330.0
+
+## [8.559.3](https://github.com/vm0-ai/vm0/compare/core-v8.559.2...core-v8.559.3) (2026-08-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.9
+
+## [8.559.2](https://github.com/vm0-ai/vm0/compare/core-v8.559.1...core-v8.559.2) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.8
+
+## [8.559.1](https://github.com/vm0-ai/vm0/compare/core-v8.559.0...core-v8.559.1) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.7
+
+## [8.559.0](https://github.com/vm0-ai/vm0/compare/core-v8.558.0...core-v8.559.0) (2026-08-13)
+
+
+### Features
+
+* add conversation locator rail behind a feature switch ([#26052](https://github.com/vm0-ai/vm0/issues/26052)) ([f50df2d](https://github.com/vm0-ai/vm0/commit/f50df2d6786a4646ca110921e78ebd63eab63038))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.6
+
+## [8.558.0](https://github.com/vm0-ai/vm0/compare/core-v8.557.0...core-v8.558.0) (2026-08-13)
+
+
+### Features
+
+* **platform:** add realtime connection diagnostics ([#26995](https://github.com/vm0-ai/vm0/issues/26995)) ([a30413a](https://github.com/vm0-ai/vm0/commit/a30413a31b7186088360882aace86a60eaddec66))
+
+
+### Refactoring
+
+* **chat:** remove unified indicator api fallback ([#27006](https://github.com/vm0-ai/vm0/issues/27006)) ([2dde1fd](https://github.com/vm0-ai/vm0/commit/2dde1fd5a9484199da407cf1dc83815dfdc35add))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.5
+
+## [8.557.0](https://github.com/vm0-ai/vm0/compare/core-v8.556.1...core-v8.557.0) (2026-08-13)
+
+
+### Features
+
+* add user-friendly automation messages ([#26963](https://github.com/vm0-ai/vm0/issues/26963)) ([5c13a78](https://github.com/vm0-ai/vm0/commit/5c13a78454fb78da731ba59b5ebe56c532f8c608))
+* **chat:** roll out unified indicator api ([#26960](https://github.com/vm0-ai/vm0/issues/26960)) ([169409d](https://github.com/vm0-ai/vm0/commit/169409de2f824947ff3077e44b98e26d647f24b8))
+
+
+### Refactoring
+
+* **agent:** canonicalize agent draft naming ([#26979](https://github.com/vm0-ai/vm0/issues/26979)) ([5403d6a](https://github.com/vm0-ai/vm0/commit/5403d6ae1ef87b4343751789c063aa88dbdc18f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.4
+
+## [8.556.1](https://github.com/vm0-ai/vm0/compare/core-v8.556.0...core-v8.556.1) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.3
+
+## [8.556.0](https://github.com/vm0-ai/vm0/compare/core-v8.555.1...core-v8.556.0) (2026-08-13)
+
+
+### Features
+
+* roll out saved-billing credit purchases ([#26945](https://github.com/vm0-ai/vm0/issues/26945)) ([84b2e72](https://github.com/vm0-ai/vm0/commit/84b2e721648cfe8af360bd773690203301228bc9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.2
+
+## [8.555.1](https://github.com/vm0-ai/vm0/compare/core-v8.555.0...core-v8.555.1) (2026-08-13)
+
+
+### Refactoring
+
+* **core:** canonicalize seed modules and onboarding copy ([#26900](https://github.com/vm0-ai/vm0/issues/26900)) ([929d020](https://github.com/vm0-ai/vm0/commit/929d0207440b7cccb8051d17890d8096cbd96ea1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.1
+
+## [8.555.0](https://github.com/vm0-ai/vm0/compare/core-v8.554.0...core-v8.555.0) (2026-08-13)
+
+
+### Features
+
+* confirm saved-billing credit purchases in app ([#26806](https://github.com/vm0-ai/vm0/issues/26806)) ([135585d](https://github.com/vm0-ai/vm0/commit/135585db4ea65e2c93cd37c7053012d268eedf86))
+
+
+### Refactoring
+
+* remove sandbox presentation import pipeline ([#26646](https://github.com/vm0-ai/vm0/issues/26646)) ([54601f1](https://github.com/vm0-ai/vm0/commit/54601f1aedeb78825f2e8c63760b9c94b41009c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.329.0
+
+## [8.554.0](https://github.com/vm0-ai/vm0/compare/core-v8.553.3...core-v8.554.0) (2026-08-13)
+
+
+### Features
+
+* **db:** add video model columns and thread event kind ([#26807](https://github.com/vm0-ai/vm0/issues/26807)) ([683a9e7](https://github.com/vm0-ai/vm0/commit/683a9e748792feba0ea6d7ed3eea1d1f63665a47))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.328.0
+
+## [8.553.3](https://github.com/vm0-ai/vm0/compare/core-v8.553.2...core-v8.553.3) (2026-08-13)
+
+
+### Refactoring
+
+* rename workspace packages to [@okouai](https://github.com/okouai) ([#26817](https://github.com/vm0-ai/vm0/issues/26817)) ([ae9c867](https://github.com/vm0-ai/vm0/commit/ae9c8678eb06686dcaaeda2e923f487df8250e5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.327.3
+
+## [8.553.2](https://github.com/vm0-ai/vm0/compare/core-v8.553.1...core-v8.553.2) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.2
+
+## [8.553.1](https://github.com/vm0-ai/vm0/compare/core-v8.553.0...core-v8.553.1) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.1
+
+## [8.553.0](https://github.com/vm0-ai/vm0/compare/core-v8.552.2...core-v8.553.0) (2026-08-13)
+
+
+### Features
+
+* **core:** enable meta ads connector globally ([#26764](https://github.com/vm0-ai/vm0/issues/26764)) ([80d5479](https://github.com/vm0-ai/vm0/commit/80d54798c6810dc0dcbd318c03c96e10c76c7c24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.327.0
+
+## [8.552.2](https://github.com/vm0-ai/vm0/compare/core-v8.552.1...core-v8.552.2) (2026-08-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.2
+
+## [8.552.1](https://github.com/vm0-ai/vm0/compare/core-v8.552.0...core-v8.552.1) (2026-08-12)
+
+
+### Refactoring
+
+* remove chat event snapshot read feature switch ([#26745](https://github.com/vm0-ai/vm0/issues/26745)) ([1a3b9d9](https://github.com/vm0-ai/vm0/commit/1a3b9d96818bd4ec7ba6a5a85158d3a126eec790))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.1
+
+## [8.552.0](https://github.com/vm0-ai/vm0/compare/core-v8.551.0...core-v8.552.0) (2026-08-12)
+
+
+### Features
+
+* add DeepSeek V4 Pro support ([#26737](https://github.com/vm0-ai/vm0/issues/26737)) ([3770acd](https://github.com/vm0-ai/vm0/commit/3770acda61dabb8be63f64b8a0dd853519b40700))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.326.0
+
+## [8.551.0](https://github.com/vm0-ai/vm0/compare/core-v8.550.1...core-v8.551.0) (2026-08-12)
+
+
+### Features
+
+* **chat:** enable snapshot reads for all users ([#26718](https://github.com/vm0-ai/vm0/issues/26718)) ([72a4c1b](https://github.com/vm0-ai/vm0/commit/72a4c1b02eac7a392df03d309c817dc0b92bf90b))
+
+
+### Refactoring
+
+* **pi:** persist sandbox sessions in native sqlite ([#26555](https://github.com/vm0-ai/vm0/issues/26555)) ([9ed505e](https://github.com/vm0-ai/vm0/commit/9ed505e1c567ff019d521fac167700c2b390cffe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.325.0
+
+## [8.550.1](https://github.com/vm0-ai/vm0/compare/core-v8.550.0...core-v8.550.1) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.324.0
+
+## [8.550.0](https://github.com/vm0-ai/vm0/compare/core-v8.549.0...core-v8.550.0) (2026-08-12)
+
+
+### Features
+
+* gate latest website templates ([#26686](https://github.com/vm0-ai/vm0/issues/26686)) ([3089b1d](https://github.com/vm0-ai/vm0/commit/3089b1da9f93faec1bc5a9a1889c292f3bb7d8e8))
+
+## [8.549.0](https://github.com/vm0-ai/vm0/compare/core-v8.548.3...core-v8.549.0) (2026-08-12)
+
+
+### Features
+
+* add unified zero indicators api ([#26568](https://github.com/vm0-ai/vm0/issues/26568)) ([ccd1f4f](https://github.com/vm0-ai/vm0/commit/ccd1f4f044abc8012f5f2f13e881135db29207ab))
+* **workflow:** replace github-label-applied trigger with github-pull-request automation ([#26630](https://github.com/vm0-ai/vm0/issues/26630)) ([b759ef9](https://github.com/vm0-ai/vm0/commit/b759ef9ab529e6913547f8ed86ede565d3537352))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.323.0
+
+## [8.548.3](https://github.com/vm0-ai/vm0/compare/core-v8.548.2...core-v8.548.3) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.322.0
+
+## [8.548.2](https://github.com/vm0-ai/vm0/compare/core-v8.548.1...core-v8.548.2) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.2
+
+## [8.548.1](https://github.com/vm0-ai/vm0/compare/core-v8.548.0...core-v8.548.1) (2026-08-12)
+
+
+### Refactoring
+
+* **connectors:** remove legacy credential compatibility ([#26523](https://github.com/vm0-ai/vm0/issues/26523)) ([acf5b6a](https://github.com/vm0-ai/vm0/commit/acf5b6ab1d7be0b0a27e27eba17652006e5f6224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.1
+
+## [8.548.0](https://github.com/vm0-ai/vm0/compare/core-v8.547.0...core-v8.548.0) (2026-08-12)
+
+
+### Features
+
+* enable chat event snapshot reads for staff org ([#26503](https://github.com/vm0-ai/vm0/issues/26503)) ([6f92dfd](https://github.com/vm0-ai/vm0/commit/6f92dfdaaf5513c72e13fc960f15d4b22e44bb8c))
+
+## [8.547.0](https://github.com/vm0-ai/vm0/compare/core-v8.546.4...core-v8.547.0) (2026-08-12)
+
+
+### Features
+
+* cut first-party cli producers over to okou ([#26491](https://github.com/vm0-ai/vm0/issues/26491)) ([33c4c03](https://github.com/vm0-ai/vm0/commit/33c4c034b421249e220bb0f586a514d44ed78655))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.0
+
+## [8.546.4](https://github.com/vm0-ai/vm0/compare/core-v8.546.3...core-v8.546.4) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.320.0
+
+## [8.546.3](https://github.com/vm0-ai/vm0/compare/core-v8.546.2...core-v8.546.3) (2026-08-12)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#26424](https://github.com/vm0-ai/vm0/issues/26424)) ([dad4358](https://github.com/vm0-ai/vm0/commit/dad4358adcb9fa179bad39d26fc6e0612234d7a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.319.1
+
+## [8.546.2](https://github.com/vm0-ai/vm0/compare/core-v8.546.1...core-v8.546.2) (2026-08-11)
+
+
+### Refactoring
+
+* remove retired model rollout compatibility ([#26413](https://github.com/vm0-ai/vm0/issues/26413)) ([42dfddf](https://github.com/vm0-ai/vm0/commit/42dfddfd80d393d7794868c0469c8e843f09660f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.319.0
+
+## [8.546.1](https://github.com/vm0-ai/vm0/compare/core-v8.546.0...core-v8.546.1) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.318.0
+
+## [8.546.0](https://github.com/vm0-ai/vm0/compare/core-v8.545.2...core-v8.546.0) (2026-08-11)
+
+
+### Features
+
+* **api:** add presentation template catalog and import pipeline ([#26301](https://github.com/vm0-ai/vm0/issues/26301)) ([e785873](https://github.com/vm0-ai/vm0/commit/e785873209e46f722ca1dd19398a66d2b3b0ed6f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.317.0
+
+## [8.545.2](https://github.com/vm0-ai/vm0/compare/core-v8.545.1...core-v8.545.2) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.316.0
+
+## [8.545.1](https://github.com/vm0-ai/vm0/compare/core-v8.545.0...core-v8.545.1) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.315.0
+
+## [8.545.0](https://github.com/vm0-ai/vm0/compare/core-v8.544.0...core-v8.545.0) (2026-08-11)
+
+
+### Features
+
+* migrate retired run model state ([#26338](https://github.com/vm0-ai/vm0/issues/26338)) ([eb9fc94](https://github.com/vm0-ai/vm0/commit/eb9fc9419a23a08a671a5d7c5707fb77dc0d4952))
+* name the hovered emoji and tighten the picker section titles ([#26382](https://github.com/vm0-ai/vm0/issues/26382)) ([73a89c9](https://github.com/vm0-ai/vm0/commit/73a89c9f7b6e49b36e2d8bc622aafb64daba9823))
+
+
+### Bug Fixes
+
+* simplify connector catalog count ([#26362](https://github.com/vm0-ai/vm0/issues/26362)) ([fbc46db](https://github.com/vm0-ai/vm0/commit/fbc46db2de3468aab2eae6b86455db58e0ee457a))
+
+
+### Refactoring
+
+* **api:** remove seo built-in feature switch ([#26354](https://github.com/vm0-ai/vm0/issues/26354)) ([8d4f16d](https://github.com/vm0-ai/vm0/commit/8d4f16d606eab08cdc37a3ac30804a112fc0b5b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.314.0
+
+## [8.544.0](https://github.com/vm0-ai/vm0/compare/core-v8.543.0...core-v8.544.0) (2026-08-11)
+
+
+### Features
+
+* add a category rail to the chat thread emoji picker ([#26342](https://github.com/vm0-ai/vm0/issues/26342)) ([8550bc5](https://github.com/vm0-ai/vm0/commit/8550bc57ab8f6fa0cf026b1a6cc1065b1b123c4a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.1
+
+## [8.543.0](https://github.com/vm0-ai/vm0/compare/core-v8.542.3...core-v8.543.0) (2026-08-11)
+
+
+### Features
+
+* gate retired run models with staged fallbacks ([#26311](https://github.com/vm0-ai/vm0/issues/26311)) ([83569a3](https://github.com/vm0-ai/vm0/commit/83569a3e8aca3f824754a73389dd12404b69e824))
+
+
+### Refactoring
+
+* **connectors:** remove legacy grant compatibility ([#26325](https://github.com/vm0-ai/vm0/issues/26325)) ([4133700](https://github.com/vm0-ai/vm0/commit/41337005f2f8a23dc065d2919f0cb0e1ef5f2fd7))
+* remove tiktok ads connector feature switch ([#26312](https://github.com/vm0-ai/vm0/issues/26312)) ([9150dfa](https://github.com/vm0-ai/vm0/commit/9150dfa771b8589462d4a5aebe2b22cb21ce43c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.0
+
+## [8.542.3](https://github.com/vm0-ai/vm0/compare/core-v8.542.2...core-v8.542.3) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.312.2
+
+## [8.542.2](https://github.com/vm0-ai/vm0/compare/core-v8.542.1...core-v8.542.2) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.312.1
+
+## [8.542.1](https://github.com/vm0-ai/vm0/compare/core-v8.542.0...core-v8.542.1) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.312.0
+
+## [8.542.0](https://github.com/vm0-ai/vm0/compare/core-v8.541.3...core-v8.542.0) (2026-08-11)
+
+
+### Features
+
+* **connectors:** add custom connection endpoint ([#26228](https://github.com/vm0-ai/vm0/issues/26228)) ([b6235c2](https://github.com/vm0-ai/vm0/commit/b6235c2b4000bab04ecb3e9decb23e927e719410))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.311.0
+
+## [8.541.3](https://github.com/vm0-ai/vm0/compare/core-v8.541.2...core-v8.541.3) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.3
+
+## [8.541.2](https://github.com/vm0-ai/vm0/compare/core-v8.541.1...core-v8.541.2) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.2
+
+## [8.541.1](https://github.com/vm0-ai/vm0/compare/core-v8.541.0...core-v8.541.1) (2026-08-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.1
+
+## [8.541.0](https://github.com/vm0-ai/vm0/compare/core-v8.540.0...core-v8.541.0) (2026-08-10)
+
+
+### Features
+
+* add priority inheritance and gpt-5.6 fast billing ([#26147](https://github.com/vm0-ai/vm0/issues/26147)) ([3350fbb](https://github.com/vm0-ai/vm0/commit/3350fbbec7afa95483d0b051e6580fa969a50b10))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.0
+
+## [8.540.0](https://github.com/vm0-ai/vm0/compare/core-v8.539.1...core-v8.540.0) (2026-08-10)
+
+
+### Features
+
+* support multiple personal subscription accounts ([#26166](https://github.com/vm0-ai/vm0/issues/26166)) ([74c3a15](https://github.com/vm0-ai/vm0/commit/74c3a157adb0c08b70911e43f3479b81d405e5e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.309.0
+
+## [8.539.1](https://github.com/vm0-ai/vm0/compare/core-v8.539.0...core-v8.539.1) (2026-08-10)
+
+
+### Refactoring
+
+* remove insights and usage dashboards ([#26154](https://github.com/vm0-ai/vm0/issues/26154)) ([6deb1df](https://github.com/vm0-ai/vm0/commit/6deb1df698bde525de6d9b53a7b2557c932ed49a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.308.0
+
+## [8.539.0](https://github.com/vm0-ai/vm0/compare/core-v8.538.2...core-v8.539.0) (2026-08-10)
+
+
+### Features
+
+* add bounded connector discovery ([#26142](https://github.com/vm0-ai/vm0/issues/26142)) ([16bf8c7](https://github.com/vm0-ai/vm0/commit/16bf8c7429e3ec81c3b3e489e212bf3c52ee0a03))
+* show fast mode in integration footers ([#26070](https://github.com/vm0-ai/vm0/issues/26070)) ([cdf21d6](https://github.com/vm0-ai/vm0/commit/cdf21d62819bc7accd86d94d5022941f49a04194))
+
+
+### Bug Fixes
+
+* use dataforseo exclusively for zero seo ([#26159](https://github.com/vm0-ai/vm0/issues/26159)) ([6e43dc6](https://github.com/vm0-ai/vm0/commit/6e43dc6a35b1f9a656e868353ec6f8b1272731f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.307.0
+
+## [8.538.2](https://github.com/vm0-ai/vm0/compare/core-v8.538.1...core-v8.538.2) (2026-08-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.306.1
+
+## [8.538.1](https://github.com/vm0-ai/vm0/compare/core-v8.538.0...core-v8.538.1) (2026-08-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.306.0
+
+## [8.538.0](https://github.com/vm0-ai/vm0/compare/core-v8.537.0...core-v8.538.0) (2026-08-10)
+
+
+### Features
+
+* animate connector catalog count ([#26083](https://github.com/vm0-ai/vm0/issues/26083)) ([78ab60d](https://github.com/vm0-ai/vm0/commit/78ab60d7622cf6174b4c1b206bf22cc0d9f6b190))
+* **cli:** add managed seo commands ([#26017](https://github.com/vm0-ai/vm0/issues/26017)) ([76c3033](https://github.com/vm0-ai/vm0/commit/76c3033db36a06fce0f917b1d2ebf3b1f72507a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.305.0
+
+## [8.537.0](https://github.com/vm0-ai/vm0/compare/core-v8.536.0...core-v8.537.0) (2026-08-10)
+
+
+### Features
+
+* **runs:** accept unattended trigger sources ([#26024](https://github.com/vm0-ai/vm0/issues/26024)) ([2795cfb](https://github.com/vm0-ai/vm0/commit/2795cfb6432db3ebd3ff9cff04b06ed257e22c14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.304.0
+
+## [8.536.0](https://github.com/vm0-ai/vm0/compare/core-v8.535.2...core-v8.536.0) (2026-08-10)
+
+
+### Features
+
+* **connectors:** add mcp-aware custom connector readers ([#26035](https://github.com/vm0-ai/vm0/issues/26035)) ([7fdc390](https://github.com/vm0-ai/vm0/commit/7fdc390989eacb3e45a7f0162ce5b7f2e8f9df34))
+* persist user default model priority ([#26028](https://github.com/vm0-ai/vm0/issues/26028)) ([0b66242](https://github.com/vm0-ai/vm0/commit/0b66242b364fa14bc2691fb7b0ec8713c20ab003))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.303.0
+
+## [8.535.2](https://github.com/vm0-ai/vm0/compare/core-v8.535.1...core-v8.535.2) (2026-08-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.302.0
+
+## [8.535.1](https://github.com/vm0-ai/vm0/compare/core-v8.535.0...core-v8.535.1) (2026-08-10)
+
+
+### Refactoring
+
+* remove quickbooks connector feature switch ([#25986](https://github.com/vm0-ai/vm0/issues/25986)) ([15ed1bb](https://github.com/vm0-ai/vm0/commit/15ed1bb92c990a668c7f1b590f2e2e6abbfb6bd4))
+
+## [8.535.0](https://github.com/vm0-ai/vm0/compare/core-v8.534.2...core-v8.535.0) (2026-08-10)
+
+
+### Features
+
+* enable pi loop for staff org ([#25967](https://github.com/vm0-ai/vm0/issues/25967)) ([74eb0c3](https://github.com/vm0-ai/vm0/commit/74eb0c318edecf04d804fd0cc271d772ba6da232))
+
+## [8.534.2](https://github.com/vm0-ai/vm0/compare/core-v8.534.1...core-v8.534.2) (2026-08-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.2
+
+## [8.534.1](https://github.com/vm0-ai/vm0/compare/core-v8.534.0...core-v8.534.1) (2026-08-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.1
+
+## [8.534.0](https://github.com/vm0-ai/vm0/compare/core-v8.533.3...core-v8.534.0) (2026-08-09)
+
+
+### Features
+
+* persist and display runner reuse outcomes ([#25942](https://github.com/vm0-ai/vm0/issues/25942)) ([90f8d8f](https://github.com/vm0-ai/vm0/commit/90f8d8ffb713f7f99acd8377b8cba26a91504d0b))
+* **platform:** show concurrency usage by member ([#25938](https://github.com/vm0-ai/vm0/issues/25938)) ([d78f3cc](https://github.com/vm0-ai/vm0/commit/d78f3cce54aaf0623c28a9249944bee476f93ac9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.0
+
+## [8.533.3](https://github.com/vm0-ai/vm0/compare/core-v8.533.2...core-v8.533.3) (2026-08-09)
+
+
+### Bug Fixes
+
+* **platform:** unify foreground auth recovery ([#25899](https://github.com/vm0-ai/vm0/issues/25899)) ([11cc612](https://github.com/vm0-ai/vm0/commit/11cc6121df522e77bbf196ebf3304686974b173c))
+
+## [8.533.2](https://github.com/vm0-ai/vm0/compare/core-v8.533.1...core-v8.533.2) (2026-08-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.300.0
+
+## [8.533.1](https://github.com/vm0-ai/vm0/compare/core-v8.533.0...core-v8.533.1) (2026-08-09)
+
+
+### Refactoring
+
+* **chat-search:** remove chat search index feature switch ([#25909](https://github.com/vm0-ai/vm0/issues/25909)) ([4ca2131](https://github.com/vm0-ai/vm0/commit/4ca213130629c0d060f377c4e093973ab0394e2d))
+* remove chatNextRunModelNotice feature switch ([#25907](https://github.com/vm0-ai/vm0/issues/25907)) ([9ba7b2b](https://github.com/vm0-ai/vm0/commit/9ba7b2bcfed524974d4c30bf193476a9b063cc58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.299.1
+
+## [8.533.0](https://github.com/vm0-ai/vm0/compare/core-v8.532.4...core-v8.533.0) (2026-08-09)
+
+
+### Features
+
+* **chat-search:** enable indexed search for all users ([#25887](https://github.com/vm0-ai/vm0/issues/25887)) ([8cdca52](https://github.com/vm0-ai/vm0/commit/8cdca52c3b75e021dbab3a6573f991a6ceea84f9))
+
+## [8.532.4](https://github.com/vm0-ai/vm0/compare/core-v8.532.3...core-v8.532.4) (2026-08-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.299.0
+
+## [8.532.3](https://github.com/vm0-ai/vm0/compare/core-v8.532.2...core-v8.532.3) (2026-08-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.298.2
+
+## [8.532.2](https://github.com/vm0-ai/vm0/compare/core-v8.532.1...core-v8.532.2) (2026-08-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.298.1
+
+## [8.532.1](https://github.com/vm0-ai/vm0/compare/core-v8.532.0...core-v8.532.1) (2026-08-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.298.0
+
+## [8.532.0](https://github.com/vm0-ai/vm0/compare/core-v8.531.0...core-v8.532.0) (2026-08-08)
+
+
+### Features
+
+* add responsive follow-up card rail ([#25816](https://github.com/vm0-ai/vm0/issues/25816)) ([e4643b0](https://github.com/vm0-ai/vm0/commit/e4643b020d395d6df91213bab809e283d5d4f092))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.297.1
+
+## [8.531.0](https://github.com/vm0-ai/vm0/compare/core-v8.530.9...core-v8.531.0) (2026-08-08)
+
+
+### Features
+
+* add seedance 2.0 mini video generation ([#25814](https://github.com/vm0-ai/vm0/issues/25814)) ([97efe50](https://github.com/vm0-ai/vm0/commit/97efe506aefcea94e602ce05c7113c8a7c82aac6))
+* cold-start chat threads from r2 snapshots behind a switch ([#25802](https://github.com/vm0-ai/vm0/issues/25802)) ([8a9e38a](https://github.com/vm0-ai/vm0/commit/8a9e38afac1f74984d60dbea9dd61f35497c150f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.297.0
+
+## [8.530.9](https://github.com/vm0-ai/vm0/compare/core-v8.530.8...core-v8.530.9) (2026-08-08)
+
+
+### Bug Fixes
+
+* **platform:** gate foreground catch-up on clerk recovery ([#25794](https://github.com/vm0-ai/vm0/issues/25794)) ([042faf4](https://github.com/vm0-ai/vm0/commit/042faf45c0c22f87022371e4861a6c56bae8631f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.296.2
+
+## [8.530.8](https://github.com/vm0-ai/vm0/compare/core-v8.530.7...core-v8.530.8) (2026-08-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.296.1
+
+## [8.530.7](https://github.com/vm0-ai/vm0/compare/core-v8.530.6...core-v8.530.7) (2026-08-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.296.0
+
+## [8.530.6](https://github.com/vm0-ai/vm0/compare/core-v8.530.5...core-v8.530.6) (2026-08-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.295.1
+
+## [8.530.5](https://github.com/vm0-ai/vm0/compare/core-v8.530.4...core-v8.530.5) (2026-08-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.295.0
+
+## [8.530.4](https://github.com/vm0-ai/vm0/compare/core-v8.530.3...core-v8.530.4) (2026-08-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.4
+
+## [8.530.3](https://github.com/vm0-ai/vm0/compare/core-v8.530.2...core-v8.530.3) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.3
+
+## [8.530.2](https://github.com/vm0-ai/vm0/compare/core-v8.530.1...core-v8.530.2) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.2
+
+## [8.530.1](https://github.com/vm0-ai/vm0/compare/core-v8.530.0...core-v8.530.1) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.1
+
+## [8.530.0](https://github.com/vm0-ai/vm0/compare/core-v8.529.1...core-v8.530.0) (2026-08-07)
+
+
+### Features
+
+* **chat:** serve chat search from a projected search index behind a switch ([#25736](https://github.com/vm0-ai/vm0/issues/25736)) ([4bf1a07](https://github.com/vm0-ai/vm0/commit/4bf1a0773458c915c4443ed027dd202878765088))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.0
+
+## [8.529.1](https://github.com/vm0-ai/vm0/compare/core-v8.529.0...core-v8.529.1) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.1
+
+## [8.529.0](https://github.com/vm0-ai/vm0/compare/core-v8.528.2...core-v8.529.0) (2026-08-07)
+
+
+### Features
+
+* add seedance 2.5 video generation ([#25706](https://github.com/vm0-ai/vm0/issues/25706)) ([4980128](https://github.com/vm0-ai/vm0/commit/49801285e195ef2ada1c42a721ca79cfce7b0c62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.0
+
+## [8.528.2](https://github.com/vm0-ai/vm0/compare/core-v8.528.1...core-v8.528.2) (2026-08-07)
+
+
+### Refactoring
+
+* remove artifactSidebarInlineOpen feature switch ([#25691](https://github.com/vm0-ai/vm0/issues/25691)) ([276a21a](https://github.com/vm0-ai/vm0/commit/276a21acfecc092500a9a955918d0842d19d8507))
+* remove cjk-friendly-markdown feature switch ([#25689](https://github.com/vm0-ai/vm0/issues/25689)) ([0638de8](https://github.com/vm0-ai/vm0/commit/0638de803c03b1a8baa75a718db06ec5b6ef580d))
+* remove pexels connector and image provider ([#23668](https://github.com/vm0-ai/vm0/issues/23668)) ([6344d47](https://github.com/vm0-ai/vm0/commit/6344d47abc26e22f09d5ece2941e7c5f3cf4dda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.292.0
+
+## [8.528.1](https://github.com/vm0-ai/vm0/compare/core-v8.528.0...core-v8.528.1) (2026-08-07)
+
+
+### Refactoring
+
+* remove the templatePickerGlobalSearch feature switch ([#25686](https://github.com/vm0-ai/vm0/issues/25686)) ([b427e71](https://github.com/vm0-ai/vm0/commit/b427e716c76ad5cfa9372ef09f52d622e6443b57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.291.0
+
+## [8.528.0](https://github.com/vm0-ai/vm0/compare/core-v8.527.0...core-v8.528.0) (2026-08-07)
+
+
+### Features
+
+* **app:** let a video template chip set its generation parameters ([#25624](https://github.com/vm0-ai/vm0/issues/25624)) ([e670f1e](https://github.com/vm0-ai/vm0/commit/e670f1e45271154b726df0b3d84df1bb057b2d5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.290.1
+
+## [8.527.0](https://github.com/vm0-ai/vm0/compare/core-v8.526.1...core-v8.527.0) (2026-08-07)
+
+
+### Features
+
+* **api:** carry user-chosen video parameters into the generation prompt ([#25613](https://github.com/vm0-ai/vm0/issues/25613)) ([9757fe0](https://github.com/vm0-ai/vm0/commit/9757fe07ba8fb32965ceec2fd85224eafad840f4))
+
+
+### Refactoring
+
+* remove aws connector feature switch ([#25601](https://github.com/vm0-ai/vm0/issues/25601)) ([2135473](https://github.com/vm0-ai/vm0/commit/213547353a9643da453811b77c7e9e81f26f6e3e))
+* remove the structured prompt inline templates feature switch ([#25441](https://github.com/vm0-ai/vm0/issues/25441)) ([f890e58](https://github.com/vm0-ai/vm0/commit/f890e58986ddee61ab943182a4b0b84bda62e0be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.290.0
+
+## [8.526.1](https://github.com/vm0-ai/vm0/compare/core-v8.526.0...core-v8.526.1) (2026-08-07)
+
+
+### Refactoring
+
+* **core:** share the built-in video model catalog ([#25603](https://github.com/vm0-ai/vm0/issues/25603)) ([a995454](https://github.com/vm0-ai/vm0/commit/a9954548b8cc4c1edb79f986fad552b89d4a29bd))
+* remove ChatThreadUnifiedSearch feature switch ([#25600](https://github.com/vm0-ai/vm0/issues/25600)) ([3b6b0af](https://github.com/vm0-ai/vm0/commit/3b6b0af8818889df98b48d0713db9901b13b2e19))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.289.0
+
+## [8.526.0](https://github.com/vm0-ai/vm0/compare/core-v8.525.0...core-v8.526.0) (2026-08-07)
+
+
+### Features
+
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+* roll out chat thread unified search to all users ([#25586](https://github.com/vm0-ai/vm0/issues/25586)) ([bfaefe7](https://github.com/vm0-ai/vm0/commit/bfaefe761de60bc39e8ea773487a342468c12a77))
+
+
+### Refactoring
+
+* remove deployed test routes ([#25550](https://github.com/vm0-ai/vm0/issues/25550)) ([7ae186e](https://github.com/vm0-ai/vm0/commit/7ae186e0c9b04199101dd052459062e4dc916d09))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.288.0
+
+## [8.525.0](https://github.com/vm0-ai/vm0/compare/core-v8.524.7...core-v8.525.0) (2026-08-07)
+
+
+### Features
+
+* **automation:** add stripe invoice-paid binding ([#25303](https://github.com/vm0-ai/vm0/issues/25303)) ([b41a772](https://github.com/vm0-ai/vm0/commit/b41a7727d8cc3d8aa63f9e38672ebd6d5d105e4d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.287.0
+
+## [8.524.7](https://github.com/vm0-ai/vm0/compare/core-v8.524.6...core-v8.524.7) (2026-08-07)
+
+
+### Refactoring
+
+* remove retired compatibility contracts, routes, and schema fields ([#25540](https://github.com/vm0-ai/vm0/issues/25540)) ([67ce1c1](https://github.com/vm0-ai/vm0/commit/67ce1c11aa712b1933fd71e6653212b92996ff70))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.286.1
+
+## [8.524.6](https://github.com/vm0-ai/vm0/compare/core-v8.524.5...core-v8.524.6) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.286.0
+
+## [8.524.5](https://github.com/vm0-ai/vm0/compare/core-v8.524.4...core-v8.524.5) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.285.0
+
+## [8.524.4](https://github.com/vm0-ai/vm0/compare/core-v8.524.3...core-v8.524.4) (2026-08-06)
+
+
+### Bug Fixes
+
+* **platform:** render markdown emphasis that touches cjk punctuation ([#25503](https://github.com/vm0-ai/vm0/issues/25503)) ([e8d8a55](https://github.com/vm0-ai/vm0/commit/e8d8a550b4c801567369c764010ae62c5b372f75))
+
+
+### Refactoring
+
+* remove chat thread sidebar auto-open feature switch ([#25495](https://github.com/vm0-ai/vm0/issues/25495)) ([f77001b](https://github.com/vm0-ai/vm0/commit/f77001be77e0361dce8f7506d24f0ad84b843996))
+* remove customModelGateways feature switch ([#25492](https://github.com/vm0-ai/vm0/issues/25492)) ([89b8fdf](https://github.com/vm0-ai/vm0/commit/89b8fdf668d3fae06cac9fb2eb56924c7cffb78b))
+* remove translation feature switch ([#25498](https://github.com/vm0-ai/vm0/issues/25498)) ([eb4757d](https://github.com/vm0-ai/vm0/commit/eb4757da424ab6c06bb5f2f0e5ba6587f7896c81))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.284.0
+
+## [8.524.3](https://github.com/vm0-ai/vm0/compare/core-v8.524.2...core-v8.524.3) (2026-08-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.283.0
+
+## [8.524.2](https://github.com/vm0-ai/vm0/compare/core-v8.524.1...core-v8.524.2) (2026-08-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.282.0
+
+## [8.524.1](https://github.com/vm0-ai/vm0/compare/core-v8.524.0...core-v8.524.1) (2026-08-06)
+
+
+### Refactoring
+
+* remove custom connector feature switches ([#25449](https://github.com/vm0-ai/vm0/issues/25449)) ([f6d7788](https://github.com/vm0-ai/vm0/commit/f6d77883a45d704b34d0450105bf8693bdf36055))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.281.0
+
+## [8.524.0](https://github.com/vm0-ai/vm0/compare/core-v8.523.0...core-v8.524.0) (2026-08-06)
+
+
+### Features
+
+* **chat:** share selected conversation messages ([#25304](https://github.com/vm0-ai/vm0/issues/25304)) ([dcb3ace](https://github.com/vm0-ai/vm0/commit/dcb3acef66984b6f76c58ba04cc607bb119726c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.280.0
+
+## [8.523.0](https://github.com/vm0-ai/vm0/compare/core-v8.522.1...core-v8.523.0) (2026-08-06)
+
+
+### Features
+
+* add built-in minimax h3 video generation ([#25399](https://github.com/vm0-ai/vm0/issues/25399)) ([b06a069](https://github.com/vm0-ai/vm0/commit/b06a0694cfe247f24d468ef96b7d3f99a3bc35f1))
+* **billing:** add staged usage pack checkout ([#25419](https://github.com/vm0-ai/vm0/issues/25419)) ([877b7e6](https://github.com/vm0-ai/vm0/commit/877b7e672d0ff7db5076d5f4ea87262c2e34ff51))
+
+
+### Refactoring
+
+* remove mermaidDiagrams feature switch ([#25430](https://github.com/vm0-ai/vm0/issues/25430)) ([b630d34](https://github.com/vm0-ai/vm0/commit/b630d3460cccae6015f58c9b041bc11330ce0e6a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.279.0
+
+## [8.522.1](https://github.com/vm0-ai/vm0/compare/core-v8.522.0...core-v8.522.1) (2026-08-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.278.0
+
+## [8.522.0](https://github.com/vm0-ai/vm0/compare/core-v8.521.0...core-v8.522.0) (2026-08-06)
+
+
+### Features
+
+* **platform:** add image canvas double-click zoom ([#25377](https://github.com/vm0-ai/vm0/issues/25377)) ([192e990](https://github.com/vm0-ai/vm0/commit/192e990f78f80b640172dad7b213c987a31e3fb6))
+
+
+### Refactoring
+
+* remove chat steer feature switch ([#25369](https://github.com/vm0-ai/vm0/issues/25369)) ([7ef396a](https://github.com/vm0-ai/vm0/commit/7ef396a972b1937b2d345921d98bfca0051e3277))
+
+## [8.521.0](https://github.com/vm0-ai/vm0/compare/core-v8.520.0...core-v8.521.0) (2026-08-06)
+
+
+### Features
+
+* add managed translation command ([#25364](https://github.com/vm0-ai/vm0/issues/25364)) ([696da1d](https://github.com/vm0-ai/vm0/commit/696da1dce5263a45cea595da2622726df8410245))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.277.0
+
+## [8.520.0](https://github.com/vm0-ai/vm0/compare/core-v8.519.0...core-v8.520.0) (2026-08-06)
+
+
+### Features
+
+* **platform:** add staged member usage pack pricing preview ([#25296](https://github.com/vm0-ai/vm0/issues/25296)) ([c8022f6](https://github.com/vm0-ai/vm0/commit/c8022f6a1e8ddc02426d2bca4750038f379a5d33))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.276.0
+
+## [8.519.0](https://github.com/vm0-ai/vm0/compare/core-v8.518.0...core-v8.519.0) (2026-08-06)
+
+
+### Features
+
+* roll out the structured prompt inline templates switch to all users ([#25320](https://github.com/vm0-ai/vm0/issues/25320)) ([3eb8de7](https://github.com/vm0-ai/vm0/commit/3eb8de762355227d47fea1b30dab71b57a33a5ae))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.275.1
+
+## [8.518.0](https://github.com/vm0-ai/vm0/compare/core-v8.517.0...core-v8.518.0) (2026-08-06)
+
+
+### Features
+
+* roll out mermaidDiagrams to all users ([#25319](https://github.com/vm0-ai/vm0/issues/25319)) ([dae43ba](https://github.com/vm0-ai/vm0/commit/dae43ba457ac8d2da48eb2727132da06ce7a5894))
+
+## [8.517.0](https://github.com/vm0-ai/vm0/compare/core-v8.516.3...core-v8.517.0) (2026-08-05)
+
+
+### Features
+
+* add google forms response trigger ([#25308](https://github.com/vm0-ai/vm0/issues/25308)) ([463f489](https://github.com/vm0-ai/vm0/commit/463f48920b56866b11363f5bf5f2ddd0dbe5529a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.275.0
+
+## [8.516.3](https://github.com/vm0-ai/vm0/compare/core-v8.516.2...core-v8.516.3) (2026-08-05)
+
+
+### Refactoring
+
+* remove zero browser feature switch ([#25289](https://github.com/vm0-ai/vm0/issues/25289)) ([3b859f1](https://github.com/vm0-ai/vm0/commit/3b859f1f8ed2886f2298c31d8042b7f413e6f8bd))
+
+## [8.516.2](https://github.com/vm0-ai/vm0/compare/core-v8.516.1...core-v8.516.2) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.6
+
+## [8.516.1](https://github.com/vm0-ai/vm0/compare/core-v8.516.0...core-v8.516.1) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.5
+
+## [8.516.0](https://github.com/vm0-ai/vm0/compare/core-v8.515.1...core-v8.516.0) (2026-08-05)
+
+
+### Features
+
+* **platform:** make default model selection explicit ([#25187](https://github.com/vm0-ai/vm0/issues/25187)) ([4b83c3d](https://github.com/vm0-ai/vm0/commit/4b83c3d2a01f2256fffe55e5bc0c447070fa5ca2))
+
+
+### Refactoring
+
+* remove obsolete cli release bookkeeping ([#25217](https://github.com/vm0-ai/vm0/issues/25217)) ([de04988](https://github.com/vm0-ai/vm0/commit/de0498849576522e622687fe07b630fa8b519847))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.4
+
+## [8.515.1](https://github.com/vm0-ai/vm0/compare/core-v8.515.0...core-v8.515.1) (2026-08-05)
+
+
+### Refactoring
+
+* remove graduated feature switches ([#25128](https://github.com/vm0-ai/vm0/issues/25128)) ([c160b0e](https://github.com/vm0-ai/vm0/commit/c160b0e1a25a6c884a0021fc9caf61eab71e4561))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.3
+
+## [8.515.0](https://github.com/vm0-ai/vm0/compare/core-v8.514.1...core-v8.515.0) (2026-08-05)
+
+
+### Features
+
+* **core:** enable Teams integration globally ([#25137](https://github.com/vm0-ai/vm0/issues/25137)) ([285dd56](https://github.com/vm0-ai/vm0/commit/285dd5687156a5c79b2c19f8c62c6d1c03d7ed7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.2
+
+## [8.514.1](https://github.com/vm0-ai/vm0/compare/core-v8.514.0...core-v8.514.1) (2026-08-05)
+
+
+### Refactoring
+
+* remove unused e2b infrastructure ([#25162](https://github.com/vm0-ai/vm0/issues/25162)) ([54ec015](https://github.com/vm0-ai/vm0/commit/54ec015ee993c21c2b4635bbd969edee8d967f74))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.1
+
+## [8.514.0](https://github.com/vm0-ai/vm0/compare/core-v8.513.0...core-v8.514.0) (2026-08-05)
+
+
+### Features
+
+* **chat:** enable chat steering for staff org ([#25130](https://github.com/vm0-ai/vm0/issues/25130)) ([2a7a53f](https://github.com/vm0-ai/vm0/commit/2a7a53fe89658d578237884249be6a490247d413))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.0
+
+## [8.513.0](https://github.com/vm0-ai/vm0/compare/core-v8.512.1...core-v8.513.0) (2026-08-05)
+
+
+### Features
+
+* deploy commit-addressed cli packages to r2 ([#25072](https://github.com/vm0-ai/vm0/issues/25072)) ([4201a47](https://github.com/vm0-ai/vm0/commit/4201a475d596ad7f97d2f3777dcc9c34f1037050))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.2
+
+## [8.512.1](https://github.com/vm0-ai/vm0/compare/core-v8.512.0...core-v8.512.1) (2026-08-05)
+
+
+### Refactoring
+
+* decouple composer signals and remove internal re-exports ([#25054](https://github.com/vm0-ai/vm0/issues/25054)) ([a5d80a1](https://github.com/vm0-ai/vm0/commit/a5d80a1127cb7533ad763b1f5d22e9fa562afd03))
+* remove zero chat messaging feature switch ([#25101](https://github.com/vm0-ai/vm0/issues/25101)) ([6a6cf24](https://github.com/vm0-ai/vm0/commit/6a6cf24df6b4beeba0d1a95f732c4f52c6b939aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.1
+
+## [8.512.0](https://github.com/vm0-ai/vm0/compare/core-v8.511.0...core-v8.512.0) (2026-08-05)
+
+
+### Features
+
+* **core:** enable zero chat messaging globally ([#25093](https://github.com/vm0-ai/vm0/issues/25093)) ([76c4a9e](https://github.com/vm0-ai/vm0/commit/76c4a9edf14808ddab0a85c8f94ab61cf07c27b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.0
+
+## [8.511.0](https://github.com/vm0-ai/vm0/compare/core-v8.510.1...core-v8.511.0) (2026-08-04)
+
+
+### Features
+
+* annotate cross-thread agent prompts and bound autonomous delegation depth ([#24934](https://github.com/vm0-ai/vm0/issues/24934)) ([2f2c72a](https://github.com/vm0-ai/vm0/commit/2f2c72af84481a07844bda1eb78fc73612cec3f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.272.0
+
+## [8.510.1](https://github.com/vm0-ai/vm0/compare/core-v8.510.0...core-v8.510.1) (2026-08-04)
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+* retire the zero org command group and unreachable secret and variable apis ([#25039](https://github.com/vm0-ai/vm0/issues/25039)) ([305ca0d](https://github.com/vm0-ai/vm0/commit/305ca0dc0a3a6b149c118b9d8559b233abfffef5)), closes [#25011](https://github.com/vm0-ai/vm0/issues/25011)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.271.0
+
+## [8.510.0](https://github.com/vm0-ai/vm0/compare/core-v8.509.1...core-v8.510.0) (2026-08-04)
+
+
+### Features
+
+* add avatar templates to chat composer ([#24959](https://github.com/vm0-ai/vm0/issues/24959)) ([702edfd](https://github.com/vm0-ai/vm0/commit/702edfd9634454d0f45a464051fceba966a15c4b))
+* **chat:** add feature-gated inline steering ([#24941](https://github.com/vm0-ai/vm0/issues/24941)) ([f705e9d](https://github.com/vm0-ai/vm0/commit/f705e9d8d1a1038055d62839ce0bb3725edbd2e3))
+
+
+### Refactoring
+
+* **mail:** remove reply follow-up action ([#25007](https://github.com/vm0-ai/vm0/issues/25007)) ([a8d080b](https://github.com/vm0-ai/vm0/commit/a8d080b1e8a1ece731a7e40f63abc4348edd0221))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.270.0
+
+## [8.509.1](https://github.com/vm0-ai/vm0/compare/core-v8.509.0...core-v8.509.1) (2026-08-04)
+
+
+### Refactoring
+
+* stop showing org slugs and drop dead slug payloads ([#25008](https://github.com/vm0-ai/vm0/issues/25008)) ([9676511](https://github.com/vm0-ai/vm0/commit/9676511282db6694e300e1a8fa4a40bb5c5d1e41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.2
+
+## [8.509.0](https://github.com/vm0-ai/vm0/compare/core-v8.508.2...core-v8.509.0) (2026-08-04)
+
+
+### Features
+
+* **core:** enable google contacts and forms connectors globally ([#24986](https://github.com/vm0-ai/vm0/issues/24986)) ([ecca7e1](https://github.com/vm0-ai/vm0/commit/ecca7e1f1b55b3dd80dcf9c98ff1fcacdd7a09f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.1
+
+## [8.508.2](https://github.com/vm0-ai/vm0/compare/core-v8.508.1...core-v8.508.2) (2026-08-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.0
+
+## [8.508.1](https://github.com/vm0-ai/vm0/compare/core-v8.508.0...core-v8.508.1) (2026-08-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.268.0
+
+## [8.508.0](https://github.com/vm0-ai/vm0/compare/core-v8.507.1...core-v8.508.0) (2026-08-04)
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.267.0
+
+## [8.507.1](https://github.com/vm0-ai/vm0/compare/core-v8.507.0...core-v8.507.1) (2026-08-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.266.1
+
 ## [8.507.0](https://github.com/vm0-ai/vm0/compare/core-v8.506.1...core-v8.507.0) (2026-08-04)
 
 
@@ -2921,7 +4660,6 @@
 
 ### Bug Fixes
 
-* **core:** disable minimax codex staff rollout ([#20557](https://github.com/vm0-ai/vm0/issues/20557)) ([f0d102d](https://github.com/vm0-ai/vm0/commit/f0d102df364fceecfd3a3146b248a21f325783e2))
 * keep mobile unread shortcuts personal ([#20558](https://github.com/vm0-ai/vm0/issues/20558)) ([de0abb4](https://github.com/vm0-ai/vm0/commit/de0abb489415605332ce985b2ee1b80185ab72a1))
 
 ## [8.412.0](https://github.com/vm0-ai/vm0/compare/core-v8.411.1...core-v8.412.0) (2026-07-07)
@@ -3214,7 +4952,6 @@
 * enable data export for everyone ([#19871](https://github.com/vm0-ai/vm0/issues/19871)) ([dd6f8fe](https://github.com/vm0-ai/vm0/commit/dd6f8feebc11a3a07161affd2a9ed271487b194f))
 * enable html artifact comment editing for staff orgs ([#20294](https://github.com/vm0-ai/vm0/issues/20294)) ([48fd9b7](https://github.com/vm0-ai/vm0/commit/48fd9b7a44488ba7c8189c4211ab9d28dc82f3f1))
 * gate icon-only collapsed manage nav ([#20241](https://github.com/vm0-ai/vm0/issues/20241)) ([36c7282](https://github.com/vm0-ai/vm0/commit/36c72824d5d61db302ffa7cb69a185c1f8889a14))
-* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
 * migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
 * open connectorAccessManagement to all users ([#19686](https://github.com/vm0-ai/vm0/issues/19686)) ([3131bf0](https://github.com/vm0-ai/vm0/commit/3131bf00def4a0b94754b0b941fced4a43aa2814))
 * redesign agents page with public/private tabs ([#19617](https://github.com/vm0-ai/vm0/issues/19617)) ([4d0c182](https://github.com/vm0-ai/vm0/commit/4d0c18210697f59ff1ba9c13bd1b12e8f6c9b7e6))
@@ -3870,7 +5607,6 @@
 
 ### Features
 
-* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
 
 
 ### Bug Fixes

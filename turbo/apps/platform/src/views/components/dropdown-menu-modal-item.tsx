@@ -1,7 +1,5 @@
 import type { ComponentPropsWithoutRef } from "react";
-import { DropdownMenuItem } from "@vm0/ui";
-
-import { runAfterDropdownMenuClose } from "./dropdown-menu-modal-action.ts";
+import { DropdownMenuItem } from "@okouai/ui";
 
 type DropdownMenuModalItemProps = Omit<
   ComponentPropsWithoutRef<typeof DropdownMenuItem>,
@@ -14,12 +12,5 @@ export function DropdownMenuModalItem({
   onModalSelect,
   ...props
 }: DropdownMenuModalItemProps) {
-  return (
-    <DropdownMenuItem
-      {...props}
-      onSelect={() => {
-        runAfterDropdownMenuClose(onModalSelect);
-      }}
-    />
-  );
+  return <DropdownMenuItem {...props} onSelect={onModalSelect} />;
 }

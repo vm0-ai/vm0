@@ -13,7 +13,7 @@ const orgUpsertModelProviderRequestSchema =
   upsertModelProviderRequestSchema.omit({ selectedModel: true });
 
 /**
- * Zero model providers main contract for /api/zero/model-providers
+ * Zero model providers main contract for /api/okou/model-providers
  *
  * GET: List org-level model providers (any member)
  * POST: Create or update an org-level model provider (admin only)
@@ -21,7 +21,7 @@ const orgUpsertModelProviderRequestSchema =
 export const zeroModelProvidersMainContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/model-providers",
+    path: "/api/okou/model-providers",
     headers: authHeadersSchema,
     responses: {
       200: modelProviderListResponseSchema,
@@ -32,7 +32,7 @@ export const zeroModelProvidersMainContract = c.router({
   },
   upsert: {
     method: "POST",
-    path: "/api/zero/model-providers",
+    path: "/api/okou/model-providers",
     headers: authHeadersSchema,
     body: orgUpsertModelProviderRequestSchema,
     responses: {
@@ -52,14 +52,14 @@ export type ZeroModelProvidersMainContract =
   typeof zeroModelProvidersMainContract;
 
 /**
- * Zero model providers by type contract for /api/zero/model-providers/:type
+ * Zero model providers by type contract for /api/okou/model-providers/:type
  *
  * DELETE: Delete an org-level model provider (admin only)
  */
 export const zeroModelProvidersByTypeContract = c.router({
   delete: {
     method: "DELETE",
-    path: "/api/zero/model-providers/:type",
+    path: "/api/okou/model-providers/:type",
     headers: authHeadersSchema,
     pathParams: z.object({
       type: modelProviderTypeSchema,

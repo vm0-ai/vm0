@@ -156,6 +156,19 @@ struct SandboxOpEntry {
     success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    outcome: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+/// Optional low-cardinality dimensions for a sandbox operation.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SandboxOpDimensions<'a> {
+    /// Bounded result classification for the operation.
+    pub outcome: Option<&'a str>,
+    /// Bounded content-free explanation for the result.
+    pub reason: Option<&'a str>,
 }
 
 /// Record a sandbox operation to the telemetry log on a best-effort basis.
@@ -174,13 +187,33 @@ struct SandboxOpEntry {
 /// the secure open.
 ///
 /// Each JSONL entry contains `ts`, `action_type`, `duration_ms`, `success`, and
-/// an optional `error` field. The format is compatible with the TypeScript
-/// version for consistency.
+/// optional `error`, `outcome`, and `reason` fields. The format is compatible
+/// with the TypeScript version for consistency.
 pub fn record_sandbox_op(
     action_type: &str,
     duration: Duration,
     success: bool,
     error: Option<&str>,
+) {
+    record_sandbox_op_with_dimensions(
+        action_type,
+        duration,
+        success,
+        error,
+        SandboxOpDimensions::default(),
+    );
+}
+
+/// Record a sandbox operation with optional low-cardinality dimensions.
+///
+/// This has the same best-effort behavior as [`record_sandbox_op`]. Callers
+/// must provide only bounded, content-free values suitable for log dimensions.
+pub fn record_sandbox_op_with_dimensions(
+    action_type: &str,
+    duration: Duration,
+    success: bool,
+    error: Option<&str>,
+    dimensions: SandboxOpDimensions<'_>,
 ) {
     let Some(sink) = configured_sandbox_ops_log() else {
         return;
@@ -192,6 +225,8 @@ pub fn record_sandbox_op(
         duration_ms: duration_ms(duration),
         success,
         error: error.map(String::from),
+        outcome: dimensions.outcome.map(String::from),
+        reason: dimensions.reason.map(String::from),
     };
 
     let Ok(mut record) = serde_json::to_vec(&entry) else {
@@ -318,6 +353,32 @@ mod tests {
         }
 
         let _ = std::fs::remove_file(&log_path);
+    }
+
+    #[test]
+    fn record_sandbox_op_writes_optional_dimensions() {
+        let _guard = lock_test_state();
+        clear_sandbox_ops_log_file();
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("sandbox-ops.jsonl");
+        let _override_guard = SandboxOpsOverrideGuard::set(&log_path);
+
+        record_sandbox_op_with_dimensions(
+            "session_history_prune",
+            Duration::from_millis(5),
+            true,
+            None,
+            SandboxOpDimensions {
+                outcome: Some("ineligible"),
+                reason: Some("source_within_guard"),
+            },
+        );
+
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        let entry: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(entry["outcome"], "ineligible");
+        assert_eq!(entry["reason"], "source_within_guard");
+        assert!(entry.get("error").is_none());
     }
 
     #[test]

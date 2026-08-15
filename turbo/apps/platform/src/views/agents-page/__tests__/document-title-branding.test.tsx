@@ -20,7 +20,7 @@ describe("document title branding", () => {
     ["https://omby.ai.evil.example/", "Agents | VM0"],
     ["https://okou-app.pages.dev.evil.example/", "Agents | VM0"],
   ])("uses the matching brand on %s", async (url, title) => {
-    window.location.href = url;
+    context.mocks.browser.url(url);
 
     detachedSetupPage({ context, path: "/agents" });
 

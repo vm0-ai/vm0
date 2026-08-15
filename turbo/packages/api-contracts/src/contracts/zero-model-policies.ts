@@ -10,7 +10,7 @@ const c = initContract();
 export const zeroModelPoliciesMainContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/model-policies",
+    path: "/api/okou/model-policies",
     headers: authHeadersSchema,
     responses: {
       200: orgModelPoliciesResponseSchema,
@@ -23,7 +23,7 @@ export const zeroModelPoliciesMainContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/zero/model-policies",
+    path: "/api/okou/model-policies",
     headers: authHeadersSchema,
     body: updateOrgModelPoliciesRequestSchema,
     responses: {

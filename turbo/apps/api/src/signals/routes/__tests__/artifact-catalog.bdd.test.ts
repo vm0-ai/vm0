@@ -1,23 +1,24 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import type { RouteEntry } from "../../route-entry";
+import { artifactCatalogRoutes } from "../artifact-catalog";
+import { sharedThreadRoutes } from "../shared-threads";
 import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
-import {
-  createChatFilesBddApi,
-  hostedTextFile,
-} from "./helpers/api-bdd-chat-files";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -26,7 +27,7 @@ import {
   insertHostedSiteAsPreviousApi,
   insertLegacyArtifactCatalogFile,
 } from "./helpers/runtime-state";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -35,7 +36,11 @@ const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const host = createHostMapsBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
-
+const routeMocks = createZeroRouteMocks(context);
+const sharedThreadTestRoutes: readonly RouteEntry[] = [
+  ...artifactCatalogRoutes,
+  ...sharedThreadRoutes,
+];
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 interface CatalogActor {
   readonly actor: ApiTestUser;
@@ -56,7 +61,6 @@ function stageUploadObject(key: string, size: number): void {
 async function catalogActor(
   displayName: string,
   actor: ApiTestUser = bdd.user(),
-  switches: Readonly<Partial<Record<FeatureSwitchKey, boolean>>> = {},
   options: { readonly bootstrapOrg?: boolean } = {},
 ): Promise<CatalogActor> {
   chatCallbacks.acceptChatObjectStorage();
@@ -72,11 +76,6 @@ async function catalogActor(
   if (!actor.orgId) {
     throw new Error("Expected artifact catalog test actor to have an org");
   }
-  await updateFeatureSwitchesForUser(
-    context,
-    { userId: actor.userId, orgId: actor.orgId },
-    switches,
-  );
   const agent = await bdd.createAgent(actor, {
     displayName,
     visibility: "private",
@@ -114,10 +113,10 @@ async function claimChatRun(
   };
 }
 
-function zeroTokenFromClaim(claim: RunnerClaim): string {
-  const token = claim.environment?.ZERO_TOKEN;
+function okouTokenFromClaim(claim: RunnerClaim): string {
+  const token = claim.environment?.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
   }
   return token;
 }
@@ -125,6 +124,7 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
 async function completeChatRunOk(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
+  lastEventSequence?: number,
 ): Promise<void> {
   const historyHash = createHash("sha256")
     .update(`bdd artifact catalog history ${runId}`)
@@ -140,10 +140,141 @@ async function completeChatRunOk(
     [200],
   );
   await webhooks.requestAgentComplete(
-    { runId, exitCode: 0 },
+    {
+      runId,
+      exitCode: 0,
+      ...(lastEventSequence === undefined ? {} : { lastEventSequence }),
+    },
     sandboxHeaders,
     [200],
   );
+}
+
+interface CreatedSharedThreadResult {
+  readonly id: string;
+  readonly headers: Headers;
+}
+
+interface ReadSharedThreadResult {
+  readonly body: unknown;
+  readonly headers: Headers;
+}
+
+function authenticateSharedThread(actor: ApiTestUser) {
+  routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+  return { authorization: "Bearer clerk-session" };
+}
+
+function sharedThreadTestApp() {
+  return createAppWithRoutes({
+    signal: context.signal,
+    routes: sharedThreadTestRoutes,
+  });
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Expected a JSON object response");
+  }
+  return value as Record<string, unknown>;
+}
+
+interface SharedThreadEventRef {
+  readonly id: string;
+  readonly eventType: string;
+  readonly runId?: string;
+}
+
+async function listSharedThreadEventRefs(
+  actor: ApiTestUser,
+  threadId: string,
+): Promise<readonly SharedThreadEventRef[]> {
+  const page: unknown = await chat.listThreadEvents(actor, threadId);
+  const events = asRecord(page).events;
+  if (!Array.isArray(events)) {
+    throw new Error("Expected chat thread events");
+  }
+  return events.map((value) => {
+    const event = asRecord(value);
+    if (typeof event.id !== "string" || typeof event.eventType !== "string") {
+      throw new Error("Expected a chat event reference");
+    }
+    return {
+      id: event.id,
+      eventType: event.eventType,
+      ...(typeof event.runId === "string" ? { runId: event.runId } : {}),
+    };
+  });
+}
+
+async function createSharedThreadSnapshot(
+  actor: ApiTestUser,
+  threadId: string,
+  eventIds: readonly string[],
+): Promise<CreatedSharedThreadResult> {
+  const response = await sharedThreadTestApp().request(
+    `/api/zero/chat-threads/${threadId}/shared-threads`,
+    {
+      method: "POST",
+      headers: {
+        ...authenticateSharedThread(actor),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ eventIds }),
+    },
+  );
+  expect(response.status).toBe(201);
+  const body = asRecord(await response.json());
+  if (typeof body.id !== "string") {
+    throw new Error("Expected shared-thread creation to return an ID");
+  }
+  return { id: body.id, headers: response.headers };
+}
+
+async function readSharedThreadSnapshot(
+  id: string,
+): Promise<ReadSharedThreadResult> {
+  const response = await sharedThreadTestApp().request(
+    `/api/zero/shared-threads/${id}`,
+  );
+  expect(response.status).toBe(200);
+  const body: unknown = await response.json();
+  return { body, headers: response.headers };
+}
+
+async function readSharedThreadMeta(
+  id: string,
+): Promise<ReadSharedThreadResult> {
+  const response = await sharedThreadTestApp().request(
+    `/api/zero/shared-threads/${id}/meta`,
+  );
+  expect(response.status).toBe(200);
+  const body: unknown = await response.json();
+  return { body, headers: response.headers };
+}
+
+async function completeChatRunWithMessage(
+  owner: CatalogActor,
+  runId: string,
+  assistantText: string,
+): Promise<void> {
+  const { sandboxHeaders } = await claimChatRun(owner.runnerGroup, runId);
+  chatCallbacks.mockChatOutputEvents([
+    {
+      eventType: "assistant",
+      sequenceNumber: 0,
+      eventData: {
+        message: { content: [{ type: "text", text: assistantText }] },
+      },
+    },
+  ]);
+  const outputEvents = chatCallbacks.consumeMockChatOutputEvents();
+  await webhooks.requestAgentEvents(
+    { runId, events: outputEvents },
+    sandboxHeaders,
+    [200],
+  );
+  await completeChatRunOk(runId, sandboxHeaders, 0);
 }
 
 async function uploadFile(args: {
@@ -166,7 +297,7 @@ async function uploadFile(args: {
     args.owner.runnerGroup,
     run.runId,
   );
-  const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
+  const bearer = `Bearer ${okouTokenFromClaim(claim)}`;
   const fileId = args.fileId ?? randomUUID();
   stageUploadObject(
     `artifacts/${args.owner.actor.userId}/${fileId}/${args.filename}`,
@@ -232,7 +363,7 @@ async function publishHostedSite(args: {
   const bearer =
     claimed === null
       ? `Bearer ${scopedZeroToken(args.owner, run.runId, ["host:write"])}`
-      : `Bearer ${zeroTokenFromClaim(claimed.claim)}`;
+      : `Bearer ${okouTokenFromClaim(claimed.claim)}`;
   const body = {
     site: args.site,
     artifactKind: args.artifactKind ?? ("hosted-site" as const),
@@ -280,9 +411,9 @@ async function publishHostedSiteFromDirectRun(args: {
         agentComposeId: args.owner.agentId,
         prompt: `publish ${args.site}`,
         modelProviderType: "anthropic-api-key",
-        triggerSource: "workflow-schedule",
-        vars: { ZERO_AGENT_ID: args.owner.agentId },
-        secrets: { ZERO_TOKEN: "bdd-artifact-catalog-token" },
+        triggerSource: "automation-schedule",
+        vars: { OKOU_AGENT_ID: args.owner.agentId },
+        secrets: { OKOU_TOKEN: "bdd-artifact-catalog-token" },
       })
     ).runId;
   const bearer = `Bearer ${scopedZeroToken(args.owner, runId, ["host:write"])}`;
@@ -453,9 +584,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog hosted owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     const site = `catalog-site-${randomUUID().slice(0, 8)}`;
     const hosted = await publishHostedSite({ owner, site, deployments: 2 });
@@ -489,9 +617,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog chat-scoped hosted owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     host.captureHostedSitesS3();
     const site = `catalog-chat-scope-${randomUUID().slice(0, 8)}`;
@@ -599,9 +724,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog mixed-scope hosted owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     host.captureHostedSitesS3();
     const site = `catalog-mixed-scope-${randomUUID().slice(0, 8)}`;
@@ -636,7 +758,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     expectApiError(rejected.body);
     expect(rejected.body.error).toStrictEqual({
       code: "CONFLICT",
-      message: `Hosted site slug "${site}" is owned outside this chat. Choose a different --site value and rerun the same zero host command.`,
+      message: `Hosted site slug "${site}" is owned outside this chat. Choose a different --site value and rerun the same okou host command.`,
     });
     expect(organizationRedeploy).toMatchObject({
       siteId: organizationSite.siteId,
@@ -655,9 +777,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog previous API hosted owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     if (!owner.actor.orgId) {
       throw new Error("Expected previous API hosted owner to have an org");
@@ -738,9 +857,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog hosted transition owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     const site = `catalog-transition-${randomUUID().slice(0, 8)}`;
     const hosted = await publishHostedSite({
@@ -771,16 +887,10 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const firstOwner = await catalogActor(
       "Artifact catalog first org member",
       bdd.user({ orgId, orgRole: "org:admin" }),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     const secondOwner = await catalogActor(
       "Artifact catalog second org member",
       bdd.user({ orgId, orgRole: "org:member" }),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
       { bootstrapOrg: false },
     );
     const site = `catalog-shared-${randomUUID().slice(0, 8)}`;
@@ -905,9 +1015,9 @@ describe("GET /api/zero/artifacts/catalog", () => {
       agentComposeId: owner.agentId,
       prompt: "create a workflow artifact",
       modelProviderType: "anthropic-api-key",
-      triggerSource: "workflow-schedule",
-      vars: { ZERO_AGENT_ID: owner.agentId },
-      secrets: { ZERO_TOKEN: "bdd-artifact-catalog-token" },
+      triggerSource: "automation-schedule",
+      vars: { OKOU_AGENT_ID: owner.agentId },
+      secrets: { OKOU_TOKEN: "bdd-artifact-catalog-token" },
     });
     const fileId = randomUUID();
     stageUploadObject(
@@ -981,4 +1091,217 @@ describe("GET /api/zero/artifacts/catalog", () => {
       expect.objectContaining({ kind: "file", title: "first-thread.txt" }),
     ]);
   }, 180_000);
+});
+
+describe("shared thread routes", () => {
+  it("creates immutable, redacted snapshots from selected visible messages", async () => {
+    const owner = await catalogActor("Shared thread test agent");
+    const run = await sendChatRun(owner.actor, {
+      agentId: owner.agentId,
+      prompt: "Prepare the private launch plan",
+    });
+    const assistantText = "Here is the **public** launch plan.";
+    await completeChatRunWithMessage(owner, run.runId, assistantText);
+
+    let events: readonly SharedThreadEventRef[] | undefined;
+    await expect
+      .poll(async () => {
+        events = await listSharedThreadEventRefs(owner.actor, run.threadId);
+        return events.some((event) => {
+          return (
+            event.eventType === "run.completed" && event.runId === run.runId
+          );
+        });
+      })
+      .toBe(true);
+    if (!events) {
+      throw new Error("Expected completed shared-thread fixture events");
+    }
+    const promptEvent = events.find((event) => {
+      return event.eventType === "input.prompt" && event.runId === run.runId;
+    });
+    const assistantEvent = events.find((event) => {
+      return event.eventType === "output.message";
+    });
+    const nonShareableEvent = events.find((event) => {
+      return event.eventType === "run.completed";
+    });
+    const otherRun = await sendChatRun(owner.actor, {
+      agentId: owner.agentId,
+      prompt: "This other thread must stay private",
+    });
+    const otherEvents = await listSharedThreadEventRefs(
+      owner.actor,
+      otherRun.threadId,
+    );
+    const otherPromptEvent = otherEvents.find((event) => {
+      return event.eventType === "input.prompt";
+    });
+    if (
+      !promptEvent ||
+      !assistantEvent ||
+      !nonShareableEvent ||
+      !otherPromptEvent
+    ) {
+      throw new Error(
+        "Expected shareable, non-shareable, and cross-thread events",
+      );
+    }
+
+    mockOptionalEnv("OPENROUTER_API_KEY", "shared-title-key");
+    const titlePrompts: string[] = [];
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("for this shared conversation")) {
+        titlePrompts.push(body.messages[1]?.content ?? "");
+        return "**Private launch plan**";
+      }
+      return "Generated summary";
+    });
+
+    const eventIds = [
+      randomUUID(),
+      otherPromptEvent.id,
+      nonShareableEvent.id,
+      assistantEvent.id,
+      promptEvent.id,
+      assistantEvent.id,
+    ];
+    const first = await createSharedThreadSnapshot(
+      owner.actor,
+      run.threadId,
+      eventIds,
+    );
+    const second = await createSharedThreadSnapshot(
+      owner.actor,
+      run.threadId,
+      eventIds,
+    );
+    expect(second.id).not.toBe(first.id);
+    expect(titlePrompts).toHaveLength(2);
+    expect(titlePrompts[0]).toContain("Prepare the private launch plan");
+    expect(titlePrompts[0]).toContain(assistantText);
+    expect(titlePrompts[0]).not.toContain(
+      "This other thread must stay private",
+    );
+
+    const publicSnapshot = await readSharedThreadSnapshot(first.id);
+    expect(publicSnapshot.headers.get("cache-control")).toBe("no-store");
+    expect(publicSnapshot.body).toStrictEqual({
+      id: first.id,
+      title: "Private launch plan",
+      messages: [
+        {
+          messageIndex: 0,
+          role: "user",
+          content: "Prepare the private launch plan",
+          runIndex: 0,
+        },
+        {
+          messageIndex: 1,
+          role: "assistant",
+          content: assistantText,
+          runIndex: 0,
+        },
+      ],
+    });
+
+    const metadata = await readSharedThreadMeta(first.id);
+    expect(metadata.body).toStrictEqual({ title: "Private launch plan" });
+    expect(metadata.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, s-maxage=31536000, immutable",
+    );
+
+    const catalog = await chat.listArtifactCatalog(owner.actor, {
+      kind: "shared-thread",
+      chatThreadId: run.threadId,
+    });
+    expect(catalog.artifacts).toHaveLength(2);
+    expect(catalog.artifacts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "shared-thread",
+          title: "Private launch plan",
+        }),
+      ]),
+    );
+    const artifactId = catalog.artifacts[0]?.id;
+    if (!artifactId) {
+      throw new Error("Expected a shared-thread artifact");
+    }
+    const detail = await chat.getArtifactCatalogEntry(owner.actor, artifactId);
+    expect(detail.kind).toBe("shared-thread");
+
+    const directCatalogResponse = await sharedThreadTestApp().request(
+      "/api/zero/artifacts/catalog",
+      { headers: authenticateSharedThread(owner.actor) },
+    );
+    expect(directCatalogResponse.status).toBe(200);
+    const directCatalog = asRecord(await directCatalogResponse.json());
+    expect(directCatalog.artifacts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "shared-thread" }),
+      ]),
+    );
+    const directDetailResponse = await sharedThreadTestApp().request(
+      `/api/zero/artifacts/catalog/${artifactId}`,
+      { headers: authenticateSharedThread(owner.actor) },
+    );
+    expect(directDetailResponse.status).toBe(200);
+    const directDetail = asRecord(await directDetailResponse.json());
+    expect(directDetail.kind).toBe("shared-thread");
+
+    await chat.deleteThread(owner.actor, run.threadId);
+    const afterSourceDeletion = await readSharedThreadSnapshot(first.id);
+    expect(afterSourceDeletion.body).toStrictEqual(publicSnapshot.body);
+
+    webhooks.configureClerkWebhookSecret();
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+    webhooks.verifyNextClerkWebhook({
+      type: "organization.deleted",
+      data: { id: owner.actor.orgId },
+    });
+    await webhooks.requestClerkWebhook("{}", {}, [200]);
+    await flushWaitUntilForTest();
+
+    const afterOrgDeletionResponse = await sharedThreadTestApp().request(
+      `/api/zero/shared-threads/${first.id}`,
+    );
+    expect(afterOrgDeletionResponse.status).toBe(404);
+    const afterOrgDeletion = asRecord(await afterOrgDeletionResponse.json());
+    expect(asRecord(afterOrgDeletion.error).code).toBe("NOT_FOUND");
+  }, 180_000);
+
+  it("allows API creation while the entry feature switch is disabled", async () => {
+    const owner = await catalogActor("Shared thread feature-switch test agent");
+    mockOptionalEnv("OPENROUTER_API_KEY", "shared-title-key");
+    const run = await sendChatRun(owner.actor, {
+      agentId: owner.agentId,
+      prompt: "Prepare the private launch plan",
+    });
+    const events = await listSharedThreadEventRefs(owner.actor, run.threadId);
+    const promptEvent = events.find((event) => {
+      return event.eventType === "input.prompt" && event.runId === run.runId;
+    });
+    if (!promptEvent) {
+      throw new Error("Expected an associated prompt event");
+    }
+    chatCallbacks.mockOpenRouterCompletions(() => {
+      return "Private launch plan";
+    });
+
+    const created = await createSharedThreadSnapshot(
+      owner.actor,
+      run.threadId,
+      [promptEvent.id],
+    );
+
+    await expect(readSharedThreadSnapshot(created.id)).resolves.toMatchObject({
+      body: { title: "Private launch plan" },
+    });
+  });
 });

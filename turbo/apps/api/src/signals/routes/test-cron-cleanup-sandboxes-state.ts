@@ -3,28 +3,27 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   type TestCronCleanupSandboxesStateActionBody,
   testCronCleanupSandboxesStateContract,
-} from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
-import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
+} from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
+import { MIN_EPOCH_MS_TIMESTAMP } from "@okouai/api-contracts/contracts/runners";
 import {
   agentComposeVersions,
   agentComposes,
-} from "@vm0/db/schema/agent-compose";
-import { artifacts } from "@vm0/db/schema/artifact";
-import { browserSessions } from "@vm0/db/schema/browser-session";
-import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
-import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
-import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { exportJobs } from "@vm0/db/schema/export-job";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+} from "@okouai/db/schema/agent-compose";
+import { artifacts } from "@okouai/db/schema/artifact";
+import { browserSessions } from "@okouai/db/schema/browser-session";
+import { builtInGenerationJobs } from "@okouai/db/schema/built-in-generation-job";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { exportJobs } from "@okouai/db/schema/export-job";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
+import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { usageEvent } from "@okouai/db/schema/usage-event";
 import { command } from "ccstate";
 import { and, eq, inArray, notExists } from "drizzle-orm";
 
@@ -33,13 +32,25 @@ import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
-import { insertChatEvent } from "../services/zero-chat-event.service";
+import {
+  encryptQueuedRunnerJobPayload,
+  queuedRunnerJobPayload,
+} from "../services/agent-run-queue-payload.service";
+import {
+  normalizeRunMetadata,
+  writeRunMetadata,
+} from "../services/agent-run-metadata-write.service";
+import { cleanupSandboxes$ } from "../services/cron-cleanup-sandboxes.service";
+import { insertChatEvent } from "../services/chat-event.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const actionBody$ = bodyResultOf(testCronCleanupSandboxesStateContract.action);
+const cleanupBody$ = bodyResultOf(
+  testCronCleanupSandboxesStateContract.cleanup,
+);
 
 function actionOk(extra: Record<string, unknown> = {}) {
   return {
@@ -167,6 +178,14 @@ async function seedRunForAction(
     return actionBadRequest("failed to seed session");
   }
 
+  const threadless = readOptionalBoolean(body, "threadless") === true;
+  const status = readOptionalString(body, "status") ?? "pending";
+  // Queued fixtures can be promoted through the production metadata writer.
+  // Lifecycle-only fixtures that never enter that path intentionally stay null.
+  const runMetadata =
+    threadless || status === "queued"
+      ? normalizeRunMetadata({ triggerSource: triggerSource.data })
+      : null;
   const [run] = await db
     .insert(agentRuns)
     .values({
@@ -174,7 +193,7 @@ async function seedRunForAction(
       orgId,
       agentComposeVersionId,
       sessionId: session.id,
-      status: readOptionalString(body, "status") ?? "pending",
+      status,
       prompt: readOptionalString(body, "prompt") ?? "cleanup sandboxes test",
       sandboxId:
         readOptionalString(body, "sandbox_id") ?? `sandbox-${randomUUID()}`,
@@ -185,22 +204,17 @@ async function seedRunForAction(
         body,
         "cancellation_recovery_completed",
       ),
+      ...runMetadata,
     })
-    .returning({ id: agentRuns.id });
+    .returning({ id: agentRuns.id, sandboxId: agentRuns.sandboxId });
   signal.throwIfAborted();
   if (!run) {
     return actionBadRequest("failed to seed run");
   }
 
-  if (readOptionalBoolean(body, "threadless") === true) {
-    await db
-      .insert(zeroRuns)
-      .values({ id: run.id, triggerSource: triggerSource.data });
-    signal.throwIfAborted();
-  }
-
   return actionOk({
     run_id: run.id,
+    sandbox_id: run.sandboxId,
     session_id: session.id,
     compose_id: compose.id,
     version_id: agentComposeVersionId,
@@ -392,10 +406,9 @@ async function seedRunOwnershipForAction(
     orgId: run.orgId,
     userId: run.userId,
     kind: "model",
-    provider: "cleanup-test",
+    provider: `cleanup-test-${runId}`,
     category: "tokens.input",
     quantity: 1,
-    grossCredits: 9,
     status: "pending",
   });
   signal.throwIfAborted();
@@ -438,8 +451,7 @@ async function seedRunOwnershipForAction(
 
   const browserSessionId = randomUUID();
   await db.insert(browserSessions).values({
-    id: browserSessionId,
-    chatThreadId: randomUUID(),
+    chatThreadId: browserSessionId,
     runId,
     orgId: run.orgId,
     userId: run.userId,
@@ -519,9 +531,9 @@ async function getRunOwnershipForAction(
     .from(artifacts)
     .where(eq(artifacts.id, fileArtifactId));
   const [browserSession] = await db
-    .select({ id: browserSessions.id, runId: browserSessions.runId })
+    .select({ id: browserSessions.chatThreadId, runId: browserSessions.runId })
     .from(browserSessions)
-    .where(eq(browserSessions.id, browserSessionId));
+    .where(eq(browserSessions.chatThreadId, browserSessionId));
   const [generationJob] = await db
     .select({
       id: builtInGenerationJobs.id,
@@ -580,7 +592,7 @@ async function deleteRunOwnershipForAction(
   if (browserSessionId) {
     await db
       .delete(browserSessions)
-      .where(eq(browserSessions.id, browserSessionId));
+      .where(eq(browserSessions.chatThreadId, browserSessionId));
   }
   const generationJobId = readString(body, "generation_job_id");
   if (generationJobId) {
@@ -624,31 +636,6 @@ async function seedRunnerJobForAction(
   return actionOk();
 }
 
-async function seedCustomConnectorAuthRefForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const runId = readString(body, "run_id");
-  const secretName = readString(body, "secret_name");
-  const expiresAt = readDate(body, "expires_at");
-  if (!runId || !secretName || !expiresAt) {
-    return actionBadRequest("run_id, secret_name, and expires_at are required");
-  }
-
-  await db.insert(agentRunCustomConnectorAuthRefs).values({
-    runId,
-    secretName,
-    connectorId: readOptionalString(body, "connector_id") ?? randomUUID(),
-    kind: readOptionalString(body, "kind") ?? "secret",
-    key: readOptionalString(body, "key") ?? "secret",
-    encryptedValue: readOptionalString(body, "encrypted_value") ?? "encrypted",
-    expiresAt,
-  });
-  signal.throwIfAborted();
-  return actionOk();
-}
-
 async function seedQueueEntryForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -672,13 +659,34 @@ async function seedQueueEntryForAction(
   if (!run) {
     return actionBadRequest("run not found");
   }
+  const encryptedParams =
+    readOptionalString(body, "encrypted_params") ??
+    (await encryptQueuedRunnerJobPayload(
+      queuedRunnerJobPayload({
+        runnerGroup: "vm0/test",
+        profile: "vm0/default",
+        cliAgentSessionId: null,
+        reuseKey: null,
+        executionContext: {
+          storageMounts: [],
+          environment: null,
+          secretValueEnvironmentKeys: null,
+          resumeSession: null,
+          encryptedSecrets: null,
+          connectorRuntimeTargets: [],
+          cliAgentType: "claude-code",
+          apiStartTime: MIN_EPOCH_MS_TIMESTAMP,
+        },
+      }),
+    ));
+  signal.throwIfAborted();
   await db.insert(agentRunQueue).values({
     runId,
     userId: run.userId,
     orgId: run.orgId,
     createdAt: run.createdAt,
     expiresAt,
-    encryptedParams: readOptionalString(body, "encrypted_params"),
+    encryptedParams,
   });
   signal.throwIfAborted();
   return actionOk();
@@ -776,10 +784,10 @@ async function attachRunThreadForAction(
   if (!thread) {
     return actionBadRequest("failed to seed chat thread");
   }
-  await db
-    .update(zeroRuns)
-    .set({ chatThreadId: thread.id })
-    .where(eq(zeroRuns.id, runId));
+  await writeRunMetadata(db, {
+    patch: { chatThreadId: thread.id },
+    where: eq(agentRuns.id, runId),
+  });
   signal.throwIfAborted();
   return actionOk({ thread_id: thread.id });
 }
@@ -875,30 +883,6 @@ async function getRunnerJobForAction(
   return actionOk({ runner_job: job ?? null });
 }
 
-async function getCustomConnectorAuthRefForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const runId = readString(body, "run_id");
-  const secretName = readString(body, "secret_name");
-  if (!runId || !secretName) {
-    return actionBadRequest("run_id and secret_name are required");
-  }
-  const [ref] = await db
-    .select({ runId: agentRunCustomConnectorAuthRefs.runId })
-    .from(agentRunCustomConnectorAuthRefs)
-    .where(
-      and(
-        eq(agentRunCustomConnectorAuthRefs.runId, runId),
-        eq(agentRunCustomConnectorAuthRefs.secretName, secretName),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  return actionOk({ custom_connector_auth_ref: ref ?? null });
-}
-
 async function getQueueEntryForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -965,7 +949,6 @@ const cronCleanupSandboxesActionHandlers = {
   "delete-run-ownership": deleteRunOwnershipForAction,
   "delete-run-thread": deleteRunThreadForAction,
   "seed-runner-job": seedRunnerJobForAction,
-  "seed-custom-connector-auth-ref": seedCustomConnectorAuthRefForAction,
   "seed-queue-entry": seedQueueEntryForAction,
   "seed-queue-marker": seedQueueMarkerForAction,
   "seed-export-job": seedExportJobForAction,
@@ -973,7 +956,6 @@ const cronCleanupSandboxesActionHandlers = {
   "get-run": getRunForAction,
   "get-run-ownership": getRunOwnershipForAction,
   "get-runner-job": getRunnerJobForAction,
-  "get-custom-connector-auth-ref": getCustomConnectorAuthRefForAction,
   "get-queue-entry": getQueueEntryForAction,
   "get-queue-marker-revoker": getQueueMarkerRevokerForAction,
   "get-export-job": getExportJobForAction,
@@ -999,9 +981,32 @@ const mutateTestCronCleanupSandboxesState$ = command(
   },
 );
 
+const cleanupTestCronCleanupSandboxesState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+    const bodyResult = await get(cleanupBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const body = await set(
+      cleanupSandboxes$,
+      { kind: "fixtures", ...bodyResult.data },
+      signal,
+    );
+    return { status: 200 as const, body };
+  },
+);
+
 export const testCronCleanupSandboxesStateRoutes: readonly RouteEntry[] = [
   {
     route: testCronCleanupSandboxesStateContract.action,
     handler: mutateTestCronCleanupSandboxesState$,
+  },
+  {
+    route: testCronCleanupSandboxesStateContract.cleanup,
+    handler: cleanupTestCronCleanupSandboxesState$,
   },
 ];

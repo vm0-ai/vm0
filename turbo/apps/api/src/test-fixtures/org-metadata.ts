@@ -14,9 +14,9 @@
  * reading existing rows. This module is the narrow test-boundary exception
  * for those persisted states.
  */
-import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgTierSchema } from "@okouai/api-contracts/contracts/orgs";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 
@@ -67,6 +67,44 @@ export async function expireAtomGrantFixture(values: {
     .update(creditExpiresRecord)
     .set({ expiresAt: values.expiredAt })
     .where(eq(creditExpiresRecord.orgId, values.orgId));
+}
+
+interface OrgAcquisitionAttributionRow {
+  readonly acquisitionSourceType: string | null;
+  readonly acquisitionVm0Source: string | null;
+  readonly acquisitionCampaignId: string | null;
+  readonly acquisitionAdGroupId: string | null;
+  readonly acquisitionCampaign: string | null;
+  readonly acquisitionUtmSource: string | null;
+  readonly acquisitionUtmMedium: string | null;
+  readonly acquisitionUtmContent: string | null;
+  readonly acquisitionUtmTerm: string | null;
+  readonly acquisitionGclid: string | null;
+  readonly acquisitionRecordedAt: Date | null;
+}
+
+export async function readOrgAcquisitionAttributionFixture(
+  orgId: string,
+): Promise<OrgAcquisitionAttributionRow | undefined> {
+  const [row] = await createStore()
+    .set(writeDb$)
+    .select({
+      acquisitionSourceType: orgMetadata.acquisitionSourceType,
+      acquisitionVm0Source: orgMetadata.acquisitionVm0Source,
+      acquisitionCampaignId: orgMetadata.acquisitionCampaignId,
+      acquisitionAdGroupId: orgMetadata.acquisitionAdGroupId,
+      acquisitionCampaign: orgMetadata.acquisitionCampaign,
+      acquisitionUtmSource: orgMetadata.acquisitionUtmSource,
+      acquisitionUtmMedium: orgMetadata.acquisitionUtmMedium,
+      acquisitionUtmContent: orgMetadata.acquisitionUtmContent,
+      acquisitionUtmTerm: orgMetadata.acquisitionUtmTerm,
+      acquisitionGclid: orgMetadata.acquisitionGclid,
+      acquisitionRecordedAt: orgMetadata.acquisitionRecordedAt,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return row;
 }
 
 export async function setOnboardingPaymentPendingFixture(values: {

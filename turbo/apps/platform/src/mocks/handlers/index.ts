@@ -16,10 +16,6 @@ import {
 } from "./api-org-members.ts";
 import { apiUsageHandlers, resetMockUsageMembers } from "./api-usage.ts";
 import {
-  apiUsageInsightHandlers,
-  resetMockUsageInsight,
-} from "./api-usage-insight.ts";
-import {
   apiUsageRecordHandlers,
   resetMockUsageRecord,
 } from "./api-usage-record.ts";
@@ -35,8 +31,6 @@ import {
   apiPersonalModelProvidersHandlers,
   resetMockPersonalModelProviders,
 } from "./api-personal-model-providers.ts";
-import { apiSecretsHandlers, resetMockSecrets } from "./api-secrets.ts";
-import { apiVariablesHandlers, resetMockVariables } from "./api-variables.ts";
 import { exampleHandlers } from "./example.ts";
 import { appLogsHandlers } from "./api-logs.ts";
 import {
@@ -86,7 +80,6 @@ import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
 import { apiAttributionHandlers } from "./api-attribution.ts";
 import { apiEmailMorningBriefUnsubscribeHandlers } from "./api-email-morning-brief-unsubscribe.ts";
 import { resetMockWorkflowAutomations } from "./workflow-automations-store.ts";
-import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
 import {
   apiIntegrationsSlackConnectHandlers,
@@ -105,13 +98,10 @@ export const handlers = [
   ...apiOrgHandlers,
   ...apiOrgMembersHandlers,
   ...apiUsageHandlers,
-  ...apiUsageInsightHandlers,
   ...apiUsageRecordHandlers,
   ...apiOrgModelProvidersHandlers,
   ...apiOrgModelPoliciesHandlers,
   ...apiPersonalModelProvidersHandlers,
-  ...apiSecretsHandlers,
-  ...apiVariablesHandlers,
   ...exampleHandlers,
   ...appLogsHandlers,
   ...apiIntegrationsSlackOrgHandlers,
@@ -132,15 +122,12 @@ export const handlers = [
   ...apiFeatureSwitchesHandlers,
   ...apiRealtimeHandlers,
   ...apiUserPermissionGrantsHandlers,
-  ...apiInsightsHandlers,
   ...apiQueuePositionHandlers,
   ...apiVoiceIoHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
   resetMockConnectors();
-  resetMockSecrets();
-  resetMockVariables();
   resetMockSlackOrgIntegration();
   resetMockTelegramIntegration();
   resetMockTeamsIntegration();
@@ -160,7 +147,6 @@ export function resetAllMockHandlers(): void {
   resetMockOrgLogo();
   resetMockOrgMembers();
   resetMockUsageMembers();
-  resetMockUsageInsight();
   resetMockUsageRecord();
   resetMockWorkflowAutomations();
   resetMockTeam();

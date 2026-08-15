@@ -1,7 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { copyWorkflow, listWorkflowAutomations } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  copyWorkflow,
+  listWorkflowAutomations,
+} from "../../../lib/api/domains/zero-workflows";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { printWorkflowAutomationsTable } from "./automation/display";
 import { formatWorkflowAgentName } from "./format";
 import {
@@ -19,8 +22,8 @@ export const copyCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow copy tell-a-joke --agent <source-agent-id> --to-agent <target-agent-id>
-  zero workflow copy <workflow-id> --to-agent <target-agent-id>`,
+  okou workflow copy tell-a-joke --agent <source-agent-id> --to-agent <target-agent-id>
+  okou workflow copy <workflow-id> --to-agent <target-agent-id>`,
   )
   .action(
     withErrorHandler(
@@ -55,7 +58,7 @@ Examples:
           printWorkflowAutomationsTable(automations);
         }
         console.log();
-        console.log(`View it: zero workflow view ${workflow.id}`);
+        console.log(`View it: okou workflow view ${workflow.id}`);
       },
     ),
   );

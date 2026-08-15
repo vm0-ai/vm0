@@ -17,8 +17,10 @@ use sandbox::{
 };
 use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
 
-use super::super::agent_run::{ProcessCancelTimeouts, RunControls, RunStart};
-use super::super::env::{guest_run_payload_file_path, guest_user_env_file_path};
+use super::super::agent_run::{PreparedRunInputs, ProcessCancelTimeouts, RunControls, RunStart};
+use super::super::env::{
+    guest_run_payload_file_path, guest_user_env_file_path, prepare_run_payload_for_run,
+};
 use super::super::sandbox_run::{
     NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,
     execute_new_sandbox_with_prepared_notifier, execute_prepared_sandbox_run,
@@ -33,8 +35,8 @@ use super::super::{
     job_terminal_wait_timeout,
 };
 use super::support::{
-    CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_artifact,
-    api_storage, assert_proxy_registry_empty, create_overridden_sandbox, default_params,
+    CapturedEvent, CapturedEvents, DestroyPanicFactory, api_artifact, api_storage,
+    assert_proxy_registry_empty, create_overridden_sandbox, default_params,
     make_reusable_idle_sandbox, minimal_context, run_new_sandbox_outcome, run_new_sandbox_status,
     sandbox_create_error, sandbox_exec_error, sandbox_write_file_error, seed_workspace_image_cache,
     seed_workspace_image_cache_with_fingerprints, seed_workspace_image_cache_with_sidecar,
@@ -43,7 +45,9 @@ use super::support::{
 use crate::ids::RunId;
 use crate::paths::{RunnerPaths, scoped_workspace_image_cache_key};
 use crate::storage_manifest::StorageManifest;
-use crate::types::{FirewallEntry, ResumeSession, SandboxReuseResult};
+use crate::types::{
+    ConnectorRuntimeTargetRegistration, FirewallEntry, ResumeSession, SandboxReuseResult,
+};
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageCache,
     WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,

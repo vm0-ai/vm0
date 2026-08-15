@@ -7,6 +7,7 @@ import {
   exchangePlaystationAccessCodeForAuthTokens,
   exchangePlaystationNpssoForAccessCode,
   fetchPlaystationIdentity,
+  normalizePlaystationNpsso,
   playstationUserInfo,
   refreshPlaystationAuthTokens,
 } from "./api";
@@ -26,28 +27,36 @@ function createPlaystationExternalCodeGrantProvider(): ExternalCodeConnectorAuth
         expiresIn: PLAYSTATION_EXTERNAL_CODE_SESSION_EXPIRES_IN_SECONDS,
       };
     },
-    completeExternalCodeAuthorization: async (args) => {
-      const accessCode = await exchangePlaystationNpssoForAccessCode({
-        npsso: args.code,
-        clientId: args.authClient.clientId,
-        grant: args.externalCodeGrant,
-        signal: args.signal,
-      });
-      const token = await exchangePlaystationAccessCodeForAuthTokens({
-        accessCode,
-        clientId: args.authClient.clientId,
-        signal: args.signal,
-      });
-      const identity = await fetchPlaystationIdentity({
-        accessToken: token.accessToken,
-        idToken: token.idToken,
-        signal: args.signal,
-      });
+    completeExternalCodeAuthorization: async (args, signal: AbortSignal) => {
+      const npsso = normalizePlaystationNpsso(args.code);
+      const accessCode = await exchangePlaystationNpssoForAccessCode(
+        {
+          npsso,
+          clientId: args.authClient.clientId,
+          grant: args.externalCodeGrant,
+        },
+        signal,
+      );
+      const token = await exchangePlaystationAccessCodeForAuthTokens(
+        {
+          accessCode,
+          clientId: args.authClient.clientId,
+        },
+        signal,
+      );
+      const identity = await fetchPlaystationIdentity(
+        {
+          accessToken: token.accessToken,
+          idToken: token.idToken,
+        },
+        signal,
+      );
       return {
         outputs: {
           accessToken: token.accessToken,
           refreshToken: token.refreshToken,
           idToken: token.idToken,
+          npsso,
           accountId: identity.accountId,
           onlineId: identity.onlineId ?? "",
         },
@@ -65,12 +74,14 @@ function createPlaystationRefreshTokenAccessProvider(): RefreshTokenAccessProvid
 > {
   return {
     kind: "refresh-token",
-    refresh: async (args) => {
-      const token = await refreshPlaystationAuthTokens({
-        refreshToken: args.inputs.refreshToken,
-        clientId: args.authClient.clientId,
-        signal: args.signal,
-      });
+    refresh: async (args, signal: AbortSignal) => {
+      const token = await refreshPlaystationAuthTokens(
+        {
+          refreshToken: args.inputs.refreshToken,
+          clientId: args.authClient.clientId,
+        },
+        signal,
+      );
       return {
         outputs: {
           accessToken: token.accessToken,

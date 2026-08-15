@@ -1,12 +1,8 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useGet, useLoadable, useLastResolved, useSet } from "ccstate-react";
-import {
-  IconArrowUpRight,
-  IconMessageCircle,
-  IconSearch,
-} from "@tabler/icons-react";
-import { Card, CardContent, cn, Input } from "@vm0/ui";
+import { ArrowUpRight, MessageCircle, Search } from "lucide-react";
+import { Card, CardContent, cn, Input } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
@@ -124,9 +120,9 @@ export function ZeroIdeationPage() {
         <button
           type="button"
           onClick={handleBack}
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors cursor-pointer"
         >
-          <IconMessageCircle size={14} stroke={1.5} className="shrink-0" />
+          <MessageCircle size={14} className="shrink-0" />
           {t(($) => {
             return $.ideation.chat;
           })}
@@ -164,7 +160,7 @@ export function ZeroIdeationPage() {
                       "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
                       selectedTab === "all"
                         ? "bg-muted text-foreground"
-                        : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                        : "bg-background text-muted-foreground hover:bg-state-hover hover:text-foreground",
                     )}
                     onClick={() => {
                       return setActiveTab("all");
@@ -183,7 +179,7 @@ export function ZeroIdeationPage() {
                           "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
                           selectedTab === category.id
                             ? "bg-muted text-foreground"
-                            : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                            : "bg-background text-muted-foreground hover:bg-state-hover hover:text-foreground",
                         )}
                         onClick={() => {
                           return setActiveTab(category.id);
@@ -195,9 +191,8 @@ export function ZeroIdeationPage() {
                   })}
                 </div>
                 <div className="relative w-full min-w-0 sm:max-w-[240px] sm:flex-1 sm:min-w-[12rem]">
-                  <IconSearch
+                  <Search
                     className="pointer-events-none absolute left-3 top-1/2 z-10 size-[14px] -translate-y-1/2 text-muted-foreground"
-                    stroke={1.5}
                     aria-hidden
                   />
                   <Input
@@ -250,15 +245,14 @@ export function ZeroIdeationPage() {
                           return (
                             <Card
                               key={useCase.title}
-                              className="zero-card cursor-pointer hover:bg-muted/30 transition-colors"
+                              className="zero-card cursor-pointer hover:bg-state-hover transition-colors"
                               onClick={() => {
                                 return handleSelectPrompt(useCase.prompt);
                               }}
                             >
                               <CardContent className="p-4 group relative">
-                                <IconArrowUpRight
+                                <ArrowUpRight
                                   size={14}
-                                  stroke={2}
                                   className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
                                 />
                                 <p className="text-sm font-semibold text-foreground pr-5">

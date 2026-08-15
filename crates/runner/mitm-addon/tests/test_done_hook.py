@@ -225,6 +225,91 @@ class TestDoneHook:
             runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
         start_worker.assert_not_called()
 
+    @pytest.mark.parametrize(
+        ("failure_point", "expected_calls"),
+        [
+            pytest.param(
+                "usage-executor",
+                (
+                    "usage-executor:shutdown:wait=True",
+                    "auth-base:shutdown:wait=False",
+                    "jsonl:shutdown",
+                ),
+                id="usage-executor-shutdown",
+            ),
+            pytest.param(
+                "usage-drain",
+                (
+                    "usage-executor:shutdown:wait=True",
+                    "usage:drain",
+                    "auth-base:shutdown:wait=False",
+                    "jsonl:shutdown",
+                ),
+                id="post-executor-usage-drain",
+            ),
+            pytest.param(
+                "auth-base",
+                (
+                    "usage-executor:shutdown:wait=True",
+                    "usage:drain",
+                    "auth-base:shutdown:wait=False",
+                    "jsonl:shutdown",
+                ),
+                id="auth-base-worker-shutdown",
+            ),
+        ],
+    )
+    def test_done_preserves_downstream_cleanup_after_post_flush_failure(
+        self,
+        failure_point: str,
+        expected_calls: tuple[str, ...],
+    ) -> None:
+        failure = RuntimeError(f"{failure_point} failed")
+        calls: list[str] = []
+
+        def shutdown_usage_executor(*, wait: bool) -> None:
+            calls.append(f"usage-executor:shutdown:wait={wait}")
+            if failure_point == "usage-executor":
+                raise failure
+
+        def drain_usage_events() -> None:
+            calls.append("usage:drain")
+            if failure_point == "usage-drain":
+                raise failure
+
+        def shutdown_auth_base(*, wait: bool) -> None:
+            calls.append(f"auth-base:shutdown:wait={wait}")
+            if failure_point == "auth-base":
+                raise failure
+
+        def shutdown_jsonl() -> None:
+            calls.append("jsonl:shutdown")
+
+        mock_executor = MagicMock()
+        mock_executor.shutdown.side_effect = shutdown_usage_executor
+
+        with (
+            patch.object(runner_flush_lifecycle, "drain_and_close") as drain_and_close,
+            patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(
+                usage,
+                "drain_usage_events_after_executor_shutdown",
+                side_effect=drain_usage_events,
+            ),
+            patch.object(
+                mitm_addon.auth_base_forwarder,
+                "shutdown_forward_request_workers",
+                side_effect=shutdown_auth_base,
+            ),
+            patch.object(mitm_addon, "shutdown_log_writer", side_effect=shutdown_jsonl),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
+            mitm_addon.done()
+
+        drain_and_close.assert_called_once_with()
+        assert exc_info.value is failure
+        assert calls == list(expected_calls)
+
     def test_done_retries_shutdown_delivery_after_executor_join(
         self,
         tmp_path,

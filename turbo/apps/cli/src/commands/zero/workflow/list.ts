@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listWorkflows } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { listWorkflows } from "../../../lib/api/domains/zero-workflows";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatWorkflowAgentName } from "./format";
 
 export const listCommand = new Command()
@@ -13,8 +13,8 @@ export const listCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow list
-  zero workflow list --agent <agent-id>`,
+  okou workflow list
+  okou workflow list --agent <agent-id>`,
   )
   .action(
     withErrorHandler(async (options: { agent?: string }) => {
@@ -24,7 +24,7 @@ Examples:
         console.log(chalk.dim("No workflows found"));
         console.log(
           chalk.dim(
-            "  Create one with: zero workflow create <name> --agent <agent-id> --instruction <text>",
+            "  Create one with: okou workflow create <name> --agent <agent-id> --instruction <text>",
           ),
         );
         return;

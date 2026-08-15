@@ -1,24 +1,34 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq, gt, isNull, notExists } from "drizzle-orm";
+import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { and, eq, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
+import { pgTextDecoder } from "../../lib/db-structured-result";
+import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
   listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
 } from "./chat-event-queue.service";
-import { insertChatEvent, replaceChatEvent } from "./zero-chat-event.service";
+import {
+  insertChatEvent,
+  revokeChatEvent,
+  replaceChatEvent,
+} from "./chat-event.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { chatEventTypeIn } from "./chat-event-type.service";
+import { appendGoalCloseMarker } from "./zero-chat-goal-marker.service";
+import { createUserMessageDocument } from "./chat-user-message.service";
+import { lockGoalThread } from "./goal-lock.service";
+import {
+  canonicalChatEventGoalId,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
-const goalEventRevoker = alias(chatEvents, "goal_event_revoker");
-const laterGoalChange = alias(chatEvents, "later_goal_change");
+const goalInputRevoker = alias(chatEvents, "goal_input_revoker");
 
 export type GoalQueueAdmission =
   | { readonly kind: "inserted"; readonly eventId: string }
@@ -41,7 +51,15 @@ export interface GoalQueueTarget {
   readonly agentId: string;
   readonly objective: string;
   readonly objectiveBrief: string;
+  readonly autonomyBudget: number;
+  readonly stateRevision: string;
 }
+
+type FailedGoalQueueSettlement =
+  | { readonly kind: "not_pending" }
+  | { readonly kind: "revoked" }
+  | { readonly kind: "stale" }
+  | { readonly kind: "rejected"; readonly goalId: string };
 
 async function pendingGoalEventExists(
   db: Pick<Db, "select">,
@@ -57,9 +75,9 @@ async function pendingGoalEventExists(
         isNull(chatEvents.runId),
         notExists(
           db
-            .select({ id: goalEventRevoker.id })
-            .from(goalEventRevoker)
-            .where(eq(goalEventRevoker.revokesEventId, chatEvents.id)),
+            .select({ id: goalInputRevoker.id })
+            .from(goalInputRevoker)
+            .where(eq(goalInputRevoker.revokesEventId, chatEvents.id)),
         ),
       ),
     )
@@ -87,6 +105,7 @@ export async function admitGoalQueueEvent(
       chatThreadId: args.chatThreadId,
       eventType: "input.goal",
       content: null,
+      contextType: "goal",
       runId: null,
       runGroupId: args.goalId,
       userMessage: createUserMessageDocument({
@@ -96,28 +115,12 @@ export async function admitGoalQueueEvent(
           goalBrief: args.objectiveBrief,
         },
       }),
-      goalBrief: args.objectiveBrief,
     });
     if (!inserted) {
       throw new Error("Goal queue event insert returned no row");
     }
     return { kind: "inserted", eventId: inserted.id };
   });
-}
-
-export function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
-  return notExists(
-    db
-      .select({ id: laterGoalChange.id })
-      .from(laterGoalChange)
-      .where(
-        and(
-          eq(laterGoalChange.chatThreadId, chatEvents.chatThreadId),
-          eq(laterGoalChange.eventType, "goal.changed"),
-          gt(laterGoalChange.seqId, chatEvents.seqId),
-        ),
-      ),
-  );
 }
 
 /** Load the next runnable goal trigger. */
@@ -149,7 +152,7 @@ export async function loadNextGoalQueueEvent(
         chatThreadId: chatEvents.chatThreadId,
         userId: chatThreads.userId,
         orgId: zeroAgents.orgId,
-        goalId: chatEvents.runGroupId,
+        goalId: canonicalChatEventGoalId(),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
@@ -168,7 +171,7 @@ export async function loadNextGoalQueueEvent(
 }
 
 export async function loadGoalQueueTarget(
-  db: Pick<Db, "select">,
+  db: Db,
   event: PendingGoalQueueEvent,
 ): Promise<GoalQueueTarget | null> {
   const [goal] = await db
@@ -180,7 +183,10 @@ export async function loadGoalQueueTarget(
       agentId: threadGoals.agentId,
       objective: threadGoals.objective,
       objectiveBrief: threadGoals.objectiveBrief,
+      autonomyBudget: threadGoals.autonomyBudget,
       status: threadGoals.status,
+      // A Date decoder drops PostgreSQL microseconds needed by the final CAS.
+      stateRevision: sql`${threadGoals.updatedAt}::text`.mapWith(pgTextDecoder),
     })
     .from(threadGoals)
     .innerJoin(
@@ -188,6 +194,8 @@ export async function loadGoalQueueTarget(
       and(
         eq(chatEvents.id, event.id),
         eq(chatEvents.chatThreadId, threadGoals.chatThreadId),
+        eq(chatEvents.contextType, "goal"),
+        eq(chatEvents.contextId, threadGoals.id),
       ),
     )
     .where(
@@ -196,7 +204,6 @@ export async function loadGoalQueueTarget(
         eq(threadGoals.chatThreadId, event.chatThreadId),
         eq(threadGoals.orgId, event.orgId),
         eq(threadGoals.ownerUserId, event.userId),
-        noGoalChangeAfterQueueEvent(db),
       ),
     )
     .limit(1);
@@ -211,6 +218,8 @@ export async function loadGoalQueueTarget(
     agentId: goal.agentId,
     objective: goal.objective,
     objectiveBrief: goal.objectiveBrief,
+    autonomyBudget: goal.autonomyBudget,
+    stateRevision: goal.stateRevision,
   };
 }
 
@@ -222,15 +231,31 @@ async function pendingGoalEventStillExists(
   return pending?.eventType === "input.goal";
 }
 
-/** Consume an invalid or failed goal trigger through the canonical reject edge. */
-export async function rejectGoalQueueEvent(
+async function lockGoalQueueTarget(
+  db: Db,
+  event: PendingGoalQueueEvent,
+): Promise<void> {
+  await db
+    .select({ id: threadGoals.id })
+    .from(threadGoals)
+    .where(
+      and(
+        eq(threadGoals.id, event.goalId),
+        eq(threadGoals.chatThreadId, event.chatThreadId),
+        eq(threadGoals.orgId, event.orgId),
+        eq(threadGoals.ownerUserId, event.userId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+}
+
+/** Remove a goal trigger invalidated by a normal goal lifecycle change. */
+export async function revokeGoalQueueEvent(
   db: Db,
   args: {
     readonly chatThreadId: string;
     readonly eventId: string;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly reason: string;
   },
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
@@ -240,41 +265,89 @@ export async function rejectGoalQueueEvent(
     if (!(await pendingGoalEventStillExists(tx, args))) {
       return false;
     }
+    const revoked = await revokeChatEvent(tx, args.eventId, {
+      chatThreadId: args.chatThreadId,
+      eventType: "control.revoke",
+      runId: null,
+    });
+    return revoked !== null;
+  });
+}
+
+/**
+ * Settle a failed launch against the final goal state. Goal lifecycle writers
+ * take the advisory lock before changing the goal row. Lock the exact source
+ * row before the chat queue row so validity, event transition, and the
+ * exact-goal pause share the same serialization order as final run claim.
+ */
+export async function settleFailedGoalQueueEvent(
+  db: Db,
+  args: {
+    readonly event: PendingGoalQueueEvent;
+    readonly expectedGoalStateRevision: string;
+    readonly reason: string;
+  },
+): Promise<FailedGoalQueueSettlement> {
+  return await db.transaction(async (tx) => {
+    await lockGoalThread(tx, args.event.chatThreadId);
+    await lockGoalQueueTarget(tx, args.event);
+    if (!(await lockChatQueueThread(tx, args.event.chatThreadId))) {
+      return { kind: "not_pending" };
+    }
+    if (
+      !(await pendingGoalEventStillExists(tx, {
+        chatThreadId: args.event.chatThreadId,
+        eventId: args.event.id,
+      }))
+    ) {
+      return { kind: "not_pending" };
+    }
+
+    const goal = await loadGoalQueueTarget(tx, args.event);
+    if (!goal) {
+      const revoked = await revokeChatEvent(tx, args.event.id, {
+        chatThreadId: args.event.chatThreadId,
+        eventType: "control.revoke",
+        runId: null,
+      });
+      return revoked ? { kind: "revoked" } : { kind: "not_pending" };
+    }
+    if (goal.stateRevision !== args.expectedGoalStateRevision) {
+      return { kind: "stale" };
+    }
+
     const [payload] = await tx
       .select({
-        goalObjectiveBrief: chatGoalContext.objectiveBrief,
+        userMessage: canonicalChatEventUserMessage(),
         currentGoalObjectiveBrief: threadGoals.objectiveBrief,
       })
       .from(chatEvents)
       .leftJoin(
-        chatGoalContext,
-        and(
-          eq(chatEvents.contextType, "goal"),
-          eq(chatGoalContext.id, chatEvents.contextId),
-        ),
-      )
-      .leftJoin(
         threadGoals,
         and(
+          eq(threadGoals.id, goal.goalId),
           eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
-          eq(threadGoals.orgId, args.orgId),
-          eq(threadGoals.ownerUserId, args.userId),
+          eq(threadGoals.orgId, goal.orgId),
+          eq(threadGoals.ownerUserId, goal.userId),
         ),
       )
       .where(
         and(
-          eq(chatEvents.id, args.eventId),
-          eq(chatEvents.chatThreadId, args.chatThreadId),
+          eq(chatEvents.id, args.event.id),
+          eq(chatEvents.chatThreadId, args.event.chatThreadId),
         ),
       )
       .limit(1);
     if (!payload) {
-      return false;
+      return { kind: "not_pending" };
     }
+    const goalPart = payload.userMessage?.parts.find((part) => {
+      return part.type === "goal";
+    });
     const objectiveBrief =
-      payload.goalObjectiveBrief ?? payload.currentGoalObjectiveBrief ?? "Goal";
-    const rejected = await replaceChatEvent(tx, args.eventId, {
-      chatThreadId: args.chatThreadId,
+      goalPart?.goalBrief ?? payload.currentGoalObjectiveBrief ?? "Goal";
+    const rejected = await replaceChatEvent(tx, args.event.id, {
+      chatThreadId: args.event.chatThreadId,
       eventType: "input.rejected",
       userMessage: createUserMessageDocument({
         text: null,
@@ -286,6 +359,29 @@ export async function rejectGoalQueueEvent(
       runId: null,
       error: args.reason,
     });
-    return rejected !== null;
+    if (!rejected) {
+      return { kind: "not_pending" };
+    }
+
+    const [paused] = await tx
+      .update(threadGoals)
+      .set({ status: "paused", updatedAt: nowDate() })
+      .where(
+        and(
+          eq(threadGoals.id, goal.goalId),
+          eq(threadGoals.chatThreadId, goal.threadId),
+          eq(threadGoals.orgId, goal.orgId),
+          eq(threadGoals.ownerUserId, goal.userId),
+          eq(threadGoals.status, "active"),
+        ),
+      )
+      .returning({ goalId: threadGoals.id });
+    if (!paused) {
+      throw new Error("Failed to pause the validated goal queue target");
+    }
+    await appendGoalCloseMarker(tx, {
+      chatThreadId: goal.threadId,
+    });
+    return { kind: "rejected", goalId: paused.goalId };
   });
 }

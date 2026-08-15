@@ -4,8 +4,9 @@ Lifecycle:
 - ``mitm_addon.responseheaders()`` calls ``configure_response_stream()`` to
   install the streaming callback, exact byte accounting, optional capped body
   buffer, and incremental usage parsers.
-- ``mitm_addon.websocket_message()`` calls ``feed_model_websocket_usage()`` for
-  terminal server-side usage frames on model-provider WebSocket upgrades.
+- ``mitm_addon.websocket_message()`` calls ``observe_model_websocket_client_event()``
+  for client request intent and ``feed_model_websocket_usage()`` for server-side
+  usage frames on model-provider WebSocket upgrades.
 - ``mitm_addon.response()`` finalizes HTTP model and connector usage before
   reporting it.
 - ``mitm_addon.error()`` may finalize partial SSE or opted-in connector usage
@@ -18,15 +19,19 @@ Lifecycle:
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import NamedTuple
 
 from mitmproxy import http
 from wsproto.utilities import generate_accept_token
 
+import anthropic_accounting
 import body_decoding
 import claude_output_timing
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import runtime_url_parsing
+import stream_capture
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
@@ -42,19 +47,35 @@ _HTTP_STATUS_NOT_MODIFIED = 304
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
 _MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
+_MODEL_WEBSOCKET_PREWARM_STATE = "_model_websocket_prewarm_state"
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _CONNECTOR_RESPONSE_REPORT_ON_INTERRUPTION = "connector_response_report_on_interruption"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 _HTTP_OWS_CHARS = " \t"
+
+_ANTHROPIC_MESSAGES_SSE_PROTOCOL = "anthropic_messages_sse"
+_OPENAI_CHAT_COMPLETIONS_SSE_PROTOCOL = "openai_chat_completions_sse"
+_OPENAI_RESPONSES_SSE_PROTOCOL = "openai_responses_sse"
+_ANTHROPIC_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
+_ANTHROPIC_MESSAGE_STOP_EVENT = "message_stop"
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
 _AnthropicLifecycleObserver = Callable[[str, str | None], None]
 
 
-class CapturedResponseStreamBody(NamedTuple):
-    buffer: bytearray
-    truncated: bool
+def _anthropic_incomplete_accounting_status(
+    usage_dict: dict,
+    accounting_events: set[str],
+) -> anthropic_accounting.AnthropicAccountingStatus:
+    has_recoverable_usage = bool(accounting_events & _ANTHROPIC_USAGE_EVENTS) and (
+        usage.has_positive_model_provider_usage(usage_dict)
+    )
+    if not has_recoverable_usage:
+        return "no_recoverable_usage"
+    if _ANTHROPIC_MESSAGE_STOP_EVENT in accounting_events:
+        return "recovered_terminal"
+    return "recovered_partial"
 
 
 class _ResponseUsageStreamSetup(NamedTuple):
@@ -62,14 +83,30 @@ class _ResponseUsageStreamSetup(NamedTuple):
     needs_buffered_fallback: bool
 
 
-def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
-    """Return whether a flow should use OpenAI Responses usage parsing.
+@dataclass(slots=True)
+class _OpenAIResponsesPrewarmState:
+    pending_response_created: bool = False
+    response_id: str | None = None
+    diagnostic_emitted: bool = False
 
-    Read-only predicate used from parser setup and response fallback extraction.
-    Codex flows use the OpenAI Responses
-    usage protocol, while other model-provider flows use the Anthropic protocol.
-    """
-    return flow_metadata.cli_agent_type(flow.metadata) == "codex"
+
+def model_usage_protocol(flow: http.HTTPFlow) -> usage.ModelUsageProtocol:
+    """Classify model usage from the observed request and CLI fallback."""
+    request_target = flow_metadata.original_url(flow.metadata) or flow.request.path
+    request_path = runtime_url_parsing.strip_url_query_and_fragment(request_target).rstrip("/")
+    if request_path.endswith("/chat/completions"):
+        return "openai_chat_completions"
+    if request_path.endswith("/responses"):
+        return "openai_responses"
+    if flow_metadata.cli_agent_type(flow.metadata) == "codex":
+        return "openai_responses"
+    return "anthropic_messages"
+
+
+def _response_has_event_stream_media_type(response: http.Response) -> bool:
+    content_type = response.headers.get("content-type", "")
+    media_type = content_type.partition(";")[0].strip(_HTTP_OWS_CHARS).lower()
+    return media_type == "text/event-stream"
 
 
 def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
@@ -81,8 +118,7 @@ def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
         or not usage.is_model_provider_usage_observable(flow)
     ):
         return False
-    content_type = response.headers.get("content-type", "").lower()
-    if "text/event-stream" in content_type:
+    if _response_has_event_stream_media_type(response):
         return False
     return not _is_confirmed_websocket_upgrade_response(flow)
 
@@ -101,13 +137,35 @@ def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
 def release_model_websocket_usage_state(flow: http.HTTPFlow) -> None:
     """Disable WebSocket usage extraction after a terminal websocket/error hook."""
     flow.metadata.pop(_MODEL_WEBSOCKET_USAGE_ENABLED, None)
+    flow.metadata.pop(_MODEL_WEBSOCKET_PREWARM_STATE, None)
+
+
+def observe_model_websocket_client_event(
+    flow: http.HTTPFlow,
+    event: usage.OpenAIResponsesClientEvent,
+) -> None:
+    """Track exact non-generating request intent on one WebSocket flow."""
+    state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
+    if not isinstance(state, _OpenAIResponsesPrewarmState):
+        return
+
+    state.pending_response_created = event.is_prewarm
+    if event.is_prewarm:
+        state.response_id = None
+        state.diagnostic_emitted = False
 
 
 def _make_response_decode_session(
     feed: _ResponseChunkParser,
     headers: http.Headers,
+    *,
+    should_continue: Callable[[], bool] | None = None,
 ) -> body_decoding.StreamDecodeSession | None:
-    return body_decoding.create_stream_decode_session(headers, feed)
+    return body_decoding.create_stream_decode_session(
+        headers,
+        feed,
+        should_continue=should_continue,
+    )
 
 
 def _make_model_sse_parse_error_logger(
@@ -196,30 +254,52 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
     # extraction. Model-provider usage reporting is gated separately.
     is_billable_flow = flow_metadata.is_firewall_billable(flow.metadata)
     is_observable_model_provider = usage.is_model_provider_usage_observable(flow)
+    model_protocol = model_usage_protocol(flow) if is_observable_model_provider else None
     if (
         is_observable_model_provider
-        and uses_openai_responses_usage_protocol(flow)
+        and model_protocol == "openai_responses"
         and _is_confirmed_websocket_upgrade_response(flow)
     ):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+        flow.metadata[_MODEL_WEBSOCKET_PREWARM_STATE] = _OpenAIResponsesPrewarmState()
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return _ResponseUsageStreamSetup(None, False)
-    if is_observable_model_provider:
-        content_type = response.headers.get("content-type", "").lower()
-        if "text/event-stream" in content_type:
+    if not _response_can_have_body(flow, response):
+        return _ResponseUsageStreamSetup(None, False)
+    if model_protocol is not None:
+        if _response_has_event_stream_media_type(response):
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
-            if uses_openai_responses_usage_protocol(flow):
-                usage_protocol = "openai_responses_sse"
+            anthropic_accounting_events: set[str] = set()
+            openai_recoverable_usage: dict = {}
+            if model_protocol == "openai_responses":
+                usage_protocol = _OPENAI_RESPONSES_SSE_PROTOCOL
                 log_parse_error = _make_model_sse_parse_error_logger(
                     flow,
                     usage_protocol=usage_protocol,
                 )
+
+                def record_openai_terminal_usage(terminal_usage: dict) -> None:
+                    usage.merge_openai_responses_usage_result(
+                        openai_recoverable_usage,
+                        terminal_usage,
+                    )
+
                 parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor(
-                    on_parse_error=log_parse_error
+                    on_parse_error=log_parse_error,
+                    on_terminal_usage=record_openai_terminal_usage,
+                )
+            elif model_protocol == "openai_chat_completions":
+                usage_protocol = _OPENAI_CHAT_COMPLETIONS_SSE_PROTOCOL
+                log_parse_error = _make_model_sse_parse_error_logger(
+                    flow,
+                    usage_protocol=usage_protocol,
+                )
+                parser_fn, usage_dict = usage.create_openai_chat_completions_sse_usage_extractor(
+                    on_parse_error=log_parse_error,
                 )
             else:
-                usage_protocol = "anthropic_messages_sse"
+                usage_protocol = _ANTHROPIC_MESSAGES_SSE_PROTOCOL
                 log_parse_error = _make_model_sse_parse_error_logger(
                     flow,
                     usage_protocol=usage_protocol,
@@ -228,6 +308,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                 parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor(
                     on_parse_error=log_parse_error,
                     on_lifecycle_event=lifecycle_observer,
+                    on_accounting_event=anthropic_accounting_events.add,
                 )
             decode_session = _make_response_decode_session(parser_fn, response.headers)
             if decode_session is None:
@@ -238,8 +319,30 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
             def finish_sse_usage() -> None:
                 decode_error = decode_session.finish_error()
                 if decode_error is not None:
-                    usage_dict.clear()
                     log_parse_error("compressed_body", decode_error)
+                    if (
+                        usage_protocol == _ANTHROPIC_MESSAGES_SSE_PROTOCOL
+                        and decode_error == body_decoding.INCOMPLETE_COMPRESSED_BODY
+                    ):
+                        accounting_status = _anthropic_incomplete_accounting_status(
+                            usage_dict,
+                            anthropic_accounting_events,
+                        )
+                        anthropic_accounting.report_incomplete(
+                            flow,
+                            accounting_status,
+                        )
+                    elif (
+                        usage_protocol == _OPENAI_RESPONSES_SSE_PROTOCOL
+                        and decode_error == body_decoding.INCOMPLETE_COMPRESSED_BODY
+                    ):
+                        usage_dict.clear()
+                        usage.merge_openai_responses_usage_result(
+                            usage_dict,
+                            openai_recoverable_usage,
+                        )
+                    else:
+                        usage_dict.clear()
                 else:
                     parser_fn.finish()
                 if lifecycle_observer is not None:
@@ -248,11 +351,12 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
             flow.metadata[_MODEL_SSE_USAGE_FINISH] = finish_sse_usage
             return _ResponseUsageStreamSetup(decode_session.feed, False)
 
-        if uses_openai_responses_usage_protocol(flow):
-            extractor = usage.create_openai_responses_json_usage_extractor()
-        else:
-            extractor = usage.create_anthropic_messages_json_usage_extractor()
-        decode_session = _make_response_decode_session(extractor.feed, response.headers)
+        extractor = usage.create_model_json_usage_extractor(model_protocol)
+        decode_session = _make_response_decode_session(
+            extractor.feed,
+            response.headers,
+            should_continue=extractor.accepts_more_input,
+        )
         if decode_session is None:
             _maybe_log_response_encoding_inspection_risk(flow, response)
             return _ResponseUsageStreamSetup(
@@ -287,7 +391,11 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
         )
     connector_parser = usage.create_connector_response_parser(flow)
     if connector_parser is not None:
-        decode_session = _make_response_decode_session(connector_parser.feed, response.headers)
+        decode_session = _make_response_decode_session(
+            connector_parser.feed,
+            response.headers,
+            should_continue=connector_parser.should_continue,
+        )
         if decode_session is None:
             raise RuntimeError("stream-decodable connector response did not create a decoder")
         if connector_parser.report_on_interruption:
@@ -398,7 +506,7 @@ def streamed_response_size(flow: http.HTTPFlow) -> int | None:
     return int(state["total_bytes"])
 
 
-def captured_response_stream_body(flow: http.HTTPFlow) -> CapturedResponseStreamBody | None:
+def captured_response_stream_body(flow: http.HTTPFlow) -> stream_capture.CapturedStreamBody | None:
     """Return buffered response body bytes and truncation state for capture logging.
 
     ``configure_response_stream()`` writes ``STREAM_BUFFER`` and
@@ -407,37 +515,14 @@ def captured_response_stream_body(flow: http.HTTPFlow) -> CapturedResponseStream
     """
     stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     stream_state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE)
-    stream_truncated = False
-    if stream_buf is None:
-        return None
-
-    # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.
-    if stream_buf:
-        if not isinstance(stream_state, dict) or "truncated" not in stream_state:
-            state_description = (
-                f"keys={sorted(str(key) for key in stream_state)}"
-                if isinstance(stream_state, dict)
-                else f"type={type(stream_state).__name__}"
-            )
-            raise RuntimeError(
-                "Invalid response body capture metadata: stream_buffer is "
-                f"present and non-empty (len={len(stream_buf)}) but "
-                "stream_buffer_state is missing the truncated flag. "
-                "response_streaming.configure_response_stream() must set "
-                "stream_buffer and stream_buffer_state together "
-                f"(stream_buffer_state {state_description})."
-            )
-        stream_truncated = bool(stream_state["truncated"])
-    elif stream_state is not None and not isinstance(stream_state, dict):
-        raise RuntimeError(
-            "Invalid response body capture metadata: stream_buffer is "
-            "empty but stream_buffer_state is not a dict "
-            f"(stream_buffer_state type={type(stream_state).__name__})."
-        )
-    elif stream_state:
-        stream_truncated = bool(stream_state.get("truncated", False))
-
-    return CapturedResponseStreamBody(stream_buf, stream_truncated)
+    return stream_capture.captured_stream_body(
+        stream_buf,
+        stream_state,
+        body_kind="response",
+        buffer_key=metadata_keys.STREAM_BUFFER,
+        state_key=metadata_keys.STREAM_BUFFER_STATE,
+        writer="response_streaming.configure_response_stream()",
+    )
 
 
 def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
@@ -498,6 +583,17 @@ def feed_model_websocket_usage(
     """
     if not is_model_websocket_usage_enabled(flow):
         return
+    prewarm_state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
+    if isinstance(prewarm_state, _OpenAIResponsesPrewarmState) and (
+        prewarm_state.pending_response_created
+    ):
+        lifecycle = usage.inspect_openai_responses_server_lifecycle(event)
+        if lifecycle.event_type == "response.created":
+            prewarm_state.pending_response_created = False
+            prewarm_state.response_id = lifecycle.response_id
+        elif lifecycle.is_terminal:
+            prewarm_state.pending_response_created = False
+
     usage_result, inspection_error = usage.extract_openai_responses_usage_from_event(event)
     if inspection_error is not None:
         log_proxy_entry(
@@ -513,6 +609,25 @@ def feed_model_websocket_usage(
         return
     message_id = usage_result.get("message_id")
     if isinstance(message_id, str) and message_id:
+        if (
+            isinstance(prewarm_state, _OpenAIResponsesPrewarmState)
+            and prewarm_state.response_id == message_id
+        ):
+            lifecycle = usage.inspect_openai_responses_server_lifecycle(event)
+            if lifecycle.is_terminal and lifecycle.response_id == message_id:
+                if not prewarm_state.diagnostic_emitted and usage.has_positive_model_provider_usage(
+                    usage_result
+                ):
+                    usage.log_ignored_model_provider_usage_source(
+                        flow,
+                        flow_metadata.run_id(flow.metadata),
+                        message_id,
+                        usage_result,
+                        reason="responses_generate_false",
+                    )
+                    prewarm_state.diagnostic_emitted = True
+                return
+            prewarm_state.response_id = None
         usage_sources = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE_SOURCES)
         if not isinstance(usage_sources, dict):
             usage_sources = {}

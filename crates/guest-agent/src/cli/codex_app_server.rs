@@ -17,6 +17,7 @@ use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 use guest_common::log_warn;
+use guest_contracts::stdout_framing::CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -28,14 +29,15 @@ use tokio::task::JoinHandle;
 use crate::error::AgentError;
 
 use super::{
-    LOG_TAG, child_env, child_exit_notifier::ChildExitNotifier, diagnostics, exec_boundary,
-    line_reader, process_group::ChildProcessGroup,
+    LOG_TAG, child_env,
+    child_exit_notifier::{ChildExitNotifier, wait_for_child_exit_without_reaping},
+    diagnostics, exec_boundary, line_reader,
+    process_group::ChildProcessGroup,
 };
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
 const NOTIFICATION_QUEUE_MAX_BYTES: usize = 16 * 1024 * 1024;
-const STDOUT_MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
 const SHUTDOWN_SIGKILL_GRACE: Duration = Duration::from_secs(2);
 const STDERR_DRAIN_GRACE: Duration = Duration::from_secs(2);
 
@@ -54,6 +56,8 @@ pub struct CodexAppServerConfig {
     config_overrides: Vec<String>,
     current_dir: Option<PathBuf>,
     opt_out_notification_methods: Vec<String>,
+    pidfd_exit_notification: bool,
+    workload_containment: Option<crate::workload_containment::WorkloadContainment>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +82,8 @@ impl CodexAppServerConfig {
             config_overrides: Vec::new(),
             current_dir: None,
             opt_out_notification_methods: Vec::new(),
+            pidfd_exit_notification: true,
+            workload_containment: None,
         }
     }
 
@@ -104,9 +110,7 @@ impl CodexAppServerConfig {
     /// Add an extra child environment value.
     ///
     /// Extra values are applied before the final `CODEX_HOME` value, so callers
-    /// cannot override the per-run Codex home through this method. Spawn also
-    /// removes `MOCK_CODEX_FIXTURE` because app-server tests use their own
-    /// scenario variable.
+    /// cannot override the per-run Codex home through this method.
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_env.push((key.into(), value.into()));
         self
@@ -118,6 +122,16 @@ impl CodexAppServerConfig {
     /// directory from Tokio's command builder.
     pub fn with_current_dir(mut self, current_dir: impl Into<PathBuf>) -> Self {
         self.current_dir = Some(current_dir.into());
+        self
+    }
+
+    /// Supply the production cgroup placement capability for this child.
+    #[must_use]
+    pub fn with_workload_containment(
+        mut self,
+        containment: Option<crate::workload_containment::WorkloadContainment>,
+    ) -> Self {
+        self.workload_containment = containment;
         self
     }
 
@@ -142,6 +156,16 @@ impl CodexAppServerConfig {
         S: Into<String>,
     {
         self.opt_out_notification_methods = methods.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Disable the preferred pidfd exit observer for this client.
+    ///
+    /// This is an integration-test seam for exercising the non-reaping
+    /// fallback observer. Production callers should retain the default.
+    #[doc(hidden)]
+    pub fn without_pidfd_exit_notification(mut self) -> Self {
+        self.pidfd_exit_notification = false;
         self
     }
 }
@@ -291,6 +315,14 @@ impl From<CodexAppServerError> for AgentError {
 /// and subsequent calls surface the saved protocol reason instead of attempting
 /// to reuse a potentially desynchronized app-server process.
 ///
+/// Cancellation is operation-specific. Dropping a started request or write can
+/// leave request correlation or the outbound stream uncertain; later protocol
+/// use then poisons the client, closes stdio, and terminates the owned child.
+/// Cancelling [`Self::next_notification`] while it is only waiting for stdout
+/// preserves partial input, but cancelling its server-request rejection write
+/// follows the unsafe write rule. A cancelled close operation may be retried to
+/// finish cleanup, but JSON-RPC operations must not resume after closing starts.
+///
 /// Dropping a client that was not closed through [`Self::shutdown`] or
 /// [`Self::terminate`] performs best-effort cleanup: stdio handles are closed,
 /// the owned child process group is killed before the child handle is dropped,
@@ -343,7 +375,6 @@ impl CodexAppServerClient {
             "CODEX_HOME".to_string(),
             config.codex_home.to_string_lossy().into_owned(),
         ));
-        child_env_values.retain(|(key, _)| key != "MOCK_CODEX_FIXTURE");
         let child_env_values = child_env::normalize_values(child_env_values);
         let args = app_server_args(&config.config_overrides);
         let binary = config.binary.to_string_lossy();
@@ -364,8 +395,11 @@ impl CodexAppServerClient {
         if let Some(current_dir) = config.current_dir {
             cmd.current_dir(current_dir);
         }
-        cmd.env_remove("MOCK_CODEX_FIXTURE");
-
+        if let Some(containment) = config.workload_containment.as_ref() {
+            containment
+                .configure_command(&mut cmd)
+                .map_err(CodexAppServerError::Spawn)?;
+        }
         let mut child = cmd.spawn().map_err(CodexAppServerError::Spawn)?;
         let stdin = child.stdin.take().ok_or_else(|| {
             CodexAppServerError::Protocol("app-server stdin was not piped".to_string())
@@ -378,15 +412,19 @@ impl CodexAppServerClient {
         })?;
         let stderr_handle =
             runtime.spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
-        let exit_notifier = match ChildExitNotifier::open(&child) {
-            Ok(exit_notifier) => Some(exit_notifier),
-            Err(error) => {
-                log_warn!(
-                    LOG_TAG,
-                    "Codex app-server pidfd exit notification unavailable; natural exit cleanup will use wait-only fallback: {error}"
-                );
-                None
+        let exit_notifier = if config.pidfd_exit_notification {
+            match ChildExitNotifier::open(&child) {
+                Ok(exit_notifier) => Some(exit_notifier),
+                Err(error) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Codex app-server pidfd exit notification unavailable; natural exit cleanup will use non-reaping wait fallback: {error}"
+                    );
+                    None
+                }
             }
+        } else {
+            None
         };
 
         Ok(Self {
@@ -440,6 +478,13 @@ impl CodexAppServerClient {
     /// The request advertises the experimental app-server API, disables
     /// attestation, and includes configured opt-out notification methods. The
     /// returned payload is the raw app-server initialization response.
+    ///
+    /// # Cancellation safety
+    ///
+    /// Dropping this future after it starts can interrupt either the initialize
+    /// request or the subsequent `initialized` notification write. Do not resume
+    /// JSON-RPC operations on the client; use [`Self::shutdown`] or
+    /// [`Self::terminate`] to finish cleanup.
     pub async fn initialize(&mut self) -> Result<InitializeResponse, CodexAppServerError> {
         let mut capabilities = Map::new();
         capabilities.insert("experimentalApi".to_string(), Value::Bool(true));
@@ -480,6 +525,12 @@ impl CodexAppServerClient {
     /// not match the generated request id, or if the response shape does not
     /// deserialize into `T`, the stream is poisoned because request correlation
     /// can no longer be trusted.
+    ///
+    /// # Cancellation safety
+    ///
+    /// This method has the same cancellation contract as
+    /// [`Self::request_value`]. Dropping it after it starts makes later protocol
+    /// reuse unsafe; use [`Self::shutdown`] or [`Self::terminate`] for cleanup.
     pub async fn request<T>(
         &mut self,
         method: &str,
@@ -502,6 +553,14 @@ impl CodexAppServerClient {
     /// 128 entries or 16 MiB of raw line data. Unsupported app-server requests
     /// received during the wait are rejected with JSON-RPC `METHOD_NOT_FOUND`,
     /// after which the client continues waiting for the original response.
+    ///
+    /// # Cancellation safety
+    ///
+    /// Dropping this future after it starts leaves the request correlation
+    /// unresolved and can also leave its outbound write uncertain. A later
+    /// protocol operation poisons the client, closes stdio, and terminates the
+    /// owned child. Use [`Self::shutdown`] or [`Self::terminate`] for cleanup
+    /// instead of resuming JSON-RPC operations.
     pub async fn request_value(
         &mut self,
         method: &str,
@@ -579,6 +638,15 @@ impl CodexAppServerClient {
     /// buffered, the client reads stdout until a notification arrives. This
     /// method cannot be used while a request is in flight because that would
     /// split response ownership across two callers.
+    ///
+    /// # Cancellation safety
+    ///
+    /// Dropping this future while it is waiting for stdout is safe. Partial line
+    /// bytes remain buffered, so a later notification read or request can
+    /// continue using the client. However, this method writes a
+    /// `METHOD_NOT_FOUND` response when it receives an app-server request.
+    /// Dropping the future during that rejection write leaves the outbound
+    /// stream uncertain and makes later protocol reuse unsafe.
     pub async fn next_notification(
         &mut self,
         pending_method: &str,
@@ -613,6 +681,13 @@ impl CodexAppServerClient {
     /// `null` params are omitted from the wire message, matching app-server's
     /// notification shape. The stream must be usable and no other write may be
     /// in progress.
+    ///
+    /// # Cancellation safety
+    ///
+    /// Dropping this future after its wire write starts leaves the outbound
+    /// stream uncertain. A later protocol operation poisons the client, closes
+    /// stdio, and terminates the owned child. Use [`Self::shutdown`] or
+    /// [`Self::terminate`] for cleanup instead of resuming JSON-RPC operations.
     pub async fn notify(&mut self, method: &str, params: Value) -> Result<(), CodexAppServerError> {
         self.ensure_stream_usable()?;
         self.write_message(&outgoing_notification(method, params))
@@ -625,6 +700,12 @@ impl CodexAppServerClient {
     /// closes stdio, yields once to let the child observe EOF, then performs
     /// process-group cleanup while the child is still owned and unreaped. Stderr
     /// is drained best-effort before the client is marked closed.
+    ///
+    /// # Cancellation safety
+    ///
+    /// If this future is dropped after it first returns `Pending`, protocol I/O
+    /// has already been closed. Call `shutdown` again to finish child and stderr
+    /// cleanup, but do not resume JSON-RPC operations.
     pub async fn shutdown(&mut self) -> Result<(), CodexAppServerError> {
         if self.closed {
             return Ok(());
@@ -654,6 +735,12 @@ impl CodexAppServerClient {
     /// app-server should stop promptly. It closes stdio, performs process-group
     /// cleanup while the child is still owned and unreaped, and then waits for
     /// the child. Stderr is still drained best-effort before close completes.
+    ///
+    /// # Cancellation safety
+    ///
+    /// If this future is dropped after it first returns `Pending`, protocol I/O
+    /// has already been closed. Call `terminate` again to finish child and stderr
+    /// cleanup, but do not resume JSON-RPC operations.
     pub async fn terminate(&mut self) -> Result<(), CodexAppServerError> {
         if self.closed {
             return Ok(());
@@ -712,6 +799,7 @@ impl CodexAppServerClient {
     ) -> Result<IncomingMessage, CodexAppServerError> {
         loop {
             let has_exit_notifier = self.exit_notifier.is_some();
+            let fallback_child_id = self.child.as_ref().and_then(Child::id);
             tokio::select! {
                 biased;
                 line = {
@@ -748,47 +836,47 @@ impl CodexAppServerClient {
                     if let Err(error) = exit {
                         log_warn!(
                             LOG_TAG,
-                            "Codex app-server pidfd exit notification failed; natural exit cleanup will use wait-only fallback: {error}"
+                            "Codex app-server pidfd exit notification failed; natural exit cleanup will use non-reaping wait fallback: {error}"
                         );
                         self.exit_notifier = None;
                         continue;
                     }
-                    self.sigkill_process_group();
-                    let Some(child) = self.child.as_mut() else {
-                        return Err(self.poison_stream("app-server child disappeared"));
-                    };
-                    let result = child.wait().await;
-                    let status = match self.finish_child_wait(result) {
-                        Ok(status) => status,
-                        Err(error) => return Err(self.poison_error(error)),
-                    };
-                    let error = CodexAppServerError::ChildExited {
-                        method: pending_method.to_string(),
-                        status: status.to_string(),
-                    };
-                    return Err(self.poison_error(error));
+                    return Err(self.finish_observed_child_exit(pending_method).await);
                 }
-                result = async {
-                    match self.child.as_mut() {
-                        Some(child) => Some(child.wait().await),
+                exit = async {
+                    match fallback_child_id {
+                        Some(child_id) => {
+                            Some(wait_for_child_exit_without_reaping(child_id).await)
+                        }
                         None => None,
                     }
                 }, if !has_exit_notifier && self.child.is_some() => {
-                    let Some(result) = result else {
-                        return Err(self.poison_stream("app-server child disappeared"));
+                    let Some(exit) = exit else {
+                        return Err(self.poison_stream("app-server child PID disappeared"));
                     };
-                    let status = match self.finish_child_wait(result) {
-                        Ok(status) => status,
-                        Err(error) => return Err(self.poison_error(error)),
-                    };
-                    let error = CodexAppServerError::ChildExited {
-                        method: pending_method.to_string(),
-                        status: status.to_string(),
-                    };
-                    return Err(self.poison_error(error));
+                    if let Err(error) = exit {
+                        return Err(self.poison_error(CodexAppServerError::Io(error)));
+                    }
+                    return Err(self.finish_observed_child_exit(pending_method).await);
                 }
             }
         }
+    }
+
+    async fn finish_observed_child_exit(&mut self, pending_method: &str) -> CodexAppServerError {
+        self.sigkill_process_group();
+        let Some(child) = self.child.as_mut() else {
+            return self.poison_stream("app-server child disappeared");
+        };
+        let result = child.wait().await;
+        let status = match self.finish_child_wait(result) {
+            Ok(status) => status,
+            Err(error) => return self.poison_error(error),
+        };
+        self.poison_error(CodexAppServerError::ChildExited {
+            method: pending_method.to_string(),
+            status: status.to_string(),
+        })
     }
 
     async fn reject_server_request(
@@ -1039,8 +1127,12 @@ async fn read_stdout_line<R>(
 where
     R: AsyncBufRead + Unpin,
 {
-    match line_reader::read_bounded_utf8_line(stdout_reader, partial_line, STDOUT_MAX_LINE_BYTES)
-        .await
+    match line_reader::read_bounded_utf8_line(
+        stdout_reader,
+        partial_line,
+        CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES,
+    )
+    .await
     {
         Ok(line) => Ok(line),
         Err(line_reader::BoundedLineError::Io(error)) => Err(CodexAppServerError::Io(error)),
@@ -1065,7 +1157,7 @@ where
 
 fn stdout_line_too_large_error() -> CodexAppServerError {
     CodexAppServerError::Protocol(format!(
-        "app-server stdout line exceeded {STDOUT_MAX_LINE_BYTES} bytes"
+        "app-server stdout line exceeded {CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES} bytes"
     ))
 }
 
@@ -1200,16 +1292,16 @@ mod tests {
     #[test]
     fn app_server_args_put_root_config_overrides_before_subcommand() {
         let args = app_server_args(&[
-            r#"model_provider="minimax""#.to_string(),
-            r#"model_providers.minimax.supports_websockets=false"#.to_string(),
+            r#"model_provider="deepseek""#.to_string(),
+            r#"model_providers.deepseek.supports_websockets=false"#.to_string(),
             r#"web_search="disabled""#.to_string(),
         ]);
 
         let expected = [
             "-c",
-            r#"model_provider="minimax""#,
+            r#"model_provider="deepseek""#,
             "-c",
-            r#"model_providers.minimax.supports_websockets=false"#,
+            r#"model_providers.deepseek.supports_websockets=false"#,
             "-c",
             r#"web_search="disabled""#,
             "app-server",

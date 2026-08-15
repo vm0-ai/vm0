@@ -3,12 +3,18 @@ use crate::support::{
     assert_does_not_contain_any, create_tar_gz, read_http_request_path, write_manifest,
 };
 use httpmock::prelude::*;
-use std::io::{self, Write as _};
-use std::net::{TcpListener, TcpStream};
+use std::io;
+use std::net::TcpListener;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
+use std::time::{Duration, Instant};
 
 const EXPECTED_RETRY_ATTEMPTS: usize = 3;
-const SERVER_STOP_PATH: &str = "/__stop";
+const SERVER_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const SERVER_STREAM_READ_TIMEOUT: Duration = Duration::from_secs(1);
+const SERVER_START_TIMEOUT: Duration = Duration::from_secs(5);
+const SERVER_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+const SERVER_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 fn validate_attempt_warning(
     log_name: &str,
@@ -54,32 +60,136 @@ fn validate_attempt_warnings(
     Ok(())
 }
 
-fn start_connection_drop_server() -> io::Result<(String, thread::JoinHandle<io::Result<usize>>)> {
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    let base_url = format!("http://{}", listener.local_addr()?);
-    let handle = thread::spawn(move || {
-        let mut accepted = 0;
-        loop {
-            let (mut stream, _) = listener.accept()?;
-            if read_http_request_path(&mut stream)? == SERVER_STOP_PATH {
-                return Ok(accepted);
-            }
-            accepted += 1;
-        }
-    });
-
-    Ok((base_url, handle))
+#[derive(Clone, Copy)]
+enum ConnectionBehavior {
+    Drop,
+    Hold,
 }
 
-fn stop_connection_drop_server(base_url: &str) -> io::Result<()> {
-    let address = base_url
-        .strip_prefix("http://")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid server URL"))?;
-    let mut stream = TcpStream::connect(address)?;
-    stream.write_all(
-        format!("GET {SERVER_STOP_PATH} HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n")
-            .as_bytes(),
-    )
+struct ConnectionDropServer {
+    base_url: String,
+    stop_tx: Sender<()>,
+    request_started_rx: Receiver<()>,
+    handle: Option<thread::JoinHandle<io::Result<usize>>>,
+}
+
+impl ConnectionDropServer {
+    fn start() -> io::Result<Self> {
+        Self::start_with_behavior(ConnectionBehavior::Drop)
+    }
+
+    fn start_holding() -> io::Result<Self> {
+        Self::start_with_behavior(ConnectionBehavior::Hold)
+    }
+
+    fn start_with_behavior(behavior: ConnectionBehavior) -> io::Result<Self> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        listener.set_nonblocking(true)?;
+        let base_url = format!("http://{}", listener.local_addr()?);
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let (request_started_tx, request_started_rx) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            serve_dropped_connections(listener, stop_rx, request_started_tx, behavior)
+        });
+
+        Ok(Self {
+            base_url,
+            stop_tx,
+            request_started_rx,
+            handle: Some(handle),
+        })
+    }
+
+    fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    fn wait_for_request(&self) -> io::Result<()> {
+        match self.request_started_rx.recv_timeout(SERVER_START_TIMEOUT) {
+            Ok(()) => Ok(()),
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!(
+                    "connection-drop server received no request within {SERVER_START_TIMEOUT:?}"
+                ),
+            )),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(io::Error::other(
+                "connection-drop server exited before receiving a request",
+            )),
+        }
+    }
+
+    fn finish(mut self) -> io::Result<usize> {
+        self.shutdown()
+    }
+
+    fn shutdown(&mut self) -> io::Result<usize> {
+        let handle = self
+            .handle
+            .take()
+            .ok_or_else(|| io::Error::other("connection-drop server lost its thread"))?;
+        let _ = self.stop_tx.send(());
+        let deadline = Instant::now() + SERVER_CLEANUP_TIMEOUT;
+        while !handle.is_finished() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!(
+                        "connection-drop server did not stop within {SERVER_CLEANUP_TIMEOUT:?}"
+                    ),
+                ));
+            }
+            thread::sleep(remaining.min(SERVER_JOIN_POLL_INTERVAL));
+        }
+
+        handle
+            .join()
+            .map_err(|_| io::Error::other("connection-drop server panicked"))?
+    }
+}
+
+impl Drop for ConnectionDropServer {
+    fn drop(&mut self) {
+        if self.handle.is_some() {
+            let _ = self.shutdown();
+        }
+    }
+}
+
+fn serve_dropped_connections(
+    listener: TcpListener,
+    stop_rx: Receiver<()>,
+    request_started_tx: Sender<()>,
+    behavior: ConnectionBehavior,
+) -> io::Result<usize> {
+    let mut accepted = 0;
+    loop {
+        match stop_rx.try_recv() {
+            Ok(()) | Err(mpsc::TryRecvError::Disconnected) => return Ok(accepted),
+            Err(mpsc::TryRecvError::Empty) => {}
+        }
+
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                stream.set_read_timeout(Some(SERVER_STREAM_READ_TIMEOUT))?;
+                read_http_request_path(&mut stream)?;
+                accepted += 1;
+                let _ = request_started_tx.send(());
+                if matches!(behavior, ConnectionBehavior::Hold) {
+                    let _ = stop_rx.recv();
+                    return Ok(accepted);
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                match stop_rx.recv_timeout(SERVER_POLL_INTERVAL) {
+                    Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(accepted),
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 #[test]
@@ -295,7 +405,8 @@ fn binary_classifies_system_resolver_failure_without_logging_url() {
 
 #[test]
 fn binary_classifies_connection_drop_without_logging_url() {
-    let (base_url, server_handle) = start_connection_drop_server().unwrap();
+    let server = ConnectionDropServer::start().unwrap();
+    let base_url = server.base_url().to_owned();
     let fixture = BinaryLoggingFixture::new("connection-drop-secret-url").unwrap();
     let mount = fixture.dir.path().join("mount");
     let url = format!(
@@ -305,8 +416,7 @@ fn binary_classifies_connection_drop_without_logging_url() {
         write_manifest(&fixture.dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
     let output = fixture.run_manifest_path(&manifest).unwrap();
-    stop_connection_drop_server(&base_url).unwrap();
-    let accepted = server_handle.join().unwrap().unwrap();
+    let accepted = server.finish().unwrap();
 
     assert!(!output.status.success());
     assert_eq!(accepted, EXPECTED_RETRY_ATTEMPTS);
@@ -347,6 +457,43 @@ fn binary_classifies_connection_drop_without_logging_url() {
         "missing classified storage_download entry: {ops_log_content}"
     );
     assert_download_total_success_present(&ops, false);
+}
+
+#[cfg(unix)]
+#[test]
+fn binary_timeout_terminates_child_and_connection_responder() {
+    let server = ConnectionDropServer::start_holding().unwrap();
+    let fixture = BinaryLoggingFixture::new("held-connection-timeout").unwrap();
+    let mount = fixture.dir.path().join("mount");
+    let url = format!("{}/held.tar.gz", server.base_url());
+    let manifest =
+        write_manifest(&fixture.dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+    let execution = fixture.spawn_manifest_path(&manifest).unwrap();
+    let child_id = execution.id().unwrap();
+
+    server.wait_for_request().unwrap();
+    let error = execution.wait_with_timeout(Duration::ZERO).unwrap_err();
+    let accepted = server.finish().unwrap();
+
+    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    let message = error.to_string();
+    assert!(message.contains("guest-download timed out after 0ns"));
+    assert!(message.contains("kill=signal sent"));
+    assert!(message.contains("reap=completed with"));
+    assert!(message.contains("stdout="));
+    assert!(message.contains("stderr="));
+    assert!(message.contains("[INFO] [sandbox:download] Downloading 1 items"));
+    assert_eq!(accepted, 1);
+    let child_id = libc::pid_t::try_from(child_id).unwrap();
+    let mut status = 0;
+    // SAFETY: `child_id` came from the directly owned child, and the lifecycle
+    // helper returned only after reaping it. WNOHANG verifies no status remains.
+    let result = unsafe { libc::waitpid(child_id, &mut status, libc::WNOHANG) };
+    assert_eq!(result, -1);
+    assert_eq!(
+        io::Error::last_os_error().raw_os_error(),
+        Some(libc::ECHILD)
+    );
 }
 
 #[test]

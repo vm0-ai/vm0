@@ -3,23 +3,32 @@ import userEvent from "@testing-library/user-event";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import {
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
-  type CustomConnectorResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+  type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import {
+  resetCustomConnectorConnectInput$,
+  setCustomConnectorConnectField$,
+} from "../../../signals/zero-page/settings/custom-connectors.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import {
   AGENT_ID,
@@ -74,15 +83,14 @@ function connectorStatus({
 }
 
 function customConnector(
-  overrides: Partial<CustomConnectorResponse> = {},
-): CustomConnectorResponse {
+  overrides: Partial<CustomConnectorHttpResponse> = {},
+): CustomConnectorHttpResponse {
   return {
+    kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
+    storageVersion: 1,
     slug: "_acme-search",
     displayName: "Acme Search",
-    prefixes: ["https://api.acme.test/v1/"],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
     prefixTemplates: ["https://api.acme.test/v1/"],
     fields: [
       {
@@ -99,12 +107,50 @@ function customConnector(
       },
     ],
     queryInjections: [],
+    authMode: "manual",
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-07-30T00:00:00.000Z",
     updatedAt: "2026-07-30T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function mcpCustomConnector(
+  overrides: Partial<CustomConnectorMcpResponse> = {},
+): CustomConnectorMcpResponse {
+  return {
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    storageVersion: 1,
+    slug: "_deepwiki",
+    displayName: "DeepWiki",
+    endpoint: "https://mcp.deepwiki.com/mcp",
+    transport: "streamable-http",
+    prefixTemplates: [],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "X-VM0-Test-Token",
+        valueTemplate: "{{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    permissionBundleRef: null,
+    connected: false,
+    missingRequiredFields: ["secret"],
+    configuredFieldKeys: [],
+    createdAt: "2026-08-11T00:00:00.000Z",
+    updatedAt: "2026-08-11T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -140,6 +186,7 @@ async function openAddConnectorsDialog(
 }
 
 beforeEach(() => {
+  context.store.set(resetCustomConnectorConnectInput$);
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   mockOrgModelRoutes("claude-sonnet-4-6");
   mockAgent();
@@ -171,7 +218,10 @@ describe("chat composer connector connection", () => {
       },
     );
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -185,23 +235,22 @@ describe("chat composer connector connection", () => {
     });
   });
 
-  it("shows connected custom connectors and toggles agent access", async () => {
+  it("shows connected MCP custom connectors and toggles agent access", async () => {
     const user = userEvent.setup({ delay: null });
-    const connector = customConnector({
+    const connector = mcpCustomConnector({
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
-      hasSecret: true,
     });
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
-    let enabledIds: string[] = [];
+    let grants: AgentCustomConnectorGrant[] = [];
     context.mocks.api(
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        return respond(200, { enabledIds });
+        return respond(200, { grants });
       },
     );
     let updateCount = 0;
@@ -211,15 +260,112 @@ describe("chat composer connector connection", () => {
         updateCount += 1;
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledIds: [connector.id],
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
           operation: "add",
         });
-        enabledIds = [connector.id];
-        return respond(200, { enabledIds });
+        grants = [{ customConnectorId: connector.id, permissionNames: [] }];
+        return respond(200, { grants });
       },
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(await screen.findByLabelText("Add DeepWiki"));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(1);
+      expect(screen.getByLabelText("Remove DeepWiki")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps authorized MCP custom connectors removable while disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = mcpCustomConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+    });
+    let grants: AgentCustomConnectorGrant[] = [
+      { customConnectorId: connector.id, permissionNames: [] },
+    ];
+    let updateCount = 0;
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        return respond(200, { grants });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        expect(body).toStrictEqual({
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+          operation: "remove",
+        });
+        updateCount += 1;
+        grants = [];
+        return respond(200, { grants });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: false },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(await screen.findByLabelText("Remove DeepWiki"));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(1);
+      expect(screen.queryByText("DeepWiki")).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not create an empty grant for a permissioned custom connector", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { grants: [] });
+    });
+    let updateCount = 0;
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ respond }) => {
+        updateCount += 1;
+        return respond(200, { grants: [] });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -228,14 +374,18 @@ describe("chat composer connector connection", () => {
     await user.click(await screen.findByLabelText("Add Acme Search"));
 
     await waitFor(() => {
-      expect(updateCount).toBe(1);
-      expect(screen.getByLabelText("Remove Acme Search")).toBeInTheDocument();
+      expect(updateCount).toBe(0);
+      expect(screen.getByLabelText("Add Acme Search")).toBeInTheDocument();
     });
   });
 
   it("connects a custom connector for only the active agent", async () => {
     const user = userEvent.setup({ delay: null });
     const connector = customConnector();
+    context.store.set(setCustomConnectorConnectField$, {
+      key: "secret",
+      value: "stale-secret",
+    });
     mockAgent({ includeOtherAgent: true });
     mockCatalog([]);
     let connected = false;
@@ -248,19 +398,25 @@ describe("chat composer connector connection", () => {
                 connected: true,
                 missingRequiredFields: [],
                 configuredFieldKeys: ["secret"],
-                hasSecret: true,
               }
             : connector,
         ],
       });
     });
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
-        expect(body).toStrictEqual({ value: "acme-secret" });
+        expect(body).toStrictEqual({
+          values: [{ key: "secret", kind: "secret", value: "acme-secret" }],
+        });
         connected = true;
-        return respond(204);
+        return respond(200, {
+          ...connector,
+          connected: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["secret"],
+        });
       },
     );
     const updatedAgentIds: string[] = [];
@@ -268,16 +424,25 @@ describe("chat composer connector connection", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(body).toStrictEqual({
-          enabledIds: [connector.id],
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
           operation: "add",
         });
         updatedAgentIds.push(params.id);
-        return respond(200, { enabledIds: [connector.id] });
+        return respond(200, {
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+        });
       },
     );
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const dialog = await openAddConnectorsDialog(user);
+    await user.type(
+      within(dialog).getByPlaceholderText(/Find connectors/u),
+      "API.ACME.TEST",
+    );
     await user.click(
       within(dialog).getByLabelText(`Connect ${connector.displayName}`),
     );
@@ -286,6 +451,7 @@ describe("chat composer connector connection", () => {
       name: `Connect ${connector.displayName}`,
     });
     expect(dialog).not.toBeInTheDocument();
+    expect(within(connectDialog).getByLabelText("Secret")).toHaveValue("");
     await user.type(
       within(connectDialog).getByLabelText("Secret"),
       "acme-secret",
@@ -338,7 +504,10 @@ describe("chat composer connector connection", () => {
       },
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const dialog = await openAddConnectorsDialog(user);
     const connectorCard = within(dialog).getByLabelText(
@@ -417,7 +586,10 @@ describe("chat composer connector connection", () => {
       },
     );
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const dialog = await openAddConnectorsDialog(user);
     await user.click(within(dialog).getByLabelText("Connect Public Stripe"));
@@ -463,7 +635,10 @@ describe("chat composer connector connection", () => {
       }),
     ]);
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     const dialog = await openAddConnectorsDialog(user);
     await user.click(within(dialog).getByLabelText("Connect Axiom"));
@@ -471,5 +646,71 @@ describe("chat composer connector connection", () => {
     await expect(
       screen.findByRole("dialog", { name: "Axiom" }),
     ).resolves.toBeInTheDocument();
+  });
+
+  it("searches beyond featured connectors without loading the full catalog", async () => {
+    const user = userEvent.setup({ delay: null });
+    const github = connectorStatus({
+      slug: "github",
+      label: "GitHub",
+      authMethods: [],
+    });
+    const axiom = connectorStatus({
+      slug: "axiom",
+      label: "Axiom",
+      authMethods: [
+        {
+          id: "api-token",
+          label: "API token",
+          description: null,
+          grantKind: "manual",
+          manualFields: [
+            {
+              id: "apiToken",
+              label: "API token",
+              required: true,
+              placeholder: "xaat",
+              inputType: "password",
+            },
+          ],
+          startOptions: [],
+        },
+      ],
+    });
+    const discoveryKeywords: (string | undefined)[] = [];
+    let fullCatalogRequests = 0;
+    context.mocks.api(
+      zeroConnectorCatalogContract.discovery,
+      ({ query, respond }) => {
+        discoveryKeywords.push(query.keyword);
+        return respond(200, {
+          connectors: query.keyword ? [axiom] : [github],
+          totalConnectorCount: 347,
+        });
+      },
+    );
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      fullCatalogRequests += 1;
+      return respond(200, { connectors: [github, axiom] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
+    });
+
+    const dialog = await openAddConnectorsDialog(user);
+    await user.type(
+      within(dialog).getByPlaceholderText(/Find connectors/u),
+      "Axiom",
+    );
+    await user.click(await within(dialog).findByLabelText("Connect Axiom"));
+
+    await expect(
+      screen.findByRole("dialog", { name: "Axiom" }),
+    ).resolves.toBeInTheDocument();
+    expect(discoveryKeywords).toContain("Axiom");
+    expect(fullCatalogRequests).toBe(0);
   });
 });

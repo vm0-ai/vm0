@@ -1,5 +1,5 @@
-import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
-import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
+import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
+import { zeroComposesListContract } from "@okouai/api-contracts/contracts/zero-composes";
 import type { z } from "zod";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";

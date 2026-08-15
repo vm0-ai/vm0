@@ -34,6 +34,7 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
       return {
         outputs: {
           accessToken: result.accessToken,
+          livemode: result.livemode ? "true" : "false",
           refreshToken: result.refreshToken,
         },
         scopes: result.scopes,
@@ -47,14 +48,14 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId, clientSecret } = args.authClient;
       return oauthRefreshResultToProviderResult(
         await refreshStripeToken(
           clientId,
           clientSecret,
           args.inputs.refreshToken,
-          args.signal,
+          signal,
         ),
       );
     },

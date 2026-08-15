@@ -1,18 +1,31 @@
-import { Command } from "commander";
+import type { ZeroAgentVisibility } from "@okouai/api-contracts/contracts/zero-agents";
+import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
-import { createZeroAgent, updateZeroAgentInstructions } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  createZeroAgent,
+  updateZeroAgentInstructions,
+} from "../../../lib/api/domains/zero-agents";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { resolveAvatarUrl } from "./avatar";
+import { parseAgentVisibility } from "./visibility";
 
 export const createCommand = new Command()
   .name("create")
-  .description("Create a new zero agent")
+  .description("Create a new agent")
   .option("--display-name <name>", "Agent display name")
   .option("--description <text>", "Agent description")
   .option(
     "--sound <tone>",
     "Agent tone: professional, friendly, direct, supportive",
+  )
+  .addOption(
+    new Option(
+      "--visibility <visibility>",
+      "Agent visibility: private or public",
+    )
+      .default("private" satisfies ZeroAgentVisibility)
+      .argParser(parseAgentVisibility),
   )
   .option("--avatar <preset>", "Avatar preset: preset:0 through preset:4")
   .option(
@@ -56,10 +69,11 @@ Avatar:
   Note: --avatar and --avatar-* cannot be used together.
 
 Examples:
-  Minimal:               zero agent create --display-name "My Agent"
-  Quick preset:          zero agent create --display-name "My Agent" --avatar preset:2
-  Custom avatar:         zero agent create --display-name "My Agent" --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
-  With instructions:     zero agent create --display-name "My Agent" --instructions-file ./instructions.md`,
+  Minimal:               okou agent create --display-name "My Agent"
+  Public agent:          okou agent create --display-name "My Agent" --visibility public
+  Quick preset:          okou agent create --display-name "My Agent" --avatar preset:2
+  Custom avatar:         okou agent create --display-name "My Agent" --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
+  With instructions:     okou agent create --display-name "My Agent" --instructions-file ./instructions.md`,
   )
   .action(
     withErrorHandler(
@@ -67,6 +81,7 @@ Examples:
         displayName?: string;
         description?: string;
         sound?: string;
+        visibility: ZeroAgentVisibility;
         avatar?: string;
         avatarRotation?: string;
         avatarSkin?: string;
@@ -82,6 +97,7 @@ Examples:
           displayName: options.displayName,
           description: options.description,
           sound: options.sound,
+          visibility: options.visibility,
           avatarUrl,
         });
 
@@ -95,18 +111,19 @@ Examples:
         if (agent.displayName) {
           console.log(`  Display Name: ${agent.displayName}`);
         }
+        console.log(`  Visibility:   ${agent.visibility}`);
 
         console.log();
         console.log("Next steps to authorize connectors for this agent:");
         console.log("  - Search connectors this agent needs:");
         console.log(
-          `      zero connector search <keyword> --agent ${agent.agentId}`,
+          `      okou connector search <keyword> --agent ${agent.agentId}`,
         );
         console.log(
           "  - Check authorization status (prints an authorize URL if not authorized):",
         );
         console.log(
-          `      zero connector status <slug> --agent ${agent.agentId}`,
+          `      okou connector status <slug> --agent ${agent.agentId}`,
         );
       },
     ),
