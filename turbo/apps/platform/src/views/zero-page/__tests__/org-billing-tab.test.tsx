@@ -2977,14 +2977,19 @@ describe("organization billing settings", () => {
     expect(queryButtonByText("Buy concurrency")).toBeUndefined();
 
     click(buttonByText("Change"));
-    const cancelDialog = await screen.findByRole("dialog", {
+    const initialChangeDialog = await screen.findByRole("dialog", {
       name: "Change concurrency",
     });
     expect(canceledSubscriptionId).toBeNull();
-    click(
-      within(cancelDialog).getByRole("radio", {
-        name: /Cancel entire subscription/u,
-      }),
+    expect(
+      within(initialChangeDialog).queryByRole("radio"),
+    ).not.toBeInTheDocument();
+    click(buttonByText("Cancel entire subscription", initialChangeDialog));
+    const cancelDialog = await screen.findByRole("dialog", {
+      name: "Cancel entire subscription",
+    });
+    expect(cancelDialog).toHaveTextContent(
+      "This stops renewal at the end of the current billing period. Existing slots stay active until then.",
     );
     click(buttonByText("Cancel subscription", cancelDialog));
 
@@ -3018,9 +3023,7 @@ describe("organization billing settings", () => {
     const changeDialog = await screen.findByRole("dialog", {
       name: "Change concurrency",
     });
-    expect(
-      within(changeDialog).getByRole("radio", { name: /Change slots/u }),
-    ).toHaveAttribute("aria-checked", "true");
+    expect(within(changeDialog).queryByRole("radio")).not.toBeInTheDocument();
     const quantityInput = within(changeDialog).getByLabelText(
       "New total slot quantity",
     );
@@ -3245,9 +3248,7 @@ describe("organization billing settings", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Change concurrency",
     });
-    expect(
-      within(dialog).getByRole("radio", { name: /Change slots/u }),
-    ).toHaveAttribute("aria-checked", "true");
+    expect(within(dialog).queryByRole("radio")).not.toBeInTheDocument();
     const quantityInput = within(dialog).getByLabelText(
       "New total slot quantity",
     );
@@ -3327,15 +3328,20 @@ describe("organization billing settings", () => {
     );
     await fill(quantityInput, "1");
     expect(buttonByText("Continue to Stripe", dialog)).toBeDisabled();
-    click(
-      within(dialog).getByRole("radio", {
-        name: /Cancel entire subscription/u,
-      }),
+    click(buttonByText("Cancel entire subscription", dialog));
+    const cancelDialog = await screen.findByRole("dialog", {
+      name: "Cancel entire subscription",
+    });
+    expect(buttonByText("Cancel subscription", cancelDialog)).toBeEnabled();
+    click(buttonByText("Back", cancelDialog));
+    const returnedDialog = await screen.findByRole("dialog", {
+      name: "Change concurrency",
+    });
+    await fill(
+      within(returnedDialog).getByLabelText("New total slot quantity"),
+      "3",
     );
-    expect(buttonByText("Cancel subscription", dialog)).toBeEnabled();
-    click(within(dialog).getByRole("radio", { name: /Change slots/u }));
-    await fill(within(dialog).getByLabelText("New total slot quantity"), "3");
-    click(buttonByText("Continue to Stripe", dialog));
+    click(buttonByText("Continue to Stripe", returnedDialog));
 
     await waitFor(() => {
       expect(requestedQuantity).toBe(1);
