@@ -483,12 +483,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ComposerConnectorPermissions]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
-    enabled: false,
-  },
   [FeatureSwitchKey.CustomConnectorMcp]: {
     maintainer: "liangyou@vm0.ai",
     description:

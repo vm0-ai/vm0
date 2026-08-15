@@ -3216,9 +3216,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}?sidebar=${OTHER_AGENT_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerConnectorPermissions]: true,
-      },
     });
 
     await waitFor(() => {
