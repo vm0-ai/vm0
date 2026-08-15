@@ -321,7 +321,8 @@ function DefaultModelRow({
   return (
     <div
       data-testid="default-model-row"
-      className="zero-card flex flex-col gap-3 overflow-hidden px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-3 overflow-hidden rounded-xl bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">
@@ -360,7 +361,10 @@ function DefaultModelRow({
           }}
           disabled={disabled}
         >
-          <SelectTrigger className="h-9 w-full shrink-0 rounded-lg bg-card sm:w-[280px]">
+          <SelectTrigger
+            className="h-9 w-full shrink-0 rounded-lg bg-card sm:w-[280px]"
+            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          >
             <SelectValue
               placeholder={t(($) => {
                 return $.settings.models.policies.selectDefaultModel;
@@ -597,8 +601,9 @@ function AddModelButton({
   return (
     <Button
       type="button"
+      variant="outline"
       size="sm"
-      className="h-9 gap-2 bg-foreground text-background hover:bg-foreground-hover active:bg-foreground-pressed"
+      className="zero-btn-morandi h-9 gap-2 rounded-lg border"
       disabled={disabled}
       onClick={onClick}
     >
@@ -1822,7 +1827,10 @@ export function OrgModelPoliciesSection() {
             />
           }
         />
-        <div className="zero-card overflow-hidden">
+        <div
+          className="overflow-hidden rounded-xl bg-card"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
           <div className="hidden grid-cols-[minmax(0,1fr)_236px_96px_36px] gap-3 border-b border-border/50 bg-muted/20 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid">
             <span>
               {t(($) => {

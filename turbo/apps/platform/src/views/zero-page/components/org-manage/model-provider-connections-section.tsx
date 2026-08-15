@@ -125,7 +125,10 @@ function ConnectionCard({
     return null;
   }
   return (
-    <div className="zero-card flex items-center gap-3 px-4 py-3">
+    <div
+      className="flex items-center gap-3 rounded-xl bg-card px-4 py-3"
+      style={ZERO_BORDER}
+    >
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">
           {connection.displayName}
@@ -511,44 +514,30 @@ export function ModelProviderConnectionsSection() {
     return null;
   }
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-4">
+      <SettingsSectionHeading
+        title={t(($) => {
+          return $.settings.models.gateways.title;
+        })}
+        description={t(($) => {
+          return $.settings.models.gateways.description;
+        })}
+        action={<AddConnectionMenu />}
+      />
       {connections.length === 0 ? (
-        <div className="zero-card flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h3 className="text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.models.gateways.title;
-              })}
-            </h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {t(($) => {
-                return $.settings.models.gateways.empty;
-              })}
-            </p>
-          </div>
-          <div className="shrink-0">
-            <AddConnectionMenu />
-          </div>
-        </div>
+        <p className="rounded-xl bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+          {t(($) => {
+            return $.settings.models.gateways.empty;
+          })}
+        </p>
       ) : (
-        <>
-          <SettingsSectionHeading
-            title={t(($) => {
-              return $.settings.models.gateways.title;
-            })}
-            description={t(($) => {
-              return $.settings.models.gateways.description;
-            })}
-            action={<AddConnectionMenu />}
-          />
-          <div className="grid gap-2">
-            {connections.map((connection) => {
-              return (
-                <ConnectionCard key={connection.id} connection={connection} />
-              );
-            })}
-          </div>
-        </>
+        <div className="grid gap-2">
+          {connections.map((connection) => {
+            return (
+              <ConnectionCard key={connection.id} connection={connection} />
+            );
+          })}
+        </div>
       )}
       <ConnectionDialog />
       <DeleteConnectionDialog />
