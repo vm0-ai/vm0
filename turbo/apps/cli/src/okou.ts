@@ -184,7 +184,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description:
       "Inspect bots, send messages, upload files, and download files from Telegram",
     load: async () => {
-      return (await import("./commands/zero/telegram")).zeroTelegramCommand;
+      return (await import("./commands/telegram")).telegramCommand;
     },
   },
   {

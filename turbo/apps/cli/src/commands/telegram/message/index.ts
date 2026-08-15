@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { sendCommand } from "./send";
 
-export const zeroTelegramMessageCommand = new Command()
+export const telegramMessageCommand = new Command()
   .name("message")
   .description("Manage Telegram messages")
   .addCommand(sendCommand)

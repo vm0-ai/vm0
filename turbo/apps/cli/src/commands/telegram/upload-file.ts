@@ -4,8 +4,8 @@ import { Command } from "commander";
 import {
   completeTelegramFileUpload,
   initTelegramFileUpload,
-} from "../../../lib/api/domains/integrations-telegram";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/integrations-telegram";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
