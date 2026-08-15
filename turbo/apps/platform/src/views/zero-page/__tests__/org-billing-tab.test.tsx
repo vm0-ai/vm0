@@ -2972,6 +2972,10 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(screen.getByText("12 concurrent runs")).toBeInTheDocument();
+      expect(
+        screen.getByText("10 included with your plan"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("2 paid add-on")).toBeInTheDocument();
       expect(screen.getByText("Renews Jun 1, 2026")).toBeInTheDocument();
     });
     expect(queryButtonByText("Buy concurrency")).toBeUndefined();
