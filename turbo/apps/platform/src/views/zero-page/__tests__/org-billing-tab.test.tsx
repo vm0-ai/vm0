@@ -3037,10 +3037,14 @@ describe("organization billing settings", () => {
       name: "Review concurrency change",
     });
     expect(previewedQuantity).toBe(4);
+    expect(within(reviewDialog).getByText("Due today")).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$150.00")).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$400.00/month")).toBeInTheDocument();
+    expect(
+      within(reviewDialog).queryByText("Order summary"),
+    ).not.toBeInTheDocument();
 
-    click(buttonByText("Confirm", reviewDialog));
+    click(buttonByText("Pay and update", reviewDialog));
 
     await waitFor(() => {
       expect(confirmedQuantity).toBe(4);
@@ -3092,36 +3096,48 @@ describe("organization billing settings", () => {
     const purchaseDialog = await screen.findByRole("dialog", {
       name: "Buy concurrency",
     });
+    expect(
+      within(purchaseDialog).queryByText(
+        "Choose how many additional slots you want.",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(purchaseDialog).getByText("Monthly total"),
+    ).toBeInTheDocument();
     const quantityInput = within(purchaseDialog).getByRole("textbox", {
       name: "Slots",
     });
     expect(quantityInput).toHaveValue("1");
     fireEvent.change(quantityInput, { target: { value: "" } });
     expect(quantityInput).toHaveValue("");
-    expect(buttonByText("Buy $0/month", purchaseDialog)).toBeDisabled();
+    expect(buttonByText("Review purchase", purchaseDialog)).toBeDisabled();
     fireEvent.change(quantityInput, { target: { value: "5" } });
 
     await waitFor(() => {
       expect(
-        within(purchaseDialog).getByText("Buy $500/month"),
+        within(purchaseDialog).getByText("$500/month"),
       ).toBeInTheDocument();
     });
 
-    click(buttonByText("Buy $500/month", purchaseDialog));
+    click(buttonByText("Review purchase", purchaseDialog));
 
     await screen.findByText("$120.00");
     const reviewDialog = screen.getByRole("dialog", {
-      name: "Buy concurrency",
+      name: "Review concurrency purchase",
     });
     await waitFor(() => {
       expect(previewedQuantity).toBe(5);
+      expect(within(reviewDialog).getByText("Due today")).toBeInTheDocument();
       expect(within(reviewDialog).getByText("$120.00")).toBeInTheDocument();
       expect(within(reviewDialog).getByText("5")).toBeInTheDocument();
       expect(
         within(reviewDialog).getByText("$360.00/month"),
       ).toBeInTheDocument();
+      expect(
+        within(reviewDialog).queryByText("Order summary"),
+      ).not.toBeInTheDocument();
     });
-    click(buttonByText("Confirm", reviewDialog));
+    click(buttonByText("Pay and add slots", reviewDialog));
 
     await waitFor(() => {
       expect(requestedQuantity).toBe(5);
@@ -3131,7 +3147,7 @@ describe("organization billing settings", () => {
         ),
       ).toBeInTheDocument();
       expect(
-        screen.queryByRole("dialog", { name: "Buy concurrency" }),
+        screen.queryByRole("dialog", { name: "Review concurrency purchase" }),
       ).toBeNull();
     });
   });
@@ -3262,7 +3278,9 @@ describe("organization billing settings", () => {
       name: "Review concurrency change",
     });
     expect(previewedQuantity).toBe(3);
-    expect(within(reviewDialog).queryByText("Due now")).not.toBeInTheDocument();
+    expect(
+      within(reviewDialog).queryByText("Due today"),
+    ).not.toBeInTheDocument();
     expect(
       within(reviewDialog).getByText(
         "Your current slots stay active through this billing period. The lower quantity starts at renewal with no refund or account credit.",
@@ -3273,7 +3291,7 @@ describe("organization billing settings", () => {
     ).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$300.00/month")).toBeInTheDocument();
 
-    click(buttonByText("Confirm", reviewDialog));
+    click(buttonByText("Schedule change", reviewDialog));
 
     await waitFor(() => {
       expect(confirmedQuantity).toBe(3);
