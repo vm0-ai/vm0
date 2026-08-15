@@ -991,7 +991,6 @@
         "configurePackages": "Configurar paquetes de miembros",
         "credits": "Créditos",
         "currentMember": "Miembro actual",
-        "existingPackagesUnchanged": "Los paquetes actuales de los miembros no cambian.",
         "management": {
           "comparison": "Comparación de la suscripción actual y la nueva",
           "current": "Actual",

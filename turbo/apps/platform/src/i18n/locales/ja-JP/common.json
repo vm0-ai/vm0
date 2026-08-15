@@ -970,7 +970,6 @@
         "configurePackages": "メンバーパッケージを設定",
         "credits": "クレジット",
         "currentMember": "現在のメンバー",
-        "existingPackagesUnchanged": "既存のメンバーパッケージは変更されません。",
         "management": {
           "comparison": "現在と新しいサブスクリプションの比較",
           "current": "現在",
