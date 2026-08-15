@@ -4269,6 +4269,7 @@
         "apiKeyDescription": "Ein gemeinsam genutzter Arbeitsbereichsschlüssel. Am besten ist es, wenn das Team über ein Konto abrechnet.",
         "apiKeyPlaceholder": "Geben Sie Ihren API-Schlüssel ein",
         "apiKeyRequired": "API-Schlüssel ist erforderlich",
+        "availableModels": "Verfügbare Modelle",
         "builtIn": "Eingebaut",
         "builtInDescription": "Arbeitsbereichs-Credits decken die Nutzung ab.",
         "claudeSubscription": "Claude-Abonnement",
@@ -4287,16 +4288,17 @@
         "model": "Modell",
         "noAvailableModels": "Keine verfügbaren Modelle",
         "noMappedGateway": "Diesem Modell ist keine Anbieterverbindung zugeordnet.",
+        "pricing": "Preise",
         "providedBy": "Bereitgestellt von",
         "provider": "Anbieter",
         "providerApiKey": "{{provider}} API-Schlüssel",
+        "runsThrough": "Ausführung über",
         "secretStored": "In den Workspace-Secrets gespeichert.",
         "selectDefaultModel": "Wählen Sie ein Standardmodell aus",
         "selectGateway": "Anbieterverbindung auswählen",
         "selectModel": "Wählen Sie ein Modell aus",
         "selectProvider": "Wählen Sie einen Anbieter aus",
-        "workspaceDescription": "Verfügbar für alle in diesem Arbeitsbereich.",
-        "workspaceTitle": "Arbeitsbereich"
+        "workspaceDescription": "Verfügbar für alle in diesem Arbeitsbereich."
       },
       "reset": {
         "confirmDescription": "Verwenden Sie einen Codex-Reset, um Ihre aktuellen Nutzungsfenster zurückzusetzen. Sie haben {{remaining}}.",

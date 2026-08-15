@@ -4319,6 +4319,7 @@
         "apiKeyDescription": "Uma chave compartilhada do espaço de trabalho. Ideal quando a equipe fatura o uso por uma única conta.",
         "apiKeyPlaceholder": "Insira sua chave de API",
         "apiKeyRequired": "A chave de API é obrigatória",
+        "availableModels": "Modelos disponíveis",
         "builtIn": "Integrado",
         "builtInDescription": "Os créditos do espaço de trabalho cobrem o uso.",
         "claudeSubscription": "Assinatura do Claude",
@@ -4337,16 +4338,17 @@
         "model": "Modelo",
         "noAvailableModels": "Nenhum modelo disponível",
         "noMappedGateway": "Nenhuma conexão de provedor mapeia este modelo.",
+        "pricing": "Preços",
         "providedBy": "Disponibilizado por",
         "provider": "Provedor",
         "providerApiKey": "Chave de API da {{provider}}",
+        "runsThrough": "Executado por",
         "secretStored": "Armazenado nos segredos do espaço de trabalho.",
         "selectDefaultModel": "Selecionar um modelo padrão",
         "selectGateway": "Selecionar uma conexão de provedor",
         "selectModel": "Selecionar um modelo",
         "selectProvider": "Selecionar um provedor",
-        "workspaceDescription": "Disponível para todos neste espaço de trabalho.",
-        "workspaceTitle": "Espaço de trabalho"
+        "workspaceDescription": "Disponível para todos neste espaço de trabalho."
       },
       "reset": {
         "confirmDescription": "Use uma redefinição do Codex para redefinir suas janelas de uso atuais. Você tem {{remaining}}.",

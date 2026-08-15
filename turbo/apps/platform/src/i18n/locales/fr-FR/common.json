@@ -4319,6 +4319,7 @@
         "apiKeyDescription": "Une clé d'espace de travail partagée. Idéal lorsque l'équipe facture via un seul compte.",
         "apiKeyPlaceholder": "Entrez votre clé API",
         "apiKeyRequired": "La clé API est requise",
+        "availableModels": "Modèles disponibles",
         "builtIn": "Intégré",
         "builtInDescription": "Les crédits de l'espace de travail couvrent l'utilisation.",
         "claudeSubscription": "Abonnement Claude",
@@ -4337,16 +4338,17 @@
         "model": "Modèle",
         "noAvailableModels": "Aucun modèle disponible",
         "noMappedGateway": "Aucune connexion au fournisseur ne correspond à ce modèle.",
+        "pricing": "Tarification",
         "providedBy": "Fourni par",
         "provider": "Fournisseur",
         "providerApiKey": "Clé API {{provider}}",
+        "runsThrough": "Exécuté via",
         "secretStored": "Stocké dans les secrets de l'espace de travail.",
         "selectDefaultModel": "Sélectionner un modèle par défaut",
         "selectGateway": "Sélectionner une connexion au fournisseur",
         "selectModel": "Sélectionner un modèle",
         "selectProvider": "Sélectionner un fournisseur",
-        "workspaceDescription": "Disponible pour tous les membres de cet espace de travail.",
-        "workspaceTitle": "Espace de travail"
+        "workspaceDescription": "Disponible pour tous les membres de cet espace de travail."
       },
       "reset": {
         "confirmDescription": "Utilisez une réinitialisation de Codex pour remettre à zéro vos fenêtres d'utilisation actuelles. Il vous en reste {{remaining}}.",

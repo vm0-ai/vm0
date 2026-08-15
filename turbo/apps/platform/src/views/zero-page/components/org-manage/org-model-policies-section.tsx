@@ -651,17 +651,14 @@ function PolicyRow({
   return (
     <div
       data-testid={`org-model-policy-row-${policy.model}`}
-      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_236px_auto]"
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_236px_96px_36px]"
     >
-      <div className="flex min-w-0 flex-col justify-center">
-        <div className="flex items-center gap-2">
+      <div className="col-start-1 row-start-1 flex min-w-0 flex-col justify-center">
+        <div className="flex min-w-0 items-center gap-2">
           {modelIconType && <ProviderIcon type={modelIconType} size={18} />}
-          <p className="truncate text-sm font-medium text-foreground">
+          <p className="min-w-0 truncate text-sm font-medium text-foreground">
             {policy.modelLabel}
           </p>
-          {builtInPriceTier !== undefined && (
-            <PriceTierBadge tier={builtInPriceTier} />
-          )}
           {policy.routeStatus !== "valid" && (
             <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
               <AlertTriangle size={12} />
@@ -681,7 +678,7 @@ function PolicyRow({
           </p>
         )}
       </div>
-      <div className="flex items-center justify-end sm:order-4">
+      <div className="col-start-2 row-start-1 flex items-center justify-end lg:col-start-4">
         <PolicyActionsMenu
           policy={policy}
           disabled={disabled}
@@ -690,11 +687,18 @@ function PolicyRow({
           onDelete={onDelete}
         />
       </div>
-      <div className="col-span-2 flex min-w-0 flex-col justify-center sm:order-3 sm:col-span-1 sm:items-start">
+      <div className="col-start-1 row-start-2 flex min-w-0 flex-col justify-center lg:col-start-2 lg:row-start-1">
         <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
           <ProviderIcon type={routeSummary.iconType} size={16} />
           <span className="min-w-0 truncate">{routeSummary.label}</span>
         </div>
+      </div>
+      <div className="col-start-2 row-start-2 flex items-center justify-end lg:col-start-3 lg:row-start-1 lg:justify-start">
+        {builtInPriceTier === undefined ? (
+          <span className="text-xs text-muted-foreground">—</span>
+        ) : (
+          <PriceTierBadge tier={builtInPriceTier} />
+        )}
       </div>
     </div>
   );
@@ -1798,22 +1802,7 @@ export function OrgModelPoliciesSection() {
   };
 
   return (
-    <section className="flex flex-col gap-4">
-      <SettingsSectionHeading
-        title={t(($) => {
-          return $.settings.models.policies.workspaceTitle;
-        })}
-        description={t(($) => {
-          return $.settings.models.policies.workspaceDescription;
-        })}
-        action={
-          <AddModelButton
-            hasModels={addableModels.length > 0}
-            disabled={saving}
-            onClick={handleOpenAddModel}
-          />
-        }
-      />
+    <section className="flex flex-col gap-6">
       <DefaultModelRow
         policies={visiblePolicies}
         workspaceDefaultModel={data.workspaceDefaultModel}
@@ -1822,25 +1811,60 @@ export function OrgModelPoliciesSection() {
         onChange={handleDefaultModelChange}
         onUpgrade={openComparePlans}
       />
-      <div
-        className="overflow-hidden rounded-xl bg-card"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
-        <div className="divide-y divide-border/50">
-          {visiblePolicies.map((policy) => {
-            return (
-              <PolicyRow
-                key={policy.id}
-                policy={policy}
-                providers={providers}
-                connections={connections}
-                disabled={false}
-                canDelete={policies.length > 1}
-                onEdit={handleEditPolicy}
-                onDelete={handleDeletePolicy}
-              />
-            );
+      <div className="flex flex-col gap-3">
+        <SettingsSectionHeading
+          title={t(($) => {
+            return $.settings.models.policies.availableModels;
           })}
+          description={t(($) => {
+            return $.settings.models.policies.workspaceDescription;
+          })}
+          action={
+            <AddModelButton
+              hasModels={addableModels.length > 0}
+              disabled={saving}
+              onClick={handleOpenAddModel}
+            />
+          }
+        />
+        <div
+          className="overflow-hidden rounded-xl bg-card"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
+          <div className="hidden grid-cols-[minmax(0,1fr)_236px_96px_36px] gap-3 border-b border-border/50 bg-muted/20 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid">
+            <span>
+              {t(($) => {
+                return $.settings.models.policies.model;
+              })}
+            </span>
+            <span>
+              {t(($) => {
+                return $.settings.models.policies.runsThrough;
+              })}
+            </span>
+            <span>
+              {t(($) => {
+                return $.settings.models.policies.pricing;
+              })}
+            </span>
+            <span />
+          </div>
+          <div className="divide-y divide-border/50">
+            {visiblePolicies.map((policy) => {
+              return (
+                <PolicyRow
+                  key={policy.id}
+                  policy={policy}
+                  providers={providers}
+                  connections={connections}
+                  disabled={false}
+                  canDelete={policies.length > 1}
+                  onEdit={handleEditPolicy}
+                  onDelete={handleDeletePolicy}
+                />
+              );
+            })}
+          </div>
         </div>
       </div>
       <ModelPolicyRouteDialog

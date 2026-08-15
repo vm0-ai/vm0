@@ -4319,6 +4319,7 @@
         "apiKeyDescription": "Una chiave dell'area di lavoro condivisa. È meglio quando il team fattura tramite un unico account.",
         "apiKeyPlaceholder": "Inserisci la tua chiave API",
         "apiKeyRequired": "La chiave API è obbligatoria",
+        "availableModels": "Modelli disponibili",
         "builtIn": "Integrato",
         "builtInDescription": "I crediti dell'area di lavoro coprono l'utilizzo.",
         "claudeSubscription": "Claude abbonamento",
@@ -4337,16 +4338,17 @@
         "model": "Modello",
         "noAvailableModels": "Nessun modello disponibile",
         "noMappedGateway": "Nessuna connessione al provider mappa questo modello.",
+        "pricing": "Prezzi",
         "providedBy": "Fornito da",
         "provider": "Provider",
         "providerApiKey": "Chiave API {{provider}}",
+        "runsThrough": "Eseguito tramite",
         "secretStored": "Archiviati nei segreti dell'area di lavoro.",
         "selectDefaultModel": "Seleziona un modello predefinito",
         "selectGateway": "Seleziona una connessione al provider",
         "selectModel": "Seleziona un modello",
         "selectProvider": "Seleziona un provider",
-        "workspaceDescription": "Disponibile per tutti in quest'area di lavoro.",
-        "workspaceTitle": "Area di lavoro"
+        "workspaceDescription": "Disponibile per tutti in quest'area di lavoro."
       },
       "reset": {
         "confirmDescription": "Usa un ripristino Codex per reimpostare le finestre di utilizzo correnti. Te ne restano {{remaining}}.",
