@@ -123,12 +123,8 @@ async fn receive_http_request_before(
 async fn reap_spawned_test_task<T>(
     task: Option<tokio::task::JoinHandle<T>>,
     description: &str,
-    abort_first: bool,
 ) -> Option<String> {
     let mut task = task?;
-    if abort_first {
-        task.abort();
-    }
     match tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut task).await {
         Ok(Ok(_)) => return None,
         Ok(Err(error)) if error.is_cancelled() => return None,
@@ -1064,9 +1060,12 @@ async fn run_in_sandbox_suppresses_possibly_written_delivery() {
         Err(error) => {
             cancel.cancel();
             wait_gate.notify_one();
+            if let Some(server) = server.as_ref() {
+                server.abort();
+            }
             let (run_cleanup, server_cleanup) = tokio::join!(
-                reap_spawned_test_task(run_task.take(), "runner", false),
-                reap_spawned_test_task(server.take(), "active-input server", true),
+                reap_spawned_test_task(run_task.take(), "runner"),
+                reap_spawned_test_task(server.take(), "active-input server"),
             );
             let cleanup_errors = [run_cleanup, server_cleanup]
                 .into_iter()
