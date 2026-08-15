@@ -3039,10 +3039,16 @@ export function UsagePackMigrationDialogs({
   readonly onSelect: (tier: UsagePackPlanTier) => void;
 }) {
   const resetPricing = useSet(resetUsagePackPricing$);
-  const configuring =
+  const configurationStep =
     migrationOpen &&
     migrationTargetTier !== null &&
-    migration.effectiveAt !== null;
+    migration.effectiveAt !== null
+      ? {
+          effectiveAt: migration.effectiveAt,
+          targetTier: migrationTargetTier,
+        }
+      : null;
+  const configuring = configurationStep !== null;
   return (
     <PricingStepDialog
       flush={!configuring}
@@ -3054,15 +3060,15 @@ export function UsagePackMigrationDialogs({
         onClose();
       }}
     >
-      {configuring ? (
+      {configurationStep ? (
         <UsagePackMigrationPage
           configuration={migration.configuration ?? null}
-          effectiveAt={migration.effectiveAt}
+          effectiveAt={configurationStep.effectiveAt}
           inDialog
           migrationId={migration.migrationId}
           onBack={onBack}
           sourceTier={migration.tier}
-          targetTier={migrationTargetTier}
+          targetTier={configurationStep.targetTier}
         />
       ) : (
         <UsagePackMigrationPlanSelectionPage
