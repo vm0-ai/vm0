@@ -113,8 +113,6 @@ pub fn verify_final_session_history_identity_file(
 ///
 /// # Errors
 ///
-/// Returns:
-///
 /// Returns [`FinalSessionHistorySidecarExportError::Verification`] when identity
 /// metadata or source history cannot be verified. Returns
 /// [`FinalSessionHistorySidecarExportError::OutputWrite`] when the verified
@@ -341,7 +339,7 @@ pub enum FinalSessionHistoryIdentityVerifyError {
     MetadataRead,
     /// Metadata failed shared contract validation.
     InvalidMetadata(FinalSessionHistoryIdentityError),
-    /// Metadata framework does not match the marker shape.
+    /// Metadata framework does not match its history source.
     FrameworkMismatch,
     /// Metadata does not match the identity runner expected to verify.
     ExpectedIdentityMismatch,
