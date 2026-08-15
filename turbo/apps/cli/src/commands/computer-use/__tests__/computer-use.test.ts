@@ -19,13 +19,13 @@ import path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Command, Help } from "commander";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import {
   formatComputerUseResultForConsole,
-  zeroComputerUseCommand,
+  computerUseCommand,
 } from "../index";
 import { computerUseOutputDir } from "../output-artifacts";
-import { registerCommands } from "../../../../okou";
+import { registerCommands } from "../../../okou";
 
 let testOutputDir = "";
 
@@ -146,7 +146,7 @@ describe("computer-use command visibility", () => {
 
   it("should have Desktop-backed agent command subcommands", () => {
     const prog = new Command();
-    registerCommands(prog, [zeroComputerUseCommand]);
+    registerCommands(prog, [computerUseCommand]);
 
     const computerUse = prog.commands.find((c) => {
       return c.name() === "computer-use";
@@ -172,7 +172,7 @@ describe("computer-use command visibility", () => {
 
   it("should not expose host targeting options on agent-facing commands", () => {
     const prog = new Command();
-    registerCommands(prog, [zeroComputerUseCommand]);
+    registerCommands(prog, [computerUseCommand]);
 
     const computerUse = prog.commands.find((c) => {
       return c.name() === "computer-use";
@@ -191,13 +191,13 @@ describe("computer-use command visibility", () => {
 
   it("should explain the recommended Desktop Computer Use workflow", () => {
     let helpOutput = "";
-    zeroComputerUseCommand.configureOutput({
+    computerUseCommand.configureOutput({
       writeOut: (text: string) => {
         helpOutput += text;
       },
     });
 
-    zeroComputerUseCommand.outputHelp();
+    computerUseCommand.outputHelp();
 
     expect(helpOutput).toContain("Workflow:");
     expect(helpOutput).toContain(
@@ -216,7 +216,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should use Okou Desktop branding in plugin help", () => {
-    const pluginCommand = zeroComputerUseCommand.commands.find((command) => {
+    const pluginCommand = computerUseCommand.commands.find((command) => {
       return command.name() === "plugin";
     });
     const filesystemCommand = pluginCommand?.commands.find((command) => {
@@ -289,7 +289,7 @@ describe("computer-use command visibility", () => {
 
   it("should guide missing computer-use capability errors to delegated authorization", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "zero-run-token-without-computer-use");
+    vi.stubEnv("OKOU_TOKEN", "run-token-without-computer-use");
 
     server.use(
       http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
@@ -306,7 +306,7 @@ describe("computer-use command visibility", () => {
     );
 
     await expect(async () => {
-      await zeroComputerUseCommand.parseAsync(["node", "cli", "list-apps"]);
+      await computerUseCommand.parseAsync(["node", "cli", "list-apps"]);
     }).rejects.toThrow("process.exit called");
 
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
@@ -377,7 +377,7 @@ describe("computer-use command visibility", () => {
 
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     try {
-      await zeroComputerUseCommand.parseAsync([
+      await computerUseCommand.parseAsync([
         "node",
         "cli",
         "list-apps",
@@ -422,7 +422,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync(["node", "cli", "list-apps"]);
+    await computerUseCommand.parseAsync(["node", "cli", "list-apps"]);
   });
 
   it("should prefer the canonical backend URL without adding a trailing slash", async () => {
@@ -460,7 +460,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync(["node", "cli", "list-apps"]);
+    await computerUseCommand.parseAsync(["node", "cli", "list-apps"]);
   });
 
   it("should write screenshot and app state data to local files in command result console output", async () => {
@@ -579,7 +579,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "get-app-state",
@@ -657,7 +657,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "click",
@@ -741,7 +741,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "click",
@@ -811,7 +811,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "press-key",
@@ -870,7 +870,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "type-text",
@@ -927,7 +927,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "plugin",
@@ -992,7 +992,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "plugin",
@@ -1042,7 +1042,7 @@ describe("computer-use command visibility", () => {
       }),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "plugin",
@@ -1064,7 +1064,7 @@ describe("computer-use command visibility", () => {
       }),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "plugin",
@@ -1127,7 +1127,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "get-app-state",
@@ -1177,7 +1177,7 @@ describe("computer-use command visibility", () => {
       ),
     );
 
-    await zeroComputerUseCommand.parseAsync([
+    await computerUseCommand.parseAsync([
       "node",
       "cli",
       "get-app-state",

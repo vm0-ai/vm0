@@ -14,7 +14,7 @@ import {
   type ComputerUseFilesystemTool,
   type ComputerUsePluginCallBody,
 } from "@okouai/api-contracts/contracts/computer-use-plugins";
-import { ApiRequestError } from "../../../lib/api/core/client-factory";
+import { ApiRequestError } from "../../lib/api/core/client-factory";
 import {
   createComputerUsePluginCommand,
   listComputerUseHosts,
@@ -23,8 +23,8 @@ import {
   fetchComputerUsePluginContent,
   fetchComputerUseScreenshot,
   getComputerUseCommand,
-} from "../../../lib/api/domains/zero-computer-use";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/zero-computer-use";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   computerUseOutputDir,
   writeComputerUseArtifact,
@@ -1311,7 +1311,7 @@ const pluginCommand = addTargetOptions(
     .addCommand(mcpPluginCommand),
 );
 
-export const zeroComputerUseCommand = new Command()
+export const computerUseCommand = new Command()
   .name("computer-use")
   .description("Desktop app computer use through Okou CLI")
   .addHelpText("after", COMPUTER_USE_HELP_TEXT)
