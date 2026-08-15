@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.7...guest-contracts-v0.11.8) (2026-08-15)
+
+
+### Bug Fixes
+
+* **guest-agent:** remove session history marker authority ([#27284](https://github.com/vm0-ai/vm0/issues/27284)) ([1bf8617](https://github.com/vm0-ai/vm0/commit/1bf8617d3a04b6beccba5f81795d57476e728ffe))
+
 ## [0.11.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.6...guest-contracts-v0.11.7) (2026-08-14)
 
 

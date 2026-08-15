@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.168.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.15...runner-rs-v0.168.16) (2026-08-15)
+
+
+### Bug Fixes
+
+* **guest-agent:** remove session history marker authority ([#27284](https://github.com/vm0-ai/vm0/issues/27284)) ([1bf8617](https://github.com/vm0-ai/vm0/commit/1bf8617d3a04b6beccba5f81795d57476e728ffe))
+
+
+### Refactoring
+
+* **runner:** centralize human-readable byte formatting ([#27372](https://github.com/vm0-ai/vm0/issues/27372)) ([960b374](https://github.com/vm0-ai/vm0/commit/960b374d2e708d4ae35195a291faa89b2d5aa47e))
+* **runner:** make storage cache background fills runner-owned ([#27387](https://github.com/vm0-ai/vm0/issues/27387)) ([d9e8990](https://github.com/vm0-ai/vm0/commit/d9e8990c50ec69cba14bdd7b7b5926fdc75a8ee4))
+
 ## [0.168.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.14...runner-rs-v0.168.15) (2026-08-15)
 
 

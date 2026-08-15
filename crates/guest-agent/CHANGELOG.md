@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.74.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.3...guest-agent-v0.74.4) (2026-08-15)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound claude tool tracking state ([#27374](https://github.com/vm0-ai/vm0/issues/27374)) ([8ea92c0](https://github.com/vm0-ai/vm0/commit/8ea92c05666a0f0ce10774a1a0efae57fc30a509))
+* **guest-agent:** remove session history marker authority ([#27284](https://github.com/vm0-ai/vm0/issues/27284)) ([1bf8617](https://github.com/vm0-ai/vm0/commit/1bf8617d3a04b6beccba5f81795d57476e728ffe))
+* **runner:** gate active-input smoke readiness ([#27389](https://github.com/vm0-ai/vm0/issues/27389)) ([79d358a](https://github.com/vm0-ai/vm0/commit/79d358a4a45bb3e4454156159813d23561af3e91))
+
 ## [0.74.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.2...guest-agent-v0.74.3) (2026-08-15)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.758.0](https://github.com/vm0-ai/vm0/compare/app-v0.757.0...app-v0.758.0) (2026-08-15)
+
+
+### Features
+
+* refine model policy table styling ([#27424](https://github.com/vm0-ai/vm0/issues/27424)) ([602e84d](https://github.com/vm0-ai/vm0/commit/602e84da53f7b5190807c71a248220a7cc2bc447))
+
+
+### Bug Fixes
+
+* **billing:** align credit purchase review ledger ([#27383](https://github.com/vm0-ai/vm0/issues/27383)) ([c67b974](https://github.com/vm0-ai/vm0/commit/c67b9746c582301f589ff06288f6b132dc544cb6))
+* **billing:** simplify concurrency change flow ([#27334](https://github.com/vm0-ai/vm0/issues/27334)) ([ef762d4](https://github.com/vm0-ai/vm0/commit/ef762d49a54301ab4a9a2e2dec161de76f2d5ad0))
+* **platform:** align credit balance bar radius ([#27423](https://github.com/vm0-ai/vm0/issues/27423)) ([5d96829](https://github.com/vm0-ai/vm0/commit/5d96829a0b7e91902596d176227558e8ab7f41d0))
+* **ui:** wrap pinned agents in four-column grid ([#27361](https://github.com/vm0-ai/vm0/issues/27361)) ([775e3c6](https://github.com/vm0-ai/vm0/commit/775e3c6d3e28097316dd97c99f1667bd993b88a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.6
+    * @okouai/core bumped to 8.562.3
+
 ## [0.757.0](https://github.com/vm0-ai/vm0/compare/app-v0.756.0...app-v0.757.0) (2026-08-15)
 
 
