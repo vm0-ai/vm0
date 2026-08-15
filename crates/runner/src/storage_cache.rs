@@ -558,7 +558,7 @@ fn take_background_fill_work(
 
 fn cancel_queued_background_fills(
     inner: &BackgroundFillCoordinatorInner,
-) -> Vec<Vec<SandboxOpReporter>> {
+) -> Vec<SandboxOpReporter> {
     let mut state = inner
         .state
         .lock()
@@ -570,11 +570,11 @@ fn cancel_queued_background_fills(
             (entry.state == BackgroundFillEntryState::Queued).then_some(key.clone())
         })
         .collect::<Vec<_>>();
-    let mut subscribers = Vec::with_capacity(queued_keys.len());
+    let mut subscribers = Vec::new();
     for key in queued_keys {
         if let Some(entry) = state.entries.remove(&key) {
             state.queued = state.queued.saturating_sub(1);
-            subscribers.push(entry.subscribers);
+            subscribers.extend(entry.subscribers);
         }
     }
     subscribers
@@ -624,21 +624,19 @@ fn handle_background_fill_worker_result(
         state.active = state.active.saturating_sub(1);
         entry.subscribers
     };
-    spawn_background_fill_reports(reports, vec![subscribers], worker.report.into_records());
+    spawn_background_fill_reports(reports, subscribers, worker.report.into_records());
 }
 
 fn spawn_background_fill_reports(
     reports: &mut JoinSet<()>,
-    subscribers: Vec<Vec<SandboxOpReporter>>,
+    subscribers: Vec<SandboxOpReporter>,
     records: Vec<SandboxOpRecord>,
 ) {
-    for subscriber_group in subscribers {
-        for reporter in subscriber_group {
-            let records = records.clone();
-            reports.spawn(async move {
-                reporter.report(records).await;
-            });
-        }
+    for reporter in subscribers {
+        let records = records.clone();
+        reports.spawn(async move {
+            reporter.report(records).await;
+        });
     }
 }
 
