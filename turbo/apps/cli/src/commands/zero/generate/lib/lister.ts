@@ -7,8 +7,8 @@ import { getPlatformOrigin } from "../../doctor/platform-url";
 import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,
-} from "../../shared/billing-capabilities";
-import { planUpgradeUrl } from "../../shared/billing-links";
+} from "../../../shared/billing-capabilities";
+import { planUpgradeUrl } from "../../../shared/billing-links";
 import { getOkouAgentId } from "../../../../lib/okou-env";
 
 type ConnectorGenerationType =

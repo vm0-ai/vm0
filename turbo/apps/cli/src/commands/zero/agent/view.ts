@@ -15,7 +15,7 @@ import {
   loadConnectorPermissionInfos,
   connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
-} from "../shared/firewall-permissions";
+} from "../../shared/firewall-permissions";
 
 function printDetailedPermissions(info: ConnectorPermissionInfo): void {
   if (!info.policies) {

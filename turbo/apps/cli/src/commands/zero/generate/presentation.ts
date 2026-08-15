@@ -1,4 +1,4 @@
-import { createPresentationGenerateCommand } from "../shared/presentation-generate";
+import { createPresentationGenerateCommand } from "../../shared/presentation-generate";
 
 export const presentationCommand = createPresentationGenerateCommand({
   name: "presentation",

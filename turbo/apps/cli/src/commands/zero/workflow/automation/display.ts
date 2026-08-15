@@ -3,7 +3,7 @@ import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat
 import type { GmailNewMessageEventConfig } from "@okouai/api-contracts/contracts/zero-workflows";
 import type { ZeroWorkflowAutomationSummary } from "../../../../lib/api/domains/zero-workflows";
 import { formatRelativeTime } from "../../../../lib/domain/relative-time";
-import { formatDurationSeconds } from "../../shared/duration";
+import { formatDurationSeconds } from "../../../shared/duration";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;

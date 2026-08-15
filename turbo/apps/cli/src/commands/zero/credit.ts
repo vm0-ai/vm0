@@ -14,8 +14,8 @@ import {
   currentPlanAllowsVideo,
   currentPlanCanBuyCredits,
   currentTokenCanReadBilling,
-} from "./shared/billing-capabilities";
-import { planUpgradeUrl } from "./shared/billing-links";
+} from "../shared/billing-capabilities";
+import { planUpgradeUrl } from "../shared/billing-links";
 
 function parseCredits(value: string): number {
   const credits = Number(value.replaceAll(",", ""));
