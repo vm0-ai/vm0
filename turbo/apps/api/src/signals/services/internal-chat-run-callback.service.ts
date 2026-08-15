@@ -2251,7 +2251,7 @@ function buildComputerUseSystemPrompt(displayName: string): string {
     "# Computer Use",
     `Computer Use is enabled for this run on ${displayName}.`,
     "Use Okou CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
-    "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
+    "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Okou Computer Use on that computer, then retry.",
   ].join("\n");
 }
 

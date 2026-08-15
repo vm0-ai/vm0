@@ -12610,7 +12610,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "`okou browser use` creates, reuses, or resumes a remote browser",
     );
     expect(appendSystemPrompt).not.toContain(
-      "Zero Browser is currently off for this chat thread",
+      "Okou Browser is currently off for this chat thread",
     );
     for (const otherIntegrationHint of [
       "okou slack download-file -h",
