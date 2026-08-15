@@ -3,12 +3,12 @@ import { unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   downloadWebFile,
   transcribeAudio,
   type TranscribeAudioSegment,
-} from "../../../lib/api/domains/web";
+} from "../../lib/api/domains/web";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -86,7 +86,7 @@ Notes:
           process.exit(1);
         }
 
-        const tmpAudio = join(tmpdir(), `zero-audio-${Date.now()}.wav`);
+        const tmpAudio = join(tmpdir(), `video-audio-${Date.now()}.wav`);
         let tmpVideo: string | undefined;
 
         try {
@@ -95,7 +95,7 @@ Notes:
           if (options.file) {
             videoPath = options.file;
           } else {
-            tmpVideo = join(tmpdir(), `zero-video-${Date.now()}.mp4`);
+            tmpVideo = join(tmpdir(), `video-input-${Date.now()}.mp4`);
             if (options.url) {
               execFileSync("curl", ["-sS", "-L", "-o", tmpVideo, options.url], {
                 stdio: ["ignore", "ignore", "pipe"],
