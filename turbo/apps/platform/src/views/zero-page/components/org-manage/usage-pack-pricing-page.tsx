@@ -1697,7 +1697,7 @@ function SubscriptionComparisonTable({
         <thead
           className={
             tooltip
-              ? "text-xs font-normal text-muted-foreground"
+              ? "text-[13px] font-normal leading-5 text-muted-foreground"
               : "bg-muted/40 text-sm font-medium uppercase tracking-wide text-muted-foreground"
           }
         >
