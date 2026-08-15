@@ -9676,11 +9676,11 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
 }
 
 const CHAT_EVENT_SNAPSHOT_POINTER_CONTRACTION_PREVIOUS_MIGRATION =
-  "0926_cooing_gladiator";
+  "0927_backfill_zero_agent_default_avatar";
 const CHAT_EVENT_SNAPSHOT_POINTER_DATA_CONTRACTION_MIGRATION =
-  "0927_contract_chat_event_snapshot_pointers";
+  "0928_contract_chat_event_snapshot_pointers";
 const CHAT_EVENT_SNAPSHOT_POINTER_SCHEMA_CONTRACTION_MIGRATION =
-  "0928_contract_chat_event_snapshot_cursor";
+  "0929_smart_machine_man";
 
 async function validateChatEventSnapshotPointerContraction(): Promise<void> {
   console.log("=== Validate Chat Event Snapshot pointer contraction ===\n");

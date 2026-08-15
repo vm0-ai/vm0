@@ -845,8 +845,15 @@
     {
       "idx": 928,
       "version": "7",
-      "when": 1786786547588,
-      "tag": "0928_overconfident_mac_gargan",
+      "when": 1786787230936,
+      "tag": "0928_contract_chat_event_snapshot_pointers",
+      "breakpoints": true
+    },
+    {
+      "idx": 929,
+      "version": "7",
+      "when": 1786787262177,
+      "tag": "0929_smart_machine_man",
       "breakpoints": true
     }
   ]
