@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { sendCommand } from "./send";
 
-export const zeroTeamsMessageCommand = new Command()
+export const teamsMessageCommand = new Command()
   .name("message")
   .description("Manage Microsoft Teams messages")
   .addCommand(sendCommand)
