@@ -12,7 +12,6 @@ const cardSpacingThreadId = "b0000000-0000-4000-a000-000000000737";
 const forwardLayoutThreadId = "b0000000-0000-4000-a000-000000000738";
 const forwardLayoutThreadTitle =
   "Forward composer layout with a very long thread title";
-const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
 // Card slots carry the same block margins as the paragraphs around them, and
 // adjacent margins collapse into one gap.
 const cardSlotGapPx = 8;
