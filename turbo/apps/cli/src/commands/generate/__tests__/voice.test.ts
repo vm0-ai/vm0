@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { generateCommand } from "../index";
 import { voiceCommand } from "../voice";
 
@@ -67,7 +67,7 @@ describe("okou generate voice command", () => {
         expect(request.headers.get("authorization")).toBe("Bearer test-token");
         expect(request.headers.get("content-type")).toBe("application/json");
         expect(await request.json()).toEqual({
-          text: "Hello from vm0",
+          text: "Hello from Okou",
           voice: "cedar",
           instructions: "warm",
         });
@@ -81,7 +81,7 @@ describe("okou generate voice command", () => {
       "cli",
       "voice",
       "--text",
-      "Hello from vm0",
+      "Hello from Okou",
       "--voice",
       "cedar",
       "--instructions",
@@ -107,7 +107,7 @@ describe("okou generate voice command", () => {
       "cli",
       "voice",
       "--text",
-      "Hello from vm0",
+      "Hello from Okou",
       "--json",
     ]);
 

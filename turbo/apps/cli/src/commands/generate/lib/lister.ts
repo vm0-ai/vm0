@@ -1,15 +1,15 @@
 import chalk from "chalk";
-import type { ZeroConnectorCatalogStatus } from "../../../../lib/api/domains/zero-connectors";
-import { getZeroBillingStatus } from "../../../../lib/api/domains/zero-billing";
-import { getZeroAgentUserConnectors } from "../../../../lib/api/domains/zero-agents";
-import { listZeroConnectorCatalogStatus } from "../../../../lib/api/domains/zero-connectors";
-import { getPlatformOrigin } from "../../../doctor/platform-url";
+import type { ZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
+import { getZeroBillingStatus } from "../../../lib/api/domains/zero-billing";
+import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
+import { listZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
+import { getPlatformOrigin } from "../../doctor/platform-url";
 import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,
-} from "../../../shared/billing-capabilities";
-import { planUpgradeUrl } from "../../../shared/billing-links";
-import { getOkouAgentId } from "../../../../lib/okou-env";
+} from "../../shared/billing-capabilities";
+import { planUpgradeUrl } from "../../shared/billing-links";
+import { getOkouAgentId } from "../../../lib/okou-env";
 
 type ConnectorGenerationType =
   | "audio"

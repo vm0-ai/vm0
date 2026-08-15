@@ -1,4 +1,4 @@
-import { createVoiceGenerateCommand } from "../../shared/voice-generate";
+import { createVoiceGenerateCommand } from "../shared/voice-generate";
 
 export const voiceCommand = createVoiceGenerateCommand({
   name: "voice",

@@ -1,5 +1,5 @@
-import { listZeroConnectorCatalog } from "../../../../lib/api/domains/zero-connectors";
-import type { ZeroConnectorCatalogItem } from "../../../../lib/api/domains/zero-connectors";
+import { listZeroConnectorCatalog } from "../../../lib/api/domains/zero-connectors";
+import type { ZeroConnectorCatalogItem } from "../../../lib/api/domains/zero-connectors";
 import type { GenerationType } from "./lister";
 
 function toConnectorGenerationType(
