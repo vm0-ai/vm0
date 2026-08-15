@@ -834,13 +834,13 @@ function planComparisonRows(
 
 function PlanComparison({ tier }: { readonly tier: UsagePackPlanTier }) {
   return (
-    <div className="mt-5 text-muted-foreground">
+    <div className="mt-5 flex flex-1 flex-col text-muted-foreground">
       {planComparisonRows(tier).map((row, index) => {
         return (
           <div
             key={row.label}
-            className={`flex items-baseline justify-between gap-4 py-1.5 text-sm font-medium leading-snug ${
-              index > 0 ? "border-t-[0.7px] border-[hsl(var(--gray-100))]" : ""
+            className={`flex flex-1 items-center justify-between gap-4 text-sm font-medium leading-snug ${
+              index > 0 ? "border-t-[0.7px] border-[hsl(var(--gray-50))]" : ""
             }`}
           >
             <span>{row.label}</span>
@@ -1787,90 +1787,6 @@ interface UsagePackPaymentPreview {
     readonly totalCredits: number;
     readonly expiresAt?: string;
   };
-}
-
-export function UsagePackPaymentSummary({
-  preview,
-}: {
-  readonly preview: UsagePackPaymentPreview;
-}) {
-  const immediateCreditGrant =
-    preview.immediateCreditGrant &&
-    preview.immediateCreditGrant.totalCredits > 0
-      ? preview.immediateCreditGrant
-      : null;
-  const hasImmediateAmount = preview.immediateAmountCents > 0;
-
-  if (!hasImmediateAmount && !immediateCreditGrant) {
-    return null;
-  }
-
-  return (
-    <div className="mt-1 divide-y divide-border/70 border-y border-border/70">
-      {hasImmediateAmount && (
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-4">
-          <p className="text-sm font-semibold text-foreground">
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.management.immediateAmount;
-            })}
-          </p>
-          <p className="text-right text-2xl font-semibold tabular-nums tracking-tight text-primary">
-            {formatUsd(preview.immediateAmountCents / 100)}
-          </p>
-        </div>
-      )}
-      {immediateCreditGrant && (
-        <div
-          role="group"
-          aria-label={i18n.t(($) => {
-            return $.billing.plans.usagePacks.management.immediateCredits;
-          })}
-          className="py-4"
-        >
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4">
-            <p className="text-sm font-semibold text-foreground">
-              {i18n.t(($) => {
-                return $.billing.plans.usagePacks.management.immediateCredits;
-              })}
-            </p>
-            <p className="text-right text-2xl font-semibold tabular-nums tracking-tight text-primary">
-              +{formatLocalizedNumber(immediateCreditGrant.totalCredits)}
-            </p>
-          </div>
-          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 text-xs">
-            <span className="text-muted-foreground">
-              {i18n.t(($) => {
-                return $.billing.plans.usagePacks.purchasedCredits;
-              })}
-            </span>
-            <span className="text-right font-medium tabular-nums text-foreground">
-              +{formatLocalizedNumber(immediateCreditGrant.purchasedCredits)}
-            </span>
-            <span className="text-muted-foreground">
-              {i18n.t(($) => {
-                return $.billing.plans.usagePacks.bonusCredits;
-              })}
-            </span>
-            <span className="text-right font-medium tabular-nums text-foreground">
-              +{formatLocalizedNumber(immediateCreditGrant.bonusCredits)}
-            </span>
-          </div>
-          {immediateCreditGrant.expiresAt && (
-            <p className="mt-3 border-t border-border/70 pt-2 text-right text-[11px] text-muted-foreground">
-              {i18n.t(
-                ($) => {
-                  return $.billing.usage.expires;
-                },
-                {
-                  date: formatBillingDate(immediateCreditGrant.expiresAt),
-                },
-              )}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /* What confirming does right now: the charge, and the credits it buys. The

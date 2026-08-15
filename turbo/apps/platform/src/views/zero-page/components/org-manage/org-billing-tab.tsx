@@ -1366,30 +1366,32 @@ function concurrencySubscriptionPeriodLabel(
 }
 
 function ConcurrencyQuantityControl({
+  autoFocus = false,
   disabled,
   label,
+  maximum = CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX,
+  minimum = CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN,
   onQuantityChange,
   quantity,
 }: {
+  autoFocus?: boolean;
   disabled: boolean;
   label: string;
+  maximum?: number;
+  minimum?: number;
   onQuantityChange: (quantity: number | null) => void;
   quantity: number | null;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-      <span className="text-[13px] font-medium text-foreground">{label}</span>
+    <div className="flex items-center justify-between gap-3 py-3">
+      <span className="text-muted-foreground">{label}</span>
       <div className="flex h-8 items-center rounded-lg border border-border/70 bg-background">
         <Button
           type="button"
           aria-label={i18n.t(($) => {
             return $.billing.concurrency.decreaseAria;
           })}
-          disabled={
-            quantity === null ||
-            quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN ||
-            disabled
-          }
+          disabled={quantity === null || quantity <= minimum || disabled}
           variant="quiet"
           size="icon-sm"
           className="rounded-l-lg disabled:opacity-40"
@@ -1406,6 +1408,7 @@ function ConcurrencyQuantityControl({
           inputMode="numeric"
           pattern="[1-9][0-9]*"
           value={quantity ?? ""}
+          autoFocus={autoFocus}
           disabled={disabled}
           aria-label={label}
           className="h-8 w-11 rounded-none border-y-0 border-x border-border/70 bg-transparent px-1 text-center text-sm font-medium tabular-nums shadow-none focus:border-border focus:ring-0"
@@ -1421,8 +1424,8 @@ function ConcurrencyQuantityControl({
             const nextQuantity = Number(nextValue);
             if (
               Number.isInteger(nextQuantity) &&
-              nextQuantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN &&
-              nextQuantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX
+              nextQuantity >= minimum &&
+              nextQuantity <= maximum
             ) {
               onQuantityChange(nextQuantity);
             }
@@ -1433,20 +1436,12 @@ function ConcurrencyQuantityControl({
           aria-label={i18n.t(($) => {
             return $.billing.concurrency.increaseAria;
           })}
-          disabled={
-            (quantity !== null &&
-              quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX) ||
-            disabled
-          }
+          disabled={(quantity !== null && quantity >= maximum) || disabled}
           variant="quiet"
           size="icon-sm"
           className="rounded-r-lg disabled:opacity-40"
           onClick={() => {
-            onQuantityChange(
-              quantity === null
-                ? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN
-                : quantity + 1,
-            );
+            onQuantityChange(quantity === null ? minimum : quantity + 1);
           }}
         >
           <Plus size={13} />
@@ -1475,6 +1470,11 @@ function ConcurrencySubscriptionRow({
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
+        <p className="mb-0.5 text-[12px] font-medium text-muted-foreground first-letter:uppercase">
+          {i18n.t(($) => {
+            return $.billing.concurrency.paidAddOn;
+          })}
+        </p>
         <p className="text-sm font-medium text-foreground">
           {slotCountLabel(subscription.quantity)}
         </p>
@@ -1534,7 +1534,7 @@ function ConcurrencySubscriptionRow({
 
 interface ConcurrencyConfirmCopy {
   readonly title: string;
-  readonly description: string;
+  readonly description?: string;
 }
 
 function concurrencyConfirmCopy(
@@ -1548,11 +1548,13 @@ function concurrencyConfirmCopy(
       title: i18n.t(($) => {
         return $.billing.concurrency.reviewTitle;
       }),
-      description: i18n.t(($) => {
-        return scheduled
-          ? $.billing.concurrency.scheduledReviewDescription
-          : $.billing.concurrency.reviewDescription;
-      }),
+      ...(scheduled
+        ? {
+            description: i18n.t(($) => {
+              return $.billing.concurrency.scheduledReviewDescription;
+            }),
+          }
+        : {}),
     };
   }
   if (action === "restore") {
@@ -1623,7 +1625,7 @@ function concurrencyConfirmButtonLabel(
   action: "change" | "restore",
   changeMode: ConcurrencyChangeMode,
   canChangeInApp: boolean,
-  reviewing: boolean,
+  preview: ConcurrencySubscriptionChangePreviewResponse | null,
   loading: boolean,
 ): string {
   if (loading) {
@@ -1645,10 +1647,19 @@ function concurrencyConfirmButtonLabel(
       return $.billing.downgrade.cancelSubscription;
     });
   }
-  if (reviewing) {
-    return i18n.t(($) => {
-      return $.billing.common.confirm;
-    });
+  if (preview) {
+    if (preview.effectiveAt) {
+      return i18n.t(($) => {
+        return $.billing.concurrency.scheduleChange;
+      });
+    }
+    return preview.immediateAmountCents > 0
+      ? i18n.t(($) => {
+          return $.billing.concurrency.payAndUpdate;
+        })
+      : i18n.t(($) => {
+          return $.billing.concurrency.updateSlots;
+        });
   }
   return canChangeInApp
     ? i18n.t(($) => {
@@ -1695,53 +1706,29 @@ function ConcurrencyQuantityEditor({
   );
 
   return (
-    <div className="mt-4 rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
-      <label
-        htmlFor="concurrency-change-quantity"
-        className="text-sm font-medium text-foreground"
-      >
-        {i18n.t(($) => {
-          return $.billing.concurrency.newQuantity;
-        })}
-      </label>
-      <Input
-        id="concurrency-change-quantity"
-        type="text"
-        inputMode="numeric"
+    <div className="mt-4 divide-y divide-border/70 border-y border-border/70 text-sm">
+      <ConcurrencyQuantityControl
         autoFocus
         disabled={loading}
-        value={targetQuantity ?? ""}
-        aria-invalid={
-          targetQuantity !== null && !quantityAllowed ? true : undefined
-        }
-        onChange={(event) => {
-          const value = event.currentTarget.value;
-          if (value !== "" && !/^\d+$/.test(value)) {
-            return;
-          }
-          onQuantityChange(value === "" ? null : Number(value));
-        }}
-        className="mt-2 h-9"
+        label={i18n.t(($) => {
+          return $.billing.concurrency.slots;
+        })}
+        minimum={minimumChangeQuantity}
+        onQuantityChange={onQuantityChange}
+        quantity={targetQuantity}
       />
-      <p className="mt-2 text-[13px] text-muted-foreground">
-        {i18n.t(
-          ($) => {
-            return $.billing.concurrency.quantityRange;
-          },
-          {
-            current: formatLocalizedNumber(currentQuantity),
-            maximum: formatLocalizedNumber(
-              CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX,
-            ),
-            minimum: formatLocalizedNumber(minimumChangeQuantity),
-          },
-        )}
-      </p>
-      {quantityAllowed && targetQuantity !== null ? (
-        <p className="mt-2 text-sm font-medium text-foreground">
-          {concurrencyMonthlyPrice(targetQuantity)}
-        </p>
-      ) : null}
+      <div className="flex items-center justify-between gap-4 py-3">
+        <span className="text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.concurrency.monthlyTotal;
+          })}
+        </span>
+        <span className="font-medium tabular-nums text-foreground">
+          {quantityAllowed && targetQuantity !== null
+            ? concurrencyMonthlyPrice(targetQuantity)
+            : "—"}
+        </span>
+      </div>
     </div>
   );
 }
@@ -1752,21 +1739,19 @@ function ConcurrencyChangeReview({
   readonly preview: ConcurrencySubscriptionChangePreviewResponse;
 }) {
   return (
-    <div className="mt-1">
-      {preview.immediateAmountCents > 0 && (
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-y border-border/70 py-4">
-          <p className="text-sm font-semibold text-foreground">
-            {i18n.t(($) => {
-              return $.billing.concurrency.dueNow;
-            })}
-          </p>
-          <p className="text-right text-2xl font-semibold tabular-nums tracking-tight text-primary">
-            {formatUsd(preview.immediateAmountCents / 100)}
-          </p>
-        </div>
-      )}
+    <div className="divide-y divide-border/70 border-y border-border/70 text-sm">
+      <div className="flex items-center justify-between gap-4 py-3">
+        <span className="text-muted-foreground">
+          {i18n.t(($) => {
+            return $.billing.concurrency.slots;
+          })}
+        </span>
+        <span className="font-medium tabular-nums text-foreground">
+          {formatLocalizedNumber(preview.targetQuantity)}
+        </span>
+      </div>
       {preview.effectiveAt ? (
-        <p className="border-y border-border/70 py-3 text-sm text-muted-foreground">
+        <p className="py-3 text-muted-foreground">
           {i18n.t(
             ($) => {
               return $.billing.plans.usagePacks.management.scheduledFor;
@@ -1775,42 +1760,35 @@ function ConcurrencyChangeReview({
           )}
         </p>
       ) : null}
-      <div className="pt-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center justify-between gap-4 py-3">
+        <span className="text-muted-foreground">
           {i18n.t(($) => {
-            return $.billing.concurrency.orderSummary;
+            return $.billing.concurrency.monthlyTotal;
           })}
-        </p>
-        <div className="mt-3 divide-y divide-border/60 overflow-hidden rounded-lg border border-border/70 text-sm">
-          <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-            <span className="text-muted-foreground">
-              {i18n.t(($) => {
-                return $.billing.concurrency.slots;
-              })}
-            </span>
-            <span className="font-medium text-foreground">
-              {formatLocalizedNumber(preview.targetQuantity)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-4 bg-muted/20 px-3 py-2.5">
-            <span className="font-medium text-foreground">
-              {i18n.t(($) => {
-                return $.billing.concurrency.monthlyTotal;
-              })}
-            </span>
-            <span className="font-semibold text-foreground">
-              {i18n.t(
-                ($) => {
-                  return $.billing.plans.pricePerMonth;
-                },
-                {
-                  price: formatUsd(preview.nextRecurringAmountCents / 100),
-                },
-              )}
-            </span>
-          </div>
-        </div>
+        </span>
+        <span className="font-medium tabular-nums text-foreground">
+          {i18n.t(
+            ($) => {
+              return $.billing.plans.pricePerMonth;
+            },
+            {
+              price: formatUsd(preview.nextRecurringAmountCents / 100),
+            },
+          )}
+        </span>
       </div>
+      {preview.immediateAmountCents > 0 && (
+        <div className="flex items-center justify-between gap-4 py-3">
+          <span className="text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.concurrency.dueToday;
+            })}
+          </span>
+          <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
+            {formatUsd(preview.immediateAmountCents / 100)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1925,12 +1903,60 @@ function ConcurrencyConfirmDialogContent({
       Reason.DomCallback,
     );
   };
+  const handleSecondaryAction = () => {
+    if (action === "change" && changeMode === "cancel") {
+      setChangeMode("quantity");
+      return;
+    }
+    onClose();
+  };
+  const dialogActions = (
+    <>
+      <Button
+        variant="outline"
+        disabled={loading}
+        onClick={handleSecondaryAction}
+      >
+        {i18n.t(($) => {
+          return action === "change" && changeMode === "cancel"
+            ? $.billing.common.back
+            : $.billing.common.cancel;
+        })}
+      </Button>
+      <Button
+        variant={
+          action === "change" && changeMode === "cancel"
+            ? "destructive"
+            : "default"
+        }
+        disabled={concurrencyConfirmDisabled(
+          action,
+          changeMode,
+          loading,
+          changeQuantityValid,
+        )}
+        onClick={handleConfirm}
+      >
+        {concurrencyConfirmButtonLabel(
+          action,
+          changeMode,
+          canChangeInApp,
+          preview,
+          loading,
+        )}
+      </Button>
+    </>
+  );
+  const showCancellationEntry =
+    action === "change" && changeMode === "quantity" && !reviewing;
 
   return (
     <DialogContent className="sm:max-w-[420px]">
       <DialogHeader>
         <DialogTitle>{copy.title}</DialogTitle>
-        <DialogDescription>{copy.description}</DialogDescription>
+        {copy.description ? (
+          <DialogDescription>{copy.description}</DialogDescription>
+        ) : null}
       </DialogHeader>
 
       {reviewing && preview ? (
@@ -1945,13 +1971,13 @@ function ConcurrencyConfirmDialogContent({
         />
       ) : null}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {action === "change" && changeMode === "quantity" && !reviewing ? (
+      {showCancellationEntry ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="quiet"
             size="sm"
-            className="font-normal"
+            className="-ml-3 font-normal"
             disabled={loading}
             onClick={() => {
               setChangeMode("cancel");
@@ -1961,49 +1987,11 @@ function ConcurrencyConfirmDialogContent({
               return $.billing.concurrency.cancelEntireOption;
             })}
           </Button>
-        ) : null}
-        <div className="ml-auto flex justify-end gap-2">
-          <Button
-            variant="outline"
-            disabled={loading}
-            onClick={() => {
-              if (action === "change" && changeMode === "cancel") {
-                setChangeMode("quantity");
-                return;
-              }
-              onClose();
-            }}
-          >
-            {i18n.t(($) => {
-              return action === "change" && changeMode === "cancel"
-                ? $.billing.common.back
-                : $.billing.common.cancel;
-            })}
-          </Button>
-          <Button
-            variant={
-              action === "change" && changeMode === "cancel"
-                ? "destructive"
-                : "default"
-            }
-            disabled={concurrencyConfirmDisabled(
-              action,
-              changeMode,
-              loading,
-              changeQuantityValid,
-            )}
-            onClick={handleConfirm}
-          >
-            {concurrencyConfirmButtonLabel(
-              action,
-              changeMode,
-              canChangeInApp,
-              reviewing,
-              loading,
-            )}
-          </Button>
+          <div className="ml-auto flex justify-end gap-2">{dialogActions}</div>
         </div>
-      </div>
+      ) : (
+        <DialogFooter>{dialogActions}</DialogFooter>
+      )}
     </DialogContent>
   );
 }
@@ -2029,14 +2017,9 @@ function ConcurrencyPurchaseReviewDialogContent({
       <DialogHeader>
         <DialogTitle>
           {i18n.t(($) => {
-            return $.billing.concurrency.buyTitle;
+            return $.billing.concurrency.reviewPurchaseTitle;
           })}
         </DialogTitle>
-        <DialogDescription>
-          {i18n.t(($) => {
-            return $.billing.concurrency.reviewDescription;
-          })}
-        </DialogDescription>
       </DialogHeader>
       <ConcurrencyChangeReview preview={dialog.preview} />
       <DialogFooter>
@@ -2058,9 +2041,13 @@ function ConcurrencyPurchaseReviewDialogContent({
             ? i18n.t(($) => {
                 return $.billing.common.updating;
               })
-            : i18n.t(($) => {
-                return $.billing.common.confirm;
-              })}
+            : dialog.preview.immediateAmountCents > 0
+              ? i18n.t(($) => {
+                  return $.billing.concurrency.payAndAddSlots;
+                })
+              : i18n.t(($) => {
+                  return $.billing.concurrency.addSlots;
+                })}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -2121,12 +2108,16 @@ function ConcurrencyPurchaseDialog({
           ? $.billing.common.updating
           : $.billing.common.redirecting;
       })
-    : i18n.t(
-        ($) => {
-          return $.billing.concurrency.buyAmount;
-        },
-        { amount: concurrencyMonthlyPrice(effectiveQuantity) },
-      );
+    : reviewAvailable
+      ? i18n.t(($) => {
+          return $.billing.concurrency.reviewPurchase;
+        })
+      : i18n.t(
+          ($) => {
+            return $.billing.concurrency.buyAmount;
+          },
+          { amount: concurrencyMonthlyPrice(effectiveQuantity) },
+        );
 
   return (
     <Dialog
@@ -2142,14 +2133,9 @@ function ConcurrencyPurchaseDialog({
               return $.billing.concurrency.buyTitle;
             })}
           </DialogTitle>
-          <DialogDescription>
-            {i18n.t(($) => {
-              return $.billing.concurrency.buyDescription;
-            })}
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="mt-2 flex flex-col gap-4">
+        <div className="divide-y divide-border/70 border-y border-border/70 text-sm">
           <ConcurrencyQuantityControl
             disabled={checkoutLoading}
             label={i18n.t(($) => {
@@ -2158,12 +2144,19 @@ function ConcurrencyPurchaseDialog({
             onQuantityChange={setQuantity}
             quantity={quantity}
           />
-          <p className="text-sm font-medium text-foreground">
-            {concurrencyMonthlyPrice(effectiveQuantity)}
-          </p>
+          <div className="flex items-center justify-between gap-4 py-3">
+            <span className="text-muted-foreground">
+              {i18n.t(($) => {
+                return $.billing.concurrency.monthlyTotal;
+              })}
+            </span>
+            <span className="font-medium tabular-nums text-foreground">
+              {concurrencyMonthlyPrice(effectiveQuantity)}
+            </span>
+          </div>
         </div>
 
-        <div className="mt-4 flex justify-end gap-2">
+        <DialogFooter>
           <Button
             variant="outline"
             disabled={checkoutLoading}
@@ -2196,7 +2189,7 @@ function ConcurrencyPurchaseDialog({
           >
             {actionLabel}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -2211,30 +2204,54 @@ function ConcurrencyBillingSection({
   const openConfirmDialog = useSet(openConcurrencyConfirmDialog$);
   const subscriptions = status?.concurrencySubscriptions ?? [];
   const concurrencyLimit = status?.concurrencyLimit ?? 0;
+  const paidConcurrency = subscriptions.reduce((total, subscription) => {
+    return total + subscription.quantity;
+  }, 0);
+  const includedConcurrency = concurrencyLimit - paidConcurrency;
   const purchaseReviewAvailable =
     status?.concurrencyPurchaseReviewAvailable === true;
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-medium text-foreground">
-          {i18n.t(($) => {
-            return $.billing.concurrency.title;
-          })}
-        </h3>
-        <p className="text-[13px] text-muted-foreground">
-          {i18n.t(
-            ($) => {
-              return $.billing.concurrency.concurrentRun;
-            },
-            {
-              count: concurrencyLimit,
-              value: formatLocalizedNumber(concurrencyLimit),
-            },
-          )}
-        </p>
-      </div>
+      <h3 className="text-sm font-medium text-foreground">
+        {i18n.t(($) => {
+          return $.billing.concurrency.title;
+        })}
+      </h3>
       <div className="overflow-hidden rounded-xl bg-card zero-border">
+        <div className="px-5 py-4">
+          <p className="text-2xl font-medium tracking-tight text-foreground tabular-nums">
+            {i18n.t(
+              ($) => {
+                return $.billing.concurrency.concurrentRun;
+              },
+              {
+                count: concurrencyLimit,
+                value: formatLocalizedNumber(concurrencyLimit),
+              },
+            )}
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1 text-[13px] text-muted-foreground">
+            <span className="tabular-nums">
+              {formatLocalizedNumber(includedConcurrency)}{" "}
+              {i18n.t(($) => {
+                return $.billing.concurrency.includedWithPlan;
+              })}
+            </span>
+            {paidConcurrency > 0 ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="tabular-nums">
+                  {formatLocalizedNumber(paidConcurrency)}{" "}
+                  {i18n.t(($) => {
+                    return $.billing.concurrency.paidAddOn;
+                  })}
+                </span>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <div className="h-0 zero-border-t mx-5" />
         {subscriptions.length === 0 ? (
           <div className="px-5 py-4">
             <p className="text-sm font-medium text-foreground">
