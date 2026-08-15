@@ -9,7 +9,7 @@ import {
   getHostedSiteDeployments$,
   getHostedSiteFiles$,
   prepareHostedSiteDeployment$,
-} from "../services/zero-host.service";
+} from "../services/host.service";
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
