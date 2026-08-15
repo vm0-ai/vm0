@@ -5,7 +5,6 @@ import {
 } from "@okouai/api-contracts/contracts/zero-agents";
 import { SEED_INSTRUCTIONS } from "@okouai/core/seed-instructions";
 import type { ZeroClientFactory } from "../api-client.ts";
-import { randomPresetAvatar } from "../../views/zero-page/avatar-utils.ts";
 import { accept } from "../../lib/accept.ts";
 
 interface CreateZeroAgentParams {
@@ -26,17 +25,15 @@ export async function createZeroAgent(
   params: CreateZeroAgentParams,
   signal: AbortSignal,
 ): Promise<ZeroAgentResponse> {
-  // Use provided avatar or pick a random preset
-  const avatarUrl = params.avatarUrl ?? randomPresetAvatar();
-
-  // Step 1: Create agent (compose)
+  // Step 1: Create agent (compose). The API assigns a random preset avatar
+  // when none is provided.
   const agentsClient = createClient(zeroAgentsMainContract);
   const createResult = await accept(
     agentsClient.create({
       body: {
         displayName: params.displayName,
         sound: params.sound,
-        avatarUrl,
+        avatarUrl: params.avatarUrl,
         visibility: params.visibility,
       },
       fetchOptions: { signal },

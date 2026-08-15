@@ -180,7 +180,6 @@ import {
 } from "../../signals/external/user-model-preference.ts";
 import {
   codexFastModeEnabled$,
-  composerConnectorPermissionsEnabled$,
   customConnectorMcpEnabled$,
   avatarTemplatesEnabled$,
   imageRecognitionAvailable$,
@@ -6452,7 +6451,6 @@ function ConnectorsPopoverButton({
   const setDownloadDialogOpen = useSet(
     signals.computer.setComputerUseDownloadDialogOpen$,
   );
-  const permissionEntryEnabled = useGet(composerConnectorPermissionsEnabled$);
   const permissionConnectorSlug = connectorUi.permissionConnectorSlug;
   const connectorItems: ComposerPopoverConnectorItem[] = [
     ...agentConnectors.map((connector) => {
@@ -6463,12 +6461,11 @@ function ConnectorsPopoverButton({
     }),
   ];
   const showSearch = connectorItems.length > 20;
-  const permissionConnector =
-    permissionEntryEnabled && permissionConnectorSlug
-      ? agentConnectors.find((c) => {
-          return c.slug === permissionConnectorSlug;
-        })
-      : undefined;
+  const permissionConnector = permissionConnectorSlug
+    ? agentConnectors.find((c) => {
+        return c.slug === permissionConnectorSlug;
+      })
+    : undefined;
 
   // Use snapshot order if available, otherwise preserve catalog order.
   const sorted = sortOrder
@@ -6635,8 +6632,7 @@ function ConnectorsPopoverButton({
                       <span className="text-sm flex-1 truncate text-foreground">
                         {connector.label}
                       </span>
-                      {permissionEntryEnabled &&
-                        agentId &&
+                      {agentId &&
                         connector.authorized &&
                         connector.permissionSummary.hasPermissions && (
                           <Button
