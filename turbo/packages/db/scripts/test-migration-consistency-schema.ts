@@ -1977,6 +1977,16 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
   },
+  // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
+  // Previous API revisions explicitly insert NULL for omitted avatars. Remove
+  // in #27356 after those writers and their rollback window drain.
+  {
+    definition:
+      "CREATE TRIGGER bridge_zero_agent_default_avatar_0927 BEFORE INSERT ON public.zero_agents FOR EACH ROW EXECUTE FUNCTION bridge_zero_agent_default_avatar_0927()",
+    schemaName: "public",
+    tableName: "zero_agents",
+    triggerName: "bridge_zero_agent_default_avatar_0927",
+  },
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
@@ -1991,6 +2001,14 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
+    kind: "f",
+    schemaName: "public",
+  },
+  // Same DB/API rollout fallback and #27356 removal gate as its trigger.
+  {
+    bodyHash: "b93914b9cf86141a4b0b4b803a3bfe6f",
+    functionName: "bridge_zero_agent_default_avatar_0927",
+    identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
@@ -2176,6 +2194,72 @@ async function validatePermanentTriggerAndFunctionInventory(
 
     console.log("   ✅ Permanent trigger and function inventories match\n");
   } finally {
+    await client.end();
+  }
+}
+
+async function validateZeroAgentDefaultAvatarCompatibility(
+  dbUrl: string,
+): Promise<void> {
+  console.log("=== Validate zero-agent default-avatar rollout bridge ===\n");
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  const legacyComposeId = "00000000-0000-4000-8000-000000249221";
+  const explicitComposeId = "00000000-0000-4000-8000-000000249222";
+
+  try {
+    await client.query(
+      `
+        INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+        VALUES
+          ($1, 'avatar-rollout-user', 'legacy-null-avatar', 'avatar-rollout-org'),
+          ($2, 'avatar-rollout-user', 'explicit-avatar', 'avatar-rollout-org')
+      `,
+      [legacyComposeId, explicitComposeId],
+    );
+
+    // The current API cannot construct the draining release's explicit-NULL
+    // insert, so exercise that persisted-state compatibility boundary here.
+    await client.query(
+      `
+        INSERT INTO "zero_agents" (
+          "id", "org_id", "owner", "name", "visibility", "avatar_url"
+        ) VALUES
+          ($1, 'avatar-rollout-org', 'avatar-rollout-user',
+            'legacy-null-avatar', 'private', NULL),
+          ($2, 'avatar-rollout-org', 'avatar-rollout-user',
+            'explicit-avatar', 'private', 'preset:2')
+      `,
+      [legacyComposeId, explicitComposeId],
+    );
+
+    const rows = await client.query<{
+      avatarUrl: string | null;
+      name: string;
+    }>(
+      `
+        SELECT "name", "avatar_url" AS "avatarUrl"
+        FROM "zero_agents"
+        WHERE "id" IN ($1, $2)
+        ORDER BY "name"
+      `,
+      [legacyComposeId, explicitComposeId],
+    );
+    assert.deepEqual(rows.rows[0], {
+      avatarUrl: "preset:2",
+      name: "explicit-avatar",
+    });
+    assert.equal(rows.rows[1]?.name, "legacy-null-avatar");
+    assert.match(rows.rows[1]?.avatarUrl ?? "", /^preset:[0-4]$/u);
+
+    console.log("   ✅ explicit avatars remain unchanged");
+    console.log("   ✅ draining API NULL inserts receive a preset avatar\n");
+  } finally {
+    await client.query(`DELETE FROM "agent_composes" WHERE "id" IN ($1, $2)`, [
+      legacyComposeId,
+      explicitComposeId,
+    ]);
     await client.end();
   }
 }
@@ -9818,6 +9902,7 @@ async function main(): Promise<void> {
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validateZeroAgentDefaultAvatarCompatibility(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
@@ -9877,6 +9962,7 @@ async function main(): Promise<void> {
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",
       );
+      console.log("   ✅ Draining API avatar writes receive preset defaults");
       console.log("   ✅ Consecutive database resets replay all migrations");
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");

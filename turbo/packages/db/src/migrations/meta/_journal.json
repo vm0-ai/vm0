@@ -838,15 +838,15 @@
     {
       "idx": 927,
       "version": "7",
-      "when": 1786778761595,
-      "tag": "0927_contract_chat_event_snapshot_pointers",
+      "when": 1786769894774,
+      "tag": "0927_backfill_zero_agent_default_avatar",
       "breakpoints": true
     },
     {
       "idx": 928,
       "version": "7",
-      "when": 1786784651845,
-      "tag": "0928_contract_chat_event_snapshot_cursor",
+      "when": 1786786547588,
+      "tag": "0928_overconfident_mac_gargan",
       "breakpoints": true
     }
   ]

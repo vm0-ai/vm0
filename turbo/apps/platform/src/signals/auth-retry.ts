@@ -16,6 +16,7 @@ import {
 import {
   createDeferredPromise,
   onDomEventFn,
+  setLoop,
   settle,
   withCleanup,
 } from "./utils";
@@ -359,34 +360,37 @@ export const setupForegroundCatchUp$ = command(
     }
 
     const runRequestedCatchUps = async (): Promise<void> => {
-      while (true) {
-        const requestRevision = requestedVisibilityRevision;
-        const spanId = createConnectionDiagnosticSpanId();
-        const startedAtMs = now();
-        catchUpSpanId = spanId;
-        publishConnectionDiagnostic({
-          event: "foreground.catch-up",
-          phase: "start",
-          spanId,
-        });
-        await set(
-          runTrackedForegroundCatchUp$,
-          {
+      await setLoop(
+        async (loopSignal) => {
+          const requestRevision = requestedVisibilityRevision;
+          const spanId = createConnectionDiagnosticSpanId();
+          const startedAtMs = now();
+          catchUpSpanId = spanId;
+          publishConnectionDiagnostic({
+            event: "foreground.catch-up",
+            phase: "start",
             spanId,
-            startedAtMs,
-            subscriberCount: get(foregroundCatchUpCommands$).size,
-          },
-          signal,
-        );
-        signal.throwIfAborted();
+          });
+          await set(
+            runTrackedForegroundCatchUp$,
+            {
+              spanId,
+              startedAtMs,
+              subscriberCount: get(foregroundCatchUpCommands$).size,
+            },
+            loopSignal,
+          );
+          loopSignal.throwIfAborted();
 
-        if (
-          requestRevision === requestedVisibilityRevision ||
-          document.visibilityState !== "visible"
-        ) {
-          return;
-        }
-      }
+          return (
+            requestRevision === requestedVisibilityRevision ||
+            document.visibilityState !== "visible"
+          );
+        },
+        0,
+        signal,
+        { retryTransientErrors: false },
+      );
     };
 
     const catchUpForeground = (): Promise<void> => {
