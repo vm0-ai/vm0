@@ -15,8 +15,8 @@ import {
   createHtmlArtifactAuthoringPacket,
   type HtmlArtifactKind,
 } from "./html-artifact-authoring";
-import { dispatchGenerate } from "../zero/generate/lib/dispatch";
-import type { GenerationType } from "../zero/generate/lib/lister";
+import { dispatchGenerate } from "../generate/lib/dispatch";
+import type { GenerationType } from "../generate/lib/lister";
 
 interface ArtifactOptions {
   prompt?: string;

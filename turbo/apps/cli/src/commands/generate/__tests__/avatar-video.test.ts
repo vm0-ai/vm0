@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { avatarVideoCommand } from "../avatar-video";
 import { generateCommand } from "../index";
 
@@ -200,11 +200,11 @@ describe("okou generate avatar-video command", () => {
         expect(await request.json()).toStrictEqual({
           avatarId: 81,
           voiceId: "en-US-ChristopherNeural",
-          script: "Welcome to vm0",
+          script: "Welcome to Okou",
           aspectRatio: "landscape",
           screenStyle: 2,
           caption: false,
-          videoName: "vm0 introduction",
+          videoName: "Okou introduction",
         });
         return HttpResponse.json(AVATAR_VIDEO_RESULT);
       }),
@@ -219,14 +219,14 @@ describe("okou generate avatar-video command", () => {
       "--voice-id",
       "en-US-ChristopherNeural",
       "--script",
-      "Welcome to vm0",
+      "Welcome to Okou",
       "--aspect-ratio",
       "landscape",
       "--screen-style",
       "2",
       "--no-caption",
       "--video-name",
-      "vm0 introduction",
+      "Okou introduction",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
@@ -254,7 +254,7 @@ describe("okou generate avatar-video command", () => {
       "--voice-id",
       "en-US-ChristopherNeural",
       "--script",
-      "Welcome to vm0",
+      "Welcome to Okou",
       "--json",
     ]);
 

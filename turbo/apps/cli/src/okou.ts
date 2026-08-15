@@ -262,7 +262,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description:
       "Generate assets via Okou's built-in pipelines or get connector skill-invocation guidance",
     load: async () => {
-      return (await import("./commands/zero/generate")).generateCommand;
+      return (await import("./commands/generate")).generateCommand;
     },
   },
   {

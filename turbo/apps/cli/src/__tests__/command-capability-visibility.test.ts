@@ -1199,7 +1199,7 @@ describe("okou generate command visibility", () => {
   async function importGenerateCommand(token: string) {
     vi.resetModules();
     vi.stubEnv("OKOU_TOKEN", token);
-    const { generateCommand } = await import("../commands/zero/generate");
+    const { generateCommand } = await import("../commands/generate");
     return generateCommand as Command;
   }
 

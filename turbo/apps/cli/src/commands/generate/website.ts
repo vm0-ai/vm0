@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { createHtmlArtifactAuthoringPacket } from "../../shared/html-artifact-authoring";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { createHtmlArtifactAuthoringPacket } from "../shared/html-artifact-authoring";
 import {
   findDesignSystem,
   findWebsiteTemplateResource,
@@ -11,8 +11,8 @@ import {
 import {
   canonicalizeRegistryId,
   formatRegistryListing,
-} from "../../shared/resource-listing";
-import { websiteTemplateArchiveVersionFromEnvironment } from "../../shared/website-template-archive-version";
+} from "../shared/resource-listing";
+import { websiteTemplateArchiveVersionFromEnvironment } from "../shared/website-template-archive-version";
 import { dispatchGenerate } from "./lib/dispatch";
 
 const WEBSITE_TARGET = "website";

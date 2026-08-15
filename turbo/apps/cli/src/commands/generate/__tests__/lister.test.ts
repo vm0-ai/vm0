@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { generateCommand } from "../index";
 import {
   catalogItem,
@@ -9,7 +9,7 @@ import {
   manualAuthMethod,
   stubConnectorCatalog,
   stubConnectorCatalogStatus,
-} from "../../__tests__/helpers/connector-catalog";
+} from "../../zero/__tests__/helpers/connector-catalog";
 
 const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
 

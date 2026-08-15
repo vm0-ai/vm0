@@ -1,18 +1,18 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
-import { ApiRequestError } from "../../../lib/api/core/client-factory";
+import { ApiRequestError } from "../../lib/api/core/client-factory";
 import {
   generateWebAvatarVideo,
   listWebAvatarVideoAvatars,
   listWebAvatarVideoVoices,
-} from "../../../lib/api/domains/web";
-import { getZeroBillingStatus } from "../../../lib/api/domains/zero-billing";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/web";
+import { getZeroBillingStatus } from "../../lib/api/domains/zero-billing";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,
-} from "../../shared/billing-capabilities";
+} from "../shared/billing-capabilities";
 import { dispatchGenerate } from "./lib/dispatch";
 
 type AspectRatio = "portrait" | "landscape" | "square";
