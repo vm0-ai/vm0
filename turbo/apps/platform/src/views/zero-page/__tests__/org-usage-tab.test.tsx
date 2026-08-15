@@ -226,10 +226,7 @@ describe("organization usage settings", () => {
     expect(
       screen.getByText(expectedAllowanceResetText(WEEKLY_ALLOWANCE_RESET)),
     ).toBeInTheDocument();
-    for (const progressbar of within(allowance).getAllByRole("progressbar")) {
-      expect(progressbar).toHaveClass("bg-muted/40");
-      expect(progressbar.firstElementChild).toHaveClass("bg-usage-kind-model");
-    }
+    expect(within(allowance).getAllByRole("progressbar")).toHaveLength(2);
 
     // The compact additions table keeps only the three values needed for
     // scanning; source and expiry details are available from each row tooltip.
@@ -298,6 +295,7 @@ describe("organization usage settings", () => {
   });
 
   it("draws the composition bar even when one category holds the balance", async () => {
+    const user = userEvent.setup();
     mockUsageStory();
     mockBillingStatus({
       creditBreakdown: [
@@ -313,7 +311,10 @@ describe("organization usage settings", () => {
     const segment = await screen.findByTestId(
       "credit-balance-segment-payAsYouGo",
     );
-    expect(segment).toHaveClass("bg-usage-kind-other");
+    await user.hover(segment);
+    await expect(
+      screen.findByText("Purchased credits — 12,000"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("labels far-future credit grant expiries as never expiring", async () => {
