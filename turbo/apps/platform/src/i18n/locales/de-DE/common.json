@@ -1089,11 +1089,9 @@
       "creditsRemaining_other": "Es verbleiben noch {{value}} Credits",
       "expires": "Verfällt am {{date}}",
       "grantsTable": {
-        "added": "Hinzugefügt",
-        "amount": "Betrag",
-        "expires": "Läuft ab",
-        "left": "Übrig",
-        "source": "Quelle"
+        "credits": "Credits",
+        "date": "Datum",
+        "left": "Übrig"
       },
       "left": "{{value}} übrig",
       "member": "Mitglied",

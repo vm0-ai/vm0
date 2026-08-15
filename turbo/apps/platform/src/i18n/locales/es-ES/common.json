@@ -1111,11 +1111,9 @@
       "creditsRemaining_other": "{{value}} créditos restantes",
       "expires": "Caduca {{date}}",
       "grantsTable": {
-        "added": "Añadido",
-        "amount": "Importe",
-        "expires": "Caduca",
-        "left": "Restante",
-        "source": "Origen"
+        "credits": "Créditos",
+        "date": "Fecha",
+        "left": "Restante"
       },
       "left": "{{value}} restante",
       "member": "Miembro",

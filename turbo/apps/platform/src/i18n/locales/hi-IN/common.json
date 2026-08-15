@@ -1089,11 +1089,9 @@
       "creditsRemaining_other": "{{value}} क्रेडिट शेष",
       "expires": "{{date}} समाप्त हो रहा है",
       "grantsTable": {
-        "added": "जोड़ा गया",
-        "amount": "राशि",
-        "expires": "समाप्ति",
-        "left": "शेष",
-        "source": "स्रोत"
+        "credits": "क्रेडिट",
+        "date": "तारीख",
+        "left": "शेष"
       },
       "left": "{{value}} शेष",
       "member": "सदस्य",

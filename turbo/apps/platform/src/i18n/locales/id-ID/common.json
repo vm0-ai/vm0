@@ -1089,11 +1089,9 @@
       "creditsRemaining_other": "{{value}} kredit tersisa",
       "expires": "Kedaluwarsa {{date}}",
       "grantsTable": {
-        "added": "Ditambahkan",
-        "amount": "Jumlah",
-        "expires": "Kedaluwarsa",
-        "left": "Sisa",
-        "source": "Sumber"
+        "credits": "Kredit",
+        "date": "Tanggal",
+        "left": "Sisa"
       },
       "left": "Sisa {{value}}",
       "member": "Anggota",

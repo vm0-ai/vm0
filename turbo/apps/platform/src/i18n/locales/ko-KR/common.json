@@ -1089,11 +1089,9 @@
       "creditsRemaining_other": "{{value}} 크레딧 남음",
       "expires": "{{date}}에 만료",
       "grantsTable": {
-        "added": "추가일",
-        "amount": "금액",
-        "expires": "만료",
-        "left": "남음",
-        "source": "출처"
+        "credits": "크레딧",
+        "date": "날짜",
+        "left": "남음"
       },
       "left": "{{value}} 남음",
       "member": "멤버",
