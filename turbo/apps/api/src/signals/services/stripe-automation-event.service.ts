@@ -33,7 +33,7 @@ import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { ORG_SENTINEL_USER_ID } from "./feature-switches.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwnerInDb } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
 import { validateStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
-import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
+import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { storedWorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import type {
