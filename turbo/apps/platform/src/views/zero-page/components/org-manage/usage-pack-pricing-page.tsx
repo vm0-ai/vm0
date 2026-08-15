@@ -22,6 +22,7 @@ import type {
   UsagePackCatalogItem,
   UsagePackManagementResponse,
   UsagePackMigrationConfiguration,
+  UsagePackMigrationStateResponse,
   UsagePackSubscriptionChangePreviewResponse,
   UsagePackMigrationPreviewResponse,
   UsagePackMigrationRevisionPreviewResponse,
@@ -59,6 +60,7 @@ import {
   memberUsageSelections$,
   MINIMUM_USAGE_PACK_USD,
   selectedUsagePackPlan$,
+  resetUsagePackPricing$,
   setMemberUsageSelection$,
   setMemberUsageSelections$,
   setSelectedUsagePackPlan$,
@@ -1250,19 +1252,19 @@ function CheckoutOrderSummary({
 
 function PlanSelectionStep({
   catalog,
-  checkoutAllowed,
-  currentTier,
-  managedTier,
+  keepsMemberPackages,
   onAction,
+  resolveAction,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
-  readonly checkoutAllowed: boolean;
-  readonly currentTier: BillingTier;
-  readonly managedTier: UsagePackPlanTier | null;
+  readonly keepsMemberPackages: boolean;
   readonly onAction: (
     plan: UsagePackPlanTier,
     action: PlanSelectionAction,
   ) => void;
+  readonly resolveAction: (
+    targetTier: UsagePackPlanTier,
+  ) => PlanSelectionAction;
 }) {
   return (
     /* No panel border inside the dialog frame -- the only rule between the two
@@ -1272,12 +1274,7 @@ function PlanSelectionStep({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="dialog-scrollable grid min-h-0 flex-1 grid-cols-1 overflow-y-auto sm:grid-cols-2">
         {USAGE_PACK_PLANS.map((plan, index) => {
-          const action = usagePackPlanAction(
-            checkoutAllowed,
-            currentTier,
-            managedTier,
-            plan.tier,
-          );
+          const action = resolveAction(plan.tier);
           return (
             <PlanSelectionCard
               key={plan.tier}
@@ -1285,7 +1282,7 @@ function PlanSelectionStep({
               busy={false}
               catalog={catalog}
               divided={index > 0}
-              keepsMemberPackages={managedTier !== null}
+              keepsMemberPackages={keepsMemberPackages}
               plan={plan}
               onAction={() => {
                 onAction(plan.tier, action);
@@ -2843,10 +2840,12 @@ function MigrationPlanComparison({
 
 export function UsagePackMigrationPlanSelectionPage({
   configuration,
+  inDialog = false,
   onBack,
   onSelect,
 }: {
   readonly configuration: UsagePackMigrationConfiguration | null;
+  readonly inDialog?: boolean;
   readonly onBack: () => void;
   readonly onSelect: (tier: UsagePackPlanTier) => void;
 }) {
@@ -2855,6 +2854,40 @@ export function UsagePackMigrationPlanSelectionPage({
   const catalogLoadable = useLoadable(usagePackCatalogAsync$);
   const catalog =
     catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
+  const resolveAction = (
+    targetTier: UsagePackPlanTier,
+  ): PlanSelectionAction => {
+    return configuration
+      ? usagePackPlanAction(
+          false,
+          configuration.tier,
+          configuration.tier,
+          targetTier,
+        )
+      : "convert";
+  };
+  const selectPlan = (targetTier: UsagePackPlanTier): void => {
+    setMemberUsageSelections(
+      configuration ? migrationConfigurationSelections(configuration) : {},
+    );
+    onSelect(targetTier);
+  };
+
+  if (inDialog) {
+    return catalog ? (
+      <PlanSelectionStep
+        catalog={catalog}
+        keepsMemberPackages={configuration !== null}
+        onAction={(targetTier) => {
+          selectPlan(targetTier);
+        }}
+        resolveAction={resolveAction}
+      />
+    ) : (
+      <div className="m-5 flex-1 animate-pulse rounded-xl bg-muted/40" />
+    );
+  }
+
   return (
     <div
       className="flex flex-col gap-5 outline-none"
@@ -2876,14 +2909,7 @@ export function UsagePackMigrationPlanSelectionPage({
       ) : (
         <PlanSelectionPanel>
           {USAGE_PACK_PLANS.map((plan, index) => {
-            const action = configuration
-              ? usagePackPlanAction(
-                  false,
-                  configuration.tier,
-                  configuration.tier,
-                  plan.tier,
-                )
-              : "convert";
+            const action = resolveAction(plan.tier);
             return (
               <PlanSelectionCard
                 key={plan.tier}
@@ -2894,12 +2920,7 @@ export function UsagePackMigrationPlanSelectionPage({
                 keepsMemberPackages={configuration !== null}
                 plan={plan}
                 onAction={() => {
-                  setMemberUsageSelections(
-                    configuration
-                      ? migrationConfigurationSelections(configuration)
-                      : {},
-                  );
-                  onSelect(plan.tier);
+                  selectPlan(plan.tier);
                 }}
               />
             );
@@ -2913,6 +2934,7 @@ export function UsagePackMigrationPlanSelectionPage({
 export function UsagePackMigrationPage({
   configuration,
   effectiveAt,
+  inDialog = false,
   migrationId,
   onBack,
   sourceTier,
@@ -2920,6 +2942,7 @@ export function UsagePackMigrationPage({
 }: {
   readonly configuration: UsagePackMigrationConfiguration | null;
   readonly effectiveAt: string;
+  readonly inDialog?: boolean;
   readonly migrationId: string | null;
   readonly onBack: () => void;
   readonly sourceTier: UsagePackPlanTier;
@@ -2942,7 +2965,9 @@ export function UsagePackMigrationPage({
     : { bonusCredits: 0, totalCredits: 0, totalUsd: 0 };
   return (
     <div
-      className="flex flex-col gap-5 outline-none"
+      className={`flex flex-col gap-5 outline-none ${
+        inDialog ? "flex-1 pb-5" : ""
+      }`}
       ref={usagePackPricingPageRef}
       role="group"
       tabIndex={-1}
@@ -2951,7 +2976,7 @@ export function UsagePackMigrationPage({
         <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
       ) : (
         <>
-          <PricingPageHeader onBack={onBack} step={2} />
+          {!inDialog && <PricingPageHeader onBack={onBack} step={2} />}
           <MemberUsageConfiguration
             catalog={catalog}
             management={null}
@@ -2995,6 +3020,59 @@ export function UsagePackMigrationPage({
         </>
       )}
     </div>
+  );
+}
+
+export function UsagePackMigrationDialogs({
+  migration,
+  migrationOpen,
+  migrationTargetTier,
+  onBack,
+  onClose,
+  onSelect,
+}: {
+  readonly migration: UsagePackMigrationStateResponse;
+  readonly migrationOpen: boolean;
+  readonly migrationTargetTier: UsagePackPlanTier | null;
+  readonly onBack: () => void;
+  readonly onClose: () => void;
+  readonly onSelect: (tier: UsagePackPlanTier) => void;
+}) {
+  const resetPricing = useSet(resetUsagePackPricing$);
+  const configuring =
+    migrationOpen &&
+    migrationTargetTier !== null &&
+    migration.effectiveAt !== null;
+  return (
+    <PricingStepDialog
+      flush={!configuring}
+      step={configuring ? 2 : 1}
+      total={2}
+      onBack={configuring ? onBack : undefined}
+      onClose={() => {
+        resetPricing();
+        onClose();
+      }}
+    >
+      {configuring ? (
+        <UsagePackMigrationPage
+          configuration={migration.configuration ?? null}
+          effectiveAt={migration.effectiveAt}
+          inDialog
+          migrationId={migration.migrationId}
+          onBack={onBack}
+          sourceTier={migration.tier}
+          targetTier={migrationTargetTier}
+        />
+      ) : (
+        <UsagePackMigrationPlanSelectionPage
+          configuration={migration.configuration ?? null}
+          inDialog
+          onBack={onClose}
+          onSelect={onSelect}
+        />
+      )}
+    </PricingStepDialog>
   );
 }
 
@@ -3068,9 +3146,7 @@ export function UsagePackPricingDialogs({
       ) : (
         <PlanSelectionStep
           catalog={catalog}
-          checkoutAllowed={checkoutAllowed}
-          currentTier={currentTier}
-          managedTier={management?.tier ?? null}
+          keepsMemberPackages={management !== null}
           onAction={(plan, action) => {
             if (action === "disabled") {
               return;
@@ -3088,6 +3164,14 @@ export function UsagePackPricingDialogs({
                 : {},
             );
             setSelectedPlan(plan);
+          }}
+          resolveAction={(targetTier) => {
+            return usagePackPlanAction(
+              checkoutAllowed,
+              currentTier,
+              management?.tier ?? null,
+              targetTier,
+            );
           }}
         />
       )}

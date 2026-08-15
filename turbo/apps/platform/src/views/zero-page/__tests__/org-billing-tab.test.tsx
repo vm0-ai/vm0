@@ -52,19 +52,6 @@ function buttonByText(
   return button;
 }
 
-function buttonByLabel(
-  label: string,
-  container: ParentNode = document.body,
-): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
-  if (!button) {
-    throw new Error(`${label} button not found`);
-  }
-  return button;
-}
-
 function activeProBillingStatus(): BillingStatusResponse {
   return {
     tier: "pro",
@@ -943,14 +930,21 @@ describe("organization billing settings", () => {
 
     migrationReady.resolve(undefined);
 
-    await screen.findByText("Compare plans");
-    const proPlan = screen.getByRole("article", { name: "Pro plan" });
-    const teamPlan = screen.getByRole("article", { name: "Team plan" });
+    const choosePlanDialog = await screen.findByRole("dialog", {
+      name: "Choose a plan",
+    });
+    expect(
+      within(choosePlanDialog).getByText("Step 1 of 2"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Legacy")).toBeInTheDocument();
+    const proPlan = within(choosePlanDialog).getByRole("article", {
+      name: "Pro plan",
+    });
+    const teamPlan = within(choosePlanDialog).getByRole("article", {
+      name: "Team plan",
+    });
     expect(buttonByText("Convert plan", proPlan)).toBeEnabled();
     expect(buttonByText("Convert plan", teamPlan)).toBeEnabled();
-    expect(
-      screen.queryByRole("heading", { name: "Choose a plan" }),
-    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Configure member packages" }),
     ).not.toBeInTheDocument();
@@ -962,9 +956,12 @@ describe("organization billing settings", () => {
       ),
     );
 
-    await screen.findByRole("heading", {
+    const configurePackagesDialog = await screen.findByRole("dialog", {
       name: "Configure member packages",
     });
+    expect(
+      within(configurePackagesDialog).getByText("Step 2 of 2"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Choose a plan" }),
     ).not.toBeInTheDocument();
@@ -978,9 +975,16 @@ describe("organization billing settings", () => {
     ).toBeInTheDocument();
     expect(within(comparison).getByText("Monthly total")).toBeInTheDocument();
 
-    click(screen.getByLabelText("Back"));
-    await screen.findByText("Compare plans");
-    click(screen.getByLabelText("Back"));
+    click(within(configurePackagesDialog).getByLabelText("Back"));
+    const returnedChoosePlanDialog = await screen.findByRole("dialog", {
+      name: "Choose a plan",
+    });
+    click(within(returnedChoosePlanDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Choose a plan" }),
+      ).not.toBeInTheDocument();
+    });
     expect(screen.getByText("Legacy")).toBeInTheDocument();
     expect(
       screen.queryByText("Move to member packages"),
@@ -1006,7 +1010,7 @@ describe("organization billing settings", () => {
     });
 
     click(buttonByText("Convert plan"));
-    await screen.findByText("Compare plans");
+    await screen.findByRole("dialog", { name: "Choose a plan" });
   });
 
   it("shows conversion without upgrade for a legacy Pro plan", async () => {
@@ -1289,15 +1293,17 @@ describe("organization billing settings", () => {
 
     await screen.findByText("Team plan");
     click(buttonByText("Compare all plans"));
-    await screen.findByText("Compare plans");
+    const choosePlanDialog = await screen.findByRole("dialog", {
+      name: "Choose a plan",
+    });
     click(
       buttonByText(
         "Convert plan",
-        screen.getByRole("article", { name: "Team plan" }),
+        within(choosePlanDialog).getByRole("article", { name: "Team plan" }),
       ),
     );
 
-    await screen.findByRole("heading", {
+    const configurePackagesDialog = await screen.findByRole("dialog", {
       name: "Configure member packages",
     });
     expect(
@@ -1407,17 +1413,24 @@ describe("organization billing settings", () => {
       ),
     ).not.toBeInTheDocument();
 
-    click(buttonByLabel("Back"));
-    await screen.findByText("Compare plans");
-    click(buttonByLabel("Back"));
+    click(within(configurePackagesDialog).getByLabelText("Back"));
+    const returnedChoosePlanDialog = await screen.findByRole("dialog", {
+      name: "Choose a plan",
+    });
+    click(within(returnedChoosePlanDialog).getByLabelText("Close"));
     await screen.findByText("Team plan");
     expect(screen.getByText("Legacy")).toBeInTheDocument();
     expect(screen.getByText("Switches to Team on Sep 1, 2026")).toBeVisible();
 
     click(buttonByText("Downgrade"));
-    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    const revisionChoosePlanDialog = await screen.findByRole("dialog", {
+      name: "Choose a plan",
+    });
+    const proPlan = within(revisionChoosePlanDialog).getByRole("article", {
+      name: "Pro plan",
+    });
     click(buttonByText("Downgrade", proPlan));
-    await screen.findByRole("heading", {
+    const revisionPackagesDialog = await screen.findByRole("dialog", {
       name: "Configure member packages",
     });
     const reviewRevisionButton = buttonByText("Review conversion");
@@ -1432,9 +1445,11 @@ describe("organization billing settings", () => {
       expect(buttonByText("Current plan")).toBeDisabled();
     });
 
-    click(buttonByLabel("Back"));
-    await screen.findByText("Compare plans");
-    click(buttonByLabel("Back"));
+    click(within(revisionPackagesDialog).getByLabelText("Back"));
+    const returnedRevisionPlanDialog = await screen.findByRole("dialog", {
+      name: "Choose a plan",
+    });
+    click(within(returnedRevisionPlanDialog).getByLabelText("Close"));
     await expect(
       screen.findByText("Switches to Pro on Sep 1, 2026"),
     ).resolves.toBeVisible();

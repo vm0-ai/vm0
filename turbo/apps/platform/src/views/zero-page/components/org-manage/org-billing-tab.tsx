@@ -99,6 +99,7 @@ import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { openSettingsUsagePackUpgrade$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import {
   UsagePackMigrationPage,
+  UsagePackMigrationDialogs,
   UsagePackMigrationPlanSelectionPage,
   UsagePackPricingDialogs,
 } from "./usage-pack-pricing-page.tsx";
@@ -2450,9 +2451,8 @@ function BillingPricingPage({
   readonly periodEnd: string | null | undefined;
   readonly scheduledChange: ScheduledBillingChange;
 }) {
-  const migrationInProgress = usagePackMigrationInProgress(migration);
-  const scheduledMigrationMissingConfiguration =
-    migration?.status === "scheduled" && !migration.configuration;
+  const migrationNeedsProgressPage =
+    usagePackMigrationNeedsProgressPage(migration);
   return (
     <>
       {migrationLoading ? (
@@ -2460,8 +2460,7 @@ function BillingPricingPage({
           role="status"
           className="h-80 animate-pulse rounded-xl bg-muted/40"
         />
-      ) : migration &&
-        (migrationInProgress || scheduledMigrationMissingConfiguration) ? (
+      ) : migration && migrationNeedsProgressPage ? (
         <UsagePackMigrationProgressPage migration={migration} onBack={onBack} />
       ) : migrationOpen &&
         migration &&
@@ -2518,15 +2517,28 @@ function usagePackMigrationInProgress(
   return migration?.status === "applying";
 }
 
-/* The usage pack plans live in their own dialog over the billing tab.
-   Everything else -- the legacy pricing page and the legacy plan conversion --
-   still takes the tab over, so those keep the sub-page. */
+function usagePackMigrationNeedsProgressPage(
+  migration: UsagePackMigrationStateResponse | null,
+): boolean {
+  return (
+    usagePackMigrationInProgress(migration) ||
+    (migration?.status === "scheduled" && !migration.configuration)
+  );
+}
+
+/* All actionable usage pack pricing steps live in a dialog over the billing
+   tab, including conversion from a legacy plan. The legacy pricing page and a
+   migration that can only report progress still keep the tab sub-page. */
 function showsUsagePackPlanDialogs(
   enabled: boolean,
   migrationLoading: boolean,
   migration: UsagePackMigrationStateResponse | null,
 ): boolean {
-  return enabled && !migrationLoading && migration === null;
+  return (
+    enabled &&
+    !migrationLoading &&
+    !usagePackMigrationNeedsProgressPage(migration)
+  );
 }
 
 function usagePackMigrationConfigurable(
@@ -2587,6 +2599,46 @@ function CurrentPlanTitle({
         </span>
       )}
     </p>
+  );
+}
+
+function UsagePackPricingFlowDialogs({
+  checkoutAllowed,
+  currentTier,
+  migration,
+  migrationOpen,
+  migrationTargetTier,
+  onMigrationBack,
+  onClose,
+  onSelectMigration,
+}: {
+  readonly checkoutAllowed: boolean;
+  readonly currentTier: BillingTier;
+  readonly migration: UsagePackMigrationStateResponse | null;
+  readonly migrationOpen: boolean;
+  readonly migrationTargetTier: "pro" | "team" | null;
+  readonly onMigrationBack: () => void;
+  readonly onClose: () => void;
+  readonly onSelectMigration: (tier: "pro" | "team") => void;
+}) {
+  if (migration) {
+    return (
+      <UsagePackMigrationDialogs
+        migration={migration}
+        migrationOpen={migrationOpen}
+        migrationTargetTier={migrationTargetTier}
+        onBack={onMigrationBack}
+        onClose={onClose}
+        onSelect={onSelectMigration}
+      />
+    );
+  }
+  return (
+    <UsagePackPricingDialogs
+      checkoutAllowed={checkoutAllowed}
+      currentTier={currentTier}
+      onClose={onClose}
+    />
   );
 }
 
@@ -2871,14 +2923,19 @@ export function OrgBillingTab() {
 
       {showConcurrency && <ConcurrencyBillingSection status={status} />}
 
-      {/* Past the early return above, an open billing sub-page can only be the
-          usage pack plan flow. Mount it only while it is open so its catalog
+      {/* Past the early return above, an open billing sub-page is an actionable
+          usage pack pricing flow. Mount it only while it is open so its catalog
           and subscription load with the flow, not with every tab visit. */}
       {pricingOpen && (
-        <UsagePackPricingDialogs
+        <UsagePackPricingFlowDialogs
           checkoutAllowed={canStartUsagePackCheckout(status)}
           currentTier={currentTier}
+          migration={migration}
+          migrationOpen={migrationOpen}
+          migrationTargetTier={migrationTargetTier}
+          onMigrationBack={closeMigrationSubPage}
           onClose={closeBillingSubPage}
+          onSelectMigration={openMigrationPage}
         />
       )}
 
