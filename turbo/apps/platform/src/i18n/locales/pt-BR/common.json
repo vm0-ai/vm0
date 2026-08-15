@@ -839,10 +839,12 @@
       "dueNow": "A pagar agora",
       "emptyDescription": "Compre execuções simultâneas adicionais para este workspace.",
       "emptyTitle": "Nenhuma assinatura de simultaneidade",
+      "includedWithPlan": "incluídos no seu plano",
       "increaseAria": "Aumentar a quantidade adicional de simultaneidade",
       "monthlyTotal": "Total mensal",
       "newQuantity": "Nova quantidade total de vagas",
       "orderSummary": "Resumo do pedido",
+      "paidAddOn": "adicional pago",
       "quantityRange": "Digite um valor de {{minimum}} a {{maximum}}. Atualmente você tem {{current}} vagas.",
       "restoreDescription": "Isso retoma a renovação desta assinatura de simultaneidade.",
       "restoreSubscription": "Restaurar assinatura",
@@ -1111,11 +1113,9 @@
       "creditsRemaining_other": "{{value}} créditos restantes",
       "expires": "Expira em {{date}}",
       "grantsTable": {
-        "added": "Adicionado",
-        "amount": "Valor",
-        "expires": "Expira",
-        "left": "Restante",
-        "source": "Origem"
+        "credits": "Créditos",
+        "date": "Data",
+        "left": "Restante"
       },
       "left": "{{value}} restantes",
       "member": "Membro",

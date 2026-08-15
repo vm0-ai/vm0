@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.451.4](https://github.com/vm0-ai/vm0/compare/api-v1.451.3...api-v1.451.4) (2026-08-15)
+
+
+### Performance Improvements
+
+* accelerate chat event retention ([#27333](https://github.com/vm0-ai/vm0/issues/27333)) ([4b47d13](https://github.com/vm0-ai/vm0/commit/4b47d1340bdd3a6784cdc92801b05ed0c2b36085))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.4
+    * @okouai/core bumped to 8.562.1
+    * @okouai/db bumped to 1.200.4
+
 ## [1.451.3](https://github.com/vm0-ai/vm0/compare/api-v1.451.2...api-v1.451.3) (2026-08-14)
 
 

@@ -36,12 +36,13 @@ type CreditSegment = BillingStatusResponse["creditBreakdown"][number];
 // Segment swatches map to theme tokens defined in
 // `turbo/apps/platform/src/views/css/index.css` under `@theme`. Keep the
 // mapping here purely symbolic so branding/dark-mode tweaks happen in CSS.
+// Pay as you go shares Usage's "other" yellow so the charts stay consistent.
 const CATEGORY_COLORS: Readonly<
   Record<Exclude<CreditSegment["category"], "plan">, string>
 > = {
   free: "bg-credit-free",
   promotional: "bg-credit-promotional",
-  payAsYouGo: "bg-credit-pay-as-you-go",
+  payAsYouGo: "bg-usage-kind-other",
 };
 
 const PLAN_COLORS: Readonly<
@@ -179,27 +180,23 @@ function allowanceRemainingPercent(window: UsageAllowanceWindow): number {
 
 function usageTone(remainingPercent: number | null): {
   readonly barClassName: string;
-  readonly textClassName: string;
   readonly trackClassName: string;
 } {
   if (remainingPercent !== null && remainingPercent < 20) {
     return {
       barClassName: "bg-red-500",
-      textClassName: "text-red-600 dark:text-red-400",
       trackClassName: "bg-red-500/15",
     };
   }
   if (remainingPercent !== null && remainingPercent < 50) {
     return {
       barClassName: "bg-amber-500",
-      textClassName: "text-amber-600 dark:text-amber-400",
       trackClassName: "bg-amber-500/15",
     };
   }
   return {
-    barClassName: "bg-emerald-500",
-    textClassName: "text-emerald-600 dark:text-emerald-400",
-    trackClassName: "bg-emerald-500/15",
+    barClassName: "bg-usage-kind-model",
+    trackClassName: "bg-muted/40",
   };
 }
 
@@ -301,15 +298,15 @@ function UsageAllowanceWindowRow({
     <div className="flex flex-col gap-2">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-foreground">{label}</div>
-          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+          <div className="text-sm font-semibold text-foreground">{label}</div>
+          <div className="mt-0.5 truncate text-[13px] text-muted-foreground">
             {formatAllowanceReset(window, splitLayout)}
           </div>
         </div>
         <div
           className={
             splitLayout
-              ? "shrink-0 text-right text-sm tabular-nums text-foreground"
+              ? "shrink-0 text-right text-sm font-semibold tabular-nums text-foreground"
               : "shrink-0 text-right text-xs font-medium tabular-nums text-muted-foreground"
           }
         >
@@ -373,7 +370,7 @@ function UsageAllowanceCard({
       data-testid="usage-allowance-section"
       className="overflow-hidden rounded-xl bg-card px-5 py-4 zero-border"
     >
-      <p className="text-sm font-medium text-foreground">
+      <p className="text-sm font-semibold text-foreground">
         {t(($) => {
           return $.billing.usage.allowance.title;
         })}
@@ -546,11 +543,10 @@ export function CreditAdditionList({
   );
 }
 
-// Every credit addition row shares this grid, so the amount and the remaining
-// balance keep one right edge across the header and the rows. Narrow widths
-// drop the middle columns instead of wrapping them.
+// Every credit addition row shares this three-column grid, so credits and the
+// remaining balance keep one right edge across the header and rows.
 const GRANT_ROW_GRID =
-  "grid grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-x-4 sm:grid-cols-[minmax(0,1fr)_6.5rem_8.5rem_5.75rem_5.75rem]";
+  "grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] items-center gap-x-3 sm:grid-cols-[minmax(0,1fr)_7rem_7rem] sm:gap-x-4";
 
 function CreditAdditionTable({
   grants,
@@ -565,36 +561,23 @@ function CreditAdditionTable({
   }
 
   return (
-    <div
-      data-testid={`${testIdPrefix}-section`}
-      className="mt-4 border-t border-border pt-3"
-    >
-      <p className="text-xs font-medium text-muted-foreground">
+    <div data-testid={`${testIdPrefix}-section`} className="mt-4 pt-3">
+      <p className="text-sm font-semibold text-foreground">
         {t(($) => {
           return $.billing.usage.creditAdditions;
         })}
       </p>
       <div
-        className={`${GRANT_ROW_GRID} pb-2 pt-2.5 text-xs text-muted-foreground`}
+        className={`${GRANT_ROW_GRID} pb-2 pt-2.5 text-[13px] text-muted-foreground`}
       >
         <span>
           {t(($) => {
-            return $.billing.usage.grantsTable.source;
+            return $.billing.usage.grantsTable.date;
           })}
         </span>
-        <span className="hidden sm:block">
+        <span className="text-right">
           {t(($) => {
-            return $.billing.usage.grantsTable.added;
-          })}
-        </span>
-        <span className="hidden sm:block">
-          {t(($) => {
-            return $.billing.usage.grantsTable.expires;
-          })}
-        </span>
-        <span className="hidden text-right sm:block">
-          {t(($) => {
-            return $.billing.usage.grantsTable.amount;
+            return $.billing.usage.grantsTable.credits;
           })}
         </span>
         <span className="text-right">
@@ -603,35 +586,45 @@ function CreditAdditionTable({
           })}
         </span>
       </div>
-      {grants.map((grant) => {
-        return (
-          <div
-            key={grant.id}
-            data-testid={`${testIdPrefix}-${grant.id}`}
-            className={`${GRANT_ROW_GRID} border-t border-border/50 py-2.5`}
-          >
-            <span className="truncate text-sm text-foreground">
-              {grant.label}
-            </span>
-            <span className="hidden text-xs text-muted-foreground sm:block">
-              {formatCreditDate(grant.createdAt)}
-            </span>
-            <span className="hidden truncate text-xs text-muted-foreground sm:block">
-              {neverExpires(grant)
-                ? t(($) => {
-                    return $.billing.usage.neverExpires;
-                  })
-                : formatCreditDate(grant.expiresAt)}
-            </span>
-            <span className="hidden text-right text-sm font-medium tabular-nums text-foreground sm:block">
-              {`+${formatLocalizedNumber(grant.amount)}`}
-            </span>
-            <span className="text-right text-sm tabular-nums text-muted-foreground">
-              {formatLocalizedNumber(grant.remaining)}
-            </span>
-          </div>
-        );
-      })}
+      <TooltipProvider delayDuration={100}>
+        {grants.map((grant) => {
+          return (
+            <Tooltip key={grant.id}>
+              <TooltipTrigger asChild>
+                <div
+                  tabIndex={0}
+                  data-testid={`${testIdPrefix}-${grant.id}`}
+                  className={`${GRANT_ROW_GRID} cursor-default border-t border-border/50 py-2.5 outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring`}
+                >
+                  <span className="whitespace-nowrap text-[13px] text-foreground">
+                    {formatCreditDate(grant.createdAt)}
+                  </span>
+                  <span className="text-right text-[13px] font-semibold tabular-nums text-foreground">
+                    {`+${formatLocalizedNumber(grant.amount)}`}
+                  </span>
+                  <span className="text-right text-[13px] tabular-nums text-muted-foreground">
+                    {formatLocalizedNumber(grant.remaining)}
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                sideOffset={8}
+                style={{
+                  backgroundColor: "hsl(var(--popover))",
+                  color: "hsl(var(--popover-foreground))",
+                }}
+                className="border shadow-md"
+              >
+                <div className="font-medium text-foreground">{grant.label}</div>
+                <div className="mt-0.5 text-muted-foreground">
+                  {expiresLabel(grant)}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </TooltipProvider>
     </div>
   );
 }
@@ -648,7 +641,7 @@ function OrgCreditHeader({
     <div
       className={`flex justify-between gap-3 ${splitLayout ? "items-baseline" : "items-center"}`}
     >
-      <p className="text-sm font-medium text-foreground">
+      <p className="text-sm font-semibold text-foreground">
         {t(($) => {
           return $.billing.usage.orgCredits;
         })}
@@ -656,7 +649,7 @@ function OrgCreditHeader({
       <p
         className={
           splitLayout
-            ? "text-xl font-semibold tabular-nums text-foreground"
+            ? "text-xl font-medium tabular-nums text-foreground"
             : "text-sm font-medium tabular-nums text-foreground"
         }
       >
@@ -849,8 +842,8 @@ function CreditBalanceActions({
     return null;
   }
   return (
-    <div className="-mx-5 -mb-4 mt-4 flex items-center justify-between gap-3 border-t border-border px-5 py-3">
-      <p className="text-xs text-muted-foreground">
+    <div className="-mx-5 -mb-4 mt-4 flex items-center justify-between gap-3 border-t border-border px-5 py-[18px]">
+      <p className="text-[13px] text-muted-foreground">
         {billing.autoRecharge.enabled
           ? t(($) => {
               return $.billing.usage.autoRechargeOn;

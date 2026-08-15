@@ -20,8 +20,8 @@ import { writeDb$, type Db } from "../external/db";
 import { tryLockChatEventRetention } from "./chat-event-retention-lock.service";
 
 const CHAT_EVENT_RETENTION_DAYS = 30;
-const CHAT_EVENT_RETENTION_DELETE_LIMIT = 500;
-const CHAT_EVENT_RETENTION_SCAN_LIMIT = 1000;
+const CHAT_EVENT_RETENTION_DELETE_LIMIT = 2500;
+const CHAT_EVENT_RETENTION_SCAN_LIMIT = 5000;
 
 export interface ChatEventRetentionStats {
   readonly cutoff: string;

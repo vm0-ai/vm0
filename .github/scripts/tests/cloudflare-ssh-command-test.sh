@@ -58,11 +58,30 @@ assert_match_count() {
   fi
 }
 
+assert_process_gone() {
+  local pid_file=$1
+  local description=$2
+  local pid
+
+  [ -s "$pid_file" ] || fail "missing PID for ${description}"
+  pid=$(< "$pid_file")
+  for _ in {1..20}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return
+    fi
+    sleep 0.1
+  done
+  fail "${description} process ${pid} is still alive"
+}
+
 tmp=$(mktemp -d)
 cleanup() {
   rm -rf "$tmp"
 }
 trap cleanup EXIT
+
+system_sleep=$(command -v sleep)
+system_timeout=$(command -v timeout)
 
 fake_bin="${tmp}/fake-bin"
 wrapper_bin="${tmp}/wrapper-bin"
@@ -128,7 +147,7 @@ if [ "$is_probe" = "true" ]; then
   fi
 
   case "$FAKE_SSH_SCENARIO" in
-    healthy|actual-failure)
+    healthy|actual-failure|actual-hang)
       exit 0
       ;;
     stale-success)
@@ -170,6 +189,16 @@ if [ "$FAKE_SSH_SCENARIO" = "actual-failure" ]; then
   echo "actual stderr" >&2
   exit 42
 fi
+if [ "$FAKE_SSH_SCENARIO" = "actual-hang" ]; then
+  printf '%s\n' "$$" > "$FAKE_ACTUAL_SSH_PID"
+  trap '' HUP INT TERM
+  bash -c '
+    trap "" HUP INT TERM
+    printf "%s\n" "$$" > "$1"
+    exec "$2" 300
+  ' _ "$FAKE_ACTUAL_SSH_CHILD_PID" "$SYSTEM_SLEEP" &
+  wait
+fi
 EOF
 
 fake_scp="${fake_bin}/real-scp"
@@ -194,6 +223,9 @@ cat > "$fake_timeout" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_TIMEOUT_INVOCATIONS"
+if [ "${FAKE_TIMEOUT_MODE:-passthrough}" = "real" ]; then
+  exec "$SYSTEM_TIMEOUT" "$@"
+fi
 if [[ "${1:-}" == --kill-after=* ]]; then
   shift
 fi
@@ -230,6 +262,8 @@ setup_case() {
   : > "$case_dir/probe-stdin"
   : > "$case_dir/ssh-stdin"
   : > "$case_dir/sftp-stdin"
+  : > "$case_dir/actual-ssh.pid"
+  : > "$case_dir/actual-ssh-child.pid"
 }
 
 invoke_wrapper() {
@@ -247,11 +281,16 @@ invoke_wrapper() {
   FAKE_SLEEP_INVOCATIONS="$case_dir/sleep.log" \
   FAKE_PROBE_STDIN_FILE="$case_dir/probe-stdin" \
   FAKE_ACTUAL_SSH_STDIN="$case_dir/ssh-stdin" \
+  FAKE_ACTUAL_SSH_PID="$case_dir/actual-ssh.pid" \
+  FAKE_ACTUAL_SSH_CHILD_PID="$case_dir/actual-ssh-child.pid" \
   FAKE_ACTUAL_SFTP_STDIN="$case_dir/sftp-stdin" \
   FAKE_SSH_SCENARIO="$scenario" \
   FAKE_STALE_CONTROL_PATH="${FAKE_STALE_CONTROL_PATH:-}" \
+  FAKE_TIMEOUT_MODE="${FAKE_TIMEOUT_MODE:-passthrough}" \
   GITHUB_STEP_SUMMARY="$case_dir/summary" \
   RUNNER_TEMP="$case_dir/runner-temp" \
+  SYSTEM_SLEEP="$system_sleep" \
+  SYSTEM_TIMEOUT="$system_timeout" \
   VM0_CLOUDFLARE_SSH_REAL_SSH="$fake_ssh" \
   VM0_CLOUDFLARE_SSH_REAL_SCP="$fake_scp" \
   VM0_CLOUDFLARE_SSH_REAL_SFTP="$fake_sftp" \
@@ -259,6 +298,7 @@ invoke_wrapper() {
   VM0_CLOUDFLARE_SSH_STATE_DIR="$case_dir/state" \
   VM0_CLOUDFLARE_SSH_USER=metal \
   VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=/tmp/default-control \
+  VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS="${VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS:-600}" \
     "${wrapper_bin}/${tool}" "$@"
 }
 
@@ -310,6 +350,70 @@ assert_line_count "$actual_failure/actual-ssh.log" 1 \
   "metal@dev-1.aws.vm3.ai run-once"
 assert_line_count "$actual_failure/stdout" 1 "actual stdout"
 assert_line_count "$actual_failure/stderr" 1 "actual stderr"
+
+invalid_timeout="${tmp}/invalid-timeout"
+VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=0 \
+  run_wrapper "$invalid_timeout" healthy ssh \
+    metal@dev-1.aws.vm3.ai must-not-run
+assert_contains "$invalid_timeout/status" "2"
+assert_contains "$invalid_timeout/stderr" \
+  "Invalid Cloudflare SSH operation timeout: 0"
+if [ -s "$invalid_timeout/ssh.log" ]; then
+  fail "invalid operation timeout must fail before the transport probe"
+fi
+
+actual_timeout="${tmp}/actual-timeout"
+FAKE_TIMEOUT_MODE=real \
+  VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=1 \
+  run_wrapper "$actual_timeout" actual-hang ssh \
+    metal@dev-1.aws.vm3.ai run-once-and-hang
+case "$(< "$actual_timeout/status")" in
+  124|137) ;;
+  *)
+    fail \
+      "timed-out caller returned unexpected status: $(< "$actual_timeout/status")"
+    ;;
+esac
+assert_line_count "$actual_timeout/actual-ssh.log" 1 \
+  "metal@dev-1.aws.vm3.ai run-once-and-hang"
+assert_contains "$actual_timeout/timeout.log" \
+  "--kill-after=5s 1s ${fake_ssh} metal@dev-1.aws.vm3.ai run-once-and-hang"
+assert_process_gone "$actual_timeout/actual-ssh.pid" "timed-out SSH caller"
+assert_process_gone \
+  "$actual_timeout/actual-ssh-child.pid" \
+  "timed-out SSH descendant"
+
+actual_cancel="${tmp}/actual-cancel"
+setup_case "$actual_cancel"
+FAKE_TIMEOUT_MODE=real \
+  VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=30 \
+  invoke_wrapper "$actual_cancel" actual-hang ssh \
+    metal@dev-1.aws.vm3.ai run-once-until-cancelled \
+    > "$actual_cancel/stdout" 2> "$actual_cancel/stderr" &
+actual_cancel_invocation_pid=$!
+for _ in {1..50}; do
+  [ -s "$actual_cancel/actual-ssh.pid" ] && break
+  sleep 0.1
+done
+[ -s "$actual_cancel/actual-ssh.pid" ] \
+  || fail "cancelled SSH caller did not start"
+actual_cancel_pid=$(< "$actual_cancel/actual-ssh.pid")
+actual_cancel_timeout_pid=$(ps -o ppid= -p "$actual_cancel_pid" \
+  | tr -d '[:space:]')
+actual_cancel_wrapper_pid=$(ps -o ppid= -p "$actual_cancel_timeout_pid" \
+  | tr -d '[:space:]')
+kill -TERM "$actual_cancel_wrapper_pid"
+actual_cancel_status=0
+wait "$actual_cancel_invocation_pid" || actual_cancel_status=$?
+if [ "$actual_cancel_status" -ne 143 ]; then
+  fail "cancelled caller returned ${actual_cancel_status}, expected 143"
+fi
+assert_line_count "$actual_cancel/actual-ssh.log" 1 \
+  "metal@dev-1.aws.vm3.ai run-once-until-cancelled"
+assert_process_gone "$actual_cancel/actual-ssh.pid" "cancelled SSH caller"
+assert_process_gone \
+  "$actual_cancel/actual-ssh-child.pid" \
+  "cancelled SSH descendant"
 
 recovery="${tmp}/github-runner-recovery-case"
 run_wrapper "$recovery" stale-success ssh \
@@ -565,6 +669,10 @@ assert_contains "$SSH_ACTION" \
 assert_contains "$SSH_ACTION" \
   "echo \"\$wrapper_bin\" >> \"\$GITHUB_PATH\""
 assert_contains "$SSH_ACTION" "VM0_CLOUDFLARE_SSH_STATE_DIR="
+assert_contains "$SSH_ACTION" "operation-timeout-seconds:"
+assert_contains "$SSH_ACTION" 'default: "600"'
+assert_contains "$SSH_ACTION" \
+  "VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=\${OPERATION_TIMEOUT_SECONDS}"
 assert_contains "$SSH_ACTION" \
   "VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=\$HOME/.ssh/vm0-ssh-%C"
 assert_contains "$SECURITY_WORKFLOW" \

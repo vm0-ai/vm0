@@ -834,13 +834,13 @@ function planComparisonRows(
 
 function PlanComparison({ tier }: { readonly tier: UsagePackPlanTier }) {
   return (
-    <div className="mt-5 text-muted-foreground">
+    <div className="mt-5 flex flex-1 flex-col text-muted-foreground">
       {planComparisonRows(tier).map((row, index) => {
         return (
           <div
             key={row.label}
-            className={`flex items-baseline justify-between gap-4 py-1.5 text-sm font-medium leading-snug ${
-              index > 0 ? "border-t-[0.7px] border-[hsl(var(--gray-100))]" : ""
+            className={`flex flex-1 items-center justify-between gap-4 text-sm font-medium leading-snug ${
+              index > 0 ? "border-t-[0.7px] border-[hsl(var(--gray-50))]" : ""
             }`}
           >
             <span>{row.label}</span>

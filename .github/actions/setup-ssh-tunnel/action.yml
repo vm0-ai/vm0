@@ -12,6 +12,10 @@ inputs:
     description: "Fail setup unless every SSH host pre-connects"
     required: false
     default: "true"
+  operation-timeout-seconds:
+    description: "Maximum wall-clock seconds for one guarded SSH, SCP, or SFTP operation"
+    required: false
+    default: "600"
   ssh-key:
     description: "SSH private key for metal runner"
     required: true
@@ -117,6 +121,7 @@ runs:
     - name: Guard subsequent SSH operations
       shell: bash
       env:
+        OPERATION_TIMEOUT_SECONDS: ${{ inputs.operation-timeout-seconds }}
         SSH_USER: ${{ inputs.ssh-user }}
       run: |
         temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
@@ -141,5 +146,6 @@ runs:
           echo "VM0_CLOUDFLARE_SSH_STATE_DIR=${state_dir}"
           echo "VM0_CLOUDFLARE_SSH_USER=${SSH_USER}"
           echo "VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=$HOME/.ssh/vm0-ssh-%C"
+          echo "VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=${OPERATION_TIMEOUT_SECONDS}"
         } >> "$GITHUB_ENV"
         echo "$wrapper_bin" >> "$GITHUB_PATH"
