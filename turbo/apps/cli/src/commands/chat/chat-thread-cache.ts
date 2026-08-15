@@ -17,8 +17,8 @@ import {
   listZeroChatThreadEvents,
   type ZeroChatThreadEvent,
   type ZeroChatThreadSnapshot,
-} from "../../../lib/api/domains/zero-chat";
-import { decodeZeroTokenPayload, getApiUrl } from "../../../lib/api/config";
+} from "../../lib/api/domains/zero-chat";
+import { decodeZeroTokenPayload, getApiUrl } from "../../lib/api/config";
 
 const CACHE_VERSION = 2;
 const MAX_EVENT_PAGES_PER_SYNC = 20;

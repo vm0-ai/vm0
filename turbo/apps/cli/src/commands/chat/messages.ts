@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { resolveChatThreadId } from "./shared";
 import { syncRawChatHistory } from "./chat-event-history";
 

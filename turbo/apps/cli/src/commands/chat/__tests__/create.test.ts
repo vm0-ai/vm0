@@ -2,8 +2,8 @@ import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroChatCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { chatCommand } from "../index";
 
 const CURRENT_THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const NEW_THREAD_ID = "00000000-0000-4000-8000-000000000002";
@@ -27,7 +27,7 @@ describe("okou chat create command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", CURRENT_THREAD_ID);
   });
 
@@ -50,9 +50,7 @@ describe("okou chat create command", () => {
         });
       }),
       http.post(CREATE_URL, async ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer test-zero-token",
-        );
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
         const body = (await request.json()) as Record<string, unknown>;
         expect(body).toStrictEqual({
           agentId: AGENT_ID,
@@ -71,7 +69,7 @@ describe("okou chat create command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "create",
@@ -114,7 +112,7 @@ describe("okou chat create command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "create",
@@ -160,7 +158,7 @@ describe("okou chat create command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "create",
@@ -181,12 +179,7 @@ describe("okou chat create command", () => {
     vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
 
     await expect(async () => {
-      await zeroChatCommand.parseAsync([
-        "node",
-        "cli",
-        "create",
-        "Launch plan",
-      ]);
+      await chatCommand.parseAsync(["node", "cli", "create", "Launch plan"]);
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");

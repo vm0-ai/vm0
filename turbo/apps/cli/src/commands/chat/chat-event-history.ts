@@ -15,7 +15,7 @@ import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event
 import {
   getZeroChatEventSnapshot,
   listZeroChatEventRows,
-} from "../../../lib/api/domains/zero-chat";
+} from "../../lib/api/domains/zero-chat";
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;

@@ -6,9 +6,9 @@ import { Command } from "commander";
 import {
   getZeroChatThreadAgentId,
   sendZeroChatEvent,
-} from "../../../lib/api/domains/zero-chat";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { isUuid } from "../../../lib/utils/uuid";
+} from "../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { isUuid } from "../../lib/utils/uuid";
 import { printChatUsageError, resolveChatThreadId } from "./shared";
 
 interface CancelOptions {

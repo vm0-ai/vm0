@@ -23,8 +23,8 @@ import {
   vi,
 } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroChatCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { chatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const SNAPSHOT_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/event-snapshot`;
@@ -80,7 +80,7 @@ describe("okou chat messages command", () => {
 
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
@@ -98,9 +98,7 @@ describe("okou chat messages command", () => {
     const hotRow = rawEventRow(3);
     server.use(
       http.get(SNAPSHOT_URL, ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer test-zero-token",
-        );
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
         expect(request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
           CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
         );
@@ -132,7 +130,7 @@ describe("okou chat messages command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "messages",
@@ -192,7 +190,7 @@ describe("okou chat messages command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "messages",
@@ -254,7 +252,7 @@ describe("okou chat messages command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "messages",
@@ -294,7 +292,7 @@ describe("okou chat messages command", () => {
     );
 
     await expect(async () => {
-      await zeroChatCommand.parseAsync([
+      await chatCommand.parseAsync([
         "node",
         "cli",
         "messages",
@@ -329,7 +327,7 @@ describe("okou chat messages command", () => {
     );
 
     await expect(async () => {
-      await zeroChatCommand.parseAsync([
+      await chatCommand.parseAsync([
         "node",
         "cli",
         "messages",
@@ -406,7 +404,7 @@ describe("okou chat messages command", () => {
       }),
     );
 
-    await zeroChatCommand.parseAsync([
+    await chatCommand.parseAsync([
       "node",
       "cli",
       "messages",
@@ -432,7 +430,7 @@ describe("okou chat messages command", () => {
     vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
 
     await expect(async () => {
-      await zeroChatCommand.parseAsync(["node", "cli", "messages"]);
+      await chatCommand.parseAsync(["node", "cli", "messages"]);
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
@@ -457,7 +455,7 @@ describe("okou chat messages command", () => {
     );
 
     await expect(async () => {
-      await zeroChatCommand.parseAsync([
+      await chatCommand.parseAsync([
         "node",
         "cli",
         "messages",

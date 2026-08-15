@@ -4,10 +4,10 @@ import { Command } from "commander";
 import {
   createZeroChatThread,
   getZeroChatThreadAgentId,
-} from "../../../lib/api/domains/zero-chat";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { isUuid } from "../../../lib/utils/uuid";
-import { getOkouChatThreadId } from "../../../lib/okou-env";
+} from "../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { isUuid } from "../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../lib/okou-env";
 import { printChatUsageError } from "./shared";
 
 interface CreateOptions {

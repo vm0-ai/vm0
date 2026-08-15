@@ -1,10 +1,10 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { renameZeroChatThread } from "../../../lib/api/domains/zero-chat";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { isUuid } from "../../../lib/utils/uuid";
-import { getOkouChatThreadId } from "../../../lib/okou-env";
+import { renameZeroChatThread } from "../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { isUuid } from "../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../lib/okou-env";
 
 interface RenameOptions {
   readonly json?: boolean;

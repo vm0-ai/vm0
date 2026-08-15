@@ -1,8 +1,8 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { getZeroChatThread } from "../../../lib/api/domains/zero-chat";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { getZeroChatThread } from "../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { resolveChatThreadId } from "./shared";
 
 interface GetOptions {

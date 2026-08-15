@@ -1,11 +1,11 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { formatIsoTimestamp } from "../../../lib/utils/time-format";
-import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
-import { isUuid } from "../../../lib/utils/uuid";
-import { getOkouAgentId } from "../../../lib/okou-env";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { formatIsoTimestamp } from "../../lib/utils/time-format";
+import { parseBoundedLogCount } from "../../lib/utils/log-pagination";
+import { isUuid } from "../../lib/utils/uuid";
+import { getOkouAgentId } from "../../lib/okou-env";
 import { syncCachedChatThreads } from "./chat-thread-cache";
 
 const DEFAULT_LIMIT = 20;
