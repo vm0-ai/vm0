@@ -23,7 +23,7 @@ import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import { safeJsonParse, settle } from "../utils";
-import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
+import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type {

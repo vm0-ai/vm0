@@ -22,7 +22,7 @@ import {
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
-import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
+import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { ChatAgentRunSourceAnnotation } from "./chat-user-message.service";
