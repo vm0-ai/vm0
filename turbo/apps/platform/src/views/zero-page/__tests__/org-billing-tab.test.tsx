@@ -18,6 +18,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@okouai/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
@@ -50,6 +51,26 @@ function buttonByText(
     throw new Error(`${text} button not found`);
   }
   return button;
+}
+
+function subscriptionComparisonTrigger(
+  container: ParentNode = document.body,
+): HTMLElement {
+  const trigger = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate
+      .getAttribute("aria-label")
+      ?.startsWith("Subscription comparison:");
+  });
+  if (!trigger) {
+    throw new Error("Subscription comparison trigger not found");
+  }
+  return trigger;
+}
+
+async function hoverSubscriptionComparison(): Promise<HTMLElement> {
+  const user = userEvent.setup();
+  await user.hover(subscriptionComparisonTrigger());
+  return await screen.findByRole("tooltip");
 }
 
 function activeProBillingStatus(): BillingStatusResponse {
@@ -522,7 +543,7 @@ describe("organization billing settings", () => {
       ),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(
+      within(memberUsage).getByText(
         "One package per member. Any overage uses pay-as-you-go credits.",
       ),
     ).toBeInTheDocument();
@@ -1608,11 +1629,14 @@ describe("organization billing settings", () => {
     const packageSelect = await screen.findByRole("combobox", {
       name: "Usage for Alex Chen",
     });
+    const memberUsage = screen.getByRole("group", {
+      name: "Member usage",
+    });
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
     expect(
-      within(orderSummary).queryByRole("table", {
+      screen.queryByRole("table", {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
@@ -1622,23 +1646,30 @@ describe("organization billing settings", () => {
       within(orderSummary).queryByText("Concurrent slots"),
     ).not.toBeInTheDocument();
     expect(queryAllByRoleFast("button", orderSummary)).toHaveLength(0);
-    click(packageSelect);
-    click(
+    const user = userEvent.setup();
+    await user.click(packageSelect);
+    await user.click(
       await screen.findByRole("option", {
         name: "$50 · 54,321 credits · 8% off",
       }),
     );
-    // The comparison folds away behind its own totals until it is asked for.
-    const comparisonDisclosure = within(orderSummary)
-      .getByText("Current and new subscription comparison")
-      .closest("details");
-    expect(comparisonDisclosure).not.toHaveAttribute("open");
-    expect(comparisonDisclosure).toHaveTextContent("$20/month → $50/month");
-    click(
-      within(orderSummary).getByText("Current and new subscription comparison"),
+    const comparisonTrigger = subscriptionComparisonTrigger(memberUsage);
+    expect(comparisonTrigger).toHaveAccessibleName(
+      "Subscription comparison: $50/month",
     );
-    expect(comparisonDisclosure).toHaveAttribute("open");
-    const comparison = within(orderSummary).getByRole("table", {
+    expect(comparisonTrigger).toHaveTextContent("$50/month");
+    comparisonTrigger.focus();
+    expect(comparisonTrigger).toHaveFocus();
+    const comparisonTooltip = await screen.findByRole("tooltip");
+    expect(
+      within(comparisonTooltip).getByText("Subscription comparison"),
+    ).toBeInTheDocument();
+    expect(
+      within(comparisonTooltip).getByText(
+        "Your current subscription and this selection, side by side",
+      ),
+    ).toBeInTheDocument();
+    const comparison = within(comparisonTooltip).getByRole("table", {
       name: "Current and new subscription comparison",
     });
     expect(within(comparison).getByText("Current")).toBeInTheDocument();
@@ -1663,7 +1694,6 @@ describe("organization billing settings", () => {
         name: /Monthly total \$20\/month \$50\/month/u,
       }),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$50/month")).toBeInTheDocument();
     expect(screen.queryByText("Review")).not.toBeInTheDocument();
     const locationBeforeConfirmation = window.location.href;
     click(buttonByText("Confirm", orderSummary));
@@ -2027,7 +2057,7 @@ describe("organization billing settings", () => {
     });
     expect(screen.queryByText("Change is processing")).not.toBeInTheDocument();
     expect(
-      within(orderSummary).queryByRole("table", {
+      screen.queryByRole("table", {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
@@ -2045,7 +2075,8 @@ describe("organization billing settings", () => {
         name: "$100 · 109,999 credits · 9% off",
       }),
     );
-    const comparison = within(orderSummary).getByRole("table", {
+    const comparisonTooltip = await hoverSubscriptionComparison();
+    const comparison = within(comparisonTooltip).getByRole("table", {
       name: "Current and new subscription comparison",
     });
     expect(
@@ -2309,9 +2340,12 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    const comparison = within(orderSummary).getByRole("table", {
-      name: "Current and new subscription comparison",
-    });
+    let comparison = within(await hoverSubscriptionComparison()).getByRole(
+      "table",
+      {
+        name: "Current and new subscription comparison",
+      },
+    );
     expect(
       within(comparison).getByRole("row", {
         name: /Plan Pro · \$0 Team · \$160/u,
@@ -2327,7 +2361,6 @@ describe("organization billing settings", () => {
         name: /Monthly total \$20\/month \$180\/month/u,
       }),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
     const confirmButton = buttonByText("Confirm", orderSummary);
 
     click(packageSelect);
@@ -2336,12 +2369,17 @@ describe("organization billing settings", () => {
         name: "$50 · 54,321 credits · 8% off",
       }),
     );
+    comparison = within(await hoverSubscriptionComparison()).getByRole(
+      "table",
+      {
+        name: "Current and new subscription comparison",
+      },
+    );
     expect(
       within(comparison).getByRole("row", {
         name: /Monthly total \$20\/month \$210\/month/u,
       }),
     ).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$210/month")).toBeInTheDocument();
     expect(confirmButton).not.toBeDisabled();
 
     click(packageSelect);
@@ -2350,7 +2388,17 @@ describe("organization billing settings", () => {
         name: "$20 · 21,234 credits · 6% off",
       }),
     );
-    expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
+    comparison = within(await hoverSubscriptionComparison()).getByRole(
+      "table",
+      {
+        name: "Current and new subscription comparison",
+      },
+    );
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Monthly total \$20\/month \$180\/month/u,
+      }),
+    ).toBeInTheDocument();
 
     const locationBeforeConfirmation = window.location.href;
     click(confirmButton);
@@ -2460,7 +2508,17 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    expect(within(orderSummary).getByText("$20/month")).toBeInTheDocument();
+    const comparison = within(await hoverSubscriptionComparison()).getByRole(
+      "table",
+      {
+        name: "Current and new subscription comparison",
+      },
+    );
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Monthly total \$180\/month \$20\/month/u,
+      }),
+    ).toBeInTheDocument();
     expect(
       within(orderSummary).getByText(
         "The lower package starts at the next billing date. Existing credits remain available until they expire.",

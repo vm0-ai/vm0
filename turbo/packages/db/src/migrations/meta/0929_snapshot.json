@@ -1,6 +1,6 @@
 {
-  "id": "97820298-1ed1-4d50-8912-f47d9bb312ae",
-  "prevId": "5cbba75e-9176-4a4d-bdb4-d243aee311e0",
+  "id": "eb7cf794-dbad-4667-a9b7-4039f89e2f75",
+  "prevId": "dcefeb60-5436-451e-85c9-b2c8dfea9fbf",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4989,12 +4989,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "parent_snapshot_id": {
-          "name": "parent_snapshot_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "last_seq_id": {
           "name": "last_seq_id",
           "type": "bigint",
@@ -5019,13 +5013,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "is_head": {
-          "name": "is_head",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -5035,22 +5022,6 @@
         }
       },
       "indexes": {
-        "chat_event_snapshots_thread_head_unique": {
-          "name": "chat_event_snapshots_thread_head_unique",
-          "columns": [
-            {
-              "expression": "chat_thread_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"chat_event_snapshots\".\"is_head\"",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "chat_event_snapshots_thread_idx": {
           "name": "chat_event_snapshots_thread_idx",
           "columns": [
@@ -5066,8 +5037,8 @@
           "method": "btree",
           "with": {}
         },
-        "chat_event_snapshots_thread_version_idx": {
-          "name": "chat_event_snapshots_thread_version_idx",
+        "chat_event_snapshots_thread_version_unique": {
+          "name": "chat_event_snapshots_thread_version_unique",
           "columns": [
             {
               "expression": "chat_thread_id",
@@ -5100,19 +5071,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "chat_event_snapshots_parent_snapshot_id_chat_event_snapshots_id_fk": {
-          "name": "chat_event_snapshots_parent_snapshot_id_chat_event_snapshots_id_fk",
-          "tableFrom": "chat_event_snapshots",
-          "tableTo": "chat_event_snapshots",
-          "columnsFrom": [
-            "parent_snapshot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

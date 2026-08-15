@@ -1261,7 +1261,7 @@ type ChatEventFixtureAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
-      | "advance-chat-event-sequence"
+      | "advance-chat-event-sequence-as-previous-api"
       | "read-chat-event-snapshot-head"
       | "set-chat-event-snapshot-head-version";
   }
@@ -1271,7 +1271,7 @@ function isChatEventFixtureAction(
   body: TestRuntimeStateActionBody,
 ): body is ChatEventFixtureAction {
   return (
-    body.action === "advance-chat-event-sequence" ||
+    body.action === "advance-chat-event-sequence-as-previous-api" ||
     body.action === "read-chat-event-snapshot-head" ||
     body.action === "set-chat-event-snapshot-head-version"
   );
@@ -1282,7 +1282,7 @@ async function chatEventFixtureActionResponse(
   body: ChatEventFixtureAction,
   signal: AbortSignal,
 ) {
-  if (body.action === "advance-chat-event-sequence") {
+  if (body.action === "advance-chat-event-sequence-as-previous-api") {
     const [updated] = await db
       .update(chatThreads)
       .set({
@@ -1292,7 +1292,9 @@ async function chatEventFixtureActionResponse(
       .returning({ id: chatThreads.id });
     signal.throwIfAborted();
     if (!updated) {
-      throw new Error("advance-chat-event-sequence missing thread");
+      throw new Error(
+        "advance-chat-event-sequence-as-previous-api missing thread",
+      );
     }
     return { status: 200 as const, body: { ok: true as const } };
   }
@@ -1341,10 +1343,9 @@ async function chatEventFixtureActionResponse(
       .from(chatEventSnapshots)
       .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
       .orderBy(
-        desc(chatEventSnapshots.lastSeqId),
         desc(chatEventSnapshots.archiveSchemaVersion),
+        desc(chatEventSnapshots.lastSeqId),
         desc(chatEventSnapshots.createdAt),
-        desc(chatEventSnapshots.id),
       )
       .limit(1),
     db

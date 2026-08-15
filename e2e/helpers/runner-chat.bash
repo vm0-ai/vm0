@@ -57,10 +57,6 @@ runner_chat_event_rows() {
     for ((page_number = 1; page_number <= 100; page_number += 1)); do
         request_path="/api/okou/chat-threads/${thread_id}/event-rows?sinceSeqId=${since_seq_id}&limit=50"
         if ((since_seq_id > 0)); then
-            if [[ -z "$since_event_id" ]]; then
-                echo "Chat event rows cursor is missing its event identity" >&2
-                return 1
-            fi
             request_path+="&sinceEventId=${since_event_id}"
         fi
         response="$(runner_api_curl \

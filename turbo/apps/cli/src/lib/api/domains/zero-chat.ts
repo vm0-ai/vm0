@@ -19,7 +19,6 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -247,25 +246,26 @@ export async function getZeroChatEventSnapshot(options: {
   handleError(result, "Failed to get chat event snapshot");
 }
 
-export async function listZeroChatEventRows(options: {
-  readonly threadId: string;
-  readonly cursor: ChatEventCursor;
-  readonly limit: number;
-}): Promise<ZeroChatEventRowsPage> {
+export async function listZeroChatEventRows(
+  options: {
+    readonly threadId: string;
+    readonly limit: number;
+  } & (
+    | { readonly sinceEventId: null; readonly sinceSeqId: 0 }
+    | { readonly sinceEventId: string; readonly sinceSeqId: number }
+  ),
+): Promise<ZeroChatEventRowsPage> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.rows({
     headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
     params: { threadId: options.threadId },
     query:
-      options.cursor.lastEventId === null
-        ? {
-            sinceSeqId: options.cursor.lastSeqId,
-            limit: options.limit,
-          }
+      options.sinceEventId === null
+        ? { sinceSeqId: 0, limit: options.limit }
         : {
-            sinceSeqId: options.cursor.lastSeqId,
-            sinceEventId: options.cursor.lastEventId,
+            sinceSeqId: options.sinceSeqId,
+            sinceEventId: options.sinceEventId,
             limit: options.limit,
           },
   });

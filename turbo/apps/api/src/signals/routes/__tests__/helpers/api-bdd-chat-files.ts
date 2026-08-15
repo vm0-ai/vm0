@@ -1,10 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  CHAT_EVENT_SCHEMA_VERSION_HEADER,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventCursor,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
-import {
   chatEventsContract,
   chatSearchContract,
   chatThreadArtifactsContract,
@@ -34,6 +29,11 @@ import {
   type UserMessageInputDocument,
   type ZeroIndicators,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import {
   artifactCatalogContract,
@@ -163,15 +163,14 @@ function authenticate(
   return authHeaders(actor);
 }
 
-function authenticateChatEventRead(
+function authenticateChatEvent(
   context: TestContext,
   actor: ApiTestUser | null,
 ) {
   return {
     ...authenticate(context, actor),
-    [CHAT_EVENT_SCHEMA_VERSION_HEADER]: String(
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-    ),
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
   };
 }
 
@@ -989,9 +988,11 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       query: {
-        readonly cursor?: ChatEventCursor;
         readonly limit?: number;
-      } = {},
+      } & (
+        | { readonly sinceSeqId?: 0; readonly sinceEventId?: never }
+        | { readonly sinceSeqId: number; readonly sinceEventId: string }
+      ) = {},
     ): Promise<{ readonly events: readonly ChatEvent[] }> {
       return {
         events: await readProjectedChatEvents(context, {
@@ -1006,24 +1007,26 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       query: {
-        readonly cursor?: ChatEventCursor;
         readonly limit?: number;
-      },
+      } & (
+        | { readonly sinceSeqId?: 0; readonly sinceEventId?: never }
+        | { readonly sinceSeqId: number; readonly sinceEventId: string }
+      ),
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 410)[],
     ) {
       const response = await accept(
         threadEventsClient().rows({
-          headers: authenticateChatEventRead(context, actor),
+          headers: authenticateChatEvent(context, actor),
           params: { threadId },
           query:
-            query.cursor?.lastEventId === null || query.cursor === undefined
+            query.sinceEventId === undefined
               ? {
                   sinceSeqId: 0,
                   ...(query.limit === undefined ? {} : { limit: query.limit }),
                 }
               : {
-                  sinceEventId: query.cursor.lastEventId,
-                  sinceSeqId: query.cursor.lastSeqId,
+                  sinceSeqId: query.sinceSeqId,
+                  sinceEventId: query.sinceEventId,
                   ...(query.limit === undefined ? {} : { limit: query.limit }),
                 },
         }),
@@ -1045,14 +1048,14 @@ export function createChatFilesBddApi(context: TestContext) {
     ) {
       const response = await accept(
         threadEventsClient().rows({
-          headers: authenticateChatEventRead(context, actor),
+          headers: authenticateChatEvent(context, actor),
           params: { threadId },
           query:
             cursor.lastEventId === null
               ? { sinceSeqId: 0 }
               : {
-                  sinceEventId: cursor.lastEventId,
                   sinceSeqId: cursor.lastSeqId,
+                  sinceEventId: cursor.lastEventId,
                 },
         }),
         [200],

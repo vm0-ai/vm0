@@ -978,6 +978,8 @@
         "currentMember": "現在のメンバー",
         "management": {
           "comparison": "現在と新しいサブスクリプションの比較",
+          "comparisonDescription": "現在のサブスクリプションと今回の選択を並べて比較",
+          "comparisonTitle": "サブスクリプションの比較",
           "current": "現在",
           "downgradeDescription": "下位パッケージは次回請求日から開始します。既存のクレジットは有効期限まで利用できます。",
           "downgradesToDate": "{{date}}に{{package}}へダウングレードします。",
@@ -4266,6 +4268,7 @@
         "apiKeyDescription": "共有ワークスペースキー。チームが 1 つのアカウントを通じて請求する場合に最適です。",
         "apiKeyPlaceholder": "API キーを入力してください",
         "apiKeyRequired": "APIキーが必要です",
+        "availableModels": "利用可能なモデル",
         "builtIn": "内蔵",
         "builtInDescription": "ワークスペース クレジットで使用量がカバーされます。",
         "claudeSubscription": "Claude サブスクリプション",
@@ -4284,16 +4287,17 @@
         "model": "モデル",
         "noAvailableModels": "利用可能なモデルはありません",
         "noMappedGateway": "このモデルにマッピングされたプロバイダー接続はありません。",
+        "pricing": "料金",
         "providedBy": "提供元",
         "provider": "プロバイダー",
         "providerApiKey": "{{provider}} API キー",
+        "runsThrough": "実行経路",
         "secretStored": "ワークスペースのシークレットに保存されます。",
         "selectDefaultModel": "デフォルトのモデルを選択してください",
         "selectGateway": "プロバイダー接続を選択してください",
         "selectModel": "モデルを選択してください",
         "selectProvider": "プロバイダーを選択してください",
-        "workspaceDescription": "このワークスペース内の全員が利用できます。",
-        "workspaceTitle": "ワークスペース"
+        "workspaceDescription": "このワークスペース内の全員が利用できます。"
       },
       "reset": {
         "confirmDescription": "Codexリセットを1回使用して、現在の使用枠をリセットします。{{remaining}}。",

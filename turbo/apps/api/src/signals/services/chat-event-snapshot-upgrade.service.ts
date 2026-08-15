@@ -3,7 +3,7 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   decodeChatEventSnapshotBody,
   encodeChatEventSnapshotBody,
-} from "./chat-event-snapshot-codec.service";
+} from "./chat-event-snapshot-body.service";
 
 /**
  * Every schema bump that can preserve historical data must register its

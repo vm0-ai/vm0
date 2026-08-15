@@ -34,29 +34,38 @@ export async function readProjectedChatEvents(
   args: {
     readonly threadId: string;
     readonly headers: Readonly<{ authorization?: string }>;
-    readonly cursor?: ChatEventCursor;
     readonly limit?: number;
     readonly extraHeaders?: Readonly<Record<string, string>>;
-  },
+  } & (
+    | { readonly sinceSeqId?: 0; readonly sinceEventId?: never }
+    | { readonly sinceSeqId: number; readonly sinceEventId: string }
+  ),
 ): Promise<readonly ChatEvent[]> {
   const client = setupApp({ context, routes: zeroChatThreadRoutes })(
     chatThreadEventsContract,
   );
   const limit = args.limit ?? MAX_EVENT_ROWS_PER_PAGE;
   const rows: ChatEventRow[] = [];
-  let cursor: ChatEventCursor = args.cursor ?? {
-    lastEventId: null,
-    lastSeqId: 0,
-  };
+  let cursor: ChatEventCursor;
+  if (args.sinceSeqId === undefined || args.sinceSeqId === 0) {
+    cursor = { lastEventId: null, lastSeqId: 0 };
+  } else {
+    if (args.sinceEventId === undefined) {
+      throw new Error("Chat Event test cursor requires an event ID");
+    }
+    cursor = {
+      lastEventId: args.sinceEventId,
+      lastSeqId: args.sinceSeqId,
+    };
+  }
 
   while (true) {
     const response = await accept(
       client.rows({
         headers: {
           ...args.headers,
-          [CHAT_EVENT_SCHEMA_VERSION_HEADER]: String(
-            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          ),
+          [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
         },
         ...(args.extraHeaders === undefined
           ? {}
@@ -66,8 +75,8 @@ export async function readProjectedChatEvents(
           cursor.lastEventId === null
             ? { sinceSeqId: 0, limit }
             : {
-                sinceEventId: cursor.lastEventId,
                 sinceSeqId: cursor.lastSeqId,
+                sinceEventId: cursor.lastEventId,
                 limit,
               },
       }),
@@ -78,15 +87,12 @@ export async function readProjectedChatEvents(
       return projectChatEventRows(rows);
     }
 
-    const nextRow = response.body.rows.at(-1);
-    if (nextRow === undefined || nextRow.seqId <= cursor.lastSeqId) {
+    const lastRow = response.body.rows.at(-1);
+    if (lastRow === undefined || lastRow.seqId <= cursor.lastSeqId) {
       throw new Error(
         `Chat event row cursor did not advance for ${args.threadId}`,
       );
     }
-    cursor = {
-      lastEventId: nextRow.id,
-      lastSeqId: nextRow.seqId,
-    };
+    cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
   }
 }

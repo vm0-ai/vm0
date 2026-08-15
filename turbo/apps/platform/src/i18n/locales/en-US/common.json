@@ -978,6 +978,8 @@
         "currentMember": "Current member",
         "management": {
           "comparison": "Current and new subscription comparison",
+          "comparisonDescription": "Your current subscription and this selection, side by side",
+          "comparisonTitle": "Subscription comparison",
           "current": "Current",
           "downgradeDescription": "The lower package starts at the next billing date. Existing credits remain available until they expire.",
           "downgradesToDate": "Downgrades to {{package}} on {{date}}.",
@@ -4267,6 +4269,7 @@
         "apiKeyDescription": "A shared workspace key. Best when the team bills through one account.",
         "apiKeyPlaceholder": "Enter your API key",
         "apiKeyRequired": "API key is required",
+        "availableModels": "Available models",
         "builtIn": "Built-in",
         "builtInDescription": "Workspace credits cover usage.",
         "claudeSubscription": "Claude subscription",
@@ -4285,16 +4288,17 @@
         "model": "Model",
         "noAvailableModels": "No available models",
         "noMappedGateway": "No provider connection maps this model.",
+        "pricing": "Pricing",
         "providedBy": "Provided by",
         "provider": "Provider",
         "providerApiKey": "{{provider}} API key",
+        "runsThrough": "Runs through",
         "secretStored": "Stored in workspace secrets.",
         "selectDefaultModel": "Select a default model",
         "selectGateway": "Select a provider connection",
         "selectModel": "Select a model",
         "selectProvider": "Select a provider",
-        "workspaceDescription": "Available to everyone in this workspace.",
-        "workspaceTitle": "Workspace"
+        "workspaceDescription": "Available to everyone in this workspace."
       },
       "reset": {
         "confirmDescription": "Use one Codex reset to reset your current usage windows. You have {{remaining}}.",

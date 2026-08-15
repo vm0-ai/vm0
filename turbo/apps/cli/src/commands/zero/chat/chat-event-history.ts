@@ -175,7 +175,7 @@ async function downloadSnapshot(args: {
   readonly url: string;
   readonly threadId: string;
   readonly expectedLastEventId: string;
-}): Promise<{ readonly text: string }> {
+}): Promise<string> {
   const response = await fetch(args.url);
   if (!response.ok) {
     throw new Error(
@@ -187,7 +187,7 @@ async function downloadSnapshot(args: {
   if (args.expectedLastEventId !== parsed.lastEventId) {
     throw new Error("Chat event snapshot terminal event ID does not match");
   }
-  return { text };
+  return text;
 }
 
 async function syncRows(args: {
@@ -197,11 +197,21 @@ async function syncRows(args: {
 }): Promise<"complete" | "expired"> {
   let cursor = args.cursor;
   for (;;) {
-    const page = await listZeroChatEventRows({
-      threadId: args.threadId,
-      cursor,
-      limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-    });
+    const page = await listZeroChatEventRows(
+      cursor.lastEventId === null
+        ? {
+            threadId: args.threadId,
+            sinceEventId: null,
+            sinceSeqId: 0,
+            limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+          }
+        : {
+            threadId: args.threadId,
+            sinceEventId: cursor.lastEventId,
+            sinceSeqId: cursor.lastSeqId,
+            limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+          },
+    );
     if (page.kind === "expired") {
       return "expired";
     }
@@ -289,7 +299,7 @@ async function rebuildRawChatHistory(args: {
       });
       await writeFile(
         join(temporaryDirectory, `snapshot-to-${snapshot.lastSeqId}.ndjson`),
-        downloaded.text,
+        downloaded,
         "utf8",
       );
       cursor = {

@@ -416,6 +416,40 @@ describe("organization model providers settings", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("prioritizes the default model and available routes before provider connections", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000211",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
+        true,
+      ),
+    ]);
+
+    await openProvidersTab();
+
+    const defaultModel = screen.getByTestId("default-model-row");
+    const availableModels = screen.getByRole("heading", {
+      name: "Available models",
+    });
+    const providerConnections = screen.getByRole("heading", {
+      name: "Provider connections",
+    });
+
+    expect(
+      defaultModel.compareDocumentPosition(availableModels) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      availableModels.compareDocumentPosition(providerConnections) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText("Runs through")).toBeInTheDocument();
+    expect(screen.getByText("Pricing")).toBeInTheDocument();
+  });
+
   it("clears a gateway draft when settings closes", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);

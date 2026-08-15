@@ -525,7 +525,10 @@ export function ModelProviderConnectionsSection() {
         action={<AddConnectionMenu />}
       />
       {connections.length === 0 ? (
-        <p className="rounded-xl bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+        <p
+          className="rounded-xl bg-card px-4 py-5 text-sm text-muted-foreground"
+          style={ZERO_BORDER}
+        >
           {t(($) => {
             return $.settings.models.gateways.empty;
           })}

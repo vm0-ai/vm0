@@ -23,19 +23,6 @@ const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
   [CHAT_EVENT_SCHEMA_VERSION_HEADER]: z.string(),
 });
-const chatEventRowsLimitSchema = z.coerce.number().min(1).max(50).default(50);
-const chatEventRowsQuerySchema = z.union([
-  z.object({
-    sinceSeqId: z.coerce.number().pipe(z.literal(0)),
-    sinceEventId: z.undefined().optional(),
-    limit: chatEventRowsLimitSchema,
-  }),
-  z.object({
-    sinceSeqId: z.coerce.number().int().positive(),
-    sinceEventId: z.string().uuid(),
-    limit: chatEventRowsLimitSchema,
-  }),
-]);
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -1536,11 +1523,10 @@ export const chatSearchContract = c.router({
 /** Canonical ChatEvent read contract. */
 export const chatThreadEventsContract = c.router({
   /**
-   * Snapshot-read cold start: a presigned download for the thread's
-   * current-version archive object. The object is gzip NDJSON of
-   * chatEventRowSchema lines stored with `Content-Encoding: gzip`, so a browser
-   * fetch decompresses it transparently. The required request header selects
-   * the Chat Event schema version.
+   * Snapshot-read cold start: a presigned download for the thread's head
+   * archive object. The object is gzip NDJSON of chatEventRowSchema lines
+   * stored with `Content-Encoding: gzip`, so a browser fetch decompresses it
+   * transparently. The request header selects the Chat Event schema version.
    */
   snapshot: {
     method: "GET",
@@ -1574,7 +1560,18 @@ export const chatThreadEventsContract = c.router({
     path: "/api/okou/chat-threads/:threadId/event-rows",
     headers: chatEventReadHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
-    query: chatEventRowsQuerySchema,
+    query: z.union([
+      z.object({
+        sinceSeqId: z.coerce.number().pipe(z.literal(0)),
+        sinceEventId: z.never().optional(),
+        limit: z.coerce.number().min(1).max(50).default(50),
+      }),
+      z.object({
+        sinceSeqId: z.coerce.number().int().positive(),
+        sinceEventId: z.string().uuid(),
+        limit: z.coerce.number().min(1).max(50).default(50),
+      }),
+    ]),
     responses: {
       200: z.object({
         rows: z.array(chatEventRowSchema),
@@ -1587,7 +1584,7 @@ export const chatThreadEventsContract = c.router({
       410: apiErrorSchema,
       426: apiErrorSchema,
     },
-    summary: "Get raw chat event rows after a paired cursor",
+    summary: "Get raw chat event rows after a seq cursor",
   },
 });
 

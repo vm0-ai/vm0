@@ -59,17 +59,21 @@ function storedChatEventCursor(raw: unknown): ChatEventCursor {
     !("schemaVersion" in raw) ||
     raw.schemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
     !("lastEventId" in raw) ||
-    !(raw.lastEventId === null || typeof raw.lastEventId === "string") ||
     !("lastSeqId" in raw) ||
     typeof raw.lastSeqId !== "number" ||
     !Number.isSafeInteger(raw.lastSeqId) ||
-    raw.lastSeqId < 0 ||
-    (raw.lastSeqId === 0) !== (raw.lastEventId === null)
+    raw.lastSeqId < 0
   ) {
     throw new Error("Invalid cached Chat Event cursor");
   }
   if (raw.lastEventId === null) {
+    if (raw.lastSeqId !== 0) {
+      throw new Error("Invalid cached Chat Event cursor");
+    }
     return { lastEventId: null, lastSeqId: 0 };
+  }
+  if (typeof raw.lastEventId !== "string" || raw.lastSeqId === 0) {
+    throw new Error("Invalid cached Chat Event cursor");
   }
   return {
     lastEventId: raw.lastEventId,

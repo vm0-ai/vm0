@@ -92,7 +92,7 @@ export const cronProjectChatEventSearchResponseSchema = z.object({
 
 const chatEventSnapshotConvergenceSchema = z.object({
   snapshotHeads: z.number().int().nonnegative(),
-  nonV4SnapshotHeads: z.number().int().nonnegative(),
+  nonCurrentSnapshotHeads: z.number().int().nonnegative(),
   snapshotHeadVersions: z.array(
     z.object({
       archiveSchemaVersion: z.number().int().positive(),

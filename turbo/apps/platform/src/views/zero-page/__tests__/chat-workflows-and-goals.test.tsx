@@ -88,6 +88,85 @@ describe("chat lifecycle", () => {
     expect(screen.queryByText(machineReason)).not.toBeInTheDocument();
   });
 
+  it("hides a rejected automation replacement without hiding other rejected input", async () => {
+    const threadId = "e9000000-0000-4000-a000-000000000021";
+    const automationPrompt = "A run in the watched chat thread completed.";
+    const rejectedPrompt = "Summarize the completed run";
+    const assistantResponse = "The active run has completed.";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Rejected automation event",
+      chatEvents: [
+        {
+          id: "msg-assistant-response",
+          role: "assistant",
+          content: assistantResponse,
+          createdAt: "2026-08-15T07:13:23Z",
+        },
+        {
+          id: "msg-pending-automation",
+          eventType: "input.automation",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: automationPrompt },
+              {
+                type: "automation",
+                workflowName: "chat-run-finished-callback",
+              },
+            ],
+          },
+          createdAt: "2026-08-15T07:12:33Z",
+        },
+        {
+          id: "msg-rejected-automation",
+          eventType: "input.rejected",
+          content: automationPrompt,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: automationPrompt },
+              {
+                type: "automation",
+                workflowName: "chat-run-finished-callback",
+              },
+            ],
+          },
+          revokesEventId: "msg-pending-automation",
+          error: "Workflow automation is paused or no longer readable",
+          createdAt: "2026-08-15T07:13:24Z",
+        },
+        {
+          id: "msg-pending-prompt",
+          role: "user",
+          content: rejectedPrompt,
+          createdAt: "2026-08-15T07:13:25Z",
+        },
+        {
+          id: "msg-rejected-prompt",
+          eventType: "input.rejected",
+          content: rejectedPrompt,
+          revokesEventId: "msg-pending-prompt",
+          error: "Prompt could not be started",
+          createdAt: "2026-08-15T07:13:26Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const renderedAssistantResponse =
+      await screen.findByText(assistantResponse);
+    expect(renderedAssistantResponse).toBeInTheDocument();
+    expect(screen.queryByText(automationPrompt)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Workflow chat-run-finished-callback"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(rejectedPrompt)).toBeInTheDocument();
+  });
+
   it("opens run details from assistant message actions", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e9000000-0000-4000-a000-000000000002";

@@ -210,14 +210,7 @@ const listChatEventRowsInner$ = command(
       zeroChatThreadEventRows({
         threadId: params.threadId,
         userId: auth.userId,
-        cursor:
-          query.sinceEventId === undefined
-            ? { lastEventId: null, lastSeqId: 0 }
-            : {
-                lastEventId: query.sinceEventId,
-                lastSeqId: query.sinceSeqId,
-              },
-        limit: query.limit,
+        ...query,
       }),
     );
     signal.throwIfAborted();

@@ -9675,171 +9675,221 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
   }
 }
 
-const CHAT_EVENT_SNAPSHOT_POINTER_CONTRACTION_PREVIOUS_MIGRATION =
+const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREVIOUS_MIGRATION =
   "0927_backfill_zero_agent_default_avatar";
-const CHAT_EVENT_SNAPSHOT_POINTER_DATA_CONTRACTION_MIGRATION =
-  "0928_contract_chat_event_snapshot_pointers";
-const CHAT_EVENT_SNAPSHOT_POINTER_SCHEMA_CONTRACTION_MIGRATION =
-  "0929_smart_machine_man";
+const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION =
+  "0928_contract_chat_event_snapshots";
+const CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION = "0929_cold_azazel";
 
-async function validateChatEventSnapshotPointerContraction(): Promise<void> {
-  console.log("=== Validate Chat Event Snapshot pointer contraction ===\n");
-  const testDb = "migration_chat_event_snapshot_pointer_contraction_test";
+async function validateChatEventSnapshotContraction(): Promise<void> {
+  console.log("=== Validate Chat Event Snapshot contraction ===\n");
+  const testDb = "migration_chat_event_snapshot_contract";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000092700";
+  const threadIds = [
+    "00000000-0000-4000-8000-000000092701",
+    "00000000-0000-4000-8000-000000092702",
+    "00000000-0000-4000-8000-000000092703",
+    "00000000-0000-4000-8000-000000092704",
+  ] as const;
+  const expectedPreparedIds = [
+    "00000000-0000-4000-8000-000000092712",
+    "00000000-0000-4000-8000-000000092721",
+    "00000000-0000-4000-8000-000000092732",
+    "00000000-0000-4000-8000-000000092742",
+  ] as const;
+  const raceWinnerId = "00000000-0000-4000-8000-000000092713";
+
   await createDatabase(testDb);
-  const client = new Client({ connectionString: createTestDbUrl(testDb) });
-  await client.connect();
-
   try {
-    await applyMigrationsUpToTag(
-      client,
-      CHAT_EVENT_SNAPSHOT_POINTER_CONTRACTION_PREVIOUS_MIGRATION,
+    await runMigrationsUpToTag(
+      testDbUrl,
+      CHAT_EVENT_SNAPSHOT_CONTRACTION_PREVIOUS_MIGRATION,
     );
-    await client.query(`SET session_replication_role = replica`);
-    await client.query(`
-      INSERT INTO "chat_event_snapshots" (
-        "id",
-        "chat_thread_id",
-        "last_seq_id",
-        "last_event_id",
-        "archive_schema_version",
-        "object_key",
-        "is_head",
-        "created_at"
-      ) VALUES
-        ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000000', 10, '10000000-0000-4000-8000-000000000101', 5, 'contraction/greatest/10', false, '2026-08-14 01:00:00'),
-        ('10000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000000', 20, '10000000-0000-4000-8000-000000000102', 5, 'contraction/greatest/20', true,  '2026-08-14 01:00:00'),
-        ('10000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000000', 15, '10000000-0000-4000-8000-000000000103', 5, 'contraction/greatest/15', false, '2026-08-14 03:00:00'),
-        ('20000000-0000-4000-8000-000000000011', '20000000-0000-4000-8000-000000000000', 20, '20000000-0000-4000-8000-000000000111', 5, 'contraction/head/older', true,  '2026-08-14 01:00:00'),
-        ('20000000-0000-4000-8000-000000000012', '20000000-0000-4000-8000-000000000000', 20, '20000000-0000-4000-8000-000000000112', 5, 'contraction/head/newer', false, '2026-08-14 02:00:00'),
-        ('30000000-0000-4000-8000-000000000021', '30000000-0000-4000-8000-000000000000', 30, '30000000-0000-4000-8000-000000000121', 5, 'contraction/created/older', false, '2026-08-14 01:00:00'),
-        ('30000000-0000-4000-8000-000000000022', '30000000-0000-4000-8000-000000000000', 30, '30000000-0000-4000-8000-000000000122', 5, 'contraction/created/newer', false, '2026-08-14 02:00:00'),
-        ('40000000-0000-4000-8000-000000000031', '40000000-0000-4000-8000-000000000000', 40, '40000000-0000-4000-8000-000000000131', 5, 'contraction/id/lower', false, '2026-08-14 01:00:00'),
-        ('40000000-0000-4000-8000-000000000032', '40000000-0000-4000-8000-000000000000', 40, '40000000-0000-4000-8000-000000000132', 5, 'contraction/id/greater', false, '2026-08-14 01:00:00'),
-        ('50000000-0000-4000-8000-000000000041', '50000000-0000-4000-8000-000000000000', 50, NULL, 5, 'contraction/null/preflight', false, '2026-08-14 01:00:00')
-    `);
-    await client.query(`SET session_replication_role = origin`);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'snapshot-contract-user', 'snapshot-contract', 'snapshot-contract-org')
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id", "user_id", "agent_compose_id", "title",
+            "last_chat_event_seq_id"
+          )
+          SELECT
+            "thread_id",
+            'snapshot-contract-user',
+            $1,
+            'snapshot contract ' || "ordinal"::text,
+            100
+          FROM unnest($2::uuid[]) WITH ORDINALITY
+            AS "fixture"("thread_id", "ordinal")
+        `,
+        [composeId, [...threadIds]],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_event_snapshots" (
+            "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
+            "last_event_id", "archive_schema_version", "object_key",
+            "is_head", "created_at"
+          ) VALUES
+            ('00000000-0000-4000-8000-000000092711', $1, NULL, 10,
+              '00000000-0000-4000-8000-000000092811', 5,
+              'snapshot-contract/watermark-low', true,
+              '2026-08-15 04:00:00'),
+            ('00000000-0000-4000-8000-000000092712', $1,
+              '00000000-0000-4000-8000-000000092711', 20,
+              '00000000-0000-4000-8000-000000092812', 5,
+              'snapshot-contract/watermark-high', false,
+              '2026-08-15 03:00:00'),
+            ('00000000-0000-4000-8000-000000092729', $2, NULL, 30,
+              '00000000-0000-4000-8000-000000092829', 5,
+              'snapshot-contract/equal-non-head', false,
+              '2026-08-15 05:00:00'),
+            ('00000000-0000-4000-8000-000000092721', $2, NULL, 30,
+              '00000000-0000-4000-8000-000000092821', 5,
+              'snapshot-contract/equal-head', true,
+              '2026-08-15 02:00:00'),
+            ('00000000-0000-4000-8000-000000092731', $3, NULL, 40,
+              '00000000-0000-4000-8000-000000092831', 5,
+              'snapshot-contract/equal-created-old', false,
+              '2026-08-15 01:00:00'),
+            ('00000000-0000-4000-8000-000000092732', $3, NULL, 40,
+              '00000000-0000-4000-8000-000000092832', 5,
+              'snapshot-contract/equal-created-new', false,
+              '2026-08-15 02:00:00'),
+            ('00000000-0000-4000-8000-000000092741', $4, NULL, 50,
+              '00000000-0000-4000-8000-000000092841', 5,
+              'snapshot-contract/equal-id-low', false,
+              '2026-08-15 01:00:00'),
+            ('00000000-0000-4000-8000-000000092742', $4, NULL, 50,
+              '00000000-0000-4000-8000-000000092842', 5,
+              'snapshot-contract/equal-id-high', false,
+              '2026-08-15 01:00:00')
+        `,
+        [...threadIds],
+      );
 
-    const dataContractionSql = await fs.readFile(
-      path.join(
-        MIGRATIONS_DIR,
-        `${CHAT_EVENT_SNAPSHOT_POINTER_DATA_CONTRACTION_MIGRATION}.sql`,
-      ),
-      "utf8",
-    );
-    await expectDatabaseError(client, {
-      code: "P0001",
-      messageIncludes: "has no terminal event ID",
-      query: dataContractionSql,
-    });
-    await client.query(`
-      DELETE FROM "chat_event_snapshots"
-      WHERE "id" = '50000000-0000-4000-8000-000000000041'
-    `);
+      await applyMigrationsUpToTag(
+        client,
+        CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION,
+      );
+      const prepared = await client.query<{ id: string }>(`
+        SELECT "id" FROM "chat_event_snapshots" ORDER BY "chat_thread_id"
+      `);
+      assert.deepEqual(
+        prepared.rows.map((row) => {
+          return row.id;
+        }),
+        expectedPreparedIds,
+      );
 
-    await applyMigrationsUpToTag(
-      client,
-      CHAT_EVENT_SNAPSHOT_POINTER_DATA_CONTRACTION_MIGRATION,
-    );
-    const retained = await client.query<{ id: string }>(`
-      SELECT "id"::text AS "id"
-      FROM "chat_event_snapshots"
-      ORDER BY "id"
-    `);
-    assert.deepEqual(retained.rows, [
-      { id: "10000000-0000-4000-8000-000000000002" },
-      { id: "20000000-0000-4000-8000-000000000011" },
-      { id: "30000000-0000-4000-8000-000000000022" },
-      { id: "40000000-0000-4000-8000-000000000032" },
-    ]);
+      await client.query(
+        `
+          INSERT INTO "chat_event_snapshots" (
+            "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
+            "last_event_id", "archive_schema_version", "object_key",
+            "is_head", "created_at"
+          ) VALUES ($1, $2, $3, 25, $4, 5, $5, true, $6)
+        `,
+        [
+          raceWinnerId,
+          threadIds[0],
+          expectedPreparedIds[0],
+          "00000000-0000-4000-8000-000000092813",
+          "snapshot-contract/race-high",
+          "2026-08-15 05:00:00",
+        ],
+      );
 
-    const compatibilityObjects = await client.query<{
-      triggerName: string | null;
-      functionName: string | null;
-    }>(`
-      SELECT
-        (
-          SELECT "tgname"
-          FROM "pg_trigger"
-          WHERE "tgname" = 'chat_event_snapshots_fill_last_event_id'
-            AND NOT "tgisinternal"
-          LIMIT 1
-        ) AS "triggerName",
-        to_regprocedure(
-          'set_chat_event_snapshot_last_event_id()'
-        )::text AS "functionName"
-    `);
-    assert.deepEqual(compatibilityObjects.rows, [
-      { triggerName: null, functionName: null },
-    ]);
+      await applyMigrationsUpToTag(
+        client,
+        CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION,
+      );
+      const contracted = await client.query<{
+        id: string;
+        lastEventId: string;
+      }>(`
+        SELECT "id", "last_event_id" AS "lastEventId"
+        FROM "chat_event_snapshots"
+        ORDER BY "chat_thread_id"
+      `);
+      assert.deepEqual(contracted.rows, [
+        {
+          id: raceWinnerId,
+          lastEventId: "00000000-0000-4000-8000-000000092813",
+        },
+        {
+          id: expectedPreparedIds[1],
+          lastEventId: "00000000-0000-4000-8000-000000092821",
+        },
+        {
+          id: expectedPreparedIds[2],
+          lastEventId: "00000000-0000-4000-8000-000000092832",
+        },
+        {
+          id: expectedPreparedIds[3],
+          lastEventId: "00000000-0000-4000-8000-000000092842",
+        },
+      ]);
 
-    await applyMigrationsUpToTag(
-      client,
-      CHAT_EVENT_SNAPSHOT_POINTER_SCHEMA_CONTRACTION_MIGRATION,
-    );
-    const columns = await client.query<{
-      columnName: string;
-      isNullable: string;
-    }>(`
-      SELECT
-        "column_name" AS "columnName",
-        "is_nullable" AS "isNullable"
-      FROM "information_schema"."columns"
-      WHERE "table_schema" = 'public'
-        AND "table_name" = 'chat_event_snapshots'
-        AND "column_name" IN (
-          'last_event_id',
-          'parent_snapshot_id',
-          'is_head'
-        )
-      ORDER BY "column_name"
-    `);
-    assert.deepEqual(columns.rows, [
-      { columnName: "is_head", isNullable: "NO" },
-      { columnName: "last_event_id", isNullable: "NO" },
-      { columnName: "parent_snapshot_id", isNullable: "YES" },
-    ]);
+      const columns = await client.query<{
+        columnName: string;
+        isNullable: "NO" | "YES";
+      }>(`
+        SELECT
+          "column_name" AS "columnName",
+          "is_nullable" AS "isNullable"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND "table_name" = 'chat_event_snapshots'
+          AND "column_name" IN (
+            'last_event_id', 'parent_snapshot_id', 'is_head'
+          )
+        ORDER BY "column_name"
+      `);
+      assert.deepEqual(columns.rows, [
+        { columnName: "last_event_id", isNullable: "NO" },
+      ]);
+      await assert.rejects(
+        client.query(
+          `
+            INSERT INTO "chat_event_snapshots" (
+              "chat_thread_id", "last_seq_id", "last_event_id",
+              "archive_schema_version", "object_key"
+            ) VALUES ($1, 26, $2, 5, 'snapshot-contract/duplicate-final')
+          `,
+          [threadIds[0], "00000000-0000-4000-8000-000000092814"],
+        ),
+        (error: unknown) => {
+          return (
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "23505"
+          );
+        },
+      );
 
-    const versionIndex = await client.query<{ isUnique: boolean }>(`
-      SELECT "indisunique" AS "isUnique"
-      FROM "pg_index"
-      WHERE "indexrelid" =
-        to_regclass('chat_event_snapshots_thread_version_idx')
-    `);
-    assert.deepEqual(versionIndex.rows, [{ isUnique: true }]);
-
-    const outgoingApiObjects = await client.query<{
-      headIndexExists: boolean;
-      parentForeignKeyExists: boolean;
-    }>(`
-      SELECT
-        to_regclass(
-          'chat_event_snapshots_thread_head_unique'
-        ) IS NOT NULL AS "headIndexExists",
-        EXISTS (
-          SELECT 1
-          FROM "pg_constraint"
-          WHERE "conname" =
-            'chat_event_snapshots_parent_snapshot_id_chat_event_snapshots_id_fk'
-        ) AS "parentForeignKeyExists"
-    `);
-    assert.deepEqual(outgoingApiObjects.rows, [
-      { headIndexExists: true, parentForeignKeyExists: true },
-    ]);
-
-    console.log("   ✅ greatest terminal watermarks are retained");
-    console.log(
-      "   ✅ equal watermarks follow head, creation time, and UUID order",
-    );
-    console.log("   ✅ temporary cursor writer objects are removed");
-    console.log("   ✅ missing terminal identities fail closed");
-    console.log(
-      "   ✅ terminal cursors and thread/version identity are contracted",
-    );
-    console.log(
-      "   ✅ outgoing API Snapshot columns remain through DB-first promotion\n",
-    );
+      console.log(
+        "   ✅ greatest Snapshot watermark wins deterministic dedupe",
+      );
+      console.log("   ✅ equal watermarks preserve the existing reader order");
+      console.log("   ✅ contraction closes writes after online preparation");
+      console.log(
+        "   ✅ terminal cursor and thread/version constraints hold\n",
+      );
+    } finally {
+      await client.end();
+    }
   } finally {
-    await client.end();
     await dropDatabase(testDb);
   }
 }
@@ -9878,7 +9928,7 @@ async function main(): Promise<void> {
     await validateConnectionScopedVariableUniqueness();
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
-    await validateChatEventSnapshotPointerContraction();
+    await validateChatEventSnapshotContraction();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();

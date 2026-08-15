@@ -313,6 +313,37 @@ describe("okou chat messages command", () => {
     ]);
   });
 
+  it("rejects a missing Chat Event response schema version", async () => {
+    const outputDirectory = await createOutputDirectory();
+    const threadDirectory = join(outputDirectory, THREAD_ID);
+    await mkdir(threadDirectory, { recursive: true });
+    await writeFile(
+      join(threadDirectory, "event-SEQ_ID_4.json"),
+      `${JSON.stringify(rawEventRow(4))}\n`,
+      "utf8",
+    );
+    server.use(
+      http.get(ROWS_URL, () => {
+        return HttpResponse.json({ rows: [] });
+      }),
+    );
+
+    await expect(async () => {
+      await zeroChatCommand.parseAsync([
+        "node",
+        "cli",
+        "messages",
+        "--output-dir",
+        outputDirectory,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Unexpected Chat Event schema version null",
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("rebuilds an expired local generation and preserves unmanaged files", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);

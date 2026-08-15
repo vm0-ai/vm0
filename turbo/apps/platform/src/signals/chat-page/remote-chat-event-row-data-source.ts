@@ -9,7 +9,6 @@ import { accept } from "../../lib/accept.ts";
 import {
   assertChatEventSchemaVersion,
   CHAT_EVENT_SCHEMA_VERSION_HEADERS,
-  chatEventRowsQuery,
 } from "../../shared-database/chat-event-schema-version.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
@@ -35,7 +34,17 @@ export const listRowsAfter$ = command(
       client.rows({
         headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
         params: { threadId },
-        query: chatEventRowsQuery(cursor, CHAT_EVENT_ROWS_PAGE_LIMIT),
+        query:
+          cursor.lastEventId === null
+            ? {
+                sinceSeqId: cursor.lastSeqId,
+                limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+              }
+            : {
+                sinceSeqId: cursor.lastSeqId,
+                sinceEventId: cursor.lastEventId,
+                limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+              },
         fetchOptions: { signal },
       }),
       [200, 410],
@@ -89,9 +98,6 @@ export const fetchChatEventSnapshotRows$ = command(
     if (download.status === 404) {
       L.debug("fetchChatEventSnapshotRows$: no snapshot yet", { threadId });
       return null;
-    }
-    if (typeof download.body.lastEventId !== "string") {
-      throw new Error("ChatEvent snapshot response is missing lastEventId");
     }
     const response = await fetch(download.body.url, { signal });
     if (!response.ok) {

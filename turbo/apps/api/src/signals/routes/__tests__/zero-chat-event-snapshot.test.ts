@@ -13,7 +13,7 @@ import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/t
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp } from "../../../__tests__/test-helpers";
+import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { mockNow, now } from "../../../lib/time";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
 import { testChatEventSnapshotRoutes } from "../test-chat-event-snapshot";
@@ -155,7 +155,7 @@ describe("chat event snapshot read endpoints", () => {
     installFakeChatEventR2(context);
   });
 
-  it("serves the current immutable Snapshot pointer", async () => {
+  it("serves the current Snapshot version and its terminal cursor", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Snapshot download agent",
@@ -270,22 +270,30 @@ describe("chat event snapshot read endpoints", () => {
       agentId: agent.agentId,
       prompt: `schema-negotiation-${randomUUID()}`,
     });
-    const missingVersionHeaders = authenticate(owner);
-    delete (missingVersionHeaders as Partial<ReturnType<typeof authenticate>>)[
-      CHAT_EVENT_SCHEMA_VERSION_HEADER
+    const { authorization } = authenticate(owner);
+    const rawRequest = setupRawAppRequest({
+      context,
+      routes: zeroChatThreadRoutes,
+    });
+    const missingVersionPaths = [
+      `/api/okou/chat-threads/${threadId}/event-snapshot`,
+      `/api/okou/chat-threads/${threadId}/event-rows?sinceSeqId=0`,
     ];
-    const missingVersion = await eventsClient().snapshot({
-      headers: missingVersionHeaders,
-      params: { threadId },
-    });
-    expect(missingVersion.status).toBe(400);
-    expect(missingVersion.body).toStrictEqual({
-      error: {
-        message: "Invalid Chat Event schema version",
-        code: "CHAT_EVENT_SCHEMA_VERSION_INVALID",
-      },
-    });
-
+    for (const path of missingVersionPaths) {
+      const response = await rawRequest(path, {
+        method: "GET",
+        headers: { authorization },
+      });
+      expect(response).toStrictEqual({
+        status: 400,
+        body: {
+          error: {
+            message: "Invalid Chat Event schema version",
+            code: "CHAT_EVENT_SCHEMA_VERSION_INVALID",
+          },
+        },
+      });
+    }
     const request = async (endpoint: "snapshot" | "rows", version: string) => {
       const headers = {
         ...authenticate(owner),
@@ -332,7 +340,7 @@ describe("chat event snapshot read endpoints", () => {
     }
   }, 60_000);
 
-  it("serves projectable raw rows from paired cursors", async () => {
+  it("serves current Raw Event rows from cold-start and paired cursors", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Row parity agent",
@@ -376,25 +384,18 @@ describe("chat event snapshot read endpoints", () => {
     }
     const firstSeqId = firstRow.seqId;
 
-    const sequenceOnly = await eventsClient().rows({
-      headers: authenticate(owner),
-      params: { threadId },
-      query: { sinceSeqId: firstSeqId } as never,
-    });
-    expect(sequenceOnly.status).toBe(400);
-
-    const currentInput = fromStart.body.rows
+    const v5Input = fromStart.body.rows
       .map((row) => {
         return chatEventFromRow(row);
       })
       .find((event) => {
         return event.eventType === "input.prompt";
       });
-    if (currentInput?.eventType !== "input.prompt") {
-      throw new Error("Expected the current feedback input");
+    if (v5Input?.eventType !== "input.prompt") {
+      throw new Error("Expected the V5 feedback input");
     }
     expect(
-      currentInput.userMessage.parts.find((part) => {
+      v5Input.userMessage.parts.find((part) => {
         return part.type === "feedback";
       }),
     ).toMatchObject({

@@ -544,6 +544,9 @@ importers:
       '@okouai/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@sentry/browser':
+        specifier: 10.46.0
+        version: 10.46.0
       '@sentry/react':
         specifier: ^10.38.0
         version: 10.46.0(react@19.2.6)

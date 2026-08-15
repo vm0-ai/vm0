@@ -123,6 +123,58 @@ describe("canonical chat event row schema", () => {
   });
 });
 
+describe("Chat Event Raw Event cursor contract", () => {
+  it("allows only a cold start or a paired positive cursor", () => {
+    const querySchema = chatThreadEventsContract.rows.query;
+    expect(querySchema.safeParse({ sinceSeqId: 0 }).success).toBeTruthy();
+    expect(
+      querySchema.safeParse({
+        sinceSeqId: 9,
+        sinceEventId: "00000000-0000-4000-8000-000000000009",
+      }).success,
+    ).toBeTruthy();
+    expect(querySchema.safeParse({ sinceSeqId: 9 }).success).toBeFalsy();
+    expect(
+      querySchema.safeParse({
+        sinceSeqId: 0,
+        sinceEventId: "00000000-0000-4000-8000-000000000009",
+      }).success,
+    ).toBeFalsy();
+  });
+});
+
+describe("Chat Event versioned read contract", () => {
+  it("requires the request version header and Snapshot terminal event ID", () => {
+    const headersSchema = chatThreadEventsContract.snapshot.headers;
+    expect(
+      headersSchema.safeParse({ authorization: "Bearer test" }).success,
+    ).toBe(false);
+    expect(
+      headersSchema.safeParse({
+        authorization: "Bearer test",
+        [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
+      }).success,
+    ).toBe(true);
+
+    const snapshotResponse = {
+      url: "https://example.com/snapshot.ndjson.gz",
+      expiresInSeconds: 900,
+      lastSeqId: 9,
+    };
+    expect(
+      chatThreadEventsContract.snapshot.responses[200].safeParse(
+        snapshotResponse,
+      ).success,
+    ).toBe(false);
+    expect(
+      chatThreadEventsContract.snapshot.responses[200].safeParse({
+        ...snapshotResponse,
+        lastEventId: "00000000-0000-4000-8000-000000000009",
+      }).success,
+    ).toBe(true);
+  });
+});
+
 describe("canonical row projection preserves the public ChatEvent contract", () => {
   it("serializes and projects every event type from canonical fields", () => {
     expect(

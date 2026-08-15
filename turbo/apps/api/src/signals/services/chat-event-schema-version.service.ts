@@ -1,7 +1,4 @@
-import {
-  CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 interface VersionErrorResponse {
   readonly status: 400 | 409 | 426;
@@ -29,7 +26,7 @@ function invalidVersion(): ChatEventSchemaVersionResolution {
   };
 }
 
-/** Resolve the explicitly requested wire version. */
+/** Resolve the explicit wire version. */
 export function resolveChatEventSchemaVersion(
   headerValue: string | undefined,
 ): ChatEventSchemaVersionResolution {
@@ -43,7 +40,7 @@ export function resolveChatEventSchemaVersion(
   if (!Number.isSafeInteger(version)) {
     return invalidVersion();
   }
-  if (version < CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR) {
+  if (version < CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
     return {
       kind: "error",
       response: {
@@ -72,5 +69,5 @@ export function resolveChatEventSchemaVersion(
       },
     };
   }
-  return { kind: "ok", version };
+  return { kind: "ok", version: CURRENT_CHAT_EVENT_SCHEMA_VERSION };
 }

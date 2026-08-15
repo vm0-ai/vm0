@@ -150,6 +150,11 @@ export function semanticChatEventsFromChatEvents(
         : [];
     }),
   );
+  const automationInputIds = new Set(
+    events.flatMap((event) => {
+      return event.eventType === "input.automation" ? [event.id] : [];
+    }),
+  );
 
   return events.flatMap((event): SemanticChatEventState[] => {
     if (
@@ -160,6 +165,9 @@ export function semanticChatEventsFromChatEvents(
       isGoalMarkerEvent(event) ||
       isBrowserLifecycleEventType(event.eventType) ||
       isInterruptedAssistantCancellation(event, interruptedRunIds) ||
+      (event.eventType === "input.rejected" &&
+        event.revokesEventId !== undefined &&
+        automationInputIds.has(event.revokesEventId)) ||
       recalledIds.has(event.id) ||
       replacedIds.has(event.id)
     ) {

@@ -26,7 +26,7 @@ import {
   type RecordedChatEventPut,
 } from "./helpers/fake-chat-event-r2";
 import {
-  advanceChatEventSequence,
+  advanceChatEventSequenceAsPreviousApi,
   readChatEventSnapshotHead,
   setChatEventSnapshotHeadVersion,
 } from "./helpers/runtime-state";
@@ -36,7 +36,7 @@ const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
-const UNSUPPORTED_ARCHIVE_SCHEMA_VERSION = 3;
+const RETIRED_ARCHIVE_SCHEMA_VERSION = 3;
 const DUPLICATE_EVENT_ID_NAMESPACE = "46842b1d-a596-47fb-86b3-4f51962751c7";
 const DUPLICATE_EVENT_ID_WARNING =
   "Normalized duplicate chat event IDs in snapshot";
@@ -646,7 +646,7 @@ describe("cron snapshot chat events", () => {
       duplicateEventIdConflicts: 1,
       duplicateEventIdsRemapped: 2,
       duplicateEventReferencesRemapped: 2,
-      nonV4SnapshotHeads: 0,
+      nonCurrentSnapshotHeads: 0,
     });
     expectSnapshotCompletion({
       duplicateEventIdConflictThreads: 1,
@@ -788,7 +788,7 @@ describe("cron snapshot chat events", () => {
       agentId: agent.agentId,
       title: "Sparse snapshot thread",
     });
-    await advanceChatEventSequence(context, thread.id, 3);
+    await advanceChatEventSequenceAsPreviousApi(context, thread.id, 3);
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       threadId: thread.id,
@@ -803,7 +803,7 @@ describe("cron snapshot chat events", () => {
     expect(firstPhysicalRow.seqId).toBeGreaterThan(1);
     const coveredSeqId = lastPhysicalRow.seqId + 1;
 
-    await advanceChatEventSequence(context, threadId, 1);
+    await advanceChatEventSequenceAsPreviousApi(context, threadId, 1);
     await projectChatEventSearch(threadId);
     const result = await runSnapshotCron([threadId]);
     expect(result.success).toBeTruthy();
@@ -848,17 +848,19 @@ describe("cron snapshot chat events", () => {
     const agent = await bdd.createAgent(owner, {
       displayName: "Fail-closed snapshot agent",
     });
-    const fixtures = await Promise.all(
-      ["unsupported", "unreadable", "undecodable", "incomplete"].map(
-        async (kind) => {
-          const threadId = await sendNoCreditMessage(owner, {
-            agentId: agent.agentId,
-            prompt: `${kind}-${randomUUID()}`,
-          });
-          return { kind, threadId };
-        },
-      ),
-    );
+    const fixtures: { readonly kind: string; readonly threadId: string }[] = [];
+    for (const kind of [
+      "unsupported",
+      "unreadable",
+      "undecodable",
+      "incomplete",
+    ]) {
+      const threadId = await sendNoCreditMessage(owner, {
+        agentId: agent.agentId,
+        prompt: `${kind}-${randomUUID()}`,
+      });
+      fixtures.push({ kind, threadId });
+    }
     const threadIds = fixtures.map((fixture) => {
       return fixture.threadId;
     });
@@ -874,7 +876,7 @@ describe("cron snapshot chat events", () => {
         await setChatEventSnapshotHeadVersion(
           context,
           fixture.threadId,
-          UNSUPPORTED_ARCHIVE_SCHEMA_VERSION,
+          RETIRED_ARCHIVE_SCHEMA_VERSION,
         );
       } else if (fixture.kind === "unreadable") {
         await setChatEventSnapshotHeadVersion(

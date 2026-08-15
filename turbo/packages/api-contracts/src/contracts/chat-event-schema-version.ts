@@ -5,13 +5,7 @@
  */
 export const CURRENT_CHAT_EVENT_SCHEMA_VERSION = 5 as const;
 
-/** Oldest version the current API accepts. */
-export const CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR = 5 as const;
-
 export const CHAT_EVENT_SCHEMA_VERSION_HEADER = "X-Chat-Event-Schema-Version";
-
-export type SupportedChatEventSchemaVersion =
-  typeof CURRENT_CHAT_EVENT_SCHEMA_VERSION;
 
 export type ChatEventCursor =
   | { readonly lastEventId: null; readonly lastSeqId: 0 }

@@ -67,6 +67,12 @@ describe("shared database browser bridge", () => {
       constructor(scriptURL: string | URL, options?: string | WorkerOptions) {
         constructorCalls.push({ scriptURL, options });
       }
+
+      addEventListener(
+        _type: "error",
+        _listener: (event: ErrorEvent) => void,
+        _options?: AddEventListenerOptions | boolean,
+      ): void {}
     }
 
     vi.stubGlobal("SharedWorker", TestSharedWorker);

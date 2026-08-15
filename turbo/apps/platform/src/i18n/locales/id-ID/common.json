@@ -978,6 +978,8 @@
         "currentMember": "Anggota saat ini",
         "management": {
           "comparison": "Perbandingan langganan saat ini dan baru",
+          "comparisonDescription": "Langganan Anda saat ini dan pilihan ini, ditampilkan berdampingan",
+          "comparisonTitle": "Perbandingan langganan",
           "current": "Saat ini",
           "downgradeDescription": "Paket yang lebih rendah dimulai pada tanggal penagihan berikutnya. Kredit yang ada tetap tersedia hingga kedaluwarsa.",
           "downgradesToDate": "Turun ke {{package}} pada {{date}}.",
@@ -4266,6 +4268,7 @@
         "apiKeyDescription": "Kunci ruang kerja bersama. Paling cocok saat tim menagih melalui satu akun.",
         "apiKeyPlaceholder": "Masukkan kunci API Anda",
         "apiKeyRequired": "Kunci API wajib diisi",
+        "availableModels": "Model yang tersedia",
         "builtIn": "Bawaan",
         "builtInDescription": "Kredit ruang kerja menanggung penggunaan.",
         "claudeSubscription": "Langganan Claude",
@@ -4284,16 +4287,17 @@
         "model": "Model",
         "noAvailableModels": "Tidak ada model yang tersedia",
         "noMappedGateway": "Tidak ada koneksi penyedia yang memetakan model ini.",
+        "pricing": "Harga",
         "providedBy": "Disediakan oleh",
         "provider": "Provider",
         "providerApiKey": "Kunci API {{provider}}",
+        "runsThrough": "Dijalankan melalui",
         "secretStored": "Disimpan di rahasia ruang kerja.",
         "selectDefaultModel": "Pilih model default",
         "selectGateway": "Pilih koneksi penyedia",
         "selectModel": "Pilih model",
         "selectProvider": "Pilih provider",
-        "workspaceDescription": "Tersedia untuk semua orang di ruang kerja ini.",
-        "workspaceTitle": "Ruang kerja"
+        "workspaceDescription": "Tersedia untuk semua orang di ruang kerja ini."
       },
       "reset": {
         "confirmDescription": "Gunakan satu reset Codex untuk mereset jendela penggunaan saat ini. Anda memiliki {{remaining}}.",

@@ -1,8 +1,5 @@
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventCursor,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -18,6 +15,8 @@ import {
 } from "./cron-snapshot-chat-events.service";
 
 const SNAPSHOT_URL_TTL_SECONDS = 900;
+/** Cursor that reads a thread from its very first event. */
+const THREAD_START_SEQ_ID = 0;
 
 type ChatEventSnapshotDownload =
   | { readonly kind: "thread-not-found" }
@@ -35,12 +34,17 @@ type ChatEventRowsPage =
   | { readonly kind: "expired" }
   | { readonly kind: "ok"; readonly rows: readonly ChatEventRow[] };
 
-interface ChatEventRowsArgs {
+interface ChatEventRowsBaseArgs {
   readonly threadId: string;
   readonly userId: string;
-  readonly cursor: ChatEventCursor;
   readonly limit: number;
 }
+
+type ChatEventRowsArgs = ChatEventRowsBaseArgs &
+  (
+    | { readonly sinceSeqId: 0; readonly sinceEventId?: never }
+    | { readonly sinceSeqId: number; readonly sinceEventId: string }
+  );
 
 const ownedThread = (threadId: string, userId: string) => {
   return and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId));
@@ -76,38 +80,41 @@ async function snapshotPointer(
   return pointer ?? null;
 }
 
-async function cursorMatchesSnapshotState(
+async function validSnapshotCursor(
   db: ReadonlyDb,
   args: ChatEventRowsArgs,
 ): Promise<boolean> {
-  if (args.cursor.lastEventId === null) {
-    const [storedSnapshot] = await db
+  const [[storedSnapshot], [matchingSnapshotCursor]] = await Promise.all([
+    db
       .select({ id: chatEventSnapshots.id })
       .from(chatEventSnapshots)
       .where(eq(chatEventSnapshots.chatThreadId, args.threadId))
-      .limit(1);
-    return storedSnapshot === undefined;
-  }
-
-  const [matchingSnapshotCursor] = await db
-    .select({ id: chatEventSnapshots.id })
-    .from(chatEventSnapshots)
-    .where(
-      and(
-        eq(chatEventSnapshots.chatThreadId, args.threadId),
-        eq(
-          chatEventSnapshots.archiveSchemaVersion,
-          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      .limit(1),
+    db
+      .select({ lastEventId: chatEventSnapshots.lastEventId })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, args.threadId),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
+          eq(chatEventSnapshots.lastSeqId, args.sinceSeqId),
         ),
-        eq(chatEventSnapshots.lastSeqId, args.cursor.lastSeqId),
-        eq(chatEventSnapshots.lastEventId, args.cursor.lastEventId),
-      ),
-    )
-    .limit(1);
-  return matchingSnapshotCursor !== undefined;
+      )
+      .limit(1),
+  ]);
+  // The cold-start cursor precedes every event, so it owns no row. It is
+  // valid only while nothing has ever been archived; once any Snapshot exists
+  // the client must start from that Snapshot's paired cursor.
+  if (args.sinceSeqId === THREAD_START_SEQ_ID && storedSnapshot === undefined) {
+    return true;
+  }
+  return matchingSnapshotCursor?.lastEventId === args.sinceEventId;
 }
 
-/** Resolve the current immutable Snapshot pointer for a thread. */
+/** Resolve the current persisted Snapshot pointer. */
 export function zeroChatThreadEventSnapshot(args: {
   readonly threadId: string;
   readonly userId: string;
@@ -141,7 +148,6 @@ export function zeroChatThreadEventSnapshot(args: {
           signal.throwIfAborted();
         }
       }
-
       if (pointer === null) {
         return { kind: "snapshot-not-found" };
       }
@@ -166,10 +172,10 @@ export function zeroChatThreadEventSnapshot(args: {
 }
 
 /**
- * Raw-row tail after a paired cursor. A cursor equal to the current Snapshot
- * terminal position remains valid after its Raw Event has been reclaimed.
- * The sole cursor without an event identity is `{ lastSeqId: 0 }`, and it is
- * valid only while the thread has no Snapshot pointer.
+ * Raw-row tail after a paired cursor. A missing cursor row means the range
+ * below it is unavailable and the client has to rebuild from a fresh
+ * Snapshot. `sinceSeqId: 0` remains the cold start for a thread that has never
+ * had a Snapshot.
  */
 export function zeroChatThreadEventRows(
   args: ChatEventRowsArgs,
@@ -191,18 +197,15 @@ export function zeroChatThreadEventRows(
       .where(
         and(
           eq(chatEvents.chatThreadId, args.threadId),
-          eq(chatEvents.seqId, args.cursor.lastSeqId),
+          eq(chatEvents.seqId, args.sinceSeqId),
         ),
       )
       .limit(1);
-    if (
-      cursor !== undefined &&
-      (args.cursor.lastEventId === null ||
-        cursor.id !== args.cursor.lastEventId)
-    ) {
-      return { kind: "expired" } as const;
-    }
-    if (cursor === undefined && !(await cursorMatchesSnapshotState(db, args))) {
+    const validCursor =
+      cursor === undefined
+        ? await validSnapshotCursor(db, args)
+        : cursor.id === args.sinceEventId;
+    if (!validCursor) {
       return { kind: "expired" } as const;
     }
 
@@ -225,7 +228,7 @@ export function zeroChatThreadEventRows(
       .where(
         and(
           eq(chatEvents.chatThreadId, args.threadId),
-          gt(chatEvents.seqId, args.cursor.lastSeqId),
+          gt(chatEvents.seqId, args.sinceSeqId),
         ),
       )
       .orderBy(asc(chatEvents.seqId))

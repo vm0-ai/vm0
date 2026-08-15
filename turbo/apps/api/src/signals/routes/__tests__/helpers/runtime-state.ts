@@ -422,13 +422,13 @@ export async function setChatEventSnapshotHeadVersion(
   });
 }
 
-export async function advanceChatEventSequence(
+export async function advanceChatEventSequenceAsPreviousApi(
   context: TestContext,
   threadId: string,
   count: number,
 ): Promise<void> {
   await postAction(context, {
-    action: "advance-chat-event-sequence",
+    action: "advance-chat-event-sequence-as-previous-api",
     thread_id: threadId,
     count,
   });
