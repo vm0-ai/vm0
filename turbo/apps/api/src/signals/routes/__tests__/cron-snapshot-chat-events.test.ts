@@ -884,17 +884,19 @@ describe("cron snapshot chat events", () => {
     const agent = await bdd.createAgent(owner, {
       displayName: "Fail-closed snapshot agent",
     });
-    const fixtures = await Promise.all(
-      ["unsupported", "unreadable", "undecodable", "incomplete"].map(
-        async (kind) => {
-          const threadId = await sendNoCreditMessage(owner, {
-            agentId: agent.agentId,
-            prompt: `${kind}-${randomUUID()}`,
-          });
-          return { kind, threadId };
-        },
-      ),
-    );
+    const fixtures: { readonly kind: string; readonly threadId: string }[] = [];
+    for (const kind of [
+      "unsupported",
+      "unreadable",
+      "undecodable",
+      "incomplete",
+    ]) {
+      const threadId = await sendNoCreditMessage(owner, {
+        agentId: agent.agentId,
+        prompt: `${kind}-${randomUUID()}`,
+      });
+      fixtures.push({ kind, threadId });
+    }
     const threadIds = fixtures.map((fixture) => {
       return fixture.threadId;
     });
