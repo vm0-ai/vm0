@@ -12,7 +12,7 @@ import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";
-import { resolveZeroRunModelSelection } from "./zero-run-model-selection.service";
+import { resolveRunModelSelection } from "./run-model-selection.service";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
@@ -78,7 +78,7 @@ async function resolveModelLabel(args: {
   readonly orgId: string;
   readonly runId: string;
 }): Promise<string | undefined> {
-  const runModel = await resolveZeroRunModelSelection(args.db, args.runId);
+  const runModel = await resolveRunModelSelection(args.db, args.runId);
   const model =
     runModel?.selectedModel ??
     (await resolveOrgDefaultModelProviderSelectedModel(args.db, args.orgId));

@@ -4,15 +4,15 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
-interface ZeroRunModelSelection {
+interface RunModelSelection {
   readonly selectedModel: string | null;
   readonly codexServiceTier: CodexServiceTier | null;
 }
 
-export async function resolveZeroRunModelSelection(
+export async function resolveRunModelSelection(
   db: ReadonlyDb,
   runId: string,
-): Promise<ZeroRunModelSelection | undefined> {
+): Promise<RunModelSelection | undefined> {
   const [row] = await db
     .select({
       selectedModel: agentRuns.selectedModel,
