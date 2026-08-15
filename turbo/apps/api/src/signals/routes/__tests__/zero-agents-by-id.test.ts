@@ -219,7 +219,7 @@ describe("GET /api/zero/agents/:id", () => {
       displayName: "Test Agent",
       description: "Test description",
       sound: "friendly",
-      avatarUrl: null,
+      avatarUrl: agent.avatarUrl,
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
