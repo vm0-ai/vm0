@@ -270,7 +270,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "web",
     description: "Upload and download files via the web chat endpoint",
     load: async () => {
-      return (await import("./commands/zero/web")).zeroWebCommand;
+      return (await import("./commands/web")).webCommand;
     },
   },
   {
