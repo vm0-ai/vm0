@@ -993,6 +993,8 @@
         "currentMember": "Membro atual",
         "management": {
           "comparison": "Comparação entre a assinatura atual e a nova",
+          "comparisonDescription": "Sua assinatura atual e esta seleção, lado a lado",
+          "comparisonTitle": "Comparação de assinaturas",
           "current": "Atual",
           "downgradeDescription": "O pacote menor começa na próxima data de cobrança. Os créditos existentes permanecem disponíveis até expirarem.",
           "downgradesToDate": "Muda para {{package}} em {{date}}.",

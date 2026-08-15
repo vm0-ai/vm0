@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, ChevronRight, Info, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -438,8 +438,8 @@ function usagePackCreditsLabel(item: UsagePackCatalogItem): string {
 function LedgerPlanRow({ plan }: { readonly plan: UsagePackPlan }) {
   return (
     <div className={LEDGER_ROW}>
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+      <div className="col-span-2 flex min-w-0 items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center">
           <img
             src={plan.image}
             alt=""
@@ -447,16 +447,22 @@ function LedgerPlanRow({ plan }: { readonly plan: UsagePackPlan }) {
             className="h-10 w-10 max-w-none object-contain"
           />
         </span>
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          {i18n.t(
-            ($) => {
-              return $.billing.plans.namedPlan;
-            },
-            { plan: planName(plan.tier) },
-          )}
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium leading-5 text-foreground">
+            {i18n.t(
+              ($) => {
+                return $.billing.plans.namedPlan;
+              },
+              { plan: planName(plan.tier) },
+            )}
+          </span>
+          <span className="block truncate text-[13px] leading-5 text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.memberExclusive;
+            })}
+          </span>
         </span>
       </div>
-      <div />
       <LedgerPrice value={plan.basePriceUsd} />
     </div>
   );
@@ -464,10 +470,12 @@ function LedgerPlanRow({ plan }: { readonly plan: UsagePackPlan }) {
 
 function LedgerTotalRow({
   bonusCredits,
+  comparisonRows,
   credits,
   totalUsd,
 }: {
   readonly bonusCredits: number;
+  readonly comparisonRows?: readonly SubscriptionComparisonRow[];
   readonly credits: number;
   readonly totalUsd: number;
 }) {
@@ -478,7 +486,7 @@ function LedgerTotalRow({
           return $.billing.plans.usagePacks.monthlyTotal;
         })}
       </span>
-      <span className="truncate px-3 text-sm text-muted-foreground">
+      <span className="truncate px-3 text-sm text-foreground">
         {bonusCredits > 0
           ? i18n.t(
               ($) => {
@@ -496,7 +504,14 @@ function LedgerTotalRow({
               { credits: formatLocalizedNumber(credits) },
             )}
       </span>
-      <LedgerPrice strong value={totalUsd} />
+      {comparisonRows ? (
+        <ManagedSubscriptionComparisonTooltip
+          rows={comparisonRows}
+          totalUsd={totalUsd}
+        />
+      ) : (
+        <LedgerPrice strong value={totalUsd} />
+      )}
     </div>
   );
 }
@@ -587,24 +602,6 @@ function MemberUsageRow({
   );
 }
 
-function MemberUsageFooter() {
-  return (
-    <div className="flex items-start gap-2 text-sm leading-relaxed text-muted-foreground">
-      <span
-        aria-hidden="true"
-        className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-gray-50 text-xs font-medium"
-      >
-        <Info className="size-3.5" />
-      </span>
-      <p>
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.memberExclusive;
-        })}
-      </p>
-    </div>
-  );
-}
-
 function pendingMemberUsagePack(
   management: UsagePackManagementResponse | null,
   member: MemberDisplay,
@@ -617,6 +614,7 @@ function pendingMemberUsagePack(
 
 function MemberUsageConfiguration({
   catalog,
+  comparisonRows,
   management,
   members,
   onSelectionChange,
@@ -625,6 +623,7 @@ function MemberUsageConfiguration({
   totals,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
+  readonly comparisonRows?: readonly SubscriptionComparisonRow[];
   readonly management: UsagePackManagementResponse | null;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly onSelectionChange?: () => void;
@@ -702,6 +701,7 @@ function MemberUsageConfiguration({
 
       <LedgerTotalRow
         bonusCredits={totals.bonusCredits}
+        comparisonRows={comparisonRows}
         credits={totals.totalCredits}
         totalUsd={plan.basePriceUsd + totals.totalUsd}
       />
@@ -1612,65 +1612,52 @@ function managedSubscriptionComparisonRows({
   ];
 }
 
-function ManagedSubscriptionComparison({
-  currentTotals,
-  management,
-  plan,
-  totals,
+function ManagedSubscriptionComparisonTooltip({
+  rows,
+  totalUsd,
 }: {
-  readonly currentTotals: MemberUsageTotals;
-  readonly management: UsagePackManagementResponse;
-  readonly plan: UsagePackPlan;
-  readonly totals: MemberUsageTotals;
+  readonly rows: readonly SubscriptionComparisonRow[];
+  readonly totalUsd: number;
 }) {
-  const currentPlan = usagePackPlan(management.tier);
-  const rows = managedSubscriptionComparisonRows({
-    currentPlan,
-    currentTotals,
-    plan,
-    totals,
-  });
-  const monthlyTotal = rows.at(-1);
-
-  /* The ledger above this already states what the workspace will pay, so the
-     row-by-row comparison opens on demand. The disclosure and copy follow the
-     same icon and text rails as the note above, while the values keep their
-     shared right edges. The migration screens keep their comparison contained
-     -- there it is the whole point of the page. */
   return (
-    <details className="group">
-      <summary className="grid cursor-pointer list-none grid-cols-[2.5rem_minmax(0,1fr)_30%_30%] items-center py-3">
-        <span className="!flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
-          <ChevronRight size={14} />
-        </span>
-        <span className="-ml-3 min-w-0 truncate text-[13px] font-medium leading-5 text-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.management.comparison;
-          })}
-        </span>
-        {monthlyTotal && (
-          <>
-            <span className="col-start-3 row-start-1 text-right text-[13px] leading-5 tabular-nums text-muted-foreground group-open:hidden">
-              {monthlyTotal.current}
-            </span>
-            <span className="col-start-4 row-start-1 text-right text-[13px] leading-5 tabular-nums text-muted-foreground group-open:hidden">
-              {monthlyTotal.next}
-            </span>
-            <span className="col-start-3 row-start-1 hidden text-right text-[13px] leading-5 text-muted-foreground group-open:block">
-              {i18n.t(($) => {
-                return $.billing.plans.usagePacks.management.current;
-              })}
-            </span>
-            <span className="col-start-4 row-start-1 hidden text-right text-[13px] leading-5 text-muted-foreground group-open:block">
-              {i18n.t(($) => {
-                return $.billing.plans.usagePacks.management.new;
-              })}
-            </span>
-          </>
-        )}
-      </summary>
-      <SubscriptionComparisonTable presentation="flat" rows={rows} />
-    </details>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="justify-self-end cursor-help underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:decoration-foreground"
+            data-testid="subscription-comparison-trigger"
+          >
+            <LedgerPrice strong value={totalUsd} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent
+          align="end"
+          collisionPadding={16}
+          side="bottom"
+          sideOffset={8}
+          className="w-[27.5rem] max-w-[calc(100vw-2rem)] rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] p-4 text-left font-normal"
+          style={{
+            backgroundColor: "hsl(var(--popover))",
+            color: "hsl(var(--popover-foreground))",
+            boxShadow:
+              "0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02)",
+          }}
+        >
+          <p className="text-sm font-medium text-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.management.comparisonTitle;
+            })}
+          </p>
+          <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.management
+                .comparisonDescription;
+            })}
+          </p>
+          <SubscriptionComparisonTable presentation="tooltip" rows={rows} />
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -1678,15 +1665,15 @@ function SubscriptionComparisonTable({
   presentation = "contained",
   rows,
 }: {
-  readonly presentation?: "contained" | "flat";
+  readonly presentation?: "contained" | "tooltip";
   readonly rows: readonly SubscriptionComparisonRow[];
 }) {
-  const flat = presentation === "flat";
+  const tooltip = presentation === "tooltip";
   return (
     <div
       className={
-        flat
-          ? "pb-2"
+        tooltip
+          ? "mt-3"
           : "mt-4 overflow-hidden rounded-lg border border-border/70"
       }
     >
@@ -1695,33 +1682,37 @@ function SubscriptionComparisonTable({
           return $.billing.plans.usagePacks.management.comparison;
         })}
         className={
-          flat ? "w-full table-fixed text-[13px]" : "w-full table-fixed text-sm"
+          tooltip
+            ? "w-full table-fixed text-[13px]"
+            : "w-full table-fixed text-sm"
         }
       >
-        {flat && (
+        {tooltip && (
           <colgroup>
-            <col className="w-10" />
-            <col />
-            <col className="w-[30%]" />
-            <col className="w-[30%]" />
+            <col className="w-[48%]" />
+            <col className="w-[26%]" />
+            <col className="w-[26%]" />
           </colgroup>
         )}
         <thead
           className={
-            flat
-              ? "sr-only"
+            tooltip
+              ? "text-xs font-normal text-muted-foreground"
               : "bg-muted/40 text-sm font-medium uppercase tracking-wide text-muted-foreground"
           }
         >
           <tr>
-            {flat && <th scope="col" />}
             <th
               scope="col"
-              className={flat ? "text-left" : "w-[40%] px-3 py-2 text-left"}
+              className={
+                tooltip ? "pb-1 text-left" : "w-[40%] px-3 py-2 text-left"
+              }
             />
             <th
               scope="col"
-              className={flat ? "text-right" : "w-[30%] px-3 py-2 text-right"}
+              className={
+                tooltip ? "pb-1 text-right" : "w-[30%] px-3 py-2 text-right"
+              }
             >
               {i18n.t(($) => {
                 return $.billing.plans.usagePacks.management.current;
@@ -1729,7 +1720,9 @@ function SubscriptionComparisonTable({
             </th>
             <th
               scope="col"
-              className={flat ? "text-right" : "w-[30%] px-3 py-2 text-right"}
+              className={
+                tooltip ? "pb-1 text-right" : "w-[30%] px-3 py-2 text-right"
+              }
             >
               {i18n.t(($) => {
                 return $.billing.plans.usagePacks.management.new;
@@ -1744,17 +1737,16 @@ function SubscriptionComparisonTable({
               <tr
                 key={row.label}
                 className={
-                  flat
+                  tooltip
                     ? ""
                     : `border-t border-border/60 ${monthlyTotal ? "bg-muted/20" : ""}`
                 }
               >
-                {flat && <td aria-hidden="true" />}
                 <th
                   scope="row"
                   className={
-                    flat
-                      ? `${monthlyTotal ? "pb-1.5 pt-3 font-medium text-foreground" : "py-1.5 font-normal text-muted-foreground"} text-left`
+                    tooltip
+                      ? `${monthlyTotal ? "rounded-l-md bg-gray-50 py-2 font-medium text-foreground" : "py-1.5 font-normal text-muted-foreground"} text-left`
                       : `px-3 py-2.5 text-left ${monthlyTotal ? "font-medium text-foreground" : "font-normal text-muted-foreground"}`
                   }
                 >
@@ -1762,19 +1754,19 @@ function SubscriptionComparisonTable({
                 </th>
                 <td
                   className={
-                    flat
-                      ? `${monthlyTotal ? "pb-1.5 pt-3 font-medium" : "py-1.5"} text-right tabular-nums text-muted-foreground`
+                    tooltip
+                      ? `${monthlyTotal ? "bg-gray-50 py-2 font-medium text-foreground" : "py-1.5 text-muted-foreground"} text-right tabular-nums`
                       : `px-3 py-2.5 text-right text-muted-foreground ${monthlyTotal ? "font-medium" : ""}`
                   }
                 >
                   {row.current}
                 </td>
                 {/* Contained comparisons use weight to mark a changed value.
-                    The flat management disclosure keeps both columns quiet. */}
+                    The tooltip keeps both columns quiet and equivalent. */}
                 <td
                   className={
-                    flat
-                      ? `${monthlyTotal ? "pb-1.5 pt-3 font-medium" : "py-1.5"} text-right tabular-nums text-muted-foreground`
+                    tooltip
+                      ? `${monthlyTotal ? "rounded-r-md bg-gray-50 py-2 font-medium text-foreground" : "py-1.5 text-muted-foreground"} text-right tabular-nums`
                       : `px-3 py-2.5 text-right text-foreground ${monthlyTotal || row.changed ? "font-semibold" : "font-medium"}`
                   }
                 >
@@ -2061,12 +2053,10 @@ function PackageReviewStep({
 }
 
 interface ManagedSubscriptionOrderSummaryProps {
-  readonly currentTotals: MemberUsageTotals;
   readonly management: UsagePackManagementResponse;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly plan: UsagePackPlan;
   readonly selections: Readonly<Record<string, MemberUsageSelection>>;
-  readonly totals: MemberUsageTotals;
 }
 
 function managementMembersMatch(
@@ -2266,12 +2256,10 @@ function managedSubscriptionChangeState({
 }
 
 function ManagedSubscriptionOrderSummary({
-  currentTotals,
   management,
   members,
   plan,
   selections,
-  totals,
 }: ManagedSubscriptionOrderSummaryProps) {
   const pageSignal = useGet(pageSignal$);
   const [previewLoadable, previewChange] = useLoadableSet(
@@ -2316,16 +2304,6 @@ function ManagedSubscriptionOrderSummary({
         return $.billing.plans.usagePacks.orderSummary;
       })}
     >
-      {/* Without a change there is nothing to compare, and the ledger above
-          already carries the current totals. */}
-      {hasConfigurationChange && (
-        <ManagedSubscriptionComparison
-          currentTotals={currentTotals}
-          management={management}
-          plan={plan}
-          totals={totals}
-        />
-      )}
       {scheduledDowngradeEffectiveAt ? (
         <ScheduledUsagePackDowngradeNotice
           effectiveAt={scheduledDowngradeEffectiveAt}
@@ -2410,6 +2388,16 @@ function PackageConfigurationStep({
         : undefined
     : allMembers;
   const totals = memberUsageTotals(members ?? [], selections, catalog);
+  const comparisonRows =
+    management &&
+    hasUsagePackConfigurationChange(management, members, plan, selections)
+      ? managedSubscriptionComparisonRows({
+          currentPlan: usagePackPlan(management.tier),
+          currentTotals: managedMemberUsageTotals(management, members, catalog),
+          plan,
+          totals,
+        })
+      : undefined;
 
   /* The review reads the packages configured here, so it stays in this step's
      component and reuses the totals rather than resolving the member list a
@@ -2422,6 +2410,7 @@ function PackageConfigurationStep({
     <div className="flex flex-1 flex-col gap-5">
       <MemberUsageConfiguration
         catalog={catalog}
+        comparisonRows={comparisonRows}
         management={management}
         members={members}
         pendingMembers={paidPendingMembers}
@@ -2429,22 +2418,14 @@ function PackageConfigurationStep({
         totals={totals}
       />
       {/* The frame keeps step 1's height, so a short member list leaves slack
-          below the ledger. Spend it above the fine print and the action, which
-          stay together at the foot of the dialog. */}
-      <div className="mt-auto flex flex-col gap-3.5">
-        <MemberUsageFooter />
+          between the ledger and the action at the foot of the dialog. */}
+      <div className="mt-auto">
         {management ? (
           <ManagedSubscriptionOrderSummary
-            currentTotals={managedMemberUsageTotals(
-              management,
-              members,
-              catalog,
-            )}
             management={management}
             members={members}
             plan={plan}
             selections={selections}
-            totals={totals}
           />
         ) : (
           <CheckoutOrderSummary
@@ -3082,7 +3063,6 @@ export function UsagePackMigrationPage({
             plan={plan}
             totals={totals}
           />
-          <MemberUsageFooter />
           {configuration && migrationId ? (
             <>
               <MigrationRevisionOrderSummary

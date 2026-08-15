@@ -972,6 +972,8 @@
         "currentMember": "Anggota saat ini",
         "management": {
           "comparison": "Perbandingan langganan saat ini dan baru",
+          "comparisonDescription": "Langganan Anda saat ini dan pilihan ini, ditampilkan berdampingan",
+          "comparisonTitle": "Perbandingan langganan",
           "current": "Saat ini",
           "downgradeDescription": "Paket yang lebih rendah dimulai pada tanggal penagihan berikutnya. Kredit yang ada tetap tersedia hingga kedaluwarsa.",
           "downgradesToDate": "Turun ke {{package}} pada {{date}}.",

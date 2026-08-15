@@ -993,6 +993,8 @@
         "currentMember": "Membro attuale",
         "management": {
           "comparison": "Confronto tra abbonamento attuale e nuovo",
+          "comparisonDescription": "Il tuo abbonamento attuale e questa selezione, affiancati",
+          "comparisonTitle": "Confronto degli abbonamenti",
           "current": "Attuale",
           "downgradeDescription": "Il pacchetto inferiore inizia alla prossima data di fatturazione. I crediti esistenti restano disponibili fino alla scadenza.",
           "downgradesToDate": "Passa a {{package}} il {{date}}.",
