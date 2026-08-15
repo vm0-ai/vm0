@@ -16,7 +16,7 @@ import {
   loadConnectedCustomConnectorConnections,
 } from "./custom-connector-credential-access.service";
 
-export function zeroCustomConnectorList(args: {
+export function customConnectorList(args: {
   readonly orgId: string;
   readonly userId: string;
 }): Computed<Promise<readonly CustomConnectorResponse[]>> {
