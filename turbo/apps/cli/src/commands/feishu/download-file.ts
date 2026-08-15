@@ -4,8 +4,8 @@ import { basename, join } from "node:path";
 import { Command } from "commander";
 import type { FeishuResourceType } from "@okouai/api-contracts/contracts/integrations";
 
-import { downloadFeishuFile } from "../../../lib/api/domains/integrations-feishu";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { downloadFeishuFile } from "../../lib/api/domains/integrations-feishu";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 function defaultOutPath(fileKey: string): string {
   return join(tmpdir(), `feishu-${basename(fileKey).slice(0, 80)}`);

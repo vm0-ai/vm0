@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { downloadFileCommand } from "../download-file";
 
 const DOWNLOAD_URL =
