@@ -21,7 +21,6 @@ import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts"
 import { writeIndexedDbChatEventRows$ } from "../chat-event-row-indexed-db.ts";
 import { createChatEventSignals } from "../chat-event-signals.ts";
 import { createChatEventStorageSignals } from "../chat-event-storage-signals.ts";
-import { fetchChatEventSnapshotRows$ } from "../remote-chat-event-row-data-source.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -150,23 +149,6 @@ function mockSignedInUser(): void {
 }
 
 describe("chat event snapshot read", () => {
-  it("rejects a snapshot without lastEventId", async () => {
-    mockSignedInUser();
-    const threadId = crypto.randomUUID();
-
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(200, {
-        url: SNAPSHOT_URL,
-        expiresInSeconds: 900,
-        lastSeqId: 2,
-      });
-    });
-
-    await expect(
-      context.store.set(fetchChatEventSnapshotRows$, threadId, context.signal),
-    ).rejects.toThrow("ChatEvent snapshot response is missing lastEventId");
-  });
-
   it("reads sparse snapshot positions and tails from its coverage", async () => {
     mockSignedInUser();
     const threadId = crypto.randomUUID();

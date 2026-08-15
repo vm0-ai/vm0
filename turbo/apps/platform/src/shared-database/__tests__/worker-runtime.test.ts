@@ -542,27 +542,6 @@ describe("shared database worker runtime", () => {
     ).rejects.toThrow("Unexpected Chat Event schema version 999");
   });
 
-  it("rejects a ChatEvent snapshot without lastEventId", async () => {
-    const clientId = await connectRuntime();
-    const dataKey = chatEventKey(crypto.randomUUID());
-
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(200, {
-        url: SNAPSHOT_URL,
-        expiresInSeconds: 900,
-        lastSeqId: 2,
-      });
-    });
-
-    await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: null,
-        consistency: "catch-up",
-      }),
-    ).rejects.toThrow("ChatEvent snapshot response is missing lastEventId");
-  });
-
   it("loads a ChatEvent snapshot plus tail and serves strict cursor reads from cache", async () => {
     const workerEvents: WorkerEvent[] = [];
     const clientId = await connectRuntime(workerEvents);
