@@ -1369,14 +1369,11 @@ const connectors = [
           accessToken: secret("PLAYSTATION_ACCESS_TOKEN"),
           accountId: variable("PLAYSTATION_ACCOUNT_ID"),
           idToken: secret("PLAYSTATION_ID_TOKEN"),
-          npsso: secret("PLAYSTATION_NPSSO"),
           onlineId: variable("PLAYSTATION_ONLINE_ID"),
           refreshToken: secret("PLAYSTATION_REFRESH_TOKEN"),
         },
-        storageVersion: 3,
         envBindings: {
           PLAYSTATION_TOKEN: secret("PLAYSTATION_ACCESS_TOKEN"),
-          PLAYSTATION_NPSSO: secret("PLAYSTATION_NPSSO"),
           PLAYSTATION_ACCOUNT_ID: {
             valueRef: variable("PLAYSTATION_ACCOUNT_ID"),
             optional: true,

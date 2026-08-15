@@ -161,14 +161,14 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description:
       "Send messages, upload files, and download files from Slack as the bot",
     load: async () => {
-      return (await import("./commands/zero/slack")).zeroSlackCommand;
+      return (await import("./commands/slack")).slackCommand;
     },
   },
   {
     name: "feishu",
     description: "Send messages to Feishu as an organization bot",
     load: async () => {
-      return (await import("./commands/zero/feishu")).zeroFeishuCommand;
+      return (await import("./commands/feishu")).feishuCommand;
     },
   },
   {
@@ -184,7 +184,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description:
       "Inspect bots, send messages, upload files, and download files from Telegram",
     load: async () => {
-      return (await import("./commands/zero/telegram")).zeroTelegramCommand;
+      return (await import("./commands/telegram")).telegramCommand;
     },
   },
   {

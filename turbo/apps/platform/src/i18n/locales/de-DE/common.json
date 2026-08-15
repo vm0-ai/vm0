@@ -819,10 +819,12 @@
       "dueNow": "Jetzt fällig",
       "emptyDescription": "Kaufen Sie zusätzliche gleichzeitige Ausführungen für diesen Arbeitsbereich.",
       "emptyTitle": "Keine Parallelitätsabonnements",
+      "includedWithPlan": "in Ihrem Tarif enthalten",
       "increaseAria": "Erhöhen Sie die zusätzliche Parallelitätsmenge",
       "monthlyTotal": "Monatlicher Gesamtbetrag",
       "newQuantity": "Neue Gesamtzahl an Slots",
       "orderSummary": "Bestellübersicht",
+      "paidAddOn": "kostenpflichtiges Add-on",
       "quantityRange": "Geben Sie einen Wert von {{minimum}} bis {{maximum}} ein. Sie haben derzeit {{current}} Slots.",
       "restoreDescription": "Dadurch wird die Verlängerung für dieses Parallelitätsabonnement fortgesetzt.",
       "restoreSubscription": "Abonnement wiederherstellen",
@@ -1089,11 +1091,9 @@
       "creditsRemaining_other": "Es verbleiben noch {{value}} Credits",
       "expires": "Verfällt am {{date}}",
       "grantsTable": {
-        "added": "Hinzugefügt",
-        "amount": "Betrag",
-        "expires": "Läuft ab",
-        "left": "Übrig",
-        "source": "Quelle"
+        "credits": "Credits",
+        "date": "Datum",
+        "left": "Übrig"
       },
       "left": "{{value}} übrig",
       "member": "Mitglied",

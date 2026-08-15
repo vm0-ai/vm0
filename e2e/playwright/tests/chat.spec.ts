@@ -3,6 +3,7 @@ import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
 const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";

@@ -7,7 +7,6 @@ import {
   exchangePlaystationAccessCodeForAuthTokens,
   exchangePlaystationNpssoForAccessCode,
   fetchPlaystationIdentity,
-  normalizePlaystationNpsso,
   playstationUserInfo,
   refreshPlaystationAuthTokens,
 } from "./api";
@@ -28,10 +27,9 @@ function createPlaystationExternalCodeGrantProvider(): ExternalCodeConnectorAuth
       };
     },
     completeExternalCodeAuthorization: async (args, signal: AbortSignal) => {
-      const npsso = normalizePlaystationNpsso(args.code);
       const accessCode = await exchangePlaystationNpssoForAccessCode(
         {
-          npsso,
+          npsso: args.code,
           clientId: args.authClient.clientId,
           grant: args.externalCodeGrant,
         },
@@ -56,7 +54,6 @@ function createPlaystationExternalCodeGrantProvider(): ExternalCodeConnectorAuth
           accessToken: token.accessToken,
           refreshToken: token.refreshToken,
           idToken: token.idToken,
-          npsso,
           accountId: identity.accountId,
           onlineId: identity.onlineId ?? "",
         },

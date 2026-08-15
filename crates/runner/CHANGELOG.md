@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.168.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.14...runner-rs-v0.168.15) (2026-08-15)
+
+
+### Bug Fixes
+
+* **runner:** start workspace cache lock timeout after contention ([#27312](https://github.com/vm0-ai/vm0/issues/27312)) ([cdc2a57](https://github.com/vm0-ai/vm0/commit/cdc2a572d74b719cd1fd78623459ea2c2f289d55))
+
 ## [0.168.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.13...runner-rs-v0.168.14) (2026-08-14)
 
 

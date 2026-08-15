@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.756.0](https://github.com/vm0-ai/vm0/compare/app-v0.755.0...app-v0.756.0) (2026-08-15)
+
+
+### Features
+
+* **billing:** move legacy migration steps into dialog ([#27309](https://github.com/vm0-ai/vm0/issues/27309)) ([12bc419](https://github.com/vm0-ai/vm0/commit/12bc419d8e7fe81b155fe7df72c854c7090c70f0))
+* **platform:** name the shared worker okou core service ([#27324](https://github.com/vm0-ai/vm0/issues/27324)) ([e06cae5](https://github.com/vm0-ai/vm0/commit/e06cae5787dfccb6de5d30fcc7e484a1bd57cfe4))
+
+
+### Bug Fixes
+
+* **billing:** clarify scheduled usage pack downgrade ([#27323](https://github.com/vm0-ai/vm0/issues/27323)) ([574faa2](https://github.com/vm0-ai/vm0/commit/574faa2832d0e54b031fbd4babb827f9898ec4fa))
+* **platform:** hide idle member package action ([#27313](https://github.com/vm0-ai/vm0/issues/27313)) ([60c7444](https://github.com/vm0-ai/vm0/commit/60c7444720e5fb1752e3b29d71b21a43b24ee488))
+
+
+### Refactoring
+
+* **chat:** remove platform response fallbacks ([#27316](https://github.com/vm0-ai/vm0/issues/27316)) ([b74d49f](https://github.com/vm0-ai/vm0/commit/b74d49f808b2409de8c7805879e2ffdb10c7c4fa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.4
+    * @okouai/core bumped to 8.562.1
+
 ## [0.755.0](https://github.com/vm0-ai/vm0/compare/app-v0.754.1...app-v0.755.0) (2026-08-14)
 
 

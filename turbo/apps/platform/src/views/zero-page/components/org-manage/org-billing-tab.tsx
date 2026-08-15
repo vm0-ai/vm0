@@ -1475,6 +1475,11 @@ function ConcurrencySubscriptionRow({
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
+        <p className="mb-0.5 text-[12px] font-medium text-muted-foreground first-letter:uppercase">
+          {i18n.t(($) => {
+            return $.billing.concurrency.paidAddOn;
+          })}
+        </p>
         <p className="text-sm font-medium text-foreground">
           {slotCountLabel(subscription.quantity)}
         </p>
@@ -2238,30 +2243,54 @@ function ConcurrencyBillingSection({
   const openConfirmDialog = useSet(openConcurrencyConfirmDialog$);
   const subscriptions = status?.concurrencySubscriptions ?? [];
   const concurrencyLimit = status?.concurrencyLimit ?? 0;
+  const paidConcurrency = subscriptions.reduce((total, subscription) => {
+    return total + subscription.quantity;
+  }, 0);
+  const includedConcurrency = concurrencyLimit - paidConcurrency;
   const purchaseReviewAvailable =
     status?.concurrencyPurchaseReviewAvailable === true;
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-medium text-foreground">
-          {i18n.t(($) => {
-            return $.billing.concurrency.title;
-          })}
-        </h3>
-        <p className="text-[13px] text-muted-foreground">
-          {i18n.t(
-            ($) => {
-              return $.billing.concurrency.concurrentRun;
-            },
-            {
-              count: concurrencyLimit,
-              value: formatLocalizedNumber(concurrencyLimit),
-            },
-          )}
-        </p>
-      </div>
+      <h3 className="text-sm font-medium text-foreground">
+        {i18n.t(($) => {
+          return $.billing.concurrency.title;
+        })}
+      </h3>
       <div className="overflow-hidden rounded-xl bg-card zero-border">
+        <div className="px-5 py-4">
+          <p className="text-2xl font-medium tracking-tight text-foreground tabular-nums">
+            {i18n.t(
+              ($) => {
+                return $.billing.concurrency.concurrentRun;
+              },
+              {
+                count: concurrencyLimit,
+                value: formatLocalizedNumber(concurrencyLimit),
+              },
+            )}
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1 text-[13px] text-muted-foreground">
+            <span className="tabular-nums">
+              {formatLocalizedNumber(includedConcurrency)}{" "}
+              {i18n.t(($) => {
+                return $.billing.concurrency.includedWithPlan;
+              })}
+            </span>
+            {paidConcurrency > 0 ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="tabular-nums">
+                  {formatLocalizedNumber(paidConcurrency)}{" "}
+                  {i18n.t(($) => {
+                    return $.billing.concurrency.paidAddOn;
+                  })}
+                </span>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <div className="h-0 zero-border-t mx-5" />
         {subscriptions.length === 0 ? (
           <div className="px-5 py-4">
             <p className="text-sm font-medium text-foreground">

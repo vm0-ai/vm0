@@ -839,10 +839,12 @@
       "dueNow": "A pagar ahora",
       "emptyDescription": "Compra ejecuciones concurrentes adicionales para este espacio de trabajo.",
       "emptyTitle": "No hay suscripciones de concurrencia",
+      "includedWithPlan": "incluidos con tu plan",
       "increaseAria": "Aumentar la cantidad adicional de concurrencia",
       "monthlyTotal": "Total mensual",
       "newQuantity": "Nueva cantidad total de cupos",
       "orderSummary": "Resumen del pedido",
+      "paidAddOn": "complemento de pago",
       "quantityRange": "Ingresa un valor entre {{minimum}} y {{maximum}}. Actualmente tienes {{current}} cupos.",
       "restoreDescription": "Esto reanuda la renovación de esta suscripción de concurrencia.",
       "restoreSubscription": "Restaurar suscripción",
@@ -1111,11 +1113,9 @@
       "creditsRemaining_other": "{{value}} créditos restantes",
       "expires": "Caduca {{date}}",
       "grantsTable": {
-        "added": "Añadido",
-        "amount": "Importe",
-        "expires": "Caduca",
-        "left": "Restante",
-        "source": "Origen"
+        "credits": "Créditos",
+        "date": "Fecha",
+        "left": "Restante"
       },
       "left": "{{value}} restante",
       "member": "Miembro",
