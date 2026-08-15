@@ -536,7 +536,7 @@ describe("organization billing settings", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
+        "One package per member. Any overage uses pay-as-you-go credits.",
       ),
     ).toBeInTheDocument();
     expect(within(memberUsage).getByText("Team plan")).toBeInTheDocument();
@@ -2016,6 +2016,12 @@ describe("organization billing settings", () => {
         name: "Current and new subscription comparison",
       }),
     ).not.toBeInTheDocument();
+    const scheduledDowngrade = within(orderSummary).getByRole("status", {
+      name: "Downgrade scheduled",
+    });
+    expect(scheduledDowngrade).toHaveTextContent(
+      "Lower package starts Apr 1, 2026 · Existing credits remain available until they expire",
+    );
     expect(queryAllByRoleFast("button", orderSummary)).toHaveLength(0);
 
     click(packageSelect);

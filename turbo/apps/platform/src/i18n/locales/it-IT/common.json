@@ -1005,10 +1005,12 @@
           "processing": "Modifica in elaborazione",
           "reviewDescription": "Confermando verrà addebitato il metodo di pagamento salvato.",
           "reviewTitle": "Rivedi modifica del pacchetto",
+          "scheduledDowngradeDescription": "Il pacchetto inferiore inizia il {{date}} · I crediti esistenti restano disponibili fino alla scadenza",
+          "scheduledDowngradeTitle": "Downgrade programmato",
           "scheduledFor": "Programmato per il {{date}}",
           "today": "Oggi"
         },
-        "memberExclusive": "Ogni pacchetto appartiene a un membro e non può essere condiviso. Quando un pacchetto si esaurisce, l’utilizzo torna ai crediti a consumo. In seguito puoi passare a un nuovo pacchetto.",
+        "memberExclusive": "Un pacchetto per membro. Ogni utilizzo extra usa crediti a consumo.",
         "memberPackages": "Pacchetti dei membri",
         "memberUsage": "Utilizzo del membro",
         "migration": {

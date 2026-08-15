@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronRight, Info, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -587,11 +587,19 @@ function MemberUsageRow({
 
 function MemberUsageFooter() {
   return (
-    <p className="text-sm leading-relaxed text-muted-foreground">
-      {i18n.t(($) => {
-        return $.billing.plans.usagePacks.memberExclusive;
-      })}
-    </p>
+    <div className="flex items-start gap-2 text-sm leading-relaxed text-muted-foreground">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-gray-50 text-xs font-medium"
+      >
+        <Info className="size-3.5" />
+      </span>
+      <p>
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.memberExclusive;
+        })}
+      </p>
+    </div>
   );
 }
 
@@ -1743,6 +1751,39 @@ function SubscriptionChangeNotice({
   );
 }
 
+function ScheduledUsagePackDowngradeNotice({
+  effectiveAt,
+}: {
+  readonly effectiveAt: string;
+}) {
+  const title = i18n.t(($) => {
+    return $.billing.plans.usagePacks.management.scheduledDowngradeTitle;
+  });
+  return (
+    <div
+      role="status"
+      aria-label={title}
+      className="flex items-center gap-3 rounded-xl bg-gray-50 p-3"
+    >
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-card text-muted-foreground">
+        <CalendarDays aria-hidden="true" className="size-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="mt-0.5 text-sm leading-snug text-muted-foreground">
+          {i18n.t(
+            ($) => {
+              return $.billing.plans.usagePacks.management
+                .scheduledDowngradeDescription;
+            },
+            { date: formatBillingDate(effectiveAt) },
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 interface UsagePackPaymentPreview {
   readonly immediateAmountCents: number;
   readonly immediateCreditGrant?: {
@@ -2193,6 +2234,10 @@ function ManagedSubscriptionOrderSummary({
   const hasSubscriptionAction =
     (hasConfigurationChange || restoresScheduledDowngrade) &&
     (!hasPendingChange || hasScheduledDowngrade);
+  const scheduledDowngradeEffectiveAt =
+    hasScheduledDowngrade && !hasConfigurationChange
+      ? management.currentPeriodEnd
+      : null;
   const openPreview = async (): Promise<void> => {
     if (!members) {
       return;
@@ -2221,13 +2266,20 @@ function ManagedSubscriptionOrderSummary({
           totals={totals}
         />
       )}
-      {hasDowngrade && management.currentPeriodEnd && (
-        <SubscriptionChangeNotice
-          description={i18n.t(($) => {
-            return $.billing.plans.usagePacks.management.downgradeDescription;
-          })}
-          effectiveAt={management.currentPeriodEnd}
+      {scheduledDowngradeEffectiveAt ? (
+        <ScheduledUsagePackDowngradeNotice
+          effectiveAt={scheduledDowngradeEffectiveAt}
         />
+      ) : (
+        hasDowngrade &&
+        management.currentPeriodEnd && (
+          <SubscriptionChangeNotice
+            description={i18n.t(($) => {
+              return $.billing.plans.usagePacks.management.downgradeDescription;
+            })}
+            effectiveAt={management.currentPeriodEnd}
+          />
+        )
       )}
       {hasPendingChange && !hasScheduledDowngrade && (
         <p className="mt-3 text-sm text-muted-foreground">
@@ -2319,7 +2371,7 @@ function PackageConfigurationStep({
       {/* The frame keeps step 1's height, so a short member list leaves slack
           below the ledger. Spend it above the fine print and the action, which
           stay together at the foot of the dialog. */}
-      <div className="mt-auto flex flex-col gap-5">
+      <div className="mt-auto flex flex-col gap-3.5">
         <MemberUsageFooter />
         {management ? (
           <ManagedSubscriptionOrderSummary

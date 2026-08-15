@@ -1005,10 +1005,12 @@
           "processing": "Alteração em processamento",
           "reviewDescription": "Ao confirmar, o método de pagamento salvo será cobrado.",
           "reviewTitle": "Revisar alteração de pacote",
+          "scheduledDowngradeDescription": "O pacote menor começa em {{date}} · Os créditos existentes permanecem disponíveis até expirarem",
+          "scheduledDowngradeTitle": "Downgrade agendado",
           "scheduledFor": "Agendado para {{date}}",
           "today": "Hoje"
         },
-        "memberExclusive": "Cada pacote pertence a um membro e não pode ser compartilhado. Quando um pacote acaba, o uso volta para créditos pagos conforme o uso. Você pode fazer upgrade para um novo pacote depois.",
+        "memberExclusive": "Um pacote por membro. Qualquer uso excedente utiliza créditos pagos conforme o uso.",
         "memberPackages": "Pacotes dos membros",
         "memberUsage": "Uso do membro",
         "migration": {
