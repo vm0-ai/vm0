@@ -6,11 +6,10 @@ use crate::session_history;
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use guest_contracts::session_history_identity::{
-    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FINAL_SESSION_HISTORY_IDENTITY_VERSION,
-    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
+    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
+    FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
     FinalSessionHistoryIdentityExpectation, FinalSessionHistoryRefKind,
-    FinalSessionHistorySourceRef, LEGACY_FINAL_SESSION_HISTORY_IDENTITY_VERSION,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+    FinalSessionHistorySourceRef, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
@@ -128,7 +127,7 @@ pub fn export_final_session_history_sidecar_file(
     let history_source = validated_history_source(&identity)?;
     verify_final_session_history_identity_constraints(&identity)?;
     let prepared = session_history::prepare_session_history_sidecar_from_source_bounded(
-        &history_source,
+        history_source,
         identity.history_size_bytes,
         RESUME_SESSION_HISTORY_MAX_BYTES,
     )
@@ -187,7 +186,7 @@ fn verify_final_session_history_identity(
     let history_source = validated_history_source(identity)?;
     verify_final_session_history_identity_constraints(identity)?;
     let digest = session_history::digest_session_history_from_source_bounded(
-        &history_source,
+        history_source,
         identity.history_size_bytes,
     )
     .map_err(map_session_history_digest_error)?;
@@ -205,125 +204,30 @@ fn verify_final_session_history_identity_constraints(
 
 fn validated_history_source(
     identity: &FinalSessionHistoryIdentity,
-) -> Result<FinalSessionHistorySourceRef, FinalSessionHistoryIdentityVerifyError> {
-    let source = match identity.version {
-        FINAL_SESSION_HISTORY_IDENTITY_VERSION => identity
-            .history_source
-            .clone()
-            .ok_or(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch)?,
-        LEGACY_FINAL_SESSION_HISTORY_IDENTITY_VERSION => legacy_history_source(identity)?,
-        _ => return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch),
-    };
-
-    let source_session_id = match (&identity.framework, &source) {
+) -> Result<&FinalSessionHistorySourceRef, FinalSessionHistoryIdentityVerifyError> {
+    let source_session_id = match (&identity.framework, &identity.history_source) {
         (
             FinalSessionHistoryFramework::ClaudeCode,
             FinalSessionHistorySourceRef::ClaudeCode { session_id, .. },
-        ) => Some(session_id.as_str()),
+        ) => session_id.as_str(),
         (
             FinalSessionHistoryFramework::Codex,
             FinalSessionHistorySourceRef::Codex { thread_id, .. },
-        ) => Some(thread_id.as_str()),
+        ) => thread_id.as_str(),
         (FinalSessionHistoryFramework::Pi, FinalSessionHistorySourceRef::Pi { session_id, .. }) => {
-            session_id.as_deref()
+            session_id.as_str()
         }
         _ => return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch),
     };
-    if let Some(session_id) = source_session_id {
-        let framework = match identity.framework {
-            FinalSessionHistoryFramework::ClaudeCode => env::Framework::ClaudeCode,
-            FinalSessionHistoryFramework::Codex => env::Framework::Codex,
-            FinalSessionHistoryFramework::Pi => env::Framework::Pi,
-        };
-        if session_id_hash(framework, session_id).as_deref() != Some(&identity.session_id_hash) {
-            return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
-        }
-    }
-    Ok(source)
-}
-
-fn legacy_history_source(
-    identity: &FinalSessionHistoryIdentity,
-) -> Result<FinalSessionHistorySourceRef, FinalSessionHistoryIdentityVerifyError> {
-    let marker = identity
-        .history_marker_payload
-        .as_deref()
-        .ok_or(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch)?;
-    match identity.framework {
-        FinalSessionHistoryFramework::ClaudeCode => legacy_claude_history_source(marker),
-        FinalSessionHistoryFramework::Codex => legacy_codex_history_source(marker),
-        FinalSessionHistoryFramework::Pi => {
-            crate::session_metadata::is_pi_session_history_path(marker)
-                .then(|| FinalSessionHistorySourceRef::Pi {
-                    session_path: marker.to_string(),
-                    session_id: None,
-                })
-                .ok_or(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch)
-        }
-    }
-}
-
-fn legacy_claude_history_source(
-    marker: &str,
-) -> Result<FinalSessionHistorySourceRef, FinalSessionHistoryIdentityVerifyError> {
-    let path = Path::new(marker);
-    if !path.is_absolute() || path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
+    let framework = match identity.framework {
+        FinalSessionHistoryFramework::ClaudeCode => env::Framework::ClaudeCode,
+        FinalSessionHistoryFramework::Codex => env::Framework::Codex,
+        FinalSessionHistoryFramework::Pi => env::Framework::Pi,
+    };
+    if session_id_hash(framework, source_session_id).as_deref() != Some(&identity.session_id_hash) {
         return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
     }
-    let session_id = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .filter(|value| guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id(value))
-        .ok_or(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch)?;
-    let project_dir = path
-        .parent()
-        .ok_or(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch)?;
-    let expected_project_dir = format!(
-        "-{}",
-        crate::paths::CANONICAL_WORKING_DIR
-            .trim_start_matches('/')
-            .replace('/', "-")
-    );
-    if project_dir.file_name().and_then(|value| value.to_str())
-        != Some(expected_project_dir.as_str())
-    {
-        return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
-    }
-    let projects_dir = project_dir
-        .parent()
-        .filter(|path| path.file_name().and_then(|value| value.to_str()) == Some("projects"))
-        .ok_or(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch)?;
-    let config_dir = projects_dir
-        .parent()
-        .ok_or(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch)?;
-    Ok(FinalSessionHistorySourceRef::ClaudeCode {
-        config_dir: config_dir.to_string_lossy().into_owned(),
-        working_dir: crate::paths::CANONICAL_WORKING_DIR.to_string(),
-        session_id: session_id.to_string(),
-    })
-}
-
-fn legacy_codex_history_source(
-    marker: &str,
-) -> Result<FinalSessionHistorySourceRef, FinalSessionHistoryIdentityVerifyError> {
-    let (sessions_dir, thread_id) = session_history::decode_legacy_codex_marker_payload(marker)
-        .ok_or(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch)?;
-    if !sessions_dir.is_absolute()
-        || sessions_dir.file_name().and_then(|value| value.to_str()) != Some("sessions")
-        || sessions_dir
-            .parent()
-            .and_then(Path::file_name)
-            .and_then(|value| value.to_str())
-            != Some(".codex")
-    {
-        return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
-    }
-    let thread_id = canonical_codex_thread_id(&thread_id)
-        .ok_or(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch)?;
-    Ok(FinalSessionHistorySourceRef::Codex {
-        sessions_dir: sessions_dir.to_string_lossy().into_owned(),
-        thread_id,
-    })
+    Ok(&identity.history_source)
 }
 
 fn verify_final_session_history_digest(
@@ -556,23 +460,6 @@ mod tests {
         .unwrap()
     }
 
-    fn legacy_identity(
-        framework: FinalSessionHistoryFramework,
-        session_id: &str,
-        history: &[u8],
-        marker: impl Into<String>,
-    ) -> FinalSessionHistoryIdentity {
-        FinalSessionHistoryIdentity::new_legacy(
-            framework,
-            session_hash(session_id),
-            FinalSessionHistoryRefKind::Blob,
-            hex::encode(Sha256::digest(history)),
-            history.len() as u64,
-            marker,
-        )
-        .unwrap()
-    }
-
     #[cfg(target_os = "linux")]
     #[test]
     fn classifies_sidecar_storage_exhaustion_without_error_text() {
@@ -606,154 +493,6 @@ mod tests {
     }
 
     #[test]
-    fn verifies_canonical_legacy_claude_history() {
-        let dir = tempfile::tempdir().unwrap();
-        let history = br#"{"type":"system"}"#;
-        let (history_path, _) = claude_history_source(&dir);
-        std::fs::write(&history_path, history).unwrap();
-        let identity = legacy_identity(
-            FinalSessionHistoryFramework::ClaudeCode,
-            CLAUDE_SESSION_ID,
-            history,
-            history_path.to_string_lossy(),
-        );
-        let metadata_path = write_metadata(&dir, &identity);
-
-        verify_final_session_history_identity_file(metadata_path, None).unwrap();
-    }
-
-    #[test]
-    fn rejects_untrusted_legacy_claude_marker_shapes() {
-        let dir = tempfile::tempdir().unwrap();
-        for (name, marker) in [
-            ("proc", "/proc/self/environ"),
-            ("relative", "history.jsonl"),
-            ("wrong-project", "/tmp/projects/unrelated/session.jsonl"),
-        ] {
-            let identity = legacy_identity(
-                FinalSessionHistoryFramework::ClaudeCode,
-                CLAUDE_SESSION_ID,
-                b"x",
-                marker,
-            );
-            let metadata_path = dir.path().join(format!("{name}-identity.json"));
-            crate::paths::write_private(&metadata_path, identity.to_json_vec().unwrap()).unwrap();
-
-            let error = verify_final_session_history_identity_file(metadata_path, None)
-                .expect_err("untrusted legacy marker must be rejected");
-            assert!(matches!(
-                error,
-                FinalSessionHistoryIdentityVerifyError::FrameworkMismatch
-            ));
-        }
-    }
-
-    #[test]
-    fn rejects_legacy_claude_session_hash_mismatch() {
-        let dir = tempfile::tempdir().unwrap();
-        let history = b"x";
-        let (history_path, _) = claude_history_source(&dir);
-        std::fs::write(&history_path, history).unwrap();
-        let identity = FinalSessionHistoryIdentity::new_legacy(
-            FinalSessionHistoryFramework::ClaudeCode,
-            session_hash("different-session"),
-            FinalSessionHistoryRefKind::Blob,
-            hex::encode(Sha256::digest(history)),
-            history.len() as u64,
-            history_path.to_string_lossy(),
-        )
-        .unwrap();
-        let metadata_path = write_metadata(&dir, &identity);
-
-        let error = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
-        assert!(matches!(
-            error,
-            FinalSessionHistoryIdentityVerifyError::FrameworkMismatch
-        ));
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn rejects_legacy_claude_intermediate_and_final_symlinks() {
-        use std::os::unix::fs::symlink;
-
-        let history = b"parent-only sentinel";
-
-        let intermediate_dir = tempfile::tempdir().unwrap();
-        let config_dir = intermediate_dir.path().join("claude-config");
-        let outside_projects = intermediate_dir.path().join("outside-projects");
-        let history_path = outside_projects
-            .join("-home-user-workspace")
-            .join(format!("{CLAUDE_SESSION_ID}.jsonl"));
-        std::fs::create_dir_all(history_path.parent().unwrap()).unwrap();
-        std::fs::write(&history_path, history).unwrap();
-        std::fs::create_dir(&config_dir).unwrap();
-        symlink(&outside_projects, config_dir.join("projects")).unwrap();
-        let marker = config_dir
-            .join("projects/-home-user-workspace")
-            .join(format!("{CLAUDE_SESSION_ID}.jsonl"));
-        let identity = legacy_identity(
-            FinalSessionHistoryFramework::ClaudeCode,
-            CLAUDE_SESSION_ID,
-            history,
-            marker.to_string_lossy(),
-        );
-        let metadata_path = write_metadata(&intermediate_dir, &identity);
-        let error = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
-        assert!(matches!(
-            error,
-            FinalSessionHistoryIdentityVerifyError::HistoryRead(_)
-        ));
-
-        let final_dir = tempfile::tempdir().unwrap();
-        let (marker, _) = claude_history_source(&final_dir);
-        let outside = final_dir.path().join("outside-history.jsonl");
-        std::fs::write(&outside, history).unwrap();
-        symlink(&outside, &marker).unwrap();
-        let identity = legacy_identity(
-            FinalSessionHistoryFramework::ClaudeCode,
-            CLAUDE_SESSION_ID,
-            history,
-            marker.to_string_lossy(),
-        );
-        let metadata_path = write_metadata(&final_dir, &identity);
-        let error = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
-        assert!(matches!(
-            error,
-            FinalSessionHistoryIdentityVerifyError::HistoryRead(_)
-        ));
-    }
-
-    #[test]
-    fn verifies_canonical_legacy_codex_history() {
-        let dir = tempfile::tempdir().unwrap();
-        let sessions_dir = dir.path().join("home/.codex/sessions");
-        let history_dir = sessions_dir.join("2026/06/29");
-        std::fs::create_dir_all(&history_dir).unwrap();
-        let thread_id = "00000000-0000-4000-8000-000000000001";
-        let history = br#"{"type":"session_meta"}"#;
-        std::fs::write(
-            history_dir.join("rollout-00000000000040008000000000000001.jsonl"),
-            history,
-        )
-        .unwrap();
-        let sessions_dir = sessions_dir.to_string_lossy();
-        let marker = format!(
-            "CODEX_SEARCH:{}:{sessions_dir}:{thread_id}",
-            sessions_dir.len()
-        );
-        let identity = legacy_identity(
-            FinalSessionHistoryFramework::Codex,
-            thread_id,
-            history,
-            marker,
-        );
-        let metadata_path = write_metadata(&dir, &identity);
-
-        verify_final_session_history_identity_file(metadata_path, None).unwrap();
-    }
-
-    #[test]
     fn builds_pi_jsonl_history_identity() {
         let session_id = "00000000-0000-4000-8000-000000000001";
         let history = br#"{"type":"session","id":"00000000-0000-4000-8000-000000000001"}"#;
@@ -763,7 +502,7 @@ mod tests {
         );
         let history_source = FinalSessionHistorySourceRef::Pi {
             session_path: history_path,
-            session_id: Some(session_id.to_string()),
+            session_id: session_id.to_string(),
         };
         let identity = build_final_session_history_identity(
             env::Framework::Pi,
@@ -775,8 +514,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(identity.framework, FinalSessionHistoryFramework::Pi);
-        assert_eq!(identity.history_source, Some(history_source));
-        assert_eq!(identity.history_marker_payload, None);
+        assert_eq!(identity.history_source, history_source);
         assert_eq!(
             identity.session_id_hash,
             hex::encode(Sha256::digest(session_id.as_bytes()))

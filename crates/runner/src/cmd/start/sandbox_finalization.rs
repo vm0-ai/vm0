@@ -1276,7 +1276,7 @@ mod tests {
                         "{}/restored-{session_id}.jsonl",
                         api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
                     ),
-                    session_id: Some(session_id.to_string()),
+                    session_id: session_id.to_string(),
                 },
             ),
         };

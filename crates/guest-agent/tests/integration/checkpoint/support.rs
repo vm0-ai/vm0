@@ -82,7 +82,7 @@ pub(super) fn checkpoint_session_metadata(
                     "{}/restored-{session_id}.jsonl",
                     api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
                 ),
-                session_id: Some(session_id.clone()),
+                session_id: session_id.clone(),
             },
         ),
     };

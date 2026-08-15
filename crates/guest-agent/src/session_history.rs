@@ -23,7 +23,6 @@ use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 
-const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
 // Checkpoint must resolve Codex history from user-controlled guest-home state.
 // Keep the budget comfortably above normal date-partitioned histories while
 // preventing layout-shaped trees from turning session lookup into an
@@ -235,13 +234,11 @@ pub(crate) fn resolve_session_history_from_source(
             session_path,
             session_id,
         } => {
-            let valid_session_id = session_id.as_deref().is_none_or(|session_id| {
-                is_valid_cli_agent_session_id(session_id)
-                    && Path::new(session_path)
-                        .file_name()
-                        .and_then(OsStr::to_str)
-                        .is_some_and(|file_name| file_name.contains(session_id))
-            });
+            let valid_session_id = is_valid_cli_agent_session_id(session_id)
+                && Path::new(session_path)
+                    .file_name()
+                    .and_then(OsStr::to_str)
+                    .is_some_and(|file_name| file_name.contains(session_id));
             if !valid_session_id
                 || !crate::session_metadata::is_pi_session_history_path(session_path)
             {
@@ -396,35 +393,6 @@ fn read_open_codex_checkpoint_source_bounded(
     DecodedSessionHistoryReader::open(path, file)?
         .read(Some(max_bytes))
         .map(SessionHistoryCheckpointSource::Decoded)
-}
-
-/// Parse a Codex marker into `(dir, thread_id)`. Markers are length-prefixed so
-/// paths containing `:` cannot be confused with decorated thread IDs.
-fn decode_marker(content: &str) -> Option<(PathBuf, &str)> {
-    if let Some(rest) = content.strip_prefix(CODEX_MARKER_PREFIX) {
-        return decode_len_prefixed_marker(rest);
-    }
-
-    None
-}
-
-pub(crate) fn decode_legacy_codex_marker_payload(content: &str) -> Option<(PathBuf, String)> {
-    decode_marker(content).map(|(sessions_dir, thread_id)| (sessions_dir, thread_id.to_string()))
-}
-
-fn decode_len_prefixed_marker(rest: &str) -> Option<(PathBuf, &str)> {
-    let (dir_len, payload) = rest.split_once(':')?;
-    let dir_len: usize = dir_len.parse().ok()?;
-    if dir_len == 0 || payload.len() <= dir_len || !payload.is_char_boundary(dir_len) {
-        return None;
-    }
-
-    let (dir, delimiter_and_thread_id) = payload.split_at(dir_len);
-    let thread_id = delimiter_and_thread_id.strip_prefix(':')?;
-    if thread_id.is_empty() {
-        return None;
-    }
-    Some((PathBuf::from(dir), thread_id))
 }
 
 fn resolve_codex_session_history(
@@ -1047,21 +1015,7 @@ mod tests {
         }
     }
 
-    fn codex_marker_payload(sessions_dir: &Path, thread_id: &str) -> String {
-        let sessions_dir = sessions_dir.display().to_string();
-        format!(
-            "{CODEX_MARKER_PREFIX}{}:{sessions_dir}:{thread_id}",
-            sessions_dir.len()
-        )
-    }
-
     fn resolve_test_payload(payload: &str) -> Result<ResolvedSessionHistory, AgentError> {
-        if let Some((sessions_dir, thread_id)) = decode_marker(payload) {
-            return resolve_session_history_from_source(&FinalSessionHistorySourceRef::Codex {
-                sessions_dir: sessions_dir.to_string_lossy().into_owned(),
-                thread_id: thread_id.to_string(),
-            });
-        }
         let path = Path::new(payload);
         let parent_path = path.parent().ok_or_else(|| {
             AgentError::Checkpoint("test session history has no parent".to_string())
@@ -1108,20 +1062,20 @@ mod tests {
         }
     }
 
-    fn digest_session_history_from_payload_bounded(
-        payload: &str,
+    fn read_session_history_from_source_for_test_bounded(
+        source: &FinalSessionHistorySourceRef,
         max_bytes: u64,
-    ) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
-        resolve_test_payload(payload)?
-            .into_decoded_reader()?
-            .digest(max_bytes)
-    }
-
-    fn read_session_history_checkpoint_source_from_payload_bounded(
-        payload: &str,
-        max_bytes: u64,
-    ) -> Result<SessionHistoryCheckpointSource, AgentError> {
-        resolve_test_payload(payload)?.into_checkpoint_source_bounded(max_bytes)
+    ) -> Result<Vec<u8>, AgentError> {
+        match resolve_session_history_from_source(source)?
+            .into_checkpoint_source_bounded(max_bytes)?
+        {
+            SessionHistoryCheckpointSource::Decoded(bytes) => Ok(bytes),
+            SessionHistoryCheckpointSource::CodexZstd { encoded } => {
+                let decoder = zstd::stream::read::Decoder::new(encoded.as_slice())
+                    .map_err(zstd_session_history_error)?;
+                read_history_reader(decoder, Some(max_bytes), zstd_session_history_error)
+            }
+        }
     }
 
     fn prepare_session_history_sidecar_from_payload_bounded(
@@ -1320,7 +1274,7 @@ mod tests {
     }
 
     #[test]
-    fn bounded_read_rejects_codex_marker_history_over_limit() {
+    fn bounded_read_rejects_codex_history_over_limit() {
         let dir = tempfile::tempdir().unwrap();
         let sessions_dir = dir.path().join("sessions");
         let day_dir = sessions_dir.join("2026").join("07").join("02");
@@ -1328,16 +1282,16 @@ mod tests {
         let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl");
         std::fs::write(path, b"abcde").unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
-        let err = read_session_history_from_payload_bounded(&payload, 4)
-            .expect_err("bounded codex marker read must reject over-limit history");
+        let err = read_session_history_from_source_for_test_bounded(&source, 4)
+            .expect_err("bounded Codex read must reject over-limit history");
 
         assert_over_limit(err, 4);
     }
 
     #[test]
-    fn codex_zstd_marker_read_and_digest_are_consistent() {
+    fn codex_zstd_read_and_digest_are_consistent() {
         let dir = tempfile::tempdir().unwrap();
         let sessions_dir = dir.path().join("sessions");
         let day_dir = sessions_dir.join("2026").join("07").join("02");
@@ -1347,12 +1301,13 @@ mod tests {
         let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
         std::fs::write(path, &compressed).unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
         let bytes =
-            read_session_history_from_payload_bounded(&payload, history.len() as u64).unwrap();
+            read_session_history_from_source_for_test_bounded(&source, history.len() as u64)
+                .unwrap();
         let digest =
-            digest_session_history_from_payload_bounded(&payload, history.len() as u64).unwrap();
+            digest_session_history_from_source_bounded(&source, history.len() as u64).unwrap();
 
         assert_eq!(bytes, history);
         assert_eq!(digest.size_bytes, history.len() as u64);
@@ -1374,13 +1329,12 @@ mod tests {
         );
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
         std::fs::write(path, compressed).unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
-        let source = read_session_history_checkpoint_source_from_payload_bounded(
-            &payload,
-            history.len() as u64,
-        )
-        .unwrap();
+        let source = resolve_session_history_from_source(&source)
+            .unwrap()
+            .into_checkpoint_source_bounded(history.len() as u64)
+            .unwrap();
 
         match source {
             SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),
@@ -1432,10 +1386,10 @@ mod tests {
         assert!(compressed.len() > history.len());
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
         std::fs::write(path, &compressed).unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
-        let prepared = prepare_session_history_sidecar_from_payload_bounded(
-            &payload,
+        let prepared = prepare_session_history_sidecar_from_source_bounded(
+            &source,
             history.len() as u64,
             compressed.len() as u64,
         )
@@ -1449,8 +1403,8 @@ mod tests {
             }
         }
 
-        let prepared = prepare_session_history_sidecar_from_payload_bounded(
-            &payload,
+        let prepared = prepare_session_history_sidecar_from_source_bounded(
+            &source,
             history.len() as u64,
             history.len() as u64,
         )
@@ -1482,10 +1436,10 @@ mod tests {
         let encoded_limit = compressed.len() as u64;
         let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
         std::fs::write(path, compressed).unwrap();
-        let payload = codex_marker_payload(&sessions_dir, thread_id);
+        let source = codex_source(&sessions_dir, thread_id);
 
-        let result = prepare_session_history_sidecar_from_payload_bounded(
-            &payload,
+        let result = prepare_session_history_sidecar_from_source_bounded(
+            &source,
             history.len() as u64,
             encoded_limit,
         );

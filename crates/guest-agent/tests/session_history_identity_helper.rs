@@ -144,13 +144,13 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
     let invalid_metadata_path = dir.path().join("invalid-identity.json");
     guest_contracts::runtime_paths::write_private(&invalid_metadata_path, b"not-json")?;
 
-    let framework_mismatch_identity = FinalSessionHistoryIdentity::new_legacy(
+    let framework_mismatch_identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
-        session_id_hash(matching_session_id),
+        session_id_hash("different-session"),
         FinalSessionHistoryRefKind::Blob,
         matching_history_hash,
         matching_history.len() as u64,
-        "/proc/self/environ",
+        matching_source.clone(),
     )?;
     let framework_mismatch_metadata_path = write_metadata(
         dir.path(),
@@ -319,27 +319,31 @@ async fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
 }
 
 #[tokio::test]
-async fn export_session_history_sidecar_rejects_legacy_arbitrary_source_without_output()
--> TestResult {
+async fn export_session_history_sidecar_rejects_proc_magic_link_source_without_output() -> TestResult
+{
     let dir = tempfile::tempdir()?;
     let sentinel = b"parent-only-secret-sentinel";
-    let session_id = "legacy-arbitrary-source";
-    let identity = FinalSessionHistoryIdentity::new_legacy(
+    let session_id = "proc-magic-link-source";
+    let identity = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
         session_id_hash(session_id),
         FinalSessionHistoryRefKind::Blob,
         sha256_hex(sentinel),
         sentinel.len() as u64,
-        "/proc/self/environ",
+        FinalSessionHistorySourceRef::ClaudeCode {
+            config_dir: "/proc/self".to_string(),
+            working_dir: guest_agent::paths::CANONICAL_WORKING_DIR.to_string(),
+            session_id: session_id.to_string(),
+        },
     )?;
-    let metadata_path = write_metadata(dir.path(), "legacy-arbitrary.json", &identity)?;
-    let export_path = dir.path().join("legacy-arbitrary-sidecar");
+    let metadata_path = write_metadata(dir.path(), "proc-magic-link.json", &identity)?;
+    let export_path = dir.path().join("proc-magic-link-sidecar");
 
     let output = run_export_helper(&metadata_path, &export_path).await?;
 
     assert_eq!(
         output.status.code(),
-        Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH)
+        Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ)
     );
     assert!(!export_path.exists());
     assert!(

@@ -286,14 +286,19 @@ async fn run_in_sandbox_records_large_final_identity_metadata() {
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let ctx = minimal_context();
     let (metadata_path, _) = final_identity_runtime_paths(&ctx);
+    let session_id = "large-history";
     let metadata = serde_json::json!({
-        "version": 1,
         "framework": "claude-code",
-        "sessionIdHash": "a".repeat(64),
+        "sessionIdHash": hex::encode(Sha256::digest(session_id.as_bytes())),
         "historyRefKind": "blob",
         "historyHash": "b".repeat(64),
         "historySizeBytes": LARGE_SESSION_HISTORY_SIZE_BYTES,
-        "historyMarkerPayload": "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+        "historySource": {
+            "kind": "claude-code",
+            "configDir": "/home/user/.claude",
+            "workingDir": "/home/user/workspace",
+            "sessionId": session_id,
+        },
     });
     sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&metadata).unwrap())));
     let mut telemetry = test_telemetry(&config, &ctx);

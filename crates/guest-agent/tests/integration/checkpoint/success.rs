@@ -355,6 +355,7 @@ async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() 
         checkpoint_session_metadata(&runtime)
             .history_source()
             .cloned()
+            .expect("checkpoint history source")
     );
 }
 
@@ -443,10 +444,10 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
     assert_eq!(identity.history_hash, history_hash);
     assert!(matches!(
         identity.history_source,
-        Some(guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Codex {
+        guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Codex {
             ref thread_id,
             ..
-        }) if thread_id == session_id
+        } if thread_id == session_id
     ));
     assert_session_history_prune_operation(&runtime, "selected", None, true).unwrap();
 }

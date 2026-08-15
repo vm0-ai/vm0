@@ -7,11 +7,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Legacy final session-history identity metadata format version.
-pub const LEGACY_FINAL_SESSION_HISTORY_IDENTITY_VERSION: u8 = 1;
-/// Current final session-history identity metadata format version.
-pub const FINAL_SESSION_HISTORY_IDENTITY_VERSION: u8 = 2;
-
 /// Maximum size of the serialized final identity metadata file.
 pub const FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES: u64 = 16 * 1024;
 
@@ -91,11 +86,8 @@ pub enum FinalSessionHistorySourceRef {
         #[serde(rename = "sessionPath")]
         session_path: String,
         /// Session identifier bound to the reported filename.
-        ///
-        /// Legacy version-1 metadata is adapted internally without this field;
-        /// serialized version-2 identities always require it.
-        #[serde(rename = "sessionId", default, skip_serializing_if = "Option::is_none")]
-        session_id: Option<String>,
+        #[serde(rename = "sessionId")]
+        session_id: String,
     },
 }
 
@@ -114,12 +106,7 @@ impl FinalSessionHistorySourceRef {
             Self::Pi {
                 session_path,
                 session_id,
-            } => {
-                !session_path.is_empty()
-                    && session_id
-                        .as_deref()
-                        .is_some_and(|session_id| !session_id.is_empty())
-            }
+            } => !session_path.is_empty() && !session_id.is_empty(),
         };
         if valid {
             Ok(())
@@ -190,8 +177,6 @@ pub struct SessionHistorySidecarExportFailure {
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalSessionHistoryIdentity {
-    /// Metadata schema version.
-    pub version: u8,
     /// CLI framework.
     pub framework: FinalSessionHistoryFramework,
     /// SHA-256 hash of the framework-normalized CLI session id.
@@ -203,11 +188,7 @@ pub struct FinalSessionHistoryIdentity {
     /// Exact final session-history byte length.
     pub history_size_bytes: u64,
     /// Canonical structured source used to read final framework history.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub history_source: Option<FinalSessionHistorySourceRef>,
-    /// Legacy private guest marker used by version-1 metadata.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub history_marker_payload: Option<String>,
+    pub history_source: FinalSessionHistorySourceRef,
 }
 
 impl FinalSessionHistoryIdentity {
@@ -221,38 +202,12 @@ impl FinalSessionHistoryIdentity {
         history_source: FinalSessionHistorySourceRef,
     ) -> Result<Self, FinalSessionHistoryIdentityError> {
         let identity = Self {
-            version: FINAL_SESSION_HISTORY_IDENTITY_VERSION,
             framework,
             session_id_hash: session_id_hash.into(),
             history_ref_kind,
             history_hash: history_hash.into(),
             history_size_bytes,
-            history_source: Some(history_source),
-            history_marker_payload: None,
-        };
-        identity.validate()?;
-        Ok(identity)
-    }
-
-    /// Build validated legacy version-1 final identity metadata.
-    #[doc(hidden)]
-    pub fn new_legacy(
-        framework: FinalSessionHistoryFramework,
-        session_id_hash: impl Into<String>,
-        history_ref_kind: FinalSessionHistoryRefKind,
-        history_hash: impl Into<String>,
-        history_size_bytes: u64,
-        history_marker_payload: impl Into<String>,
-    ) -> Result<Self, FinalSessionHistoryIdentityError> {
-        let identity = Self {
-            version: LEGACY_FINAL_SESSION_HISTORY_IDENTITY_VERSION,
-            framework,
-            session_id_hash: session_id_hash.into(),
-            history_ref_kind,
-            history_hash: history_hash.into(),
-            history_size_bytes,
-            history_source: None,
-            history_marker_payload: Some(history_marker_payload.into()),
+            history_source,
         };
         identity.validate()?;
         Ok(identity)
@@ -291,45 +246,21 @@ impl FinalSessionHistoryIdentity {
         if self.history_size_bytes == 0 {
             return Err(FinalSessionHistoryIdentityError::InvalidHistorySize);
         }
-        match self.version {
-            FINAL_SESSION_HISTORY_IDENTITY_VERSION => {
-                if self.history_marker_payload.is_some() {
-                    return Err(FinalSessionHistoryIdentityError::UnexpectedHistoryMarker);
-                }
-                let history_source = self
-                    .history_source
-                    .as_ref()
-                    .ok_or(FinalSessionHistoryIdentityError::MissingHistorySource)?;
-                history_source.validate()?;
-                if !matches!(
-                    (self.framework, history_source),
-                    (
-                        FinalSessionHistoryFramework::ClaudeCode,
-                        FinalSessionHistorySourceRef::ClaudeCode { .. }
-                    ) | (
-                        FinalSessionHistoryFramework::Codex,
-                        FinalSessionHistorySourceRef::Codex { .. }
-                    ) | (
-                        FinalSessionHistoryFramework::Pi,
-                        FinalSessionHistorySourceRef::Pi { .. }
-                    )
-                ) {
-                    return Err(FinalSessionHistoryIdentityError::InvalidHistorySource);
-                }
-            }
-            LEGACY_FINAL_SESSION_HISTORY_IDENTITY_VERSION => {
-                if self.history_source.is_some() {
-                    return Err(FinalSessionHistoryIdentityError::UnexpectedHistorySource);
-                }
-                if self
-                    .history_marker_payload
-                    .as_deref()
-                    .is_none_or(|marker| marker.trim().is_empty())
-                {
-                    return Err(FinalSessionHistoryIdentityError::MissingHistoryMarker);
-                }
-            }
-            _ => return Err(FinalSessionHistoryIdentityError::UnsupportedVersion),
+        self.history_source.validate()?;
+        if !matches!(
+            (self.framework, &self.history_source),
+            (
+                FinalSessionHistoryFramework::ClaudeCode,
+                FinalSessionHistorySourceRef::ClaudeCode { .. }
+            ) | (
+                FinalSessionHistoryFramework::Codex,
+                FinalSessionHistorySourceRef::Codex { .. }
+            ) | (
+                FinalSessionHistoryFramework::Pi,
+                FinalSessionHistorySourceRef::Pi { .. }
+            )
+        ) {
+            return Err(FinalSessionHistoryIdentityError::InvalidHistorySource);
         }
         Ok(())
     }
@@ -462,20 +393,12 @@ impl FinalSessionHistoryIdentityExpectation {
 impl fmt::Debug for FinalSessionHistoryIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FinalSessionHistoryIdentity")
-            .field("version", &self.version)
             .field("framework", &self.framework)
             .field("session_id_hash", &"[redacted]")
             .field("history_ref_kind", &self.history_ref_kind)
             .field("history_hash", &"[redacted]")
             .field("history_size_bytes", &self.history_size_bytes)
-            .field(
-                "history_source",
-                &self.history_source.as_ref().map(|_| "[redacted]"),
-            )
-            .field(
-                "history_marker_payload",
-                &self.history_marker_payload.as_ref().map(|_| "[redacted]"),
-            )
+            .field("history_source", &"[redacted]")
             .finish()
     }
 }
@@ -487,8 +410,6 @@ pub enum FinalSessionHistoryIdentityError {
     MetadataTooLarge,
     /// Metadata is not valid JSON.
     InvalidJson,
-    /// Metadata version is unsupported.
-    UnsupportedVersion,
     /// Framework value is not recognized.
     InvalidFramework,
     /// History ref kind value is not recognized.
@@ -499,22 +420,8 @@ pub enum FinalSessionHistoryIdentityError {
     InvalidHistoryHash,
     /// History size is zero.
     InvalidHistorySize,
-    /// History size exceeds a verifier work budget.
-    ///
-    /// Final identity metadata no longer owns this runtime policy, but the
-    /// variant remains part of the shared error contract for callers that may
-    /// still classify older validator results.
-    HistoryTooLarge,
-    /// Current metadata omitted its structured history source.
-    MissingHistorySource,
-    /// Current metadata contains an invalid structured history source.
+    /// Metadata contains an invalid structured history source.
     InvalidHistorySource,
-    /// Legacy metadata unexpectedly contained a structured history source.
-    UnexpectedHistorySource,
-    /// Current metadata unexpectedly contained a legacy history marker.
-    UnexpectedHistoryMarker,
-    /// History marker payload is missing.
-    MissingHistoryMarker,
 }
 
 impl fmt::Display for FinalSessionHistoryIdentityError {
@@ -522,9 +429,6 @@ impl fmt::Display for FinalSessionHistoryIdentityError {
         match self {
             Self::MetadataTooLarge => f.write_str("final session history identity is too large"),
             Self::InvalidJson => f.write_str("final session history identity is invalid JSON"),
-            Self::UnsupportedVersion => {
-                f.write_str("final session history identity version is unsupported")
-            }
             Self::InvalidFramework => {
                 f.write_str("final session history identity framework is invalid")
             }
@@ -540,23 +444,8 @@ impl fmt::Display for FinalSessionHistoryIdentityError {
             Self::InvalidHistorySize => {
                 f.write_str("final session history identity history size is invalid")
             }
-            Self::HistoryTooLarge => {
-                f.write_str("final session history identity history is too large")
-            }
-            Self::MissingHistorySource => {
-                f.write_str("final session history identity source is missing")
-            }
             Self::InvalidHistorySource => {
                 f.write_str("final session history identity source is invalid")
-            }
-            Self::UnexpectedHistorySource => {
-                f.write_str("legacy final session history identity contains a source")
-            }
-            Self::UnexpectedHistoryMarker => {
-                f.write_str("final session history identity contains a legacy marker")
-            }
-            Self::MissingHistoryMarker => {
-                f.write_str("final session history identity marker is missing")
             }
         }
     }
@@ -640,10 +529,7 @@ mod tests {
             FinalSessionHistoryIdentity::from_json_slice(&bytes).unwrap(),
             identity
         );
-        assert_eq!(
-            value.get("version").and_then(serde_json::Value::as_u64),
-            Some(u64::from(FINAL_SESSION_HISTORY_IDENTITY_VERSION))
-        );
+        assert!(value.get("version").is_none());
         assert!(value.get("historySource").is_some());
         assert!(value.get("historyMarkerPayload").is_none());
     }
@@ -737,74 +623,6 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(err, FinalSessionHistoryIdentityError::InvalidHistorySource);
-    }
-
-    #[test]
-    fn legacy_final_identity_rejects_missing_marker() {
-        let err = FinalSessionHistoryIdentity::new_legacy(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
-            "b".repeat(64),
-            12,
-            " ",
-        )
-        .unwrap_err();
-        assert_eq!(err, FinalSessionHistoryIdentityError::MissingHistoryMarker);
-    }
-
-    #[test]
-    fn legacy_final_identity_round_trips_without_structured_source() {
-        let identity = FinalSessionHistoryIdentity::new_legacy(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
-            "b".repeat(64),
-            12,
-            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-        )
-        .unwrap();
-        let bytes = identity.to_json_vec().unwrap();
-        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-
-        assert_eq!(
-            FinalSessionHistoryIdentity::from_json_slice(&bytes).unwrap(),
-            identity
-        );
-        assert!(value.get("historySource").is_none());
-        assert!(value.get("historyMarkerPayload").is_some());
-    }
-
-    #[test]
-    fn final_identity_rejects_fields_from_the_other_version() {
-        let mut current_without_source = valid_identity();
-        current_without_source.history_source = None;
-        assert_eq!(
-            current_without_source.validate(),
-            Err(FinalSessionHistoryIdentityError::MissingHistorySource)
-        );
-
-        let mut current_with_marker = valid_identity();
-        current_with_marker.history_marker_payload = Some("/legacy/history.jsonl".to_string());
-        assert_eq!(
-            current_with_marker.validate(),
-            Err(FinalSessionHistoryIdentityError::UnexpectedHistoryMarker)
-        );
-
-        let mut legacy_with_source = FinalSessionHistoryIdentity::new_legacy(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
-            "b".repeat(64),
-            12,
-            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-        )
-        .unwrap();
-        legacy_with_source.history_source = Some(valid_source());
-        assert_eq!(
-            legacy_with_source.validate(),
-            Err(FinalSessionHistoryIdentityError::UnexpectedHistorySource)
-        );
     }
 
     #[test]

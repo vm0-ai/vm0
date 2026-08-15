@@ -143,7 +143,7 @@ fn pi_session_history_source(
     }
     Some(FinalSessionHistorySourceRef::Pi {
         session_path: session_path.to_string(),
-        session_id: Some(session_id.to_string()),
+        session_id: session_id.to_string(),
     })
 }
 
@@ -385,7 +385,7 @@ mod tests {
                 .and_then(CapturedSessionMetadata::history_source),
             Some(&FinalSessionHistorySourceRef::Pi {
                 session_path,
-                session_id: Some(session_id.to_string()),
+                session_id: session_id.to_string(),
             })
         );
     }
