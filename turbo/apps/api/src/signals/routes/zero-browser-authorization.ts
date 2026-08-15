@@ -8,7 +8,7 @@ import {
   applyBrowserAuthorizationRequest$,
   createBrowserAuthorizationRequest$,
   readBrowserAuthorizationRequest$,
-} from "../services/zero-browser-authorization.service";
+} from "../services/browser-authorization.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 
