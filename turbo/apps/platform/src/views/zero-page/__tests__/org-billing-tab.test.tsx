@@ -53,13 +53,24 @@ function buttonByText(
   return button;
 }
 
+function subscriptionComparisonTrigger(
+  container: ParentNode = document.body,
+): HTMLElement {
+  const trigger = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate
+      .getAttribute("aria-label")
+      ?.startsWith("Subscription comparison:");
+  });
+  if (!trigger) {
+    throw new Error("Subscription comparison trigger not found");
+  }
+  return trigger;
+}
+
 async function hoverSubscriptionComparison(): Promise<HTMLElement> {
   const user = userEvent.setup();
-  await user.hover(screen.getByTestId("subscription-comparison-trigger"));
-  const title = await screen.findByText("Subscription comparison");
-  const tooltip = title.closest<HTMLElement>('[data-slot="tooltip-content"]');
-  expect(tooltip).not.toBeNull();
-  return tooltip as HTMLElement;
+  await user.hover(subscriptionComparisonTrigger());
+  return await screen.findByRole("tooltip");
 }
 
 function activeProBillingStatus(): BillingStatusResponse {
@@ -1635,18 +1646,21 @@ describe("organization billing settings", () => {
       within(orderSummary).queryByText("Concurrent slots"),
     ).not.toBeInTheDocument();
     expect(queryAllByRoleFast("button", orderSummary)).toHaveLength(0);
-    click(packageSelect);
-    click(
+    const user = userEvent.setup();
+    await user.click(packageSelect);
+    await user.click(
       await screen.findByRole("option", {
         name: "$50 · 54,321 credits · 8% off",
       }),
     );
-    const comparisonTrigger = within(memberUsage).getByTestId(
-      "subscription-comparison-trigger",
+    const comparisonTrigger = subscriptionComparisonTrigger(memberUsage);
+    expect(comparisonTrigger).toHaveAccessibleName(
+      "Subscription comparison: $50/month",
     );
     expect(comparisonTrigger).toHaveTextContent("$50/month");
-    expect(comparisonTrigger).toHaveClass("decoration-dotted");
-    const comparisonTooltip = await hoverSubscriptionComparison();
+    comparisonTrigger.focus();
+    expect(comparisonTrigger).toHaveFocus();
+    const comparisonTooltip = await screen.findByRole("tooltip");
     expect(
       within(comparisonTooltip).getByText("Subscription comparison"),
     ).toBeInTheDocument();

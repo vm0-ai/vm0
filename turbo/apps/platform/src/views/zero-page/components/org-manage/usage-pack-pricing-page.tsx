@@ -1619,18 +1619,27 @@ function ManagedSubscriptionComparisonTooltip({
   readonly rows: readonly SubscriptionComparisonRow[];
   readonly totalUsd: number;
 }) {
+  const comparisonTitle = i18n.t(($) => {
+    return $.billing.plans.usagePacks.management.comparisonTitle;
+  });
+  const totalLabel = i18n.t(
+    ($) => {
+      return $.billing.plans.pricePerMonth;
+    },
+    { price: formatUsd(totalUsd, 0) },
+  );
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="justify-self-end cursor-help underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:decoration-foreground"
-            data-testid="subscription-comparison-trigger"
-          >
-            <LedgerPrice strong value={totalUsd} />
-          </span>
+        <TooltipTrigger
+          type="button"
+          aria-label={`${comparisonTitle}: ${totalLabel}`}
+          className="justify-self-end cursor-help appearance-none rounded-sm border-0 bg-transparent p-0 underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <LedgerPrice strong value={totalUsd} />
         </TooltipTrigger>
         <TooltipContent
+          role="tooltip"
           align="end"
           collisionPadding={16}
           side="bottom"
@@ -1644,9 +1653,7 @@ function ManagedSubscriptionComparisonTooltip({
           }}
         >
           <p className="text-sm font-medium text-foreground">
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.management.comparisonTitle;
-            })}
+            {comparisonTitle}
           </p>
           <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
             {i18n.t(($) => {
