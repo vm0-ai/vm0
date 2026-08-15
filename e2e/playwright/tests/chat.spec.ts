@@ -1,4 +1,4 @@
-import type { Locator, Page, Response } from "@playwright/test";
+import type { Locator, Page, Request, Response } from "@playwright/test";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
@@ -11,6 +11,7 @@ const cardSpacingThreadId = "b0000000-0000-4000-a000-000000000737";
 const forwardLayoutThreadId = "b0000000-0000-4000-a000-000000000738";
 const forwardLayoutThreadTitle =
   "Forward composer layout with a very long thread title";
+const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
 // Card slots carry the same block margins as the paragraphs around them, and
 // adjacent margins collapse into one gap.
 const cardSlotGapPx = 8;
@@ -33,6 +34,16 @@ interface ConnectorCatalogStatusResponse {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+async function negotiatedChatEventHeaders(
+  request: Request,
+): Promise<Record<string, string>> {
+  const version = await request.headerValue(chatEventSchemaVersionHeader);
+  if (version === null) {
+    throw new Error("Chat Event request is missing its schema version");
+  }
+  return { [chatEventSchemaVersionHeader]: version };
 }
 
 function deferred(): { readonly promise: Promise<void>; resolve(): void } {
@@ -415,6 +426,7 @@ async function mockChatThread(
           return typeof row.seqId === "number" && row.seqId > sinceSeqId;
         });
       await route.fulfill({
+        headers: await negotiatedChatEventHeaders(route.request()),
         json: { rows },
       });
     },
@@ -443,6 +455,7 @@ async function mockChatThread(
       `/api/okou/chat-threads/${options.threadId}/event-snapshot`,
     async (route) => {
       await route.fulfill({
+        headers: await negotiatedChatEventHeaders(route.request()),
         status: 404,
         json: { error: { code: "NOT_FOUND", message: "Not found" } },
       });
