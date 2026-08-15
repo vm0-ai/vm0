@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { CHAT_EVENT_TYPES, type ChatEventType } from "../chat-events";
 import { chatEventFromRow } from "../chat-event-row-projection";
 import { chatEventRowSchema, type ChatEventRow } from "../chat-event-rows";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "../chat-event-schema-version";
+import { chatThreadEventsContract } from "../chat-threads";
 
 const CREATED_AT = "2026-08-08T10:00:00.000Z";
 
-function v4Row(overrides: Partial<ChatEventRow>): ChatEventRow {
+function canonicalRow(overrides: Partial<ChatEventRow>): ChatEventRow {
   return {
     id: "00000000-0000-4000-8000-000000000003",
     chatThreadId: "00000000-0000-4000-8000-000000000002",
@@ -23,7 +25,7 @@ function v4Row(overrides: Partial<ChatEventRow>): ChatEventRow {
   };
 }
 
-function projectableV4Row(eventType: ChatEventType): ChatEventRow {
+function projectableRow(eventType: ChatEventType): ChatEventRow {
   const runId = "00000000-0000-4000-8000-000000000013";
   const revokesEventId = "00000000-0000-4000-8000-000000000014";
   const userMessage = {
@@ -79,19 +81,19 @@ function projectableV4Row(eventType: ChatEventType): ChatEventRow {
       },
     },
   };
-  return v4Row({ eventType, ...variants[eventType] });
+  return canonicalRow({ eventType, ...variants[eventType] });
 }
 
 describe("canonical chat event row schema", () => {
-  it("accepts v4 rows", () => {
-    const v4 = v4Row({ payload: { content: "canonical" } });
+  it("accepts canonical rows", () => {
+    const row = canonicalRow({ payload: { content: "canonical" } });
     expect(
-      chatEventRowSchema.parse(JSON.parse(JSON.stringify(v4))),
-    ).toStrictEqual(v4);
+      chatEventRowSchema.parse(JSON.parse(JSON.stringify(row))),
+    ).toStrictEqual(row);
   });
 
   it("preserves canonical multi-leaf payloads and nested JSON nulls", () => {
-    const row = v4Row({
+    const row = canonicalRow({
       payload: {
         content: "historical content",
         userMessage: {
@@ -121,12 +123,64 @@ describe("canonical chat event row schema", () => {
   });
 });
 
+describe("Chat Event Raw Event cursor contract", () => {
+  it("allows only a cold start or a paired positive cursor", () => {
+    const querySchema = chatThreadEventsContract.rows.query;
+    expect(querySchema.safeParse({ sinceSeqId: 0 }).success).toBeTruthy();
+    expect(
+      querySchema.safeParse({
+        sinceSeqId: 9,
+        sinceEventId: "00000000-0000-4000-8000-000000000009",
+      }).success,
+    ).toBeTruthy();
+    expect(querySchema.safeParse({ sinceSeqId: 9 }).success).toBeFalsy();
+    expect(
+      querySchema.safeParse({
+        sinceSeqId: 0,
+        sinceEventId: "00000000-0000-4000-8000-000000000009",
+      }).success,
+    ).toBeFalsy();
+  });
+});
+
+describe("Chat Event versioned read contract", () => {
+  it("requires the request version header and Snapshot terminal event ID", () => {
+    const headersSchema = chatThreadEventsContract.snapshot.headers;
+    expect(
+      headersSchema.safeParse({ authorization: "Bearer test" }).success,
+    ).toBe(false);
+    expect(
+      headersSchema.safeParse({
+        authorization: "Bearer test",
+        [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
+      }).success,
+    ).toBe(true);
+
+    const snapshotResponse = {
+      url: "https://example.com/snapshot.ndjson.gz",
+      expiresInSeconds: 900,
+      lastSeqId: 9,
+    };
+    expect(
+      chatThreadEventsContract.snapshot.responses[200].safeParse(
+        snapshotResponse,
+      ).success,
+    ).toBe(false);
+    expect(
+      chatThreadEventsContract.snapshot.responses[200].safeParse({
+        ...snapshotResponse,
+        lastEventId: "00000000-0000-4000-8000-000000000009",
+      }).success,
+    ).toBe(true);
+  });
+});
+
 describe("canonical row projection preserves the public ChatEvent contract", () => {
   it("serializes and projects every event type from canonical fields", () => {
     expect(
       CHAT_EVENT_TYPES.map((eventType) => {
         const wireRow = JSON.parse(
-          JSON.stringify(projectableV4Row(eventType)),
+          JSON.stringify(projectableRow(eventType)),
         ) as unknown;
         return chatEventFromRow(chatEventRowSchema.parse(wireRow)).eventType;
       }),
@@ -136,7 +190,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
   it("emits the canonical interrupt run as interruptsRunId, never runId", () => {
     const target = "00000000-0000-4000-8000-000000000010";
     const projected = chatEventFromRow(
-      v4Row({ eventType: "control.interrupt", runId: target }),
+      canonicalRow({ eventType: "control.interrupt", runId: target }),
     );
     expect(projected).toMatchObject({
       eventType: "control.interrupt",
@@ -148,7 +202,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
   it("emits goal context pointers as runGroupId", () => {
     const goalId = "00000000-0000-4000-8000-000000000011";
     const projected = chatEventFromRow(
-      v4Row({
+      canonicalRow({
         payload: { content: "goal result" },
         contextType: "goal",
         contextId: goalId,
@@ -170,7 +224,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
     };
     const runId = "00000000-0000-4000-8000-000000000013";
     const projected = chatEventFromRow(
-      v4Row({
+      canonicalRow({
         eventType: "usage.recorded",
         runId,
         payload: { usage },
@@ -183,7 +237,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
     });
 
     const failed = chatEventFromRow(
-      v4Row({
+      canonicalRow({
         eventType: "run.failed",
         runId,
         payload: { content: "run failed", error: "runner error" },

@@ -218,7 +218,7 @@ describe("chat event retention cron", () => {
     );
     await store.set(
       coverRetentionThread$,
-      { chatThreadId: snapshotThreadId, archiveSchemaVersion: 4 },
+      { chatThreadId: snapshotThreadId, archiveSchemaVersion: 3 },
       context.signal,
     );
     const searchLastSeqId = await store.set(

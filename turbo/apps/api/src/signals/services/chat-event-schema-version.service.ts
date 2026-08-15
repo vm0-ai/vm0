@@ -1,8 +1,4 @@
-import {
-  CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  LEGACY_CHAT_EVENT_SCHEMA_VERSION,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 interface VersionErrorResponse {
   readonly status: 400 | 409 | 426;
@@ -30,15 +26,12 @@ function invalidVersion(): ChatEventSchemaVersionResolution {
   };
 }
 
-/** Resolve the explicit wire version, including the temporary fixed V5 default. */
+/** Resolve the explicit wire version. */
 export function resolveChatEventSchemaVersion(
   headerValue: string | undefined,
 ): ChatEventSchemaVersionResolution {
   if (headerValue === undefined) {
-    // Previous app clients can omit this header for about 2 days, and existing
-    // runner/sandbox CLI contexts can remain old for up to 2 hours. Remove the
-    // fixed default with #27194 after both rollout windows have drained.
-    return { kind: "ok", version: LEGACY_CHAT_EVENT_SCHEMA_VERSION };
+    return invalidVersion();
   }
   if (!/^[1-9]\d*$/.test(headerValue)) {
     return invalidVersion();
@@ -47,7 +40,7 @@ export function resolveChatEventSchemaVersion(
   if (!Number.isSafeInteger(version)) {
     return invalidVersion();
   }
-  if (version < CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR) {
+  if (version < CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
     return {
       kind: "error",
       response: {
@@ -76,5 +69,5 @@ export function resolveChatEventSchemaVersion(
       },
     };
   }
-  return { kind: "ok", version };
+  return { kind: "ok", version: CURRENT_CHAT_EVENT_SCHEMA_VERSION };
 }

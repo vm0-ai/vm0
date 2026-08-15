@@ -834,6 +834,20 @@
       "when": 1786729464438,
       "tag": "0926_cooing_gladiator",
       "breakpoints": true
+    },
+    {
+      "idx": 927,
+      "version": "7",
+      "when": 1786768852865,
+      "tag": "0927_contract_chat_event_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 928,
+      "version": "7",
+      "when": 1786768931659,
+      "tag": "0928_slippery_moonstone",
+      "breakpoints": true
     }
   ]
 }

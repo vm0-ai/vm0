@@ -286,9 +286,10 @@ describe("okou chat messages command", () => {
         throw new Error("Snapshot endpoint must not be called");
       }),
       http.get(ROWS_URL, () => {
-        return HttpResponse.json({
-          rows: [rawEventRow(7), rawEventRow(6)],
-        });
+        return HttpResponse.json(
+          { rows: [rawEventRow(7), rawEventRow(6)] },
+          { headers: CHAT_EVENT_SCHEMA_HEADERS },
+        );
       }),
     );
 
@@ -312,6 +313,37 @@ describe("okou chat messages command", () => {
     ]);
   });
 
+  it("rejects a missing Chat Event response schema version", async () => {
+    const outputDirectory = await createOutputDirectory();
+    const threadDirectory = join(outputDirectory, THREAD_ID);
+    await mkdir(threadDirectory, { recursive: true });
+    await writeFile(
+      join(threadDirectory, "event-SEQ_ID_4.json"),
+      `${JSON.stringify(rawEventRow(4))}\n`,
+      "utf8",
+    );
+    server.use(
+      http.get(ROWS_URL, () => {
+        return HttpResponse.json({ rows: [] });
+      }),
+    );
+
+    await expect(async () => {
+      await zeroChatCommand.parseAsync([
+        "node",
+        "cli",
+        "messages",
+        "--output-dir",
+        outputDirectory,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Unexpected Chat Event schema version null",
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("rebuilds an expired local generation and preserves unmanaged files", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
@@ -332,11 +364,15 @@ describe("okou chat messages command", () => {
     const cursors: { eventId: string | null; seqId: string | null }[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
-        return HttpResponse.json({
-          url: SNAPSHOT_DOWNLOAD_URL,
-          expiresInSeconds: 900,
-          lastSeqId: 10,
-        });
+        return HttpResponse.json(
+          {
+            url: SNAPSHOT_DOWNLOAD_URL,
+            expiresInSeconds: 900,
+            lastEventId: freshSnapshotRow.id,
+            lastSeqId: 10,
+          },
+          { headers: CHAT_EVENT_SCHEMA_HEADERS },
+        );
       }),
       http.get(SNAPSHOT_DOWNLOAD_URL, () => {
         return new HttpResponse(freshSnapshot);
@@ -359,11 +395,14 @@ describe("okou chat messages command", () => {
                 message: "Chat events cursor has expired",
               },
             },
-            { status: 410 },
+            { status: 410, headers: CHAT_EVENT_SCHEMA_HEADERS },
           );
         }
         expect(seqId).toBe("10");
-        return HttpResponse.json({ rows: [rawEventRow(11)] });
+        return HttpResponse.json(
+          { rows: [rawEventRow(11)] },
+          { headers: CHAT_EVENT_SCHEMA_HEADERS },
+        );
       }),
     );
 

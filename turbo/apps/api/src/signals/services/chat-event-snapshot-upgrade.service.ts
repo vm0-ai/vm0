@@ -3,12 +3,11 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   decodeChatEventSnapshotBody,
   encodeChatEventSnapshotBody,
-} from "./chat-event-row-downgrade.service";
+} from "./chat-event-snapshot-body.service";
 
 /**
  * Every schema bump that can preserve historical data must register its
- * adjacent Snapshot upgrade here before the new version ships. V4 -> V5 is
- * intentionally absent because V4 discarded feedback location information.
+ * adjacent Snapshot upgrade here before the new version ships.
  */
 function adjacentSnapshotUpgrade(
   sourceVersion: number,

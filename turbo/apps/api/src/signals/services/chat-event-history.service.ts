@@ -11,7 +11,7 @@ import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 
 import type { Db } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
-import { decodeChatEventSnapshotBody } from "./chat-event-row-downgrade.service";
+import { decodeChatEventSnapshotBody } from "./chat-event-snapshot-body.service";
 import { chatEventRowFromDbRow } from "./cron-snapshot-chat-events.service";
 
 const gunzipAsync = promisify(gunzip);
@@ -125,7 +125,10 @@ async function readCurrentChatEventHistoryAtSnapshot(
     .where(
       and(
         eq(chatEventSnapshots.chatThreadId, chatThreadId),
-        eq(chatEventSnapshots.isHead, true),
+        eq(
+          chatEventSnapshots.archiveSchemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        ),
       ),
     )
     .limit(1);
@@ -137,7 +140,6 @@ async function readCurrentChatEventHistoryAtSnapshot(
   if (
     head.archiveSchemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
     head.lastSeqId <= 0 ||
-    head.lastEventId === null ||
     head.objectKey.trim().length === 0
   ) {
     throw new Error("Chat event snapshot head is not reusable");
@@ -170,8 +172,8 @@ async function readCurrentChatEventHistoryAtSnapshot(
 }
 
 /**
- * Current logical thread history: the reusable v5 R2 head followed by every
- * PostgreSQL row after the head watermark. A thread without a head is still a
+ * Current logical thread history: the reusable v5 R2 pointer followed by every
+ * PostgreSQL row after its watermark. A thread without a pointer is still a
  * cold thread, so its current PostgreSQL rows are the complete history.
  */
 export async function readCurrentChatEventHistory(

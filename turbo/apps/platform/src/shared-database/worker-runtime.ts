@@ -57,6 +57,19 @@ const THREAD_START_SEQ_ID = 0;
 const STALE_CLIENT_AFTER_MS = 3 * 60 * 1000;
 const REALTIME_CATCH_UP_RETRY_DELAYS_MS = [1000, 2000, 5000] as const;
 
+function chatEventRowsQuery(cursor: ChatEventCursor) {
+  return cursor.lastEventId === null
+    ? {
+        sinceSeqId: cursor.lastSeqId,
+        limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+      }
+    : {
+        sinceSeqId: cursor.lastSeqId,
+        sinceEventId: cursor.lastEventId,
+        limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+      };
+}
+
 type WorkerClientEvent = Extract<
   SharedDatabaseWorkerMessage,
   {
@@ -666,11 +679,7 @@ export class SharedDatabaseWorkerRuntime {
       const page = await client.rows({
         headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
         params: { threadId: actor.dataKey.threadId },
-        query: {
-          sinceSeqId: cursor.lastSeqId,
-          sinceEventId: cursor.lastEventId ?? undefined,
-          limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-        },
+        query: chatEventRowsQuery(cursor),
         fetchOptions: { signal },
       });
       signal.throwIfAborted();
@@ -770,9 +779,6 @@ export class SharedDatabaseWorkerRuntime {
     }
     if (snapshot.status !== 200) {
       throw new SharedDatabaseHttpError(snapshot.status);
-    }
-    if (snapshot.body.lastEventId === undefined) {
-      throw new Error("ChatEvent snapshot response is missing lastEventId");
     }
     const response = await fetch(snapshot.body.url, { signal });
     if (!response.ok) {

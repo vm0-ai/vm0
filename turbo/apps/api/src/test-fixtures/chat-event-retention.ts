@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { and, desc, eq, inArray, lte, max } from "drizzle-orm";
@@ -356,14 +356,20 @@ export const coverRetentionThread$ = command(
     if (terminal === undefined) {
       throw new Error("Expected retention fixture snapshot terminal event");
     }
-    const objectKey = `chat-events/${args.chatThreadId}/${lastSeqId.toString()}-${"a".repeat(64)}.ndjson.gz`;
+    const archiveSchemaVersion = args.archiveSchemaVersion ?? 5;
+    const digest = createHash("sha256")
+      .update(
+        `${args.chatThreadId}:${lastSeqId.toString()}:${archiveSchemaVersion.toString()}`,
+      )
+      .digest("hex");
+    const objectKey = `chat-events/${args.chatThreadId}/${lastSeqId.toString()}-${digest}.ndjson.gz`;
     const [head] = await database
       .select({ id: chatEventSnapshots.id })
       .from(chatEventSnapshots)
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, args.chatThreadId),
-          eq(chatEventSnapshots.isHead, true),
+          eq(chatEventSnapshots.archiveSchemaVersion, archiveSchemaVersion),
         ),
       )
       .limit(1);
@@ -373,9 +379,8 @@ export const coverRetentionThread$ = command(
         chatThreadId: args.chatThreadId,
         lastSeqId,
         lastEventId: terminal.id,
-        archiveSchemaVersion: args.archiveSchemaVersion ?? 5,
+        archiveSchemaVersion,
         objectKey,
-        isHead: true,
       });
     } else {
       await database
@@ -383,7 +388,7 @@ export const coverRetentionThread$ = command(
         .set({
           lastSeqId,
           lastEventId: terminal.id,
-          archiveSchemaVersion: args.archiveSchemaVersion ?? 5,
+          archiveSchemaVersion,
           objectKey,
         })
         .where(eq(chatEventSnapshots.id, head.id));
