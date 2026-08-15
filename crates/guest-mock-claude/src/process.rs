@@ -39,12 +39,29 @@ fn run_stream_json_input(parsed: ParsedArgs) -> ExitCode {
             first_frame,
             &mut reader,
             expected_follow_ups,
+            false,
+        ),
+        MockScenario::ActiveInputSmokeReady {
+            expected_follow_ups,
+        } => stream_json_input::run_active_input_smoke_scenario(
+            &parsed.output_format,
+            parsed.replay_user_messages,
+            first_frame,
+            &mut reader,
+            expected_follow_ups,
+            true,
         ),
         MockScenario::InvalidActiveInputSmokeCount(count) => {
             eprintln!(
                 "{}",
-                stream_json_input::invalid_active_input_count_message(count)
+                stream_json_input::invalid_count_message("@active-input-smoke", count)
             );
+            ExitCode::from(1)
+        }
+        MockScenario::InvalidActiveInputSmokeReadyCount(count) => {
+            let message =
+                stream_json_input::invalid_count_message("@active-input-smoke-ready", count);
+            eprintln!("{message}");
             ExitCode::from(1)
         }
         scenario => run_scenario(scenario, first_frame.content(), &parsed.output_format),
@@ -57,15 +74,21 @@ fn run_prompt_scenario(prompt: &str, output_format: &str) -> ExitCode {
 
 fn run_scenario(scenario: MockScenario<'_>, prompt: &str, output_format: &str) -> ExitCode {
     match scenario {
-        MockScenario::ActiveInputSmoke { .. } => {
+        MockScenario::ActiveInputSmoke { .. } | MockScenario::ActiveInputSmokeReady { .. } => {
             eprintln!("@active-input-smoke requires --input-format stream-json");
             ExitCode::from(1)
         }
         MockScenario::InvalidActiveInputSmokeCount(count) => {
             eprintln!(
                 "{}",
-                stream_json_input::invalid_active_input_count_message(count)
+                stream_json_input::invalid_count_message("@active-input-smoke", count)
             );
+            ExitCode::from(1)
+        }
+        MockScenario::InvalidActiveInputSmokeReadyCount(count) => {
+            let message =
+                stream_json_input::invalid_count_message("@active-input-smoke-ready", count);
+            eprintln!("{message}");
             ExitCode::from(1)
         }
         MockScenario::EchoJsonl(payload) => fixtures::run_echo_jsonl_mode(payload, false),
