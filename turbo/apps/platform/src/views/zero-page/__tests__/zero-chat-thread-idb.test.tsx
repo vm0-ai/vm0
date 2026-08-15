@@ -543,12 +543,16 @@ describe("okou chat thread IndexedDB fallback", () => {
         createdAt: "2026-08-12T06:22:02.000Z",
       },
     ] satisfies ChatEventRow[];
+    const terminalSnapshotRow = snapshotRows.at(-1);
+    if (terminalSnapshotRow === undefined) {
+      throw new Error("Expected a terminal Snapshot row");
+    }
 
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {
         url: snapshotUrl,
         expiresInSeconds: 900,
-        lastEventId: snapshotRows.at(-1)!.id,
+        lastEventId: terminalSnapshotRow.id,
         lastSeqId: 3,
       });
     });

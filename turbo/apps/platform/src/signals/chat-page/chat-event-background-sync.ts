@@ -75,10 +75,7 @@ const coldStartChatThreadRows$ = command(
     signal: AbortSignal,
   ): Promise<{
     readonly events: readonly ChatEvent[];
-    readonly cursor: {
-      readonly lastEventId: string | null;
-      readonly lastSeqId: number;
-    };
+    readonly cursor: ChatEventCursor;
   }> => {
     const snapshot = await set(fetchChatEventSnapshotRows$, threadId, signal);
     if (snapshot === null) {

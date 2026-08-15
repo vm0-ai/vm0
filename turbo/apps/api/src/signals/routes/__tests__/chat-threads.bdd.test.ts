@@ -2035,6 +2035,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     // Raw-row tailing is strictly after the cursor.
     const since = await chat.listThreadEvents(owner, threadId, {
+      sinceEventId: firstAssistantMessage.id,
       sinceSeqId: firstAssistantSeqId,
     });
     expect(

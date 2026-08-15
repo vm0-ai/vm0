@@ -138,23 +138,23 @@ describe("canonical chat event storage", () => {
       },
     });
 
-    const v4Rows = await chat.listThreadEventRows(actor, thread.id);
-    const v4Interrupt = v4Rows.find((candidate) => {
+    const storedRows = await chat.listThreadEventRows(actor, thread.id);
+    const storedInterrupt = storedRows.find((candidate) => {
       return candidate.id === fixture.single.interruptId;
     });
-    expect(v4Interrupt).toMatchObject({
+    expect(storedInterrupt).toMatchObject({
       runId: fixture.single.interruptTargetRunId,
       payload: null,
     });
-    expect(v4Interrupt).not.toHaveProperty("interruptsRunId");
-    const v4GoalOutput = v4Rows.find((candidate) => {
+    expect(storedInterrupt).not.toHaveProperty("interruptsRunId");
+    const storedGoalOutput = storedRows.find((candidate) => {
       return candidate.id === fixture.single.goalContextEventId;
     });
-    expect(v4GoalOutput).toMatchObject({
+    expect(storedGoalOutput).toMatchObject({
       contextType: "goal",
       contextId: fixture.single.goalId,
       payload: { content: "goal output" },
     });
-    expect(v4GoalOutput).not.toHaveProperty("runGroupId");
+    expect(storedGoalOutput).not.toHaveProperty("runGroupId");
   });
 });

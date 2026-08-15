@@ -510,6 +510,33 @@ describe("shared database worker runtime", () => {
     expect(snapshotRequests).toBe(0);
   });
 
+  it("rejects a missing ChatEvent response schema version", async () => {
+    const clientId = await connectRuntime();
+    const dataKey = chatEventKey(crypto.randomUUID());
+    context.mocks.http.get(
+      `*/api/okou/chat-threads/${dataKey.threadId}/event-snapshot`,
+      () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+              message: "Chat event snapshot not found",
+            },
+          },
+          { status: 404 },
+        );
+      },
+    );
+
+    await expect(
+      query(clientId, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).rejects.toThrow("Unexpected Chat Event schema version null");
+  });
+
   it("rejects a mismatched ChatEvent response schema version", async () => {
     const clientId = await connectRuntime();
     const dataKey = chatEventKey(crypto.randomUUID());

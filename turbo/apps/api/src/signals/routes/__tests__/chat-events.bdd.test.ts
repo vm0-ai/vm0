@@ -3317,6 +3317,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     expect(guidance.error).toBe("insufficient_credits");
 
     const appended = await chat.listThreadEvents(actor, sent.body.threadId, {
+      sinceEventId: queuedUser.id,
       sinceSeqId: queuedUser.seqId,
     });
     expect(appended.events).toStrictEqual([
@@ -10463,6 +10464,7 @@ describe("CHAT-02: shared user message queue", () => {
       Date.parse(original.createdAt),
     );
     const appended = await chat.listThreadEvents(actor, anchor.threadId, {
+      sinceEventId: original.id,
       sinceSeqId: original.seqId,
     });
     expect(appended.events).toContainEqual(

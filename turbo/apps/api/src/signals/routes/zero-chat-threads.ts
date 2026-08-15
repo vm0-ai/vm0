@@ -160,7 +160,6 @@ const getChatEventSnapshotInner$ = command(
       zeroChatThreadEventSnapshot({
         threadId: params.threadId,
         userId: auth.userId,
-        schemaVersion: version.version,
       }),
       signal,
     );
@@ -211,10 +210,7 @@ const listChatEventRowsInner$ = command(
       zeroChatThreadEventRows({
         threadId: params.threadId,
         userId: auth.userId,
-        schemaVersion: version.version,
-        sinceSeqId: query.sinceSeqId,
-        sinceEventId: query.sinceEventId,
-        limit: query.limit,
+        ...query,
       }),
     );
     signal.throwIfAborted();

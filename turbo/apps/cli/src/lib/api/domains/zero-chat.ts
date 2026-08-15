@@ -32,7 +32,7 @@ export type ZeroChatThreadEvent = ChatThreadEvent;
 
 interface ZeroChatEventSnapshotDownload {
   readonly url: string;
-  readonly lastEventId: string | undefined;
+  readonly lastEventId: string;
   readonly lastSeqId: number;
 }
 
@@ -47,13 +47,7 @@ const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
 
 function assertChatEventSchemaVersion(headers: Headers): void {
   const version = headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-  // A current CLI context can briefly reach the previous API during the
-  // backend rollout/rollback window (observed maximum: 102 minutes). Remove
-  // the missing-header tolerance with #27194 after that window is closed.
-  if (
-    version !== null &&
-    version !== CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()
-  ) {
+  if (version !== CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()) {
     throw new Error(`Unexpected Chat Event schema version ${version}`);
   }
 }
@@ -252,22 +246,28 @@ export async function getZeroChatEventSnapshot(options: {
   handleError(result, "Failed to get chat event snapshot");
 }
 
-export async function listZeroChatEventRows(options: {
-  readonly threadId: string;
-  readonly sinceEventId: string | null;
-  readonly sinceSeqId: number;
-  readonly limit: number;
-}): Promise<ZeroChatEventRowsPage> {
+export async function listZeroChatEventRows(
+  options: {
+    readonly threadId: string;
+    readonly limit: number;
+  } & (
+    | { readonly sinceEventId: null; readonly sinceSeqId: 0 }
+    | { readonly sinceEventId: string; readonly sinceSeqId: number }
+  ),
+): Promise<ZeroChatEventRowsPage> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.rows({
     headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
     params: { threadId: options.threadId },
-    query: {
-      sinceSeqId: options.sinceSeqId,
-      sinceEventId: options.sinceEventId ?? undefined,
-      limit: options.limit,
-    },
+    query:
+      options.sinceEventId === null
+        ? { sinceSeqId: 0, limit: options.limit }
+        : {
+            sinceSeqId: options.sinceSeqId,
+            sinceEventId: options.sinceEventId,
+            limit: options.limit,
+          },
   });
   assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {

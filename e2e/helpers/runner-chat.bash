@@ -50,12 +50,18 @@ runner_chat_event_rows() {
     local thread_id="$1"
     local accumulated='[]'
     local since_seq_id=0
-    local response rows row_count next_seq_id
+    local since_event_id=''
+    local response rows row_count next_seq_id next_event_id request_path
     local page_number
 
     for ((page_number = 1; page_number <= 100; page_number += 1)); do
+        request_path="/api/okou/chat-threads/${thread_id}/event-rows?sinceSeqId=${since_seq_id}&limit=50"
+        if ((since_seq_id > 0)); then
+            request_path+="&sinceEventId=${since_event_id}"
+        fi
         response="$(runner_api_curl \
-            "/api/okou/chat-threads/${thread_id}/event-rows?sinceSeqId=${since_seq_id}&limit=50")" || return
+            "$request_path" \
+            -H "X-Chat-Event-Schema-Version: 5")" || return
         rows="$(jq -ce \
             '.rows | if type == "array" then . else error("invalid rows") end' \
             <<<"$response")" || {
@@ -77,11 +83,18 @@ runner_chat_event_rows() {
             echo "Chat event rows page is missing its final sequence ID: $response" >&2
             return 1
         }
+        next_event_id="$(jq -er \
+            '.[-1].id | select(type == "string" and length > 0)' \
+            <<<"$rows")" || {
+            echo "Chat event rows page is missing its final event ID: $response" >&2
+            return 1
+        }
         if ((next_seq_id <= since_seq_id)); then
             echo "Chat event rows cursor did not advance: $response" >&2
             return 1
         fi
         since_seq_id="$next_seq_id"
+        since_event_id="$next_event_id"
     done
 
     echo "Chat event rows exceeded 100 pages for thread ${thread_id}" >&2

@@ -34,11 +34,17 @@ export const listRowsAfter$ = command(
       client.rows({
         headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
         params: { threadId },
-        query: {
-          sinceSeqId: cursor.lastSeqId,
-          sinceEventId: cursor.lastEventId ?? undefined,
-          limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-        },
+        query:
+          cursor.lastEventId === null
+            ? {
+                sinceSeqId: cursor.lastSeqId,
+                limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+              }
+            : {
+                sinceSeqId: cursor.lastSeqId,
+                sinceEventId: cursor.lastEventId,
+                limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+              },
         fetchOptions: { signal },
       }),
       [200, 410],
@@ -74,7 +80,7 @@ export const fetchChatEventSnapshotRows$ = command(
     signal: AbortSignal,
   ): Promise<{
     readonly rows: readonly ChatEventRow[];
-    readonly lastEventId: string | null;
+    readonly lastEventId: string;
     readonly lastSeqId: number;
   } | null> => {
     const client = get(zeroClient$)(chatThreadEventsContract);
@@ -93,10 +99,6 @@ export const fetchChatEventSnapshotRows$ = command(
       L.debug("fetchChatEventSnapshotRows$: no snapshot yet", { threadId });
       return null;
     }
-    if (download.body.lastEventId === undefined) {
-      throw new Error("ChatEvent snapshot response is missing lastEventId");
-    }
-
     const response = await fetch(download.body.url, { signal });
     if (!response.ok) {
       throw new Error(
