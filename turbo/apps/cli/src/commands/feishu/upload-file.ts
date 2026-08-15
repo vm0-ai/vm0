@@ -7,8 +7,8 @@ import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@okouai/api-contracts/contracts/in
 import {
   completeFeishuFileUpload,
   initFeishuFileUpload,
-} from "../../../lib/api/domains/integrations-feishu";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/integrations-feishu";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   ".csv": "text/csv",

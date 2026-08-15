@@ -1,13 +1,13 @@
 import { Command } from "commander";
 
 import { downloadFileCommand } from "./download-file";
-import { zeroFeishuMessageCommand } from "./message";
+import { feishuMessageCommand } from "./message";
 import { uploadFileCommand } from "./upload-file";
 
-export const zeroFeishuCommand = new Command()
+export const feishuCommand = new Command()
   .name("feishu")
   .description("Send messages and transfer files through Feishu")
-  .addCommand(zeroFeishuMessageCommand)
+  .addCommand(feishuMessageCommand)
   .addCommand(downloadFileCommand)
   .addCommand(uploadFileCommand)
   .addHelpText(

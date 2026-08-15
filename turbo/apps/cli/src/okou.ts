@@ -168,7 +168,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "feishu",
     description: "Send messages to Feishu as an organization bot",
     load: async () => {
-      return (await import("./commands/zero/feishu")).zeroFeishuCommand;
+      return (await import("./commands/feishu")).feishuCommand;
     },
   },
   {

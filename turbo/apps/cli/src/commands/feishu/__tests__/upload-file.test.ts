@@ -6,7 +6,7 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FEISHU_FILE_UPLOAD_MAX_BYTES } from "@okouai/api-contracts/contracts/integrations";
 
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 
 const UPLOAD_INIT_URL =

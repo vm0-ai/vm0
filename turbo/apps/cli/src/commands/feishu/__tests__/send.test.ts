@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { server } from "../../../../mocks/server";
+import { server } from "../../../mocks/server";
 import { sendCommand } from "../message/send";
 
 const FEISHU_MESSAGE_URL =
