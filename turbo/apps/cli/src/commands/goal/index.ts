@@ -9,8 +9,8 @@ import {
   getGoal,
   pauseGoal,
   resumeGoal,
-} from "../../../lib/api/domains/zero-goals";
-import { withErrorHandler } from "../../../lib/command/with-error-handler";
+} from "../../lib/api/domains/zero-goals";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface CreateOptions {
   readonly objective: string;
@@ -103,7 +103,7 @@ const clearCommand = new Command()
     }),
   );
 
-export const zeroGoalCommand = new Command()
+export const goalCommand = new Command()
   .name("goal")
   .description("Manage the current thread goal")
   .addCommand(createCommand)

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpResponse, http } from "msw";
 
-import { server } from "../../../../mocks/server";
-import { zeroGoalCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { goalCommand } from "../index";
 
 const ACTIVE_GOAL = {
   objective: "ship goal workflows",
@@ -49,7 +49,7 @@ describe("okou goal command", () => {
       }),
     );
 
-    await zeroGoalCommand.parseAsync([
+    await goalCommand.parseAsync([
       "node",
       "okou",
       "create",
@@ -77,7 +77,7 @@ describe("okou goal command", () => {
       }),
     );
 
-    await zeroGoalCommand.parseAsync([
+    await goalCommand.parseAsync([
       "node",
       "okou",
       "edit",
@@ -97,7 +97,7 @@ describe("okou goal command", () => {
       }),
     );
 
-    await zeroGoalCommand.parseAsync(["node", "okou", "get"]);
+    await goalCommand.parseAsync(["node", "okou", "get"]);
 
     expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
       ACTIVE_GOAL,
@@ -122,7 +122,7 @@ describe("okou goal command", () => {
         }),
       );
 
-      await zeroGoalCommand.parseAsync(["node", "okou", command]);
+      await goalCommand.parseAsync(["node", "okou", command]);
 
       expect(
         JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0])),
@@ -137,7 +137,7 @@ describe("okou goal command", () => {
       }),
     );
 
-    await zeroGoalCommand.parseAsync(["node", "okou", "clear"]);
+    await goalCommand.parseAsync(["node", "okou", "clear"]);
 
     expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
       { cleared: true },
