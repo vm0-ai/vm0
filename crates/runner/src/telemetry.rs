@@ -43,6 +43,7 @@ pub struct JobTelemetry {
     http: HttpClient,
     run_id: RunId,
     sandbox_token: String,
+    runner_name: Option<String>,
     pending_ops: Vec<SandboxOp>,
     oldest_pending: Option<Instant>,
     in_flight_flushes: Vec<JoinHandle<()>>,
@@ -68,16 +69,30 @@ struct SandboxOp {
 #[serde(rename_all = "camelCase")]
 struct TelemetryPayload {
     run_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_name: Option<String>,
     sandbox_operations: Vec<SandboxOp>,
 }
 
 impl JobTelemetry {
     /// Create a new per-job telemetry collector.
+    #[cfg(test)]
     pub fn new(http: HttpClient, run_id: RunId, sandbox_token: String) -> Self {
+        Self::new_with_runner_name(http, run_id, sandbox_token, None)
+    }
+
+    /// Create a per-job telemetry collector with the runner identity that owns the job.
+    pub(crate) fn new_with_runner_name(
+        http: HttpClient,
+        run_id: RunId,
+        sandbox_token: String,
+        runner_name: Option<String>,
+    ) -> Self {
         Self {
             http,
             run_id,
             sandbox_token,
+            runner_name,
             pending_ops: Vec::new(),
             oldest_pending: None,
             in_flight_flushes: Vec::new(),
@@ -148,6 +163,7 @@ impl JobTelemetry {
             http: self.http.clone(),
             run_id: self.run_id,
             sandbox_token: self.sandbox_token.clone(),
+            runner_name: self.runner_name.clone(),
         }
     }
 
@@ -184,9 +200,10 @@ impl JobTelemetry {
         let ops = std::mem::take(&mut self.pending_ops);
         let in_flight_flushes = std::mem::take(&mut self.in_flight_flushes);
         let run_id = self.run_id;
+        let runner_name = self.runner_name.clone();
 
         tokio::join!(
-            send_telemetry(&self.http, run_id, &self.sandbox_token, ops),
+            send_telemetry(&self.http, run_id, &self.sandbox_token, runner_name, ops,),
             drain_in_flight_flushes(run_id, in_flight_flushes),
         );
     }
@@ -266,9 +283,10 @@ impl JobTelemetry {
         let http = self.http.clone();
         let run_id = self.run_id;
         let sandbox_token = self.sandbox_token.clone();
+        let runner_name = self.runner_name.clone();
 
         let handle = tokio::spawn(async move {
-            send_telemetry(&http, run_id, &sandbox_token, ops).await;
+            send_telemetry(&http, run_id, &sandbox_token, runner_name, ops).await;
         });
         self.in_flight_flushes.push(handle);
     }
@@ -279,6 +297,7 @@ pub(crate) struct SandboxOpReporter {
     http: HttpClient,
     run_id: RunId,
     sandbox_token: String,
+    runner_name: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -319,7 +338,14 @@ impl SandboxOpReporter {
                 )
             })
             .collect();
-        send_telemetry(&self.http, self.run_id, &self.sandbox_token, ops).await;
+        send_telemetry(
+            &self.http,
+            self.run_id,
+            &self.sandbox_token,
+            self.runner_name.clone(),
+            ops,
+        )
+        .await;
     }
 }
 
@@ -382,6 +408,7 @@ async fn send_telemetry(
     http: &HttpClient,
     run_id: RunId,
     sandbox_token: &str,
+    runner_name: Option<String>,
     ops: Vec<SandboxOp>,
 ) {
     if ops.is_empty() {
@@ -390,6 +417,7 @@ async fn send_telemetry(
 
     let payload = TelemetryPayload {
         run_id: run_id.to_string(),
+        runner_name,
         sandbox_operations: ops,
     };
 
@@ -544,6 +572,7 @@ mod tests {
             ));
         let payload = TelemetryPayload {
             run_id: "abc-123".to_string(),
+            runner_name: None,
             sandbox_operations: vec![SandboxOp {
                 ts: "2026-01-15T10:00:00+00:00".to_string(),
                 action_type: "test".to_string(),
@@ -576,6 +605,24 @@ mod tests {
                     "session_history_transfer_encoding_state": "absent",
                     "session_history_download_source": "configured_public_endpoint",
                 }],
+            })
+        );
+    }
+
+    #[test]
+    fn telemetry_payload_includes_runner_name_when_configured() {
+        let payload = TelemetryPayload {
+            run_id: "abc-123".to_string(),
+            runner_name: Some("v0.168.14".to_string()),
+            sandbox_operations: vec![],
+        };
+
+        assert_eq!(
+            serde_json::to_value(&payload).unwrap(),
+            serde_json::json!({
+                "runId": "abc-123",
+                "runnerName": "v0.168.14",
+                "sandboxOperations": [],
             })
         );
     }
@@ -677,16 +724,18 @@ mod tests {
                 when.method(POST)
                     .path("/api/webhooks/agent/telemetry")
                     .body_includes(r#""ts":"2026-08-11T10:20:30.456Z""#)
-                    .body_includes(r#""action_type":"concurrent_operation""#);
+                    .body_includes(r#""action_type":"concurrent_operation""#)
+                    .body_includes(r#""runnerName":"v0.168.14""#);
                 then.status(200)
                     .header("content-type", "application/json")
                     .body(r#"{"success":true,"id":"ok"}"#);
             })
             .await;
-        let mut telemetry = JobTelemetry::new(
+        let mut telemetry = JobTelemetry::new_with_runner_name(
             http_client_for_api_url(&server.base_url()),
             RunId::nil(),
             "tok".to_string(),
+            Some("v0.168.14".to_string()),
         );
         let completed_at = DateTime::parse_from_rfc3339("2026-08-11T10:20:30.456Z")
             .unwrap()
@@ -761,7 +810,12 @@ mod tests {
         });
 
         let http = http_client_for_api_url(&api_url);
-        let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
+        let mut telemetry = JobTelemetry::new_with_runner_name(
+            http,
+            RunId::nil(),
+            "tok".to_string(),
+            Some("v0.168.14".to_string()),
+        );
 
         telemetry.record("op1", Duration::from_millis(10), true, None);
         telemetry.rewind_oldest_pending_for_test(FLUSH_THRESHOLD + Duration::from_millis(1));
@@ -782,6 +836,7 @@ mod tests {
         );
         assert!(request.contains(r#""action_type":"op1""#));
         assert!(request.contains(r#""action_type":"op2""#));
+        assert!(request.contains(r#""runnerName":"v0.168.14""#));
 
         let mut flush = Box::pin(telemetry.flush());
         assert!(
@@ -855,5 +910,54 @@ mod tests {
         assert!(request.contains(r#""action_type":"storage_cache_background_fill_filled""#));
         assert!(request.contains(r#""duration_ms":42"#));
         assert!(request.contains(r#""success":true"#));
+    }
+
+    #[tokio::test]
+    async fn configured_runner_name_is_sent_by_direct_reporter() {
+        use tokio::io::AsyncWriteExt;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_http_request(&mut socket).await;
+            socket
+                .write_all(
+                    concat!(
+                        "HTTP/1.1 200 OK\r\n",
+                        "content-length: 16\r\n",
+                        "content-type: application/json\r\n",
+                        "connection: close\r\n",
+                        "\r\n",
+                        r#"{"success":true}"#
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            request
+        });
+
+        let telemetry = JobTelemetry::new_with_runner_name(
+            http_client_for_api_url(&api_url),
+            RunId::nil(),
+            "tok".to_string(),
+            Some("v0.168.14".to_string()),
+        );
+        telemetry
+            .reporter()
+            .report(vec![SandboxOpRecord::new(
+                "runner_name_test",
+                Duration::from_millis(1),
+                true,
+                None,
+            )])
+            .await;
+
+        let request = tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("server should receive configured reporter request")
+            .unwrap();
+        assert!(request.contains(r#""runnerName":"v0.168.14"#));
     }
 }

@@ -876,6 +876,8 @@ const sandboxOperationSchema = z.object({
   session_history_download_source: sandboxOperationDownloadSourceSchema,
 });
 
+const telemetryRunnerNameSchema = z.string().min(1).max(128);
+
 /**
  * Webhook telemetry contract for /api/webhooks/agent/telemetry
  */
@@ -890,6 +892,7 @@ export const webhookTelemetryContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
+      runnerName: telemetryRunnerNameSchema.optional(),
       systemLog: z.string().optional(),
       metrics: z.array(metricDataSchema).optional(),
       networkLogs: z.array(networkLogEntrySchema).optional(),

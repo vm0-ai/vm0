@@ -1495,6 +1495,69 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
 });
 
 describe("WHCB-05: sandbox agent webhook boundaries", () => {
+  it("attributes sandbox operation telemetry to the optional runner name", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      `runner-name telemetry ${randomUUID()}`,
+    );
+
+    context.mocks.axiom.sdkIngest.mockClear();
+    await api.requestAgentTelemetry(
+      {
+        runId,
+        runnerName: "v0.168.14",
+        sandboxOperations: [
+          {
+            ts: nowDate().toISOString(),
+            action_type: "runner_name_attribution",
+            duration_ms: 12,
+            success: true,
+          },
+        ],
+      },
+      headers,
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          run_id: runId,
+          op_type: "runner_name_attribution",
+          runner_name: "v0.168.14",
+        }),
+      ],
+    );
+
+    context.mocks.axiom.sdkIngest.mockClear();
+    await api.requestAgentTelemetry(
+      {
+        runId,
+        sandboxOperations: [
+          {
+            ts: nowDate().toISOString(),
+            action_type: "legacy_runner_name_attribution",
+            duration_ms: 8,
+            success: true,
+          },
+        ],
+      },
+      headers,
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.not.objectContaining({
+          runner_name: expect.anything(),
+        }),
+      ],
+    );
+  });
+
   it("rejects malformed, unauthenticated, mismatched, and missing-run sandbox reports", async () => {
     const runId = randomUUID();
     const mismatchedRunId = randomUUID();
