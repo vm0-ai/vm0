@@ -14,8 +14,8 @@ import {
   vi,
 } from "vitest";
 
-import { server } from "../../../../mocks/server";
-import { zeroBrowserCommand } from "../index";
+import { server } from "../../../mocks/server";
+import { browserCommand } from "../index";
 
 const spawnSyncMock = vi.hoisted(() => {
   return vi.fn();
@@ -24,7 +24,7 @@ vi.mock("node:child_process", () => {
   return { spawnSync: spawnSyncMock };
 });
 
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-browser-home-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "browser-home-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
@@ -71,7 +71,7 @@ describe("okou browser command", () => {
       force: true,
     });
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
     spawnSyncMock.mockReturnValue({ status: 0 });
   });
@@ -97,7 +97,7 @@ describe("okou browser command", () => {
 
   it("exposes only thread-keyed lifecycle commands", () => {
     expect(
-      zeroBrowserCommand.commands.map((command) => {
+      browserCommand.commands.map((command) => {
         return command.name();
       }),
     ).toStrictEqual(["use", "lease", "new", "status", "view"]);
@@ -120,7 +120,7 @@ describe("okou browser command", () => {
       ),
     );
 
-    await zeroBrowserCommand.parseAsync([
+    await browserCommand.parseAsync([
       "node",
       "cli",
       "new",
@@ -132,7 +132,7 @@ describe("okou browser command", () => {
       name: "booking",
       proxyCountryCode: null,
     });
-    expect(authorization).toBe("Bearer test-zero-token");
+    expect(authorization).toBe("Bearer test-token");
     expect(spawnSyncMock).toHaveBeenCalledWith(
       "agent-browser",
       ["--session", "zero-browser", "connect", CDP_URL],
@@ -161,7 +161,7 @@ describe("okou browser command", () => {
       }),
     );
 
-    await zeroBrowserCommand.parseAsync(["node", "cli", "use"]);
+    await browserCommand.parseAsync(["node", "cli", "use"]);
 
     expect(useRequests).toBe(1);
     expect(spawnSyncMock).toHaveBeenCalledWith(
@@ -191,7 +191,7 @@ describe("okou browser command", () => {
       ),
     );
 
-    await zeroBrowserCommand.parseAsync(["node", "cli", "lease"]);
+    await browserCommand.parseAsync(["node", "cli", "lease"]);
 
     expect(leaseRequests).toBe(1);
     // The lease is not parameterizable: every call buys the same fixed window.
@@ -211,7 +211,7 @@ describe("okou browser command", () => {
       }),
     );
 
-    await zeroBrowserCommand.parseAsync([
+    await browserCommand.parseAsync([
       "node",
       "cli",
       "new",

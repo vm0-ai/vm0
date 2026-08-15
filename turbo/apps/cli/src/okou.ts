@@ -253,7 +253,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "browser",
     description: "Managed remote browser sessions for agent-browser",
     load: async () => {
-      return (await import("./commands/zero/browser")).zeroBrowserCommand;
+      return (await import("./commands/browser")).browserCommand;
     },
   },
   {
