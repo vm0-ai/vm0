@@ -18,7 +18,7 @@ import {
   checkManagedCredits$,
   recordManagedUsage$,
   type ManagedUsageErrorResponse,
-} from "./zero-managed-usage.service";
+} from "./managed-usage.service";
 
 const USAGE_KIND = "seo";
 const DATAFORSEO_PROVIDER = "dataforseo";
