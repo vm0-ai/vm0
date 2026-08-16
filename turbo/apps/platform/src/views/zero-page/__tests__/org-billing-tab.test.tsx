@@ -1404,7 +1404,7 @@ describe("organization billing settings", () => {
     ).not.toBeInTheDocument();
     expect(
       within(orderSummary).getByText("Scheduled for Sep 1, 2026"),
-    ).toBeInTheDocument();
+    ).toBeVisible();
 
     const reviewConversionButton = buttonByText(
       "Review conversion",
@@ -2088,7 +2088,7 @@ describe("organization billing settings", () => {
     const downgradeNotice = screen.getByText(
       "Downgrades to $50 on Apr 1, 2026.",
     );
-    expect(downgradeNotice).toHaveClass("text-amber-600");
+    expect(downgradeNotice).toBeVisible();
     expect(screen.queryByText("+4,321 bonus credits")).not.toBeInTheDocument();
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
@@ -2102,6 +2102,7 @@ describe("organization billing settings", () => {
     const scheduledDowngrade = within(orderSummary).getByRole("status", {
       name: "Downgrade scheduled",
     });
+    expect(scheduledDowngrade).toBeVisible();
     expect(scheduledDowngrade).toHaveTextContent(
       "Lower package starts Apr 1, 2026 · Existing credits remain available until they expire",
     );
@@ -2254,9 +2255,7 @@ describe("organization billing settings", () => {
         name: "$20 · 21,234 credits · 6% off",
       }),
     );
-    expect(screen.getByText("Downgrades to $20 on Apr 1, 2026.")).toHaveClass(
-      "text-amber-600",
-    );
+    expect(screen.getByText("Downgrades to $20 on Apr 1, 2026.")).toBeVisible();
     expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
 
     click(packageSelect);
@@ -2265,9 +2264,9 @@ describe("organization billing settings", () => {
         name: "$100 · 109,999 credits · 9% off",
       }),
     );
-    expect(screen.getByText("Downgrades to $100 on Apr 1, 2026.")).toHaveClass(
-      "text-amber-600",
-    );
+    expect(
+      screen.getByText("Downgrades to $100 on Apr 1, 2026."),
+    ).toBeVisible();
     expect(
       screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
     ).not.toBeInTheDocument();
@@ -2557,14 +2556,16 @@ describe("organization billing settings", () => {
         name: /Monthly total \$180\/month \$20\/month/u,
       }),
     ).toBeInTheDocument();
+    const downgradeNotice = within(orderSummary).getByRole("status", {
+      name: "Downgrade",
+    });
+    expect(downgradeNotice).toBeVisible();
+    expect(downgradeNotice).toHaveTextContent(
+      "Lower package starts Apr 1, 2026 · Existing credits remain available until they expire",
+    );
     expect(
-      within(orderSummary).getByText(
-        "The lower package starts at the next billing date. Existing credits remain available until they expire.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(orderSummary).getByText("Scheduled for Apr 1, 2026"),
-    ).toBeInTheDocument();
+      within(orderSummary).queryByText("Scheduled for Apr 1, 2026"),
+    ).not.toBeInTheDocument();
     click(buttonByText("Confirm", orderSummary));
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",

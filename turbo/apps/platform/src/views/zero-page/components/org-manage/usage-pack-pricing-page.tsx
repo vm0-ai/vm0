@@ -126,6 +126,9 @@ const USAGE_PACK_PLANS = [
   },
 ] as const satisfies readonly UsagePackPlan[];
 
+const USAGE_PACK_DOWNGRADE_NOTICE_CLASS =
+  "border border-yellow-200/70 bg-yellow-50/70 text-yellow-800 dark:border-yellow-400/20 dark:bg-yellow-400/10 dark:text-yellow-200";
+
 function usagePackPlan(tier: UsagePackPlanTier): UsagePackPlan {
   return tier === "pro" ? USAGE_PACK_PLANS[0] : USAGE_PACK_PLANS[1];
 }
@@ -592,7 +595,7 @@ function MemberUsageRow({
           </SelectContent>
         </Select>
         {downgradeSummary && (
-          <p className="mt-1 truncate text-sm font-medium text-amber-600 dark:text-amber-300">
+          <p className="mt-1 truncate text-sm font-medium text-yellow-700 dark:text-yellow-300">
             {downgradeSummary}
           </p>
         )}
@@ -1812,26 +1815,36 @@ function SubscriptionChangeNotice({
   );
 }
 
-function ScheduledUsagePackDowngradeNotice({
+function UsagePackDowngradeNotice({
+  className = "",
   effectiveAt,
+  scheduled = false,
 }: {
+  readonly className?: string;
   readonly effectiveAt: string;
+  readonly scheduled?: boolean;
 }) {
-  const title = i18n.t(($) => {
-    return $.billing.plans.usagePacks.management.scheduledDowngradeTitle;
-  });
+  const title = scheduled
+    ? i18n.t(($) => {
+        return $.billing.plans.usagePacks.management.scheduledDowngradeTitle;
+      })
+    : i18n.t(($) => {
+        return $.billing.plans.downgrade;
+      });
   return (
     <div
       role="status"
       aria-label={title}
-      className="flex items-center gap-3 rounded-xl bg-gray-50 p-3"
+      className={`flex items-center gap-3 rounded-xl p-3 ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS} ${className}`}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-card text-muted-foreground">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-yellow-100/80 text-yellow-700 dark:bg-yellow-400/15 dark:text-yellow-300">
         <CalendarDays aria-hidden="true" className="size-4" />
       </span>
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        <p className="mt-0.5 text-sm leading-snug text-muted-foreground">
+        <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-100">
+          {title}
+        </p>
+        <p className="mt-0.5 text-sm leading-snug text-yellow-800 dark:text-yellow-200">
           {i18n.t(
             ($) => {
               return $.billing.plans.usagePacks.management
@@ -2228,18 +2241,18 @@ function ManagedSubscriptionOrderSummary({
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
+      className={scheduledDowngradeEffectiveAt ? "pb-5" : undefined}
     >
       {scheduledDowngradeEffectiveAt ? (
-        <ScheduledUsagePackDowngradeNotice
+        <UsagePackDowngradeNotice
           effectiveAt={scheduledDowngradeEffectiveAt}
+          scheduled
         />
       ) : (
         hasDowngrade &&
         management.currentPeriodEnd && (
-          <SubscriptionChangeNotice
-            description={i18n.t(($) => {
-              return $.billing.plans.usagePacks.management.downgradeDescription;
-            })}
+          <UsagePackDowngradeNotice
+            className="mb-5 mt-3"
             effectiveAt={management.currentPeriodEnd}
           />
         )

@@ -1002,7 +1002,6 @@
           "comparisonDescription": "Votre abonnement actuel et cette sélection, côte à côte",
           "comparisonTitle": "Comparaison des abonnements",
           "current": "Actuel",
-          "downgradeDescription": "Le forfait inférieur commence à la prochaine date de facturation. Les crédits existants restent disponibles jusqu’à leur expiration.",
           "downgradesToDate": "Passe à {{package}} le {{date}}.",
           "downgradesToPeriod": "Passe à {{package}} à la prochaine date de facturation.",
           "everyMonth": "Chaque mois",
