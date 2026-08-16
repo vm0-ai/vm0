@@ -248,6 +248,11 @@ def _observe_websocket_server_lifecycle(
                 _lifecycle_ambiguity_reason(lifecycle),
             )
             return
+        if lifecycle.response_id == state.ignored_response_id:
+            # A retained ID only proves duplicate terminal ownership. Reusing it
+            # at a new created boundary cannot be correlated safely.
+            _mark_websocket_correlation_ambiguous(flow, state, "invalid_lifecycle")
+            return
         if state.pending_intent is None or state.active_intent is not None:
             _mark_websocket_correlation_ambiguous(flow, state, "invalid_lifecycle")
             return
