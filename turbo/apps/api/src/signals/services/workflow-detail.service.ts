@@ -20,7 +20,7 @@ import {
 } from "./workflow-volume.service";
 import { loadWorkflowAutomations } from "./zero-workflow-automation.service";
 
-export function zeroWorkflowDetail(args: {
+export function workflowDetail(args: {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
