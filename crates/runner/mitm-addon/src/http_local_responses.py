@@ -14,8 +14,8 @@ import http_network_log
 import matching
 import registry
 from logging_utils import log_proxy_entry
+from request_authority import AuthorityValidationError
 from runtime_url_parsing import split_runtime_url, strip_url_query_and_fragment
-from url_utils import AuthorityValidationError
 
 _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 _AMBIGUOUS_CONNECTOR_ROUTE_ERROR: Final = "ambiguous_connector_route"

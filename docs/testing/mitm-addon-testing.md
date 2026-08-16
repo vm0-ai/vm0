@@ -199,9 +199,9 @@ suites before committing the upgrade.
 | `test_auth_query_injection.py`                          | Firewall auth query injection and query rewrite behavior                                                             |
 | `test_host_normalization.py`                            | Shared hostname identity, ASCII fast-path, IDNA, and label-boundary contracts                                        |
 | `test_url_syntax.py`                                    | Shared raw URL code-point, whitespace, backslash, and safe-input fast-path contracts                                 |
-| `test_url_utils.py`                                     | Rewrite URL, path, query, and auth-base URL utility cases                                                            |
-| `test_url_utils_trusted_authority.py`                   | Trusted request authority success and URL reconstruction                                                             |
-| `test_url_utils_trusted_authority_rejection.py`         | Trusted request authority rejection matrices                                                                         |
+| `test_auth_base_rewrite.py`                             | Rewrite URL, path, query, and auth-base URL validation cases                                                         |
+| `test_request_authority.py`                             | Trusted request authority success and URL reconstruction                                                             |
+| `test_request_authority_rejection.py`                   | Trusted request authority rejection matrices                                                                         |
 | `test_body_capture_decompression.py`                    | Capture-level body decompression integration                                                                         |
 | `test_body_capture_encoding.py`                         | Body capture text detection, encoding, and UTF-8 truncation helpers                                                  |
 | `test_body_capture_fields.py`                           | Ordinary request/response body capture fields                                                                        |

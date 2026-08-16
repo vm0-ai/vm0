@@ -2,11 +2,11 @@
 
 import pytest
 
+from request_authority import AuthorityValidationError, get_trusted_authority
 from tests.host_normalization_cases import (
     INVALID_IDNA_HOSTNAME_CASES,
     ONLY_DOTS_HOSTNAME,
 )
-from url_utils import AuthorityValidationError, get_trusted_authority
 
 _INVALID_TRUSTED_HOSTNAME_CASES = (
     pytest.param("{api}.github.com", id="template-braces"),

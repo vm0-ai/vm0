@@ -10,8 +10,8 @@ from mitmproxy import http
 
 import auth
 import auth_base_forwarder as forwarder
+import auth_base_rewrite
 import flow_metadata_keys as metadata_keys
-import url_utils
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
 from tests.firewall_rewrite_helpers import make_safety_rewrite_inputs
@@ -245,14 +245,14 @@ class TestAuthBaseUrlRewriteSafety:
         ("client_segments", "separator", "raw_pair", "accepted"),
         [
             pytest.param(
-                url_utils.MAX_AUTH_BASE_QUERY_PAIRS - 2,
+                auth_base_rewrite.MAX_AUTH_BASE_QUERY_PAIRS - 2,
                 "&",
                 "x",
                 True,
                 id="exact-aggregate-limit",
             ),
             pytest.param(
-                url_utils.MAX_AUTH_BASE_QUERY_PAIRS - 1,
+                auth_base_rewrite.MAX_AUTH_BASE_QUERY_PAIRS - 1,
                 ";",
                 "",
                 False,
@@ -325,7 +325,7 @@ class TestAuthBaseUrlRewriteSafety:
             for call in mock_log.call_args_list
             if call.args[2] == "auth.base rewritten query has too many pairs"
         ]
-        assert limit_log.kwargs["query_pair_limit"] == url_utils.MAX_AUTH_BASE_QUERY_PAIRS
+        assert limit_log.kwargs["query_pair_limit"] == auth_base_rewrite.MAX_AUTH_BASE_QUERY_PAIRS
         assert "super-secret-token" not in flow.response.text
         assert "resolved-secret" not in flow.response.text
         assert "super-secret-token" not in json.dumps(mock_log.call_args_list)

@@ -25,6 +25,11 @@ from auth_base_forwarder import (
     release_forward_request_admission_from_flow,
     take_forward_request_admission_from_flow,
 )
+from auth_base_rewrite import (
+    MAX_AUTH_BASE_QUERY_PAIRS,
+    AuthBaseQueryTooManyPairsError,
+    build_rewrite_url,
+)
 from auth_base_transport import (
     MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     ForwardedRequestTooLargeError,
@@ -60,11 +65,6 @@ from firewall_auth_config import auth_config_injects_credentials
 from logging_utils import log_proxy_entry
 from runtime_url_parsing import split_runtime_url
 from url_syntax import has_unsafe_runtime_url_syntax
-from url_utils import (
-    MAX_AUTH_BASE_QUERY_PAIRS,
-    AuthBaseQueryTooManyPairsError,
-    build_rewrite_url,
-)
 
 
 class FirewallAuthHandlingResult(Enum):

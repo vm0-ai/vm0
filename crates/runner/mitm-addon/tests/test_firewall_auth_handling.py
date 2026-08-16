@@ -18,6 +18,7 @@ import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import matching
 import platform_api
+from request_authority import get_trusted_authority
 from tests.auth_endpoint_helpers import FakeAuthEndpoint, firewall_auth_success_response
 from tests.auth_state_helpers import cached_headers
 from tests.aws_sigv4_helpers import (
@@ -34,7 +35,6 @@ from tests.firewall_auth_helpers import (
 )
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
-from url_utils import get_trusted_authority
 
 _MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success response"
 _MISSING_FIELD = object()

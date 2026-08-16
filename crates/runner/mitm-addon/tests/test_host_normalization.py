@@ -70,6 +70,32 @@ def test_rejects_overrange_ipv4_hostname_octet(hostname):
 
 
 @pytest.mark.parametrize(
+    ("hostname", "expected"),
+    [
+        pytest.param("2001:0DB8:0:0::1", "2001:db8::1", id="compressed-ipv6"),
+        pytest.param("192.0.2.1", "192.0.2.1", id="canonical-ipv4"),
+        pytest.param("BÜCHER.example", "xn--bcher-kva.example", id="idna"),
+    ],
+)
+def test_normalize_hostname_canonicalizes_ip_and_idna(hostname, expected):
+    assert host_normalization.normalize_hostname(hostname) == expected
+
+
+@pytest.mark.parametrize(
+    ("hostname", "message"),
+    [
+        pytest.param("2001:db8::1%eth0", "IPv6 scope identifiers are not allowed", id="scope-id"),
+        pytest.param("example,com", "invalid hostname", id="comma"),
+        pytest.param("example%2ecom", "invalid hostname", id="percent-encoding"),
+        pytest.param("192.0.2.1:443", "invalid IPv6 hostname", id="colon-ipv4"),
+    ],
+)
+def test_normalize_hostname_rejects_boundary_syntax(hostname, message):
+    with pytest.raises(ValueError, match=message):
+        host_normalization.normalize_hostname(hostname)
+
+
+@pytest.mark.parametrize(
     ("label", "expected_message"),
     [
         pytest.param("", "empty IDNA label", id="empty"),

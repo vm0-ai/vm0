@@ -14,6 +14,7 @@ import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import matching
 from aws_sigv4 import AwsSigV4Credentials
+from request_authority import get_trusted_authority
 from tests.auth_endpoint_helpers import FakeAuthEndpoint, firewall_auth_success_response
 from tests.auth_state_helpers import auth_cache_key, set_cached_headers
 from tests.aws_sigv4_helpers import (
@@ -30,7 +31,6 @@ from tests.aws_sigv4_helpers import (
     resolved_aws_sigv4_credentials,
 )
 from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
-from url_utils import get_trusted_authority
 
 DEFAULT_SANDBOX_TOKEN = "sandbox-token"
 FAR_FUTURE_EXPIRES_AT = 9_999_999_999

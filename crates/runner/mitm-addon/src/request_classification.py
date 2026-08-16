@@ -30,7 +30,7 @@ import registry
 import registry_firewalls
 import upstream_admission
 import upstream_destination_binding
-from url_utils import AuthorityValidationError, TrustedAuthority, get_trusted_authority
+from request_authority import AuthorityValidationError, TrustedAuthority, get_trusted_authority
 
 REQUEST_CLASSIFICATION_METADATA_KEY = "_request_classification"
 # Metadata that the requestheaders probe path may write while using this

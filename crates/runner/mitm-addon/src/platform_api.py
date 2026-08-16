@@ -8,7 +8,7 @@ import uuid
 from mitmproxy import ctx, http
 
 from authority_utils import authority_has_empty_port, format_url_host
-from url_utils import normalize_trusted_hostname
+from host_normalization import normalize_hostname
 
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
@@ -65,7 +65,7 @@ def _canonical_platform_url(url: str) -> str:
         raise ValueError("Platform API URL must not contain user information")
 
     port = _parsed_port(parsed_url, subject="Platform API URL")
-    authority = format_url_host(normalize_trusted_hostname(parsed_url.hostname))
+    authority = format_url_host(normalize_hostname(parsed_url.hostname))
     if port is not None:
         authority = f"{authority}:{port}"
     return urllib.parse.urlunsplit(
@@ -85,7 +85,7 @@ def normalize_proxy_url(proxy_url: str) -> str:
         raise ValueError("Proxy URL must include a host")
 
     port = _parsed_port(parsed_url, subject="Proxy URL")
-    authority = format_url_host(normalize_trusted_hostname(parsed_url.hostname))
+    authority = format_url_host(normalize_hostname(parsed_url.hostname))
     if port is not None:
         authority = f"{authority}:{port}"
     userinfo, separator, _host = parsed_url.netloc.rpartition("@")

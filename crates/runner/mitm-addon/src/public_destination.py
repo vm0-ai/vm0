@@ -58,10 +58,10 @@ from generated.public_destination_policy import (
     IPV6_SPECIAL_EXACT_SECOND,
 )
 from host_normalization import (
+    normalize_hostname,
     normalize_idna_hostname,
     translate_idna_dot_separators,
 )
-from url_utils import normalize_trusted_hostname
 
 _IPV4_HEX_PREFIX = "0x"
 _IPV4_LITERAL_MAX_COMPONENTS = 4
@@ -174,7 +174,7 @@ def _runtime_destination_host_kind(
             return "invalid"
         if hostname_classification == "deferable":
             try:
-                normalize_trusted_hostname(ip_text)
+                normalize_hostname(ip_text)
             except (UnicodeError, ValueError):
                 pass
             else:

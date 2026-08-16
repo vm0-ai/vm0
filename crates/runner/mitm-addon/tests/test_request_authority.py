@@ -2,7 +2,7 @@
 
 import pytest
 
-from url_utils import get_trusted_authority
+from request_authority import get_trusted_authority
 
 
 class TestTrustedAuthorityUrl:
