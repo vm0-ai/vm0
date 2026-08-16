@@ -52,7 +52,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+} from "./helpers/feature-switches";
 import { webhooksStripeRoutes } from "../webhooks-stripe";
 import { readOrgAcquisitionAttributionFixture } from "../../../test-fixtures/org-metadata";
 import { webhooksClerkRoutes } from "../webhooks-clerk";

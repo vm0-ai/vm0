@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.9.217](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.216...vsock-test-v0.9.217) (2026-08-16)
+
 ## [0.9.216](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.215...vsock-test-v0.9.216) (2026-08-15)
 
 ## [0.9.215](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.214...vsock-test-v0.9.215) (2026-08-14)

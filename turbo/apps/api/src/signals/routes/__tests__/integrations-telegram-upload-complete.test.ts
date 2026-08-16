@@ -19,7 +19,7 @@ import {
   deleteTelegramFixture$,
   seedTelegramInstallation$,
   type TelegramFixture,
-} from "./helpers/zero-telegram";
+} from "./helpers/telegram";
 import { integrationsTelegramUploadCompleteRoutes } from "../integrations-telegram-upload-complete";
 
 const context = testContext();

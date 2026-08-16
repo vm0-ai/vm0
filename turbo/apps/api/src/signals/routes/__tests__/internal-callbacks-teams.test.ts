@@ -26,7 +26,7 @@ import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+} from "./helpers/feature-switches";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -40,7 +40,7 @@ import {
   teamsFixtureExternalId,
   teamsMessageActivityForTest,
   type TeamsConnectFixture,
-} from "./helpers/zero-teams-connect";
+} from "./helpers/teams-connect";
 import { chatThreadRoutes } from "../chat-threads";
 
 const context = testContext();

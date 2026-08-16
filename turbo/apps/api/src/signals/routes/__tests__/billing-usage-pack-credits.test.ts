@@ -12,7 +12,7 @@ import { clearMockNow, mockNow } from "../../../lib/time";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+} from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testUsageSettlementRoutes } from "../test-usage-settlement";
 import {

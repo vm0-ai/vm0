@@ -94,7 +94,7 @@ import {
   deleteSlackIntegrationFixture$,
   seedSlackEnvironmentAgent$,
   seedSlackOrgInstallation$,
-} from "./helpers/zero-integrations-slack";
+} from "./helpers/integrations-slack";
 import {
   deleteCustomConnectorCredentialValues,
   seedCustomConnectorRuntimeConnectors,

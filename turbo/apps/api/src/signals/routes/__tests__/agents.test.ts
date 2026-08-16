@@ -9,7 +9,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+} from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { agentsRoutes } from "../agents";
 
