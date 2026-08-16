@@ -27,6 +27,7 @@ export const teamsOrgConnections = pgTable(
         return teamsOrgInstallations.teamsTenantId;
       }),
     vm0UserId: text("vm0_user_id").notNull(),
+    userId: text("user_id"),
     teamsUserDisplayName: varchar("teams_user_display_name", { length: 255 }),
     teamsUserPrincipalName: varchar("teams_user_principal_name", {
       length: 255,
@@ -45,6 +46,10 @@ export const teamsOrgConnections = pgTable(
         .where(sql`teams_aad_object_id IS NOT NULL`),
       index("idx_teams_org_connections_vm0_tenant").on(
         table.vm0UserId,
+        table.teamsTenantId,
+      ),
+      index("idx_teams_org_connections_user_id_tenant").on(
+        table.userId,
         table.teamsTenantId,
       ),
       index("idx_teams_org_connections_tenant").on(table.teamsTenantId),

@@ -25,6 +25,7 @@ export const feishuOrgConnections = pgTable(
       ),
     feishuOpenId: varchar("feishu_open_id", { length: 255 }).notNull(),
     vm0UserId: text("vm0_user_id").notNull(),
+    userId: text("user_id"),
     feishuUserName: varchar("feishu_user_name", { length: 255 }),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -38,6 +39,10 @@ export const feishuOrgConnections = pgTable(
       ),
       index("idx_feishu_org_connections_vm0_installation").on(
         table.vm0UserId,
+        table.installationId,
+      ),
+      index("idx_feishu_org_connections_user_id_installation").on(
+        table.userId,
         table.installationId,
       ),
       index("idx_feishu_org_connections_installation").on(table.installationId),

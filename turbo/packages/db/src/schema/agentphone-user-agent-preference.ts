@@ -3,6 +3,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
@@ -16,6 +17,7 @@ export const agentphoneUserAgentPreferences = pgTable(
   "agentphone_user_agent_preferences",
   {
     vm0UserId: text("vm0_user_id").notNull(),
+    userId: text("user_id"),
     orgId: text("org_id").notNull(),
     selectedComposeId: uuid("selected_compose_id").references(
       () => {
@@ -32,6 +34,10 @@ export const agentphoneUserAgentPreferences = pgTable(
         columns: [table.vm0UserId, table.orgId],
         name: "agentphone_user_agent_preferences_pkey",
       }),
+      uniqueIndex("idx_agentphone_user_agent_preferences_user_org").on(
+        table.userId,
+        table.orgId,
+      ),
     ];
   },
 );

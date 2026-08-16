@@ -3,6 +3,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -17,6 +18,7 @@ export const feishuUserAgentPreferences = pgTable(
   "feishu_user_agent_preferences",
   {
     vm0UserId: text("vm0_user_id").notNull(),
+    userId: text("user_id"),
     orgId: text("org_id").notNull(),
     selectedComposeId: uuid("selected_compose_id").references(
       () => {
@@ -33,6 +35,10 @@ export const feishuUserAgentPreferences = pgTable(
         columns: [table.vm0UserId, table.orgId],
         name: "feishu_user_agent_preferences_pkey",
       }),
+      uniqueIndex("idx_feishu_user_agent_preferences_user_org").on(
+        table.userId,
+        table.orgId,
+      ),
     ];
   },
 );
