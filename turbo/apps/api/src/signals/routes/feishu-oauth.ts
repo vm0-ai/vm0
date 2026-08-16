@@ -936,7 +936,7 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
-export const zeroFeishuOauthRoutes: readonly RouteEntry[] = [
+export const feishuOauthRoutes: readonly RouteEntry[] = [
   {
     route: zeroFeishuOauthContract.connect,
     handler: connect$,

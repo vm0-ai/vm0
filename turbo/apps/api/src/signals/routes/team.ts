@@ -26,7 +26,7 @@ const listTeamInner$ = computed(async (get) => {
   return { status: 200 as const, body: [...team] };
 });
 
-export const zeroTeamRoutes: readonly RouteEntry[] = [
+export const teamRoutes: readonly RouteEntry[] = [
   {
     route: zeroTeamContract.list,
     handler: authRoute({}, listTeamInner$),

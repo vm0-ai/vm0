@@ -579,7 +579,7 @@ excludes migrated roots from the remaining dirty chunk.
 
 Change tested: move the one `org-team.bdd.test.ts` Slack cleanup scenario from
 the broad `api-bdd-integrations.ts` helper to a new Slack-only helper backed by
-real `zeroSlackOauthRoutes` and `zeroSlackConnectRoutes`.
+real `slackOauthRoutes` and `slackConnectRoutes`.
 
 Commands:
 

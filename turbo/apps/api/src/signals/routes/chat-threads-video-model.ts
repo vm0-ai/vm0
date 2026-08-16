@@ -70,7 +70,7 @@ const updateVideoModelInner$ = command(
   },
 );
 
-export const zeroChatThreadVideoModelRoutes: readonly RouteEntry[] = [
+export const chatThreadVideoModelRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadVideoModelContract.update,
     handler: authRoute(

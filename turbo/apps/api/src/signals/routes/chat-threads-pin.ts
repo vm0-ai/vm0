@@ -56,7 +56,7 @@ const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-export const zeroChatThreadPinRoutes: readonly RouteEntry[] = [
+export const chatThreadPinRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadPinContract.pin,
     handler: authRoute({}, pinInner$),

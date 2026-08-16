@@ -317,7 +317,7 @@ const auth = {
   missingOrganizationStatus: 401,
 } as const;
 
-export const zeroFeishuConnectRoutes: readonly RouteEntry[] = [
+export const feishuConnectRoutes: readonly RouteEntry[] = [
   {
     route: zeroFeishuConnectContract.getStatus,
     handler: authRoute(auth, getStatus$),

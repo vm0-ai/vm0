@@ -18,7 +18,7 @@ import { createConnectorBddApi } from "./api-bdd-connectors";
 import { createRunsApi } from "./api-bdd-runs";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { readProjectedChatEvents } from "./chat-event-test-reader";
-import { zeroChatThreadGetRoutes } from "../../zero-chat-threads-get";
+import { chatThreadGetRoutes } from "../../chat-threads-get";
 import { workflowAutomationsRoutes } from "../../workflow-automations";
 import { workflowsRoutes } from "../../workflows";
 
@@ -210,7 +210,7 @@ export function createWorkflowsBddApi(context: TestContext) {
     },
 
     async readThreadSelectedModel(threadId: string): Promise<string | null> {
-      const client = setupApp({ context, routes: zeroChatThreadGetRoutes })(
+      const client = setupApp({ context, routes: chatThreadGetRoutes })(
         chatThreadMetadataContract,
       );
       const response = await accept(

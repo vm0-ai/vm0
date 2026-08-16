@@ -93,7 +93,7 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroChatThreadMarkReadRoutes: readonly RouteEntry[] = [
+export const chatThreadMarkReadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadMarkReadContract.markRead,
     handler: authRoute({}, markReadInner$),

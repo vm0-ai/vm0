@@ -34,7 +34,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-export const zeroOrgDeleteRoutes: readonly RouteEntry[] = [
+export const orgDeleteRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgDeleteContract.delete,
     handler: authRoute(

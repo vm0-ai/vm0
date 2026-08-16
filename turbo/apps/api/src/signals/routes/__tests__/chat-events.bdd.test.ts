@@ -120,15 +120,15 @@ import {
   timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
 import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
-import { zeroChatEventsRoutes } from "../zero-chat-events";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatEventsRoutes } from "../chat-events";
+import { chatThreadRoutes } from "../chat-threads";
 import { zeroMailRoutes } from "../zero-mail";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...zeroChatEventsRoutes,
-  ...zeroChatThreadRoutes,
+  ...chatEventsRoutes,
+  ...chatThreadRoutes,
   ...zeroMailRoutes,
   ...modelProviderGatewayRoutes,
   ...zeroModelProvidersRoutes,
@@ -954,15 +954,11 @@ function modelProviderConnectionsByIdClient() {
 }
 
 function chatEventsClient() {
-  return setupApp({ context, routes: zeroChatEventsRoutes })(
-    chatEventsContract,
-  );
+  return setupApp({ context, routes: chatEventsRoutes })(chatEventsContract);
 }
 
 function chatThreadsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
-    chatThreadsContract,
-  );
+  return setupApp({ context, routes: chatThreadRoutes })(chatThreadsContract);
 }
 
 describe("CHAT-02: thread run admission invariant", () => {

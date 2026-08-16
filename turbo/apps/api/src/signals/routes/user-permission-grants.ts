@@ -79,7 +79,7 @@ const applyUserPermissionGrantsInner$ = command(
   },
 );
 
-export const zeroUserPermissionGrantsRoutes: readonly RouteEntry[] = [
+export const userPermissionGrantsRoutes: readonly RouteEntry[] = [
   {
     route: zeroUserPermissionGrantsContract.list,
     handler: authRoute(

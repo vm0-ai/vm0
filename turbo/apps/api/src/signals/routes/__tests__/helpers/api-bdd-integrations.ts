@@ -68,7 +68,7 @@ import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-do
 import { integrationsPhoneMessageRoutes } from "../../integrations-phone-message";
 import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
-import { zeroIntegrationsSlackRoutes } from "../../zero-integrations-slack";
+import { integrationsSlackRoutes } from "../../integrations-slack";
 import { integrationsSlackMessageRoutes } from "../../integrations-slack-message";
 import { integrationsSlackUploadCompleteRoutes } from "../../integrations-slack-upload-complete";
 import { integrationsSlackUploadInitRoutes } from "../../integrations-slack-upload-init";
@@ -80,10 +80,10 @@ import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { slackChannelsRoutes } from "../../slack-channels";
 import { slackCommandsRoutes } from "../../slack-commands";
-import { zeroSlackConnectRoutes } from "../../zero-slack-connect";
+import { slackConnectRoutes } from "../../slack-connect";
 import { slackEventsRoutes } from "../../slack-events";
 import { slackInteractiveRoutes } from "../../slack-interactive";
-import { zeroSlackOauthRoutes } from "../../zero-slack-oauth";
+import { slackOauthRoutes } from "../../slack-oauth";
 import { userModelPreferenceRoutes } from "../../user-model-preference";
 
 const TEST_APP_ROUTES = Object.freeze([
@@ -101,7 +101,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...integrationsSlackMessageRoutes,
   ...integrationsSlackUploadCompleteRoutes,
   ...integrationsSlackUploadInitRoutes,
-  ...zeroIntegrationsSlackRoutes,
+  ...integrationsSlackRoutes,
   ...integrationsTelegramMessageRoutes,
   ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,
@@ -110,10 +110,10 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroModelProvidersRoutes,
   ...slackChannelsRoutes,
   ...slackCommandsRoutes,
-  ...zeroSlackConnectRoutes,
+  ...slackConnectRoutes,
   ...slackEventsRoutes,
   ...slackInteractiveRoutes,
-  ...zeroSlackOauthRoutes,
+  ...slackOauthRoutes,
   ...userModelPreferenceRoutes,
 ]);
 
@@ -695,7 +695,7 @@ export function createBddIntegrationApi(context: TestContext) {
       action: string | undefined,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      const client = setupApp({ context, routes: integrationsSlackRoutes })(
         zeroIntegrationsSlackContract,
       );
       return await accept(
@@ -711,7 +711,7 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401)[],
     ) {
-      const client = setupApp({ context, routes: zeroIntegrationsSlackRoutes })(
+      const client = setupApp({ context, routes: integrationsSlackRoutes })(
         zeroIntegrationsSlackContract,
       );
       return await accept(
@@ -826,7 +826,7 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401)[],
     ) {
-      const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+      const client = setupApp({ context, routes: slackConnectRoutes })(
         zeroSlackConnectContract,
       );
       return await accept(
@@ -842,7 +842,7 @@ export function createBddIntegrationApi(context: TestContext) {
       body: SlackConnectBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+      const client = setupApp({ context, routes: slackConnectRoutes })(
         zeroSlackConnectContract,
       );
       return await accept(
@@ -863,7 +863,7 @@ export function createBddIntegrationApi(context: TestContext) {
       },
       statuses: readonly (307 | 503)[],
     ) {
-      const client = setupApp({ context, routes: zeroSlackOauthRoutes })(
+      const client = setupApp({ context, routes: slackOauthRoutes })(
         zeroSlackOauthContract,
       );
       return await accept(client.install({ query }), statuses);
@@ -1041,7 +1041,7 @@ export function createBddIntegrationApi(context: TestContext) {
         authed_user: { id: installerSlackUserId },
         scope: SLACK_APP_BOT_SCOPES,
       });
-      const client = setupApp({ context, routes: zeroSlackOauthRoutes })(
+      const client = setupApp({ context, routes: slackOauthRoutes })(
         zeroSlackOauthContract,
       );
       await accept(
@@ -1065,7 +1065,7 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser,
       body: SlackConnectBody,
     ): Promise<void> {
-      const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+      const client = setupApp({ context, routes: slackConnectRoutes })(
         zeroSlackConnectContract,
       );
       await accept(
@@ -1321,7 +1321,7 @@ export function createBddIntegrationApi(context: TestContext) {
       },
       statuses: readonly (307 | 400 | 404 | 503)[],
     ) {
-      const client = setupApp({ context, routes: zeroSlackOauthRoutes })(
+      const client = setupApp({ context, routes: slackOauthRoutes })(
         zeroSlackOauthContract,
       );
       return await accept(client.connect({ query }), statuses);
@@ -1335,7 +1335,7 @@ export function createBddIntegrationApi(context: TestContext) {
       },
       statuses: readonly (307 | 400 | 503)[],
     ) {
-      const client = setupApp({ context, routes: zeroSlackOauthRoutes })(
+      const client = setupApp({ context, routes: slackOauthRoutes })(
         zeroSlackOauthContract,
       );
       return await accept(client.callback({ query }), statuses);

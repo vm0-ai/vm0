@@ -55,11 +55,11 @@ import { seedUserModelProvider$ } from "./helpers/model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatThreadRoutes } from "../chat-threads";
 import { connectorsRoutes } from "../connectors";
 import { meModelProvidersListRoutes } from "../me-model-providers-list";
 import { meModelProvidersUpsertRoutes } from "../me-model-providers-upsert";
-import { zeroOrgReadRoutes } from "../zero-org-read";
+import { orgReadRoutes } from "../org-read";
 import { userPreferencesRoutes } from "../user-preferences";
 
 const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
@@ -100,7 +100,7 @@ const BENCH_CONNECTOR_CATALOG_KEY =
   `connectors/v${String(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION)}/` +
   `releases/${BENCH_CONNECTOR_CATALOG_VERSION}/catalog.json`;
 
-const chatThreadClient = setupApp({ context, routes: zeroChatThreadRoutes })(
+const chatThreadClient = setupApp({ context, routes: chatThreadRoutes })(
   chatThreadByIdContract,
 );
 const connectorsClient = setupApp({ context, routes: connectorsRoutes })(
@@ -114,9 +114,7 @@ const billingStatusClient = setupApp({
   context,
   routes: zeroBillingStatusRoutes,
 })(zeroBillingStatusContract);
-const orgClient = setupApp({ context, routes: zeroOrgReadRoutes })(
-  zeroOrgContract,
-);
+const orgClient = setupApp({ context, routes: orgReadRoutes })(zeroOrgContract);
 const personalModelProvidersClient = setupApp({
   context,
   routes: zeroPersonalModelProvidersMainTestRoutes,

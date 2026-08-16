@@ -82,13 +82,13 @@ import {
 import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatThreadRoutes } from "../chat-threads";
 import { zeroGoalsRoutes } from "../zero-goals";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
-  ...zeroChatThreadRoutes,
+  ...chatThreadRoutes,
   ...zeroGoalsRoutes,
 ]);
 
@@ -595,7 +595,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         },
       ],
     });
-    const zeroClient = setupApp({ context, routes: zeroChatThreadRoutes })(
+    const zeroClient = setupApp({ context, routes: chatThreadRoutes })(
       chatThreadsContract,
     );
     const zeroHeaders = zeroCapabilityHeaders(
@@ -1028,7 +1028,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
 
     chat.mockObjectStorageObjectsExist();
-    await authOrg.deleteAgent(actor, deletedAgent.agentId);
+    await authOrg.deleteVersionFreeAgent(actor, deletedAgent.agentId);
 
     mockNow(incrementalSnapshotAt + DAY_MS);
     await compactChatThreadSnapshots();

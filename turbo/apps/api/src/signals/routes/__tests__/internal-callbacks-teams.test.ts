@@ -41,7 +41,7 @@ import {
   teamsMessageActivityForTest,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatThreadRoutes } from "../chat-threads";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -1034,7 +1034,7 @@ describe("Teams chat callbacks", () => {
     });
     mocks.clerk.session(teams.fixture.userId, teams.fixture.orgId, "org:admin");
     const threadEvents = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
+      setupApp({ context, routes: chatThreadRoutes })(
         chatThreadsContract,
       ).events({
         headers: { authorization: "Bearer clerk-session" },

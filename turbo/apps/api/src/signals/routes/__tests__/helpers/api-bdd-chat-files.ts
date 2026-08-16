@@ -67,19 +67,19 @@ import {
   sanitizeArtifactFilename,
 } from "../../../../lib/file-url";
 import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
-import { zeroChatEventsRoutes } from "../../zero-chat-events";
+import { chatEventsRoutes } from "../../chat-events";
 import { artifactCatalogRoutes } from "../../artifact-catalog";
-import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
-import { zeroChatThreadCreateRoutes } from "../../zero-chat-threads-create";
-import { zeroChatThreadDeleteRoutes } from "../../zero-chat-threads-delete";
-import { zeroChatThreadMarkReadRoutes } from "../../zero-chat-threads-mark-read";
-import { zeroChatThreadModelSelectionRoutes } from "../../zero-chat-threads-model-selection";
-import { zeroChatThreadPatchRoutes } from "../../zero-chat-threads-patch";
-import { zeroChatThreadPinRoutes } from "../../zero-chat-threads-pin";
-import { zeroChatThreadRenameRoutes } from "../../zero-chat-threads-rename";
-import { zeroChatThreadRoutes } from "../../zero-chat-threads";
-import { zeroChatThreadUnpinRoutes } from "../../zero-chat-threads-unpin";
-import { zeroChatThreadsArtifactsSyncRoutes } from "../../zero-chat-threads-artifacts-sync";
+import { chatThreadComputerUseHostRoutes } from "../../chat-threads-computer-use-host";
+import { chatThreadCreateRoutes } from "../../chat-threads-create";
+import { chatThreadDeleteRoutes } from "../../chat-threads-delete";
+import { chatThreadMarkReadRoutes } from "../../chat-threads-mark-read";
+import { chatThreadModelSelectionRoutes } from "../../chat-threads-model-selection";
+import { chatThreadPatchRoutes } from "../../chat-threads-patch";
+import { chatThreadPinRoutes } from "../../chat-threads-pin";
+import { chatThreadRenameRoutes } from "../../chat-threads-rename";
+import { chatThreadRoutes } from "../../chat-threads";
+import { chatThreadUnpinRoutes } from "../../chat-threads-unpin";
+import { chatThreadsArtifactsSyncRoutes } from "../../chat-threads-artifacts-sync";
 import { hostRoutes } from "../../host";
 import { modelPoliciesRoutes } from "../../model-policies";
 import { uploadsCompleteRoutes } from "../../uploads-complete";
@@ -192,18 +192,18 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
 
 const chatFilesRoutes = [
   ...artifactCatalogRoutes,
-  ...zeroChatThreadRoutes,
-  ...zeroChatThreadCreateRoutes,
-  ...zeroChatThreadDeleteRoutes,
-  ...zeroChatThreadPatchRoutes,
-  ...zeroChatThreadMarkReadRoutes,
-  ...zeroChatThreadPinRoutes,
-  ...zeroChatThreadUnpinRoutes,
-  ...zeroChatThreadRenameRoutes,
-  ...zeroChatThreadModelSelectionRoutes,
-  ...zeroChatThreadComputerUseHostRoutes,
-  ...zeroChatThreadsArtifactsSyncRoutes,
-  ...zeroChatEventsRoutes,
+  ...chatThreadRoutes,
+  ...chatThreadCreateRoutes,
+  ...chatThreadDeleteRoutes,
+  ...chatThreadPatchRoutes,
+  ...chatThreadMarkReadRoutes,
+  ...chatThreadPinRoutes,
+  ...chatThreadUnpinRoutes,
+  ...chatThreadRenameRoutes,
+  ...chatThreadModelSelectionRoutes,
+  ...chatThreadComputerUseHostRoutes,
+  ...chatThreadsArtifactsSyncRoutes,
+  ...chatEventsRoutes,
   ...uploadsPrepareRoutes,
   ...uploadsCompleteRoutes,
   ...hostRoutes,

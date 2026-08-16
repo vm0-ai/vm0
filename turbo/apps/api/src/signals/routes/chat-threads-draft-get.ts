@@ -21,7 +21,7 @@ const getThreadDraftInner$ = computed(async (get) => {
   return { status: 200 as const, body: draft };
 });
 
-export const zeroChatThreadDraftGetRoutes: readonly RouteEntry[] = [
+export const chatThreadDraftGetRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadDraftContract.get,
     handler: authRoute({}, getThreadDraftInner$),

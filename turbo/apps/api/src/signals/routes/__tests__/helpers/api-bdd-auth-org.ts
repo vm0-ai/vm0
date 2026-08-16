@@ -77,6 +77,7 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
+import { removeAgentLegacyVersionsFixture } from "../../../../test-fixtures/agent-deletion";
 import {
   createAgentComposeFixture,
   readAgentComposeByIdFixture,
@@ -94,13 +95,13 @@ import { customConnectorDisconnectRoutes } from "../../custom-connectors-disconn
 import { customConnectorsValuesSetRoutes } from "../../custom-connectors-values-set";
 import { onboardingCompleteRoutes } from "../../onboarding-complete";
 import { onboardingStatusRoutes } from "../../onboarding-status";
-import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
+import { orgDeleteRoutes } from "../../org-delete";
 import { zeroOrgInviteRoutes } from "../../zero-org-invite";
 import { orgLogoRoutes } from "../../org-logo";
-import { zeroOrgMembersRoutes } from "../../zero-org-members";
-import { zeroOrgMembershipRequestsRoutes } from "../../zero-org-membership-requests";
-import { zeroOrgReadRoutes } from "../../zero-org-read";
-import { zeroTeamRoutes } from "../../zero-team";
+import { orgMembersRoutes } from "../../org-members";
+import { orgMembershipRequestsRoutes } from "../../org-membership-requests";
+import { orgReadRoutes } from "../../org-read";
+import { teamRoutes } from "../../team";
 import { userPreferencesRoutes } from "../../user-preferences";
 import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -211,13 +212,13 @@ const authOrgRoutes = [
   ...onboardingStatusRoutes,
   ...onboardingCompleteRoutes,
   ...userPreferencesRoutes,
-  ...zeroOrgReadRoutes,
-  ...zeroOrgDeleteRoutes,
-  ...zeroOrgMembersRoutes,
+  ...orgReadRoutes,
+  ...orgDeleteRoutes,
+  ...orgMembersRoutes,
   ...zeroOrgInviteRoutes,
-  ...zeroOrgMembershipRequestsRoutes,
+  ...orgMembershipRequestsRoutes,
   ...orgLogoRoutes,
-  ...zeroTeamRoutes,
+  ...teamRoutes,
   ...agentsRoutes,
   ...zeroComposesRoutes,
   ...customConnectorsRoutes,
@@ -1356,7 +1357,16 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async deleteAgent(actor: ApiTestUser, agentId: string): Promise<void> {
+    /**
+     * Constructs the legacy-version-free cohort needed to exercise the
+     * transitional successful-delete path. Conflict tests must call the route
+     * directly so the production preconditions remain observable.
+     */
+    async deleteVersionFreeAgent(
+      actor: ApiTestUser,
+      agentId: string,
+    ): Promise<void> {
+      await removeAgentLegacyVersionsFixture(agentId);
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroAgentsByIdContract,
       );

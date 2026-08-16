@@ -164,7 +164,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroChatThreadCreateRoutes: readonly RouteEntry[] = [
+export const chatThreadCreateRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadsContract.create,
     handler: authRoute(

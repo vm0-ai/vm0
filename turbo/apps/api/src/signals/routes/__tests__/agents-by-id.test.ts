@@ -9,6 +9,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { removeAgentLegacyVersionsFixture } from "../../../test-fixtures/agent-deletion";
 import {
   createBddApi,
   expectApiError,
@@ -437,7 +438,7 @@ describe("DELETE /api/zero/agents/:id", () => {
     const actor = bdd.user();
     const agent = await createAgent(actor);
 
-    await bdd.deleteAgent(actor, agent.agentId);
+    await bdd.deleteVersionFreeAgent(actor, agent.agentId);
 
     const response = await bdd.requestReadAgent(actor, agent.agentId, [404]);
     expect(response.body).toStrictEqual({
@@ -497,7 +498,7 @@ describe("DELETE /api/zero/agents/:id", () => {
       return Promise.resolve({});
     });
 
-    await bdd.deleteAgent(actor, agent.agentId);
+    await bdd.deleteVersionFreeAgent(actor, agent.agentId);
 
     expect(listedPrefix).toMatch(
       new RegExp(
@@ -522,6 +523,7 @@ describe("DELETE /api/zero/agents/:id", () => {
       displayName: "API Key Deletable Agent",
       visibility: "private",
     });
+    await removeAgentLegacyVersionsFixture(agent.agentId);
 
     const response = await accept(
       agentsClient().delete({
@@ -550,7 +552,7 @@ describe("DELETE /api/zero/agents/:id", () => {
     const admin = bdd.user({ orgId: owner.orgId, orgRole: "org:admin" });
     const agent = await createAgent(owner);
 
-    await bdd.deleteAgent(admin, agent.agentId);
+    await bdd.deleteVersionFreeAgent(admin, agent.agentId);
 
     const readAfterDelete = await bdd.requestReadAgent(
       owner,
@@ -579,6 +581,7 @@ describe("DELETE /api/zero/agents/:id", () => {
       prompt: "keep this run pending",
       modelProvider: "anthropic-api-key",
     });
+    await removeAgentLegacyVersionsFixture(agent.agentId);
 
     const response = await bdd.requestDeleteAgent(actor, agent.agentId, [409]);
 

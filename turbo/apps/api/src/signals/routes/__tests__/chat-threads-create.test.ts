@@ -18,8 +18,8 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedRun$ } from "./helpers/usage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
-import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
+import { chatThreadRoutes } from "../chat-threads";
+import { chatThreadGetRoutes } from "../chat-threads-get";
 
 const context = testContext();
 const store = createStore();
@@ -110,13 +110,11 @@ function zeroToken(args: {
 }
 
 function threadsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
-    chatThreadsContract,
-  );
+  return setupApp({ context, routes: chatThreadRoutes })(chatThreadsContract);
 }
 
 function metadataClient() {
-  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+  return setupApp({ context, routes: chatThreadGetRoutes })(
     chatThreadMetadataContract,
   );
 }
