@@ -15,7 +15,7 @@ import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { webhooksGoogleWorkspaceEventsRoutes } from "../webhooks-google-workspace-events";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { workflowAutomationsRoutes } from "../workflow-automations";
 
 const context = testContext();
 const connectors = createConnectorBddApi(context);
@@ -40,7 +40,7 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

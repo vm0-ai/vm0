@@ -26,12 +26,12 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksNotionRoutes } from "../webhooks-notion";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { workflowAutomationsRoutes } from "../workflow-automations";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...testWorkflowAutomationExecutionRoutes,
   ...webhooksNotionRoutes,
-  ...zeroWorkflowAutomationsRoutes,
+  ...workflowAutomationsRoutes,
 ]);
 
 const context = testContext();
@@ -91,7 +91,7 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

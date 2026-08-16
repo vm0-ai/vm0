@@ -45,8 +45,8 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
-import { zeroWorkflowsRoutes } from "../zero-workflows";
+import { workflowAutomationsRoutes } from "../workflow-automations";
+import { workflowsRoutes } from "../workflows";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 
 const context = testContext();
@@ -113,13 +113,13 @@ function authHeaders(actor: ApiTestUser): { readonly authorization: string } {
 }
 
 function collectionClient() {
-  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+  return setupApp({ context, routes: workflowsRoutes })(
     zeroWorkflowsCollectionContract,
   );
 }
 
 function detailClient() {
-  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+  return setupApp({ context, routes: workflowsRoutes })(
     zeroWorkflowsDetailContract,
   );
 }
@@ -288,13 +288,13 @@ function mockConnectorReadinessModel(
 }
 
 function visibilityClient() {
-  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+  return setupApp({ context, routes: workflowsRoutes })(
     zeroWorkflowVisibilityContract,
   );
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

@@ -37,12 +37,12 @@ import {
 } from "./helpers/chat-event";
 import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGmailRoutes } from "../webhooks-gmail";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...webhooksGmailRoutes,
-  ...zeroWorkflowAutomationsRoutes,
+  ...workflowAutomationsRoutes,
 ]);
 
 const context = testContext();
@@ -78,7 +78,7 @@ function authHeaders(actor: ApiTestUser) {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

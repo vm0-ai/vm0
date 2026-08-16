@@ -19,8 +19,8 @@ import { createRunsApi } from "./api-bdd-runs";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { readProjectedChatEvents } from "./chat-event-test-reader";
 import { zeroChatThreadGetRoutes } from "../../zero-chat-threads-get";
-import { zeroWorkflowAutomationsRoutes } from "../../zero-workflow-automations";
-import { zeroWorkflowsRoutes } from "../../zero-workflows";
+import { workflowAutomationsRoutes } from "../../workflow-automations";
+import { workflowsRoutes } from "../../workflows";
 
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
@@ -175,7 +175,7 @@ export function createWorkflowsBddApi(context: TestContext) {
         readonly visibility?: "public" | "private";
       },
     ): Promise<string> {
-      const client = setupApp({ context, routes: zeroWorkflowsRoutes })(
+      const client = setupApp({ context, routes: workflowsRoutes })(
         zeroWorkflowsCollectionContract,
       );
       const response = await accept(
@@ -200,7 +200,7 @@ export function createWorkflowsBddApi(context: TestContext) {
     ): Promise<ZeroWorkflowAutomationSummary> {
       const client = setupApp({
         context,
-        routes: zeroWorkflowAutomationsRoutes,
+        routes: workflowAutomationsRoutes,
       })(zeroWorkflowAutomationsContract);
       const response = await accept(
         client.get({ headers: authHeaders(), params: { id: automationId } }),

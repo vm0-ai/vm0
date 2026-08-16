@@ -49,8 +49,8 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "../cron-renew-google-calendar-watches";
 import { cronRenewGoogleFormsWatchesRoutes } from "../cron-renew-google-forms-watches";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
-import { zeroWorkflowsRoutes } from "../zero-workflows";
+import { workflowAutomationsRoutes } from "../workflow-automations";
+import { workflowsRoutes } from "../workflows";
 import { webhooksGoogleCalendarRoutes } from "../webhooks-google-calendar";
 
 const TEST_APP_ROUTES = Object.freeze([
@@ -58,8 +58,8 @@ const TEST_APP_ROUTES = Object.freeze([
   ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronRenewGoogleFormsWatchesRoutes,
   ...webhooksGoogleCalendarRoutes,
-  ...zeroWorkflowAutomationsRoutes,
-  ...zeroWorkflowsRoutes,
+  ...workflowAutomationsRoutes,
+  ...workflowsRoutes,
 ]);
 
 const context = testContext();
@@ -76,13 +76,13 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }
 
 function detailClient() {
-  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+  return setupApp({ context, routes: workflowsRoutes })(
     zeroWorkflowsDetailContract,
   );
 }

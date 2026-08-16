@@ -83,7 +83,7 @@ import type { RouteEntry } from "../route-entry";
 import { sendNormalEvent$ } from "../services/zero-chat-events.command";
 import type { Tx } from "../../lib/db-types";
 
-const log = logger("api:zero:workflow-connector-readiness");
+const log = logger("api:workflow-connector-readiness");
 
 const workflowReadAuth = {
   requireOrganization: true,
@@ -1370,7 +1370,7 @@ const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroWorkflowsRoutes: readonly RouteEntry[] = [
+export const workflowsRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowsCollectionContract.list,
     handler: authRoute(workflowReadAuth, listWorkflowsInner$),

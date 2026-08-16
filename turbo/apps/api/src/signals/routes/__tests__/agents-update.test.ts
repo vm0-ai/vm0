@@ -23,7 +23,7 @@ import { seedOrgMembership$ } from "./helpers/org-membership";
 import { cliAuthRoutes } from "../cli-auth";
 import { zeroAgentInstructionsRoutes } from "../zero-agent-instructions";
 import { zeroAgentsRoutes } from "../zero-agents";
-import { zeroWorkflowsRoutes } from "../zero-workflows";
+import { workflowsRoutes } from "../workflows";
 
 const context = testContext();
 const store = createStore();
@@ -128,7 +128,7 @@ async function createWorkflowFor(
 ): Promise<void> {
   mocks.clerk.session(user.userId, user.orgId);
   await accept(
-    setupApp({ context, routes: zeroWorkflowsRoutes })(
+    setupApp({ context, routes: workflowsRoutes })(
       zeroWorkflowsCollectionContract,
     ).create({
       headers: authHeaders(),

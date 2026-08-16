@@ -133,8 +133,8 @@ import { peopleSearchRoutes } from "./routes/people-search";
 import { webSearchRoutes } from "./routes/web-search";
 import { zeroBrowserRoutes } from "./routes/zero-browser";
 import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
-import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
-import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
+import { workflowsRoutes } from "./routes/workflows";
+import { workflowAutomationsRoutes } from "./routes/workflow-automations";
 import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
 import { strapiEventsRoutes } from "./routes/strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
@@ -335,8 +335,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUserPermissionGrantsRoutes,
   ...userPreferencesRoutes,
   ...userModelPreferenceRoutes,
-  ...zeroWorkflowsRoutes,
-  ...zeroWorkflowAutomationsRoutes,
+  ...workflowsRoutes,
+  ...workflowAutomationsRoutes,
   ...strapiIntegrationsRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackConnectRoutes,

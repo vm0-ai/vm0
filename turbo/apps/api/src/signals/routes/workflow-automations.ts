@@ -412,7 +412,7 @@ const workflowAutomationRouteHandlers: Readonly<
   revealWebhookSecret: authRoute(workflowWriteAuth, revealWebhookSecretInner$),
 };
 
-export const zeroWorkflowAutomationsRoutes: readonly RouteEntry[] = [
+export const workflowAutomationsRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowAutomationsContract.listWorkspace,
     handler: workflowAutomationRouteHandlers.listWorkspace,
