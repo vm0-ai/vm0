@@ -535,52 +535,59 @@ describe("personal usage settings", () => {
     const memberDialog = await screen.findByRole("dialog", {
       name: "Member usage pack credits",
     });
-    const table = within(memberDialog).getByRole("table");
-    expect(within(table).getByText("Member")).toBeInTheDocument();
-    expect(within(table).getByText("Remaining")).toBeInTheDocument();
-    expect(within(table).getByText("Purchased")).toBeInTheDocument();
-    expect(within(table).getByText("Bonus")).toBeInTheDocument();
-    expect(within(table).getByText("Next expiry")).toBeInTheDocument();
-    expect(within(table).getByText("Credit additions")).toBeInTheDocument();
-    expect(within(table).getByText("Linghan Hu")).toBeInTheDocument();
-    expect(within(table).getByText("linghan@example.com")).toBeInTheDocument();
-    expect(within(table).getByText("Yuma")).toBeInTheDocument();
-    expect(within(table).getByText("yuma@example.com")).toBeInTheDocument();
+    const memberList = within(memberDialog).getByRole("list", {
+      name: "Members",
+    });
+    expect(within(memberList).getByText("Linghan Hu")).toBeInTheDocument();
     expect(
-      within(table).queryByTestId("usage-pack-member-test-user-123-bar"),
-    ).toBeNull();
+      within(memberList).getByText("linghan@example.com"),
+    ).toBeInTheDocument();
+    expect(within(memberList).getByText("Yuma")).toBeInTheDocument();
     expect(
-      within(table).getByTestId(
+      within(memberList).getByText("yuma@example.com"),
+    ).toBeInTheDocument();
+    expect(
+      within(memberList).getByTestId("usage-pack-member-test-user-123-bar"),
+    ).toBeInTheDocument();
+    expect(
+      within(memberList).getByTestId(
         "usage-pack-member-test-user-123-grants-toggle",
       ),
     ).toBeInTheDocument();
+    const linghanCard = within(memberList).getByTestId(
+      "usage-pack-member-credit-test-user-123",
+    );
+    expect(linghanCard).toHaveTextContent("20,400");
+    expect(linghanCard).toHaveTextContent("20,000 Purchased");
+    expect(linghanCard).toHaveTextContent("400 Bonus");
+    expect(linghanCard).toHaveTextContent("Next expiry Apr 1, 2026");
+    const yumaCard = within(memberList).getByTestId(
+      "usage-pack-member-credit-member-yuma",
+    );
+    expect(yumaCard).toHaveTextContent("0");
     expect(
-      within(table).getByTestId("usage-pack-member-credit-test-user-123"),
-    ).toHaveTextContent("20,400");
-    expect(
-      within(table).getByTestId("usage-pack-member-credit-member-yuma"),
-    ).toHaveTextContent("0");
-    expect(within(table).getByText("Apr 1, 2026")).toBeInTheDocument();
-    expect(within(table).queryByText(/credits remaining/)).toBeNull();
+      within(yumaCard).getByTestId("usage-pack-member-member-yuma-empty-bar"),
+    ).toBeInTheDocument();
 
     const summary = within(memberDialog).getByTestId(
       "usage-pack-member-summary",
     );
-    expect(summary).toHaveTextContent("2Members");
-    expect(summary).toHaveTextContent("20,400Total remaining");
-    expect(summary).toHaveTextContent("2Credit additions");
+    expect(summary).toHaveTextContent("Total remaining");
+    expect(summary).toHaveTextContent("20,400");
+    expect(summary).toHaveTextContent("2 Members");
+    expect(summary).toHaveTextContent("2 Credit additions");
 
     await user.click(
-      within(table).getByTestId(
+      within(memberList).getByTestId(
         "usage-pack-member-test-user-123-grants-toggle",
       ),
     );
     expect(
-      within(table).getByTestId(
+      within(memberList).getByTestId(
         "usage-pack-member-test-user-123-grants-toggle",
       ),
     ).toHaveAttribute("aria-expanded", "true");
-    const expandedRow = await within(table).findByTestId(
+    const expandedRow = await within(memberList).findByTestId(
       "usage-pack-member-test-user-123-grants-expanded-row",
     );
     const purchaseRecord = within(expandedRow).getByTestId(

@@ -12,12 +12,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -39,6 +33,7 @@ import {
   TeamUsageRecord,
   UsageRangeSelect,
 } from "../../preferences/personal-usage-record.tsx";
+import { UserAvatar } from "../../../../components/avatar.tsx";
 import { isOrgAdmin$ } from "../../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
 import { orgMembers$ } from "../../../../../signals/external/org-members.ts";
@@ -349,187 +344,247 @@ function UsagePackMemberSummary({
   const totalAdditions = rows.reduce((sum, row) => {
     return sum + row.credits.creditGrants.length;
   }, 0);
-  const metrics = [
-    {
-      label: t(($) => {
-        return $.billing.usage.usagePack.members;
-      }),
-      value: rows.length,
-    },
-    {
-      label: t(($) => {
-        return $.billing.usage.usagePack.totalRemaining;
-      }),
-      value: totalRemaining,
-    },
-    {
-      label: t(($) => {
-        return $.billing.usage.creditAdditions;
-      }),
-      value: totalAdditions,
-    },
-  ];
   return (
     <div
       data-testid="usage-pack-member-summary"
-      className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs"
+      className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-2"
     >
-      {metrics.map((metric) => {
-        return (
-          <div key={metric.label} className="flex items-baseline gap-1.5">
-            <span className="font-semibold tabular-nums text-foreground">
-              {formatLocalizedNumber(metric.value)}
-            </span>
-            <span className="text-muted-foreground">{metric.label}</span>
-          </div>
-        );
-      })}
+      <div>
+        <p className="text-xs text-muted-foreground">
+          {t(($) => {
+            return $.billing.usage.usagePack.totalRemaining;
+          })}
+        </p>
+        <p className="mt-0.5 text-2xl font-semibold tracking-tight tabular-nums text-foreground">
+          {formatLocalizedNumber(totalRemaining)}
+        </p>
+      </div>
+      <p className="pb-0.5 text-xs text-muted-foreground">
+        <span className="tabular-nums text-foreground">
+          {formatLocalizedNumber(rows.length)}
+        </span>{" "}
+        {t(($) => {
+          return $.billing.usage.usagePack.members;
+        })}
+        <span className="mx-1.5" aria-hidden="true">
+          ·
+        </span>
+        <span className="tabular-nums text-foreground">
+          {formatLocalizedNumber(totalAdditions)}
+        </span>{" "}
+        {t(($) => {
+          return $.billing.usage.creditAdditions;
+        })}
+      </p>
     </div>
   );
 }
 
-function UsagePackMemberTableRow({ row }: { row: UsagePackMemberRow }) {
+function UsagePackMemberHeader({
+  credits,
+  member,
+}: {
+  credits: UsagePackMemberCredit;
+  member: OrgMember;
+}) {
   const { t } = useTranslation();
-  const expandedMemberId = useGet(usagePackMemberAdditionsExpandedMemberId$);
-  const toggleExpanded = useSet(toggleUsagePackMemberAdditions$);
-  const { member, credits } = row;
   const name = usagePackMemberName(member);
-  const nextExpiry = usagePackNextExpiry(credits);
-  const testIdPrefix = `usage-pack-member-${member.userId}`;
-  const creditAdditionsLabel = t(($) => {
-    return $.billing.usage.creditAdditions;
-  });
-  const grants = usagePackCreditAdditions(
-    credits,
-    t(($) => {
-      return $.billing.usage.usagePack.purchased;
-    }),
-    t(($) => {
-      return $.billing.usage.usagePack.bonus;
-    }),
-  );
-  const expanded = expandedMemberId === member.userId;
+  const initial = name.charAt(0).toUpperCase();
   return (
-    <>
-      <TableRow
-        data-state={expanded ? "selected" : undefined}
-        data-testid={`usage-pack-member-credit-${member.userId}`}
-      >
-        <TableCell>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">
-              {name}
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <UserAvatar imageUrl={member.imageUrl} name={name} initial={initial} />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-foreground">{name}</p>
+          {name !== member.email ? (
+            <p className="truncate text-xs text-muted-foreground">
+              {member.email}
             </p>
-            {name !== member.email ? (
-              <p className="truncate text-xs text-muted-foreground">
-                {member.email}
-              </p>
-            ) : null}
-          </div>
-        </TableCell>
-        <TableCell className="text-right font-semibold tabular-nums text-foreground">
+          ) : null}
+        </div>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-lg font-semibold tracking-tight tabular-nums text-foreground">
           {formatLocalizedNumber(credits.totalCredits)}
-        </TableCell>
-        <TableCell className="text-right font-medium tabular-nums">
-          {formatLocalizedNumber(credits.purchasedCredits)}
-        </TableCell>
-        <TableCell className="text-right font-medium tabular-nums">
-          {formatLocalizedNumber(credits.bonusCredits)}
-        </TableCell>
-        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-          {nextExpiry ? formatCreditDate(nextExpiry) : "—"}
-        </TableCell>
-        <TableCell className="text-right">
-          {grants.length > 0 ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              data-testid={`${testIdPrefix}-grants-toggle`}
-              className="h-7 gap-1.5 px-2 tabular-nums text-muted-foreground"
-              aria-expanded={expanded}
-              aria-label={`${creditAdditionsLabel}: ${grants.length}`}
-              onClick={() => {
-                toggleExpanded(member.userId);
-              }}
-            >
-              <History size={14} />
-              {formatLocalizedNumber(grants.length)}
-              <ChevronDown
-                size={13}
-                className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-              />
-            </Button>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </TableCell>
-      </TableRow>
-      {expanded ? (
-        <TableRow
-          data-testid={`${testIdPrefix}-grants-expanded-row`}
-          className="bg-muted/15 hover:bg-muted/15"
-        >
-          <td colSpan={6} className="p-0 align-middle">
-            <UsagePackMemberCreditAdditionRows
-              grants={grants}
-              testIdPrefix={`${testIdPrefix}-grants`}
-            />
-          </td>
-        </TableRow>
-      ) : null}
-    </>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {t(($) => {
+            return $.billing.usage.usagePack.remaining;
+          })}
+        </p>
+      </div>
+    </div>
   );
 }
 
-function UsagePackMemberTable({
+function UsagePackMemberCreditMeta({
+  bonusLabel,
+  credits,
+  expanded,
+  grants,
+  memberId,
+  purchasedLabel,
+  testIdPrefix,
+}: {
+  bonusLabel: string;
+  credits: UsagePackMemberCredit;
+  expanded: boolean;
+  grants: readonly CreditAddition[];
+  memberId: string;
+  purchasedLabel: string;
+  testIdPrefix: string;
+}) {
+  const { t } = useTranslation();
+  const toggleExpanded = useSet(toggleUsagePackMemberAdditions$);
+  const nextExpiry = usagePackNextExpiry(credits);
+  const creditAdditionsLabel = t(($) => {
+    return $.billing.usage.creditAdditions;
+  });
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="flex items-center gap-1.5">
+          <span
+            className="size-2 rounded-full bg-credit-plan-pro"
+            aria-hidden="true"
+          />
+          <span className="tabular-nums text-foreground">
+            {formatLocalizedNumber(credits.purchasedCredits)}
+          </span>{" "}
+          {purchasedLabel}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="size-2 rounded-full bg-credit-promotional"
+            aria-hidden="true"
+          />
+          <span className="tabular-nums text-foreground">
+            {formatLocalizedNumber(credits.bonusCredits)}
+          </span>{" "}
+          {bonusLabel}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="whitespace-nowrap">
+          {nextExpiry ? (
+            <>
+              {t(($) => {
+                return $.billing.usage.usagePack.nextExpiry;
+              })}{" "}
+              <span className="tabular-nums text-foreground">
+                {formatCreditDate(nextExpiry)}
+              </span>
+            </>
+          ) : (
+            "—"
+          )}
+        </span>
+        {grants.length > 0 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid={`${testIdPrefix}-grants-toggle`}
+            className="h-7 gap-1.5 px-2 tabular-nums text-muted-foreground"
+            aria-expanded={expanded}
+            aria-label={`${creditAdditionsLabel}: ${grants.length}`}
+            onClick={() => {
+              toggleExpanded(memberId);
+            }}
+          >
+            <History size={14} />
+            {formatLocalizedNumber(grants.length)}
+            <span>{creditAdditionsLabel}</span>
+            <ChevronDown
+              size={13}
+              className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+            />
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function UsagePackMemberCard({ row }: { row: UsagePackMemberRow }) {
+  const { t } = useTranslation();
+  const expandedMemberId = useGet(usagePackMemberAdditionsExpandedMemberId$);
+  const { member, credits } = row;
+  const testIdPrefix = `usage-pack-member-${member.userId}`;
+  const purchasedLabel = t(($) => {
+    return $.billing.usage.usagePack.purchased;
+  });
+  const bonusLabel = t(($) => {
+    return $.billing.usage.usagePack.bonus;
+  });
+  const grants = usagePackCreditAdditions(credits, purchasedLabel, bonusLabel);
+  const segments = usagePackSegments(credits, purchasedLabel, bonusLabel);
+  const expanded = expandedMemberId === member.userId;
+  return (
+    <div
+      role="listitem"
+      data-state={expanded ? "selected" : undefined}
+      data-testid={`usage-pack-member-credit-${member.userId}`}
+      className="overflow-hidden rounded-xl bg-card zero-border"
+    >
+      <div className="p-4">
+        <UsagePackMemberHeader credits={credits} member={member} />
+
+        {credits.totalCredits > 0 && segments.length > 0 ? (
+          <UsagePackSegmentBar
+            segments={segments}
+            testIdPrefix={testIdPrefix}
+            totalCredits={credits.totalCredits}
+          />
+        ) : (
+          <div
+            data-testid={`${testIdPrefix}-empty-bar`}
+            className="mt-4 h-2 w-full rounded-full bg-muted/40"
+          />
+        )}
+        <UsagePackMemberCreditMeta
+          bonusLabel={bonusLabel}
+          credits={credits}
+          expanded={expanded}
+          grants={grants}
+          memberId={member.userId}
+          purchasedLabel={purchasedLabel}
+          testIdPrefix={testIdPrefix}
+        />
+      </div>
+      {expanded ? (
+        <div
+          data-testid={`${testIdPrefix}-grants-expanded-row`}
+          className="bg-muted/15 zero-border-t"
+        >
+          <UsagePackMemberCreditAdditionRows
+            grants={grants}
+            testIdPrefix={`${testIdPrefix}-grants`}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function UsagePackMemberList({
   rows,
 }: {
   rows: readonly UsagePackMemberRow[];
 }) {
   const { t } = useTranslation();
   return (
-    <Table className="min-w-[920px]">
-      <TableHeader className="sticky top-0 z-10 bg-muted/70">
-        <TableRow>
-          <TableHead className="w-[23%]">
-            {t(($) => {
-              return $.billing.usage.member;
-            })}
-          </TableHead>
-          <TableHead className="w-[16%] text-right">
-            {t(($) => {
-              return $.billing.usage.usagePack.remaining;
-            })}
-          </TableHead>
-          <TableHead className="w-[14%] text-right">
-            {t(($) => {
-              return $.billing.usage.usagePack.purchased;
-            })}
-          </TableHead>
-          <TableHead className="w-[11%] text-right">
-            {t(($) => {
-              return $.billing.usage.usagePack.bonus;
-            })}
-          </TableHead>
-          <TableHead className="w-[17%]">
-            {t(($) => {
-              return $.billing.usage.usagePack.nextExpiry;
-            })}
-          </TableHead>
-          <TableHead className="w-[19%] whitespace-nowrap text-right">
-            {t(($) => {
-              return $.billing.usage.creditAdditions;
-            })}
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => {
-          return <UsagePackMemberTableRow key={row.member.userId} row={row} />;
-        })}
-      </TableBody>
-    </Table>
+    <div
+      role="list"
+      aria-label={t(($) => {
+        return $.billing.usage.usagePack.members;
+      })}
+      className="space-y-3"
+    >
+      {rows.map((row) => {
+        return <UsagePackMemberCard key={row.member.userId} row={row} />;
+      })}
+    </div>
   );
 }
 
@@ -555,7 +610,7 @@ function UsagePackMemberBalances({
   return (
     <div>
       <UsagePackMemberSummary rows={rows} />
-      <UsagePackMemberTable rows={rows} />
+      <UsagePackMemberList rows={rows} />
     </div>
   );
 }
@@ -603,7 +658,7 @@ function UsagePackMemberBalancesDialog({
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
-        className="zero-app flex max-h-[85vh] max-w-5xl flex-col gap-0 overflow-hidden p-0"
+        className="zero-app flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden p-0"
       >
         <DialogHeader className="shrink-0 border-b border-border/70 px-6 pb-4 pt-6">
           <DialogTitle>
