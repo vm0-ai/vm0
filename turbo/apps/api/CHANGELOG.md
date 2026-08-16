@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.451.12](https://github.com/vm0-ai/vm0/compare/api-v1.451.11...api-v1.451.12) (2026-08-16)
+
+
+### Refactoring
+
+* **compose:** add aggregate-only consolidation preflight ([#27617](https://github.com/vm0-ai/vm0/issues/27617)) ([99a515a](https://github.com/vm0-ai/vm0/commit/99a515aa702f44adbbe6a3f10391512f129890f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.200.11
+
 ## [1.451.11](https://github.com/vm0-ai/vm0/compare/api-v1.451.10...api-v1.451.11) (2026-08-16)
 
 
