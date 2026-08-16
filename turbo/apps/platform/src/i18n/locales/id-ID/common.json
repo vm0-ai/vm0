@@ -1114,11 +1114,8 @@
         "members": "Anggota",
         "membersDescription": "Tinjau sisa kredit paket penggunaan dan penambahan kredit setiap anggota.",
         "membersTitle": "Kredit paket penggunaan anggota",
-        "nextExpiry": "Kedaluwarsa berikutnya",
         "purchased": "Dibeli",
-        "remaining": "Tersisa",
         "title": "Kredit paket penggunaan",
-        "totalRemaining": "Total tersisa",
         "viewMembers": "Lihat saldo anggota"
       },
       "used": "Digunakan"

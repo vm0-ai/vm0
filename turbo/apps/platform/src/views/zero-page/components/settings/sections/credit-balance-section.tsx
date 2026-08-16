@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
 import type { UsagePackCreditsResponse } from "@okouai/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { ArrowRight, ChevronDown, History, Users } from "lucide-react";
+import { ArrowRight, ChevronRight, Users } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -12,12 +12,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -39,6 +33,7 @@ import {
   TeamUsageRecord,
   UsageRangeSelect,
 } from "../../preferences/personal-usage-record.tsx";
+import { UserAvatar } from "../../../../components/avatar.tsx";
 import { isOrgAdmin$ } from "../../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
 import { orgMembers$ } from "../../../../../signals/external/org-members.ts";
@@ -128,57 +123,6 @@ function usagePackCreditAdditions(
   });
 }
 
-function UsagePackMemberCreditAdditionRows({
-  grants,
-  testIdPrefix,
-}: {
-  grants: readonly CreditAddition[];
-  testIdPrefix: string;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="divide-y divide-border/60">
-      {grants.map((grant) => {
-        const hasPartialBalance = grant.remaining !== grant.amount;
-        return (
-          <div
-            key={grant.id}
-            data-testid={`${testIdPrefix}-${grant.id}`}
-            className="grid grid-cols-[minmax(0,1fr)_minmax(180px,0.8fr)_minmax(110px,auto)] items-center gap-x-6 px-4 py-2.5 transition-colors hover:bg-state-hover/60"
-          >
-            <span className="truncate text-xs font-medium text-foreground">
-              {grant.label}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {t(
-                ($) => {
-                  return $.billing.usage.added;
-                },
-                { date: formatCreditDate(grant.createdAt) },
-              )}
-            </span>
-            <div className="text-right">
-              <div className="text-xs font-medium tabular-nums text-foreground">
-                +{formatLocalizedNumber(grant.amount)}
-              </div>
-              {hasPartialBalance ? (
-                <div className="text-[11px] tabular-nums text-muted-foreground">
-                  {t(
-                    ($) => {
-                      return $.billing.usage.left;
-                    },
-                    { value: formatLocalizedNumber(grant.remaining) },
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function UsagePackSegmentBar({
   segments,
   testIdPrefix,
@@ -196,12 +140,26 @@ function UsagePackSegmentBar({
         className="mt-4 flex h-2 w-full gap-[3px]"
       >
         {segments.map((segment) => {
+          const formattedCredits = formatLocalizedNumber(segment.credits);
+          const expiryLabel = segment.expiresAt
+            ? t(
+                ($) => {
+                  return $.billing.usage.expires;
+                },
+                { date: formatCreditDate(segment.expiresAt) },
+              )
+            : undefined;
+          const accessibleLabel = expiryLabel
+            ? `${segment.label} — ${formattedCredits}. ${expiryLabel}`
+            : `${segment.label} — ${formattedCredits}`;
           return (
             <Tooltip key={segment.key}>
               <TooltipTrigger asChild>
-                <div
+                <button
+                  type="button"
                   data-testid={`${testIdPrefix}-${segment.key}`}
-                  className={`h-2 ${segment.color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
+                  aria-label={accessibleLabel}
+                  className={`h-2 ${segment.color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 outline-none transition-shadow hover:z-10 hover:ring-2 hover:ring-foreground/30 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-foreground/30`}
                   style={{
                     width: `${(segment.credits / totalCredits) * 100}%`,
                   }}
@@ -217,16 +175,11 @@ function UsagePackSegmentBar({
                 className="border shadow-md"
               >
                 <div className="font-medium text-foreground">
-                  {segment.label} — {formatLocalizedNumber(segment.credits)}
+                  {segment.label} — {formattedCredits}
                 </div>
-                {segment.expiresAt ? (
+                {expiryLabel ? (
                   <div className="mt-0.5 text-muted-foreground">
-                    {t(
-                      ($) => {
-                        return $.billing.usage.expires;
-                      },
-                      { date: formatCreditDate(segment.expiresAt) },
-                    )}
+                    {expiryLabel}
                   </div>
                 ) : null}
               </TooltipContent>
@@ -312,16 +265,6 @@ function usagePackMemberName(member: OrgMember): string {
   return fullName || member.email;
 }
 
-function usagePackNextExpiry(
-  credits: UsagePackCreditsResponse,
-): string | undefined {
-  return credits.creditGrants
-    .map((grant) => {
-      return grant.expiresAt;
-    })
-    .sort()[0];
-}
-
 function emptyMemberCredits(memberId: string): UsagePackMemberCredit {
   return {
     memberId,
@@ -337,199 +280,148 @@ interface UsagePackMemberRow {
   readonly credits: UsagePackMemberCredit;
 }
 
-function UsagePackMemberSummary({
-  rows,
+function UsagePackMemberHeader({
+  credits,
+  member,
 }: {
-  rows: readonly UsagePackMemberRow[];
+  credits: UsagePackMemberCredit;
+  member: OrgMember;
 }) {
-  const { t } = useTranslation();
-  const totalRemaining = rows.reduce((sum, row) => {
-    return sum + row.credits.totalCredits;
-  }, 0);
-  const totalAdditions = rows.reduce((sum, row) => {
-    return sum + row.credits.creditGrants.length;
-  }, 0);
-  const metrics = [
-    {
-      label: t(($) => {
-        return $.billing.usage.usagePack.members;
-      }),
-      value: rows.length,
-    },
-    {
-      label: t(($) => {
-        return $.billing.usage.usagePack.totalRemaining;
-      }),
-      value: totalRemaining,
-    },
-    {
-      label: t(($) => {
-        return $.billing.usage.creditAdditions;
-      }),
-      value: totalAdditions,
-    },
-  ];
+  const name = usagePackMemberName(member);
+  const initial = name.charAt(0).toUpperCase();
   return (
-    <div
-      data-testid="usage-pack-member-summary"
-      className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs"
-    >
-      {metrics.map((metric) => {
-        return (
-          <div key={metric.label} className="flex items-baseline gap-1.5">
-            <span className="font-semibold tabular-nums text-foreground">
-              {formatLocalizedNumber(metric.value)}
-            </span>
-            <span className="text-muted-foreground">{metric.label}</span>
-          </div>
-        );
-      })}
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <UserAvatar imageUrl={member.imageUrl} name={name} initial={initial} />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-foreground">{name}</p>
+          {name !== member.email ? (
+            <p className="truncate text-xs text-muted-foreground">
+              {member.email}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <p className="shrink-0 text-xl font-medium tabular-nums text-foreground">
+        {formatLocalizedNumber(credits.totalCredits)}
+      </p>
     </div>
   );
 }
 
-function UsagePackMemberTableRow({ row }: { row: UsagePackMemberRow }) {
+function UsagePackMemberCreditAdditions({
+  expanded,
+  grants,
+  memberId,
+  testIdPrefix,
+}: {
+  expanded: boolean;
+  grants: readonly CreditAddition[];
+  memberId: string;
+  testIdPrefix: string;
+}) {
   const { t } = useTranslation();
-  const expandedMemberId = useGet(usagePackMemberAdditionsExpandedMemberId$);
   const toggleExpanded = useSet(toggleUsagePackMemberAdditions$);
-  const { member, credits } = row;
-  const name = usagePackMemberName(member);
-  const nextExpiry = usagePackNextExpiry(credits);
-  const testIdPrefix = `usage-pack-member-${member.userId}`;
   const creditAdditionsLabel = t(($) => {
     return $.billing.usage.creditAdditions;
   });
-  const grants = usagePackCreditAdditions(
-    credits,
-    t(($) => {
-      return $.billing.usage.usagePack.purchased;
-    }),
-    t(($) => {
-      return $.billing.usage.usagePack.bonus;
-    }),
-  );
-  const expanded = expandedMemberId === member.userId;
+  if (grants.length === 0) {
+    return null;
+  }
   return (
-    <>
-      <TableRow
-        data-state={expanded ? "selected" : undefined}
-        data-testid={`usage-pack-member-credit-${member.userId}`}
+    <div className="mt-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        data-testid={`${testIdPrefix}-grants-toggle`}
+        className="-mx-2 h-8 w-[calc(100%+1rem)] justify-between px-2"
+        aria-expanded={expanded}
+        aria-label={`${creditAdditionsLabel}: ${grants.length}`}
+        onClick={() => {
+          toggleExpanded(memberId);
+        }}
       >
-        <TableCell>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">
-              {name}
-            </p>
-            {name !== member.email ? (
-              <p className="truncate text-xs text-muted-foreground">
-                {member.email}
-              </p>
-            ) : null}
-          </div>
-        </TableCell>
-        <TableCell className="text-right font-semibold tabular-nums text-foreground">
-          {formatLocalizedNumber(credits.totalCredits)}
-        </TableCell>
-        <TableCell className="text-right font-medium tabular-nums">
-          {formatLocalizedNumber(credits.purchasedCredits)}
-        </TableCell>
-        <TableCell className="text-right font-medium tabular-nums">
-          {formatLocalizedNumber(credits.bonusCredits)}
-        </TableCell>
-        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-          {nextExpiry ? formatCreditDate(nextExpiry) : "—"}
-        </TableCell>
-        <TableCell className="text-right">
-          {grants.length > 0 ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              data-testid={`${testIdPrefix}-grants-toggle`}
-              className="h-7 gap-1.5 px-2 tabular-nums text-muted-foreground"
-              aria-expanded={expanded}
-              aria-label={`${creditAdditionsLabel}: ${grants.length}`}
-              onClick={() => {
-                toggleExpanded(member.userId);
-              }}
-            >
-              <History size={14} />
-              {formatLocalizedNumber(grants.length)}
-              <ChevronDown
-                size={13}
-                className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-              />
-            </Button>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </TableCell>
-      </TableRow>
+        <span className="text-sm font-semibold text-foreground">
+          {creditAdditionsLabel}
+        </span>
+        <ChevronRight
+          size={13}
+          className={`shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`}
+        />
+      </Button>
       {expanded ? (
-        <TableRow
-          data-testid={`${testIdPrefix}-grants-expanded-row`}
-          className="bg-muted/15 hover:bg-muted/15"
-        >
-          <td colSpan={6} className="p-0 align-middle">
-            <UsagePackMemberCreditAdditionRows
-              grants={grants}
-              testIdPrefix={`${testIdPrefix}-grants`}
-            />
-          </td>
-        </TableRow>
+        <div data-testid={`${testIdPrefix}-grants-expanded-row`}>
+          <CreditAdditionTable
+            grants={grants}
+            showHeading={false}
+            testIdPrefix={`${testIdPrefix}-grants`}
+          />
+        </div>
       ) : null}
-    </>
+    </div>
   );
 }
 
-function UsagePackMemberTable({
+function UsagePackMemberCard({ row }: { row: UsagePackMemberRow }) {
+  const { t } = useTranslation();
+  const expandedMemberId = useGet(usagePackMemberAdditionsExpandedMemberId$);
+  const { member, credits } = row;
+  const testIdPrefix = `usage-pack-member-${member.userId}`;
+  const purchasedLabel = t(($) => {
+    return $.billing.usage.usagePack.purchased;
+  });
+  const bonusLabel = t(($) => {
+    return $.billing.usage.usagePack.bonus;
+  });
+  const grants = usagePackCreditAdditions(credits, purchasedLabel, bonusLabel);
+  const segments = usagePackSegments(credits, purchasedLabel, bonusLabel);
+  const expanded = expandedMemberId === member.userId;
+  return (
+    <div
+      role="listitem"
+      data-testid={`usage-pack-member-credit-${member.userId}`}
+      className="overflow-hidden rounded-xl bg-card zero-border"
+    >
+      <div className="px-5 py-4">
+        <UsagePackMemberHeader credits={credits} member={member} />
+
+        {credits.totalCredits > 0 && segments.length > 0 ? (
+          <UsagePackSegmentBar
+            segments={segments}
+            testIdPrefix={testIdPrefix}
+            totalCredits={credits.totalCredits}
+          />
+        ) : null}
+        <UsagePackMemberCreditAdditions
+          expanded={expanded}
+          grants={grants}
+          memberId={member.userId}
+          testIdPrefix={testIdPrefix}
+        />
+      </div>
+    </div>
+  );
+}
+
+function UsagePackMemberList({
   rows,
 }: {
   rows: readonly UsagePackMemberRow[];
 }) {
   const { t } = useTranslation();
   return (
-    <Table className="min-w-[920px]">
-      <TableHeader className="sticky top-0 z-10 bg-muted/70">
-        <TableRow>
-          <TableHead className="w-[23%]">
-            {t(($) => {
-              return $.billing.usage.member;
-            })}
-          </TableHead>
-          <TableHead className="w-[16%] text-right">
-            {t(($) => {
-              return $.billing.usage.usagePack.remaining;
-            })}
-          </TableHead>
-          <TableHead className="w-[14%] text-right">
-            {t(($) => {
-              return $.billing.usage.usagePack.purchased;
-            })}
-          </TableHead>
-          <TableHead className="w-[11%] text-right">
-            {t(($) => {
-              return $.billing.usage.usagePack.bonus;
-            })}
-          </TableHead>
-          <TableHead className="w-[17%]">
-            {t(($) => {
-              return $.billing.usage.usagePack.nextExpiry;
-            })}
-          </TableHead>
-          <TableHead className="w-[19%] whitespace-nowrap text-right">
-            {t(($) => {
-              return $.billing.usage.creditAdditions;
-            })}
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => {
-          return <UsagePackMemberTableRow key={row.member.userId} row={row} />;
-        })}
-      </TableBody>
-    </Table>
+    <div
+      role="list"
+      aria-label={t(($) => {
+        return $.billing.usage.usagePack.members;
+      })}
+      className="space-y-3"
+    >
+      {rows.map((row) => {
+        return <UsagePackMemberCard key={row.member.userId} row={row} />;
+      })}
+    </div>
   );
 }
 
@@ -552,12 +444,7 @@ function UsagePackMemberBalances({
         creditsByMember.get(member.userId) ?? emptyMemberCredits(member.userId),
     };
   });
-  return (
-    <div>
-      <UsagePackMemberSummary rows={rows} />
-      <UsagePackMemberTable rows={rows} />
-    </div>
-  );
+  return <UsagePackMemberList rows={rows} />;
 }
 
 function UsagePackMemberBalancesDialog({
@@ -603,7 +490,7 @@ function UsagePackMemberBalancesDialog({
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
-        className="zero-app flex max-h-[85vh] max-w-5xl flex-col gap-0 overflow-hidden p-0"
+        className="zero-app flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden p-0"
       >
         <DialogHeader className="shrink-0 border-b border-border/70 px-6 pb-4 pt-6">
           <DialogTitle>

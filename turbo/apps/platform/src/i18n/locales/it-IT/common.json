@@ -1136,11 +1136,8 @@
         "members": "Membri",
         "membersDescription": "Controlla i crediti rimanenti e le aggiunte di crediti del pacchetto di ogni membro.",
         "membersTitle": "Crediti dei pacchetti dei membri",
-        "nextExpiry": "Prossima scadenza",
         "purchased": "Acquistati",
-        "remaining": "Rimanenti",
         "title": "Crediti del pacchetto di utilizzo",
-        "totalRemaining": "Totale rimanente",
         "viewMembers": "Visualizza saldi membri"
       },
       "used": "Usato"

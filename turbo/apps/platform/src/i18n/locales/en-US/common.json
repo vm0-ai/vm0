@@ -1114,11 +1114,8 @@
         "members": "Members",
         "membersDescription": "Review each member's remaining usage pack credits and credit additions.",
         "membersTitle": "Member usage pack credits",
-        "nextExpiry": "Next expiry",
         "purchased": "Purchased",
-        "remaining": "Remaining",
         "title": "Usage pack credits",
-        "totalRemaining": "Total remaining",
         "viewMembers": "View member balances"
       },
       "used": "Used"

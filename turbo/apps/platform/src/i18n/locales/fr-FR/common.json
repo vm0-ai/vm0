@@ -1136,11 +1136,8 @@
         "members": "Membres",
         "membersDescription": "Consultez les crédits restants et les ajouts de crédits du forfait de chaque membre.",
         "membersTitle": "Crédits des forfaits des membres",
-        "nextExpiry": "Prochaine expiration",
         "purchased": "Achetés",
-        "remaining": "Restant",
         "title": "Crédits du forfait d’utilisation",
-        "totalRemaining": "Total restant",
         "viewMembers": "Voir les soldes des membres"
       },
       "used": "Utilisé"

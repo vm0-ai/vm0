@@ -1114,11 +1114,8 @@
         "members": "Mitglieder",
         "membersDescription": "Prüfen Sie die verbleibenden Nutzungspaket-Credits und Credit-Zugänge jedes Mitglieds.",
         "membersTitle": "Nutzungspaket-Credits der Mitglieder",
-        "nextExpiry": "Nächster Ablauf",
         "purchased": "Gekauft",
-        "remaining": "Verbleibend",
         "title": "Nutzungspaket-Credits",
-        "totalRemaining": "Insgesamt verbleibend",
         "viewMembers": "Mitgliederguthaben anzeigen"
       },
       "used": "Verwendet"

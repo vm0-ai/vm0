@@ -1114,11 +1114,8 @@
         "members": "멤버",
         "membersDescription": "각 구성원의 사용량 팩 잔액과 크레딧 추가 내역을 확인합니다.",
         "membersTitle": "구성원 사용량 팩 크레딧",
-        "nextExpiry": "다음 만료일",
         "purchased": "구매",
-        "remaining": "남음",
         "title": "사용량 팩 크레딧",
-        "totalRemaining": "총 잔액",
         "viewMembers": "구성원 잔액 보기"
       },
       "used": "사용됨"

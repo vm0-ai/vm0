@@ -535,58 +535,78 @@ describe("personal usage settings", () => {
     const memberDialog = await screen.findByRole("dialog", {
       name: "Member usage pack credits",
     });
-    const table = within(memberDialog).getByRole("table");
-    expect(within(table).getByText("Member")).toBeInTheDocument();
-    expect(within(table).getByText("Remaining")).toBeInTheDocument();
-    expect(within(table).getByText("Purchased")).toBeInTheDocument();
-    expect(within(table).getByText("Bonus")).toBeInTheDocument();
-    expect(within(table).getByText("Next expiry")).toBeInTheDocument();
-    expect(within(table).getByText("Credit additions")).toBeInTheDocument();
-    expect(within(table).getByText("Linghan Hu")).toBeInTheDocument();
-    expect(within(table).getByText("linghan@example.com")).toBeInTheDocument();
-    expect(within(table).getByText("Yuma")).toBeInTheDocument();
-    expect(within(table).getByText("yuma@example.com")).toBeInTheDocument();
+    const memberList = within(memberDialog).getByRole("list", {
+      name: "Members",
+    });
+    expect(within(memberList).getByText("Linghan Hu")).toBeInTheDocument();
     expect(
-      within(table).queryByTestId("usage-pack-member-test-user-123-bar"),
-    ).toBeNull();
+      within(memberList).getByText("linghan@example.com"),
+    ).toBeInTheDocument();
+    expect(within(memberList).getByText("Yuma")).toBeInTheDocument();
     expect(
-      within(table).getByTestId(
+      within(memberList).getByText("yuma@example.com"),
+    ).toBeInTheDocument();
+    expect(
+      within(memberList).getByTestId("usage-pack-member-test-user-123-bar"),
+    ).toBeInTheDocument();
+    const purchasedSegment = buttonByAriaLabel(
+      "Purchased — 20,000. Expires Apr 1, 2026",
+      memberList,
+    );
+    expect(purchasedSegment).toHaveAccessibleName(
+      "Purchased — 20,000. Expires Apr 1, 2026",
+    );
+    purchasedSegment.focus();
+    expect(purchasedSegment).toHaveFocus();
+    expect(
+      within(memberList).getByTestId(
         "usage-pack-member-test-user-123-grants-toggle",
       ),
     ).toBeInTheDocument();
-    expect(
-      within(table).getByTestId("usage-pack-member-credit-test-user-123"),
-    ).toHaveTextContent("20,400");
-    expect(
-      within(table).getByTestId("usage-pack-member-credit-member-yuma"),
-    ).toHaveTextContent("0");
-    expect(within(table).getByText("Apr 1, 2026")).toBeInTheDocument();
-    expect(within(table).queryByText(/credits remaining/)).toBeNull();
-
-    const summary = within(memberDialog).getByTestId(
-      "usage-pack-member-summary",
+    const linghanCard = within(memberList).getByTestId(
+      "usage-pack-member-credit-test-user-123",
     );
-    expect(summary).toHaveTextContent("2Members");
-    expect(summary).toHaveTextContent("20,400Total remaining");
-    expect(summary).toHaveTextContent("2Credit additions");
+    expect(linghanCard).toHaveTextContent("20,400");
+    expect(linghanCard).not.toHaveTextContent("Remaining");
+    expect(linghanCard).not.toHaveTextContent("Purchased");
+    expect(linghanCard).not.toHaveTextContent("Bonus");
+    expect(linghanCard).not.toHaveTextContent("Next expiry");
+    const yumaCard = within(memberList).getByTestId(
+      "usage-pack-member-credit-member-yuma",
+    );
+    expect(yumaCard).toHaveTextContent("0");
+    expect(
+      within(yumaCard).queryByTestId("usage-pack-member-member-yuma-empty-bar"),
+    ).toBeNull();
+    expect(yumaCard).not.toHaveTextContent("Purchased");
+    expect(yumaCard).not.toHaveTextContent("Bonus");
+
+    expect(
+      within(memberDialog).queryByTestId("usage-pack-member-summary"),
+    ).toBeNull();
 
     await user.click(
-      within(table).getByTestId(
+      within(memberList).getByTestId(
         "usage-pack-member-test-user-123-grants-toggle",
       ),
     );
     expect(
-      within(table).getByTestId(
+      within(memberList).getByTestId(
         "usage-pack-member-test-user-123-grants-toggle",
       ),
     ).toHaveAttribute("aria-expanded", "true");
-    const expandedRow = await within(table).findByTestId(
+    const expandedRow = await within(memberList).findByTestId(
       "usage-pack-member-test-user-123-grants-expanded-row",
     );
+    expect(within(expandedRow).getByText("Date")).toBeInTheDocument();
+    expect(within(expandedRow).getByText("Credits")).toBeInTheDocument();
+    expect(within(expandedRow).getByText("Left")).toBeInTheDocument();
     const purchaseRecord = within(expandedRow).getByTestId(
       "usage-pack-member-test-user-123-grants-admin-grant-purchased",
     );
-    expect(purchaseRecord).toHaveTextContent("Purchased");
+    expect(purchaseRecord).toHaveTextContent("Mar 1, 2026");
+    expect(purchaseRecord).toHaveTextContent("+20,000");
+    expect(purchaseRecord).toHaveTextContent("20,000");
     expect(
       within(memberDialog).getByTestId("usage-pack-members-dialog-scroll-area"),
     ).toHaveClass("overflow-y-auto");
@@ -596,7 +616,10 @@ describe("personal usage settings", () => {
       ),
     ).toBeNull();
     await user.hover(purchaseRecord);
-    expect(screen.queryByRole("tooltip")).toBeNull();
+    await expect(screen.findByText("Purchased")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Expires Apr 1, 2026"),
+    ).resolves.toBeInTheDocument();
 
     const orgCredits = await screen.findByTestId("credit-balance-info");
     expect(within(orgCredits).getByText("Org credits")).toBeInTheDocument();
