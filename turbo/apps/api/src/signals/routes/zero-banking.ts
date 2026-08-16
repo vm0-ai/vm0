@@ -8,10 +8,10 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
-  zeroBankingAccounts$,
-  zeroBankingBalances$,
-  zeroBankingTransactions$,
-} from "../services/zero-banking.service";
+  bankingAccounts$,
+  bankingBalances$,
+  bankingTransactions$,
+} from "../services/banking.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
 function zeroTokenRequired() {
@@ -68,11 +68,7 @@ const accountsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  return await set(
-    zeroBankingAccounts$,
-    { auth, body: bodyResult.data },
-    signal,
-  );
+  return await set(bankingAccounts$, { auth, body: bodyResult.data }, signal);
 });
 
 const balancesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -91,11 +87,7 @@ const balancesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  return await set(
-    zeroBankingBalances$,
-    { auth, body: bodyResult.data },
-    signal,
-  );
+  return await set(bankingBalances$, { auth, body: bodyResult.data }, signal);
 });
 
 const transactionsInner$ = command(
@@ -116,7 +108,7 @@ const transactionsInner$ = command(
     }
 
     return await set(
-      zeroBankingTransactions$,
+      bankingTransactions$,
       { auth, body: bodyResult.data },
       signal,
     );

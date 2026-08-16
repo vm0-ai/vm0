@@ -39,7 +39,7 @@ const APP_TOKEN_REFRESH_MS = 90 * 60 * 1000;
 const FINICITY_BASE_URL = "https://api.finicity.com";
 const PROVIDER = "finicity";
 
-type ZeroBankingAuth = Extract<ZeroAuthContext, { readonly orgId: string }>;
+type BankingAuth = Extract<ZeroAuthContext, { readonly orgId: string }>;
 type BankingAccountRow = InferSelectModel<typeof bankingAccounts>;
 
 interface CachedFinicityAppToken {
@@ -48,7 +48,7 @@ interface CachedFinicityAppToken {
 }
 
 interface BankingGatewayArgs<TBody> {
-  readonly auth: ZeroBankingAuth;
+  readonly auth: BankingAuth;
   readonly body: TBody;
 }
 
@@ -393,7 +393,7 @@ async function recordBankingAudit(
 
 async function findBankingRun(
   db: Db,
-  auth: ZeroBankingAuth,
+  auth: BankingAuth,
 ): Promise<BankingRunContext | null> {
   const [run] = await db
     .select({
@@ -417,7 +417,7 @@ async function findBankingRun(
 
 async function findBankingGrant(
   db: Db,
-  auth: ZeroBankingAuth,
+  auth: BankingAuth,
   agentId: string,
 ): Promise<BankingGrantContext | null> {
   const nowValue = nowDate();
@@ -460,7 +460,7 @@ async function findBankingGrant(
 
 async function denyBankingAccess(
   db: Db,
-  auth: ZeroBankingAuth,
+  auth: BankingAuth,
   action: BankingOperationScope,
   providerAccountId: string | undefined,
   args: {
@@ -489,7 +489,7 @@ async function denyBankingAccess(
 
 async function enabledBankingAccounts(
   db: Db,
-  auth: ZeroBankingAuth,
+  auth: BankingAuth,
   grant: BankingGrantContext,
 ): Promise<readonly BankingAccountRow[]> {
   return await db
@@ -508,7 +508,7 @@ async function enabledBankingAccounts(
 
 async function authorizeBankingAccess(
   db: Db,
-  auth: ZeroBankingAuth,
+  auth: BankingAuth,
   action: BankingOperationScope,
   providerAccountId: string | undefined,
 ): Promise<BankingAccessResult> {
@@ -516,7 +516,7 @@ async function authorizeBankingAccess(
   if (!run) {
     return await denyBankingAccess(db, auth, action, providerAccountId, {
       failureCode: "RUN_NOT_FOUND",
-      message: "Banking access requires a current zero run",
+      message: "Banking access requires a current Okou run",
     });
   }
 
@@ -605,7 +605,7 @@ async function authorizeBankingAccess(
   };
 }
 
-export const zeroBankingAccounts$ = command(
+export const bankingAccounts$ = command(
   async (
     { set },
     args: BankingGatewayArgs<Record<string, never>>,
@@ -689,7 +689,7 @@ export const zeroBankingAccounts$ = command(
   },
 );
 
-export const zeroBankingBalances$ = command(
+export const bankingBalances$ = command(
   async (
     { set },
     args: BankingGatewayArgs<ZeroBankingBalancesRequest>,
@@ -750,7 +750,7 @@ export const zeroBankingBalances$ = command(
   },
 );
 
-export const zeroBankingTransactions$ = command(
+export const bankingTransactions$ = command(
   async (
     { set },
     args: BankingGatewayArgs<ZeroBankingTransactionsRequest>,
