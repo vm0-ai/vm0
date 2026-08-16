@@ -55,7 +55,7 @@ import {
   acquireVm0ManagedModelKeyFixture,
   releaseVm0ManagedModelKeyFixture,
 } from "../signals/services/test-vm0-managed-model-key-fixture.service";
-import { visibleChatEventCondition } from "../signals/services/zero-chat-event-shared.service";
+import { visibleChatEventCondition } from "../signals/services/chat-event-shared.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
 import { createUserMessageDocument } from "../signals/services/chat-user-message.service";

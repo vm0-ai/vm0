@@ -37,7 +37,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../../lib/time";
-import { appendChatThreadEvent } from "../../services/zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "../../services/chat-thread-event.service";
 import {
   connectorCatalogExecutableCapabilityState,
   persistConnectorCatalogCompatibility,

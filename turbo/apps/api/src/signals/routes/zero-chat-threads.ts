@@ -20,12 +20,12 @@ import {
   googleDriveArtifactStatusLookup,
 } from "../services/google-drive-artifact-sync.service";
 import {
-  zeroChatIndicators,
-  zeroChatThreadArtifacts,
-  zeroChatThreadDetail,
-  zeroChatThreadDraftIds,
-  zeroChatThreadUnreads,
-} from "../services/zero-chat-thread.service";
+  chatIndicators,
+  chatThreadArtifacts,
+  chatThreadDetail,
+  chatThreadDraftIds,
+  chatThreadUnreads,
+} from "../services/chat-thread.service";
 import { chatSearch } from "../services/chat-search.service";
 import {
   chatThreadEventRows,
@@ -35,7 +35,7 @@ import { resolveChatEventSchemaVersion } from "../services/chat-event-schema-ver
 import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
-} from "../services/zero-chat-thread-event.service";
+} from "../services/chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
@@ -71,7 +71,7 @@ const getChatThreadInner$ = computed(async (get) => {
   }
 
   const thread = await get(
-    zeroChatThreadDetail({ threadId: params.id, userId: auth.userId }),
+    chatThreadDetail({ threadId: params.id, userId: auth.userId }),
   );
   if (!thread) {
     return chatThreadNotFound();
@@ -132,7 +132,7 @@ const listChatThreadLifecycleEventsInner$ = computed(async (get) => {
 const listZeroIndicatorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const indicators = await get(
-    zeroChatIndicators({
+    chatIndicators({
       userId: auth.userId,
       orgId: auth.orgId,
     }),
@@ -240,7 +240,7 @@ const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
 
   const draftThreadIds = await get(
-    zeroChatThreadDraftIds({
+    chatThreadDraftIds({
       userId: auth.userId,
     }),
   );
@@ -256,7 +256,7 @@ const listChatThreadUnreadsInner$ = computed(async (get) => {
   const query = get(queryOf(chatThreadsContract.unreads));
 
   const unreads = await get(
-    zeroChatThreadUnreads({
+    chatThreadUnreads({
       userId: auth.userId,
       agentComposeId: query.agentId,
     }),
@@ -270,7 +270,7 @@ const listChatThreadArtifactsInner$ = computed(async (get) => {
   const params = get(pathParamsOf(chatThreadArtifactsContract.list));
   const [runs, lookup] = await Promise.all([
     get(
-      zeroChatThreadArtifacts({
+      chatThreadArtifacts({
         threadId: params.threadId,
         userId: auth.userId,
       }),

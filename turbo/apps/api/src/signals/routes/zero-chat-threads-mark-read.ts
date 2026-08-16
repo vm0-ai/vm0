@@ -10,7 +10,7 @@ import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { latestRunFinishEventSubquery } from "../services/chat-thread-read-state-query";
-import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
+import { chatThreadUnreads } from "../services/chat-thread.service";
 import type { RouteEntry } from "../route-entry";
 
 const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -38,7 +38,7 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const agentUnreads = async () => {
     const unreads = await get(
-      zeroChatThreadUnreads({
+      chatThreadUnreads({
         userId: auth.userId,
         agentComposeId: thread.agentComposeId,
       }),

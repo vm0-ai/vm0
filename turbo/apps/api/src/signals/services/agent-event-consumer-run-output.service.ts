@@ -14,12 +14,12 @@ import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import {
   insertAssistantEventsInTransaction,
   type InsertAssistantEventsInput,
-} from "./zero-chat-event-shared.service";
+} from "./chat-event-shared.service";
 import {
   publishFirstAssistantEventCreatedSignalSafely,
   recordFirstAssistantEventAcknowledgementMetric,
 } from "./zero-chat-first-assistant-event-metric.service";
-import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
+import { chatThreadForRunFromDb } from "./chat-thread.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 
 const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;

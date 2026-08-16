@@ -23,7 +23,7 @@ import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";
 import { insertChatEvent } from "./chat-event.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
+import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import { agentRunSourceTitleSnapshot } from "./chat-user-message.service";
 
 const CHAT_RUN_FINISHED_EVENT_TYPE = "chat-run-finished";

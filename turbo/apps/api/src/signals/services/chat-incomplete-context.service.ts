@@ -29,7 +29,7 @@ import {
   chatEventTypeIn,
   runOwnedChatEventCondition,
 } from "./chat-event-type.service";
-import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
+import { visibleChatEventCondition } from "./chat-event-shared.service";
 import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;

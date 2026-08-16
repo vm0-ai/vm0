@@ -40,7 +40,7 @@ import {
   replaceLoadedChatEvent,
   replaceChatEvent,
 } from "./chat-event.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
+import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";

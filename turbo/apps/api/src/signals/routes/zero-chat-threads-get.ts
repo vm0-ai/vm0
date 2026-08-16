@@ -8,7 +8,7 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
 import { notFound } from "../../lib/error";
-import { chatThreadServiceTierFromCodex } from "../services/zero-chat-thread-event.service";
+import { chatThreadServiceTierFromCodex } from "../services/chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const getInner$ = command(async ({ get }, signal: AbortSignal) => {

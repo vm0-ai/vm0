@@ -20,7 +20,7 @@ import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "./chat-thread-event.service";
 import {
   computerUseHostIsOnline,
   listComputerUseHosts$,

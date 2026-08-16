@@ -4,7 +4,7 @@ import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "./chat-thread-event.service";
 import type { Tx } from "../../lib/db-types";
 
 export type TelegramOwnerLink =

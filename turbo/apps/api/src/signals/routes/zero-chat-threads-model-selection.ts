@@ -16,12 +16,12 @@ import { notFound } from "../../lib/error";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
-} from "../services/zero-chat-thread-event.service";
+} from "../services/chat-thread-event.service";
 import {
   resolveModelSelectionPin,
   validateCodexServiceTier,
 } from "../services/zero-model-selection.service";
-import { chatThreadModelPinColumns } from "../services/zero-chat-thread-model.service";
+import { chatThreadModelPinColumns } from "../services/chat-thread-model.service";
 import type { RouteEntry } from "../route-entry";
 
 const modelSelectionBody$ = bodyResultOf(

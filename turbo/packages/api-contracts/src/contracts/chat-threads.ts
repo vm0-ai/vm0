@@ -157,7 +157,7 @@ const chatThreadSnapshotProjectionSchema = z.object({
   // catalog still parses; the strict enum applies on the write path.
   // Remove once the client floor passes the build that introduced the field and
   // cached rows have resynced, together with the two `?? null` reads in
-  // zero-chat-thread-event.service.ts and chat-thread-event-replay.ts.
+  // chat-thread-event.service.ts and chat-thread-event-replay.ts.
   // Follow-up: https://github.com/vm0-ai/vm0/issues/26765
   selectedVideoModel: z.string().nullable().optional(),
 });

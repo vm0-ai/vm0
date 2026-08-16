@@ -6,11 +6,11 @@ import type { ReadonlyDb } from "../external/db";
 import {
   chatThreadModelPinColumns,
   resolveRequiredDefaultChatThreadModelPin,
-} from "./zero-chat-thread-model.service";
+} from "./chat-thread-model.service";
 import {
   appendChatThreadEvent,
   type ChatThreadEventTransaction,
-} from "./zero-chat-thread-event.service";
+} from "./chat-thread-event.service";
 
 export async function loadWorkflowUserAutomationThreadId(
   db: ReadonlyDb,
