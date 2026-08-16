@@ -44,7 +44,12 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import {
+  clearMockNow,
+  mockNow,
+  now,
+  withMockNowForTest,
+} from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -8807,16 +8812,19 @@ describe("CHAT-02: shared user message queue", () => {
         { type: "model", selectedModel: "gpt-5.6-sol" },
       ],
     };
-    const sent = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "queue-first direct dispatch",
-        userMessage,
-        clientEventId: messageId,
-      },
-      [201],
-    );
+    const apiStartedAt = now();
+    const sent = await withMockNowForTest(apiStartedAt, async () => {
+      return await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          prompt: "queue-first direct dispatch",
+          userMessage,
+          clientEventId: messageId,
+        },
+        [201],
+      );
+    });
     if (sent.status !== 201 || !sent.body.runId) {
       throw new Error("Expected an idle-thread queue-first send to dispatch");
     }
@@ -8891,6 +8899,7 @@ describe("CHAT-02: shared user message queue", () => {
       .toBe(true);
 
     const claimedRun = await claimChatRun(runnerGroup, runId);
+    expect(claimedRun.claim.apiStartTime).toBe(apiStartedAt);
     expect(claimedRun.claim.prompt).toBe(
       `queue-first [direct dispatch](/chats/${referencedThreadId})`,
     );

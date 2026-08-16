@@ -237,6 +237,7 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run"
+  | "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_append_marker"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals";
@@ -670,7 +671,6 @@ interface CreateQueuedChatRunInput {
     readonly secret: string;
     readonly payload: unknown;
   };
-  readonly apiStartTime: number;
   readonly autonomyBudget: number;
   readonly userInfoExtras?: {
     readonly slackDisplayName?: string;
@@ -852,7 +852,9 @@ function buildQueuedCreateZeroRunArgs(
       orgId: input.orgId,
       orgRole: "member" as const,
     },
-    apiStartTime: input.apiStartTime,
+    // Startup metrics begin when the queued message is admitted for dispatch.
+    // The time spent waiting in the chat queue is recorded separately.
+    apiStartTime: admissionTime,
     chatThreadId: input.threadId,
     computerUseHostId: input.computerUseHostGrant?.hostId,
     modelProviderId: input.modelPin.modelProviderId ?? undefined,
@@ -3109,7 +3111,6 @@ async function buildCreateQueuedChatRunInput(
       featureSwitchContext,
     ),
     ...queuedIntegrationLaunchFields(launchMaterial),
-    apiStartTime: args.queuedMessage.createdAt.getTime(),
     autonomyBudget: args.queuedMessage.autonomyBudget.autonomyBudget,
   };
 }
@@ -3923,6 +3924,14 @@ async function autoSendQueuedMessageForThread(
   if (!queuedMessage) {
     return;
   }
+
+  args.timing.recordElapsed({
+    actionType:
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
+    spanKind: "nested",
+    startedAt: queuedMessage.createdAt.getTime(),
+    finishedAt: args.admissionTime,
+  });
 
   const agent = await measureChatCallbackPreCreateTiming(
     args.timing,

@@ -3087,7 +3087,7 @@ const createNormalChatRun$ = command(
       createQueueFirstZeroRun$,
       {
         ...createRunArgs,
-        apiStartTime: queuedMessage.createdAt.getTime(),
+        apiStartTime: args.apiStartTime,
         zeroRunMetadata: {
           autonomyBudget: queuedMessage.autonomyBudget.autonomyBudget,
         },
