@@ -4,7 +4,7 @@
 // - Billing settlement needs Stripe webhooks or checkout completion that grants
 //   entitlements. This file asserts the route-visible checkout, portal, invoice,
 //   redeem, status, and usage surfaces without direct database fixtures.
-// - Banking success needs a current zero run, banking connection, account grant,
+// - Banking success needs a current Okou run, banking connection, account grant,
 //   and provider account state. This file covers the public credential gate and
 //   records the success-chain gap instead of seeding banking tables.
 
