@@ -126,6 +126,9 @@ const USAGE_PACK_PLANS = [
   },
 ] as const satisfies readonly UsagePackPlan[];
 
+const USAGE_PACK_DOWNGRADE_NOTICE_CLASS =
+  "border border-yellow-200/70 bg-yellow-50/70 text-yellow-800 dark:border-yellow-400/20 dark:bg-yellow-400/10 dark:text-yellow-200";
+
 function usagePackPlan(tier: UsagePackPlanTier): UsagePackPlan {
   return tier === "pro" ? USAGE_PACK_PLANS[0] : USAGE_PACK_PLANS[1];
 }
@@ -1796,7 +1799,9 @@ function SubscriptionChangeNotice({
   readonly effectiveAt: string;
 }) {
   return (
-    <div className="mt-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-sm leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
+    <div
+      className={`mt-3 rounded-lg px-3 py-2 text-sm leading-relaxed ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS}`}
+    >
       <p>{description}</p>
       <p className="mt-1 font-medium">
         {i18n.t(
@@ -1822,7 +1827,7 @@ function ScheduledUsagePackDowngradeNotice({
     <div
       role="status"
       aria-label={title}
-      className="flex items-center gap-3 rounded-xl border border-yellow-200/70 bg-yellow-50/70 p-3 text-yellow-800 dark:border-yellow-400/20 dark:bg-yellow-400/10 dark:text-yellow-200"
+      className={`flex items-center gap-3 rounded-xl p-3 ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS}`}
     >
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-yellow-100/80 text-yellow-700 dark:bg-yellow-400/15 dark:text-yellow-300">
         <CalendarDays aria-hidden="true" className="size-4" />
