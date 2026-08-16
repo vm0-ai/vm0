@@ -238,7 +238,8 @@ def _observe_websocket_server_lifecycle(
     if state.ambiguous:
         return
     if lifecycle.is_error:
-        _mark_websocket_correlation_ambiguous(flow, state, "server_error")
+        reason = "server_error" if lifecycle.is_valid else _lifecycle_ambiguity_reason(lifecycle)
+        _mark_websocket_correlation_ambiguous(flow, state, reason)
         return
     if lifecycle.is_created:
         if not lifecycle.is_valid:

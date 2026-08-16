@@ -457,14 +457,14 @@ class TestModelProviderWebSocketPrewarmUsage:
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
+        over_budget_error = b'{"type":"error","padding":[' + b",".join([b"0"] * 40_000) + b"]}"
 
         with self._usage_webhook_api() as webhook:
-            for request in (
-                {"type": "response.create"},
-                {"type": "response.create", "generate": False},
-                {"type": "response.create"},
-            ):
-                feed_websocket_client_message(flow, json.dumps(request).encode())
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, over_budget_error)
             feed_websocket_server_message(flow, _openai_websocket_created_frame("cap-1"))
             feed_websocket_server_message(
                 flow,
@@ -485,10 +485,7 @@ class TestModelProviderWebSocketPrewarmUsage:
         )
         correlation_entries = _correlation_entries(flow)
         assert len(correlation_entries) == 1
-        assert correlation_entries[0]["reason"] in {
-            "overlapping_request",
-            "correlation_cap",
-        }
+        assert correlation_entries[0]["reason"] == "correlation_cap"
 
     def test_model_websocket_unbound_prewarm_usage_fails_open(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
