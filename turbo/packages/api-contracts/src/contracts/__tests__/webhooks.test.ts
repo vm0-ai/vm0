@@ -233,6 +233,27 @@ describe("agent completion active input receipts", () => {
 });
 
 describe("webhook telemetry contract", () => {
+  it("accepts an optional bounded runner name", () => {
+    const runId = "00000000-0000-4000-8000-000000000000";
+    expect(
+      webhookTelemetryContract.send.body.parse({ runId }),
+    ).not.toHaveProperty("runnerName");
+
+    expect(
+      webhookTelemetryContract.send.body.parse({
+        runId,
+        runnerName: "v0.168.14",
+      }),
+    ).toMatchObject({ runnerName: "v0.168.14" });
+
+    for (const runnerName of ["", "x".repeat(129)]) {
+      expect(
+        webhookTelemetryContract.send.body.safeParse({ runId, runnerName })
+          .success,
+      ).toBe(false);
+    }
+  });
+
   it("accepts bounded sandbox operation outcome dimensions", () => {
     const result = webhookTelemetryContract.send.body.parse({
       runId: "00000000-0000-4000-8000-000000000000",

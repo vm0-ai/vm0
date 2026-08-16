@@ -64,9 +64,11 @@ interface SandboxOperationDimensionInput {
 
 function sandboxOperationDimensions(
   op: SandboxOperationDimensionInput,
+  runnerName?: string,
 ): Record<string, string> {
   return {
     source: "sandbox",
+    ...(runnerName ? { runner_name: runnerName } : {}),
     ...(op.error ? { error: op.error } : {}),
     ...(op.outcome ? { outcome: op.outcome } : {}),
     ...(op.reason ? { reason: op.reason } : {}),
@@ -422,7 +424,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
         success: op.success,
         runId: body.runId,
         timestamp: op.ts,
-        dimensions: sandboxOperationDimensions(op),
+        dimensions: sandboxOperationDimensions(op, body.runnerName),
       });
     }
   }

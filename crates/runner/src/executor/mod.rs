@@ -187,6 +187,7 @@ fn guest_runtime_path(
 /// Shared configuration for all executions (profile-independent).
 pub struct ExecutorConfig {
     pub api_url: String,
+    pub runner_name: String,
     pub registry: ProxyRegistryHandle,
     pub http: HttpClient,
     pub log_paths: LogPaths,
@@ -599,8 +600,12 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     } = hooks;
     let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
     let run_id = context.run_id;
-    let mut telemetry =
-        JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
+    let mut telemetry = JobTelemetry::new(
+        config.http.clone(),
+        run_id,
+        context.sandbox_token.clone(),
+        config.runner_name.clone(),
+    );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
 
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
@@ -703,8 +708,12 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     } = hooks;
     let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
     let run_id = context.run_id;
-    let mut telemetry =
-        JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
+    let mut telemetry = JobTelemetry::new(
+        config.http.clone(),
+        run_id,
+        context.sandbox_token.clone(),
+        config.runner_name.clone(),
+    );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
 
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
