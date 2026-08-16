@@ -5,9 +5,9 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import {
-  removeZeroOrgMember$,
-  updateZeroOrgMemberRole$,
-} from "../services/zero-org-data.service";
+  removeOrgMember$,
+  updateOrgMemberRole$,
+} from "../services/org-data.service";
 import type { RouteEntry } from "../route-entry";
 
 const updateRoleBody$ = bodyResultOf(zeroOrgMembersContract.updateRole);
@@ -22,7 +22,7 @@ const updateRoleInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = await set(
-    updateZeroOrgMemberRole$,
+    updateOrgMemberRole$,
     {
       callerUserId: auth.userId,
       orgId: auth.orgId,
@@ -51,7 +51,7 @@ const removeMemberInner$ = command(
     }
 
     const result = await set(
-      removeZeroOrgMember$,
+      removeOrgMember$,
       {
         orgId: auth.orgId,
         callerUserId: auth.userId,

@@ -11,11 +11,11 @@ import { bodyResultOf } from "../context/request";
 import { badRequestMessage, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 import {
-  leaveZeroOrg$,
-  updateZeroOrg$,
-  zeroOrgDetail$,
-  zeroOrgMembersList,
-} from "../services/zero-org-data.service";
+  leaveOrg$,
+  orgDetail$,
+  orgMembersList,
+  updateOrg$,
+} from "../services/org-data.service";
 
 const getOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
@@ -23,7 +23,7 @@ const getOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Organization not found");
   }
   const org = await set(
-    zeroOrgDetail$,
+    orgDetail$,
     { orgId: auth.orgId, userId: auth.userId, orgRole: auth.orgRole },
     signal,
   );
@@ -47,7 +47,7 @@ const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = await set(
-    updateZeroOrg$,
+    updateOrg$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -82,7 +82,7 @@ const leaveOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = await set(
-    leaveZeroOrg$,
+    leaveOrg$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -102,7 +102,7 @@ const leaveOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const membersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const body = await get(
-    zeroOrgMembersList({
+    orgMembersList({
       orgId: auth.orgId,
       userId: auth.userId,
       // Fall back to "member" when the auth context lacks an explicit role
