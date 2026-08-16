@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.4...guest-agent-v0.74.5) (2026-08-16)
+
+
+### Refactoring
+
+* **guest-agent:** remove checkpoint compatibility fallback ([#27511](https://github.com/vm0-ai/vm0/issues/27511)) ([d01eaf2](https://github.com/vm0-ai/vm0/commit/d01eaf22c7f9ead2b45602cefcec89153a318ec4))
+
 ## [0.74.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.3...guest-agent-v0.74.4) (2026-08-15)
 
 

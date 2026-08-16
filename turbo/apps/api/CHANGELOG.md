@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.451.7](https://github.com/vm0-ai/vm0/compare/api-v1.451.6...api-v1.451.7) (2026-08-16)
+
+
+### Bug Fixes
+
+* **billing:** align legacy conversion dialog flow ([#27504](https://github.com/vm0-ai/vm0/issues/27504)) ([1d47170](https://github.com/vm0-ai/vm0/commit/1d471702000bfd645bad9cf8a0caa6b37e92aa26))
+
+
+### Refactoring
+
+* **agents:** neutralize data and instruction service naming ([#27507](https://github.com/vm0-ai/vm0/issues/27507)) ([562bf95](https://github.com/vm0-ai/vm0/commit/562bf95bf4148641374e3cf3fbe9bfac8754beca))
+* **banking:** neutralize service naming and run copy ([#27506](https://github.com/vm0-ai/vm0/issues/27506)) ([39d9f68](https://github.com/vm0-ai/vm0/commit/39d9f68a4255e44d6185c3aaf4e4645c797a243b))
+* **billing:** neutralize redemption service naming ([#27476](https://github.com/vm0-ai/vm0/issues/27476)) ([9179604](https://github.com/vm0-ai/vm0/commit/9179604d5e43fe0bc3688e657dac61b38ada64c8))
+* **chat:** neutralize event snapshot service naming ([#27490](https://github.com/vm0-ai/vm0/issues/27490)) ([c347207](https://github.com/vm0-ai/vm0/commit/c347207168daf136eea8c39b077d67c846a6af2c))
+* **chat:** neutralize run context service naming ([#27526](https://github.com/vm0-ai/vm0/issues/27526)) ([f06b3cb](https://github.com/vm0-ai/vm0/commit/f06b3cb6a8e6d949befa8d5c4a9a3fd95f203e7f))
+* **chat:** neutralize thread core service naming ([#27550](https://github.com/vm0-ai/vm0/issues/27550)) ([d28ed74](https://github.com/vm0-ai/vm0/commit/d28ed7451e87d2b760e17eb20f2d3ad41d87d548))
+* **computer-use:** neutralize authorization service filename ([#27477](https://github.com/vm0-ai/vm0/issues/27477)) ([84e0d1d](https://github.com/vm0-ai/vm0/commit/84e0d1d385ed0c89f1b16ce5d4358fc13511c6e6))
+* **computer-use:** neutralize core service naming ([#27498](https://github.com/vm0-ai/vm0/issues/27498)) ([9914281](https://github.com/vm0-ai/vm0/commit/99142819bd3dfd8f0ae6b5b44f752bff27ba2b64))
+* **connectors:** neutralize connector access service naming ([#27537](https://github.com/vm0-ai/vm0/issues/27537)) ([8a6e610](https://github.com/vm0-ai/vm0/commit/8a6e610b156d0af840508f5ec67d93c6cf07a70a))
+* **connectors:** neutralize custom connector list service ([#27479](https://github.com/vm0-ai/vm0/issues/27479)) ([7bb6287](https://github.com/vm0-ai/vm0/commit/7bb6287e63b16b0615fae8e0281884305478c059))
+* **contracts:** separate capabilities from compose schemas ([#27555](https://github.com/vm0-ai/vm0/issues/27555)) ([c17f126](https://github.com/vm0-ai/vm0/commit/c17f1267e9d0c01eac59a5066c82d21cbe115871))
+* **generation:** neutralize media service naming ([#27533](https://github.com/vm0-ai/vm0/issues/27533)) ([e8b711a](https://github.com/vm0-ai/vm0/commit/e8b711ac580ffb91a5e2b515e03f0bbf304749bb))
+* **github:** neutralize agent reply footer naming ([#27502](https://github.com/vm0-ai/vm0/issues/27502)) ([26f7eca](https://github.com/vm0-ai/vm0/commit/26f7ecaa9aefd82c4b3e575f345c61da2997f8ad))
+* **goals:** neutralize goal runtime service naming ([#27539](https://github.com/vm0-ai/vm0/issues/27539)) ([76fe677](https://github.com/vm0-ai/vm0/commit/76fe677e9a694ec725cf7252be325d78c2e4acb3))
+* **goals:** neutralize objective brief service naming ([#27493](https://github.com/vm0-ai/vm0/issues/27493)) ([0ef6ec6](https://github.com/vm0-ai/vm0/commit/0ef6ec656454e02701ec218027fd88a077987af4))
+* **mail:** neutralize mail draft runtime naming ([#27551](https://github.com/vm0-ai/vm0/issues/27551)) ([ba2f2d4](https://github.com/vm0-ai/vm0/commit/ba2f2d415cd8353f9eb2f0be03eedfbab9e3470c))
+* **messaging:** neutralize feishu dispatch and telegram helper naming ([#27554](https://github.com/vm0-ai/vm0/issues/27554)) ([3a6c191](https://github.com/vm0-ai/vm0/commit/3a6c191af704c5c592a62c36893ca5a05be475eb))
+* **models:** neutralize model service naming ([#27546](https://github.com/vm0-ai/vm0/issues/27546)) ([279b8b9](https://github.com/vm0-ai/vm0/commit/279b8b93e9545418574294c2e009ab70ed1f84b2))
+* **org:** neutralize organization data service naming ([#27505](https://github.com/vm0-ai/vm0/issues/27505)) ([0bca596](https://github.com/vm0-ai/vm0/commit/0bca5962763c8b3f38d809bdcff02705ffb12821))
+* **run:** neutralize queue admission and cancellation service naming ([#27524](https://github.com/vm0-ai/vm0/issues/27524)) ([afb9ab8](https://github.com/vm0-ai/vm0/commit/afb9ab8d9f8eb0e6baa39c99e2c93f486446aa1e))
+* **run:** neutralize run detail service naming ([#27478](https://github.com/vm0-ai/vm0/issues/27478)) ([8944f4d](https://github.com/vm0-ai/vm0/commit/8944f4da526e3b3b3cbda031177ccfd47cdfd930))
+* **slack:** neutralize message context service filename ([#27495](https://github.com/vm0-ai/vm0/issues/27495)) ([c36fd11](https://github.com/vm0-ai/vm0/commit/c36fd1197f4090f1c139c55b459002cafb1f5fad))
+* **test:** neutralize core product api test shell naming ([#27553](https://github.com/vm0-ai/vm0/issues/27553)) ([540f4ba](https://github.com/vm0-ai/vm0/commit/540f4bab7fc8aedb2ceaf8b4ef31ead8018f66e2))
+* **test:** neutralize integration and model api test shell naming ([#27549](https://github.com/vm0-ai/vm0/issues/27549)) ([76d8a22](https://github.com/vm0-ai/vm0/commit/76d8a22473323a3eced2a4e136c50db1f88ccbb5))
+* **test:** neutralize runtime and billing api test shell naming ([#27552](https://github.com/vm0-ai/vm0/issues/27552)) ([13dd88e](https://github.com/vm0-ai/vm0/commit/13dd88ed98f01dd99c806170af38a439135555d9))
+* **usage:** neutralize credit usage service filename ([#27492](https://github.com/vm0-ai/vm0/issues/27492)) ([c920436](https://github.com/vm0-ai/vm0/commit/c920436b7abfeffb2c642f92dce1165802019d95))
+* **workflows:** neutralize automation run service filename ([#27494](https://github.com/vm0-ai/vm0/issues/27494)) ([4a5de6b](https://github.com/vm0-ai/vm0/commit/4a5de6b204c22726292ac51f31f55188da70bbfc))
+* **workflows:** neutralize automation runtime service naming ([#27521](https://github.com/vm0-ai/vm0/issues/27521)) ([3f7aa52](https://github.com/vm0-ai/vm0/commit/3f7aa52644103ebf6f65da975842030c054c20f1))
+* **workflows:** neutralize definition and launch service naming ([#27547](https://github.com/vm0-ai/vm0/issues/27547)) ([9c15099](https://github.com/vm0-ai/vm0/commit/9c15099088320fc370b6c1a759303c8f17b1dcbb))
+* **workflows:** neutralize queue drain service naming ([#27491](https://github.com/vm0-ai/vm0/issues/27491)) ([505281c](https://github.com/vm0-ai/vm0/commit/505281c3baa398b8463f5e4eb4c4aec65ae9dada))
+* **workflows:** neutralize route service naming ([#27497](https://github.com/vm0-ai/vm0/issues/27497)) ([169fd87](https://github.com/vm0-ai/vm0/commit/169fd878474af5c2480779fc95d11a05d050ecb0))
+
+
+### Performance Improvements
+
+* **api:** exclude queued message age from startup timing ([#27548](https://github.com/vm0-ai/vm0/issues/27548)) ([2156e51](https://github.com/vm0-ai/vm0/commit/2156e51dea341a387106d890dfa2000379fbac6b))
+* **runner:** attribute sandbox telemetry by runner name ([#27464](https://github.com/vm0-ai/vm0/issues/27464)) ([70b634b](https://github.com/vm0-ai/vm0/commit/70b634b39f2c1a71ce8c82855fb512e583b85668))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.7
+    * @okouai/core bumped to 8.562.4
+    * @okouai/db bumped to 1.200.7
+
 ## [1.451.6](https://github.com/vm0-ai/vm0/compare/api-v1.451.5...api-v1.451.6) (2026-08-15)
 
 

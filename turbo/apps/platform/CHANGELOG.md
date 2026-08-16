@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.759.0](https://github.com/vm0-ai/vm0/compare/app-v0.758.0...app-v0.759.0) (2026-08-16)
+
+
+### Features
+
+* **platform:** redesign member usage pack dialog ([#27509](https://github.com/vm0-ai/vm0/issues/27509)) ([1e15eb3](https://github.com/vm0-ai/vm0/commit/1e15eb365604726f8968a860826ba3d06fe8cc7b))
+
+
+### Bug Fixes
+
+* **billing:** align legacy conversion dialog flow ([#27504](https://github.com/vm0-ai/vm0/issues/27504)) ([1d47170](https://github.com/vm0-ai/vm0/commit/1d471702000bfd645bad9cf8a0caa6b37e92aa26))
+* **billing:** align usage pack downgrade feedback ([#27503](https://github.com/vm0-ai/vm0/issues/27503)) ([ba7cd41](https://github.com/vm0-ai/vm0/commit/ba7cd416e693d66e8d0f9f943070cf1a7e462377))
+* **platform:** align usage pack credit ledger ([#27496](https://github.com/vm0-ai/vm0/issues/27496)) ([fa50fe1](https://github.com/vm0-ai/vm0/commit/fa50fe1cb46f5a9056fc104ed301f6b04726657c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.7
+    * @okouai/core bumped to 8.562.4
+
 ## [0.758.0](https://github.com/vm0-ai/vm0/compare/app-v0.757.0...app-v0.758.0) (2026-08-15)
 
 
