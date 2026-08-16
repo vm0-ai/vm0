@@ -34,7 +34,7 @@ setup_file() {
 
 teardown_file() {
     if [[ -n "${RUNNER_AGENT_ID:-}" ]]; then
-        delete_runner_agent "$RUNNER_AGENT_ID"
+        delete_runner_agent_for_stage0_teardown "$RUNNER_AGENT_ID"
     fi
 }
 
