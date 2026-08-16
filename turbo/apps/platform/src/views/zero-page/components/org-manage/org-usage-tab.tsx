@@ -1,4 +1,4 @@
-import { useLoadable } from "ccstate-react";
+import { useLastLoadable } from "ccstate-react";
 import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
@@ -893,7 +893,7 @@ export function CreditBalanceCard({
   splitLayout: boolean;
 }) {
   const { t } = useTranslation();
-  const billingLoadable = useLoadable(billingStatusAsync$);
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
   const billing =
     billingLoadable.state === "hasData" ? billingLoadable.data : null;
   const billingLoading = billingLoadable.state === "loading";

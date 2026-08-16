@@ -17,6 +17,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 const MOCK_NOW = "2026-03-01T01:00:00Z";
@@ -39,8 +40,10 @@ function expectedAllowanceResetText(value: string): string {
 
 function mockBillingStatus(
   overrides: Partial<BillingStatusResponse> = {},
+  beforeResponse?: () => Promise<void> | void,
 ): void {
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(zeroBillingStatusContract.get, async ({ respond }) => {
+    await beforeResponse?.();
     return respond(200, {
       tier: "pro",
       credits: 12_000,
@@ -244,6 +247,79 @@ describe("organization usage settings", () => {
 
     // Usage records moved to their own section.
     expect(screen.queryByText("Team usage")).toBeNull();
+  });
+
+  it("keeps the rendered credit balance mounted during realtime refresh", async () => {
+    const reloadStarted = createDeferredPromise<void>(context.signal);
+    const releaseReload = createDeferredPromise<void>(context.signal);
+    let holdReload = false;
+    let statusRequests = 0;
+    mockUsageStory();
+    mockBillingStatus({}, async () => {
+      statusRequests += 1;
+      if (holdReload) {
+        reloadStarted.resolve();
+        await releaseReload.promise;
+      }
+    });
+
+    await openCreditBalance();
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+      expect(statusRequests).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("3,750 left")).toBeInTheDocument();
+    });
+
+    const url = window.location.href;
+    const allowance = screen.getByTestId("usage-allowance-section");
+    const firstSegment = screen.getByTestId("credit-balance-segment-plan:pro");
+    const lastSegment = screen.getByTestId("credit-balance-segment-payAsYouGo");
+    expect(allowance).toBeVisible();
+    expect(firstSegment).toBeVisible();
+    expect(lastSegment).toBeVisible();
+
+    const requestsBeforeReload = statusRequests;
+    holdReload = true;
+    context.mocks.ably.trigger("billing:changed");
+    await reloadStarted.promise;
+
+    const whileReloading = {
+      allowanceConnected: allowance.isConnected,
+      allowanceCount: screen.queryAllByTestId("usage-allowance-section").length,
+      firstSegmentConnected: firstSegment.isConnected,
+      firstSegmentCount: screen.queryAllByTestId(
+        "credit-balance-segment-plan:pro",
+      ).length,
+      lastSegmentConnected: lastSegment.isConnected,
+      lastSegmentCount: screen.queryAllByTestId(
+        "credit-balance-segment-payAsYouGo",
+      ).length,
+      url: window.location.href,
+    };
+    releaseReload.resolve();
+
+    await waitFor(() => {
+      expect(statusRequests).toBeGreaterThan(requestsBeforeReload);
+      expect(screen.getByText("3,750 left")).toBeInTheDocument();
+    });
+    expect(whileReloading).toStrictEqual({
+      allowanceConnected: true,
+      allowanceCount: 1,
+      firstSegmentConnected: true,
+      firstSegmentCount: 1,
+      lastSegmentConnected: true,
+      lastSegmentCount: 1,
+      url,
+    });
+    expect(screen.getByTestId("usage-allowance-section")).toBe(allowance);
+    expect(screen.getByTestId("credit-balance-segment-plan:pro")).toBe(
+      firstSegment,
+    );
+    expect(screen.getByTestId("credit-balance-segment-payAsYouGo")).toBe(
+      lastSegment,
+    );
   });
 
   it("moves from the balance to the usage records through the section link", async () => {
