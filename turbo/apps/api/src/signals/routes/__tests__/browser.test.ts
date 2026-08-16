@@ -37,14 +37,14 @@ import {
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
-import { zeroBrowserRoutes } from "../zero-browser";
-import { zeroBrowserAuthorizationRoutes } from "../zero-browser-authorization";
+import { browserRoutes } from "../browser";
+import { browserAuthorizationRoutes } from "../browser-authorization";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroChatThreadComputerUseHostRoutes } from "../zero-chat-threads-computer-use-host";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...zeroBrowserAuthorizationRoutes,
-  ...zeroBrowserRoutes,
+  ...browserAuthorizationRoutes,
+  ...browserRoutes,
   ...zeroChatThreadRoutes,
 ]);
 
@@ -83,11 +83,11 @@ function isoAt(offsetMs: number): string {
 }
 
 function client() {
-  return setupApp({ context, routes: zeroBrowserRoutes })(zeroBrowserContract);
+  return setupApp({ context, routes: browserRoutes })(zeroBrowserContract);
 }
 
 function authorizationClient() {
-  return setupApp({ context, routes: zeroBrowserAuthorizationRoutes })(
+  return setupApp({ context, routes: browserAuthorizationRoutes })(
     zeroBrowserAuthorizationRequestsContract,
   );
 }
