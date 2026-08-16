@@ -126,6 +126,11 @@ const USAGE_PACK_PLANS = [
   },
 ] as const satisfies readonly UsagePackPlan[];
 
+const USAGE_PACK_PRIMARY_ACTION_CLASS =
+  "bg-yellow-400 text-yellow-950 hover:bg-yellow-500 active:bg-yellow-600 focus-visible:ring-yellow-500/40 dark:bg-yellow-400 dark:text-yellow-950 dark:hover:bg-yellow-300 dark:active:bg-yellow-500";
+const USAGE_PACK_NOTICE_CLASS =
+  "border border-yellow-200/70 bg-yellow-50/70 text-yellow-800 dark:border-yellow-400/20 dark:bg-yellow-400/10 dark:text-yellow-200";
+
 function usagePackPlan(tier: UsagePackPlanTier): UsagePackPlan {
   return tier === "pro" ? USAGE_PACK_PLANS[0] : USAGE_PACK_PLANS[1];
 }
@@ -592,7 +597,7 @@ function MemberUsageRow({
           </SelectContent>
         </Select>
         {downgradeSummary && (
-          <p className="mt-1 truncate text-sm font-medium text-amber-600 dark:text-amber-300">
+          <p className="mt-1 truncate text-sm font-medium text-yellow-700 dark:text-yellow-300">
             {downgradeSummary}
           </p>
         )}
@@ -939,7 +944,9 @@ function PlanSelectionCard({
         <Button
           type="button"
           variant={plan.popular ? "default" : "outline"}
-          className="h-10 w-full text-sm font-medium"
+          className={`h-10 w-full text-sm font-medium ${
+            plan.popular ? USAGE_PACK_PRIMARY_ACTION_CLASS : ""
+          }`}
           disabled={action === "disabled" || busy}
           onClick={onAction}
         >
@@ -1184,7 +1191,7 @@ function OrderSummary({
         <p className="text-sm text-destructive">{checkoutError}</p>
       )}
       <Button
-        className="h-10 w-full text-sm font-medium"
+        className={`h-10 w-full text-sm font-medium ${USAGE_PACK_PRIMARY_ACTION_CLASS}`}
         disabled={checkoutDisabled || checkoutLoading}
         onClick={onCheckout}
       >
@@ -1796,7 +1803,9 @@ function SubscriptionChangeNotice({
   readonly effectiveAt: string;
 }) {
   return (
-    <div className="mt-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-sm leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
+    <div
+      className={`mt-3 rounded-lg px-3 py-2 text-sm leading-relaxed ${USAGE_PACK_NOTICE_CLASS}`}
+    >
       <p>{description}</p>
       <p className="mt-1 font-medium">
         {i18n.t(
@@ -1822,14 +1831,16 @@ function ScheduledUsagePackDowngradeNotice({
     <div
       role="status"
       aria-label={title}
-      className="flex items-center gap-3 rounded-xl bg-gray-50 p-3"
+      className={`flex items-center gap-3 rounded-xl p-3 ${USAGE_PACK_NOTICE_CLASS}`}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-card text-muted-foreground">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-yellow-100/80 text-yellow-700 dark:bg-yellow-400/15 dark:text-yellow-300">
         <CalendarDays aria-hidden="true" className="size-4" />
       </span>
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        <p className="mt-0.5 text-sm leading-snug text-muted-foreground">
+        <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-100">
+          {title}
+        </p>
+        <p className="mt-0.5 text-sm leading-snug text-yellow-800 dark:text-yellow-200">
           {i18n.t(
             ($) => {
               return $.billing.plans.usagePacks.management
@@ -1956,7 +1967,7 @@ function PackageReviewStep({
         {error && <p className="text-xs text-destructive">{error}</p>}
         <Button
           type="button"
-          className="h-10 w-full text-sm font-medium"
+          className={`h-10 w-full text-sm font-medium ${USAGE_PACK_PRIMARY_ACTION_CLASS}`}
           disabled={confirming}
           onClick={() => {
             detach(submitChange(), Reason.DomCallback);
@@ -2226,6 +2237,7 @@ function ManagedSubscriptionOrderSummary({
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
+      className={scheduledDowngradeEffectiveAt ? "pb-5" : undefined}
     >
       {scheduledDowngradeEffectiveAt ? (
         <ScheduledUsagePackDowngradeNotice
@@ -2254,7 +2266,7 @@ function ManagedSubscriptionOrderSummary({
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button
             type="button"
-            className="h-10 w-full text-sm font-medium"
+            className={`h-10 w-full text-sm font-medium ${USAGE_PACK_PRIMARY_ACTION_CLASS}`}
             disabled={
               !members ||
               (hasPendingChange && !hasScheduledDowngrade) ||
@@ -2420,7 +2432,7 @@ function MigrationOrderSummary({
       )}
       <Button
         type="button"
-        className="mt-4 h-10 w-full text-sm font-medium"
+        className={`mt-4 h-10 w-full text-sm font-medium ${USAGE_PACK_PRIMARY_ACTION_CLASS}`}
         disabled={!members || previewing}
         onClick={() => {
           if (!members) {
@@ -2514,7 +2526,7 @@ function MigrationRevisionOrderSummary({
       )}
       <Button
         type="button"
-        className="mt-4 h-10 w-full text-sm font-medium"
+        className={`mt-4 h-10 w-full text-sm font-medium ${USAGE_PACK_PRIMARY_ACTION_CLASS}`}
         disabled={!hasConfigurationChange || previewing}
         onClick={() => {
           if (!members) {
@@ -2607,6 +2619,7 @@ function MigrationReviewDialog({
             })}
           </Button>
           <Button
+            className={USAGE_PACK_PRIMARY_ACTION_CLASS}
             disabled={confirming}
             onClick={() => {
               detach(handleConfirm(), Reason.DomCallback);
@@ -2701,6 +2714,7 @@ function MigrationRevisionReviewDialog({
             })}
           </Button>
           <Button
+            className={USAGE_PACK_PRIMARY_ACTION_CLASS}
             disabled={confirming || !members}
             onClick={() => {
               detach(handleConfirm(), Reason.DomCallback);
