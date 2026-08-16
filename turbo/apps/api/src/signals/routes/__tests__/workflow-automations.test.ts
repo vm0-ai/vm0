@@ -3342,7 +3342,10 @@ describe("okou workflow automations", () => {
       }),
       [201],
     );
-    await bdd.deleteAgent(agentScenario.actor, agentScenario.agentId);
+    await bdd.deleteVersionFreeAgent(
+      agentScenario.actor,
+      agentScenario.agentId,
+    );
     expect(watch.calls).toBe(2);
     expect(stop.calls).toBe(2);
   });

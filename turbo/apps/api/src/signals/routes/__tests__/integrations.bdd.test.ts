@@ -3425,7 +3425,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!status.defaultAgentId) {
       throw new Error("Expected onboarding to configure a default agent");
     }
-    await bdd.deleteAgent(onboarded, status.defaultAgentId);
+    await bdd.deleteVersionFreeAgent(onboarded, status.defaultAgentId);
     const missingSlackUserId = uniqueSlackUserId();
     const missingInstall = await integrations.installSlackWorkspace(onboarded, {
       installerSlackUserId: missingSlackUserId,

@@ -7,6 +7,7 @@ import {
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { removeAgentLegacyVersionsFixture } from "../../../test-fixtures/agent-deletion";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -242,6 +243,7 @@ describe("POST /api/zero/agents", () => {
     if (!deletedAgentId) {
       throw new Error("Expected a created agent");
     }
+    await removeAgentLegacyVersionsFixture(deletedAgentId);
     const deleteResponse = await accept(
       agentsByIdClient().delete({
         params: { id: deletedAgentId },
