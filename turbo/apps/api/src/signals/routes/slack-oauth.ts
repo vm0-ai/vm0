@@ -121,7 +121,8 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
   const record = parsed as Record<string, unknown>;
   const userId = resolveIntegrationUserId(
     optionalString(record.userId),
-    // Temporary reader for state emitted before the Switch deployment.
+    // Old web/app OAuth state fallback (observed maximum: ~2 days).
+    // Remove in #27602 after legacy producers and callbacks have drained.
     optionalString(record.vm0UserId),
   );
   if (!userId.ok) {

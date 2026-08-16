@@ -27,7 +27,9 @@ export const teamsOrgConnections = pgTable(
         return teamsOrgInstallations.teamsTenantId;
       }),
     userId: text("user_id").notNull(),
-    // Temporary compatibility field; remove in #27602 after the Contract gate.
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
     legacyUserId: text("vm0_user_id").notNull(),
     teamsUserDisplayName: varchar("teams_user_display_name", { length: 255 }),
     teamsUserPrincipalName: varchar("teams_user_principal_name", {

@@ -482,7 +482,8 @@ export function parseGithubOauthState(
 
   const userId = resolveIntegrationUserId(
     typeof stateObject.userId === "string" ? stateObject.userId : null,
-    // Temporary reader for state emitted before the Switch deployment.
+    // Old web/app OAuth state fallback (observed maximum: ~2 days).
+    // Remove in #27602 after legacy producers and callbacks have drained.
     typeof stateObject.vm0UserId === "string" ? stateObject.vm0UserId : null,
   );
   if (!userId.ok) {
@@ -521,6 +522,8 @@ export async function isGithubOauthStateSignatureValid(args: {
     return false;
   }
 
+  // Old web/app OAuth signature fallback (observed maximum: ~2 days).
+  // Remove in #27602 after legacy states and callbacks have drained.
   const legacyExpectedSig = await createLegacyGithubOauthStateSignature({
     userId: args.state.userId,
     composeId: args.state.composeId,

@@ -6,8 +6,9 @@ type IntegrationUserIdResolution =
  * Resolves the canonical and legacy integration-owner keys without allowing
  * conflicting identities to cross an OAuth boundary.
  *
- * Remove in #27602 only after the switched production API, previous API
- * version, and all in-flight OAuth/query/state payloads have drained.
+ * Old web/app OAuth inputs have an observed maximum exposure of ~2 days.
+ * Remove in #27602 only after the switched API is healthy, the previous API
+ * version has drained, and legacy query/state inputs are no longer required.
  */
 export function resolveIntegrationUserId(
   userId: string | null | undefined,

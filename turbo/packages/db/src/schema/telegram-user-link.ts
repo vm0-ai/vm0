@@ -30,7 +30,9 @@ export const telegramUserLinks = pgTable(
         { onDelete: "cascade" },
       ),
     userId: text("user_id").notNull(),
-    // Temporary compatibility field; remove in #27602 after the Contract gate.
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
     legacyUserId: text("vm0_user_id").notNull(),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

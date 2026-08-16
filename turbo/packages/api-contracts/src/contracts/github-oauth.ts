@@ -9,7 +9,8 @@ const jsonErrorSchema = z.object({ error: z.string() });
 
 export const githubOauthInstallQuerySchema = z.object({
   userId: z.string().optional(),
-  // Remove in #27602 after the switched API and in-flight OAuth inputs drain.
+  // Old web/app OAuth fallback (observed maximum: ~2 days).
+  // Remove in #27602 after legacy query inputs have drained.
   vm0UserId: z.string().optional(),
   orgId: z.string().optional(),
   composeId: z.string().optional(),

@@ -25,7 +25,9 @@ export const feishuOrgConnections = pgTable(
       ),
     feishuOpenId: varchar("feishu_open_id", { length: 255 }).notNull(),
     userId: text("user_id").notNull(),
-    // Temporary compatibility field; remove in #27602 after the Contract gate.
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
     legacyUserId: text("vm0_user_id").notNull(),
     feishuUserName: varchar("feishu_user_name", { length: 255 }),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
