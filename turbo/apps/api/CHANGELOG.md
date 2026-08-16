@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.451.10](https://github.com/vm0-ai/vm0/compare/api-v1.451.9...api-v1.451.10) (2026-08-16)
+
+
+### Bug Fixes
+
+* **api:** reconcile request parameters with the enforced run video model ([#27610](https://github.com/vm0-ai/vm0/issues/27610)) ([234171f](https://github.com/vm0-ai/vm0/commit/234171f129f3b4de2633597d1203fa8902ae0a12)), closes [#26765](https://github.com/vm0-ai/vm0/issues/26765)
+
+
+### Refactoring
+
+* **api:** remove chat search identity fallbacks ([#27611](https://github.com/vm0-ai/vm0/issues/27611)) ([ae20072](https://github.com/vm0-ai/vm0/commit/ae200726ce6fe7a0e2b970844a695c59b1aacab3))
+* **compose:** retain versions through provenance cleanup ([#27609](https://github.com/vm0-ai/vm0/issues/27609)) ([d12f153](https://github.com/vm0-ai/vm0/commit/d12f1536ba7252a482ee6fb71b9094d2b02ea108))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.9
+    * @okouai/core bumped to 8.562.6
+    * @okouai/db bumped to 1.200.9
+
 ## [1.451.9](https://github.com/vm0-ai/vm0/compare/api-v1.451.8...api-v1.451.9) (2026-08-16)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.168.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.18...runner-rs-v0.168.19) (2026-08-16)
+
+
+### Performance Improvements
+
+* **runner:** expose physical park substage telemetry ([#27561](https://github.com/vm0-ai/vm0/issues/27561)) ([98c8737](https://github.com/vm0-ai/vm0/commit/98c873732d2d71f0840561dfcb2931751c31a037))
+
 ## [0.168.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.17...runner-rs-v0.168.18) (2026-08-16)
 
 

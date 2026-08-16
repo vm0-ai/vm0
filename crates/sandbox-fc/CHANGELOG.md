@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.221](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.220...sandbox-fc-v0.37.221) (2026-08-16)
+
+
+### Performance Improvements
+
+* **runner:** expose physical park substage telemetry ([#27561](https://github.com/vm0-ai/vm0/issues/27561)) ([98c8737](https://github.com/vm0-ai/vm0/commit/98c873732d2d71f0840561dfcb2931751c31a037))
+
 ## [0.37.220](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.219...sandbox-fc-v0.37.220) (2026-08-16)
 
 
