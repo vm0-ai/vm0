@@ -1744,6 +1744,8 @@ describe("legacy subscription usage pack migration", () => {
   }
 
   interface MigrationStripeController {
+    readonly discountId: string | null;
+    readonly scheduleId: string;
     readonly invoice: () => object;
     readonly cancelSubscription: () => MigrationSubscriptionMock;
     readonly cancelSchedule: () => void;
@@ -1760,6 +1762,7 @@ describe("legacy subscription usage pack migration", () => {
     readonly pending_update: null;
     readonly latest_invoice: string | null;
     readonly metadata: Readonly<Record<string, string>>;
+    readonly discounts: readonly string[];
     readonly items: {
       readonly data: readonly {
         readonly id: string;
@@ -1799,24 +1802,40 @@ describe("legacy subscription usage pack migration", () => {
   }
 
   function migrationPreviewItems(value: unknown): readonly unknown[] {
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      !("subscription_details" in value)
-    ) {
-      throw new Error("Expected migration subscription preview details");
+    if (typeof value !== "object" || value === null) {
+      throw new Error("Expected migration preview details");
     }
-    const details = value.subscription_details;
-    if (
-      typeof details !== "object" ||
-      details === null ||
-      !("items" in details) ||
-      !Array.isArray(details.items)
-    ) {
-      throw new Error("Expected migration subscription preview items");
+    if ("subscription_details" in value) {
+      const details = value.subscription_details;
+      if (
+        typeof details === "object" &&
+        details !== null &&
+        "items" in details &&
+        Array.isArray(details.items)
+      ) {
+        return details.items;
+      }
     }
-    const items: readonly unknown[] = details.items;
-    return items;
+    if ("schedule_details" in value) {
+      const details = value.schedule_details;
+      if (
+        typeof details === "object" &&
+        details !== null &&
+        "phases" in details &&
+        Array.isArray(details.phases)
+      ) {
+        const phase: unknown = details.phases.at(-1);
+        if (
+          typeof phase === "object" &&
+          phase !== null &&
+          "items" in phase &&
+          Array.isArray(phase.items)
+        ) {
+          return phase.items;
+        }
+      }
+    }
+    throw new Error("Expected migration preview items");
   }
 
   function migrationPreviewPriceIds(value: unknown): readonly string[] {
@@ -1831,6 +1850,149 @@ describe("legacy subscription usage pack migration", () => {
       }
       return [item.price];
     });
+  }
+
+  function migrationRecurringPreviewInvoice(
+    value: unknown,
+    effectiveAt: number,
+    amountDue: number,
+    discountAmount = 0,
+  ): object {
+    const items = migrationPreviewItems(value).flatMap((item) => {
+      if (
+        typeof item !== "object" ||
+        item === null ||
+        !("price" in item) ||
+        typeof item.price !== "string"
+      ) {
+        return [];
+      }
+      const quantity =
+        "quantity" in item && typeof item.quantity === "number"
+          ? item.quantity
+          : 1;
+      return [{ price: item.price, quantity }];
+    });
+    const scheduled =
+      typeof value === "object" &&
+      value !== null &&
+      "schedule_details" in value;
+    const firstItem = items.at(0);
+    const noiseLines =
+      scheduled && firstItem
+        ? [
+            {
+              id: "il_migration_pending_item",
+              amount: 9000,
+              quantity: firstItem.quantity,
+              pricing: { price_details: { price: firstItem.price } },
+              taxes: [],
+              period: {
+                start: effectiveAt,
+                end: effectiveAt + 30 * 86_400,
+              },
+              parent: {
+                type: "invoice_item_details",
+                invoice_item_details: { proration: false },
+              },
+            },
+            {
+              id: "il_migration_proration",
+              amount: 8000,
+              quantity: firstItem.quantity,
+              pricing: { price_details: { price: firstItem.price } },
+              taxes: [],
+              period: {
+                start: effectiveAt,
+                end: effectiveAt + 30 * 86_400,
+              },
+              parent: {
+                type: "subscription_item_details",
+                subscription_item_details: { proration: true },
+              },
+            },
+            {
+              id: "il_migration_current_phase",
+              amount: 7000,
+              quantity: firstItem.quantity,
+              pricing: { price_details: { price: firstItem.price } },
+              taxes: [],
+              period: {
+                start: effectiveAt - 30 * 86_400,
+                end: effectiveAt,
+              },
+              parent: {
+                type: "subscription_item_details",
+                subscription_item_details: { proration: false },
+              },
+            },
+            {
+              id: "il_migration_unrelated",
+              amount: 6000,
+              quantity: 1,
+              pricing: {
+                price_details: { price: "price_unrelated_preview_item" },
+              },
+              taxes: [],
+              period: {
+                start: effectiveAt,
+                end: effectiveAt + 30 * 86_400,
+              },
+              parent: {
+                type: "subscription_item_details",
+                subscription_item_details: { proration: false },
+              },
+            },
+          ]
+        : [];
+    const noiseAmount = noiseLines.reduce((total, line) => {
+      return total + line.amount;
+    }, 0);
+    return {
+      id: `in_migration_preview_${randomUUID()}`,
+      amount_due: amountDue + noiseAmount,
+      currency: "usd",
+      lines: {
+        has_more: false,
+        data: [
+          ...noiseLines,
+          ...items.map((item, index) => {
+            const exclusiveTaxAmount = index === 0 && scheduled ? 100 : 0;
+            const appliedDiscountAmount = index === 0 ? discountAmount : 0;
+            return {
+              id: `il_migration_preview_${index}`,
+              amount:
+                index === 0
+                  ? amountDue - exclusiveTaxAmount + appliedDiscountAmount
+                  : 0,
+              discount_amounts:
+                appliedDiscountAmount > 0
+                  ? [{ amount: appliedDiscountAmount }]
+                  : [],
+              quantity: item.quantity,
+              pricing: { price_details: { price: item.price } },
+              taxes:
+                exclusiveTaxAmount > 0
+                  ? [
+                      {
+                        amount: exclusiveTaxAmount,
+                        tax_behavior: "exclusive",
+                      },
+                    ]
+                  : [],
+              period: {
+                start: effectiveAt,
+                end: effectiveAt + 30 * 86_400,
+              },
+              parent: {
+                type: "subscription_item_details",
+                subscription_item_details: { proration: false },
+              },
+            };
+          }),
+        ],
+      },
+    };
   }
 
   function paidMigrationTimestamp(): number | null {
@@ -1931,6 +2093,7 @@ describe("legacy subscription usage pack migration", () => {
 
   function legacyMigrationSubscription(
     fixture: LegacyMigrationFixture,
+    discounts: readonly string[] = [],
   ): MigrationSubscriptionMock {
     return {
       id: fixture.subscriptionId,
@@ -1942,6 +2105,7 @@ describe("legacy subscription usage pack migration", () => {
       pending_update: null,
       latest_invoice: null,
       metadata: { orgId: fixture.orgId },
+      discounts,
       items: {
         data: [
           {
@@ -1966,6 +2130,7 @@ describe("legacy subscription usage pack migration", () => {
     readonly currentRecurringAmountCents: number;
     readonly amountDueCents: number;
     readonly amountPaidCents: number;
+    readonly discountAmountCents?: number;
   }): MigrationStripeController {
     const targetTier = args.targetTier ?? args.fixture.tier;
     const planPriceId =
@@ -1975,6 +2140,10 @@ describe("legacy subscription usage pack migration", () => {
     const invoiceId = `in_migration_${randomUUID()}`;
     const paymentIntentId = `pi_migration_${randomUUID()}`;
     const scheduleId = `sub_sched_migration_${randomUUID()}`;
+    const discountId = args.discountAmountCents
+      ? `di_migration_${randomUUID()}`
+      : null;
+    const discounts = discountId ? [discountId] : [];
     const packageLineAmount = 2000 * args.packageQuantity;
     const renewedPeriod = {
       start: args.fixture.period.end,
@@ -2061,7 +2230,7 @@ describe("legacy subscription usage pack migration", () => {
     };
     const appliedSubscription = (): MigrationSubscriptionMock => {
       return {
-        ...legacyMigrationSubscription(args.fixture),
+        ...legacyMigrationSubscription(args.fixture, discounts),
         schedule: scheduleId,
         latest_invoice: invoiceId,
         items: {
@@ -2093,6 +2262,7 @@ describe("legacy subscription usage pack migration", () => {
     let invoice = paidInvoice();
     let subscription: MigrationSubscriptionMock = legacyMigrationSubscription(
       args.fixture,
+      discounts,
     );
     const syncRetrievalMocks = () => {
       context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
@@ -2102,6 +2272,16 @@ describe("legacy subscription usage pack migration", () => {
     };
     syncRetrievalMocks();
     context.mocks.stripe.invoices.createPreview.mockImplementation((params) => {
+      if (
+        subscription.schedule &&
+        typeof params === "object" &&
+        params !== null &&
+        "subscription_details" in params
+      ) {
+        throw new Error(
+          "Scheduled migration previews must use schedule details",
+        );
+      }
       const targetPreview = migrationPreviewItems(params).some((item) => {
         return (
           typeof item === "object" &&
@@ -2110,12 +2290,17 @@ describe("legacy subscription usage pack migration", () => {
           item.price === planPriceId
         );
       });
-      return Promise.resolve({
-        amount_due: targetPreview
-          ? args.amountDueCents
-          : args.currentRecurringAmountCents,
-        currency: "usd",
-      });
+      const amountDue = targetPreview
+        ? args.amountDueCents
+        : args.currentRecurringAmountCents;
+      return Promise.resolve(
+        migrationRecurringPreviewInvoice(
+          params,
+          args.fixture.period.end,
+          amountDue,
+          args.discountAmountCents,
+        ),
+      );
     });
     context.mocks.stripe.subscriptionSchedules.create.mockImplementation(() => {
       subscription = { ...subscription, schedule: scheduleId };
@@ -2146,6 +2331,8 @@ describe("legacy subscription usage pack migration", () => {
       },
     );
     return {
+      discountId,
+      scheduleId,
       invoice: () => {
         return invoice;
       },
@@ -2165,7 +2352,7 @@ describe("legacy subscription usage pack migration", () => {
       },
       cancelSchedule: () => {
         invoice = { ...openInvoice(), status: "void" };
-        subscription = legacyMigrationSubscription(args.fixture);
+        subscription = legacyMigrationSubscription(args.fixture, discounts);
         syncRetrievalMocks();
       },
     };
@@ -2545,16 +2732,17 @@ describe("legacy subscription usage pack migration", () => {
     expect(delayedState.grants).toHaveLength(2);
   });
 
-  it("revises a scheduled migration and exposes its current configuration", async () => {
+  it("revises a discounted scheduled migration and exposes its configuration", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
     await enableMigration(fixture);
-    mockMigrationStripe({
+    const stripe = mockMigrationStripe({
       fixture,
       targetTier: "team",
       packageQuantity: 1,
       currentRecurringAmountCents: 2000,
       amountDueCents: 18_000,
       amountPaidCents: 18_000,
+      discountAmountCents: 3000,
     });
     const preview = await previewMigration(fixture, "team");
     await accept(
@@ -2583,10 +2771,17 @@ describe("legacy subscription usage pack migration", () => {
 
     context.mocks.stripe.invoices.createPreview.mockImplementation((params) => {
       const priceIds = migrationPreviewPriceIds(params);
-      return Promise.resolve({
-        amount_due: priceIds.includes(TEST_PRICE_USAGE_PACK_50) ? 7000 : 18_000,
-        currency: "usd",
-      });
+      const amountDue = priceIds.includes(TEST_PRICE_USAGE_PACK_50)
+        ? 21_000
+        : 18_000;
+      return Promise.resolve(
+        migrationRecurringPreviewInvoice(
+          params,
+          fixture.period.end,
+          amountDue,
+          3000,
+        ),
+      );
     });
     context.mocks.stripe.subscriptionSchedules.update.mockClear();
     const memberUsagePacks = [
@@ -2595,7 +2790,7 @@ describe("legacy subscription usage pack migration", () => {
     const revisionPreview = await accept(
       migrationClient().previewRevision({
         params: { migrationId: preview.migrationId },
-        body: { targetTier: "pro", memberUsagePacks },
+        body: { targetTier: "team", memberUsagePacks },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -2603,25 +2798,45 @@ describe("legacy subscription usage pack migration", () => {
     expect(revisionPreview.body).toMatchObject({
       migrationId: preview.migrationId,
       tier: "team",
-      targetTier: "pro",
+      targetTier: "team",
       currentRecurringAmountCents: 18_000,
-      nextRecurringAmountCents: 7000,
-      recurringDifferenceCents: -11_000,
+      nextRecurringAmountCents: 21_000,
+      recurringDifferenceCents: 3000,
       purchasedCredits: 50_000,
       bonusCredits: 2600,
       totalCredits: 52_600,
     });
-    expect(
-      context.mocks.stripe.invoices.createPreview,
-    ).toHaveBeenLastCalledWith(
-      expect.objectContaining({ subscription: fixture.subscriptionId }),
-    );
+    const revisionPreviewParams =
+      context.mocks.stripe.invoices.createPreview.mock.calls.at(-1)?.at(0);
+    expect(stripe.discountId).not.toBeNull();
+    expect(revisionPreviewParams).toMatchObject({
+      schedule: stripe.scheduleId,
+      preview_mode: "next",
+      schedule_details: {
+        end_behavior: "release",
+        proration_behavior: "none",
+        phases: [
+          expect.objectContaining({
+            discounts: [{ discount: stripe.discountId }],
+          }),
+          expect.objectContaining({
+            discounts: [{ discount: stripe.discountId }],
+            items: expect.arrayContaining([
+              { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
+              { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },
+            ]),
+          }),
+        ],
+      },
+    });
+    expect(revisionPreviewParams).not.toHaveProperty("subscription");
+    expect(revisionPreviewParams).not.toHaveProperty("subscription_details");
 
     const confirmation = await accept(
       migrationClient().confirmRevision({
         params: { migrationId: preview.migrationId },
         body: {
-          targetTier: "pro",
+          targetTier: "team",
           memberUsagePacks,
           previewToken: revisionPreview.body.previewToken,
         },
@@ -2636,10 +2851,13 @@ describe("legacy subscription usage pack migration", () => {
       expect.any(String),
       expect.objectContaining({
         phases: [
-          expect.any(Object),
           expect.objectContaining({
+            discounts: [{ discount: stripe.discountId }],
+          }),
+          expect.objectContaining({
+            discounts: [{ discount: stripe.discountId }],
             items: expect.arrayContaining([
-              { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
+              { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
               { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },
             ]),
           }),
@@ -2659,7 +2877,7 @@ describe("legacy subscription usage pack migration", () => {
       migrationClient().confirmRevision({
         params: { migrationId: preview.migrationId },
         body: {
-          targetTier: "pro",
+          targetTier: "team",
           memberUsagePacks,
           previewToken: revisionPreview.body.previewToken,
         },
@@ -2679,11 +2897,11 @@ describe("legacy subscription usage pack migration", () => {
     );
     expect(revised.body).toMatchObject({
       status: "scheduled",
-      targetTier: "pro",
+      targetTier: "team",
       configuration: {
-        tier: "pro",
+        tier: "team",
         memberUsagePacks,
-        recurringAmountCents: 7000,
+        recurringAmountCents: 21_000,
         currency: "usd",
       },
     });
@@ -2713,7 +2931,9 @@ describe("legacy subscription usage pack migration", () => {
       const amountDue = priceIds.includes(TEST_PRICE_USAGE_PACK_100)
         ? 28_000
         : 7000;
-      return Promise.resolve({ amount_due: amountDue, currency: "usd" });
+      return Promise.resolve(
+        migrationRecurringPreviewInvoice(params, fixture.period.end, amountDue),
+      );
     });
     const firstMemberUsagePacks = [
       { memberId: fixture.userId, usagePackUsd: 50 as const },

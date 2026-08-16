@@ -235,6 +235,7 @@ export interface StripeCreditNoteParams {
 export interface StripeInvoiceLine {
   readonly id?: string;
   readonly amount: number;
+  readonly discount_amounts?: readonly { readonly amount: number }[] | null;
   readonly subtotal?: number | null;
   readonly metadata?: Record<string, string> | null;
   readonly quantity?: number | null;

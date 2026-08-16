@@ -26,6 +26,7 @@ import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
   getStripeClient,
+  type StripeClient,
   type StripeInvoice,
   type StripeInvoiceLine,
   type StripePriceRecurring,
@@ -59,6 +60,7 @@ import {
 
 const PREVIEW_TTL_MS = 30 * 60 * 1000;
 const RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
+const STRIPE_INVOICE_LINE_PAGE_SIZE = 100;
 const OPEN_MIGRATION_STATUSES = [
   "previewed",
   "applying",
@@ -198,6 +200,119 @@ function safeInvoiceAmount(invoice: StripeInvoice, label: string): number {
     throw new Error(`Stripe ${label} migration preview has an invalid amount`);
   }
   return invoice.amount_due;
+}
+
+function migrationInvoiceLinePriceId(line: StripeInvoiceLine): string | null {
+  const price = line.pricing?.price_details?.price;
+  return typeof price === "string" ? price : (price?.id ?? null);
+}
+
+function migrationInvoiceLineAmountWithTax(line: StripeInvoiceLine): number {
+  const discountAmount = (line.discount_amounts ?? []).reduce(
+    (total, discount) => {
+      return total + discount.amount;
+    },
+    0,
+  );
+  const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
+    return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
+  }, 0);
+  const amount = line.amount - discountAmount + exclusiveTax;
+  if (!Number.isSafeInteger(amount) || amount < 0) {
+    throw new Error("Stripe migration preview line has an invalid amount");
+  }
+  return amount;
+}
+
+async function listCompleteMigrationPreviewLines(
+  stripe: StripeClient,
+  invoice: StripeInvoice,
+  signal: AbortSignal,
+): Promise<readonly StripeInvoiceLine[]> {
+  if (!invoice.lines.has_more) {
+    return invoice.lines.data;
+  }
+  const lines: StripeInvoiceLine[] = [];
+  let startingAfter: string | undefined;
+  while (true) {
+    const page = await stripe.invoices.listLineItems(invoice.id, {
+      limit: STRIPE_INVOICE_LINE_PAGE_SIZE,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    signal.throwIfAborted();
+    lines.push(...page.data);
+    if (!page.has_more) {
+      return lines;
+    }
+    const last = page.data.at(-1);
+    if (!last?.id) {
+      throw new Error(
+        `Stripe invoice ${invoice.id} returned an incomplete line-item page`,
+      );
+    }
+    startingAfter = last.id;
+  }
+}
+
+function migrationItemQuantities(
+  items: readonly StripeSchedulePhaseItemParam[],
+): ReadonlyMap<string, number> {
+  const quantities = new Map<string, number>();
+  for (const item of items) {
+    const quantity = item.quantity ?? 1;
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
+      throw new Error("Stripe migration schedule item has an invalid quantity");
+    }
+    quantities.set(item.price, (quantities.get(item.price) ?? 0) + quantity);
+  }
+  return quantities;
+}
+
+function migrationFutureRecurringAmount(
+  invoice: StripeInvoice,
+  lines: readonly StripeInvoiceLine[],
+  effectiveAt: number,
+  items: readonly StripeSchedulePhaseItemParam[],
+): number {
+  const expectedQuantities = migrationItemQuantities(items);
+  const actualQuantities = new Map<string, number>();
+  let amount = 0;
+  for (const line of lines) {
+    const priceId = migrationInvoiceLinePriceId(line);
+    if (
+      line.parent?.type !== "subscription_item_details" ||
+      line.parent.subscription_item_details?.proration !== false ||
+      line.period.start !== effectiveAt ||
+      line.period.end <= effectiveAt ||
+      priceId === null ||
+      !expectedQuantities.has(priceId)
+    ) {
+      continue;
+    }
+    const quantity = line.quantity ?? 1;
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
+      throw new Error("Stripe migration preview line has an invalid quantity");
+    }
+    actualQuantities.set(
+      priceId,
+      (actualQuantities.get(priceId) ?? 0) + quantity,
+    );
+    amount += migrationInvoiceLineAmountWithTax(line);
+  }
+  const hasExactItems = [...expectedQuantities].every(([priceId, quantity]) => {
+    return actualQuantities.get(priceId) === quantity;
+  });
+  if (
+    invoice.currency.length !== 3 ||
+    !hasExactItems ||
+    !Number.isSafeInteger(amount) ||
+    amount < 0
+  ) {
+    throw new Error(
+      "Stripe migration future recurring preview has an invalid amount",
+    );
+  }
+  return amount;
 }
 
 function migrationOwnerId(owner: UsagePackMigrationOwner): string {
@@ -940,6 +1055,12 @@ interface PreparedMigrationRevision {
   readonly expiresAt: Date;
 }
 
+interface MigrationScheduleConfiguration {
+  readonly end_behavior: "release";
+  readonly proration_behavior: "none";
+  readonly phases: StripeSchedulePhaseParam[];
+}
+
 type PrepareMigrationRevisionResult =
   | { readonly status: "ready"; readonly prepared: PreparedMigrationRevision }
   | { readonly status: "not_found" }
@@ -1013,37 +1134,48 @@ async function prepareMigrationRevision(
       `${args.targetTier} usage pack plan Price is not configured`,
     );
   }
-  const subscription = await getStripeClient().subscriptions.retrieve(
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(
     stored.migration.stripeSubscriptionId,
   );
   signal.throwIfAborted();
   if (!legacyMigrationShape(stored.migration, subscription)) {
     return { status: "conflict" };
   }
-  const customerId = stripeObjectId(subscription.customer);
-  if (!customerId) {
-    throw new Error(
-      `Legacy subscription ${subscription.id} has no Stripe customer`,
-    );
+  const legacyItem = legacyPlanItem(subscription, stored.migration.sourceTier);
+  if (!legacyItem) {
+    return { status: "conflict" };
   }
-  const targetPreview = await getStripeClient().invoices.createPreview({
-    subscription: subscription.id,
-    preview_mode: "recurring",
-    subscription_details: {
-      items: targetMigrationConfigurationItems(
-        subscription,
-        stripePlanPriceId,
-        desiredSelections,
-      ),
-    },
+  const scheduleDetails = migrationScheduleConfiguration(
+    stored.migration,
+    stripePlanPriceId,
+    desiredSelections,
+    subscription,
+    legacyItem,
+  );
+  const targetItems = scheduleDetails.phases.at(-1)?.items;
+  if (!targetItems) {
+    throw new Error("Stripe migration revision has no future phase");
+  }
+  const targetPreview = await stripe.invoices.createPreview({
+    schedule: stored.migration.stripeScheduleId,
+    preview_mode: "next",
+    schedule_details: scheduleDetails,
   });
   signal.throwIfAborted();
   if (targetPreview.currency !== stored.migration.currency) {
     throw new Error("Stripe migration revision changed currency");
   }
-  const nextRecurringAmountCents = safeInvoiceAmount(
+  const targetLines = await listCompleteMigrationPreviewLines(
+    stripe,
     targetPreview,
-    "revision recurring",
+    signal,
+  );
+  const nextRecurringAmountCents = migrationFutureRecurringAmount(
+    targetPreview,
+    targetLines,
+    Math.floor(stored.migration.effectiveAt.getTime() / 1000),
+    targetItems,
   );
   const recurringDifferenceCents =
     nextRecurringAmountCents - stored.migration.currentRecurringAmountCents;
@@ -2043,6 +2175,45 @@ function targetMigrationConfigurationItems(
   ];
 }
 
+function migrationScheduleConfiguration(
+  migration: MigrationRow,
+  stripePlanPriceId: string,
+  selections: readonly { readonly stripePriceId: string }[],
+  subscription: StripeSubscription,
+  legacyItem: StripeSubscriptionItem,
+): MigrationScheduleConfiguration {
+  const period = migrationPeriod(legacyItem);
+  const discounts = migrationPhaseDiscounts(subscription);
+  return {
+    end_behavior: "release",
+    proration_behavior: "none",
+    phases: [
+      migrationPhaseWithDiscounts(
+        {
+          start_date: period.start,
+          end_date: period.end,
+          items: migrationPhaseItems(subscription),
+          proration_behavior: "none",
+        },
+        discounts,
+      ),
+      migrationPhaseWithDiscounts(
+        {
+          start_date: period.end,
+          duration: migrationRecurringDuration(legacyItem),
+          items: targetMigrationConfigurationItems(
+            subscription,
+            stripePlanPriceId,
+            selections,
+          ),
+          proration_behavior: "none",
+        },
+        discounts,
+      ),
+    ],
+  };
+}
+
 function scheduledMigrationResponse(
   migration: MigrationRow,
 ): UsagePackMigrationConfirmResponse {
@@ -2085,45 +2256,19 @@ async function scheduleMigration(
   if (attachedScheduleId && attachedScheduleId !== scheduleId) {
     throw new Error(`Legacy subscription ${subscription.id} schedule changed`);
   }
-  const period = migrationPeriod(legacyItem);
-  const discounts = migrationPhaseDiscounts(subscription);
-  await stripe.subscriptionSchedules.update(
-    scheduleId,
-    {
-      end_behavior: "release",
-      proration_behavior: "none",
-      phases: [
-        migrationPhaseWithDiscounts(
-          {
-            start_date: period.start,
-            end_date: period.end,
-            items: migrationPhaseItems(subscription),
-            proration_behavior: "none",
-          },
-          discounts,
-        ),
-        migrationPhaseWithDiscounts(
-          {
-            start_date: period.end,
-            duration: migrationRecurringDuration(legacyItem),
-            items: targetMigrationConfigurationItems(
-              subscription,
-              migration.stripePlanPriceId,
-              selections,
-            ),
-            proration_behavior: "none",
-          },
-          discounts,
-        ),
-      ],
-    },
-    {
-      idempotencyKey:
-        migration.status === "revising"
-          ? `usage-pack-migration:${migration.id}:schedule-revision:${migrationScheduleRevisionHash(migration, selections)}`
-          : `usage-pack-migration:${migration.id}:schedule-update`,
-    },
+  const scheduleConfiguration = migrationScheduleConfiguration(
+    migration,
+    migration.stripePlanPriceId,
+    selections,
+    subscription,
+    legacyItem,
   );
+  await stripe.subscriptionSchedules.update(scheduleId, scheduleConfiguration, {
+    idempotencyKey:
+      migration.status === "revising"
+        ? `usage-pack-migration:${migration.id}:schedule-revision:${migrationScheduleRevisionHash(migration, selections)}`
+        : `usage-pack-migration:${migration.id}:schedule-update`,
+  });
   signal?.throwIfAborted();
   const updatedAt = nowDate();
   const [scheduled] = await db
