@@ -3511,6 +3511,24 @@ mod tests {
             .count()
     }
 
+    #[test]
+    fn count_bucket_outcome_uses_stable_ranges() {
+        for (count, expected) in [
+            (0, "0"),
+            (1, "1"),
+            (2, "2"),
+            (3, "3_4"),
+            (4, "3_4"),
+            (5, "5_8"),
+            (8, "5_8"),
+            (9, "9_16"),
+            (16, "9_16"),
+            (17, "17_plus"),
+        ] {
+            assert_eq!(count_bucket_outcome(count), expected);
+        }
+    }
+
     fn op_duration_ms(ops: &[(String, u64, bool, Option<String>)], action_type: &str) -> u64 {
         ops.iter()
             .find(|(key, _, _, _)| key == action_type)
@@ -4910,12 +4928,10 @@ mod tests {
         let mut telemetry = new_telemetry();
 
         let error =
-            match prepare_fresh_archive_delivery(&plan, &home, &admission, &cancel, &mut telemetry)
+            prepare_fresh_archive_delivery(&plan, &home, &admission, &cancel, &mut telemetry)
                 .await
-            {
-                Ok(_) => panic!("invalid lock directory should fail fresh delivery preparation"),
-                Err(error) => error,
-            };
+                .err()
+                .unwrap();
 
         assert!(error.to_string().contains("lock dir"));
         assert_eq!(
