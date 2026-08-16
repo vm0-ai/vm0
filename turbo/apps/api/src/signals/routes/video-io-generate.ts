@@ -475,7 +475,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return acceptedVideoResponse(generationId, realtime);
 });
 
-export const zeroVideoIoGenerateRoutes: readonly RouteEntry[] = [
+export const videoIoGenerateRoutes: readonly RouteEntry[] = [
   {
     route: zeroVideoIoGenerateContract.post,
     handler: authRoute(

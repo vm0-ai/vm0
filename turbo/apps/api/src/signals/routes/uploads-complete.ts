@@ -82,7 +82,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroUploadsCompleteRoutes: readonly RouteEntry[] = [
+export const uploadsCompleteRoutes: readonly RouteEntry[] = [
   {
     route: zeroUploadsContract.complete,
     handler: authRoute({ requiredCapability: "file:write" }, completeInner$),

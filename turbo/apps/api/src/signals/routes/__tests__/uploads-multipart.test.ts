@@ -13,14 +13,14 @@ import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-upload
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroUploadsCompleteRoutes } from "../zero-uploads-complete";
-import { zeroUploadsMultipartRoutes } from "../zero-uploads-multipart";
-import { zeroUploadsPrepareRoutes } from "../zero-uploads-prepare";
+import { uploadsCompleteRoutes } from "../uploads-complete";
+import { uploadsMultipartRoutes } from "../uploads-multipart";
+import { uploadsPrepareRoutes } from "../uploads-prepare";
 
 const zeroUploadsTestRoutes = Object.freeze([
-  ...zeroUploadsCompleteRoutes,
-  ...zeroUploadsMultipartRoutes,
-  ...zeroUploadsPrepareRoutes,
+  ...uploadsCompleteRoutes,
+  ...uploadsMultipartRoutes,
+  ...uploadsPrepareRoutes,
 ]);
 
 const context = testContext();

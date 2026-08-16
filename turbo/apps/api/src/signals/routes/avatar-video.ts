@@ -281,7 +281,7 @@ const getVoicesInner$ = command(async ({ get }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-export const zeroAvatarVideoRoutes: readonly RouteEntry[] = [
+export const avatarVideoRoutes: readonly RouteEntry[] = [
   {
     route: zeroAvatarVideoContract.generate,
     handler: authRoute(

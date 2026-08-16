@@ -61,11 +61,11 @@ import { zeroBillingRestoreRoutes } from "../../zero-billing-restore";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { builtInGenerationRoutes } from "../../built-in-generation";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
-import { zeroImageIoGenerateRoutes } from "../../zero-image-io-generate";
+import { imageIoGenerateRoutes } from "../../image-io-generate";
 import { mapsRoutes } from "../../maps";
 import { zeroUsageMembersRoutes } from "../../zero-usage-members";
 import { usageRecordRoutes } from "../../usage-record";
-import { zeroVideoIoGenerateRoutes } from "../../zero-video-io-generate";
+import { videoIoGenerateRoutes } from "../../video-io-generate";
 import { voiceIoQuotaRoutes } from "../../voice-io-quota";
 import { voiceIoSpeechRoutes } from "../../voice-io-speech";
 import { voiceIoSttRoutes } from "../../voice-io-stt";
@@ -662,7 +662,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly ImageIoStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroImageIoGenerateRoutes })(
+      const client = setupApp({ context, routes: imageIoGenerateRoutes })(
         zeroImageIoGenerateContract,
       );
       return await accept(
@@ -692,7 +692,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly VideoIoStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroVideoIoGenerateRoutes })(
+      const client = setupApp({ context, routes: videoIoGenerateRoutes })(
         zeroVideoIoGenerateContract,
       );
       return await accept(

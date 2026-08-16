@@ -276,7 +276,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return acceptedImageResponse(generationId, realtime);
 });
 
-export const zeroImageIoGenerateRoutes: readonly RouteEntry[] = [
+export const imageIoGenerateRoutes: readonly RouteEntry[] = [
   {
     route: zeroImageIoGenerateContract.post,
     handler: authRoute(
