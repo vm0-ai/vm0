@@ -220,8 +220,6 @@ def observe_model_websocket_client_event(
         )
         _mark_websocket_correlation_ambiguous(flow, state, reason)
         return
-    if event.request_kind == "other":
-        return
     if state.ambiguous:
         return
     if state.pending_intent is not None or state.active_intent is not None:

@@ -121,7 +121,7 @@ _ResponsesEventTypeClassification = Literal[
     "unresolved",
     "pending",
 ]
-_OpenAIResponsesClientRequestKind = Literal["create", "other", "unknown"]
+_OpenAIResponsesClientRequestKind = Literal["create", "unknown"]
 _RESPONSES_EVENT_TERMINAL: _ResponsesEventTypeClassification = "terminal"
 _RESPONSES_EVENT_KNOWN_NON_USAGE: _ResponsesEventTypeClassification = "known_non_usage"
 _RESPONSES_EVENT_UNKNOWN: _ResponsesEventTypeClassification = "unknown"
@@ -242,7 +242,7 @@ def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesCl
     if not type_is_consistent or not isinstance(event_type, str):
         return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
     if event_type != _RESPONSES_CREATE_EVENT:
-        return OpenAIResponsesClientEvent(observed_event_type, False, "other")
+        return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
     if not generate_is_consistent:
         return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
 

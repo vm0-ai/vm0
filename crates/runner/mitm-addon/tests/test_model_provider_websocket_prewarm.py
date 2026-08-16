@@ -438,7 +438,7 @@ class TestModelProviderWebSocketPrewarmUsage:
             )
             feed_websocket_client_message(
                 flow,
-                json.dumps({"type": "response.create", "input": marker}).encode()[:-1],
+                json.dumps({"type": "future.request", "input": marker}).encode(),
             )
             feed_websocket_server_message(flow, _openai_websocket_created_frame("unknown-1"))
             feed_websocket_server_message(
