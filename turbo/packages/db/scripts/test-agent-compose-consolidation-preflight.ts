@@ -56,12 +56,15 @@ const capabilities: PreflightCapabilities = {
 };
 
 const emptyCatalog: Record<CatalogDependencyKind, readonly string[]> = {
-  foreignKeys: [],
-  reviewedNonFk: [],
+  constraints: [],
   defaults: [],
-  indexes: [],
-  triggers: [],
+  foreignKeys: [],
   functions: [],
+  indexes: [],
+  otherDependents: [],
+  reviewedNonFk: [],
+  rewriteDependents: [],
+  triggers: [],
 };
 
 const emptyRepository: RepositoryDependencyManifest = {
@@ -400,6 +403,24 @@ function testVersionHeadRunAndCheckpointClassifications(): void {
     1,
   );
   assert.equal(provenance.versions.provenance.composeNullCreatorNull.count, 1);
+
+  const missingComposeId = "00000000-0000-4000-8000-000000000203";
+  const orphanVersions = [
+    canonicalVersion("orphan-version-one", missingComposeId, true),
+    canonicalVersion("orphan-version-two", missingComposeId, true),
+  ].map((orphanVersion) => {
+    return { ...orphanVersion, composeExists: false };
+  });
+  const orphanCompose = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({ versions: orphanVersions }),
+    classificationOptions(),
+  );
+  gatePresent(orphanCompose, "versions.orphan_compose");
+  assert.deepEqual(
+    orphanCompose.versions.orphanComposeIds,
+    fingerprintSortedSet("versions:orphan-compose-ids", [missingComposeId]),
+  );
 }
 
 function danglingRow(args: {
@@ -642,8 +663,10 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     path.join(os.tmpdir(), "agent-compose-preflight-manifest-"),
   );
   try {
+    const workflowDirectory = path.join(fixtureRoot, ".github/workflows");
     const sourceDirectory = path.join(fixtureRoot, "turbo/apps/api/src");
     const docsDirectory = path.join(fixtureRoot, "turbo/packages/db");
+    await fs.mkdir(workflowDirectory, { recursive: true });
     await fs.mkdir(sourceDirectory, { recursive: true });
     await fs.mkdir(docsDirectory, { recursive: true });
     await fs.writeFile(
@@ -662,11 +685,20 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
       "export const agentComposeVersionId = 'unexpected';\n",
       "utf8",
     );
+    await fs.writeFile(
+      path.join(workflowDirectory, "unexpected.yml"),
+      "run: psql agent_compose_versions\n",
+      "utf8",
+    );
     const drifted = await collectRepositoryDependencyManifest(fixtureRoot);
     assert.equal(manifestsEqual(reviewed, drifted), false);
     assert.equal(
       drifted.legacyIdentifiers.length,
       reviewed.legacyIdentifiers.length + 1,
+    );
+    assert.equal(
+      drifted.nonTypeScriptConsumers.length,
+      reviewed.nonTypeScriptConsumers.length + 1,
     );
   } finally {
     await fs.rm(fixtureRoot, { recursive: true, force: true });
@@ -688,6 +720,15 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   );
   assert.match(workflow, /ghcr\.io\/vm0-ai\/vm0-toolchain:20260622/u);
   assert.match(workflow, /^permissions:\n {2}contents: read$/mu);
+  assert.match(workflow, /\[\[ -z "\$database_url" \|\|/u);
+  assert.match(workflow, /"\$database_url" == \*\$'\\n'\*/u);
+  assert.match(workflow, /"\$database_url" == \*\$'\\r'\*/u);
+  assert.match(workflow, /"\$database_url" != postgres:\/\/\*/u);
+  assert.match(workflow, /"\$database_url" != postgresql:\/\/\*/u);
+  assert.ok(
+    workflow.indexOf('if [[ -z "$database_url"') <
+      workflow.indexOf('>> "$GITHUB_OUTPUT"'),
+  );
   assert.match(workflow, /scripts\/agent-compose-consolidation-preflight\.ts/u);
   assert.equal(
     /pull_request:|schedule:|actions\/upload-artifact/iu.test(workflow),
@@ -878,6 +919,16 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
         );
       }
 
+      await client.query(`ALTER TABLE "agent_composes"
+        ADD CONSTRAINT "preflight_unexpected_name_check"
+        CHECK ("name" IS NOT NULL) NOT VALID`);
+      assert.equal(
+        catalogCount(await catalogRows(client), "constraints"),
+        catalogCount(baselineCatalog, "constraints") + 1,
+      );
+      await client.query(`ALTER TABLE "agent_composes"
+        DROP CONSTRAINT "preflight_unexpected_name_check"`);
+
       await client.query(`CREATE TABLE "preflight_unexpected_fk" (
         "agent_id" uuid REFERENCES "zero_agents" ("id")
       )`);
@@ -913,6 +964,94 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
       );
       await client.query(`DROP INDEX "preflight_unexpected_head_idx"`);
 
+      await client.query(`CREATE VIEW "preflight_unexpected_agent_view" AS
+        SELECT "id" FROM "agent_composes"`);
+      await client.query(`CREATE VIEW "preflight_unexpected_nested_view" AS
+        SELECT "id" FROM "preflight_unexpected_agent_view"`);
+      const viewDrift = await catalogRows(client);
+      assert.equal(
+        catalogCount(viewDrift, "rewriteDependents"),
+        catalogCount(baselineCatalog, "rewriteDependents") + 2,
+      );
+      gatePresent(
+        classifyPreflightInventory(
+          capabilities,
+          emptyInventory({ catalogDependencies: viewDrift }),
+          {
+            ...classificationOptions(),
+            expectedCatalogDependencies: EXPECTED_CATALOG_DEPENDENCIES,
+          },
+        ),
+        "dependencies.catalog.rewriteDependents",
+      );
+      await client.query(`DROP VIEW "preflight_unexpected_nested_view"`);
+      await client.query(`DROP VIEW "preflight_unexpected_agent_view"`);
+
+      await client.query(
+        `CREATE MATERIALIZED VIEW "preflight_unexpected_agent_materialized" AS
+         SELECT "id" FROM "agent_composes" WITH NO DATA`,
+      );
+      assert.equal(
+        catalogCount(await catalogRows(client), "rewriteDependents"),
+        catalogCount(baselineCatalog, "rewriteDependents") + 1,
+      );
+      await client.query(
+        `DROP MATERIALIZED VIEW "preflight_unexpected_agent_materialized"`,
+      );
+
+      await client.query(`CREATE RULE "preflight_unexpected_agent_rule" AS
+        ON DELETE TO "agent_composes" DO INSTEAD NOTHING`);
+      assert.equal(
+        catalogCount(await catalogRows(client), "rewriteDependents"),
+        catalogCount(baselineCatalog, "rewriteDependents") + 1,
+      );
+      await client.query(
+        `DROP RULE "preflight_unexpected_agent_rule" ON "agent_composes"`,
+      );
+
+      await client.query(
+        `CREATE SEQUENCE "preflight_unexpected_owned_sequence"
+         OWNED BY "agent_composes"."id"`,
+      );
+      const otherDrift = await catalogRows(client);
+      assert.equal(
+        catalogCount(otherDrift, "otherDependents"),
+        catalogCount(baselineCatalog, "otherDependents") + 1,
+      );
+      gatePresent(
+        classifyPreflightInventory(
+          capabilities,
+          emptyInventory({ catalogDependencies: otherDrift }),
+          {
+            ...classificationOptions(),
+            expectedCatalogDependencies: EXPECTED_CATALOG_DEPENDENCIES,
+          },
+        ),
+        "dependencies.catalog.otherDependents",
+      );
+      await client.query(`DROP SEQUENCE "preflight_unexpected_owned_sequence"`);
+
+      await client.query(
+        `CREATE TABLE "preflight_unexpected_composite" (
+          "agent" "agent_composes"
+        )`,
+      );
+      assert.equal(
+        catalogCount(await catalogRows(client), "otherDependents"),
+        catalogCount(baselineCatalog, "otherDependents") + 1,
+      );
+      await client.query(`DROP TABLE "preflight_unexpected_composite"`);
+
+      await client.query(
+        `CREATE TABLE "preflight_unexpected_inherited" ()
+         INHERITS ("agent_composes")`,
+      );
+      assert.equal(
+        catalogCount(await catalogRows(client), "otherDependents"),
+        catalogCount(baselineCatalog, "otherDependents") + 1,
+      );
+      await client.query(`DROP TABLE "preflight_unexpected_inherited"`);
+
       await client.query(`CREATE FUNCTION "preflight_unexpected_trigger"()
         RETURNS trigger LANGUAGE plpgsql AS $body$
         BEGIN RETURN NEW; END
@@ -943,13 +1082,17 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
   }
 }
 
-export async function validateAgentComposeConsolidationPreflight(): Promise<void> {
+export async function validateAgentComposeConsolidationPreflightStatic(): Promise<void> {
   testIdentityAndApprovedArtifacts();
   testVersionHeadRunAndCheckpointClassifications();
   testDanglingClassifications();
   testDependencyDriftAndDeterminism();
   testOutputRedaction();
   await testRepositoryAndWorkflowValidators();
+}
+
+export async function validateAgentComposeConsolidationPreflight(): Promise<void> {
+  await validateAgentComposeConsolidationPreflightStatic();
 
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");

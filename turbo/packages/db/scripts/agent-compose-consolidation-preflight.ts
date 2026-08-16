@@ -80,6 +80,11 @@ export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   "danglingHeads.snapshotClassification",
   "danglingHeads.start.count",
   "danglingHeads.start.digest",
+  "dependencies.catalog.constraints.classification",
+  "dependencies.catalog.constraints.expected.count",
+  "dependencies.catalog.constraints.expected.digest",
+  "dependencies.catalog.constraints.observed.count",
+  "dependencies.catalog.constraints.observed.digest",
   "dependencies.catalog.defaults.classification",
   "dependencies.catalog.defaults.expected.count",
   "dependencies.catalog.defaults.expected.digest",
@@ -100,11 +105,21 @@ export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   "dependencies.catalog.indexes.expected.digest",
   "dependencies.catalog.indexes.observed.count",
   "dependencies.catalog.indexes.observed.digest",
+  "dependencies.catalog.otherDependents.classification",
+  "dependencies.catalog.otherDependents.expected.count",
+  "dependencies.catalog.otherDependents.expected.digest",
+  "dependencies.catalog.otherDependents.observed.count",
+  "dependencies.catalog.otherDependents.observed.digest",
   "dependencies.catalog.reviewedNonFk.classification",
   "dependencies.catalog.reviewedNonFk.expected.count",
   "dependencies.catalog.reviewedNonFk.expected.digest",
   "dependencies.catalog.reviewedNonFk.observed.count",
   "dependencies.catalog.reviewedNonFk.observed.digest",
+  "dependencies.catalog.rewriteDependents.classification",
+  "dependencies.catalog.rewriteDependents.expected.count",
+  "dependencies.catalog.rewriteDependents.expected.digest",
+  "dependencies.catalog.rewriteDependents.observed.count",
+  "dependencies.catalog.rewriteDependents.observed.digest",
   "dependencies.catalog.triggers.classification",
   "dependencies.catalog.triggers.expected.count",
   "dependencies.catalog.triggers.expected.digest",
@@ -698,7 +713,7 @@ function classifyVersions(
   const composePresentCreatorNull: VersionInventoryRow[] = [];
   const composeNullCreatorPresent: VersionInventoryRow[] = [];
   const composeNullCreatorNull: VersionInventoryRow[] = [];
-  const orphanVersions: VersionInventoryRow[] = [];
+  const orphanComposeIds: string[] = [];
   const canonicalVersions: VersionInventoryRow[] = [];
   const nonCanonicalVersions: VersionInventoryRow[] = [];
   const invalidVersions: VersionInventoryRow[] = [];
@@ -715,7 +730,7 @@ function classifyVersions(
       composeNullCreatorNull.push(version);
     }
     if (version.composeId !== null && !version.composeExists) {
-      orphanVersions.push(version);
+      orphanComposeIds.push(version.composeId);
     }
 
     const content = classifyVersionContent(version);
@@ -729,7 +744,7 @@ function classifyVersions(
     if (content.hashMismatch) contentHashMismatches.push(version);
   }
 
-  if (orphanVersions.length > 0) {
+  if (orphanComposeIds.length > 0) {
     failureGates.add("versions.orphan_compose");
   }
   if (invalidVersions.length > 0) {
@@ -759,9 +774,9 @@ function classifyVersions(
         composeNullCreatorNull,
       ),
     },
-    orphanComposeIds: recordSet(
-      "versions:orphan-compose-version-ids",
-      orphanVersions,
+    orphanComposeIds: fingerprintSortedSet(
+      "versions:orphan-compose-ids",
+      orphanComposeIds,
     ),
     content: {
       canonicalCurrent: recordSet(

@@ -51,6 +51,14 @@ jobs:
             echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v1","status":"failed","failureGates":["probe.database_resolution"]}'
             exit 1
           fi
+          if [[ -z "$database_url" ||
+                "$database_url" == *$'\n'* ||
+                "$database_url" == *$'\r'* ||
+                ( "$database_url" != postgres://* &&
+                  "$database_url" != postgresql://* ) ]]; then
+            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v1","status":"failed","failureGates":["probe.database_resolution"]}'
+            exit 1
+          fi
           echo "::add-mask::$database_url"
           echo "database-url=$database_url" >> "$GITHUB_OUTPUT"
 

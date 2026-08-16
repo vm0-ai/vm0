@@ -4,12 +4,15 @@ import path from "node:path";
 import ts from "typescript";
 
 export const CATALOG_DEPENDENCY_KINDS = [
-  "foreignKeys",
-  "reviewedNonFk",
+  "constraints",
   "defaults",
-  "indexes",
-  "triggers",
+  "foreignKeys",
   "functions",
+  "indexes",
+  "otherDependents",
+  "reviewedNonFk",
+  "rewriteDependents",
+  "triggers",
 ] as const;
 
 export type CatalogDependencyKind = (typeof CATALOG_DEPENDENCY_KINDS)[number];
@@ -50,6 +53,31 @@ export const EXPECTED_CATALOG_DEPENDENCIES = {
     "public.zero_agent_drafts|zero_agent_drafts_agent_id_zero_agents_id_fk|FOREIGN KEY (agent_id) REFERENCES zero_agents(id) ON DELETE CASCADE|validated=true|deferrable=false|initially_deferred=false",
     "public.zero_agents|zero_agents_id_agent_composes_id_fk|FOREIGN KEY (id) REFERENCES agent_composes(id) ON DELETE CASCADE|validated=true|deferrable=false|initially_deferred=false",
     "public.zero_workflows|zero_workflows_agent_id_zero_agents_id_fk|FOREIGN KEY (agent_id) REFERENCES zero_agents(id) ON DELETE CASCADE|validated=true|deferrable=false|initially_deferred=false",
+  ],
+  constraints: [
+    "public.agent_compose_versions|agent_compose_versions_compose_id_agent_composes_id_fk|type=f|FOREIGN KEY (compose_id) REFERENCES agent_composes(id) ON DELETE SET NULL|validated=true|deferrable=false|initially_deferred=false",
+    "public.agent_compose_versions|agent_compose_versions_pkey|type=p|PRIMARY KEY (id)|validated=true|deferrable=false|initially_deferred=false",
+    "public.agent_compose_versions|content|type=n|NOT NULL",
+    "public.agent_compose_versions|created_at|type=n|NOT NULL",
+    "public.agent_compose_versions|id|type=n|NOT NULL",
+    "public.agent_composes|agent_composes_pkey|type=p|PRIMARY KEY (id)|validated=true|deferrable=false|initially_deferred=false",
+    "public.agent_composes|created_at|type=n|NOT NULL",
+    "public.agent_composes|id|type=n|NOT NULL",
+    "public.agent_composes|name|type=n|NOT NULL",
+    "public.agent_composes|org_id|type=n|NOT NULL",
+    "public.agent_composes|updated_at|type=n|NOT NULL",
+    "public.agent_composes|user_id|type=n|NOT NULL",
+    "public.zero_agents|created_at|type=n|NOT NULL",
+    "public.zero_agents|id|type=n|NOT NULL",
+    "public.zero_agents|name|type=n|NOT NULL",
+    "public.zero_agents|org_id|type=n|NOT NULL",
+    "public.zero_agents|owner|type=n|NOT NULL",
+    "public.zero_agents|prefer_personal_provider|type=n|NOT NULL",
+    "public.zero_agents|updated_at|type=n|NOT NULL",
+    "public.zero_agents|visibility|type=n|NOT NULL",
+    "public.zero_agents|zero_agents_id_agent_composes_id_fk|type=f|FOREIGN KEY (id) REFERENCES agent_composes(id) ON DELETE CASCADE|validated=true|deferrable=false|initially_deferred=false",
+    "public.zero_agents|zero_agents_model_provider_id_model_providers_id_fk|type=f|FOREIGN KEY (model_provider_id) REFERENCES model_providers(id) ON DELETE SET NULL|validated=true|deferrable=false|initially_deferred=false",
+    "public.zero_agents|zero_agents_pkey|type=p|PRIMARY KEY (id)|validated=true|deferrable=false|initially_deferred=false",
   ],
   reviewedNonFk: [
     "public.agent_composes|head_version_id|character varying(64)|nullable=true",
@@ -118,6 +146,8 @@ export const EXPECTED_CATALOG_DEPENDENCIES = {
     "public.set_agent_compose_delete_lock_timeout_transition()|kind=f|result=trigger|language=plpgsql|volatility=v|security_definer=false|body_md5=b3f0552e3f7bbb14443665ea8e312427",
     "public.veto_agent_compose_version_delete_transition()|kind=f|result=trigger|language=plpgsql|volatility=v|security_definer=false|body_md5=186bcd97e887d8c241cfba4c810a47d5",
   ],
+  otherDependents: [],
+  rewriteDependents: [],
 } as const satisfies Record<CatalogDependencyKind, readonly string[]>;
 
 export const EXPECTED_REPOSITORY_DEPENDENCIES = {
@@ -372,17 +402,41 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
 } as const satisfies RepositoryDependencyManifest;
 
 /**
- * Catalog discovery is structural: foreign-key keys/actions/validation,
- * reviewed non-target-FK fields, defaults, relevant indexes, trigger
- * definitions, and trigger-function bodies all contribute to the manifest.
+ * Catalog discovery is structural: constraints, foreign-key
+ * keys/actions/validation, reviewed non-target-FK fields, defaults, relevant
+ * indexes, rewrite-backed views/materialized views/rules, trigger definitions,
+ * and trigger-function bodies all contribute to the manifest. A generic
+ * pg_depend inventory catches every other non-internal dependent object.
+ * Internal dependencies and owned row types/storage cannot independently
+ * survive or block contraction, while their owners are inventoried here.
  */
 export const CATALOG_DEPENDENCY_QUERY = `
-WITH target_relations AS (
+WITH RECURSIVE target_relations AS (
   SELECT unnest(ARRAY[
     'public.agent_composes'::regclass,
     'public.zero_agents'::regclass,
     'public.agent_compose_versions'::regclass
   ]) AS oid
+),
+relation_dependency_closure AS (
+  SELECT "oid" FROM target_relations
+  UNION
+  SELECT "rewrite"."ev_class"
+  FROM relation_dependency_closure AS "referenced"
+  INNER JOIN "pg_depend" AS "dependency"
+    ON "dependency"."refclassid" = 'pg_class'::regclass
+    AND "dependency"."refobjid" = "referenced"."oid"
+    AND "dependency"."classid" = 'pg_rewrite'::regclass
+    AND "dependency"."deptype" = 'n'
+  INNER JOIN "pg_rewrite" AS "rewrite"
+    ON "rewrite"."oid" = "dependency"."objid"
+),
+relation_dependency_types AS (
+  SELECT "relation"."reltype" AS "oid"
+  FROM "pg_class" AS "relation"
+  WHERE "relation"."oid" IN (
+    SELECT "oid" FROM relation_dependency_closure
+  )
 ),
 target_fk_columns AS (
   SELECT "conrelid", unnest("conkey") AS "attnum"
@@ -457,6 +511,47 @@ dependency_columns AS (
   UNION
   SELECT "relid", "attnum" FROM reviewed_non_fk
 ),
+constraints AS (
+  SELECT DISTINCT
+    "namespace"."nspname" || '.' || "relation"."relname" || '|' ||
+    "constraint"."conname" ||
+    '|type=' || "constraint"."contype"::text || '|' ||
+    pg_get_constraintdef("constraint"."oid", false) ||
+    '|validated=' || "constraint"."convalidated"::text ||
+    '|deferrable=' || "constraint"."condeferrable"::text ||
+    '|initially_deferred=' || "constraint"."condeferred"::text AS "entry"
+  FROM "pg_constraint" AS "constraint"
+  INNER JOIN "pg_class" AS "relation"
+    ON "relation"."oid" = "constraint"."conrelid"
+  INNER JOIN "pg_namespace" AS "namespace"
+    ON "namespace"."oid" = "relation"."relnamespace"
+  WHERE "constraint"."contype" <> 'n'
+    AND (
+      "constraint"."conrelid" IN (SELECT "oid" FROM target_relations)
+      OR (
+        "constraint"."contype" <> 'f'
+        AND EXISTS (
+          SELECT 1
+          FROM dependency_columns AS "column"
+          WHERE "column"."relid" = "constraint"."conrelid"
+            AND "column"."attnum" = ANY("constraint"."conkey")
+        )
+      )
+    )
+  UNION
+  SELECT
+    "namespace"."nspname" || '.' || "relation"."relname" || '|' ||
+    "attribute"."attname" || '|type=n|NOT NULL' AS "entry"
+  FROM "pg_attribute" AS "attribute"
+  INNER JOIN "pg_class" AS "relation"
+    ON "relation"."oid" = "attribute"."attrelid"
+  INNER JOIN "pg_namespace" AS "namespace"
+    ON "namespace"."oid" = "relation"."relnamespace"
+  WHERE "attribute"."attrelid" IN (SELECT "oid" FROM target_relations)
+    AND "attribute"."attnum" > 0
+    AND NOT "attribute"."attisdropped"
+    AND "attribute"."attnotnull"
+),
 indexes AS (
   SELECT DISTINCT
     "namespace"."nspname" || '.' || "table"."relname" || '|' ||
@@ -528,13 +623,90 @@ functions AS (
       AND lower("function"."prosrc") ~
         '(agent_composes|agent_compose_versions|zero_agents)'
     )
+),
+rewrite_dependents AS (
+  SELECT DISTINCT
+    "namespace"."nspname" || '.' || "relation"."relname" ||
+    '|relation_kind=' ||
+    CASE "relation"."relkind"
+      WHEN 'v' THEN 'view'
+      WHEN 'm' THEN 'materialized_view'
+      ELSE 'relation'
+    END ||
+    '|rule=' || "rewrite"."rulename" ||
+    '|event=' || "rewrite"."ev_type"::text ||
+    '|instead=' || "rewrite"."is_instead"::text ||
+    '|definition_md5=' || md5(pg_get_ruledef("rewrite"."oid", false)) AS "entry"
+  FROM "pg_rewrite" AS "rewrite"
+  INNER JOIN "pg_class" AS "relation"
+    ON "relation"."oid" = "rewrite"."ev_class"
+  INNER JOIN "pg_namespace" AS "namespace"
+    ON "namespace"."oid" = "relation"."relnamespace"
+  WHERE "rewrite"."ev_class" IN (SELECT "oid" FROM target_relations)
+    OR EXISTS (
+      SELECT 1
+      FROM "pg_depend" AS "dependency"
+      INNER JOIN relation_dependency_closure AS "referenced"
+        ON "referenced"."oid" = "dependency"."refobjid"
+      WHERE "dependency"."classid" = 'pg_rewrite'::regclass
+        AND "dependency"."objid" = "rewrite"."oid"
+        AND "dependency"."refclassid" = 'pg_class'::regclass
+        AND "dependency"."deptype" = 'n'
+    )
+),
+other_dependents AS (
+  SELECT DISTINCT
+    "dependency"."classid"::regclass::text ||
+    '|dependency_type=' || "dependency"."deptype"::text ||
+    '|object=' || pg_describe_object(
+      "dependency"."classid",
+      "dependency"."objid",
+      "dependency"."objsubid"
+    ) ||
+    '|referenced=' || pg_describe_object(
+      "dependency"."refclassid",
+      "dependency"."refobjid",
+      "dependency"."refobjsubid"
+    ) AS "entry"
+  FROM "pg_depend" AS "dependency"
+  LEFT JOIN "pg_class" AS "dependent_relation"
+    ON "dependency"."classid" = 'pg_class'::regclass
+    AND "dependent_relation"."oid" = "dependency"."objid"
+  WHERE (
+      (
+        "dependency"."refclassid" = 'pg_class'::regclass
+        AND "dependency"."refobjid" IN (
+          SELECT "oid" FROM relation_dependency_closure
+        )
+      )
+      OR (
+        "dependency"."refclassid" = 'pg_type'::regclass
+        AND "dependency"."refobjid" IN (
+          SELECT "oid" FROM relation_dependency_types
+        )
+      )
+    )
+    AND "dependency"."deptype" <> 'i'
+    AND "dependency"."classid" NOT IN (
+      'pg_attrdef'::regclass,
+      'pg_constraint'::regclass,
+      'pg_rewrite'::regclass,
+      'pg_trigger'::regclass
+    )
+    AND NOT (
+      "dependency"."classid" = 'pg_class'::regclass
+      AND "dependent_relation"."relkind" IN ('i', 'I')
+    )
 )
-SELECT 'foreignKeys' AS "kind", "entry" FROM foreign_keys
-UNION ALL SELECT 'reviewedNonFk', "entry" FROM reviewed_non_fk
+SELECT 'constraints' AS "kind", "entry" FROM constraints
 UNION ALL SELECT 'defaults', "entry" FROM defaults
-UNION ALL SELECT 'indexes', "entry" FROM indexes
-UNION ALL SELECT 'triggers', "entry" FROM triggers
+UNION ALL SELECT 'foreignKeys', "entry" FROM foreign_keys
 UNION ALL SELECT 'functions', "entry" FROM functions
+UNION ALL SELECT 'indexes', "entry" FROM indexes
+UNION ALL SELECT 'otherDependents', "entry" FROM other_dependents
+UNION ALL SELECT 'reviewedNonFk', "entry" FROM reviewed_non_fk
+UNION ALL SELECT 'rewriteDependents', "entry" FROM rewrite_dependents
+UNION ALL SELECT 'triggers', "entry" FROM triggers
 ORDER BY "kind", "entry"
 `;
 
@@ -566,7 +738,24 @@ const rawTableTokens = [
   "zero_agents",
 ] as const;
 
-const nonTypeScriptExtensions = new Set([".js", ".mjs", ".rs", ".sql"]);
+const nonTypeScriptExtensions = new Set([
+  ".bash",
+  ".cjs",
+  ".cfg",
+  ".env",
+  ".js",
+  ".json",
+  ".mjs",
+  ".py",
+  ".rs",
+  ".sh",
+  ".sql",
+  ".toml",
+  ".tpl",
+  ".yaml",
+  ".yml",
+]);
+const nonTypeScriptFileNames = new Set(["Dockerfile", "Makefile"]);
 
 function normalizePath(filePath: string): string {
   return filePath.split(path.sep).join("/");
@@ -579,6 +768,7 @@ function isExcluded(relativePath: string): boolean {
     relativePath.includes("/.typecheck/") ||
     relativePath.includes("/__tests__/") ||
     relativePath.includes("/__benches__/") ||
+    relativePath.includes("/tests/") ||
     relativePath.includes("/test-fixtures/") ||
     relativePath.includes("/mocks/") ||
     relativePath.includes("/packages/db/scripts/") ||
@@ -715,7 +905,17 @@ export async function collectRepositoryDependencyManifest(
   const rawTableLiterals = new Set<string>();
   const nonTypeScriptConsumers = new Set<string>();
   const transitionValidators = new Set<string>();
-  const scanRoots = ["turbo/apps", "turbo/packages", "crates"];
+  const scanRoots = [
+    ".github",
+    "ansible",
+    "bin",
+    "crates",
+    "docker",
+    "scripts",
+    "turbo/apps",
+    "turbo/packages",
+    "turbo/scripts",
+  ];
 
   for (const scanRoot of scanRoots) {
     const files = await listFiles(path.join(repositoryRoot, scanRoot));
@@ -726,7 +926,13 @@ export async function collectRepositoryDependencyManifest(
       if (isExcluded(`/${relativePath}`)) continue;
       const extension = path.extname(relativePath);
       if (!relativePath.endsWith(".ts") && !relativePath.endsWith(".tsx")) {
-        if (!nonTypeScriptExtensions.has(extension)) continue;
+        if (
+          !nonTypeScriptExtensions.has(extension) &&
+          !nonTypeScriptFileNames.has(path.basename(relativePath)) &&
+          !relativePath.startsWith("bin/")
+        ) {
+          continue;
+        }
         const sourceText = await fs.readFile(filePath, "utf8");
         const tokens = [
           ...legacyIdentifierTokens,
