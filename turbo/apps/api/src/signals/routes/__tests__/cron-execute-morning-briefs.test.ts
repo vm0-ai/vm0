@@ -52,7 +52,7 @@ import {
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { cronExecuteMorningBriefsRoutes } from "../cron-execute-morning-briefs";
 import { emailMorningBriefUnsubscribeRoutes } from "../email-morning-brief-unsubscribe";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatThreadRoutes } from "../chat-threads";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
 import { morningBriefRoutes } from "../morning-brief";
 import { userPreferencesRoutes } from "../user-preferences";
@@ -60,7 +60,7 @@ import { userPreferencesRoutes } from "../user-preferences";
 const TEST_APP_ROUTES = Object.freeze([
   ...cronExecuteMorningBriefsRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
-  ...zeroChatThreadRoutes,
+  ...chatThreadRoutes,
   ...zeroModelProvidersRoutes,
   ...morningBriefRoutes,
   ...userPreferencesRoutes,
@@ -495,12 +495,12 @@ async function findMorningBriefThreadIdOrNull(
 ): Promise<string | null> {
   routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
   const threadEvents = await accept(
-    setupApp({ context, routes: zeroChatThreadRoutes })(
-      chatThreadsContract,
-    ).events({
-      headers: actorHeaders(),
-      query: {},
-    }),
+    setupApp({ context, routes: chatThreadRoutes })(chatThreadsContract).events(
+      {
+        headers: actorHeaders(),
+        query: {},
+      },
+    ),
     [200],
   );
   const thread = threadEvents.body.events.find((event) => {

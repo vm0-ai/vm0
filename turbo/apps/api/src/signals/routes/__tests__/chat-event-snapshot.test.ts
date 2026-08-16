@@ -17,7 +17,7 @@ import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { mockNow, now } from "../../../lib/time";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
 import { testChatEventSnapshotRoutes } from "../test-chat-event-snapshot";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatThreadRoutes } from "../chat-threads";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -80,7 +80,7 @@ function authenticate(actor: ApiTestUser) {
 }
 
 function eventsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
+  return setupApp({ context, routes: chatThreadRoutes })(
     chatThreadEventsContract,
   );
 }
@@ -273,7 +273,7 @@ describe("chat event snapshot read endpoints", () => {
     const { authorization } = authenticate(owner);
     const rawRequest = setupRawAppRequest({
       context,
-      routes: zeroChatThreadRoutes,
+      routes: chatThreadRoutes,
     });
     const missingVersionPaths = [
       `/api/okou/chat-threads/${threadId}/event-snapshot`,

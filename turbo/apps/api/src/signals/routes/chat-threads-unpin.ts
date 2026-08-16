@@ -56,7 +56,7 @@ const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-export const zeroChatThreadUnpinRoutes: readonly RouteEntry[] = [
+export const chatThreadUnpinRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadUnpinContract.unpin,
     handler: authRoute({}, unpinInner$),

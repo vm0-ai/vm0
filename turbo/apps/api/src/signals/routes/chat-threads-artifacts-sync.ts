@@ -42,7 +42,7 @@ const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return result;
 });
 
-export const zeroChatThreadsArtifactsSyncRoutes: readonly RouteEntry[] = [
+export const chatThreadsArtifactsSyncRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadArtifactsContract.syncGoogleDrive,
     handler: authRoute(

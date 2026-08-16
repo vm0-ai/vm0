@@ -64,7 +64,7 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-export const zeroChatThreadRenameRoutes: readonly RouteEntry[] = [
+export const chatThreadRenameRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadRenameContract.rename,
     handler: authRoute(

@@ -46,8 +46,8 @@ import {
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-events";
-import { zeroChatEventsRoutes } from "../zero-chat-events";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatEventsRoutes } from "../chat-events";
+import { chatThreadRoutes } from "../chat-threads";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
@@ -56,8 +56,8 @@ import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automati
 const TEST_APP_ROUTES = Object.freeze([
   ...testWorkflowAutomationExecutionRoutes,
   ...webhooksWorkflowAutomationsRoutes,
-  ...zeroChatEventsRoutes,
-  ...zeroChatThreadRoutes,
+  ...chatEventsRoutes,
+  ...chatThreadRoutes,
   ...zeroModelProvidersRoutes,
   ...workflowAutomationsRoutes,
 ]);
@@ -106,9 +106,7 @@ function cleanupSandboxesClient() {
 }
 
 function chatEventsClient() {
-  return setupApp({ context, routes: zeroChatEventsRoutes })(
-    chatEventsContract,
-  );
+  return setupApp({ context, routes: chatEventsRoutes })(chatEventsContract);
 }
 
 function modelProvidersByTypeClient() {

@@ -48,7 +48,7 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
   };
 });
 
-export const zeroChatThreadGetRoutes: readonly RouteEntry[] = [
+export const chatThreadGetRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadMetadataContract.get,
     handler: authRoute({ requiredCapability: "chat-thread:read" }, getInner$),

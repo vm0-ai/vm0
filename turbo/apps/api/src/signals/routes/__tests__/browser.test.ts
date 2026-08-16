@@ -39,13 +39,13 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
 import { browserRoutes } from "../browser";
 import { browserAuthorizationRoutes } from "../browser-authorization";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
-import { zeroChatThreadComputerUseHostRoutes } from "../zero-chat-threads-computer-use-host";
+import { chatThreadRoutes } from "../chat-threads";
+import { chatThreadComputerUseHostRoutes } from "../chat-threads-computer-use-host";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...browserAuthorizationRoutes,
   ...browserRoutes,
-  ...zeroChatThreadRoutes,
+  ...chatThreadRoutes,
 ]);
 
 const context = testContext();
@@ -93,13 +93,11 @@ function authorizationClient() {
 }
 
 function chatThreadsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
-    chatThreadsContract,
-  );
+  return setupApp({ context, routes: chatThreadRoutes })(chatThreadsContract);
 }
 
 function chatThreadComputerUseHostClient() {
-  return setupApp({ context, routes: zeroChatThreadComputerUseHostRoutes })(
+  return setupApp({ context, routes: chatThreadComputerUseHostRoutes })(
     chatThreadComputerUseHostContract,
   );
 }

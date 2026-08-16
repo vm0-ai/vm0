@@ -45,7 +45,7 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatThreadRoutes } from "../chat-threads";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();
@@ -1658,7 +1658,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
+      setupApp({ context, routes: chatThreadRoutes })(
         chatThreadsContract,
       ).events({
         headers: { authorization: "Bearer clerk-session" },

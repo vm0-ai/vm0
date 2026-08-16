@@ -20,7 +20,7 @@ const sendChatEventInner$ = command(
   },
 );
 
-export const zeroChatEventsRoutes: readonly RouteEntry[] = [
+export const chatEventsRoutes: readonly RouteEntry[] = [
   {
     route: chatEventsContract.send,
     handler: authRoute(

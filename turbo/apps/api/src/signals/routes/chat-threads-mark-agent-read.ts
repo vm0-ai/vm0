@@ -84,7 +84,7 @@ const markAgentReadInner$ = command(
   },
 );
 
-export const zeroChatThreadMarkAgentReadRoutes: readonly RouteEntry[] = [
+export const chatThreadMarkAgentReadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadMarkAgentReadContract.markAgentRead,
     handler: authRoute(

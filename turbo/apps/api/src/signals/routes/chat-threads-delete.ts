@@ -67,7 +67,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-export const zeroChatThreadDeleteRoutes: readonly RouteEntry[] = [
+export const chatThreadDeleteRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadByIdContract.delete,
     handler: authRoute({}, deleteInner$),

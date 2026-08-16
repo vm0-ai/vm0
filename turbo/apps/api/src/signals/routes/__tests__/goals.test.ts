@@ -23,7 +23,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatThreadRoutes } from "../chat-threads";
 import { zeroGoalsRoutes } from "../zero-goals";
 
 const context = testContext();
@@ -790,7 +790,7 @@ describe("zero goals", () => {
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const unreads = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
+      setupApp({ context, routes: chatThreadRoutes })(
         chatThreadsContract,
       ).unreads({
         headers: { authorization: "Bearer clerk-session" },

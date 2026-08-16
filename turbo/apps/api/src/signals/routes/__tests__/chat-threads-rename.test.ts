@@ -14,8 +14,8 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
-import { zeroChatThreadRenameRoutes } from "../zero-chat-threads-rename";
+import { chatThreadGetRoutes } from "../chat-threads-get";
+import { chatThreadRenameRoutes } from "../chat-threads-rename";
 
 const context = testContext();
 const store = createStore();
@@ -79,13 +79,13 @@ function zeroToken(args: {
 }
 
 function renameClient() {
-  return setupApp({ context, routes: zeroChatThreadRenameRoutes })(
+  return setupApp({ context, routes: chatThreadRenameRoutes })(
     chatThreadRenameContract,
   );
 }
 
 function metadataClient() {
-  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+  return setupApp({ context, routes: chatThreadGetRoutes })(
     chatThreadMetadataContract,
   );
 }
