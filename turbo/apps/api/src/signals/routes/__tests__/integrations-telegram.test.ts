@@ -29,7 +29,7 @@ import {
   seedTelegramInstallation$,
   seedTelegramUserLink$,
   type TelegramFixture,
-} from "./helpers/zero-telegram";
+} from "./helpers/telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";

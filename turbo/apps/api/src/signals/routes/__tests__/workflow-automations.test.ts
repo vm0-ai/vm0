@@ -44,7 +44,7 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "../cron-renew-google-calendar-watches";

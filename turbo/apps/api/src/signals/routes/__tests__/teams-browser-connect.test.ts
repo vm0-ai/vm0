@@ -16,7 +16,7 @@ import {
   teamsConnectFixture,
   teamsFixtureExternalId,
   type TeamsConnectFixture,
-} from "./helpers/zero-teams-connect";
+} from "./helpers/teams-connect";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
 const context = testContext();

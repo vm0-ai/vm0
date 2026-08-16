@@ -30,7 +30,7 @@ import { setRunVideoModelFixture } from "../../../test-fixtures/run-video-model"
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();

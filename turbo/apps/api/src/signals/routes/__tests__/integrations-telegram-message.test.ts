@@ -14,7 +14,7 @@ import { seedOrgMembership$ } from "./helpers/org-membership";
 import {
   seedTelegramInstallation$,
   seedTelegramUserLink$,
-} from "./helpers/zero-telegram";
+} from "./helpers/telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";

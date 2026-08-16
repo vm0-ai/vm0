@@ -25,7 +25,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { zeroModelPoliciesRoutes } from "../zero-model-policies";
 import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
 import { userModelPreferenceRoutes } from "../user-model-preference";

@@ -36,7 +36,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {

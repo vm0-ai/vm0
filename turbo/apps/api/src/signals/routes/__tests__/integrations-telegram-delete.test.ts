@@ -14,7 +14,7 @@ import { now } from "../../../lib/time";
 import {
   deleteTelegramFixture$,
   type TelegramFixture,
-} from "./helpers/zero-telegram";
+} from "./helpers/telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
