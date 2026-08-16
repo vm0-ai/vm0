@@ -56,7 +56,7 @@ import { seedOrgMembership$ } from "../__tests__/helpers/org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
-import { zeroConnectorsRoutes } from "../zero-connectors";
+import { connectorsRoutes } from "../connectors";
 import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
 import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
 import { zeroOrgReadRoutes } from "../zero-org-read";
@@ -103,7 +103,7 @@ const BENCH_CONNECTOR_CATALOG_KEY =
 const chatThreadClient = setupApp({ context, routes: zeroChatThreadRoutes })(
   chatThreadByIdContract,
 );
-const connectorsClient = setupApp({ context, routes: zeroConnectorsRoutes })(
+const connectorsClient = setupApp({ context, routes: connectorsRoutes })(
   zeroConnectorsMainContract,
 );
 const userPreferencesClient = setupApp({

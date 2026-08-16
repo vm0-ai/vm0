@@ -63,7 +63,7 @@ import {
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
-import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
+import { customConnectorsRoutes } from "../custom-connectors";
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
@@ -3210,7 +3210,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     const connectorsClient = setupApp({
       context,
-      routes: zeroCustomConnectorsRoutes,
+      routes: customConnectorsRoutes,
     })(zeroCustomConnectorsContract);
     const body = {
       displayName: "BDD Agent Created",

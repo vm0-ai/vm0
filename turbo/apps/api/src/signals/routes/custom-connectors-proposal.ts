@@ -41,7 +41,7 @@ const saveProposalInner$ = command(
   },
 );
 
-export const zeroCustomConnectorProposalRoutes: readonly RouteEntry[] = [
+export const customConnectorProposalRoutes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorProposalContract.save,
     handler: authRoute(

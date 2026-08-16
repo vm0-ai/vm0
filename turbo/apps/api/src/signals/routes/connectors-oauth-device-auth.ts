@@ -73,7 +73,7 @@ const pollConnectorOauthDeviceAuthSessionInner$ = command(
   },
 );
 
-export const zeroConnectorsOauthDeviceAuthRoutes: readonly RouteEntry[] = [
+export const connectorsOauthDeviceAuthRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorOauthDeviceAuthSessionContract.create,
     handler: authRoute(

@@ -13,12 +13,12 @@ import {
   installApiTestConnectorCatalog,
 } from "../../../test-fixtures/connector-catalog";
 import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
-import { zeroConnectorsRoutes } from "../zero-connectors";
+import { connectorsRoutes } from "../connectors";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...connectorsSlugCallbackRoutes,
-  ...zeroConnectorsRoutes,
+  ...connectorsRoutes,
 ]);
 
 const context = testContext();

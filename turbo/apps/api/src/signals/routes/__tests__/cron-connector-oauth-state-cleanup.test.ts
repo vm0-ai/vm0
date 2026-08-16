@@ -21,7 +21,7 @@ import {
   testCronDeleteCleanupsStateContract,
   testCronDeleteCleanupsStateRoutes,
 } from "../test-cron-delete-cleanups-state";
-import { zeroConnectorsRoutes } from "../zero-connectors";
+import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -34,7 +34,7 @@ function mockAuthenticatedSession(marker: string): void {
 async function startGithubOauth(marker: string): Promise<string> {
   mockAuthenticatedSession(marker);
   const response = await accept(
-    setupApp({ context, routes: zeroConnectorsRoutes })(
+    setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorOauthStartContract,
     ).start({
       params: { connectorSlug: "github" },

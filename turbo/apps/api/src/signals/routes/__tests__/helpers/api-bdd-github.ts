@@ -27,13 +27,13 @@ import { mockClerkMembership } from "./api-bdd-clerk";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { integrationsGithubRoutes } from "../../integrations-github";
 import { githubOauthRoutes } from "../../github-oauth";
-import { zeroConnectorsRoutes } from "../../zero-connectors";
+import { connectorsRoutes } from "../../connectors";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...githubOauthRoutes,
   ...integrationsGithubRoutes,
-  ...zeroConnectorsRoutes,
+  ...connectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
 ]);
 
@@ -408,7 +408,7 @@ export function createGithubBddApi(context: TestContext) {
     },
 
     async readGithubConnector(actor: ApiTestUser) {
-      const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+      const client = setupApp({ context, routes: connectorsRoutes })(
         zeroConnectorsBySlugContract,
       );
       const response = await accept(

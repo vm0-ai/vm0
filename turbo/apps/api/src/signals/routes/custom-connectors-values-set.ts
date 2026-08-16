@@ -35,7 +35,7 @@ const setValuesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-export const zeroCustomConnectorsValuesSetRoutes: readonly RouteEntry[] = [
+export const customConnectorsValuesSetRoutes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorValuesContract.set,
     handler: authRoute(

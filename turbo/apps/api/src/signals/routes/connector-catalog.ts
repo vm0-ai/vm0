@@ -262,7 +262,7 @@ const getConnectorCatalogPermissionsInner$ = command(
   },
 );
 
-export const zeroConnectorCatalogRoutes: readonly RouteEntry[] = [
+export const connectorCatalogRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorCatalogContract.list,
     handler: authRoute(connectorCatalogAuth, listConnectorCatalogInner$),

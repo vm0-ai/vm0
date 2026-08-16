@@ -86,12 +86,12 @@ import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroComposesRoutes } from "../../zero-composes";
-import { zeroCustomConnectorsRoutes } from "../../zero-custom-connectors";
-import { zeroCustomConnectorsCreateRoutes } from "../../zero-custom-connectors-create";
-import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-delete";
-import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
-import { zeroCustomConnectorDisconnectRoutes } from "../../zero-custom-connectors-disconnect";
-import { zeroCustomConnectorsValuesSetRoutes } from "../../zero-custom-connectors-values-set";
+import { customConnectorsRoutes } from "../../custom-connectors";
+import { customConnectorsCreateRoutes } from "../../custom-connectors-create";
+import { customConnectorsDeleteRoutes } from "../../custom-connectors-delete";
+import { customConnectorsGetRoutes } from "../../custom-connectors-get";
+import { customConnectorDisconnectRoutes } from "../../custom-connectors-disconnect";
+import { customConnectorsValuesSetRoutes } from "../../custom-connectors-values-set";
 import { onboardingCompleteRoutes } from "../../onboarding-complete";
 import { onboardingStatusRoutes } from "../../onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
@@ -220,12 +220,12 @@ const authOrgRoutes = [
   ...zeroTeamRoutes,
   ...zeroAgentsRoutes,
   ...zeroComposesRoutes,
-  ...zeroCustomConnectorsRoutes,
-  ...zeroCustomConnectorsCreateRoutes,
-  ...zeroCustomConnectorsGetRoutes,
-  ...zeroCustomConnectorsDeleteRoutes,
-  ...zeroCustomConnectorsValuesSetRoutes,
-  ...zeroCustomConnectorDisconnectRoutes,
+  ...customConnectorsRoutes,
+  ...customConnectorsCreateRoutes,
+  ...customConnectorsGetRoutes,
+  ...customConnectorsDeleteRoutes,
+  ...customConnectorsValuesSetRoutes,
+  ...customConnectorDisconnectRoutes,
 ] as const;
 
 function isBearerActor(actor: LogoUploadActor): actor is BearerActor {

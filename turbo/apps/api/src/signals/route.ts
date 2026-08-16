@@ -84,12 +84,12 @@ import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { codexDeviceAuthRoutes } from "./routes/codex-device-auth";
-import { zeroConnectorCatalogRoutes } from "./routes/zero-connector-catalog";
+import { connectorCatalogRoutes } from "./routes/connector-catalog";
 import { connectorCheckRoutes } from "./routes/connector-check";
-import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
-import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
-import { zeroConnectorsRoutes } from "./routes/zero-connectors";
-import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
+import { connectorsExternalCodeRoutes } from "./routes/connectors-external-code";
+import { connectorsOauthDeviceAuthRoutes } from "./routes/connectors-oauth-device-auth";
+import { connectorsRoutes } from "./routes/connectors";
+import { customConnectorsRoutes } from "./routes/custom-connectors";
 import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { financeRoutes } from "./routes/finance";
@@ -276,12 +276,12 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroComputerUseAuthorizationRoutes,
   ...zeroComputerUseRoutes,
   ...codexDeviceAuthRoutes,
-  ...zeroConnectorCatalogRoutes,
+  ...connectorCatalogRoutes,
   ...connectorCheckRoutes,
-  ...zeroConnectorsExternalCodeRoutes,
-  ...zeroConnectorsOauthDeviceAuthRoutes,
-  ...zeroConnectorsRoutes,
-  ...zeroCustomConnectorsRoutes,
+  ...connectorsExternalCodeRoutes,
+  ...connectorsOauthDeviceAuthRoutes,
+  ...connectorsRoutes,
+  ...customConnectorsRoutes,
   ...zeroEmailInboundRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...financeRoutes,

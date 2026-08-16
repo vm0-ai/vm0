@@ -64,7 +64,7 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: connector };
 });
 
-export const zeroCustomConnectorsUpdateRoutes: readonly RouteEntry[] = [
+export const customConnectorsUpdateRoutes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorByIdContract.update,
     handler: authRoute(

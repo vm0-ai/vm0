@@ -42,7 +42,7 @@ const getPermissionsInner$ = computed(async (get) => {
   return { status: 200 as const, body: permissions };
 });
 
-export const zeroCustomConnectorsGetRoutes: readonly RouteEntry[] = [
+export const customConnectorsGetRoutes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorByIdContract.get,
     handler: authRoute(

@@ -36,7 +36,7 @@ const disconnectHandler$ = authRoute(
   disconnectInner$,
 );
 
-export const zeroCustomConnectorDisconnectRoutes: readonly RouteEntry[] = [
+export const customConnectorDisconnectRoutes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorConnectionContract.disconnect,
     handler: disconnectHandler$,

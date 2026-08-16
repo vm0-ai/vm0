@@ -61,18 +61,18 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroAgentsRoutes } from "../zero-agents";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
-import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
-import { zeroCustomConnectorsDeleteRoutes } from "../zero-custom-connectors-delete";
-import { zeroCustomConnectorsGetRoutes } from "../zero-custom-connectors-get";
-import { zeroCustomConnectorOAuth2Routes } from "../zero-custom-connectors-oauth2";
-import { zeroCustomConnectorDisconnectRoutes } from "../zero-custom-connectors-disconnect";
-import { zeroCustomConnectorsUpdateRoutes } from "../zero-custom-connectors-update";
+import { customConnectorsRoutes } from "../custom-connectors";
+import { customConnectorsDeleteRoutes } from "../custom-connectors-delete";
+import { customConnectorsGetRoutes } from "../custom-connectors-get";
+import { customConnectorOAuth2Routes } from "../custom-connectors-oauth2";
+import { customConnectorDisconnectRoutes } from "../custom-connectors-disconnect";
+import { customConnectorsUpdateRoutes } from "../custom-connectors-update";
 import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
 
 const zeroCustomConnectorByIdTestRoutes = Object.freeze([
-  ...zeroCustomConnectorsDeleteRoutes,
-  ...zeroCustomConnectorsGetRoutes,
-  ...zeroCustomConnectorsUpdateRoutes,
+  ...customConnectorsDeleteRoutes,
+  ...customConnectorsGetRoutes,
+  ...customConnectorsUpdateRoutes,
 ]);
 
 const context = testContext();
@@ -1422,7 +1422,7 @@ describe("Feishu integration", () => {
 
     const customConnectorClient = setupApp({
       context,
-      routes: zeroCustomConnectorsRoutes,
+      routes: customConnectorsRoutes,
     })(zeroCustomConnectorsContract);
     const connectorsAfterFailure = await accept(
       customConnectorClient.list({
@@ -1546,7 +1546,7 @@ describe("Feishu integration", () => {
     );
     const customConnectorClient = setupApp({
       context,
-      routes: zeroCustomConnectorsRoutes,
+      routes: customConnectorsRoutes,
     })(zeroCustomConnectorsContract);
     const initialList = await accept(
       customConnectorClient.list({
@@ -1771,7 +1771,7 @@ describe("Feishu integration", () => {
 
     const customConnectorClient = setupApp({
       context,
-      routes: zeroCustomConnectorsRoutes,
+      routes: customConnectorsRoutes,
     })(zeroCustomConnectorsContract);
     const connectorList = await accept(
       customConnectorClient.list({
@@ -1858,7 +1858,7 @@ describe("Feishu integration", () => {
 
     const customConnectorOAuthClient = setupApp({
       context,
-      routes: zeroCustomConnectorOAuth2Routes,
+      routes: customConnectorOAuth2Routes,
     })(zeroCustomConnectorOAuth2Contract);
     const customConnectorOAuthStart = await accept(
       customConnectorOAuthClient.start({
@@ -1983,7 +1983,7 @@ describe("Feishu integration", () => {
     expect(restoredFeishuStatus.body.isConnected).toBeTruthy();
     clearConnectorInvalidationMocks();
     await accept(
-      setupApp({ context, routes: zeroCustomConnectorDisconnectRoutes })(
+      setupApp({ context, routes: customConnectorDisconnectRoutes })(
         zeroCustomConnectorConnectionContract,
       ).disconnect({
         headers: { authorization: "Bearer clerk-session" },
@@ -2780,7 +2780,7 @@ describe("Feishu integration", () => {
     await connectFixtureUser(fixture);
     const customConnectorClient = setupApp({
       context,
-      routes: zeroCustomConnectorsRoutes,
+      routes: customConnectorsRoutes,
     })(zeroCustomConnectorsContract);
     const connectorList = await accept(
       customConnectorClient.list({
