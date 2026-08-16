@@ -74,11 +74,11 @@ import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
   workflowSummary,
-  zeroWorkflowList,
+  workflowList,
   type WorkflowAgentInfo,
   type WorkflowMember,
   type WorkflowRow,
-} from "../services/zero-workflow-data.service";
+} from "../services/workflow-data.service";
 import type { RouteEntry } from "../route-entry";
 import { sendNormalEvent$ } from "../services/zero-chat-events.command";
 import type { Tx } from "../../lib/db-types";
@@ -326,7 +326,7 @@ const listWorkflowsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(zeroWorkflowsCollectionContract.list));
   const workflows = await get(
-    zeroWorkflowList({
+    workflowList({
       orgId: auth.orgId,
       member: memberFromAuth(auth),
       ...(query.agentId ? { agentId: query.agentId } : {}),

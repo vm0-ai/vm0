@@ -39,7 +39,7 @@ import {
   workflowsForRunFromRows,
   type RunWorkflowRef,
   type RunWorkflowSourceRow,
-} from "./zero-workflow-data.service";
+} from "./workflow-data.service";
 
 const bootstrapMetadataRowKindSchema = z.enum([
   "user_info",

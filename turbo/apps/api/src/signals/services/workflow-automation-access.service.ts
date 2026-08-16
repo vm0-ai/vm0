@@ -6,7 +6,7 @@ import type { ReadonlyDb } from "../external/db";
 import {
   loadVisibleWorkflowById,
   type WorkflowAgentInfo,
-} from "./zero-workflow-data.service";
+} from "./workflow-data.service";
 
 type WorkflowAutomationRow = typeof workflowAutomations.$inferSelect;
 

@@ -42,7 +42,7 @@ import {
   type AutomationEventRunTiming,
 } from "./automation-event-source-timing.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
-import type { AutomationRow } from "./zero-workflow-automation-launch.service";
+import type { AutomationRow } from "./workflow-automation-launch.service";
 import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";

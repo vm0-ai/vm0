@@ -12,7 +12,7 @@ import {
   loadWorkflowVolumeFiles,
   SKILL_FILENAME,
 } from "./workflow-volume.service";
-import type { WorkflowRow } from "./zero-workflow-data.service";
+import type { WorkflowRow } from "./workflow-data.service";
 
 interface UpdateWorkflowInput {
   readonly workflow: WorkflowRow;
