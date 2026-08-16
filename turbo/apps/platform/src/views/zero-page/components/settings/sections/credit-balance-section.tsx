@@ -140,12 +140,26 @@ function UsagePackSegmentBar({
         className="mt-4 flex h-2 w-full gap-[3px]"
       >
         {segments.map((segment) => {
+          const formattedCredits = formatLocalizedNumber(segment.credits);
+          const expiryLabel = segment.expiresAt
+            ? t(
+                ($) => {
+                  return $.billing.usage.expires;
+                },
+                { date: formatCreditDate(segment.expiresAt) },
+              )
+            : undefined;
+          const accessibleLabel = expiryLabel
+            ? `${segment.label} — ${formattedCredits}. ${expiryLabel}`
+            : `${segment.label} — ${formattedCredits}`;
           return (
             <Tooltip key={segment.key}>
               <TooltipTrigger asChild>
-                <div
+                <button
+                  type="button"
                   data-testid={`${testIdPrefix}-${segment.key}`}
-                  className={`h-2 ${segment.color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
+                  aria-label={accessibleLabel}
+                  className={`h-2 ${segment.color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 outline-none transition-shadow hover:z-10 hover:ring-2 hover:ring-foreground/30 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-foreground/30`}
                   style={{
                     width: `${(segment.credits / totalCredits) * 100}%`,
                   }}
@@ -161,16 +175,11 @@ function UsagePackSegmentBar({
                 className="border shadow-md"
               >
                 <div className="font-medium text-foreground">
-                  {segment.label} — {formatLocalizedNumber(segment.credits)}
+                  {segment.label} — {formattedCredits}
                 </div>
-                {segment.expiresAt ? (
+                {expiryLabel ? (
                   <div className="mt-0.5 text-muted-foreground">
-                    {t(
-                      ($) => {
-                        return $.billing.usage.expires;
-                      },
-                      { date: formatCreditDate(segment.expiresAt) },
-                    )}
+                    {expiryLabel}
                   </div>
                 ) : null}
               </TooltipContent>

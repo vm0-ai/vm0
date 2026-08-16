@@ -549,6 +549,15 @@ describe("personal usage settings", () => {
     expect(
       within(memberList).getByTestId("usage-pack-member-test-user-123-bar"),
     ).toBeInTheDocument();
+    const purchasedSegment = buttonByAriaLabel(
+      "Purchased — 20,000. Expires Apr 1, 2026",
+      memberList,
+    );
+    expect(purchasedSegment).toHaveAccessibleName(
+      "Purchased — 20,000. Expires Apr 1, 2026",
+    );
+    purchasedSegment.focus();
+    expect(purchasedSegment).toHaveFocus();
     expect(
       within(memberList).getByTestId(
         "usage-pack-member-test-user-123-grants-toggle",
