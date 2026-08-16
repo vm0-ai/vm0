@@ -7,6 +7,7 @@ import pytest
 import usage.openai_responses as openai_responses
 from usage import extract_openai_responses_usage_from_event as _extract_usage_with_error
 from usage import (
+    inspect_openai_responses_client_event_json,
     inspect_openai_responses_event_json,
     merge_openai_responses_usage_result,
 )
@@ -48,6 +49,20 @@ def test_extracts_usage_from_wrapped_response_completed_event():
         "tokens.cache_read": 25,
         "tokens.cache_creation": 30,
     }
+
+
+def test_client_inspector_classifies_late_response_create_without_retaining_payload():
+    body = (
+        b'{"padding":"'
+        + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
+        + b'","type":"response.create","generate":false,"input":"secret"}'
+    )
+
+    event = inspect_openai_responses_client_event_json(body)
+
+    assert event.event_type is None
+    assert event.request_kind == "create"
+    assert event.is_prewarm is True
 
 
 def test_extracts_usage_from_wrapped_response_done_event():
