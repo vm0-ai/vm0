@@ -634,10 +634,26 @@ mod tests {
         );
     }
 
-    #[test]
-    fn record_with_outcome_serializes_bounded_outcome() {
+    #[tokio::test]
+    async fn record_with_outcome_is_sent_in_flush_payload() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start_async().await;
+        let telemetry_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .body_includes(r#""action_type":"runner_host_physical_park_balloon_settle""#)
+                    .body_includes(r#""duration_ms":125"#)
+                    .body_includes(r#""success":true"#)
+                    .body_includes(r#""outcome":"target_reached""#);
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(r#"{"success":true,"id":"ok"}"#);
+            })
+            .await;
         let mut telemetry = JobTelemetry::new(
-            http_client(),
+            http_client_for_api_url(&server.base_url()),
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
@@ -649,16 +665,9 @@ mod tests {
             None,
             Some("target_reached"),
         );
+        telemetry.flush().await;
 
-        let json = serde_json::to_value(&telemetry.pending_ops[0]).unwrap();
-        assert_eq!(
-            json["action_type"],
-            "runner_host_physical_park_balloon_settle"
-        );
-        assert_eq!(json["duration_ms"], 125);
-        assert_eq!(json["success"], true);
-        assert_eq!(json["outcome"], "target_reached");
-        assert!(json.get("reason").is_none());
+        telemetry_mock.assert_calls_async(1).await;
     }
 
     #[test]

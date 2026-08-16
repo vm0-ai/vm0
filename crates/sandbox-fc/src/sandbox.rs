@@ -3602,16 +3602,6 @@ fn park_admission_action(outcome: &SandboxParkOutcome) -> &'static str {
     }
 }
 
-fn record_park_substage(
-    events: &mut SandboxFinalExecParkSubstageEvents<'_>,
-    substage: SandboxFinalExecParkSubstage,
-    duration: Duration,
-    success: bool,
-    outcome: Option<SandboxFinalExecParkSubstageOutcome>,
-) {
-    events.record(substage, duration, success, outcome);
-}
-
 #[derive(Debug)]
 struct BalloonSettleResult {
     park_outcome: SandboxParkOutcome,
@@ -3889,8 +3879,7 @@ async fn park_inner_with_guest<'observer>(
     let client = match ApiClient::new(api_sock) {
         Ok(client) => client,
         Err(e) => {
-            record_park_substage(
-                &mut events,
+            events.record(
                 SandboxFinalExecParkSubstage::BalloonSetup,
                 Duration::ZERO,
                 false,
@@ -3928,8 +3917,7 @@ async fn park_inner_with_guest<'observer>(
         }
 
         if let Err(e) = client.patch_balloon(target).await {
-            record_park_substage(
-                &mut events,
+            events.record(
                 SandboxFinalExecParkSubstage::BalloonSetup,
                 balloon_setup_started.elapsed(),
                 false,
@@ -3943,8 +3931,7 @@ async fn park_inner_with_guest<'observer>(
                 }),
             );
         }
-        record_park_substage(
-            &mut events,
+        events.record(
             SandboxFinalExecParkSubstage::BalloonSetup,
             balloon_setup_started.elapsed(),
             true,
@@ -3970,8 +3957,7 @@ async fn park_inner_with_guest<'observer>(
             }
             SandboxParkOutcome::Reusable => {}
         }
-        record_park_substage(
-            &mut events,
+        events.record(
             SandboxFinalExecParkSubstage::BalloonSettle,
             balloon_settle_started.elapsed(),
             true,
@@ -3979,15 +3965,13 @@ async fn park_inner_with_guest<'observer>(
         );
         park_outcome
     } else {
-        record_park_substage(
-            &mut events,
+        events.record(
             SandboxFinalExecParkSubstage::BalloonSetup,
             Duration::ZERO,
             true,
             Some(SandboxFinalExecParkSubstageOutcome::Skipped),
         );
-        record_park_substage(
-            &mut events,
+        events.record(
             SandboxFinalExecParkSubstage::BalloonSettle,
             Duration::ZERO,
             true,
@@ -4001,8 +3985,7 @@ async fn park_inner_with_guest<'observer>(
     // still pause — timer ticks waste CPU regardless of memory size.
     let vcpu_pause_started = Instant::now();
     if let Err(e) = client.pause().await {
-        record_park_substage(
-            &mut events,
+        events.record(
             SandboxFinalExecParkSubstage::VcpuPause,
             vcpu_pause_started.elapsed(),
             false,
@@ -4016,8 +3999,7 @@ async fn park_inner_with_guest<'observer>(
             }),
         );
     }
-    record_park_substage(
-        &mut events,
+    events.record(
         SandboxFinalExecParkSubstage::VcpuPause,
         vcpu_pause_started.elapsed(),
         true,
