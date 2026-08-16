@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
 
 import {

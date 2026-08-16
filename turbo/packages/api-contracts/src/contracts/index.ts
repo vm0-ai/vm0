@@ -71,6 +71,12 @@ export {
   type DesktopAuthHandoffContract,
 } from "./desktop-auth";
 export {
+  ZERO_CAPABILITIES,
+  ZERO_CAPABILITY_META,
+  type ZeroCapability,
+  type ZeroCapabilityMeta,
+} from "./capabilities";
+export {
   AGENT_NAME_REGEX,
   agentNameSchema,
   volumeConfigSchema,
@@ -84,10 +90,6 @@ export {
   composeResponseSchema,
   createComposeResponseSchema,
   composeListItemSchema,
-  ZERO_CAPABILITIES,
-  ZERO_CAPABILITY_META,
-  type ZeroCapability,
-  type ZeroCapabilityMeta,
   // Inferred types
   type ComposeResponse,
   type ComposeListItem,

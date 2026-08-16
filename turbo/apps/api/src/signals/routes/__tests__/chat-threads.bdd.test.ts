@@ -12,7 +12,7 @@ import {
   type ChatEvent,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,

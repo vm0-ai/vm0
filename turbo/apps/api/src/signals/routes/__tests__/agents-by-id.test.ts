@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import type { BrandedApiNamespace } from "@okouai/api-contracts/contracts/api-namespaces";
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 

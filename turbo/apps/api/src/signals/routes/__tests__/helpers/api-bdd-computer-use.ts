@@ -4,7 +4,7 @@ import {
   CLIENT_PRODUCT_HEADER,
   type DesktopProduct,
 } from "@okouai/api-contracts/contracts/client-headers";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import { cronComputerUseScreenshotCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
   zeroComputerUseAuthorizationRequestsContract,

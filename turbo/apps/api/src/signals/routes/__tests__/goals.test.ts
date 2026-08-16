@@ -1,4 +1,4 @@
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 

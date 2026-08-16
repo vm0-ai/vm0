@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { authContract } from "@okouai/api-contracts/contracts/auth";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {

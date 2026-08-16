@@ -7,7 +7,7 @@ import {
   setAuthContext$,
   type AuthErrorResponse,
 } from "../auth/auth-context";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import type { AuthContext, AuthTokenType } from "../../types/auth";
 import type { RouteEntry } from "../route-entry";
 import { rawQuery$ } from "../context/hono";

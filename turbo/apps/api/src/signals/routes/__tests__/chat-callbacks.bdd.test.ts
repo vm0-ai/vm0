@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { WebPushError } from "web-push";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import {
   resolveChatEventRecommendedFollowups,
   type GenerationTemplateRequest,

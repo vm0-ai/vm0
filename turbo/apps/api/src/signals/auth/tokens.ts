@@ -3,7 +3,7 @@ import { createHmac, hkdfSync } from "node:crypto";
 import {
   ZERO_CAPABILITIES,
   ZeroCapability,
-} from "@okouai/api-contracts/contracts/composes";
+} from "@okouai/api-contracts/contracts/capabilities";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { z } from "zod";

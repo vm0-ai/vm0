@@ -4,7 +4,7 @@ import {
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 

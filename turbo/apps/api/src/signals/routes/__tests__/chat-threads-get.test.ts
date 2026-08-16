@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { chatThreadMetadataContract } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";

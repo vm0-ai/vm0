@@ -7,10 +7,8 @@ import {
   cliAuthDeviceContract,
   cliAuthTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth";
-import {
-  agentComposeApiContentSchema,
-  type ZeroCapability,
-} from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
