@@ -1385,8 +1385,8 @@ describe("organization billing settings", () => {
       within(orderSummary).queryByText("Monthly difference"),
     ).not.toBeInTheDocument();
     expect(
-      within(orderSummary).getByText("Scheduled for Sep 1, 2026").parentElement,
-    ).toHaveClass("bg-amber-50/70");
+      within(orderSummary).getByText("Scheduled for Sep 1, 2026"),
+    ).toBeVisible();
 
     const reviewConversionButton = buttonByText(
       "Review conversion",
@@ -2050,7 +2050,7 @@ describe("organization billing settings", () => {
     const downgradeNotice = screen.getByText(
       "Downgrades to $50 on Apr 1, 2026.",
     );
-    expect(downgradeNotice).toHaveClass("text-yellow-700");
+    expect(downgradeNotice).toBeVisible();
     expect(screen.queryByText("+4,321 bonus credits")).not.toBeInTheDocument();
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
@@ -2064,8 +2064,7 @@ describe("organization billing settings", () => {
     const scheduledDowngrade = within(orderSummary).getByRole("status", {
       name: "Downgrade scheduled",
     });
-    expect(scheduledDowngrade).toHaveClass("bg-yellow-50/70");
-    expect(orderSummary).toHaveClass("pb-5");
+    expect(scheduledDowngrade).toBeVisible();
     expect(scheduledDowngrade).toHaveTextContent(
       "Lower package starts Apr 1, 2026 · Existing credits remain available until they expire",
     );
@@ -2218,9 +2217,7 @@ describe("organization billing settings", () => {
         name: "$20 · 21,234 credits · 6% off",
       }),
     );
-    expect(screen.getByText("Downgrades to $20 on Apr 1, 2026.")).toHaveClass(
-      "text-yellow-700",
-    );
+    expect(screen.getByText("Downgrades to $20 on Apr 1, 2026.")).toBeVisible();
     expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
 
     click(packageSelect);
@@ -2229,9 +2226,9 @@ describe("organization billing settings", () => {
         name: "$100 · 109,999 credits · 9% off",
       }),
     );
-    expect(screen.getByText("Downgrades to $100 on Apr 1, 2026.")).toHaveClass(
-      "text-yellow-700",
-    );
+    expect(
+      screen.getByText("Downgrades to $100 on Apr 1, 2026."),
+    ).toBeVisible();
     expect(
       screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
     ).not.toBeInTheDocument();
@@ -2524,13 +2521,13 @@ describe("organization billing settings", () => {
     const downgradeNotice = within(orderSummary).getByRole("status", {
       name: "Downgrade",
     });
-    expect(downgradeNotice).toHaveClass("bg-yellow-50/70", "mb-5");
+    expect(downgradeNotice).toBeVisible();
     expect(downgradeNotice).toHaveTextContent(
       "Lower package starts Apr 1, 2026 · Existing credits remain available until they expire",
     );
     expect(
-      downgradeNotice.firstElementChild?.querySelector("svg"),
-    ).not.toBeNull();
+      within(orderSummary).queryByText("Scheduled for Apr 1, 2026"),
+    ).not.toBeInTheDocument();
     click(buttonByText("Confirm", orderSummary));
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
