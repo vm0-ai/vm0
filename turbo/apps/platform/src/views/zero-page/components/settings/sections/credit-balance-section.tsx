@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
 import type { UsagePackCreditsResponse } from "@okouai/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { ArrowRight, ChevronDown, History, Users } from "lucide-react";
+import { ArrowRight, ChevronRight, Users } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -307,16 +307,6 @@ function usagePackMemberName(member: OrgMember): string {
   return fullName || member.email;
 }
 
-function usagePackNextExpiry(
-  credits: UsagePackCreditsResponse,
-): string | undefined {
-  return credits.creditGrants
-    .map((grant) => {
-      return grant.expiresAt;
-    })
-    .sort()[0];
-}
-
 function emptyMemberCredits(memberId: string): UsagePackMemberCredit {
   return {
     memberId,
@@ -332,54 +322,6 @@ interface UsagePackMemberRow {
   readonly credits: UsagePackMemberCredit;
 }
 
-function UsagePackMemberSummary({
-  rows,
-}: {
-  rows: readonly UsagePackMemberRow[];
-}) {
-  const { t } = useTranslation();
-  const totalRemaining = rows.reduce((sum, row) => {
-    return sum + row.credits.totalCredits;
-  }, 0);
-  const totalAdditions = rows.reduce((sum, row) => {
-    return sum + row.credits.creditGrants.length;
-  }, 0);
-  return (
-    <div
-      data-testid="usage-pack-member-summary"
-      className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-2"
-    >
-      <div>
-        <p className="text-xs text-muted-foreground">
-          {t(($) => {
-            return $.billing.usage.usagePack.totalRemaining;
-          })}
-        </p>
-        <p className="mt-0.5 text-2xl font-semibold tracking-tight tabular-nums text-foreground">
-          {formatLocalizedNumber(totalRemaining)}
-        </p>
-      </div>
-      <p className="pb-0.5 text-xs text-muted-foreground">
-        <span className="tabular-nums text-foreground">
-          {formatLocalizedNumber(rows.length)}
-        </span>{" "}
-        {t(($) => {
-          return $.billing.usage.usagePack.members;
-        })}
-        <span className="mx-1.5" aria-hidden="true">
-          ·
-        </span>
-        <span className="tabular-nums text-foreground">
-          {formatLocalizedNumber(totalAdditions)}
-        </span>{" "}
-        {t(($) => {
-          return $.billing.usage.creditAdditions;
-        })}
-      </p>
-    </div>
-  );
-}
-
 function UsagePackMemberHeader({
   credits,
   member,
@@ -387,7 +329,6 @@ function UsagePackMemberHeader({
   credits: UsagePackMemberCredit;
   member: OrgMember;
 }) {
-  const { t } = useTranslation();
   const name = usagePackMemberName(member);
   const initial = name.charAt(0).toUpperCase();
   return (
@@ -403,105 +344,53 @@ function UsagePackMemberHeader({
           ) : null}
         </div>
       </div>
-      <div className="shrink-0 text-right">
-        <p className="text-lg font-semibold tracking-tight tabular-nums text-foreground">
-          {formatLocalizedNumber(credits.totalCredits)}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {t(($) => {
-            return $.billing.usage.usagePack.remaining;
-          })}
-        </p>
-      </div>
+      <p className="shrink-0 text-xl font-medium tabular-nums text-foreground">
+        {formatLocalizedNumber(credits.totalCredits)}
+      </p>
     </div>
   );
 }
 
-function UsagePackMemberCreditMeta({
-  bonusLabel,
-  credits,
+function UsagePackMemberCreditAdditions({
   expanded,
   grants,
   memberId,
-  purchasedLabel,
   testIdPrefix,
 }: {
-  bonusLabel: string;
-  credits: UsagePackMemberCredit;
   expanded: boolean;
   grants: readonly CreditAddition[];
   memberId: string;
-  purchasedLabel: string;
   testIdPrefix: string;
 }) {
   const { t } = useTranslation();
   const toggleExpanded = useSet(toggleUsagePackMemberAdditions$);
-  const nextExpiry = usagePackNextExpiry(credits);
   const creditAdditionsLabel = t(($) => {
     return $.billing.usage.creditAdditions;
   });
+  if (grants.length === 0) {
+    return null;
+  }
   return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span className="flex items-center gap-1.5">
-          <span
-            className="size-2 rounded-full bg-credit-plan-pro"
-            aria-hidden="true"
-          />
-          <span className="tabular-nums text-foreground">
-            {formatLocalizedNumber(credits.purchasedCredits)}
-          </span>{" "}
-          {purchasedLabel}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span
-            className="size-2 rounded-full bg-credit-promotional"
-            aria-hidden="true"
-          />
-          <span className="tabular-nums text-foreground">
-            {formatLocalizedNumber(credits.bonusCredits)}
-          </span>{" "}
-          {bonusLabel}
-        </span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="whitespace-nowrap">
-          {nextExpiry ? (
-            <>
-              {t(($) => {
-                return $.billing.usage.usagePack.nextExpiry;
-              })}{" "}
-              <span className="tabular-nums text-foreground">
-                {formatCreditDate(nextExpiry)}
-              </span>
-            </>
-          ) : (
-            "—"
-          )}
-        </span>
-        {grants.length > 0 ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-testid={`${testIdPrefix}-grants-toggle`}
-            className="h-7 gap-1.5 px-2 tabular-nums text-muted-foreground"
-            aria-expanded={expanded}
-            aria-label={`${creditAdditionsLabel}: ${grants.length}`}
-            onClick={() => {
-              toggleExpanded(memberId);
-            }}
-          >
-            <History size={14} />
-            {formatLocalizedNumber(grants.length)}
-            <span>{creditAdditionsLabel}</span>
-            <ChevronDown
-              size={13}
-              className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-            />
-          </Button>
-        ) : null}
-      </div>
+    <div className="mt-4 border-t border-border/50 pt-3">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        data-testid={`${testIdPrefix}-grants-toggle`}
+        className="-ml-2 h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground"
+        aria-expanded={expanded}
+        aria-label={`${creditAdditionsLabel}: ${grants.length}`}
+        onClick={() => {
+          toggleExpanded(memberId);
+        }}
+      >
+        <ChevronRight
+          size={13}
+          className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+        />
+        <span>{creditAdditionsLabel}</span>
+        <span className="tabular-nums">({grants.length})</span>
+      </Button>
     </div>
   );
 }
@@ -523,11 +412,10 @@ function UsagePackMemberCard({ row }: { row: UsagePackMemberRow }) {
   return (
     <div
       role="listitem"
-      data-state={expanded ? "selected" : undefined}
       data-testid={`usage-pack-member-credit-${member.userId}`}
       className="overflow-hidden rounded-xl bg-card zero-border"
     >
-      <div className="p-4">
+      <div className="px-5 py-4">
         <UsagePackMemberHeader credits={credits} member={member} />
 
         {credits.totalCredits > 0 && segments.length > 0 ? (
@@ -536,19 +424,11 @@ function UsagePackMemberCard({ row }: { row: UsagePackMemberRow }) {
             testIdPrefix={testIdPrefix}
             totalCredits={credits.totalCredits}
           />
-        ) : (
-          <div
-            data-testid={`${testIdPrefix}-empty-bar`}
-            className="mt-4 h-2 w-full rounded-full bg-muted/40"
-          />
-        )}
-        <UsagePackMemberCreditMeta
-          bonusLabel={bonusLabel}
-          credits={credits}
+        ) : null}
+        <UsagePackMemberCreditAdditions
           expanded={expanded}
           grants={grants}
           memberId={member.userId}
-          purchasedLabel={purchasedLabel}
           testIdPrefix={testIdPrefix}
         />
       </div>
@@ -607,12 +487,7 @@ function UsagePackMemberBalances({
         creditsByMember.get(member.userId) ?? emptyMemberCredits(member.userId),
     };
   });
-  return (
-    <div>
-      <UsagePackMemberSummary rows={rows} />
-      <UsagePackMemberList rows={rows} />
-    </div>
-  );
+  return <UsagePackMemberList rows={rows} />;
 }
 
 function UsagePackMemberBalancesDialog({

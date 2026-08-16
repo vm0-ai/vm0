@@ -558,24 +558,23 @@ describe("personal usage settings", () => {
       "usage-pack-member-credit-test-user-123",
     );
     expect(linghanCard).toHaveTextContent("20,400");
-    expect(linghanCard).toHaveTextContent("20,000 Purchased");
-    expect(linghanCard).toHaveTextContent("400 Bonus");
-    expect(linghanCard).toHaveTextContent("Next expiry Apr 1, 2026");
+    expect(linghanCard).not.toHaveTextContent("Remaining");
+    expect(linghanCard).not.toHaveTextContent("Purchased");
+    expect(linghanCard).not.toHaveTextContent("Bonus");
+    expect(linghanCard).not.toHaveTextContent("Next expiry");
     const yumaCard = within(memberList).getByTestId(
       "usage-pack-member-credit-member-yuma",
     );
     expect(yumaCard).toHaveTextContent("0");
     expect(
-      within(yumaCard).getByTestId("usage-pack-member-member-yuma-empty-bar"),
-    ).toBeInTheDocument();
+      within(yumaCard).queryByTestId("usage-pack-member-member-yuma-empty-bar"),
+    ).toBeNull();
+    expect(yumaCard).not.toHaveTextContent("Purchased");
+    expect(yumaCard).not.toHaveTextContent("Bonus");
 
-    const summary = within(memberDialog).getByTestId(
-      "usage-pack-member-summary",
-    );
-    expect(summary).toHaveTextContent("Total remaining");
-    expect(summary).toHaveTextContent("20,400");
-    expect(summary).toHaveTextContent("2 Members");
-    expect(summary).toHaveTextContent("2 Credit additions");
+    expect(
+      within(memberDialog).queryByTestId("usage-pack-member-summary"),
+    ).toBeNull();
 
     await user.click(
       within(memberList).getByTestId(
