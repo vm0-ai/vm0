@@ -101,6 +101,16 @@ _WebSocketCorrelationReason = Literal[
     "server_error",
     "correlation_cap",
 ]
+_WEBSOCKET_LIFECYCLE_EVENT_TYPES = frozenset(
+    (
+        "response.created",
+        "response.completed",
+        "response.done",
+        "response.incomplete",
+        "response.failed",
+        "error",
+    )
+)
 
 
 def _clear_websocket_correlation_candidate(state: _OpenAIResponsesPrewarmState) -> None:
@@ -701,7 +711,14 @@ def feed_model_websocket_usage(
         return
     prewarm_state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
     lifecycle: usage.OpenAIResponsesServerLifecycle | None = None
-    if isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
+    should_inspect_lifecycle = isinstance(prewarm_state, _OpenAIResponsesPrewarmState) and (
+        prewarm_state.pending_intent is not None
+        or prewarm_state.active_intent is not None
+        or prewarm_state.ignored_response_id is not None
+        or event.event_type is None
+        or event.event_type in _WEBSOCKET_LIFECYCLE_EVENT_TYPES
+    )
+    if should_inspect_lifecycle and isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
         lifecycle = usage.inspect_openai_responses_server_lifecycle(event)
         _observe_websocket_server_lifecycle(flow, prewarm_state, lifecycle)
 
