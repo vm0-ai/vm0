@@ -2855,7 +2855,10 @@ describe("CHAT-01 chat search", () => {
       ).toBeTruthy();
       expect(
         [...match.contextBefore, ...match.contextAfter].some((message) => {
-          return message.messageId === match.matchedMessage.messageId;
+          return (
+            message.chatThreadId === match.matchedMessage.chatThreadId &&
+            message.seqId === match.matchedMessage.seqId
+          );
         }),
       ).toBeFalsy();
 
@@ -2898,7 +2901,13 @@ describe("CHAT-01 chat search", () => {
     // remains associated with both overlapping windows.
     expect(sharedAfterAlpha).toHaveLength(1);
     expect(sharedBeforeBeta).toHaveLength(1);
-    expect(sharedAfterAlpha[0]?.messageId).toBe(sharedBeforeBeta[0]?.messageId);
+    expect([
+      sharedAfterAlpha[0]?.chatThreadId,
+      sharedAfterAlpha[0]?.seqId,
+    ]).toStrictEqual([
+      sharedBeforeBeta[0]?.chatThreadId,
+      sharedBeforeBeta[0]?.seqId,
+    ]);
 
     const beforeOnly = await chat.searchChat(owner, `${marker} needle`, {
       limit: 3,

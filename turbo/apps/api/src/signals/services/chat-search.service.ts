@@ -59,7 +59,7 @@ const contextSearchMessageColumns = {
   text: contextSearchMessage.text,
 } as const;
 
-function chatSearchMessageId(
+function chatSearchMessageKey(
   row: Pick<ChatSearchMessageRow, "chatThreadId" | "seqId">,
 ): string {
   return `${row.chatThreadId}:${row.seqId}`;
@@ -67,17 +67,11 @@ function chatSearchMessageId(
 
 function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   return {
-    // Old Platform/App clients can use messageId as a React key for up to the
-    // ~2-day client-skew window. Keep it derived from durable identity until
-    // #26921 migrates current clients to (chatThreadId, seqId), then remove
-    // messageId/sequenceNumber after that client deploy has aged past 2 days.
-    messageId: chatSearchMessageId(row),
     chatThreadId: row.chatThreadId,
     role: row.role,
     content: row.text,
     createdAt: row.createdAt.toISOString(),
     seqId: row.seqId,
-    sequenceNumber: null,
     runId: row.runId,
   };
 }
@@ -205,13 +199,13 @@ async function loadChatSearchContexts(
     readonly after: number;
   },
 ): Promise<ReadonlyMap<string, ChatSearchContext>> {
-  const contextsByMessageId = new Map<string, ChatSearchContext>(
+  const contextsByMessageKey = new Map<string, ChatSearchContext>(
     args.matches.map((match): readonly [string, ChatSearchContext] => {
-      return [chatSearchMessageId(match), { before: [], after: [] }];
+      return [chatSearchMessageKey(match), { before: [], after: [] }];
     }),
   );
   if (args.matches.length === 0 || (args.before === 0 && args.after === 0)) {
-    return contextsByMessageId;
+    return contextsByMessageKey;
   }
 
   const contextQuery =
@@ -263,11 +257,11 @@ async function loadChatSearchContexts(
     .orderBy(resultOrdinality, asc(context.seqId));
 
   for (const row of rows) {
-    const matchedMessageId = chatSearchMessageId({
+    const matchedMessageKey = chatSearchMessageKey({
       chatThreadId: row.matchedChatThreadId,
       seqId: row.matchedSeqId,
     });
-    const matchedContext = contextsByMessageId.get(matchedMessageId);
+    const matchedContext = contextsByMessageKey.get(matchedMessageKey);
     if (!matchedContext) {
       throw new Error(
         "chat search context returned an unknown matched message",
@@ -281,7 +275,7 @@ async function loadChatSearchContexts(
     }
   }
 
-  return contextsByMessageId;
+  return contextsByMessageKey;
 }
 
 export function chatSearch(args: {
@@ -313,14 +307,14 @@ export function chatSearch(args: {
 
     const hasMore = matches.length > args.limit;
     const truncated = hasMore ? matches.slice(0, args.limit) : matches;
-    const contextsByMessageId = await loadChatSearchContexts(db, {
+    const contextsByMessageKey = await loadChatSearchContexts(db, {
       matches: truncated,
       before: args.before,
       after: args.after,
     });
     const results = truncated.map((match): ChatSearchResult => {
-      const messageId = chatSearchMessageId(match);
-      const context = contextsByMessageId.get(messageId);
+      const messageKey = chatSearchMessageKey(match);
+      const context = contextsByMessageKey.get(messageKey);
       if (!context) {
         throw new Error("chat search context is missing a matched message");
       }
