@@ -34,6 +34,10 @@ use super::session_history_cpu::{
 use super::session_restore::MaterializedResumeSession;
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
+use crate::object_download_policy::{
+    OBJECT_DOWNLOAD_MAX_ATTEMPTS, OBJECT_DOWNLOAD_TIMEOUT, is_retryable_http_status,
+    is_retryable_reqwest_error, sleep_object_download_retry_delay,
+};
 use crate::restored_session_identity::RestoredSessionHistoryPrefixAttribution;
 use crate::telemetry::{
     SessionHistoryCacheProbeMetadata, SessionHistoryContentEncodingState,
@@ -45,9 +49,6 @@ use crate::types::{
     ResumeSessionHistoryRefKind,
 };
 
-const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
-const SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS: usize = 3;
-const SESSION_HISTORY_DOWNLOAD_RETRY_DELAY: Duration = Duration::from_millis(200);
 const SESSION_HISTORY_PROBE_TTL: Duration = Duration::from_secs(60 * 60);
 const SESSION_HISTORY_PROBE_CAPACITY: usize = 4096;
 
@@ -884,15 +885,14 @@ async fn download_body(
         match result {
             Ok(body) => return Ok(body),
             Err(error) => {
-                let should_retry =
-                    error.is_retryable() && attempt < SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS;
+                let should_retry = error.is_retryable() && attempt < OBJECT_DOWNLOAD_MAX_ATTEMPTS;
                 if !should_retry {
                     return Err(error.into_runner_error());
                 }
                 tracing::warn!(
                     action = "session_history_download_retry",
                     attempt,
-                    max_attempts = SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS,
+                    max_attempts = OBJECT_DOWNLOAD_MAX_ATTEMPTS,
                     failure_kind = error.kind_value(),
                     "retrying session history encoded body download"
                 );
@@ -901,7 +901,7 @@ async fn download_body(
                     _ = cancel.cancelled() => {
                         return Err(session_history_download_cancelled_error());
                     }
-                    _ = sleep_session_history_download_retry_delay() => {}
+                    _ = sleep_object_download_retry_delay() => {}
                 }
                 attempt += 1;
             }
@@ -922,7 +922,7 @@ async fn download_body_once(
     let request_started = Instant::now();
     let response = http
         .get(url)
-        .timeout(DOWNLOAD_TIMEOUT)
+        .timeout(OBJECT_DOWNLOAD_TIMEOUT)
         .send()
         .await
         .map_err(|error| SessionHistoryDownloadBodyError::from_reqwest("GET", url, error))?;
@@ -1058,7 +1058,7 @@ impl SessionHistoryDownloadBodyError {
         let kind = match error.status() {
             Some(status) => SessionHistoryDownloadBodyErrorKind::HttpStatus(status),
             None => SessionHistoryDownloadBodyErrorKind::Transport {
-                retryable: reqwest_error_is_retryable(&error),
+                retryable: is_retryable_reqwest_error(&error),
             },
         };
         Self {
@@ -1071,7 +1071,7 @@ impl SessionHistoryDownloadBodyError {
         match self.kind {
             SessionHistoryDownloadBodyErrorKind::Transport { retryable } => retryable,
             SessionHistoryDownloadBodyErrorKind::HttpStatus(status) => {
-                status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+                is_retryable_http_status(status)
             }
             SessionHistoryDownloadBodyErrorKind::ContentLengthMismatch
             | SessionHistoryDownloadBodyErrorKind::DownloadedTooLarge => false,
@@ -1107,25 +1107,6 @@ impl SessionHistoryDownloadBodyError {
 impl fmt::Display for SessionHistoryDownloadBodyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message)
-    }
-}
-
-fn reqwest_error_is_retryable(error: &reqwest::Error) -> bool {
-    !(error.is_builder() || error.is_redirect())
-}
-
-async fn sleep_session_history_download_retry_delay() {
-    let delay = session_history_download_retry_delay();
-    if !delay.is_zero() {
-        tokio::time::sleep(delay).await;
-    }
-}
-
-fn session_history_download_retry_delay() -> Duration {
-    if cfg!(test) {
-        Duration::ZERO
-    } else {
-        SESSION_HISTORY_DOWNLOAD_RETRY_DELAY
     }
 }
 
@@ -2482,7 +2463,7 @@ mod tests {
         let hash = hex::encode(Sha256::digest(body));
         let server = MultiShotSessionHistoryServer::respond_many(vec![
             MultiShotSessionHistoryResponse::ok(compressed.clone(), None);
-            SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
+            OBJECT_DOWNLOAD_MAX_ATTEMPTS
         ])
         .await;
         let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size + 1);
@@ -2505,9 +2486,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
-        server
-            .assert_served(SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS)
-            .await;
+        server.assert_served(OBJECT_DOWNLOAD_MAX_ATTEMPTS).await;
     }
 
     #[tokio::test]
@@ -2518,7 +2497,7 @@ mod tests {
         let hash = hex::encode(Sha256::digest(body));
         let server = MultiShotSessionHistoryServer::respond_many(vec![
             MultiShotSessionHistoryResponse::ok(compressed.clone(), None);
-            SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
+            OBJECT_DOWNLOAD_MAX_ATTEMPTS
         ])
         .await;
         let session = gzip_ref_session(server.url(), hash, body.len() as u64, encoded_size + 1);
@@ -2541,9 +2520,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
-        server
-            .assert_served(SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS)
-            .await;
+        server.assert_served(OBJECT_DOWNLOAD_MAX_ATTEMPTS).await;
     }
 
     #[tokio::test]
@@ -2824,7 +2801,7 @@ mod tests {
     async fn attributed_materializer_preserves_body_read_failure() {
         let server = MultiShotSessionHistoryServer::respond_many(vec![
             MultiShotSessionHistoryResponse::ok(b"short", Some(999));
-            SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
+            OBJECT_DOWNLOAD_MAX_ATTEMPTS
         ])
         .await;
         let session = ref_session(
@@ -2852,9 +2829,7 @@ mod tests {
             }
             _ => panic!("expected failed download"),
         }
-        server
-            .assert_served(SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS)
-            .await;
+        server.assert_served(OBJECT_DOWNLOAD_MAX_ATTEMPTS).await;
     }
 
     #[test]
