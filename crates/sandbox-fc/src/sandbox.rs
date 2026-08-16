@@ -12,10 +12,11 @@ use sandbox::{
     ProcessControlAck, ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlMode,
     ProcessControlOutcome, ProcessControlWriteState, ProcessExit, ProcessOutputChunk,
     ProcessOutputMode, Sandbox, SandboxConfig, SandboxError, SandboxFinalExecParkObserver,
-    SandboxFinalExecParkOutcome, SandboxFinalExecParkStage, SandboxIdleTransition,
-    SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
-    SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
-    SevereMemoryRetentionDiagnostics, StartProcessRequest, WriteFileEntry,
+    SandboxFinalExecParkOutcome, SandboxFinalExecParkStage, SandboxFinalExecParkSubstage,
+    SandboxFinalExecParkSubstageOutcome, SandboxIdleTransition, SandboxInvalidStateContext,
+    SandboxOperation, SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome,
+    SandboxStartObserver, SandboxStartStage, SevereMemoryRetentionDiagnostics, StartProcessRequest,
+    WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
@@ -188,6 +189,32 @@ impl<'a> SandboxFinalExecParkTiming<'a> {
         if let Some(observer) = self.observer.as_deref_mut() {
             observer.record_stage(stage, started.elapsed(), success);
         }
+    }
+}
+
+struct SandboxFinalExecParkSubstageEvents<'a> {
+    observer: Option<&'a mut dyn SandboxFinalExecParkObserver>,
+}
+
+impl<'a> SandboxFinalExecParkSubstageEvents<'a> {
+    fn new(observer: Option<&'a mut dyn SandboxFinalExecParkObserver>) -> Self {
+        Self { observer }
+    }
+
+    fn record(
+        &mut self,
+        substage: SandboxFinalExecParkSubstage,
+        duration: Duration,
+        success: bool,
+        outcome: Option<SandboxFinalExecParkSubstageOutcome>,
+    ) {
+        if let Some(observer) = self.observer.as_deref_mut() {
+            observer.record_substage(substage, duration, success, outcome);
+        }
+    }
+
+    fn into_observer(self) -> Option<&'a mut dyn SandboxFinalExecParkObserver> {
+        self.observer
     }
 }
 
@@ -1888,6 +1915,10 @@ impl FirecrackerSandbox {
         let final_exec_guest = Arc::clone(&guest);
         let physical_park_guest = Arc::clone(&guest);
         let id = self.id.clone();
+        let park_id = id.clone();
+        let is_parked = &mut self.is_parked;
+        let memory_mb = self.config.resources.memory_mb;
+        let balloon_controller = self.runtime.balloon_mut();
         let api_sock = self.sock_paths.api_sock();
         let final_exec_request = exec_capture_request(request, timeout_ms, diagnostic_label);
         let (normal_operations_fence, park_outcome, exec_result) =
@@ -1932,15 +1963,18 @@ impl FirecrackerSandbox {
                     })?;
                     guest.quiesce_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
                 },
-                || {
-                    park_inner_with_guest(
-                        &mut self.is_parked,
-                        self.config.resources.memory_mb,
-                        self.runtime.balloon_mut(),
+                |timing, events| async move {
+                    let (events, result) = park_inner_with_guest(
+                        is_parked,
+                        memory_mb,
+                        balloon_controller,
                         &api_sock,
-                        &id,
+                        &park_id,
                         physical_park_guest,
+                        events,
                     )
+                    .await;
+                    (timing, events, result)
                 },
             )
             .await?;
@@ -2183,15 +2217,18 @@ impl Sandbox for FirecrackerSandbox {
                 })?;
                 guest.quiesce_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
             },
-            || {
-                park_inner_with_guest(
+            || async {
+                let (_, result) = park_inner_with_guest(
                     &mut self.is_parked,
                     self.config.resources.memory_mb,
                     self.runtime.balloon_mut(),
                     &api_sock,
                     &id,
                     physical_park_guest,
+                    SandboxFinalExecParkSubstageEvents::new(None),
                 )
+                .await;
+                result
             },
         )
         .await?;
@@ -2750,12 +2787,16 @@ where
         None,
         fence_and_prepare,
         quiesce_guest,
-        park_firecracker,
+        |timing, events| async move {
+            let result = park_firecracker().await;
+            (timing, events, result)
+        },
     )
     .await
 }
 
 async fn park_with_ready_for_park_and_preparation_with_observer<
+    'observer,
     Fence,
     Outcome,
     Preparation,
@@ -2768,7 +2809,7 @@ async fn park_with_ready_for_park_and_preparation_with_observer<
 >(
     log_id: &str,
     coordinator: &ParkCoordinator,
-    observer: Option<&mut dyn SandboxFinalExecParkObserver>,
+    observer: Option<&'observer mut dyn SandboxFinalExecParkObserver>,
     fence_and_prepare: F,
     quiesce_guest: Q,
     park_firecracker: P,
@@ -2778,8 +2819,17 @@ where
     FF: Future<Output = Result<(Fence, Preparation), ParkNormalOperationFenceError>>,
     Q: FnOnce() -> QF,
     QF: Future<Output = io::Result<()>>,
-    P: FnOnce() -> PF,
-    PF: Future<Output = sandbox::Result<Outcome>>,
+    P: FnOnce(
+        SandboxFinalExecParkTiming<'observer>,
+        SandboxFinalExecParkSubstageEvents<'observer>,
+    ) -> PF,
+    PF: Future<
+        Output = (
+            SandboxFinalExecParkTiming<'observer>,
+            SandboxFinalExecParkSubstageEvents<'observer>,
+            sandbox::Result<Outcome>,
+        ),
+    >,
 {
     let mut timing = SandboxFinalExecParkTiming::new(observer);
     let preparation_started = Instant::now();
@@ -2971,7 +3021,11 @@ where
         "sandbox park lifecycle ReadyForPark reached"
     );
     let physical_park_started = Instant::now();
-    let outcome = match park_firecracker().await {
+    let observer = timing.observer.take();
+    let events = SandboxFinalExecParkSubstageEvents::new(observer);
+    let (mut timing, events, park_result) = park_firecracker(timing, events).await;
+    timing.observer = events.into_observer();
+    let outcome = match park_result {
         Ok(outcome) => {
             timing.record(
                 SandboxFinalExecParkStage::PhysicalPark,
@@ -3548,6 +3602,12 @@ fn park_admission_action(outcome: &SandboxParkOutcome) -> &'static str {
     }
 }
 
+#[derive(Debug)]
+struct BalloonSettleResult {
+    park_outcome: SandboxParkOutcome,
+    telemetry_outcome: SandboxFinalExecParkSubstageOutcome,
+}
+
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
 ///
 /// The guest needs running vCPUs to inflate, so this must be called
@@ -3559,7 +3619,11 @@ fn park_admission_action(outcome: &SandboxParkOutcome) -> &'static str {
 /// [`BALLOON_SETTLE_PROGRESS_GRACE`]. The returned outcome rejects only the
 /// existing severe-deficit classification. Errors from stats fetching are
 /// non-fatal — we log and proceed to pause.
-async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> SandboxParkOutcome {
+async fn wait_for_balloon_with_outcome(
+    client: &ApiClient,
+    target_mib: u32,
+    log_id: &str,
+) -> BalloonSettleResult {
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
     let mut settle_timeout = BALLOON_SETTLE_TIMEOUT;
@@ -3583,7 +3647,10 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     &summary,
                     &outcome,
                 );
-                return outcome;
+                return BalloonSettleResult {
+                    park_outcome: outcome,
+                    telemetry_outcome: SandboxFinalExecParkSubstageOutcome::Deadline,
+                };
             }
         }
 
@@ -3611,7 +3678,10 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon fully inflated, proceeding to pause"
                     );
-                    return SandboxParkOutcome::Reusable;
+                    return BalloonSettleResult {
+                        park_outcome: SandboxParkOutcome::Reusable,
+                        telemetry_outcome: SandboxFinalExecParkSubstageOutcome::TargetReached,
+                    };
                 }
 
                 if deficit_mib <= tolerance_mib {
@@ -3635,7 +3705,10 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon inflated within tolerance, proceeding to pause"
                     );
-                    return SandboxParkOutcome::Reusable;
+                    return BalloonSettleResult {
+                        park_outcome: SandboxParkOutcome::Reusable,
+                        telemetry_outcome: SandboxFinalExecParkSubstageOutcome::WithinTolerance,
+                    };
                 }
 
                 if summary.is_pressure_limited_partial_reclaim(deficit_mib, tolerance_mib) {
@@ -3660,7 +3733,10 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reason = BALLOON_PRESSURE_LIMITED_REASON,
                         "balloon pressure-limited partial reclaim, proceeding to pause"
                     );
-                    return SandboxParkOutcome::Reusable;
+                    return BalloonSettleResult {
+                        park_outcome: SandboxParkOutcome::Reusable,
+                        telemetry_outcome: SandboxFinalExecParkSubstageOutcome::PressureLimited,
+                    };
                 }
 
                 // Balloon timing tests advance paused time only after a completed stats sample.
@@ -3692,7 +3768,10 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     %e,
                     "balloon stats unavailable, proceeding to pause"
                 );
-                return outcome;
+                return BalloonSettleResult {
+                    park_outcome: outcome,
+                    telemetry_outcome: SandboxFinalExecParkSubstageOutcome::StatsUnavailable,
+                };
             }
             Err(_) => {
                 let outcome = summary.park_outcome();
@@ -3704,7 +3783,10 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     &summary,
                     &outcome,
                 );
-                return outcome;
+                return BalloonSettleResult {
+                    park_outcome: outcome,
+                    telemetry_outcome: SandboxFinalExecParkSubstageOutcome::Deadline,
+                };
             }
         }
 
@@ -3770,23 +3852,41 @@ async fn terminal_guest_memory_snapshot(
     }
 }
 
-async fn park_inner_with_guest(
+async fn park_inner_with_guest<'observer>(
     is_parked: &mut bool,
     memory_mb: u32,
     balloon_controller: &mut Option<balloon::ControllerHandle>,
     api_sock: &std::path::Path,
     log_id: &str,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
-) -> sandbox::Result<SandboxParkOutcome> {
+    mut events: SandboxFinalExecParkSubstageEvents<'observer>,
+) -> (
+    SandboxFinalExecParkSubstageEvents<'observer>,
+    sandbox::Result<SandboxParkOutcome>,
+) {
     if *is_parked {
-        return Ok(SandboxParkOutcome::Reusable);
+        return (events, Ok(SandboxParkOutcome::Reusable));
     }
 
     let target = memory_mb.saturating_sub(balloon::MIN_GUEST_MIB);
-    let client = ApiClient::new(api_sock).map_err(|e| SandboxError::IdleTransition {
-        transition: SandboxIdleTransition::Park,
-        message: format!("create API client: {e}"),
-    })?;
+    let client = match ApiClient::new(api_sock) {
+        Ok(client) => client,
+        Err(e) => {
+            events.record(
+                SandboxFinalExecParkSubstage::BalloonSetup,
+                Duration::ZERO,
+                false,
+                Some(SandboxFinalExecParkSubstageOutcome::Failed),
+            );
+            return (
+                events,
+                Err(SandboxError::IdleTransition {
+                    transition: SandboxIdleTransition::Park,
+                    message: format!("create API client: {e}"),
+                }),
+            );
+        }
+    };
 
     let outcome = if target > 0 {
         // Stop the reactive controller so we're the sole writer to /balloon.
@@ -3804,48 +3904,100 @@ async fn park_inner_with_guest(
         // failure handling is `stop_and_destroy_sandbox`, so the sandbox is
         // dropped (and Drop ensures any leftover handles are aborted) before
         // any further operations can observe the missing controller.
+        let balloon_setup_started = Instant::now();
         if let Some(controller) = balloon_controller.take() {
             controller.abort_and_join().await;
         }
 
-        client
-            .patch_balloon(target)
-            .await
-            .map_err(|e| SandboxError::IdleTransition {
-                transition: SandboxIdleTransition::Park,
-                message: format!("balloon inflate: {e}"),
-            })?;
+        if let Err(e) = client.patch_balloon(target).await {
+            events.record(
+                SandboxFinalExecParkSubstage::BalloonSetup,
+                balloon_setup_started.elapsed(),
+                false,
+                Some(SandboxFinalExecParkSubstageOutcome::Failed),
+            );
+            return (
+                events,
+                Err(SandboxError::IdleTransition {
+                    transition: SandboxIdleTransition::Park,
+                    message: format!("balloon inflate: {e}"),
+                }),
+            );
+        }
+        events.record(
+            SandboxFinalExecParkSubstage::BalloonSetup,
+            balloon_setup_started.elapsed(),
+            true,
+            None,
+        );
 
         // Wait for the guest to inflate the balloon close enough before
         // pausing vCPUs. The guest balloon driver needs running vCPUs to
         // process the inflate — pausing immediately would negate the memory
         // savings.
-        match wait_for_balloon(&client, target, log_id).await {
+        let balloon_settle_started = Instant::now();
+        let settle_result = wait_for_balloon_with_outcome(&client, target, log_id).await;
+        let BalloonSettleResult {
+            mut park_outcome,
+            telemetry_outcome,
+        } = settle_result;
+        match &mut park_outcome {
             SandboxParkOutcome::NonReusable(
-                SandboxParkNonReusableReason::SevereMemoryRetention(mut diagnostics),
+                SandboxParkNonReusableReason::SevereMemoryRetention(diagnostics),
             ) => {
                 diagnostics.guest_memory_snapshot =
                     terminal_guest_memory_snapshot(&guest, log_id).await;
-                SandboxParkOutcome::NonReusable(
-                    SandboxParkNonReusableReason::SevereMemoryRetention(diagnostics),
-                )
             }
-            outcome => outcome,
+            SandboxParkOutcome::Reusable => {}
         }
+        events.record(
+            SandboxFinalExecParkSubstage::BalloonSettle,
+            balloon_settle_started.elapsed(),
+            true,
+            Some(telemetry_outcome),
+        );
+        park_outcome
     } else {
+        events.record(
+            SandboxFinalExecParkSubstage::BalloonSetup,
+            Duration::ZERO,
+            true,
+            Some(SandboxFinalExecParkSubstageOutcome::Skipped),
+        );
+        events.record(
+            SandboxFinalExecParkSubstage::BalloonSettle,
+            Duration::ZERO,
+            true,
+            Some(SandboxFinalExecParkSubstageOutcome::Skipped),
+        );
         SandboxParkOutcome::Reusable
     };
 
     // Pause vCPUs to eliminate idle CPU overhead (timer ticks, kernel
     // scheduling). For small VMs (target == 0) we skip the balloon but
     // still pause — timer ticks waste CPU regardless of memory size.
-    client
-        .pause()
-        .await
-        .map_err(|e| SandboxError::IdleTransition {
-            transition: SandboxIdleTransition::Park,
-            message: format!("vm pause: {e}"),
-        })?;
+    let vcpu_pause_started = Instant::now();
+    if let Err(e) = client.pause().await {
+        events.record(
+            SandboxFinalExecParkSubstage::VcpuPause,
+            vcpu_pause_started.elapsed(),
+            false,
+            Some(SandboxFinalExecParkSubstageOutcome::Failed),
+        );
+        return (
+            events,
+            Err(SandboxError::IdleTransition {
+                transition: SandboxIdleTransition::Park,
+                message: format!("vm pause: {e}"),
+            }),
+        );
+    }
+    events.record(
+        SandboxFinalExecParkSubstage::VcpuPause,
+        vcpu_pause_started.elapsed(),
+        true,
+        None,
+    );
 
     *is_parked = true;
     if target > 0 {
@@ -3862,7 +4014,7 @@ async fn park_inner_with_guest(
             "sandbox parked (vCPUs paused, balloon skipped)"
         );
     }
-    Ok(outcome)
+    (events, Ok(outcome))
 }
 
 #[cfg(test)]
@@ -3873,15 +4025,17 @@ async fn park_inner(
     api_sock: &std::path::Path,
     log_id: &str,
 ) -> sandbox::Result<SandboxParkOutcome> {
-    park_inner_with_guest(
+    let (_, result) = park_inner_with_guest(
         is_parked,
         memory_mb,
         balloon_controller,
         api_sock,
         log_id,
         Arc::new(tokio::sync::Mutex::new(None)),
+        SandboxFinalExecParkSubstageEvents::new(None),
     )
-    .await
+    .await;
+    result
 }
 
 async fn unpark_inner(

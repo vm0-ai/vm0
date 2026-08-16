@@ -107,7 +107,19 @@ impl JobTelemetry {
         success: bool,
         error: Option<&str>,
     ) {
-        self.record_inner(action_type, duration, success, error, None);
+        self.record_inner(action_type, duration, success, error, None, None);
+    }
+
+    /// Record a timed operation with an optional bounded terminal outcome.
+    pub(crate) fn record_with_outcome(
+        &mut self,
+        action_type: &str,
+        duration: Duration,
+        success: bool,
+        error: Option<&str>,
+        outcome: Option<&str>,
+    ) {
+        self.record_inner(action_type, duration, success, error, outcome, None);
     }
 
     /// Record a timed operation using the timestamp captured when it completed.
@@ -128,6 +140,7 @@ impl JobTelemetry {
             success,
             error,
             None,
+            None,
             completed_at,
         ));
     }
@@ -138,7 +151,7 @@ impl JobTelemetry {
         runner_startup_path: RunnerStartupPath,
         sandbox_reuse_result: SandboxReuseResult,
     ) {
-        let mut op = sandbox_op("api_to_spawn", duration, true, None, None);
+        let mut op = sandbox_op("api_to_spawn", duration, true, None, None, None);
         op.runner_startup_path = Some(runner_startup_path);
         op.sandbox_reuse_result = Some(sandbox_reuse_result);
         self.push_operation(op);
@@ -152,7 +165,7 @@ impl JobTelemetry {
         outcome: &'static str,
         reason: Option<&'static str>,
     ) {
-        let mut op = sandbox_op(action_type, Duration::ZERO, success, None, None);
+        let mut op = sandbox_op(action_type, Duration::ZERO, success, None, None, None);
         op.outcome = Some(outcome.to_string());
         op.reason = reason.map(str::to_string);
         self.push_operation(op);
@@ -168,7 +181,7 @@ impl JobTelemetry {
         error: Option<&str>,
         metadata: Option<SessionHistoryTelemetryMetadata>,
     ) {
-        self.record_inner(action_type, duration, success, error, metadata);
+        self.record_inner(action_type, duration, success, error, None, metadata);
     }
 
     pub(crate) fn reporter(&self) -> SandboxOpReporter {
@@ -186,9 +199,17 @@ impl JobTelemetry {
         duration: Duration,
         success: bool,
         error: Option<&str>,
+        outcome: Option<&str>,
         metadata: Option<SessionHistoryTelemetryMetadata>,
     ) {
-        self.push_operation(sandbox_op(action_type, duration, success, error, metadata));
+        self.push_operation(sandbox_op(
+            action_type,
+            duration,
+            success,
+            error,
+            outcome,
+            metadata,
+        ));
     }
 
     fn push_operation(&mut self, operation: SandboxOp) {
@@ -366,6 +387,7 @@ impl SandboxOpReporter {
                     record.success,
                     record.error,
                     None,
+                    None,
                 )
             })
             .collect();
@@ -402,9 +424,18 @@ fn sandbox_op(
     duration: Duration,
     success: bool,
     error: Option<&str>,
+    outcome: Option<&str>,
     metadata: Option<SessionHistoryTelemetryMetadata>,
 ) -> SandboxOp {
-    sandbox_op_at(action_type, duration, success, error, metadata, Utc::now())
+    sandbox_op_at(
+        action_type,
+        duration,
+        success,
+        error,
+        outcome,
+        metadata,
+        Utc::now(),
+    )
 }
 
 fn sandbox_op_at(
@@ -412,6 +443,7 @@ fn sandbox_op_at(
     duration: Duration,
     success: bool,
     error: Option<&str>,
+    outcome: Option<&str>,
     metadata: Option<SessionHistoryTelemetryMetadata>,
     completed_at: DateTime<Utc>,
 ) -> SandboxOp {
@@ -421,7 +453,7 @@ fn sandbox_op_at(
         duration_ms: duration_ms(duration),
         success,
         error: error.map(String::from),
-        outcome: None,
+        outcome: outcome.map(String::from),
         reason: None,
         runner_startup_path: None,
         sandbox_reuse_result: None,
@@ -600,6 +632,42 @@ mod tests {
                 "reason": "prepared",
             })
         );
+    }
+
+    #[tokio::test]
+    async fn record_with_outcome_is_sent_in_flush_payload() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start_async().await;
+        let telemetry_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .body_includes(r#""action_type":"runner_host_physical_park_balloon_settle""#)
+                    .body_includes(r#""duration_ms":125"#)
+                    .body_includes(r#""success":true"#)
+                    .body_includes(r#""outcome":"target_reached""#);
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(r#"{"success":true,"id":"ok"}"#);
+            })
+            .await;
+        let mut telemetry = JobTelemetry::new(
+            http_client_for_api_url(&server.base_url()),
+            RunId::nil(),
+            "tok".to_string(),
+            "test-runner".to_string(),
+        );
+        telemetry.record_with_outcome(
+            "runner_host_physical_park_balloon_settle",
+            Duration::from_millis(125),
+            true,
+            None,
+            Some("target_reached"),
+        );
+        telemetry.flush().await;
+
+        telemetry_mock.assert_calls_async(1).await;
     }
 
     #[test]

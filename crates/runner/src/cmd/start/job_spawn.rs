@@ -911,6 +911,16 @@ mod tests {
         );
     }
 
+    fn assert_telemetry_outcome(telemetry: &JobTelemetry, action: &str, outcome: Option<&str>) {
+        let outcomes = telemetry.pending_ops_with_outcome_snapshot();
+        assert!(
+            outcomes
+                .iter()
+                .any(|op| op.0 == action && op.2.as_deref() == outcome),
+            "expected telemetry action {action} with outcome {outcome:?}, got: {outcomes:?}"
+        );
+    }
+
     struct FinalizationTelemetryFixture {
         _dir: tempfile::TempDir,
         status: Arc<StatusTracker>,
@@ -1141,9 +1151,27 @@ mod tests {
             "runner_host_reuse_preparation",
             "runner_host_physical_park",
             "runner_host_idle_publication",
+            "runner_host_physical_park_balloon_setup",
+            "runner_host_physical_park_balloon_settle",
+            "runner_host_physical_park_vcpu_pause",
         ] {
             assert_telemetry_action(&finalized.telemetry, action);
         }
+        assert_telemetry_outcome(
+            &finalized.telemetry,
+            "runner_host_physical_park_balloon_setup",
+            Some("skipped"),
+        );
+        assert_telemetry_outcome(
+            &finalized.telemetry,
+            "runner_host_physical_park_balloon_settle",
+            Some("skipped"),
+        );
+        assert_telemetry_outcome(
+            &finalized.telemetry,
+            "runner_host_physical_park_vcpu_pause",
+            None,
+        );
         assert_telemetry_action(&finalized.telemetry, "session_history_identity_parked");
         assert_eq!(
             cleanup_state.disposition(),
