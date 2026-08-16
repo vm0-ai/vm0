@@ -252,13 +252,29 @@ async function loadPresentationTemplateHtmlPreview(
   return draft.slides.length > 0 ? draft : null;
 }
 
+function eventTouchesElement(
+  event: Event,
+  element: HTMLElement | null,
+): boolean {
+  if (element === null) {
+    return false;
+  }
+  if (event.target instanceof Node && element.contains(event.target)) {
+    return true;
+  }
+  return (
+    event instanceof FocusEvent &&
+    event.relatedTarget instanceof Node &&
+    element.contains(event.relatedTarget)
+  );
+}
+
 function createBasicComposerUiSignals() {
   const internalModelPickerOpen$ = state(false);
   const internalDesktopModelMode$ = state<"chat" | "video">("chat");
   const internalDesktopModelPickerLayout$ = state(false);
   const internalDesktopChatModeElement$ = state<HTMLElement | null>(null);
   const internalDesktopVideoModelAnchor$ = state<HTMLElement | null>(null);
-  const internalDesktopModeSwitchPending$ = state(false);
   // Mobile reaches video models through a nested panel. Desktop derives the
   // visible panel from its persistent active mode instead.
   const internalMobileVideoModelPanelOpen$ = state(false);
@@ -280,8 +296,12 @@ function createBasicComposerUiSignals() {
   const desktopModelMode$ = computed((get) => {
     return get(internalDesktopModelMode$);
   });
-  const setDesktopModelMode$ = command(({ set }, mode: "chat" | "video") => {
-    set(internalDesktopModelMode$, mode);
+  const toggleDesktopVideoMode$ = command(({ get, set }) => {
+    if (get(internalDesktopModelMode$) === "video") {
+      set(setModelPickerOpen$, !get(internalModelPickerOpen$));
+      return;
+    }
+    set(internalDesktopModelMode$, "video");
   });
   const desktopModelPickerLayout$ = computed((get) => {
     return get(internalDesktopModelPickerLayout$);
@@ -302,9 +322,6 @@ function createBasicComposerUiSignals() {
   const desktopVideoModelAnchor$ = computed((get) => {
     return get(internalDesktopVideoModelAnchor$);
   });
-  const desktopChatModeElement$ = computed((get) => {
-    return get(internalDesktopChatModeElement$);
-  });
   const setDesktopChatModeElement$ = onRef(
     command(({ set }, element: HTMLElement, signal: AbortSignal) => {
       signal.addEventListener("abort", () => {
@@ -321,18 +338,44 @@ function createBasicComposerUiSignals() {
       set(internalDesktopVideoModelAnchor$, element);
     }),
   );
-  const desktopModeSwitchPending$ = computed((get) => {
-    return get(internalDesktopModeSwitchPending$);
-  });
-  const preserveModelPickerOpenForModeSwitch$ = command(({ set }) => {
-    set(internalDesktopModeSwitchPending$, true);
-    window.setTimeout(() => {
-      set(internalDesktopModeSwitchPending$, false);
-    });
-  });
-  const consumeModelPickerModeSwitch$ = command(({ set }) => {
-    set(internalDesktopModeSwitchPending$, false);
-  });
+  const handleModelPickerOpenChange$ = command(
+    (
+      { get, set },
+      open: boolean,
+      event: Event,
+      videoModeAvailable: boolean,
+    ): boolean => {
+      const touchesChatMode = eventTouchesElement(
+        event,
+        get(internalDesktopChatModeElement$),
+      );
+      const touchesVideoMode = eventTouchesElement(
+        event,
+        get(internalDesktopVideoModelAnchor$),
+      );
+      const desktopVideoModeAvailable =
+        videoModeAvailable && get(internalDesktopModelPickerLayout$);
+      if (
+        desktopVideoModeAvailable &&
+        !open &&
+        event.type === "focusout" &&
+        (touchesChatMode || touchesVideoMode)
+      ) {
+        return true;
+      }
+      if (desktopVideoModeAvailable && !open && touchesVideoMode) {
+        return true;
+      }
+      const videoModeExpanded =
+        desktopVideoModeAvailable && get(internalDesktopModelMode$) === "video";
+      if (videoModeExpanded && touchesChatMode) {
+        set(internalDesktopModelMode$, "chat");
+        return true;
+      }
+      set(setModelPickerOpen$, open);
+      return false;
+    },
+  );
   return {
     model: {
       modelPickerOpen$,
@@ -340,16 +383,13 @@ function createBasicComposerUiSignals() {
       mobileVideoModelPanelOpen$,
       setMobileVideoModelPanelOpen$,
       desktopModelMode$,
-      setDesktopModelMode$,
+      toggleDesktopVideoMode$,
       desktopModelPickerLayout$,
       desktopModelPickerLifecycleRef$,
-      desktopChatModeElement$,
       setDesktopChatModeElement$,
       desktopVideoModelAnchor$,
       setDesktopVideoModelAnchor$,
-      desktopModeSwitchPending$,
-      preserveModelPickerOpenForModeSwitch$,
-      consumeModelPickerModeSwitch$,
+      handleModelPickerOpenChange$,
     },
   };
 }
