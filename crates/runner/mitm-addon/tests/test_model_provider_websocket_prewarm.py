@@ -487,6 +487,38 @@ class TestModelProviderWebSocketPrewarmUsage:
         assert len(correlation_entries) == 1
         assert correlation_entries[0]["reason"] == "correlation_cap"
 
+    def test_model_websocket_client_correlation_cap_fails_open(self, tmp_path, real_flow):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        over_budget_request = (
+            b'{"type":"response.create","generate":false,"padding":['
+            + b",".join([b"0"] * 40_000)
+            + b"]}"
+        )
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(flow, over_budget_request)
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("client-cap-1"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("client-cap-1", input_tokens=12, output_tokens=0),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 12)]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+        [correlation_entry] = _correlation_entries(flow)
+        assert correlation_entry["reason"] == "correlation_cap"
+
     def test_model_websocket_unbound_prewarm_usage_fails_open(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)

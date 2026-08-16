@@ -149,6 +149,7 @@ class OpenAIResponsesClientEvent:
     event_type: str | None
     is_prewarm: bool
     request_kind: _OpenAIResponsesClientRequestKind = "unknown"
+    inspection_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -228,7 +229,12 @@ def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesCl
     extractor.feed(body)
     result = extractor.finish()
     if not result.complete:
-        return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
+        return OpenAIResponsesClientEvent(
+            observed_event_type,
+            False,
+            "unknown",
+            result.error,
+        )
 
     type_is_consistent = extractor.selected_scalar_values_are_consistent(("type",))
     generate_is_consistent = extractor.selected_scalar_values_are_consistent(("generate",))
