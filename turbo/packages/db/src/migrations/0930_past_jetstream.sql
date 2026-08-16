@@ -22,9 +22,10 @@ UPDATE "teams_user_agent_preferences" SET "user_id" = "vm0_user_id" WHERE "user_
 UPDATE "telegram_official_user_links" SET "user_id" = "vm0_user_id" WHERE "user_id" IS NULL;--> statement-breakpoint
 UPDATE "telegram_user_agent_preferences" SET "user_id" = "vm0_user_id" WHERE "user_id" IS NULL;--> statement-breakpoint
 UPDATE "telegram_user_links" SET "user_id" = "vm0_user_id" WHERE "user_id" IS NULL;--> statement-breakpoint
--- Expand-phase compatibility for #27599. Remove in #27602 only after the
--- Switch release is healthy, old API instances and callbacks have drained,
--- and both physical identity columns are verified equal and non-null.
+-- Temporary DB/API rollout fallback for #27599; observed maximum exposure is
+-- approximately 102 minutes. Remove in follow-up #27602 only after the Switch
+-- release is healthy, old API instances, callbacks, and rollback windows have
+-- drained, and both physical identity columns are verified equal and non-null.
 CREATE FUNCTION "sync_integration_user_identity_0930"() RETURNS trigger AS $$
 BEGIN
 	IF TG_OP = 'UPDATE' THEN
