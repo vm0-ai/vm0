@@ -91,41 +91,41 @@ type OrgDeleteErrorResponse =
   | ReturnType<typeof notFound>
   | typeof orgDeleteForbidden;
 
-type RemoveZeroOrgMemberErrorResponse =
+type RemoveOrgMemberErrorResponse =
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof notFound>
   | typeof forbiddenAccess;
 
-type UpdateZeroOrgMemberRoleErrorResponse =
+type UpdateOrgMemberRoleErrorResponse =
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof notFound>
   | typeof forbiddenAccess;
 
-interface UpdateZeroOrgArgs {
+interface UpdateOrgArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
 }
 
-interface LeaveZeroOrgArgs {
+interface LeaveOrgArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly role: OrgRole;
 }
 
-interface DeleteZeroOrgArgs {
+interface DeleteOrgArgs {
   readonly orgId: string;
   readonly callerRole: OrgRole | undefined;
 }
 
-interface RemoveZeroOrgMemberArgs {
+interface RemoveOrgMemberArgs {
   readonly orgId: string;
   readonly callerUserId: string;
   readonly callerRole: OrgRole;
   readonly email: string;
 }
 
-interface UpdateZeroOrgMemberRoleArgs {
+interface UpdateOrgMemberRoleArgs {
   readonly callerUserId: string;
   readonly orgId: string;
   readonly callerRole: OrgRole | undefined;
@@ -179,16 +179,16 @@ async function orgExistsForDelete(args: {
   return true;
 }
 
-interface ZeroOrgDetailArgs {
+interface OrgDetailArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly orgRole?: OrgRole;
 }
 
-export const zeroOrgDetail$ = command(
+export const orgDetail$ = command(
   async (
     { get, set },
-    args: ZeroOrgDetailArgs,
+    args: OrgDetailArgs,
     signal: AbortSignal,
   ): Promise<OrgResponse | null> => {
     const db = get(db$);
@@ -306,10 +306,10 @@ async function commitOrgMemberRemoval(
   commitSignal.throwIfAborted();
 }
 
-export const leaveZeroOrg$ = command(
+export const leaveOrg$ = command(
   async (
     { get, set },
-    args: LeaveZeroOrgArgs,
+    args: LeaveOrgArgs,
     signal: AbortSignal,
   ): Promise<OrgMessageResponse | typeof adminCannotLeave> => {
     if (args.role === "admin") {
@@ -339,12 +339,12 @@ export const leaveZeroOrg$ = command(
   },
 );
 
-export const removeZeroOrgMember$ = command(
+export const removeOrgMember$ = command(
   async (
     { get, set },
-    args: RemoveZeroOrgMemberArgs,
+    args: RemoveOrgMemberArgs,
     signal: AbortSignal,
-  ): Promise<OrgMessageResponse | RemoveZeroOrgMemberErrorResponse> => {
+  ): Promise<OrgMessageResponse | RemoveOrgMemberErrorResponse> => {
     if (args.callerRole !== "admin") {
       return forbiddenAccess;
     }
@@ -404,12 +404,12 @@ export const removeZeroOrgMember$ = command(
   },
 );
 
-export const updateZeroOrgMemberRole$ = command(
+export const updateOrgMemberRole$ = command(
   async (
     { get },
-    args: UpdateZeroOrgMemberRoleArgs,
+    args: UpdateOrgMemberRoleArgs,
     signal: AbortSignal,
-  ): Promise<OrgMessageResponse | UpdateZeroOrgMemberRoleErrorResponse> => {
+  ): Promise<OrgMessageResponse | UpdateOrgMemberRoleErrorResponse> => {
     if (args.callerRole !== "admin") {
       return forbiddenAccess;
     }
@@ -455,10 +455,10 @@ export const updateZeroOrgMemberRole$ = command(
   },
 );
 
-export const updateZeroOrg$ = command(
+export const updateOrg$ = command(
   async (
     { get, set },
-    args: UpdateZeroOrgArgs,
+    args: UpdateOrgArgs,
     signal: AbortSignal,
   ): Promise<OrgResponse | OrgUpdateErrorResponse> => {
     const db = get(db$);
@@ -489,7 +489,7 @@ export const updateZeroOrg$ = command(
     signal.throwIfAborted();
 
     const org = await set(
-      zeroOrgDetail$,
+      orgDetail$,
       { orgId: args.orgId, userId: args.userId },
       signal,
     );
@@ -503,10 +503,10 @@ export const updateZeroOrg$ = command(
   },
 );
 
-export const deleteZeroOrg$ = command(
+export const deleteOrg$ = command(
   async (
     { get, set },
-    args: DeleteZeroOrgArgs,
+    args: DeleteOrgArgs,
     signal: AbortSignal,
   ): Promise<{ readonly message: string } | OrgDeleteErrorResponse> => {
     if (args.callerRole !== "admin") {
@@ -718,7 +718,7 @@ async function fetchUserProfileMap(
   return map;
 }
 
-export function zeroOrgMembersList(
+export function orgMembersList(
   args: OrgMembersListArgs,
 ): Computed<Promise<OrgMembersResponse>> {
   return computed(async (get): Promise<OrgMembersResponse> => {
