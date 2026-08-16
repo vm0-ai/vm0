@@ -23,7 +23,7 @@ import {
   type WorkflowQueueDrainResult,
 } from "./workflow-queue-drain.service";
 import { expiredCancellationRecoveryThreads } from "./chat-active-run.service";
-import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
+import { drainGoalQueueForThread$ } from "./goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { pendingActiveInputCondition } from "./chat-event-queue.service";
 
