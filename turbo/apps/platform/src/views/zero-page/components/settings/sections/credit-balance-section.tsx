@@ -123,57 +123,6 @@ function usagePackCreditAdditions(
   });
 }
 
-function UsagePackMemberCreditAdditionRows({
-  grants,
-  testIdPrefix,
-}: {
-  grants: readonly CreditAddition[];
-  testIdPrefix: string;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="divide-y divide-border/60">
-      {grants.map((grant) => {
-        const hasPartialBalance = grant.remaining !== grant.amount;
-        return (
-          <div
-            key={grant.id}
-            data-testid={`${testIdPrefix}-${grant.id}`}
-            className="grid grid-cols-[minmax(0,1fr)_minmax(180px,0.8fr)_minmax(110px,auto)] items-center gap-x-6 px-4 py-2.5 transition-colors hover:bg-state-hover/60"
-          >
-            <span className="truncate text-xs font-medium text-foreground">
-              {grant.label}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {t(
-                ($) => {
-                  return $.billing.usage.added;
-                },
-                { date: formatCreditDate(grant.createdAt) },
-              )}
-            </span>
-            <div className="text-right">
-              <div className="text-xs font-medium tabular-nums text-foreground">
-                +{formatLocalizedNumber(grant.amount)}
-              </div>
-              {hasPartialBalance ? (
-                <div className="text-[11px] tabular-nums text-muted-foreground">
-                  {t(
-                    ($) => {
-                      return $.billing.usage.left;
-                    },
-                    { value: formatLocalizedNumber(grant.remaining) },
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function UsagePackSegmentBar({
   segments,
   testIdPrefix,
@@ -371,26 +320,36 @@ function UsagePackMemberCreditAdditions({
     return null;
   }
   return (
-    <div className="mt-4 border-t border-border/50 pt-3">
+    <div className="mt-4">
       <Button
         type="button"
         variant="ghost"
         size="sm"
         data-testid={`${testIdPrefix}-grants-toggle`}
-        className="-ml-2 h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground"
+        className="-mx-2 h-8 w-[calc(100%+1rem)] justify-between px-2"
         aria-expanded={expanded}
         aria-label={`${creditAdditionsLabel}: ${grants.length}`}
         onClick={() => {
           toggleExpanded(memberId);
         }}
       >
+        <span className="text-sm font-semibold text-foreground">
+          {creditAdditionsLabel}
+        </span>
         <ChevronRight
           size={13}
-          className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+          className={`shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`}
         />
-        <span>{creditAdditionsLabel}</span>
-        <span className="tabular-nums">({grants.length})</span>
       </Button>
+      {expanded ? (
+        <div data-testid={`${testIdPrefix}-grants-expanded-row`}>
+          <CreditAdditionTable
+            grants={grants}
+            showHeading={false}
+            testIdPrefix={`${testIdPrefix}-grants`}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -432,17 +391,6 @@ function UsagePackMemberCard({ row }: { row: UsagePackMemberRow }) {
           testIdPrefix={testIdPrefix}
         />
       </div>
-      {expanded ? (
-        <div
-          data-testid={`${testIdPrefix}-grants-expanded-row`}
-          className="bg-muted/15 zero-border-t"
-        >
-          <UsagePackMemberCreditAdditionRows
-            grants={grants}
-            testIdPrefix={`${testIdPrefix}-grants`}
-          />
-        </div>
-      ) : null}
     </div>
   );
 }

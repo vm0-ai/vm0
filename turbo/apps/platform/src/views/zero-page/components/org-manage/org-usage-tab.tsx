@@ -550,9 +550,11 @@ const GRANT_ROW_GRID =
 
 export function CreditAdditionTable({
   grants,
+  showHeading = true,
   testIdPrefix = "credit-grants",
 }: {
   grants: readonly CreditAddition[];
+  showHeading?: boolean;
   testIdPrefix?: string;
 }) {
   const { t } = useTranslation();
@@ -561,12 +563,17 @@ export function CreditAdditionTable({
   }
 
   return (
-    <div data-testid={`${testIdPrefix}-section`} className="mt-4 pt-3">
-      <p className="text-sm font-semibold text-foreground">
-        {t(($) => {
-          return $.billing.usage.creditAdditions;
-        })}
-      </p>
+    <div
+      data-testid={`${testIdPrefix}-section`}
+      className={showHeading ? "mt-4 pt-3" : undefined}
+    >
+      {showHeading ? (
+        <p className="text-sm font-semibold text-foreground">
+          {t(($) => {
+            return $.billing.usage.creditAdditions;
+          })}
+        </p>
+      ) : null}
       <div
         className={`${GRANT_ROW_GRID} pb-2 pt-2.5 text-[13px] text-muted-foreground`}
       >

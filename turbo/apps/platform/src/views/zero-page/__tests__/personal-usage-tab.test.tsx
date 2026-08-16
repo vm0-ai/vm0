@@ -589,10 +589,15 @@ describe("personal usage settings", () => {
     const expandedRow = await within(memberList).findByTestId(
       "usage-pack-member-test-user-123-grants-expanded-row",
     );
+    expect(within(expandedRow).getByText("Date")).toBeInTheDocument();
+    expect(within(expandedRow).getByText("Credits")).toBeInTheDocument();
+    expect(within(expandedRow).getByText("Left")).toBeInTheDocument();
     const purchaseRecord = within(expandedRow).getByTestId(
       "usage-pack-member-test-user-123-grants-admin-grant-purchased",
     );
-    expect(purchaseRecord).toHaveTextContent("Purchased");
+    expect(purchaseRecord).toHaveTextContent("Mar 1, 2026");
+    expect(purchaseRecord).toHaveTextContent("+20,000");
+    expect(purchaseRecord).toHaveTextContent("20,000");
     expect(
       within(memberDialog).getByTestId("usage-pack-members-dialog-scroll-area"),
     ).toHaveClass("overflow-y-auto");
@@ -602,7 +607,10 @@ describe("personal usage settings", () => {
       ),
     ).toBeNull();
     await user.hover(purchaseRecord);
-    expect(screen.queryByRole("tooltip")).toBeNull();
+    await expect(screen.findByText("Purchased")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Expires Apr 1, 2026"),
+    ).resolves.toBeInTheDocument();
 
     const orgCredits = await screen.findByTestId("credit-balance-info");
     expect(within(orgCredits).getByText("Org credits")).toBeInTheDocument();
