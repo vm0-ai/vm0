@@ -105,6 +105,8 @@ interface ModelProviderPickerProps {
    * the normal label on larger screens.
    */
   mobileIconTrigger?: boolean;
+  /** Optional desktop-only mode label shown before the selected model. */
+  desktopModeLabel?: string;
   /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
   open?: boolean;
   /** Callback when the open state changes. */
@@ -119,10 +121,7 @@ interface ModelProviderPickerProps {
   resolveDefaultSelection?: boolean;
   /** Enables the inline Codex Fast choices in the model list. */
   codexFastModeEnabled?: boolean;
-  /**
-   * When provided, the dropdown gains a row that opens the video model panel.
-   * Omitted by callers that have nothing to pin the video model to.
-   */
+  /** Video-model panel state for callers that can pin a video model. */
   videoModel?: VideoModelPickerState;
 }
 
@@ -377,10 +376,44 @@ function ModelFirstTriggerLabel({
   );
 }
 
+function ModelFirstTriggerContent({
+  desktopModeLabel,
+  selection,
+  placeholder,
+  mobileIcon,
+  codexFastModeEnabled,
+  fastLabel,
+}: {
+  desktopModeLabel: string | undefined;
+  selection: ModelProviderSelection | null;
+  placeholder: string;
+  mobileIcon: boolean;
+  codexFastModeEnabled: boolean;
+  fastLabel: string;
+}) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {desktopModeLabel && (
+        <span className="hidden shrink-0 sm:inline">
+          {desktopModeLabel} <span aria-hidden="true">·</span>
+        </span>
+      )}
+      <ModelFirstTriggerLabel
+        selection={selection}
+        placeholder={placeholder}
+        mobileIcon={mobileIcon}
+        codexFastModeEnabled={codexFastModeEnabled}
+        fastLabel={fastLabel}
+      />
+    </span>
+  );
+}
+
 function ModelFirstDisabledPickerLabel({
   value,
   placeholder,
   mobileIconTrigger,
+  desktopModeLabel,
   triggerClassName,
   userPreference,
   policies,
@@ -392,6 +425,7 @@ function ModelFirstDisabledPickerLabel({
   | "placeholder"
   | "compactTrigger"
   | "mobileIconTrigger"
+  | "desktopModeLabel"
   | "triggerClassName"
 > & {
   placeholder: string;
@@ -417,7 +451,8 @@ function ModelFirstDisabledPickerLabel({
         stripInteractiveClasses(triggerClassName),
       )}
     >
-      <ModelFirstTriggerLabel
+      <ModelFirstTriggerContent
+        desktopModeLabel={desktopModeLabel}
         selection={resolved}
         placeholder={placeholder}
         mobileIcon={mobileIconTrigger}
@@ -771,10 +806,10 @@ function ManageMoreModelsRow({
   const { t } = useTranslation();
   return (
     <>
-      <SelectSeparator className="my-0" />
+      <SelectSeparator className="my-0 sm:hidden" />
       <button
         type="button"
-        className={VIDEO_PANEL_ROW_CLASS}
+        className={cn(VIDEO_PANEL_ROW_CLASS, "sm:hidden")}
         onClick={() => {
           videoModel.onPanelOpenChange(true);
         }}
@@ -919,6 +954,7 @@ function ModelFirstSelectPicker({
   placeholder,
   triggerClassName,
   mobileIconTrigger,
+  desktopModeLabel,
   modelCapabilities,
   codexFastModeEnabled,
   fastLabel,
@@ -932,6 +968,7 @@ function ModelFirstSelectPicker({
   placeholder: string;
   triggerClassName: string | undefined;
   mobileIconTrigger: boolean;
+  desktopModeLabel: string | undefined;
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
   fastLabel: string;
@@ -952,7 +989,8 @@ function ModelFirstSelectPicker({
         className={cn("h-9 w-full", triggerClassName)}
       >
         <SelectValue placeholder={placeholder}>
-          <ModelFirstTriggerLabel
+          <ModelFirstTriggerContent
+            desktopModeLabel={desktopModeLabel}
             selection={state.selection}
             placeholder={placeholder}
             mobileIcon={mobileIconTrigger}
@@ -985,6 +1023,7 @@ function SubscribedModelFirstModelPicker({
   triggerClassName,
   compactTrigger,
   mobileIconTrigger,
+  desktopModeLabel,
   open,
   onOpenChange,
   disabled,
@@ -1031,6 +1070,7 @@ function SubscribedModelFirstModelPicker({
         placeholder={placeholder}
         compactTrigger={compactTrigger}
         mobileIconTrigger={mobileIconTrigger}
+        desktopModeLabel={desktopModeLabel}
         triggerClassName={triggerClassName}
         userPreference={resolveDefaultSelection ? userPreference : null}
         policies={resolveDefaultSelection ? state.selectablePolicies : []}
@@ -1076,6 +1116,7 @@ function SubscribedModelFirstModelPicker({
       placeholder={placeholder}
       triggerClassName={triggerClassName}
       mobileIconTrigger={mobileIconTrigger}
+      desktopModeLabel={desktopModeLabel}
       modelCapabilities={modelCapabilities}
       codexFastModeEnabled={codexFastModeEnabled}
       fastLabel={fastLabel}
@@ -1309,6 +1350,7 @@ function EnabledExplicitModelFirstModelPicker(
       placeholder={props.placeholder}
       triggerClassName={props.triggerClassName}
       mobileIconTrigger={props.mobileIconTrigger}
+      desktopModeLabel={props.desktopModeLabel}
       modelCapabilities={DEFAULT_MODEL_PLAN_CAPABILITIES}
       codexFastModeEnabled={props.codexFastModeEnabled ?? false}
       fastLabel={props.fastLabel}
@@ -1335,6 +1377,7 @@ function ModelFirstModelPicker(
         placeholder={props.placeholder}
         compactTrigger={props.compactTrigger}
         mobileIconTrigger={props.mobileIconTrigger}
+        desktopModeLabel={props.desktopModeLabel}
         triggerClassName={props.triggerClassName}
         userPreference={null}
         policies={[]}
@@ -1371,6 +1414,7 @@ export function ModelProviderPicker({
   triggerClassName,
   compactTrigger = false,
   mobileIconTrigger = false,
+  desktopModeLabel,
   open,
   onOpenChange,
   disabled = false,
@@ -1394,6 +1438,7 @@ export function ModelProviderPicker({
     triggerClassName,
     compactTrigger,
     mobileIconTrigger,
+    desktopModeLabel,
     open,
     onOpenChange,
     disabled,

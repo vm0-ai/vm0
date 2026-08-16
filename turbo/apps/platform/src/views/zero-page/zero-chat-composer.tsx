@@ -7461,6 +7461,14 @@ function ComposerModelPickerSlotBase({
     value,
     onChange: onModelPickerChange,
   };
+  const desktopModeLabel = videoModel
+    ? t(($) => {
+        return $.appShell.sidebar.chat;
+      })
+    : undefined;
+  const videoModelsLabel = t(($) => {
+    return $.settings.models.picker.videoModels;
+  });
   const submitBlocker: ComposerSubmitBlocker | undefined =
     value && !selectedModelOauthAvailable
       ? {
@@ -7482,28 +7490,71 @@ function ComposerModelPickerSlotBase({
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
-      <ModelProviderPicker
-        value={modelPicker.value}
-        onChange={onModelPickerChange}
-        placeholder={t(($) => {
-          return $.chat.composer.selectModel;
-        })}
-        triggerClassName={cn(
-          "h-8 w-8 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
-          "[&>[data-slot=select-value]]:flex [&>[data-slot=select-value]]:items-center [&>[data-slot=select-value]]:justify-center sm:[&>[data-slot=select-value]]:justify-start",
-          "[&>[data-slot=select-icon]]:hidden sm:[&>[data-slot=select-icon]]:block",
-          "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
-          COMPOSER_CONTROL_FOCUS_CLASS,
+      <div
+        className={cn(
+          "contents",
+          videoModel &&
+            "sm:flex sm:items-center sm:gap-0.5 sm:rounded-xl sm:bg-gray-50 sm:p-1",
         )}
-        compactTrigger
-        mobileIconTrigger
-        open={modelPickerOpen}
-        onOpenChange={setModelPickerOpen}
-        disabled={modelPicker.disabled}
-        resolveDefaultSelection={false}
-        codexFastModeEnabled={codexFastModeEnabled}
-        {...(videoModel ? { videoModel } : {})}
-      />
+      >
+        <ModelProviderPicker
+          value={modelPicker.value}
+          onChange={onModelPickerChange}
+          placeholder={t(($) => {
+            return $.chat.composer.selectModel;
+          })}
+          triggerClassName={cn(
+            "h-8 w-8 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
+            "[&>[data-slot=select-value]]:flex [&>[data-slot=select-value]]:items-center [&>[data-slot=select-value]]:justify-center sm:[&>[data-slot=select-value]]:justify-start",
+            "[&>[data-slot=select-icon]]:hidden sm:[&>[data-slot=select-icon]]:block",
+            "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
+            videoModel &&
+              "sm:border-border sm:bg-background sm:px-3 sm:text-foreground",
+            COMPOSER_CONTROL_FOCUS_CLASS,
+          )}
+          compactTrigger
+          mobileIconTrigger
+          desktopModeLabel={desktopModeLabel}
+          open={modelPickerOpen}
+          onOpenChange={setModelPickerOpen}
+          disabled={modelPicker.disabled}
+          resolveDefaultSelection={false}
+          codexFastModeEnabled={codexFastModeEnabled}
+          {...(videoModel ? { videoModel } : {})}
+        />
+        {videoModel && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="quiet"
+                  size="icon-sm"
+                  className={cn(
+                    "hidden shrink-0 sm:inline-flex",
+                    COMPOSER_CONTROL_ICON_CLASS,
+                    modelPickerOpen &&
+                      videoModel.panelOpen &&
+                      "bg-foreground text-background hover:bg-foreground/90 hover:text-background",
+                  )}
+                  aria-label={videoModelsLabel}
+                  aria-pressed={modelPickerOpen && videoModel.panelOpen}
+                  onClick={() => {
+                    const open = !modelPickerOpen || !videoModel.panelOpen;
+                    videoModel.onPanelOpenChange(open);
+                    setModelPickerOpen(open);
+                  }}
+                >
+                  <Video size={18} aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                {videoModelsLabel}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
       <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
   );

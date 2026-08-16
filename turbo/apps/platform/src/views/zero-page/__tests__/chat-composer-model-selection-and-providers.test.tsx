@@ -3302,6 +3302,25 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer video model", () => {
+  function desktopVideoModelButton(): HTMLElement | undefined {
+    return queryAllByRoleFast("button").find((candidate) => {
+      return (
+        candidate.getAttribute("aria-label") === "Video models" &&
+        candidate.hasAttribute("aria-pressed")
+      );
+    });
+  }
+
+  function findDesktopVideoModelButton(): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = desktopVideoModelButton();
+      if (!button) {
+        throw new Error("Desktop video model button not found");
+      }
+      return button;
+    });
+  }
+
   function videoPanelButton(label: string): HTMLElement | undefined {
     return queryAllByRoleFast("button").find((candidate) => {
       return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
@@ -3521,8 +3540,10 @@ describe("chat composer video model", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findVideoPanelButton("Manage more models"));
+    const videoModelButton = await findDesktopVideoModelButton();
+    expect(videoModelButton).toHaveAttribute("aria-pressed", "false");
+    await user.click(videoModelButton);
+    expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
 
     // Every public catalog model is offered, with no plan or provider filter.
     expect(videoPanelButton("Seedance 2.5")).toBeInTheDocument();
@@ -3606,6 +3627,7 @@ describe("chat composer video model", () => {
 
     await user.click(await findComposerModel("Claude Fable 5"));
     await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
+    expect(desktopVideoModelButton()).toBeUndefined();
     expect(videoPanelButton("Manage more models")).toBeUndefined();
   });
 });
