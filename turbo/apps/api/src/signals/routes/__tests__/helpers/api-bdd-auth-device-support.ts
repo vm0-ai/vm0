@@ -14,7 +14,7 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import type { RouteEntry } from "../../../route-entry";
 import { connectorsRoutes } from "../../connectors";
-import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+import { featureSwitchesRoutes } from "../../feature-switches";
 import { meModelProvidersDeleteRoutes } from "../../me-model-providers-delete";
 import { meModelProviderAccountRoutes } from "../../me-model-provider-accounts";
 import { meModelProvidersListRoutes } from "../../me-model-providers-list";
@@ -29,7 +29,7 @@ interface AuthHeaders {
 
 const authDeviceSupportRoutes: readonly RouteEntry[] = [
   ...connectorsRoutes,
-  ...zeroFeatureSwitchesRoutes,
+  ...featureSwitchesRoutes,
   ...meModelProviderAccountRoutes,
   ...meModelProvidersDeleteRoutes,
   ...meModelProvidersListRoutes,

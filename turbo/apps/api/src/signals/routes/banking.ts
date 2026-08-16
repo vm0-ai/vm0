@@ -122,7 +122,7 @@ const bankingAuth = {
   accept: ["zero"],
 } as const;
 
-export const zeroBankingRoutes: readonly RouteEntry[] = [
+export const bankingRoutes: readonly RouteEntry[] = [
   {
     route: zeroBankingContract.accounts,
     handler: authRoute(bankingAuth, accountsInner$),

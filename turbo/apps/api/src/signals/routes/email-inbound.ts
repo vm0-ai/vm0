@@ -124,7 +124,7 @@ const handleInboundRoute$ = command(
   },
 );
 
-export const zeroEmailInboundRoutes: readonly RouteEntry[] = [
+export const emailInboundRoutes: readonly RouteEntry[] = [
   {
     route: zeroEmailInboundContract.post,
     handler: handleInboundRoute$,

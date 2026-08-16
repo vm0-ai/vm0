@@ -50,7 +50,7 @@ import {
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
 import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
-import { zeroGoalsRoutes } from "../zero-goals";
+import { goalsRoutes } from "../goals";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -69,7 +69,7 @@ const chatCallbacks = createChatCallbacksApi(context);
 const misc = createMiscRoutesApi(context);
 
 function goalsClient() {
-  return setupApp({ context, routes: zeroGoalsRoutes })(zeroGoalsContract);
+  return setupApp({ context, routes: goalsRoutes })(zeroGoalsContract);
 }
 
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";

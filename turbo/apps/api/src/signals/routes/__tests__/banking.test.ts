@@ -20,7 +20,7 @@ import {
   readBankingAuditEventsState,
   seedBankingState,
 } from "./helpers/banking-state";
-import { zeroBankingRoutes } from "../zero-banking";
+import { bankingRoutes } from "../banking";
 
 const context = testContext();
 
@@ -208,7 +208,7 @@ describe("POST /api/zero/banking/*", () => {
       }),
     );
 
-    const client = setupApp({ context, routes: zeroBankingRoutes })(
+    const client = setupApp({ context, routes: bankingRoutes })(
       zeroBankingContract,
     );
     const response = await accept(
@@ -261,7 +261,7 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context, routes: zeroBankingRoutes })(
+    const client = setupApp({ context, routes: bankingRoutes })(
       zeroBankingContract,
     );
     const response = await accept(
@@ -317,7 +317,7 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context, routes: zeroBankingRoutes })(
+    const client = setupApp({ context, routes: bankingRoutes })(
       zeroBankingContract,
     );
     const response = await accept(
@@ -365,7 +365,7 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context, routes: zeroBankingRoutes })(
+    const client = setupApp({ context, routes: bankingRoutes })(
       zeroBankingContract,
     );
     const response = await accept(
@@ -409,7 +409,7 @@ describe("POST /api/zero/banking/*", () => {
       }),
     );
 
-    const client = setupApp({ context, routes: zeroBankingRoutes })(
+    const client = setupApp({ context, routes: bankingRoutes })(
       zeroBankingContract,
     );
     const response = await accept(
@@ -443,7 +443,7 @@ describe("POST /api/zero/banking/*", () => {
         }),
       );
 
-      const client = setupApp({ context, routes: zeroBankingRoutes })(
+      const client = setupApp({ context, routes: bankingRoutes })(
         zeroBankingContract,
       );
       const response = await accept(
@@ -485,7 +485,7 @@ describe("POST /api/zero/banking/*", () => {
         ),
       );
 
-      const client = setupApp({ context, routes: zeroBankingRoutes })(
+      const client = setupApp({ context, routes: bankingRoutes })(
         zeroBankingContract,
       );
       const response = await accept(
@@ -521,7 +521,7 @@ describe("POST /api/zero/banking/*", () => {
       }),
     );
 
-    const client = setupApp({ context, routes: zeroBankingRoutes })(
+    const client = setupApp({ context, routes: bankingRoutes })(
       zeroBankingContract,
     );
     const response = await accept(
@@ -574,7 +574,7 @@ describe("POST /api/zero/banking/*", () => {
       ),
     );
 
-    const client = setupApp({ context, routes: zeroBankingRoutes })(
+    const client = setupApp({ context, routes: bankingRoutes })(
       zeroBankingContract,
     );
     const response = await accept(

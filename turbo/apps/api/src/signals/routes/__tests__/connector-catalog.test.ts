@@ -28,7 +28,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createAuthDeviceApiActions } from "./helpers/api-bdd-auth-device";
 import { connectorCatalogRoutes } from "../connector-catalog";
-import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { featureSwitchesRoutes } from "../feature-switches";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -43,7 +43,7 @@ async function enableFeatureSwitches(
   switches: Partial<Record<FeatureSwitchKey, boolean>>,
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
-  const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+  const client = setupApp({ context, routes: featureSwitchesRoutes })(
     zeroFeatureSwitchesContract,
   );
   await accept(
@@ -60,7 +60,7 @@ async function deleteFeatureSwitches(
   userId: string,
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
-  const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+  const client = setupApp({ context, routes: featureSwitchesRoutes })(
     zeroFeatureSwitchesContract,
   );
   await accept(

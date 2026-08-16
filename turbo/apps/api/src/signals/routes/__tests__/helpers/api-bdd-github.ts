@@ -28,13 +28,13 @@ import { createZeroRouteMocks } from "./zero-route-test";
 import { integrationsGithubRoutes } from "../../integrations-github";
 import { githubOauthRoutes } from "../../github-oauth";
 import { connectorsRoutes } from "../../connectors";
-import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+import { featureSwitchesRoutes } from "../../feature-switches";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...githubOauthRoutes,
   ...integrationsGithubRoutes,
   ...connectorsRoutes,
-  ...zeroFeatureSwitchesRoutes,
+  ...featureSwitchesRoutes,
 ]);
 
 const GITHUB_APP_SLUG = "vm0-test";
@@ -422,7 +422,7 @@ export function createGithubBddApi(context: TestContext) {
     },
 
     async enableAuditLink(actor: ApiTestUser): Promise<void> {
-      const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+      const client = setupApp({ context, routes: featureSwitchesRoutes })(
         zeroFeatureSwitchesContract,
       );
       await accept(

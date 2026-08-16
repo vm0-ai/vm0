@@ -24,7 +24,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { chatThreadRoutes } from "../chat-threads";
-import { zeroGoalsRoutes } from "../zero-goals";
+import { goalsRoutes } from "../goals";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -52,7 +52,7 @@ function currentSecond(): number {
 }
 
 function goalsClient() {
-  return setupApp({ context, routes: zeroGoalsRoutes })(zeroGoalsContract);
+  return setupApp({ context, routes: goalsRoutes })(zeroGoalsContract);
 }
 
 function zeroToken(

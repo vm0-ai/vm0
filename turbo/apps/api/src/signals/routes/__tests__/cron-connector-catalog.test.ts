@@ -95,7 +95,7 @@ import { runnersRoutes } from "../runners";
 import { connectorCatalogRoutes } from "../connector-catalog";
 import { connectorCheckRoutes } from "../connector-check";
 import { connectorsRoutes } from "../connectors";
-import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { featureSwitchesRoutes } from "../feature-switches";
 import { steamPlayerRoutes } from "../steam-player";
 import { userPermissionGrantsRoutes } from "../user-permission-grants";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -109,7 +109,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...connectorCatalogRoutes,
   ...connectorCheckRoutes,
   ...connectorsRoutes,
-  ...zeroFeatureSwitchesRoutes,
+  ...featureSwitchesRoutes,
   ...steamPlayerRoutes,
   ...userPermissionGrantsRoutes,
   ...workflowAutomationsRoutes,
@@ -1518,7 +1518,7 @@ async function syncCatalog() {
 async function enableDiagnosticsFeatureSwitch(): Promise<void> {
   zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
   await accept(
-    setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    setupApp({ context, routes: featureSwitchesRoutes })(
       zeroFeatureSwitchesContract,
     ).update({
       headers: { authorization: "Bearer clerk-session" },
@@ -1529,7 +1529,7 @@ async function enableDiagnosticsFeatureSwitch(): Promise<void> {
   onTestFinished(async () => {
     zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
     await accept(
-      setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+      setupApp({ context, routes: featureSwitchesRoutes })(
         zeroFeatureSwitchesContract,
       ).delete({
         headers: { authorization: "Bearer clerk-session" },
@@ -2233,7 +2233,7 @@ describe("connector catalog valid lifecycle", () => {
     })(zeroConnectorCatalogContract);
     const featureClient = setupApp({
       context,
-      routes: zeroFeatureSwitchesRoutes,
+      routes: featureSwitchesRoutes,
     })(zeroFeatureSwitchesContract);
 
     const disabled = await accept(catalogClient.list({ headers }), [200]);
@@ -5516,7 +5516,7 @@ describe("connector catalog executable compatibility", () => {
     })(zeroConnectorCatalogContract);
     const featureClient = setupApp({
       context,
-      routes: zeroFeatureSwitchesRoutes,
+      routes: featureSwitchesRoutes,
     })(zeroFeatureSwitchesContract);
 
     expect(

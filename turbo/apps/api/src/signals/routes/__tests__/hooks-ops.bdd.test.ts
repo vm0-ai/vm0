@@ -22,7 +22,7 @@ import {
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { buildInfoRoutes } from "../build-info";
 import { healthRoutes } from "../health";
-import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { featureSwitchesRoutes } from "../feature-switches";
 
 /*
 helper gap: HOOK-01 signed callbacks still need API-visible builders for
@@ -50,7 +50,7 @@ function healthAuthClient() {
 }
 
 function featureSwitchesClient() {
-  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+  return setupApp({ context, routes: featureSwitchesRoutes })(
     zeroFeatureSwitchesContract,
   );
 }

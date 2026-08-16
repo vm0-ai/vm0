@@ -60,7 +60,7 @@ import { createZeroRouteMocks } from "./zero-route-test";
 import { githubOauthRoutes } from "../../github-oauth";
 import { integrationsGithubRoutes } from "../../integrations-github";
 import { testSlackStateRoutes } from "../../test-slack-state";
-import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+import { featureSwitchesRoutes } from "../../feature-switches";
 import { integrationsAgentPhoneRoutes } from "../../integrations-agentphone";
 import { integrationsGithubUploadCompleteRoutes } from "../../integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "../../integrations-github-upload-init";
@@ -90,7 +90,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...githubOauthRoutes,
   ...integrationsGithubRoutes,
   ...testSlackStateRoutes,
-  ...zeroFeatureSwitchesRoutes,
+  ...featureSwitchesRoutes,
   ...integrationsAgentPhoneRoutes,
   ...integrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
@@ -1252,7 +1252,7 @@ export function createBddIntegrationApi(context: TestContext) {
 
     async enableAuditLinkSwitch(actor: ApiTestUser): Promise<void> {
       await accept(
-        setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+        setupApp({ context, routes: featureSwitchesRoutes })(
           zeroFeatureSwitchesContract,
         ).update({
           headers: authenticate(context, routeMocks, actor),

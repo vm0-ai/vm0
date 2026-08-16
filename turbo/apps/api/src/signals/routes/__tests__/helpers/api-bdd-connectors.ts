@@ -80,7 +80,7 @@ import { customConnectorProposalRoutes } from "../../custom-connectors-proposal"
 import { customConnectorDisconnectRoutes } from "../../custom-connectors-disconnect";
 import { customConnectorsUpdateRoutes } from "../../custom-connectors-update";
 import { customConnectorsValuesSetRoutes } from "../../custom-connectors-values-set";
-import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+import { featureSwitchesRoutes } from "../../feature-switches";
 
 const zeroCustomConnectorByIdTestRoutes = Object.freeze([
   ...customConnectorsDeleteRoutes,
@@ -97,7 +97,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...connectorsOauthDeviceAuthRoutes,
   ...connectorsRoutes,
   ...customConnectorsRoutes,
-  ...zeroFeatureSwitchesRoutes,
+  ...featureSwitchesRoutes,
 ]);
 
 interface AuthHeaders {
@@ -1783,7 +1783,7 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       switches: Readonly<Record<string, boolean>>,
     ): Promise<Readonly<Record<string, boolean>>> {
-      const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+      const client = setupApp({ context, routes: featureSwitchesRoutes })(
         zeroFeatureSwitchesContract,
       );
       const response = await accept(
@@ -1797,7 +1797,7 @@ export function createConnectorBddApi(context: TestContext) {
     },
 
     async deleteFeatureSwitches(actor: ApiTestUser): Promise<void> {
-      const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+      const client = setupApp({ context, routes: featureSwitchesRoutes })(
         zeroFeatureSwitchesContract,
       );
       await accept(client.delete({ headers: authenticate(actor) }), [200]);

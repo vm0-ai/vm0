@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { featureSwitchesRoutes } from "../feature-switches";
 
 const context = testContext();
 
 function client() {
-  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+  return setupApp({ context, routes: featureSwitchesRoutes })(
     zeroFeatureSwitchesContract,
   );
 }
