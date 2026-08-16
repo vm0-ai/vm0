@@ -4,6 +4,12 @@ use std::sync::Arc;
 #[derive(Default)]
 struct RecordingFinalExecParkObserver {
     records: Vec<(SandboxFinalExecParkStage, bool)>,
+    substages: Vec<(
+        SandboxFinalExecParkSubstage,
+        bool,
+        Option<SandboxFinalExecParkSubstageOutcome>,
+    )>,
+    substage_durations: Vec<(SandboxFinalExecParkSubstage, Duration)>,
 }
 
 impl SandboxFinalExecParkObserver for RecordingFinalExecParkObserver {
@@ -14,6 +20,17 @@ impl SandboxFinalExecParkObserver for RecordingFinalExecParkObserver {
         success: bool,
     ) {
         self.records.push((stage, success));
+    }
+
+    fn record_substage(
+        &mut self,
+        substage: SandboxFinalExecParkSubstage,
+        duration: Duration,
+        success: bool,
+        outcome: Option<SandboxFinalExecParkSubstageOutcome>,
+    ) {
+        self.substages.push((substage, success, outcome));
+        self.substage_durations.push((substage, duration));
     }
 }
 
@@ -106,6 +123,30 @@ async fn operation_overrides_preserve_unrelated_sandbox_behavior() {
         vec![
             (SandboxFinalExecParkStage::ReusePreparation, true),
             (SandboxFinalExecParkStage::PhysicalPark, true),
+        ]
+    );
+    assert_eq!(
+        observer.substages,
+        vec![
+            (
+                SandboxFinalExecParkSubstage::BalloonSetup,
+                true,
+                Some(SandboxFinalExecParkSubstageOutcome::Skipped),
+            ),
+            (
+                SandboxFinalExecParkSubstage::BalloonSettle,
+                true,
+                Some(SandboxFinalExecParkSubstageOutcome::Skipped),
+            ),
+            (SandboxFinalExecParkSubstage::VcpuPause, true, None),
+        ]
+    );
+    assert_eq!(
+        observer.substage_durations,
+        vec![
+            (SandboxFinalExecParkSubstage::BalloonSetup, Duration::ZERO),
+            (SandboxFinalExecParkSubstage::BalloonSettle, Duration::ZERO),
+            (SandboxFinalExecParkSubstage::VcpuPause, Duration::ZERO),
         ]
     );
 }

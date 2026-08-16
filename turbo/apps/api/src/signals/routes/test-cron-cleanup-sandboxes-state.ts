@@ -236,7 +236,6 @@ async function deleteRunForAction(
     .select({
       sessionId: agentRuns.sessionId,
       orgId: agentRuns.orgId,
-      versionId: agentRuns.agentComposeVersionId,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
@@ -283,18 +282,11 @@ async function deleteRunForAction(
   await db.delete(agentRuns).where(eq(agentRuns.id, runId));
   signal.throwIfAborted();
   const sessionId = run?.sessionId ?? readString(body, "session_id");
-  const version = run?.versionId ?? readString(body, "version_id");
   const owningOrgId = run?.orgId ?? readString(body, "org_id");
   const composeId = session?.composeId ?? readString(body, "compose_id");
   if (sessionId) {
     await db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
     signal.throwIfAborted();
-    if (version) {
-      await db
-        .delete(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, version));
-      signal.throwIfAborted();
-    }
     if (composeId) {
       await db.delete(agentComposes).where(eq(agentComposes.id, composeId));
       signal.throwIfAborted();

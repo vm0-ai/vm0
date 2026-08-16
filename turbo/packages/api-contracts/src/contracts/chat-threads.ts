@@ -1464,19 +1464,14 @@ export const chatEventsContract = c.router({
 /**
  * Single chat message in a search result.
  * `(chatThreadId, seqId)` is the stable identity and `runId` carries optional
- * run ownership. `messageId` and `sequenceNumber` bridge old Platform/App
- * clients for the ~2-day client-skew window. #26921 migrates current clients
- * to the stable identity and removes these fields after that deployment has
- * aged past 2 days.
+ * run ownership.
  */
 const chatSearchMessageSchema = z.object({
-  messageId: z.string(),
   chatThreadId: z.string(),
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   createdAt: z.string(),
   seqId: z.number().int().positive(),
-  sequenceNumber: z.number().nullable(),
   runId: z.string().nullable(),
 });
 

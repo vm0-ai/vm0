@@ -206,6 +206,51 @@ pub enum SandboxFinalExecParkStage {
     PhysicalPark,
 }
 
+/// Fixed low-cardinality provider operations inside the final physical park.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxFinalExecParkSubstage {
+    /// Stops the reactive controller and submits the park-time balloon target.
+    BalloonSetup,
+    /// Waits for the guest balloon to reach the existing settle policy.
+    BalloonSettle,
+    /// Pauses guest vCPUs after balloon handling completes.
+    VcpuPause,
+}
+
+/// Bounded terminal classification for a final physical-park sub-stage.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxFinalExecParkSubstageOutcome {
+    /// The provider operation was not needed, such as a zero balloon target.
+    Skipped,
+    /// The requested balloon target was observed.
+    TargetReached,
+    /// The balloon deficit was within the existing tolerance.
+    WithinTolerance,
+    /// Guest pressure limited reclaim and the existing policy proceeded.
+    PressureLimited,
+    /// The existing settle deadline elapsed.
+    Deadline,
+    /// Balloon statistics were unavailable and the existing policy proceeded.
+    StatsUnavailable,
+    /// The provider operation failed.
+    Failed,
+}
+
+impl SandboxFinalExecParkSubstageOutcome {
+    /// Stable low-cardinality value for telemetry dimensions.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Skipped => "skipped",
+            Self::TargetReached => "target_reached",
+            Self::WithinTolerance => "within_tolerance",
+            Self::PressureLimited => "pressure_limited",
+            Self::Deadline => "deadline",
+            Self::StatsUnavailable => "stats_unavailable",
+            Self::Failed => "failed",
+        }
+    }
+}
+
 /// Receives optional final preparation and physical-park timing records.
 ///
 /// Callbacks describe completed stages only and are informational: they never
@@ -219,6 +264,23 @@ pub enum SandboxFinalExecParkStage {
 pub trait SandboxFinalExecParkObserver: Send {
     /// Records one completed final-exec/park stage.
     fn record_stage(&mut self, stage: SandboxFinalExecParkStage, duration: Duration, success: bool);
+
+    /// Records one completed provider operation inside the physical-park stage.
+    ///
+    /// `success` remains independent from `outcome`: settle deadlines and
+    /// unavailable statistics can be completed, non-error provider paths.
+    /// Providers invoke this at most once for each applicable sub-stage; a
+    /// cancellation can omit the sub-stage that was still in progress.
+    /// Implementations that do not need sub-stage timing can use the default
+    /// no-op method for source compatibility.
+    fn record_substage(
+        &mut self,
+        _substage: SandboxFinalExecParkSubstage,
+        _duration: Duration,
+        _success: bool,
+        _outcome: Option<SandboxFinalExecParkSubstageOutcome>,
+    ) {
+    }
 }
 
 /// A process-isolation environment that runs guest workloads for the runner.

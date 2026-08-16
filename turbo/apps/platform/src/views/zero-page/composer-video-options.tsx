@@ -276,9 +276,8 @@ function VideoSettingsPane({
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1.5">
-      {/* The model stays visible here as context — it is edited from the
-          composer's own video model control, so this pane never nests a
-          second picker. */}
+      {/* The model these values belong to, as context. It is chosen from the
+          composer's own video control, so this pane never nests a picker. */}
       <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
         <span className="text-[13px] text-muted-foreground">
           {t(($) => {

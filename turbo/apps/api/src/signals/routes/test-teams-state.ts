@@ -1037,10 +1037,6 @@ async function deleteTeamsComposesForOrg(
   }
   await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
   signal.throwIfAborted();
-  await db
-    .delete(agentComposeVersions)
-    .where(inArray(agentComposeVersions.composeId, composeIds));
-  signal.throwIfAborted();
   await db.delete(agentComposes).where(inArray(agentComposes.id, composeIds));
   signal.throwIfAborted();
 }

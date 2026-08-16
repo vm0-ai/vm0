@@ -11,7 +11,8 @@ use std::time::{Duration, Instant};
 use chrono::SecondsFormat;
 use futures_util::FutureExt;
 use sandbox::{
-    Sandbox, SandboxFactory, SandboxFinalExecParkObserver, SandboxFinalExecParkStage, SandboxId,
+    Sandbox, SandboxFactory, SandboxFinalExecParkObserver, SandboxFinalExecParkStage,
+    SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome, SandboxId,
 };
 use tracing::{info, warn};
 
@@ -116,6 +117,38 @@ impl SandboxFinalExecParkObserver for FinalizationTelemetry<'_> {
         }
         if stage == SandboxFinalExecParkStage::PhysicalPark && success {
             self.physical_park_completed_at = Some(completed_at);
+        }
+    }
+
+    fn record_substage(
+        &mut self,
+        substage: SandboxFinalExecParkSubstage,
+        duration: Duration,
+        success: bool,
+        outcome: Option<SandboxFinalExecParkSubstageOutcome>,
+    ) {
+        let (action_type, error) = match substage {
+            SandboxFinalExecParkSubstage::BalloonSetup => (
+                "runner_host_physical_park_balloon_setup",
+                (!success).then_some("balloon setup failed"),
+            ),
+            SandboxFinalExecParkSubstage::BalloonSettle => (
+                "runner_host_physical_park_balloon_settle",
+                (!success).then_some("balloon settle failed"),
+            ),
+            SandboxFinalExecParkSubstage::VcpuPause => (
+                "runner_host_physical_park_vcpu_pause",
+                (!success).then_some("vCPU pause failed"),
+            ),
+        };
+        if let Some(telemetry) = self.telemetry.as_deref_mut() {
+            telemetry.record_with_outcome(
+                action_type,
+                duration,
+                success,
+                error,
+                outcome.map(SandboxFinalExecParkSubstageOutcome::as_str),
+            );
         }
     }
 }

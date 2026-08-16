@@ -432,6 +432,61 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("leaves every video parameter to the composer when the switch is on", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = VIDEO_TEMPLATE_ITEMS[0]!;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedTemplate = sentInlineTemplate(body.userMessage);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await user.click(tabByText("Video"));
+
+    expect(
+      screen.queryByLabelText("Video model Seedance 2.0 fast"),
+    ).not.toBeInTheDocument();
+    await user.click(
+      await screen.findByLabelText(`Select video template ${template.title}`),
+    );
+
+    // The chip is the template name and nothing else: ratio, duration,
+    // resolution and audio are set from the composer's own settings chip, so
+    // there is no second zone here and nothing to write onto the selection.
+    const chip = await waitFor(() => {
+      const found = document.querySelector("[data-composer-inline-template]");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(chip.querySelectorAll("button")).toHaveLength(1);
+    expect(screen.queryByLabelText(/^Video options /)).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submittedTemplate).toStrictEqual({
+        type: "video",
+        selection: { stylePresetId: template.id },
+      });
+    });
+  });
+
   it("replaces a selected inline template instead of inserting another", async () => {
     const user = userEvent.setup({ delay: null });
     const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;

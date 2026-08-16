@@ -1,7 +1,4 @@
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agentComposeVersions } from "@okouai/db/schema/agent-compose";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { artifacts } from "@okouai/db/schema/artifact";
@@ -68,10 +65,16 @@ import {
   deleteConnectorLocalState$,
   loadStoredConnectorRuntimeSnapshot,
 } from "./connector-data.service";
+import {
+  AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT,
+  assertAgentComposeProvenanceSchemaAvailable,
+  deleteClerkAgentLifecycleData,
+} from "./agent-compose-provenance-lifecycle.service";
 import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
 
 const L = logger("WebhookClerkCleanup");
 const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
+const CLERK_USER_CLEANUP_REVISION = "stage0_nullable_provenance";
 
 async function publishCancelBestEffort(
   runnerGroup: string | null,
@@ -769,8 +772,7 @@ async function deleteOrgData(
     ),
   );
   await db.delete(artifacts).where(eq(artifacts.orgId, orgId));
-  await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
-  await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
+  await deleteClerkAgentLifecycleData(db, { kind: "organization", orgId });
   await deleteConnectorOwnerState(db, { kind: "organization", orgId }, signal);
   await db.delete(storages).where(eq(storages.orgId, orgId));
   await db.delete(modelProviders).where(eq(modelProviders.orgId, orgId));
@@ -808,6 +810,17 @@ async function deleteUserData(
 ): Promise<void> {
   await cancelUserRuns(db, userId);
 
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT set_config('lock_timeout', ${AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT}, true)`,
+    );
+    await assertAgentComposeProvenanceSchemaAvailable(tx);
+    await tx
+      .update(agentComposeVersions)
+      .set({ createdBy: null })
+      .where(eq(agentComposeVersions.createdBy, userId));
+  });
+
   await db
     .delete(slackOrgConnections)
     .where(eq(slackOrgConnections.vm0UserId, userId));
@@ -828,22 +841,7 @@ async function deleteUserData(
       ]),
     );
   await db.delete(sharedThreads).where(eq(sharedThreads.userId, userId));
-  await db.delete(agentRuns).where(eq(agentRuns.userId, userId));
-
-  const composeRows = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(eq(agentComposes.userId, userId));
-  const composeIds = composeRows.map((row) => {
-    return row.id;
-  });
-  if (composeIds.length > 0) {
-    await db
-      .delete(agentComposeVersions)
-      .where(inArray(agentComposeVersions.composeId, composeIds));
-  }
-
-  await db.delete(agentComposes).where(eq(agentComposes.userId, userId));
+  await deleteClerkAgentLifecycleData(db, { kind: "user", userId });
   await db.delete(storages).where(eq(storages.userId, userId));
   await db.delete(modelProviders).where(eq(modelProviders.userId, userId));
   await db
@@ -870,7 +868,25 @@ async function deleteUserData(
     .delete(orgMembersMetadata)
     .where(eq(orgMembersMetadata.userId, userId));
   await db.delete(userCache).where(eq(userCache.userId, userId));
-  await db.delete(users).where(eq(users.id, userId));
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT set_config('lock_timeout', ${AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT}, true)`,
+    );
+    await tx.execute(
+      sql`SELECT set_config('vm0.clerk_user_cleanup_revision', ${CLERK_USER_CLEANUP_REVISION}, true)`,
+    );
+    await tx.execute(
+      sql`SELECT set_config('vm0.clerk_deleted_user_id', ${userId}, true)`,
+    );
+    // The marker, exact scrub, database invariant, and final identity DELETE
+    // must stay on this transaction's connection. The statement guard also
+    // serializes creator writes before it verifies the scrub postcondition.
+    await tx
+      .update(agentComposeVersions)
+      .set({ createdBy: null })
+      .where(eq(agentComposeVersions.createdBy, userId));
+    await tx.delete(users).where(eq(users.id, userId));
+  });
 }
 
 export const cleanupClerkDeletedOrg$ = command(

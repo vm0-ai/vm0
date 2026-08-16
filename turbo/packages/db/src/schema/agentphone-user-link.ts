@@ -21,6 +21,7 @@ export const agentphoneUserLinks = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     phoneHandle: varchar("phone_handle", { length: 254 }).notNull(),
     vm0UserId: text("vm0_user_id").notNull(),
+    userId: text("user_id"),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -32,6 +33,10 @@ export const agentphoneUserLinks = pgTable(
       ),
       uniqueIndex("idx_agentphone_user_links_vm0_org").on(
         table.vm0UserId,
+        table.orgId,
+      ),
+      uniqueIndex("idx_agentphone_user_links_user_org").on(
+        table.userId,
         table.orgId,
       ),
       index("idx_agentphone_user_links_org").on(table.orgId),
