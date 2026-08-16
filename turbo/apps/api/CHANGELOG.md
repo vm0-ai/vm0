@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.451.8](https://github.com/vm0-ai/vm0/compare/api-v1.451.7...api-v1.451.8) (2026-08-16)
+
+
+### Bug Fixes
+
+* **agent:** resolve deletion ownership through sessions ([#27580](https://github.com/vm0-ai/vm0/issues/27580)) ([c4be0a9](https://github.com/vm0-ai/vm0/commit/c4be0a9c15e8451855a3c3995153cfcd74cb4b58))
+
+
+### Refactoring
+
+* **agents:** neutralize agent route shell naming ([#27574](https://github.com/vm0-ai/vm0/issues/27574)) ([f765099](https://github.com/vm0-ai/vm0/commit/f76509940f5a4527bff35bcddbe2aa8f086773dc))
+* **browser:** neutralize browser computer-use and host route shell naming ([#27579](https://github.com/vm0-ai/vm0/issues/27579)) ([b5846b1](https://github.com/vm0-ai/vm0/commit/b5846b1bcc4025371c8bbf125165ebab9771bf65))
+* **chat:** neutralize chat event and thread route shell naming ([#27571](https://github.com/vm0-ai/vm0/issues/27571)) ([68f4121](https://github.com/vm0-ai/vm0/commit/68f4121a55089bff5ff72c39a443819c60c6f067))
+* **connectors:** neutralize connector route shell naming ([#27572](https://github.com/vm0-ai/vm0/issues/27572)) ([496b7be](https://github.com/vm0-ai/vm0/commit/496b7be5410254482a58a659c13e39dd279c769d))
+* **integrations:** neutralize feishu and slack route shell naming ([#27592](https://github.com/vm0-ai/vm0/issues/27592)) ([161eb4d](https://github.com/vm0-ai/vm0/commit/161eb4da7ef0528fd03b3ae6666a3bbcd485fd8e))
+* **media:** neutralize generation and upload route shells ([#27573](https://github.com/vm0-ai/vm0/issues/27573)) ([1f7b9c1](https://github.com/vm0-ai/vm0/commit/1f7b9c1f36552289f9e4e747aeaf6c7b3027df6b))
+* **orgs:** neutralize organization and access route shells ([#27587](https://github.com/vm0-ai/vm0/issues/27587)) ([878f12b](https://github.com/vm0-ai/vm0/commit/878f12b7961255a6a745aa759b73f2f97aa00824))
+* **workflows:** neutralize workflow route shell naming ([#27570](https://github.com/vm0-ai/vm0/issues/27570)) ([ede5322](https://github.com/vm0-ai/vm0/commit/ede5322482c2ade594791c0a4ca83f1b07b906a8))
+
 ## [1.451.7](https://github.com/vm0-ai/vm0/compare/api-v1.451.6...api-v1.451.7) (2026-08-16)
 
 
