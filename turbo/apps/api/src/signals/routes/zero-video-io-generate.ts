@@ -38,7 +38,7 @@ import {
   videoPricing$,
   videoRequiresPaidPlan,
   videoServiceUnavailable,
-} from "../services/zero-video-io-generate.service";
+} from "../services/video-generation.service";
 import {
   builtInGenerationRequestWithInternal,
   createBuiltInGenerationJob$,

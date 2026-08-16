@@ -374,7 +374,7 @@ const IMAGE_MODEL_CONFIGS = {
 } as const;
 
 const IMAGE_MODELS = Object.keys(IMAGE_MODEL_CONFIGS) as ImageModel[];
-const L = logger("ZeroImageIoGenerate");
+const L = logger("ImageGeneration");
 
 type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];

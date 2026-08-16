@@ -47,7 +47,7 @@ const BYTEPLUS_VIDEO_TASKS_URL =
 const MINIMAX_VIDEO_GENERATION_URL =
   "https://api.minimax.io/v2/video_generation";
 
-const L = logger("ZeroVideoIoGenerate");
+const L = logger("VideoGeneration");
 const VIDEO_IO_MAX_PROMPT_LENGTH = 32_000;
 const MINIMAX_H3_MAX_PROMPT_LENGTH = 7000;
 const PROVIDER_ERROR_BODY_LOG_MAX_LENGTH = 4000;

@@ -20,7 +20,7 @@ import {
   recordGeneratedImage$,
   type ImageOptions,
   type ImagePricing,
-} from "../services/zero-image-io-generate.service";
+} from "../services/image-generation.service";
 import {
   completeBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
@@ -51,7 +51,7 @@ import {
   recordGeneratedVideo$,
   type VideoPricing,
   videoPricing$,
-} from "../services/zero-video-io-generate.service";
+} from "../services/video-generation.service";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import {
@@ -61,7 +61,7 @@ import {
   parseAvatarVideoOptions,
   parseJoggAiWebhookPayload,
   recordGeneratedAvatarVideo$,
-} from "../services/zero-avatar-video.service";
+} from "../services/avatar-video.service";
 
 const L = logger("BuiltInGenerationWebhooks");
 
