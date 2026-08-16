@@ -605,6 +605,14 @@ def test_unparseable_response_ignores_oversized_irrelevant_fallback_hint_values(
             "user.read",
             1000,
         ),
+        (
+            "/2/news/search",
+            "query=vm0&max_results=100",
+            "users.read",
+            "GET /2/news/search",
+            "user.read",
+            100,
+        ),
         ("/2/users", "ids=1,2", "users.read", "GET /2/users", "user.read", 2),
         ("/2/users/by", "usernames=a,b", "users.read", "GET /2/users/by", "user.read", 2),
         (
