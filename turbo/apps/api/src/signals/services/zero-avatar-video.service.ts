@@ -24,7 +24,7 @@ import {
   type BuiltInGenerationUsageIdempotency,
 } from "./built-in-generation-usage-idempotency";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
-import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import { processOrgUsageEvents$ } from "./credit-usage.service";
 
 const L = logger("ZeroAvatarVideo");
 

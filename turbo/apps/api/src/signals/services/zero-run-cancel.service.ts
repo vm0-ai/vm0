@@ -21,7 +21,7 @@ import {
   dispatchRunCallbacks$,
 } from "./agent-run-callback.service";
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
-import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import { processOrgUsageEvents$ } from "./credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 
 const L = logger("ZeroRunCancel");

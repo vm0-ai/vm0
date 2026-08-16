@@ -10,7 +10,7 @@ import {
   resolveUsagePricingProvider,
   usagePricingResolution$,
 } from "../context/usage-pricing-resolution";
-import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import { processOrgUsageEvents$ } from "./credit-usage.service";
 
 const OPENROUTER_USAGE_IDEMPOTENCY_NAMESPACE =
   "3cf6f344-d67b-4d96-ae5d-fd6c0d134b70";

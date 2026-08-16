@@ -24,7 +24,7 @@ import {
   sttDailyDurationKey,
   sttDailyRateKey,
 } from "./voice-io-limits";
-import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import { processOrgUsageEvents$ } from "./credit-usage.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 const L = logger("VoiceIoPost");

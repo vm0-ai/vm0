@@ -36,7 +36,7 @@ import { checkBillableOperationCredits$ } from "./billable-operation-admission.s
 import { storeGeneratedArtifactObject$ } from "./artifact-storage.service";
 import { safeJsonParse, safeSync, tapError } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
-import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import { processOrgUsageEvents$ } from "./credit-usage.service";
 import {
   builtInGenerationUsageIdempotencyKey,
   type BuiltInGenerationUsageIdempotency,
