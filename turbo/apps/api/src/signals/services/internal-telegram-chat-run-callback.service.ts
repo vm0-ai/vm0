@@ -40,7 +40,7 @@ import {
 import { chatEventTypeIn } from "./chat-event-type.service";
 import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 import { storeTelegramBotMessage } from "./telegram-callback-persistence.service";
-import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";
+import { resolveTelegramAgentReplyFooterText } from "./telegram-footer.service";
 
 const L = logger("InternalCallbacksTelegramChat");
 const TELEGRAM_COMPLETION_CHUNK_THROTTLE_MS = 1100;

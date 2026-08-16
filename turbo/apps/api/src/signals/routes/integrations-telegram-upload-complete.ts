@@ -17,7 +17,7 @@ import {
 } from "../external/telegram-official";
 import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { recordTelegramUploadedFile$ } from "../services/run-uploaded-files.service";
-import { zeroTelegramInstallation } from "../services/zero-telegram-data.service";
+import { telegramInstallation } from "../services/telegram-data.service";
 import type { RouteEntry } from "../route-entry";
 
 const botNotFound = Object.freeze({
@@ -81,7 +81,7 @@ function resolveBotToken(args: {
     if (isOfficialTelegramBotId(args.botId)) {
       return getOfficialTelegramBotConfig().botToken ?? undefined;
     }
-    const installation = await get(zeroTelegramInstallation(args));
+    const installation = await get(telegramInstallation(args));
     return installation?.botToken;
   });
 }

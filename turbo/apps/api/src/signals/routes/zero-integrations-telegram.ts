@@ -29,9 +29,9 @@ import {
   telegramIntegrationBots,
   telegramIntegrationLinkStatus,
   telegramBotToken,
-  zeroTelegramBots,
-  zeroTelegramInstallation,
-} from "../services/zero-telegram-data.service";
+  telegramBots,
+  telegramInstallation,
+} from "../services/telegram-data.service";
 import {
   registerTelegramBot$,
   setupTelegramStatus$,
@@ -168,7 +168,7 @@ const telegramSetupAuth = {
 const getTelegramBotsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const bots = await get(
-    zeroTelegramBots({ orgId: auth.orgId, userId: auth.userId }),
+    telegramBots({ orgId: auth.orgId, userId: auth.userId }),
   );
 
   return {
@@ -212,7 +212,7 @@ const getTelegramDownloadFileInner$ = command(
       botToken = getOfficialTelegramBotConfig().botToken;
     } else {
       const installation = await get(
-        zeroTelegramInstallation({ orgId: auth.orgId, botId: query.bot_id }),
+        telegramInstallation({ orgId: auth.orgId, botId: query.bot_id }),
       );
       signal.throwIfAborted();
       botToken = installation?.botToken;

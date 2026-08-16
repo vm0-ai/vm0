@@ -38,7 +38,7 @@ import {
   userModelPreference,
 } from "./user-data.service";
 
-const L = logger("ZeroFeishuDispatch");
+const L = logger("FeishuDispatch");
 const FEISHU_THINKING_EMOJI = "Typing";
 const FEISHU_AGENT_PICKER_MAX_OPTIONS = 100;
 const FEISHU_MODEL_PICKER_MAX_OPTIONS = 100;

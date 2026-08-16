@@ -48,7 +48,7 @@ import {
   type FeishuDispatchInstallation,
   type FeishuInboundMessage,
   type FeishuPromptFile,
-} from "./zero-feishu-dispatch.service";
+} from "./feishu-dispatch.service";
 
 const L = logger("CanonicalFeishuIngressProcessor");
 const PROCESSING_STALE_AFTER_MS = 5 * 60 * 1000;
