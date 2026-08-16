@@ -6,7 +6,7 @@ import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { retainChatEvents$ } from "../services/cron-retain-chat-events.service";
-import { resolveWebChatSessionPrompt } from "../services/zero-web-chat-session-prompt.service";
+import { resolveWebChatSessionPrompt } from "../services/web-chat-session-prompt.service";
 import { recordChatEventRetentionCompleted } from "./cron-retain-chat-events";
 import {
   isTestEndpointAllowed,

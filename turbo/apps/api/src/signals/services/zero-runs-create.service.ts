@@ -62,11 +62,11 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
-import type { QueueFirstRunAssociation } from "./zero-chat-queued-event.service";
+import type { QueueFirstRunAssociation } from "./chat-queued-event.service";
 import {
   resolveWebChatSessionPrompt,
   type WebChatSessionPromptContext,
-} from "./zero-web-chat-session-prompt.service";
+} from "./web-chat-session-prompt.service";
 
 type ZeroRunCreateBody = z.infer<typeof zeroRunCreateBodySchema>;
 type ZeroRunOrigin = "zero_run" | "workflow_automation" | "goal_continuation";

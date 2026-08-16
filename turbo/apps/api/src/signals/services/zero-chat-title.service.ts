@@ -35,7 +35,7 @@ import {
   normalizeRecommendedFollowups,
 } from "./chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
-import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
+import { queuedUserMessageExists } from "./chat-queued-event.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
