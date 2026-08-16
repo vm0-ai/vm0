@@ -731,12 +731,16 @@ def feed_model_websocket_usage(
         return
     prewarm_state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
     lifecycle: usage.OpenAIResponsesServerLifecycle | None = None
-    should_inspect_lifecycle = isinstance(prewarm_state, _OpenAIResponsesPrewarmState) and (
-        prewarm_state.pending_intent is not None
-        or prewarm_state.active_intent is not None
-        or prewarm_state.ignored_response_id is not None
-        or event.event_type is None
-        or event.event_type in _WEBSOCKET_LIFECYCLE_EVENT_TYPES
+    should_inspect_lifecycle = (
+        isinstance(prewarm_state, _OpenAIResponsesPrewarmState)
+        and not prewarm_state.ambiguous
+        and (
+            prewarm_state.pending_intent is not None
+            or prewarm_state.active_intent is not None
+            or prewarm_state.ignored_response_id is not None
+            or event.event_type is None
+            or event.event_type in _WEBSOCKET_LIFECYCLE_EVENT_TYPES
+        )
     )
     if should_inspect_lifecycle and isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
         lifecycle = usage.inspect_openai_responses_server_lifecycle(event)
