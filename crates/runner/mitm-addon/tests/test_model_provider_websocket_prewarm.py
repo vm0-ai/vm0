@@ -266,6 +266,58 @@ class TestModelProviderWebSocketPrewarmUsage:
         [correlation_entry] = _correlation_entries(flow)
         assert correlation_entry["reason"] == "invalid_lifecycle"
 
+    def test_model_websocket_reused_ignored_id_without_created_fails_open(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("reused-id"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("reused-id", input_tokens=5, output_tokens=0),
+            )
+
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create"}).encode(),
+            )
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("reused-id", input_tokens=7, output_tokens=0),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 7)]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        source_entries = model_usage_source_entries(flow)
+        ignored_entries = [
+            entry for entry in source_entries if entry.get("disposition") == "ignored"
+        ]
+        assert len(ignored_entries) == 1
+        reported_entries = [
+            entry
+            for entry in source_entries
+            if entry.get("disposition") != "ignored"
+            and entry.get("provider_response_id") == "reused-id"
+        ]
+        assert len(reported_entries) == 1
+        [correlation_entry] = _correlation_entries(flow)
+        assert correlation_entry["reason"] == "invalid_lifecycle"
+
     @pytest.mark.parametrize(
         "client_requests",
         [

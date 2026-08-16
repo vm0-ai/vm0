@@ -277,8 +277,12 @@ def _observe_websocket_server_lifecycle(
                 )
             return
         if lifecycle.response_id == state.ignored_response_id:
-            # A duplicate terminal for an already ignored source is known even
-            # when another request is currently pending or active.
+            # A pending request has no bound ID yet, so this could be either an
+            # old duplicate or that request's terminal after a missing created
+            # boundary. Only an idle flow or a differently bound active response
+            # can prove that the retained ID is an old duplicate.
+            if state.pending_intent is not None:
+                _mark_websocket_correlation_ambiguous(flow, state, "invalid_lifecycle")
             return
         if (
             state.active_intent is None
