@@ -48,10 +48,13 @@ use crate::error::AgentError;
 /// creation; this string only needs to satisfy codex's local parser.
 pub(crate) const PLACEHOLDER_PLAN_TYPE: &str = "plus";
 
-/// Far-future JWT `exp` offset, in seconds. ~100 years from now ensures
-/// codex's `is_stale_for_proactive_refresh`
-/// (`codex-rs/login/src/auth/manager.rs:1786-1806`) always returns false;
-/// codex will not attempt refresh during runs.
+/// Far-future JWT `exp` offset, in seconds. For a parseable access token,
+/// Codex 0.147.0's `AuthManager::should_refresh_proactively` returns true when
+/// its `exp` is no later than five minutes from now:
+/// <https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/login/src/auth/manager.rs#L2762-L2784>.
+/// This version is pinned by `CODEX_CLI_VERSION` in
+/// `crates/runner/scripts/build-template.sh`; an `exp` ~100 years from now
+/// therefore keeps the predicate false during runs.
 const FAR_FUTURE_EXP_SECS: i64 = 100 * 365 * 24 * 3600;
 
 /// Localhost no-op URL for `CODEX_REFRESH_TOKEN_URL_OVERRIDE`. Defense
