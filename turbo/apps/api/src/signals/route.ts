@@ -58,8 +58,8 @@ import { webhooksWorkflowAutomationsRoutes } from "./routes/webhooks-workflow-au
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { webhooksStripeAutomationEventsRoutes } from "./routes/webhooks-stripe-automation-events";
 import { agentDraftRoutes } from "./routes/agent-draft";
-import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
-import { zeroAgentsRoutes } from "./routes/zero-agents";
+import { agentInstructionsRoutes } from "./routes/agent-instructions";
+import { agentsRoutes } from "./routes/agents";
 import { artifactCatalogRoutes } from "./routes/artifact-catalog";
 import { acquisitionAttributionRoutes } from "./routes/acquisition-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
@@ -250,8 +250,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...morningBriefRoutes,
   ...emailUnsubscribeRoutes,
   ...agentDraftRoutes,
-  ...zeroAgentInstructionsRoutes,
-  ...zeroAgentsRoutes,
+  ...agentInstructionsRoutes,
+  ...agentsRoutes,
   ...artifactCatalogRoutes,
   ...acquisitionAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,

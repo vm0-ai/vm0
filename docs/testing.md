@@ -250,7 +250,7 @@ mocking only external services:
 
 ```typescript
 const context = testContext();
-const client = setupApp({ context, routes: zeroAgentsRoutes })(
+const client = setupApp({ context, routes: agentsRoutes })(
   zeroAgentsMainContract,
 );
 

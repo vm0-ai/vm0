@@ -147,7 +147,7 @@ const updateAgentInstructionsInner$ = command(
   },
 );
 
-export const zeroAgentInstructionsRoutes: readonly RouteEntry[] = [
+export const agentInstructionsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentInstructionsContract.get,
     handler: authRoute(agentReadAuth, getAgentInstructionsInner$),

@@ -68,7 +68,7 @@ import { createZeroRouteMocks } from "./zero-route-test";
 import { connectorsSlugCallbackRoutes } from "../../connectors-slug-callback";
 import { githubOauthRoutes } from "../../github-oauth";
 import { integrationsGithubRoutes } from "../../integrations-github";
-import { zeroAgentsRoutes } from "../../zero-agents";
+import { agentsRoutes } from "../../agents";
 import { connectorsRoutes } from "../../connectors";
 import { connectorsExternalCodeRoutes } from "../../connectors-external-code";
 import { connectorsOauthDeviceAuthRoutes } from "../../connectors-oauth-device-auth";
@@ -92,7 +92,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...connectorsSlugCallbackRoutes,
   ...githubOauthRoutes,
   ...integrationsGithubRoutes,
-  ...zeroAgentsRoutes,
+  ...agentsRoutes,
   ...connectorsExternalCodeRoutes,
   ...connectorsOauthDeviceAuthRoutes,
   ...connectorsRoutes,
@@ -2185,7 +2185,7 @@ export function createConnectorBddApi(context: TestContext) {
       agentId: string,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context, routes: zeroAgentsRoutes })(
+      const client = setupApp({ context, routes: agentsRoutes })(
         zeroAgentCustomConnectorsContract,
       );
       return await accept(
@@ -2229,7 +2229,7 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
       operation?: "replace" | "add" | "remove",
     ) {
-      const client = setupApp({ context, routes: zeroAgentsRoutes })(
+      const client = setupApp({ context, routes: agentsRoutes })(
         zeroAgentCustomConnectorsContract,
       );
       const body =
@@ -2262,7 +2262,7 @@ export function createConnectorBddApi(context: TestContext) {
     ): Promise<Response> {
       const app = createApp({
         signal: context.signal,
-        routes: zeroAgentsRoutes,
+        routes: agentsRoutes,
       });
       return await app.request(
         `/api/zero/agents/${agentId}/custom-connectors`,
@@ -2303,7 +2303,7 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
       operation?: "replace" | "add" | "remove",
     ) {
-      const client = setupApp({ context, routes: zeroAgentsRoutes })(
+      const client = setupApp({ context, routes: agentsRoutes })(
         zeroAgentCustomConnectorsContract,
       );
       const body =

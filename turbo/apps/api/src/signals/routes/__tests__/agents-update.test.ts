@@ -21,8 +21,8 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { cliAuthRoutes } from "../cli-auth";
-import { zeroAgentInstructionsRoutes } from "../zero-agent-instructions";
-import { zeroAgentsRoutes } from "../zero-agents";
+import { agentInstructionsRoutes } from "../agent-instructions";
+import { agentsRoutes } from "../agents";
 import { workflowsRoutes } from "../workflows";
 
 const context = testContext();
@@ -89,19 +89,15 @@ async function cliAuthHeaders(
 }
 
 function agentsClient() {
-  return setupApp({ context, routes: zeroAgentsRoutes })(
-    zeroAgentsByIdContract,
-  );
+  return setupApp({ context, routes: agentsRoutes })(zeroAgentsByIdContract);
 }
 
 function agentsCollectionClient() {
-  return setupApp({ context, routes: zeroAgentsRoutes })(
-    zeroAgentsMainContract,
-  );
+  return setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract);
 }
 
 function instructionsClient() {
-  return setupApp({ context, routes: zeroAgentInstructionsRoutes })(
+  return setupApp({ context, routes: agentInstructionsRoutes })(
     zeroAgentInstructionsContract,
   );
 }

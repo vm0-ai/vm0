@@ -18,7 +18,7 @@ import {
   type StripeInvoiceLine,
   type StripeSubscription,
 } from "../../external/stripe-client";
-import { zeroAgentsRoutes } from "../zero-agents";
+import { agentsRoutes } from "../agents";
 import { zeroOrgDeleteRoutes } from "../zero-org-delete";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
@@ -623,7 +623,7 @@ test("does not delete the org when its proportional refund fails", async () => {
     iat: deletionTimestamp,
     exp: deletionTimestamp + 60,
   });
-  const agents = setupApp({ context, routes: zeroAgentsRoutes })(
+  const agents = setupApp({ context, routes: agentsRoutes })(
     zeroAgentsMainContract,
   );
   const misc = createMiscRoutesApi(context);

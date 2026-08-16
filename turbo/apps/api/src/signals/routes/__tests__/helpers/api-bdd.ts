@@ -23,8 +23,8 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { now } from "../../../../lib/time";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
-import { zeroAgentsRoutes } from "../../zero-agents";
-import { zeroAgentInstructionsRoutes } from "../../zero-agent-instructions";
+import { agentsRoutes } from "../../agents";
+import { agentInstructionsRoutes } from "../../agent-instructions";
 import { onboardingCompleteRoutes } from "../../onboarding-complete";
 import { onboardingStatusRoutes } from "../../onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
@@ -150,21 +150,21 @@ export function createBddApi(context: TestContext) {
   function agentsClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroAgentsRoutes,
+      routes: agentsRoutes,
     })(zeroAgentsMainContract);
   }
 
   function agentsByIdClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroAgentsRoutes,
+      routes: agentsRoutes,
     })(zeroAgentsByIdContract);
   }
 
   function agentInstructionsClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroAgentInstructionsRoutes,
+      routes: agentInstructionsRoutes,
     })(zeroAgentInstructionsContract);
   }
 
