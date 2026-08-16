@@ -1114,11 +1114,8 @@
         "members": "メンバー",
         "membersDescription": "各メンバーの使用量パックの残高とクレジット追加を確認します。",
         "membersTitle": "メンバーの使用量パッククレジット",
-        "nextExpiry": "次の有効期限",
         "purchased": "購入分",
-        "remaining": "残り",
         "title": "使用量パックのクレジット",
-        "totalRemaining": "残り合計",
         "viewMembers": "メンバー残高を表示"
       },
       "used": "使用済み"
