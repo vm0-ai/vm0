@@ -3,6 +3,7 @@ import { command } from "ccstate";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { isLockNotAvailable } from "../../lib/pg-errors";
 import { request$ } from "../context/hono";
 import { type ClerkWebhookEvent, verifyClerkWebhook } from "../external/clerk";
 import { waitUntil } from "../context/wait-until";
@@ -316,6 +317,9 @@ const handleOrganizationDeletedWebhook$ = command(
     waitUntil(
       tapError(set(cleanupClerkDeletedOrg$, orgId, signal), (error) => {
         L.error("organization.deleted cleanup failed", { orgId, error });
+        if (isLockNotAvailable(error)) {
+          throw error;
+        }
       }),
     );
     return new Response("OK", { status: 200 });
@@ -399,6 +403,9 @@ const postClerkWebhook$ = command(
       waitUntil(
         tapError(set(cleanupClerkDeletedUser$, userId, signal), (error) => {
           L.error("user.deleted cleanup failed", { userId, error });
+          if (isLockNotAvailable(error)) {
+            throw error;
+          }
         }),
       );
       return new Response("OK", { status: 200 });
