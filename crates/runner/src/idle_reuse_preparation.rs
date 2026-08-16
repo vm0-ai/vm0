@@ -6,7 +6,7 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DI
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
     REUSE_PREPARATION_EXIT_INSPECTION_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
-    ReusePreparationReport, ReusePreparationRequest,
+    REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED, ReusePreparationReport, ReusePreparationRequest,
 };
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecResult, ExecTermination};
 use tracing::{info, warn};
@@ -21,7 +21,6 @@ use crate::workspace_mount::{WORKSPACE_MOUNT_TIMEOUT, workspace_mount_command};
 const REUSE_PREPARATION_TIMEOUT: Duration = Duration::from_secs(10);
 const MIN_REUSE_ROOTFS_AVAILABLE_BYTES: u64 = 128 * 1024 * 1024;
 const MIN_REUSE_ROOTFS_AVAILABLE_INODES: u64 = 1024;
-const REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED: i32 = 6;
 
 #[derive(Clone, Copy)]
 enum ReuseRejectionReason {
@@ -106,11 +105,8 @@ impl IdleReusePreparation {
             )
         })?;
         let mount_command = workspace_mount_command();
-        let command = format!(
-            "set -e\n{} prepare-for-reuse\nset +e\n(\nset -eu\n{}\n) >/dev/null\nmount_status=$?\nset -e\nif [ \"$mount_status\" -ne 0 ]; then\n  exit {REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED}\nfi",
-            guest::RUN_AGENT,
-            mount_command
-        );
+        let helper_command = format!("{} prepare-for-reuse", guest::RUN_AGENT);
+        let command = compose_reuse_preparation_command(&helper_command, &mount_command);
         Ok(Self {
             operation_run_id,
             sandbox_id: sandbox_id.to_owned(),
@@ -192,6 +188,12 @@ impl IdleReusePreparation {
         );
         Ok(report)
     }
+}
+
+fn compose_reuse_preparation_command(helper_command: &str, mount_command: &str) -> String {
+    format!(
+        "set -e\n{helper_command}\nset +e\n(\nset -eu\n{mount_command}\n) >/dev/null\nmount_status=$?\nset -e\nif [ \"$mount_status\" -ne 0 ]; then\n  exit {REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED}\nfi"
+    )
 }
 
 #[cfg(test)]
@@ -542,6 +544,7 @@ mod tests {
     #[tokio::test]
     async fn preparation_distinguishes_typed_helper_failures() {
         for (exit_code, expected_reason) in [
+            (REUSE_PREPARATION_EXIT_INVALID_REQUEST, "invalid_request"),
             (
                 REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
                 "inspection_failed",
@@ -568,6 +571,67 @@ mod tests {
                 Some(expected_reason)
             );
         }
+    }
+
+    #[test]
+    fn composed_command_preserves_helper_statuses_and_mount_boundary() {
+        for helper_exit_code in [
+            REUSE_PREPARATION_EXIT_INVALID_REQUEST,
+            REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
+            REUSE_PREPARATION_EXIT_CLEANUP_FAILED,
+            REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+        ] {
+            let (output, mount_ran) = run_composed_command(helper_exit_code, 1);
+
+            assert_eq!(output.status.code(), Some(helper_exit_code));
+            assert!(
+                !mount_ran,
+                "mount stage ran after helper status {helper_exit_code}"
+            );
+        }
+
+        let (output, mount_ran) = run_composed_command(0, 1);
+        assert_eq!(
+            output.status.code(),
+            Some(REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED)
+        );
+        assert!(mount_ran, "mount stage should run after helper success");
+    }
+
+    #[test]
+    fn wrapper_status_is_reserved_outside_helper_statuses() {
+        for helper_status in [
+            0,
+            REUSE_PREPARATION_EXIT_INVALID_REQUEST,
+            REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
+            REUSE_PREPARATION_EXIT_CLEANUP_FAILED,
+            REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+        ] {
+            assert_ne!(REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED, helper_status);
+        }
+    }
+
+    fn run_composed_command(
+        helper_exit_code: i32,
+        mount_exit_code: i32,
+    ) -> (std::process::Output, bool) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mount_marker = temp_dir.path().join("mount-ran");
+        let mount_marker = shell_quote::quote_shell_arg(mount_marker.to_str().unwrap());
+        let mount_command = format!("touch -- {mount_marker}\nexit {mount_exit_code}");
+        let helper_command = if helper_exit_code == 0 {
+            "true".to_owned()
+        } else {
+            format!("exit {helper_exit_code}")
+        };
+        let command = compose_reuse_preparation_command(&helper_command, &mount_command);
+        let output = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .output()
+            .unwrap();
+        let mount_ran = temp_dir.path().join("mount-ran").exists();
+        (output, mount_ran)
     }
 
     #[tokio::test]

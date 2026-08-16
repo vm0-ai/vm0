@@ -12,6 +12,11 @@ pub const REUSE_PREPARATION_EXIT_INSPECTION_FAILED: i32 = 3;
 pub const REUSE_PREPARATION_EXIT_CLEANUP_FAILED: i32 = 4;
 /// Exec process containment could not be proven ready for reuse.
 pub const REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED: i32 = 5;
+/// The runner-owned workspace-mount stage failed after helper success.
+///
+/// This value is reserved for the composed runner wrapper and must not be used
+/// for a guest-helper failure.
+pub const REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED: i32 = 6;
 
 /// Runtime directories that must remain available after reuse preparation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
