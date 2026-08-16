@@ -78,10 +78,16 @@ function boundaryFromPid(args: {
 export async function removeAgentLegacyVersionsFixture(
   agentId: string,
 ): Promise<readonly string[]> {
-  const rows = await db()
-    .delete(agentComposeVersions)
-    .where(eq(agentComposeVersions.composeId, agentId))
-    .returning({ id: agentComposeVersions.id });
+  const rows = await db().transaction(async (tx) => {
+    // The Stage 0 production DELETE veto is intentionally bypassed only for
+    // this test-only fixture so the legacy-version-free cohort remains
+    // constructible. SET LOCAL keeps the bypass scoped to this transaction.
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    return await tx
+      .delete(agentComposeVersions)
+      .where(eq(agentComposeVersions.composeId, agentId))
+      .returning({ id: agentComposeVersions.id });
+  });
   return rows.map((row) => {
     return row.id;
   });

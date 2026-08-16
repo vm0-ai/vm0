@@ -44,16 +44,16 @@ export const agentComposeVersions = pgTable(
   "agent_compose_versions",
   {
     id: varchar("id", { length: 64 }).primaryKey(), // SHA-256 hash (content-addressed)
-    composeId: uuid("compose_id")
-      .notNull()
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    composeId: uuid("compose_id").references(
+      () => {
+        return agentComposes.id;
+      },
+      { onDelete: "set null" },
+    ),
     content: jsonb("content").$type<AgentComposeVersionContent>().notNull(),
-    createdBy: text("created_by").notNull(), // User ID who created this version
+    // Nullable transition provenance is cleared by Agent/user lifecycle
+    // cleanup. New INSERTs remain complete through the Stage 0 DB trigger.
+    createdBy: text("created_by"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
