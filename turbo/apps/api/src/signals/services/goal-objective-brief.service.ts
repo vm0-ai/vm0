@@ -7,7 +7,7 @@ import {
   fallbackGoalObjectiveBrief,
 } from "./goal-objective-brief-normalization.service";
 
-const log = logger("api:zero-goal-objective-brief");
+const log = logger("api:goal-objective-brief");
 const OBJECTIVE_BRIEF_MODEL = "google/gemini-3.1-flash-lite-preview";
 const OBJECTIVE_CONTEXT_CHAR_CAP = 4000;
 export async function generateGoalObjectiveBrief(
