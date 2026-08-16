@@ -246,7 +246,10 @@ async fn create_checkpoint_impl(
     log_info!(LOG_TAG, "Calling checkpoint API...");
     let api_start = std::time::Instant::now();
     let url = http.checkpoint_url()?;
-    let result = match post_checkpoint_with_unavailable_compatibility(http, url, &payload).await {
+    let result = match http
+        .post_json(url, &payload, constants::HTTP_MAX_ATTEMPTS)
+        .await
+    {
         Ok(v) => v,
         Err(e) => {
             record_sandbox_op("checkpoint_api_call", api_start.elapsed(), false, None);
@@ -286,35 +289,6 @@ async fn create_checkpoint_impl(
             api_start,
             "Invalid checkpoint API response",
         ))
-    }
-}
-
-async fn post_checkpoint_with_unavailable_compatibility(
-    http: &HttpClient,
-    url: &str,
-    payload: &checkpoints::Request,
-) -> Result<Option<serde_json::Value>, AgentError> {
-    match http
-        .post_json(url, payload, constants::HTTP_MAX_ATTEMPTS)
-        .await
-    {
-        Err(AgentError::HttpStatus { status: 400, .. })
-            if payload.cli_agent_session_history_disposition
-                == Some(checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable) =>
-        {
-            // Rollout compatibility: remove after API versions predating
-            // `unavailable` can no longer receive runner traffic or be restored.
-            log_warn!(
-                LOG_TAG,
-                "Checkpoint API rejected the unavailable history disposition; retrying with the legacy historyless disposition"
-            );
-            let mut fallback = payload.clone();
-            fallback.cli_agent_session_history_disposition =
-                Some(checkpoints::RequestCliAgentSessionHistoryDisposition::DiscardedOversized);
-            http.post_json(url, &fallback, constants::HTTP_MAX_ATTEMPTS)
-                .await
-        }
-        result => result,
     }
 }
 
@@ -371,64 +345,6 @@ mod tests {
         } else {
             http_status(400)
         }
-    }
-
-    #[tokio::test]
-    async fn unavailable_history_retries_once_with_legacy_disposition_after_http_400() {
-        let server = MockServer::start();
-        let unavailable = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/checkpoints")
-                .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
-            then.status(400);
-        });
-        let legacy = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/checkpoints")
-                .json_body_includes(
-                    r#"{"cliAgentSessionHistoryDisposition":"discarded_oversized"}"#,
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body(json!({"checkpointId": "legacy-compatible-checkpoint"}));
-        });
-        let http = HttpClient::with_api_config(
-            server.base_url(),
-            "test-token",
-            "",
-            "test-run-001",
-            Duration::ZERO,
-        )
-        .unwrap();
-        let payload = checkpoints::Request {
-            run_id: "test-run-001".to_string(),
-            cli_agent_type: "claude-code".to_string(),
-            cli_agent_session_id: "history-unavailable-session".to_string(),
-            cli_agent_session_history_hash: None,
-            cli_agent_session_history_disposition: Some(
-                checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable,
-            ),
-            artifact_snapshots: None,
-            volume_versions_snapshot: None,
-        };
-
-        let response = post_checkpoint_with_unavailable_compatibility(
-            &http,
-            http.checkpoint_url().unwrap(),
-            &payload,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(
-            response
-                .as_ref()
-                .and_then(|value| value.get("checkpointId"))
-                .and_then(serde_json::Value::as_str),
-            Some("legacy-compatible-checkpoint")
-        );
-        unavailable.assert_calls_async(1).await;
-        legacy.assert_calls_async(1).await;
     }
 
     #[tokio::test]
