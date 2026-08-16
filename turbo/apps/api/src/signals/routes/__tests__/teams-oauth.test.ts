@@ -8,7 +8,7 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { zeroTeamsOauthRoutes } from "../zero-teams-oauth";
+import { teamsOauthRoutes } from "../teams-oauth";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -21,7 +21,7 @@ import {
   teamsConnectFixture,
   type TeamsConnectFixture,
 } from "./helpers/teams-connect";
-import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
+import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -44,7 +44,7 @@ async function appRequest(
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: zeroTeamsOauthRoutes,
+    routes: teamsOauthRoutes,
   });
   return await app.request(`${options.origin ?? "http://api.test"}${path}`, {
     method: "GET",
@@ -232,7 +232,7 @@ describe("Teams OAuth API routes", () => {
     );
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     const pendingStatus = await accept(
@@ -287,7 +287,7 @@ describe("Teams OAuth API routes", () => {
     );
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     const status = await accept(
@@ -308,7 +308,7 @@ describe("Teams OAuth API routes", () => {
     const fixture = await seedTeamsInstallation(track);
     await seedMembership(fixture.orgId, fixture.userId, "admin");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     await accept(

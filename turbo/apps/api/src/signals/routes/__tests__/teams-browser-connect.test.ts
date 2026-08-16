@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { zeroTeamsBrowserConnectRoutes } from "../zero-teams-browser-connect";
+import { teamsBrowserConnectRoutes } from "../teams-browser-connect";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -17,7 +17,7 @@ import {
   teamsFixtureExternalId,
   type TeamsConnectFixture,
 } from "./helpers/teams-connect";
-import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
+import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -91,7 +91,7 @@ async function requestConnect(
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: zeroTeamsBrowserConnectRoutes,
+    routes: teamsBrowserConnectRoutes,
   });
   const requestHeaders = headers ?? { cookie: "__session=opaque" };
   return await app.request(url, { method: "GET", headers: requestHeaders });
@@ -129,7 +129,7 @@ async function bindTeamsInstallation(
   userId: string,
 ): Promise<void> {
   mocks.clerk.session(userId, fixture.orgId, "org:admin");
-  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+  const client = setupApp({ context, routes: teamsConnectRoutes })(
     zeroTeamsConnectContract,
   );
   await accept(
@@ -152,7 +152,7 @@ async function expectTeamsConnected(
     readonly teamName?: string | null;
   } = {},
 ): Promise<void> {
-  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+  const client = setupApp({ context, routes: teamsConnectRoutes })(
     zeroTeamsConnectContract,
   );
   const status = await accept(

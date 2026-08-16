@@ -36,9 +36,9 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { testTelegramStateRoutes } from "../test-telegram-state";
-import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
+import { integrationsTelegramRoutes } from "../integrations-telegram";
 
-const TEST_APP_ROUTES = Object.freeze([...zeroIntegrationsTelegramRoutes]);
+const TEST_APP_ROUTES = Object.freeze([...integrationsTelegramRoutes]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -292,7 +292,7 @@ afterEach(() => {
 });
 
 function telegramClient() {
-  return setupApp({ context, routes: zeroIntegrationsTelegramRoutes })(
+  return setupApp({ context, routes: integrationsTelegramRoutes })(
     zeroIntegrationsTelegramContract,
   );
 }
