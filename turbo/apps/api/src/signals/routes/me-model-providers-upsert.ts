@@ -304,7 +304,7 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     : shapeUpsertResult(result.provider, result.created);
 });
 
-export const zeroMeModelProvidersUpsertRoutes: readonly RouteEntry[] = [
+export const meModelProvidersUpsertRoutes: readonly RouteEntry[] = [
   {
     route: zeroPersonalModelProvidersMainContract.upsert,
     handler: authRoute(

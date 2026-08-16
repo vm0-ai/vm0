@@ -77,13 +77,12 @@ const resetSubscriptionUsageInner$ = command(
   },
 );
 
-export const zeroMeModelProvidersResetSubscriptionRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
-      handler: authRoute(
-        { requireOrganization: true, missingOrganizationStatus: 401 },
-        resetSubscriptionUsageInner$,
-      ),
-    },
-  ];
+export const meModelProvidersResetSubscriptionRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      resetSubscriptionUsageInner$,
+    ),
+  },
+];

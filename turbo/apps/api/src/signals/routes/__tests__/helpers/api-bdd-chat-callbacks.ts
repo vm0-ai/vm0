@@ -10,7 +10,7 @@ import { nowDate } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
-import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { modelPoliciesRoutes } from "../../model-policies";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
@@ -227,7 +227,7 @@ export function createChatCallbacksApi(context: TestContext) {
   function modelPoliciesClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroModelPoliciesRoutes,
+      routes: modelPoliciesRoutes,
     })(zeroModelPoliciesMainContract);
   }
 

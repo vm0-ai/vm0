@@ -123,14 +123,14 @@ import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
 import { zeroChatEventsRoutes } from "../zero-chat-events";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroMailRoutes } from "../zero-mail";
-import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
+import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...zeroChatEventsRoutes,
   ...zeroChatThreadRoutes,
   ...zeroMailRoutes,
-  ...zeroModelProviderGatewayRoutes,
+  ...modelProviderGatewayRoutes,
   ...zeroModelProvidersRoutes,
 ]);
 
@@ -942,13 +942,13 @@ function modelProvidersClient() {
 }
 
 function modelProviderConnectionsClient() {
-  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+  return setupApp({ context, routes: modelProviderGatewayRoutes })(
     zeroModelProviderConnectionsMainContract,
   );
 }
 
 function modelProviderConnectionsByIdClient() {
-  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+  return setupApp({ context, routes: modelProviderGatewayRoutes })(
     zeroModelProviderConnectionsByIdContract,
   );
 }

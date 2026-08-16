@@ -15,9 +15,9 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import type { RouteEntry } from "../../../route-entry";
 import { connectorsRoutes } from "../../connectors";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
-import { zeroMeModelProvidersDeleteRoutes } from "../../zero-me-model-providers-delete";
-import { zeroMeModelProviderAccountRoutes } from "../../zero-me-model-provider-accounts";
-import { zeroMeModelProvidersListRoutes } from "../../zero-me-model-providers-list";
+import { meModelProvidersDeleteRoutes } from "../../me-model-providers-delete";
+import { meModelProviderAccountRoutes } from "../../me-model-provider-accounts";
+import { meModelProvidersListRoutes } from "../../me-model-providers-list";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { userPreferencesRoutes } from "../../user-preferences";
 import type { ApiTestUser } from "./api-bdd";
@@ -30,9 +30,9 @@ interface AuthHeaders {
 const authDeviceSupportRoutes: readonly RouteEntry[] = [
   ...connectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
-  ...zeroMeModelProviderAccountRoutes,
-  ...zeroMeModelProvidersDeleteRoutes,
-  ...zeroMeModelProvidersListRoutes,
+  ...meModelProviderAccountRoutes,
+  ...meModelProvidersDeleteRoutes,
+  ...meModelProvidersListRoutes,
   ...zeroModelProvidersRoutes,
   ...userPreferencesRoutes,
 ];

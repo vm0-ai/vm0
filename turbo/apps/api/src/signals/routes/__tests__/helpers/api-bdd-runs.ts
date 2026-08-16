@@ -68,7 +68,7 @@ import { runnersRoutes } from "../../runners";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
-import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroRunDetailRoutes } from "../../zero-run-detail";
 import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
@@ -154,7 +154,7 @@ const runRoutes = [
   ...runnersRoutes,
   ...webhooksStripeRoutes,
   ...zeroBillingStatusRoutes,
-  ...zeroModelPoliciesRoutes,
+  ...modelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunFixtureRoutes,

@@ -37,11 +37,11 @@ import { createZeroRouteMocks } from "./zero-route-test";
 import { emailUnsubscribeRoutes } from "../../email-unsubscribe";
 import { userExportRoutes } from "../../user-export";
 import { logsRoutes } from "../../logs";
-import { zeroMeModelProvidersDeleteRoutes } from "../../zero-me-model-providers-delete";
-import { zeroMeModelProvidersListRoutes } from "../../zero-me-model-providers-list";
-import { zeroMeModelProvidersResetSubscriptionRoutes } from "../../zero-me-model-providers-reset-subscription";
-import { zeroMeModelProvidersUpsertRoutes } from "../../zero-me-model-providers-upsert";
-import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { meModelProvidersDeleteRoutes } from "../../me-model-providers-delete";
+import { meModelProvidersListRoutes } from "../../me-model-providers-list";
+import { meModelProvidersResetSubscriptionRoutes } from "../../me-model-providers-reset-subscription";
+import { meModelProvidersUpsertRoutes } from "../../me-model-providers-upsert";
+import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { orgLogoRoutes } from "../../org-logo";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
@@ -49,13 +49,13 @@ import { userPreferencesRoutes } from "../../user-preferences";
 import { workflowsRoutes } from "../../workflows";
 
 const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
-  ...zeroMeModelProvidersListRoutes,
-  ...zeroMeModelProvidersUpsertRoutes,
+  ...meModelProvidersListRoutes,
+  ...meModelProvidersUpsertRoutes,
 ]);
 
 const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
-  ...zeroMeModelProvidersDeleteRoutes,
-  ...zeroMeModelProvidersResetSubscriptionRoutes,
+  ...meModelProvidersDeleteRoutes,
+  ...meModelProvidersResetSubscriptionRoutes,
 ]);
 
 interface AuthHeaders {
@@ -558,7 +558,7 @@ export function createMiscRoutesApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<OrgModelPoliciesResponse> {
       const response = await accept(
-        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+        setupApp({ context, routes: modelPoliciesRoutes })(
           zeroModelPoliciesMainContract,
         ).list({
           headers: authenticate(context, actor),
@@ -574,7 +574,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+        setupApp({ context, routes: modelPoliciesRoutes })(
           zeroModelPoliciesMainContract,
         ).update({
           headers: authenticate(context, actor),

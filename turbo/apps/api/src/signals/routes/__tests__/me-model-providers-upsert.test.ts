@@ -13,19 +13,19 @@ import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { readUserSecrets } from "./helpers/user-config-state";
-import { zeroMeModelProvidersDeleteRoutes } from "../zero-me-model-providers-delete";
-import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
-import { zeroMeModelProvidersResetSubscriptionRoutes } from "../zero-me-model-providers-reset-subscription";
-import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
+import { meModelProvidersDeleteRoutes } from "../me-model-providers-delete";
+import { meModelProvidersListRoutes } from "../me-model-providers-list";
+import { meModelProvidersResetSubscriptionRoutes } from "../me-model-providers-reset-subscription";
+import { meModelProvidersUpsertRoutes } from "../me-model-providers-upsert";
 
 const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
-  ...zeroMeModelProvidersListRoutes,
-  ...zeroMeModelProvidersUpsertRoutes,
+  ...meModelProvidersListRoutes,
+  ...meModelProvidersUpsertRoutes,
 ]);
 
 const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
-  ...zeroMeModelProvidersDeleteRoutes,
-  ...zeroMeModelProvidersResetSubscriptionRoutes,
+  ...meModelProvidersDeleteRoutes,
+  ...meModelProvidersResetSubscriptionRoutes,
 ]);
 
 const context = testContext();
