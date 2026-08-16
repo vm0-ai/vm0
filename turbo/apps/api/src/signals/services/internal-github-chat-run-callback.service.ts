@@ -25,7 +25,7 @@ import {
 } from "./github-issues-api.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
 import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
-import { resolveGithubAgentReplyFooterText } from "./zero-github-footer.service";
+import { resolveGithubAgentReplyFooterText } from "./github-agent-reply-footer.service";
 
 const L = logger("InternalCallbacksGithubChat");
 
