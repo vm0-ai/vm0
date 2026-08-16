@@ -1744,6 +1744,7 @@ describe("legacy subscription usage pack migration", () => {
   }
 
   interface MigrationStripeController {
+    readonly discountId: string | null;
     readonly scheduleId: string;
     readonly invoice: () => object;
     readonly cancelSubscription: () => MigrationSubscriptionMock;
@@ -1761,6 +1762,7 @@ describe("legacy subscription usage pack migration", () => {
     readonly pending_update: null;
     readonly latest_invoice: string | null;
     readonly metadata: Readonly<Record<string, string>>;
+    readonly discounts: readonly string[];
     readonly items: {
       readonly data: readonly {
         readonly id: string;
@@ -1854,6 +1856,7 @@ describe("legacy subscription usage pack migration", () => {
     value: unknown,
     effectiveAt: number,
     amountDue: number,
+    discountAmount = 0,
   ): object {
     const items = migrationPreviewItems(value).flatMap((item) => {
       if (
@@ -1954,14 +1957,28 @@ describe("legacy subscription usage pack migration", () => {
         data: [
           ...noiseLines,
           ...items.map((item, index) => {
+            const exclusiveTaxAmount = index === 0 && scheduled ? 100 : 0;
+            const appliedDiscountAmount = index === 0 ? discountAmount : 0;
             return {
               id: `il_migration_preview_${index}`,
-              amount: index === 0 ? amountDue - (scheduled ? 100 : 0) : 0,
+              amount:
+                index === 0
+                  ? amountDue - exclusiveTaxAmount + appliedDiscountAmount
+                  : 0,
+              discount_amounts:
+                appliedDiscountAmount > 0
+                  ? [{ amount: appliedDiscountAmount }]
+                  : [],
               quantity: item.quantity,
               pricing: { price_details: { price: item.price } },
               taxes:
-                index === 0 && scheduled
-                  ? [{ amount: 100, tax_behavior: "exclusive" }]
+                exclusiveTaxAmount > 0
+                  ? [
+                      {
+                        amount: exclusiveTaxAmount,
+                        tax_behavior: "exclusive",
+                      },
+                    ]
                   : [],
               period: {
                 start: effectiveAt,
@@ -2076,6 +2093,7 @@ describe("legacy subscription usage pack migration", () => {
 
   function legacyMigrationSubscription(
     fixture: LegacyMigrationFixture,
+    discounts: readonly string[] = [],
   ): MigrationSubscriptionMock {
     return {
       id: fixture.subscriptionId,
@@ -2087,6 +2105,7 @@ describe("legacy subscription usage pack migration", () => {
       pending_update: null,
       latest_invoice: null,
       metadata: { orgId: fixture.orgId },
+      discounts,
       items: {
         data: [
           {
@@ -2111,6 +2130,7 @@ describe("legacy subscription usage pack migration", () => {
     readonly currentRecurringAmountCents: number;
     readonly amountDueCents: number;
     readonly amountPaidCents: number;
+    readonly discountAmountCents?: number;
   }): MigrationStripeController {
     const targetTier = args.targetTier ?? args.fixture.tier;
     const planPriceId =
@@ -2120,6 +2140,10 @@ describe("legacy subscription usage pack migration", () => {
     const invoiceId = `in_migration_${randomUUID()}`;
     const paymentIntentId = `pi_migration_${randomUUID()}`;
     const scheduleId = `sub_sched_migration_${randomUUID()}`;
+    const discountId = args.discountAmountCents
+      ? `di_migration_${randomUUID()}`
+      : null;
+    const discounts = discountId ? [discountId] : [];
     const packageLineAmount = 2000 * args.packageQuantity;
     const renewedPeriod = {
       start: args.fixture.period.end,
@@ -2206,7 +2230,7 @@ describe("legacy subscription usage pack migration", () => {
     };
     const appliedSubscription = (): MigrationSubscriptionMock => {
       return {
-        ...legacyMigrationSubscription(args.fixture),
+        ...legacyMigrationSubscription(args.fixture, discounts),
         schedule: scheduleId,
         latest_invoice: invoiceId,
         items: {
@@ -2238,6 +2262,7 @@ describe("legacy subscription usage pack migration", () => {
     let invoice = paidInvoice();
     let subscription: MigrationSubscriptionMock = legacyMigrationSubscription(
       args.fixture,
+      discounts,
     );
     const syncRetrievalMocks = () => {
       context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
@@ -2273,6 +2298,7 @@ describe("legacy subscription usage pack migration", () => {
           params,
           args.fixture.period.end,
           amountDue,
+          args.discountAmountCents,
         ),
       );
     });
@@ -2305,6 +2331,7 @@ describe("legacy subscription usage pack migration", () => {
       },
     );
     return {
+      discountId,
       scheduleId,
       invoice: () => {
         return invoice;
@@ -2325,7 +2352,7 @@ describe("legacy subscription usage pack migration", () => {
       },
       cancelSchedule: () => {
         invoice = { ...openInvoice(), status: "void" };
-        subscription = legacyMigrationSubscription(args.fixture);
+        subscription = legacyMigrationSubscription(args.fixture, discounts);
         syncRetrievalMocks();
       },
     };
@@ -2705,7 +2732,7 @@ describe("legacy subscription usage pack migration", () => {
     expect(delayedState.grants).toHaveLength(2);
   });
 
-  it("revises a scheduled migration and exposes its current configuration", async () => {
+  it("revises a discounted scheduled migration and exposes its configuration", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
     await enableMigration(fixture);
     const stripe = mockMigrationStripe({
@@ -2715,6 +2742,7 @@ describe("legacy subscription usage pack migration", () => {
       currentRecurringAmountCents: 2000,
       amountDueCents: 18_000,
       amountPaidCents: 18_000,
+      discountAmountCents: 3000,
     });
     const preview = await previewMigration(fixture, "team");
     await accept(
@@ -2747,7 +2775,12 @@ describe("legacy subscription usage pack migration", () => {
         ? 21_000
         : 18_000;
       return Promise.resolve(
-        migrationRecurringPreviewInvoice(params, fixture.period.end, amountDue),
+        migrationRecurringPreviewInvoice(
+          params,
+          fixture.period.end,
+          amountDue,
+          3000,
+        ),
       );
     });
     context.mocks.stripe.subscriptionSchedules.update.mockClear();
@@ -2775,6 +2808,7 @@ describe("legacy subscription usage pack migration", () => {
     });
     const revisionPreviewParams =
       context.mocks.stripe.invoices.createPreview.mock.calls.at(-1)?.at(0);
+    expect(stripe.discountId).not.toBeNull();
     expect(revisionPreviewParams).toMatchObject({
       schedule: stripe.scheduleId,
       preview_mode: "next",
@@ -2782,8 +2816,11 @@ describe("legacy subscription usage pack migration", () => {
         end_behavior: "release",
         proration_behavior: "none",
         phases: [
-          expect.any(Object),
           expect.objectContaining({
+            discounts: [{ discount: stripe.discountId }],
+          }),
+          expect.objectContaining({
+            discounts: [{ discount: stripe.discountId }],
             items: expect.arrayContaining([
               { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
               { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },
@@ -2814,8 +2851,11 @@ describe("legacy subscription usage pack migration", () => {
       expect.any(String),
       expect.objectContaining({
         phases: [
-          expect.any(Object),
           expect.objectContaining({
+            discounts: [{ discount: stripe.discountId }],
+          }),
+          expect.objectContaining({
+            discounts: [{ discount: stripe.discountId }],
             items: expect.arrayContaining([
               { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
               { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },

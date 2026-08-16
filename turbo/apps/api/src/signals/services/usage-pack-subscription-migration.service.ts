@@ -204,17 +204,21 @@ function safeInvoiceAmount(invoice: StripeInvoice, label: string): number {
 
 function migrationInvoiceLinePriceId(line: StripeInvoiceLine): string | null {
   const price = line.pricing?.price_details?.price;
-  return typeof price === "string"
-    ? price
-    : (price?.id ?? line.price?.id ?? null);
+  return typeof price === "string" ? price : (price?.id ?? null);
 }
 
 function migrationInvoiceLineAmountWithTax(line: StripeInvoiceLine): number {
+  const discountAmount = (line.discount_amounts ?? []).reduce(
+    (total, discount) => {
+      return total + discount.amount;
+    },
+    0,
+  );
   const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
     return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
   }, 0);
-  const amount = line.amount + exclusiveTax;
-  if (!Number.isSafeInteger(amount)) {
+  const amount = line.amount - discountAmount + exclusiveTax;
+  if (!Number.isSafeInteger(amount) || amount < 0) {
     throw new Error("Stripe migration preview line has an invalid amount");
   }
   return amount;
