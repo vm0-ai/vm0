@@ -2,8 +2,9 @@
 //!
 //! `FactoryCleanupGroup` owns destroy and create-rollback cleanup after it is
 //! registered, independently of the caller waiting for that cleanup. A tracked
-//! cleanup future is spawned once and its task handle stays in the group, so
-//! dropping or cancelling the returned waiter does not cancel the cleanup.
+//! cleanup future is spawned once and its task handle stays under group or
+//! shutdown-batch ownership until completion, so dropping or cancelling the
+//! returned waiter does not cancel the cleanup.
 //!
 //! The group has three lifecycle conditions:
 //!
@@ -285,11 +286,12 @@ pub(super) struct FactoryCleanupRejected<F> {
     cleanup: F,
 }
 
-/// A cleanup registration that must be awaited to honor its ownership contract.
+/// A completion waiter or caller-owned fallback returned by `FactoryCleanupGroup::spawn`.
 ///
-/// Tracked cleanup is already group-owned and the registration only waits for
-/// its outcome. Closed-group cleanup is still deferred in the registration, so
-/// awaiting it is what runs that cleanup in the caller task.
+/// `Waiter` only observes cleanup that is already group-owned, so dropping it
+/// does not cancel the task. `Rejected` still owns an unstarted closed-group
+/// cleanup future, so awaiting that variant is what runs cleanup in the caller
+/// task.
 #[must_use = "factory cleanup registrations must be awaited so closed-group cleanup can run"]
 pub(super) enum FactoryCleanupRegistration<F> {
     /// Observes a cleanup task that has already been spawned and retained by the group.
