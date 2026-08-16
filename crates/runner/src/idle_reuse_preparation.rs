@@ -350,6 +350,7 @@ fn log_report(
 mod tests {
     use super::*;
 
+    use guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_SUCCESS;
     use sandbox::{Sandbox, SandboxError, SandboxOperation, SandboxOperationReason};
     use sandbox_mock::MockSandbox;
     use tracing_subscriber::prelude::*;
@@ -590,7 +591,7 @@ mod tests {
             );
         }
 
-        let (output, mount_ran) = run_composed_command(0, 1);
+        let (output, mount_ran) = run_composed_command(REUSE_PREPARATION_EXIT_SUCCESS, 1);
         assert_eq!(
             output.status.code(),
             Some(REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED)
@@ -601,7 +602,7 @@ mod tests {
     #[test]
     fn wrapper_status_is_reserved_outside_helper_statuses() {
         for helper_status in [
-            0,
+            REUSE_PREPARATION_EXIT_SUCCESS,
             REUSE_PREPARATION_EXIT_INVALID_REQUEST,
             REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
             REUSE_PREPARATION_EXIT_CLEANUP_FAILED,
@@ -619,7 +620,7 @@ mod tests {
         let mount_marker = temp_dir.path().join("mount-ran");
         let mount_marker = shell_quote::quote_shell_arg(mount_marker.to_str().unwrap());
         let mount_command = format!("touch -- {mount_marker}\nexit {mount_exit_code}");
-        let helper_command = if helper_exit_code == 0 {
+        let helper_command = if helper_exit_code == REUSE_PREPARATION_EXIT_SUCCESS {
             "true".to_owned()
         } else {
             format!("exit {helper_exit_code}")
