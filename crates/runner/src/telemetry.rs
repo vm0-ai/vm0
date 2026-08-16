@@ -58,6 +58,10 @@ struct SandboxOp {
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    outcome: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     runner_startup_path: Option<RunnerStartupPath>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox_reuse_result: Option<SandboxReuseResult>,
@@ -137,6 +141,20 @@ impl JobTelemetry {
         let mut op = sandbox_op("api_to_spawn", duration, true, None, None);
         op.runner_startup_path = Some(runner_startup_path);
         op.sandbox_reuse_result = Some(sandbox_reuse_result);
+        self.push_operation(op);
+    }
+
+    /// Record a zero-duration operation with fixed low-cardinality outcome dimensions.
+    pub(crate) fn record_bounded_outcome(
+        &mut self,
+        action_type: &'static str,
+        success: bool,
+        outcome: &'static str,
+        reason: Option<&'static str>,
+    ) {
+        let mut op = sandbox_op(action_type, Duration::ZERO, success, None, None);
+        op.outcome = Some(outcome.to_string());
+        op.reason = reason.map(str::to_string);
         self.push_operation(op);
     }
 
@@ -226,6 +244,24 @@ impl JobTelemetry {
                     op.duration_ms,
                     op.success,
                     op.error.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// Snapshot of buffered low-cardinality outcome dimensions for tests.
+    #[cfg(test)]
+    pub(crate) fn pending_ops_with_outcome_snapshot(
+        &self,
+    ) -> Vec<(String, bool, Option<String>, Option<String>)> {
+        self.pending_ops
+            .iter()
+            .map(|op| {
+                (
+                    op.action_type.clone(),
+                    op.success,
+                    op.outcome.clone(),
+                    op.reason.clone(),
                 )
             })
             .collect()
@@ -385,6 +421,8 @@ fn sandbox_op_at(
         duration_ms: duration_ms(duration),
         success,
         error: error.map(String::from),
+        outcome: None,
+        reason: None,
         runner_startup_path: None,
         sandbox_reuse_result: None,
         session_history: metadata.map(SessionHistoryTelemetryFields::from),
@@ -518,6 +556,8 @@ mod tests {
             duration_ms: 1500,
             success: true,
             error: None,
+            outcome: None,
+            reason: None,
             runner_startup_path: None,
             sandbox_reuse_result: None,
             session_history: None,
@@ -530,6 +570,29 @@ mod tests {
                 "action_type": "vm_create",
                 "duration_ms": 1500,
                 "success": true,
+            })
+        );
+    }
+
+    #[test]
+    fn bounded_outcome_serializes_fixed_dimensions() {
+        let mut telemetry = JobTelemetry::new(http_client(), RunId::nil(), "tok".to_string());
+        telemetry.record_bounded_outcome(
+            "storage_cache_fresh_delivery_scan_groups",
+            true,
+            "17_plus",
+            Some("prepared"),
+        );
+
+        assert_eq!(
+            serde_json::to_value(&telemetry.pending_ops[0]).unwrap(),
+            serde_json::json!({
+                "ts": telemetry.pending_ops[0].ts.clone(),
+                "action_type": "storage_cache_fresh_delivery_scan_groups",
+                "duration_ms": 0,
+                "success": true,
+                "outcome": "17_plus",
+                "reason": "prepared",
             })
         );
     }
@@ -579,6 +642,8 @@ mod tests {
                 duration_ms: 100,
                 success: true,
                 error: None,
+                outcome: None,
+                reason: None,
                 runner_startup_path: None,
                 sandbox_reuse_result: None,
                 session_history: Some(metadata.into()),
