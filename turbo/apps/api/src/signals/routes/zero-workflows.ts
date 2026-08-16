@@ -44,13 +44,13 @@ import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
 import { deleteWorkflow$ } from "../services/workflow-delete.service";
-import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
+import { workflowDetail } from "../services/workflow-detail.service";
 import {
   ensureWorkflowUserAutomationThread,
   loadWorkflowUserAutomationThreadId,
 } from "../services/zero-workflow-user-automation-thread.service";
-import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
-import { detectWorkflowConnectorReadiness$ } from "../services/zero-workflow-connector-readiness.service";
+import { updateWorkflow$ } from "../services/workflow-update.service";
+import { detectWorkflowConnectorReadiness$ } from "../services/workflow-connector-readiness.service";
 import { createUserMessageDocument } from "../services/chat-user-message.service";
 import { loadWorkflowVolumeFiles } from "../services/workflow-volume.service";
 import {
@@ -483,7 +483,7 @@ const getWorkflowDetailInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroWorkflowsDetailContract.get));
   const result = await get(
-    zeroWorkflowDetail({
+    workflowDetail({
       orgId: auth.orgId,
       member: memberFromAuth(auth),
       workflowId: params.workflowId,
@@ -640,7 +640,7 @@ const updateWorkflowInner$ = command(
     }
 
     await set(
-      updateZeroWorkflow$,
+      updateWorkflow$,
       {
         workflow: visible.workflow,
         body: bodyResult.data,
@@ -651,7 +651,7 @@ const updateWorkflowInner$ = command(
     signal.throwIfAborted();
 
     const detail = await get(
-      zeroWorkflowDetail({
+      workflowDetail({
         orgId: auth.orgId,
         member,
         workflowId: params.workflowId,

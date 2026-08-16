@@ -14,16 +14,16 @@ import {
 } from "./workflow-volume.service";
 import type { WorkflowRow } from "./zero-workflow-data.service";
 
-interface UpdateZeroWorkflowInput {
+interface UpdateWorkflowInput {
   readonly workflow: WorkflowRow;
   readonly body: ZeroWorkflowUpdateRequest;
   readonly updatedByUserId: string;
 }
 
-export const updateZeroWorkflow$ = command(
+export const updateWorkflow$ = command(
   async (
     { get, set },
-    args: UpdateZeroWorkflowInput,
+    args: UpdateWorkflowInput,
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
