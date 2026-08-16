@@ -48,6 +48,7 @@ import {
 } from "./test-agent-run-metadata-stage-2-final";
 import { validateAgentRunMetadataStage2Lock } from "./test-agent-run-metadata-stage-2-lock";
 import { validateAgentRunMetadataStage2Preflight } from "./test-agent-run-metadata-stage-2-preflight";
+import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
 import {
   AgentComposeProvenanceSchemaUnavailableError,
   deleteClerkAgentLifecycleData,
@@ -11648,6 +11649,7 @@ async function main(): Promise<void> {
     await validateCustomConnectorSecretPlaceholderCanonicalization();
     await validateChatEventSnapshotContraction();
     await validateAgentComposeProvenanceMigration();
+    await validateAgentComposeConsolidationPreflight();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();

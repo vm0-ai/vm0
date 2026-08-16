@@ -30,6 +30,17 @@ to the last migration in the most recent production release. When that removes a
 referenced migration tag from the journal, the consistency suite fails and the
 expired transition validator must be deleted.
 
+### Active transition validators
+
+The repository inventory below is machine-checked. The removal owner must
+delete the workflow, probe, focused validator, and this entry together.
+
+| Issue  | Validator                                        | Removal owner  |
+| ------ | ------------------------------------------------ | -------------- |
+| #27613 | Agent/Compose consolidation production preflight | #26938 Stage 8 |
+
+<!-- vm0-transition-validator:#27613|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
+
 ## Migration patterns
 
 [`0811_clear_non_goal_run_groups.sql`](./src/migrations/0811_clear_non_goal_run_groups.sql)
