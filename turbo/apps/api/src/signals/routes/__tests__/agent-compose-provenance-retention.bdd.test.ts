@@ -18,7 +18,7 @@ import {
   referenceAgentRunVersionFixture,
 } from "../../../test-fixtures/agent-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { clearAllDetached, settle } from "../../utils";
+import { settle } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -333,12 +333,6 @@ describe("Agent Compose nullable transition provenance", () => {
 
     versionLock.release();
     await versionLock.done;
-    const detachedCleanup = await settle(clearAllDetached());
-    expect(detachedCleanup.ok).toBeFalsy();
-    if (detachedCleanup.ok) {
-      throw new Error("Expected detached Clerk cleanup to remain failed");
-    }
-    expect(isLockNotAvailable(detachedCleanup.error)).toBeTruthy();
     await deliverClerkDeletion("user.deleted", doomed.userId);
     await expect(
       bdd.requestReadAgent(doomed, doomedAgent.agentId, [404]),

@@ -23,7 +23,7 @@ BEGIN
   END IF;
 
   IF NEW."created_by" IS NOT NULL
-    AND NOT pg_try_advisory_xact_lock(
+    AND NOT pg_try_advisory_xact_lock_shared(
       hashtextextended(NEW."created_by", 27604)
     )
   THEN
@@ -98,9 +98,9 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  -- This bounds FK row-lock waits for outgoing API revisions. The incoming
-  -- revision sets the same timeout before issuing lifecycle DML, which also
-  -- bounds acquisition of the DELETE statement's table lock.
+  -- This bounds trigger-side waits only after an outgoing DELETE statement
+  -- starts; it cannot bound acquisition of that statement's table lock. The
+  -- incoming revision sets lock_timeout before its Agent/Run lifecycle DML.
   PERFORM set_config('lock_timeout', '100ms', true);
   RETURN NULL;
 END;

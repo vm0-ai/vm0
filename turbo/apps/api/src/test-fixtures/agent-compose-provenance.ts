@@ -13,7 +13,7 @@ import { createDeferredPromise } from "../signals/utils";
 // states that no product route can create. Lifecycle behavior continues to be
 // exercised through the real Clerk, Agent, Run, and checkpoint routes.
 
-export interface AgentComposeVersionProvenanceFixture {
+interface AgentComposeVersionProvenanceFixture {
   readonly id: string;
   readonly composeId: string | null;
   readonly createdBy: string | null;

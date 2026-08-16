@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { isLockNotAvailable } from "../../lib/pg-errors";
+import { isAgentComposeProvenanceSchemaUnavailable } from "../services/agent-compose-provenance-lifecycle.service";
 import { request$ } from "../context/hono";
 import { type ClerkWebhookEvent, verifyClerkWebhook } from "../external/clerk";
 import { waitUntil } from "../context/wait-until";
@@ -317,7 +318,10 @@ const handleOrganizationDeletedWebhook$ = command(
     waitUntil(
       tapError(set(cleanupClerkDeletedOrg$, orgId, signal), (error) => {
         L.error("organization.deleted cleanup failed", { orgId, error });
-        if (isLockNotAvailable(error)) {
+        if (
+          isLockNotAvailable(error) ||
+          isAgentComposeProvenanceSchemaUnavailable(error)
+        ) {
           throw error;
         }
       }),
@@ -403,7 +407,10 @@ const postClerkWebhook$ = command(
       waitUntil(
         tapError(set(cleanupClerkDeletedUser$, userId, signal), (error) => {
           L.error("user.deleted cleanup failed", { userId, error });
-          if (isLockNotAvailable(error)) {
+          if (
+            isLockNotAvailable(error) ||
+            isAgentComposeProvenanceSchemaUnavailable(error)
+          ) {
             throw error;
           }
         }),
