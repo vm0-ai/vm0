@@ -48,6 +48,10 @@ import {
 } from "./test-agent-run-metadata-stage-2-final";
 import { validateAgentRunMetadataStage2Lock } from "./test-agent-run-metadata-stage-2-lock";
 import { validateAgentRunMetadataStage2Preflight } from "./test-agent-run-metadata-stage-2-preflight";
+import {
+  validateAgentRunLaunchSnapshotMigration,
+  validateAgentRunLaunchSnapshotSchema,
+} from "./test-agent-run-launch-snapshot";
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
 import {
   AgentComposeProvenanceSchemaUnavailableError,
@@ -11655,6 +11659,7 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Index();
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
+    await validateAgentRunLaunchSnapshotMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -11677,6 +11682,7 @@ async function main(): Promise<void> {
     await validateZeroAgentDefaultAvatarCompatibility(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);
+    await validateAgentRunLaunchSnapshotSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
@@ -11695,6 +11701,7 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await validateAgentRunLaunchSnapshotSchema(dbUrl2);
 
     // Step 4: Restore original migrations
     await restoreMigrations();
