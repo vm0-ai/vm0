@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
-import { jsonParseOr, tapError } from "../utils.ts";
+import { jsonParseOr, onRef, tapError } from "../utils.ts";
 import type { TemplatePreviewRuntime } from "./template-preview-runtime.ts";
 import {
   parsePresentationPreviewDraft,
@@ -254,32 +254,102 @@ async function loadPresentationTemplateHtmlPreview(
 
 function createBasicComposerUiSignals() {
   const internalModelPickerOpen$ = state(false);
-  // The video model list is a second panel inside the same popover, so its
-  // state is scoped to the picker being open: closing the picker always
-  // returns it to the run model list.
-  const internalVideoModelPanelOpen$ = state(false);
+  const internalDesktopModelMode$ = state<"chat" | "video">("chat");
+  const internalDesktopModelPickerLayout$ = state(false);
+  const internalDesktopChatModeElement$ = state<HTMLElement | null>(null);
+  const internalDesktopVideoModelAnchor$ = state<HTMLElement | null>(null);
+  const internalDesktopModeSwitchPending$ = state(false);
+  // Mobile reaches video models through a nested panel. Desktop derives the
+  // visible panel from its persistent active mode instead.
+  const internalMobileVideoModelPanelOpen$ = state(false);
   const modelPickerOpen$ = computed((get) => {
     return get(internalModelPickerOpen$);
   });
   const setModelPickerOpen$ = command(({ set }, open: boolean) => {
     set(internalModelPickerOpen$, open);
     if (!open) {
-      set(internalVideoModelPanelOpen$, false);
+      set(internalMobileVideoModelPanelOpen$, false);
     }
   });
-  const videoModelPanelOpen$ = computed((get) => {
-    return get(internalVideoModelPanelOpen$);
+  const mobileVideoModelPanelOpen$ = computed((get) => {
+    return get(internalMobileVideoModelPanelOpen$);
   });
-  const setVideoModelPanelOpen$ = command(({ set }, open: boolean) => {
-    set(internalVideoModelPanelOpen$, open);
+  const setMobileVideoModelPanelOpen$ = command(({ set }, open: boolean) => {
+    set(internalMobileVideoModelPanelOpen$, open);
   });
-
+  const desktopModelMode$ = computed((get) => {
+    return get(internalDesktopModelMode$);
+  });
+  const setDesktopModelMode$ = command(({ set }, mode: "chat" | "video") => {
+    set(internalDesktopModelMode$, mode);
+  });
+  const desktopModelPickerLayout$ = computed((get) => {
+    return get(internalDesktopModelPickerLayout$);
+  });
+  const desktopModelPickerLifecycleRef$ = onRef(
+    command(({ set }, _element: HTMLElement, signal: AbortSignal) => {
+      const mediaQuery = window.matchMedia("(min-width: 640px)");
+      const syncLayout = () => {
+        set(internalDesktopModelPickerLayout$, mediaQuery.matches);
+      };
+      mediaQuery.addEventListener("change", syncLayout);
+      signal.addEventListener("abort", () => {
+        mediaQuery.removeEventListener("change", syncLayout);
+      });
+      syncLayout();
+    }),
+  );
+  const desktopVideoModelAnchor$ = computed((get) => {
+    return get(internalDesktopVideoModelAnchor$);
+  });
+  const desktopChatModeElement$ = computed((get) => {
+    return get(internalDesktopChatModeElement$);
+  });
+  const setDesktopChatModeElement$ = onRef(
+    command(({ set }, element: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalDesktopChatModeElement$, null);
+      });
+      set(internalDesktopChatModeElement$, element);
+    }),
+  );
+  const setDesktopVideoModelAnchor$ = onRef(
+    command(({ set }, element: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalDesktopVideoModelAnchor$, null);
+      });
+      set(internalDesktopVideoModelAnchor$, element);
+    }),
+  );
+  const desktopModeSwitchPending$ = computed((get) => {
+    return get(internalDesktopModeSwitchPending$);
+  });
+  const preserveModelPickerOpenForModeSwitch$ = command(({ set }) => {
+    set(internalDesktopModeSwitchPending$, true);
+    window.setTimeout(() => {
+      set(internalDesktopModeSwitchPending$, false);
+    });
+  });
+  const consumeModelPickerModeSwitch$ = command(({ set }) => {
+    set(internalDesktopModeSwitchPending$, false);
+  });
   return {
     model: {
       modelPickerOpen$,
       setModelPickerOpen$,
-      videoModelPanelOpen$,
-      setVideoModelPanelOpen$,
+      mobileVideoModelPanelOpen$,
+      setMobileVideoModelPanelOpen$,
+      desktopModelMode$,
+      setDesktopModelMode$,
+      desktopModelPickerLayout$,
+      desktopModelPickerLifecycleRef$,
+      desktopChatModeElement$,
+      setDesktopChatModeElement$,
+      desktopVideoModelAnchor$,
+      setDesktopVideoModelAnchor$,
+      desktopModeSwitchPending$,
+      preserveModelPickerOpenForModeSwitch$,
+      consumeModelPickerModeSwitch$,
     },
   };
 }

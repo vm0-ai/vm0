@@ -209,6 +209,7 @@ type SelectPositionerProps = Pick<
   | "align"
   | "alignItemWithTrigger"
   | "alignOffset"
+  | "anchor"
   | "collisionAvoidance"
   | "collisionBoundary"
   | "collisionPadding"
@@ -232,6 +233,7 @@ const SelectContent = React.forwardRef<HTMLDivElement, SelectContentProps>(
       align = "center",
       alignItemWithTrigger,
       alignOffset = 0,
+      anchor,
       children,
       className,
       collisionAvoidance,
@@ -259,6 +261,7 @@ const SelectContent = React.forwardRef<HTMLDivElement, SelectContentProps>(
           align={align}
           alignItemWithTrigger={resolvedAlignItemWithTrigger}
           alignOffset={alignOffset}
+          anchor={anchor}
           collisionAvoidance={collisionAvoidance}
           collisionBoundary={collisionBoundary}
           collisionPadding={collisionPadding}
