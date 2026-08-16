@@ -290,7 +290,7 @@ async function teamsScopeExists(args: {
     .where(
       and(
         eq(teamsOrgConnections.id, args.connectionId),
-        eq(teamsOrgConnections.vm0UserId, args.userId),
+        eq(teamsOrgConnections.userId, args.userId),
         eq(teamsOrgInstallations.orgId, args.orgId),
       ),
     )

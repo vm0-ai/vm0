@@ -159,7 +159,7 @@ describe("Teams OAuth API routes", () => {
 
   it("redirects to Microsoft OAuth with connect state without a browser session", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
+      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
     );
 
     expect(response.status).toBe(307);
@@ -178,14 +178,40 @@ describe("Teams OAuth API routes", () => {
     );
     const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
       readonly orgId: string;
-      readonly vm0UserId: string;
+      readonly userId: string;
     };
-    expect(state).toStrictEqual({ orgId: "org_1", vm0UserId: "user_1" });
+    expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+  });
+
+  it("accepts the legacy query key but writes only canonical state", async () => {
+    const response = await appRequest(
+      "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
+    );
+
+    expect(response.status).toBe(307);
+    const redirectUrl = new URL(response.headers.get("location")!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!) as Record<
+      string,
+      unknown
+    >;
+    expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+    expect(state).not.toHaveProperty("vm0UserId");
+  });
+
+  it("fails closed when canonical and legacy query keys conflict", async () => {
+    const response = await appRequest(
+      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1&vm0UserId=user_2",
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Conflicting userId values",
+    });
   });
 
   it("keeps API-host connect requests on the API callback origin", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
+      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
       { origin: API_ORIGIN },
     );
 
@@ -204,11 +230,11 @@ describe("Teams OAuth API routes", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
-      error: "Missing orgId or vm0UserId",
+      error: "Missing orgId or userId",
     });
   });
 
-  it("prepares a Teams install after OAuth and binds it when Teams sends installation metadata", async () => {
+  it("accepts legacy in-flight state before preparing a Teams install", async () => {
     const fixture = await uninstalledTeamsFixture(track);
     await seedMembership(fixture.orgId, fixture.userId, "admin");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -276,7 +302,7 @@ describe("Teams OAuth API routes", () => {
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
-        state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
+        state: { orgId: fixture.orgId, userId: fixture.userId },
       }),
       { origin: API_ORIGIN },
     );
@@ -332,7 +358,7 @@ describe("Teams OAuth API routes", () => {
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
-        state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
+        state: { orgId: fixture.orgId, userId: fixture.userId },
       }),
       { origin: API_ORIGIN },
     );
@@ -345,7 +371,7 @@ describe("Teams OAuth API routes", () => {
     );
   });
 
-  it("rejects callback state when the vm0 user is not an org member", async () => {
+  it("rejects callback state when the internal user is not an org member", async () => {
     const fixture = await seedTeamsInstallation(track);
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
       data: [],
@@ -354,7 +380,28 @@ describe("Teams OAuth API routes", () => {
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
-        state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
+        state: { orgId: fixture.orgId, userId: fixture.userId },
+      }),
+      { origin: API_ORIGIN },
+    );
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toContain(`${APP_ORIGIN}/settings/teams?error=`);
+    expect(new URL(location!).searchParams.get("error")).toBe(
+      "Invalid connect state.",
+    );
+  });
+
+  it("fails closed when canonical and legacy callback state conflicts", async () => {
+    const response = await appRequest(
+      callbackPath({
+        code: "valid-code",
+        state: {
+          orgId: "org_conflict",
+          userId: "user_canonical",
+          vm0UserId: "user_legacy",
+        },
       }),
       { origin: API_ORIGIN },
     );

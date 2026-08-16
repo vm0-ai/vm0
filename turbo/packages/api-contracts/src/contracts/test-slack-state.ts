@@ -16,7 +16,7 @@ export const testSlackStatePostBodySchema = z.object({
   team_id: z.string().optional(),
   slack_user_id: z.string().optional(),
   org_id: z.string().optional(),
-  vm0_user_id: z.string().optional(),
+  user_id: z.string().optional(),
   workspace_name: z.string().optional(),
   bot_user_id: z.string().optional(),
   bot_scopes: z.string().nullable().optional(),
@@ -38,7 +38,7 @@ export const testSlackStatePostResponseSchema = z.object({
   ok: z.literal(true),
   team_id: z.string(),
   org_id: z.string(),
-  vm0_user_id: z.string(),
+  user_id: z.string(),
   connection_id: z.string().nullable(),
   default_agent_id: z.string().nullable(),
 });
@@ -59,7 +59,7 @@ export const testSlackStateResponseSchema = z.object({
     z.object({
       id: z.string(),
       slackUserId: z.string(),
-      vm0UserId: z.string(),
+      userId: z.string(),
       dmWelcomeSent: z.boolean(),
       createdAt: z.string(),
     }),

@@ -255,7 +255,7 @@ async function upsertFeishuConnection(
   const [existing] = await args.db
     .select({
       id: feishuOrgConnections.id,
-      vm0UserId: feishuOrgConnections.vm0UserId,
+      userId: feishuOrgConnections.userId,
       dmWelcomeSent: feishuOrgConnections.dmWelcomeSent,
     })
     .from(feishuOrgConnections)
@@ -267,7 +267,7 @@ async function upsertFeishuConnection(
     )
     .limit(1);
   signal.throwIfAborted();
-  if (existing && existing.vm0UserId !== args.state.userId) {
+  if (existing && existing.userId !== args.state.userId) {
     return { connected: false };
   }
 
@@ -289,7 +289,8 @@ async function upsertFeishuConnection(
       .values({
         installationId: args.state.installationId,
         feishuOpenId: args.userInfo.openId,
-        vm0UserId: args.state.userId,
+        userId: args.state.userId,
+        legacyUserId: args.state.userId,
         feishuUserName: args.userInfo.name,
       })
       .onConflictDoNothing({
@@ -315,7 +316,7 @@ async function upsertFeishuConnection(
     .where(
       and(
         eq(feishuOrgConnections.installationId, args.state.installationId),
-        eq(feishuOrgConnections.vm0UserId, args.state.userId),
+        eq(feishuOrgConnections.userId, args.state.userId),
         ne(feishuOrgConnections.feishuOpenId, args.userInfo.openId),
       ),
     );

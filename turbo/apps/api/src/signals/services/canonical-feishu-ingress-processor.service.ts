@@ -182,7 +182,7 @@ async function loadConnection(
   const [connection] = await db
     .select({
       id: feishuOrgConnections.id,
-      vm0UserId: feishuOrgConnections.vm0UserId,
+      userId: feishuOrgConnections.userId,
       feishuUserName: feishuOrgConnections.feishuUserName,
     })
     .from(feishuOrgConnections)
@@ -198,7 +198,7 @@ async function loadConnection(
   }
   const hasOAuthConnection = await hasFeishuCustomConnectorOAuthConnection(db, {
     orgId,
-    userId: connection.vm0UserId,
+    userId: connection.userId,
     installationId: message.installationId,
   });
   return hasOAuthConnection ? connection : undefined;
@@ -348,7 +348,7 @@ async function persistCanonicalFeishuIngress(
     connectionId: args.connection.id,
     chatId: args.message.chatId,
     threadId: routeThreadId,
-    userId: args.connection.vm0UserId,
+    userId: args.connection.userId,
     orgId: args.installation.orgId,
     agentComposeId: args.agentId,
     selectedModel: args.selectedModel,
@@ -397,7 +397,7 @@ async function persistCanonicalFeishuIngress(
   });
   signal.throwIfAborted();
   return {
-    userId: args.connection.vm0UserId,
+    userId: args.connection.userId,
     chatThreadId: route.chatThreadId,
     message: args.message,
     receivedAt: args.ingress.createdAt,
@@ -568,7 +568,7 @@ async function processClaimedIngress(
 
   const modelRoute = await args.resolveModelRoute(
     installation.orgId,
-    connection.vm0UserId,
+    connection.userId,
     signal,
   );
   signal.throwIfAborted();

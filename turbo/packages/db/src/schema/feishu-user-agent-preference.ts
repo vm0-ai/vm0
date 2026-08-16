@@ -17,8 +17,9 @@ import { agentComposes } from "./agent-compose";
 export const feishuUserAgentPreferences = pgTable(
   "feishu_user_agent_preferences",
   {
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // Temporary compatibility field; remove in #27602 after the Contract gate.
+    legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     selectedComposeId: uuid("selected_compose_id").references(
       () => {
@@ -32,7 +33,7 @@ export const feishuUserAgentPreferences = pgTable(
   (table) => {
     return [
       primaryKey({
-        columns: [table.vm0UserId, table.orgId],
+        columns: [table.legacyUserId, table.orgId],
         name: "feishu_user_agent_preferences_pkey",
       }),
       uniqueIndex("idx_feishu_user_agent_preferences_user_org").on(

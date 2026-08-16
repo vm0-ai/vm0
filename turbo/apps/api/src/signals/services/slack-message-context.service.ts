@@ -56,7 +56,7 @@ async function resolveUserMention(
     .innerJoin(
       slackOrgConnections,
       and(
-        eq(slackOrgConnections.vm0UserId, agentRuns.userId),
+        eq(slackOrgConnections.userId, agentRuns.userId),
         eq(
           slackOrgConnections.slackWorkspaceId,
           slackOrgInstallations.slackWorkspaceId,
@@ -128,7 +128,7 @@ export function resolveCurrentUserSlackId(args: {
       )
       .where(
         and(
-          eq(slackOrgConnections.vm0UserId, args.userId),
+          eq(slackOrgConnections.userId, args.userId),
           eq(slackOrgInstallations.orgId, args.orgId),
         ),
       )

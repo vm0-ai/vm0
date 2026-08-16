@@ -52,7 +52,7 @@ function officialUserLink(args: {
       .from(telegramOfficialUserLinks)
       .where(
         and(
-          eq(telegramOfficialUserLinks.vm0UserId, args.userId),
+          eq(telegramOfficialUserLinks.userId, args.userId),
           eq(telegramOfficialUserLinks.orgId, args.orgId),
         ),
       )
@@ -104,7 +104,7 @@ function userAgentPreference(args: {
       .from(telegramUserAgentPreferences)
       .where(
         and(
-          eq(telegramUserAgentPreferences.vm0UserId, args.userId),
+          eq(telegramUserAgentPreferences.userId, args.userId),
           eq(telegramUserAgentPreferences.orgId, args.orgId),
         ),
       )
@@ -236,7 +236,7 @@ function telegramUserLink(args: {
       .where(
         and(
           eq(telegramUserLinks.installationId, args.botId),
-          eq(telegramUserLinks.vm0UserId, args.userId),
+          eq(telegramUserLinks.userId, args.userId),
         ),
       )
       .limit(1);
@@ -543,7 +543,7 @@ export function telegramIntegrationLinkStatus(args: {
       )
       .where(
         and(
-          eq(telegramUserLinks.vm0UserId, args.userId),
+          eq(telegramUserLinks.userId, args.userId),
           eq(telegramInstallations.orgId, args.orgId),
           args.botId
             ? eq(telegramUserLinks.installationId, args.botId)

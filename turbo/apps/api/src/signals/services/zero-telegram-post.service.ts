@@ -83,8 +83,8 @@ import {
 import { telegramIntegrationBotStatus } from "./telegram-data.service";
 import {
   formatTelegramUserDisplayName,
-  linkOfficialTelegramUserToVm0User$,
-  linkTelegramUserToVm0User$,
+  linkOfficialTelegramUser$,
+  linkTelegramUser$,
 } from "./zero-telegram-link.service";
 import {
   updateUserModelPreference$,
@@ -1340,13 +1340,13 @@ const resolveUserLink$ = command(
 
     if (direct) {
       const linked = await set(
-        linkTelegramUserToVm0User$,
+        linkTelegramUser$,
         {
           installationId: args.installationId,
           telegramUserId: args.telegramUserId,
           telegramUsername: args.telegramUsername,
           telegramDisplayName: args.telegramDisplayName,
-          vm0UserId: direct.vm0UserId,
+          userId: direct.userId,
         },
         signal,
       );
@@ -1370,13 +1370,13 @@ const resolveUserLink$ = command(
     }
 
     const completed = await set(
-      linkTelegramUserToVm0User$,
+      linkTelegramUser$,
       {
         installationId: args.installationId,
         telegramUserId: args.telegramUserId,
         telegramUsername: args.telegramUsername,
         telegramDisplayName: args.telegramDisplayName,
-        vm0UserId: pending.vm0UserId,
+        userId: pending.userId,
       },
       signal,
     );
@@ -1407,12 +1407,12 @@ const resolveOfficialUserLink$ = command(
     }
 
     const linked = await set(
-      linkOfficialTelegramUserToVm0User$,
+      linkOfficialTelegramUser$,
       {
         telegramUserId: args.telegramUserId,
         telegramUsername: args.telegramUsername,
         telegramDisplayName: args.telegramDisplayName,
-        vm0UserId: direct.vm0UserId,
+        userId: direct.userId,
         orgId: direct.orgId,
       },
       signal,
@@ -1772,7 +1772,7 @@ async function persistTelegramChatMessage(
     return { inserted: false };
   }
   const threadArgs = {
-    userId: args.source.userLink.vm0UserId,
+    userId: args.source.userLink.userId,
     orgId: args.source.orgId,
     agentComposeId: args.source.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
@@ -1913,11 +1913,11 @@ const runAgentForTelegram$ = command(
     }
 
     await publishChatThreadMessageCreatedSafely(
-      args.source.userLink.vm0UserId,
+      args.source.userLink.userId,
       persisted.chatThreadId,
     );
     signal.throwIfAborted();
-    await publishThreadListChanged(args.source.userLink.vm0UserId);
+    await publishThreadListChanged(args.source.userLink.userId);
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,
@@ -1976,7 +1976,7 @@ const handleTelegramAgentMessage$ = command(
       resolveIntegrationModelRouteForUser$,
       {
         orgId: args.orgId,
-        userId: args.userLink.vm0UserId,
+        userId: args.userLink.userId,
       },
       signal,
     );
@@ -2339,7 +2339,7 @@ const handleCustomCommand$ = command(
           botToken: args.botToken,
           message: args.message,
           orgId: args.installation.orgId,
-          userId: userLink.vm0UserId,
+          userId: userLink.userId,
         },
         signal,
       );
@@ -2358,7 +2358,7 @@ async function resolveOfficialComposeId(
     .from(telegramUserAgentPreferences)
     .where(
       and(
-        eq(telegramUserAgentPreferences.vm0UserId, userLink.vm0UserId),
+        eq(telegramUserAgentPreferences.userId, userLink.userId),
         eq(telegramUserAgentPreferences.orgId, userLink.orgId),
       ),
     )
@@ -2500,7 +2500,7 @@ const handleOfficialCommand$ = command(
           botToken: args.botToken,
           message: args.message,
           orgId: userLink.orgId,
-          userId: userLink.vm0UserId,
+          userId: userLink.userId,
         },
         signal,
       );

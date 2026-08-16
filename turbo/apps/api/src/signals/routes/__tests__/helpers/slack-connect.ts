@@ -35,7 +35,7 @@ interface SlackConnection {
   readonly id: string;
   readonly slackUserId: string;
   readonly slackWorkspaceId: string;
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly dmWelcomeSent: boolean;
   readonly createdAt: string;
 }
@@ -161,7 +161,7 @@ export const seedSlackConnectOrg$ = command(
       slack_user_id: slackUserId,
       workspace_name: slackWorkspaceName,
       org_id: orgId,
-      vm0_user_id: userId,
+      user_id: userId,
       bot_token: "xoxb-test-bot-token",
       bot_user_id: "U_BOT_TEST",
       installation_org_id:

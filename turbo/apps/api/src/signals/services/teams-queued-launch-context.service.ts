@@ -131,7 +131,7 @@ async function loadTeamsLaunchContext(
       and(
         eq(teamsOrgConnections.id, chatTeamsContext.connectionId),
         eq(teamsOrgConnections.teamsTenantId, chatTeamsContext.tenantId),
-        eq(teamsOrgConnections.vm0UserId, args.userId),
+        eq(teamsOrgConnections.userId, args.userId),
       ),
     )
     .innerJoin(

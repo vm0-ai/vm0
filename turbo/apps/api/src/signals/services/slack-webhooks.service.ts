@@ -485,7 +485,7 @@ async function resolveDefaultComposeId(
 
 async function getUserAgentPreference(
   db: Db,
-  vm0UserId: string,
+  userId: string,
   orgId: string,
 ): Promise<string | null> {
   const [row] = await db
@@ -493,7 +493,7 @@ async function getUserAgentPreference(
     .from(slackUserAgentPreferences)
     .where(
       and(
-        eq(slackUserAgentPreferences.vm0UserId, vm0UserId),
+        eq(slackUserAgentPreferences.userId, userId),
         eq(slackUserAgentPreferences.orgId, orgId),
       ),
     )
@@ -503,20 +503,21 @@ async function getUserAgentPreference(
 
 async function setUserAgentPreference(args: {
   readonly db: Db;
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly orgId: string;
   readonly composeId: string | null;
 }): Promise<void> {
   await args.db
     .insert(slackUserAgentPreferences)
     .values({
-      vm0UserId: args.vm0UserId,
+      userId: args.userId,
+      legacyUserId: args.userId,
       orgId: args.orgId,
       selectedComposeId: args.composeId,
     })
     .onConflictDoUpdate({
       target: [
-        slackUserAgentPreferences.vm0UserId,
+        slackUserAgentPreferences.userId,
         slackUserAgentPreferences.orgId,
       ],
       set: {
@@ -610,17 +611,12 @@ async function getVisibleAgentPickerOptions(args: {
 
 async function resolveEffectiveCompose(
   db: Db,
-  vm0UserId: string,
+  userId: string,
   orgId: string,
 ): Promise<EffectiveComposeResolution> {
-  const override = await getUserAgentPreference(db, vm0UserId, orgId);
+  const override = await getUserAgentPreference(db, userId, orgId);
   if (override) {
-    const agent = await getVisibleWorkspaceAgent(
-      db,
-      override,
-      orgId,
-      vm0UserId,
-    );
+    const agent = await getVisibleWorkspaceAgent(db, override, orgId, userId);
     if (agent) {
       return { status: "resolved", composeId: override, agent };
     }
@@ -641,7 +637,7 @@ async function resolveEffectiveCompose(
     db,
     defaultComposeId,
     orgId,
-    vm0UserId,
+    userId,
   );
   if (!visibleDefaultAgent) {
     return { status: "not_accessible" };
@@ -660,7 +656,7 @@ const postSlackAgentAdmissionNotice$ = command(
     const botToken = await get(
       decryptSlackBotToken({
         installation: args.installation,
-        userId: connection?.vm0UserId,
+        userId: connection?.userId,
       }),
     );
     const client = createSlackClient(botToken);
@@ -722,7 +718,7 @@ const resolveSlackRouteCompose$ = command(
   ): Promise<ResolvedEffectiveCompose | undefined> => {
     const effectiveCompose = await resolveEffectiveCompose(
       args.db,
-      args.connection.vm0UserId,
+      args.connection.userId,
       args.orgId,
     );
     signal.throwIfAborted();
@@ -794,7 +790,7 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
           resolveIntegrationModelRouteForUser$,
           {
             orgId: args.orgId,
-            userId: args.connection.vm0UserId,
+            userId: args.connection.userId,
           },
           signal,
         )
@@ -816,7 +812,7 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
       connectionId: args.connection.id,
       channelId: args.channelId,
       threadTs: sessionThreadTs,
-      userId: args.connection.vm0UserId,
+      userId: args.connection.userId,
     };
     const existingRoute = await findSlackChatThreadRoute(args.db, routeKey);
     signal.throwIfAborted();
@@ -850,7 +846,7 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
           resolveIntegrationModelRouteForUser$,
           {
             orgId: args.orgId,
-            userId: args.connection.vm0UserId,
+            userId: args.connection.userId,
           },
           signal,
         );
@@ -1011,7 +1007,7 @@ const isModelCommandAvailable$ = command(
     const picker = await set(
       slackModelPickerState$,
       installation.orgId,
-      connection.vm0UserId,
+      connection.userId,
       signal,
     );
     return picker.enabled && picker.options.length > 0;
@@ -1034,7 +1030,7 @@ const refreshOrgAppHome$ = command(
     const botToken = await get(
       decryptSlackBotToken({
         installation,
-        userId: connection?.vm0UserId,
+        userId: connection?.userId,
       }),
     );
     const client = createSlackClient(botToken);
@@ -1056,8 +1052,8 @@ const refreshOrgAppHome$ = command(
       const orgId = installation.orgId;
       const [effectiveCompose, overrideComposeId, defaultComposeId] =
         await Promise.all([
-          resolveEffectiveCompose(db, connection.vm0UserId, orgId),
-          getUserAgentPreference(db, connection.vm0UserId, orgId),
+          resolveEffectiveCompose(db, connection.userId, orgId),
+          getUserAgentPreference(db, connection.userId, orgId),
           resolveDefaultComposeId(db, orgId),
         ]);
       const visibleOverrideAgent = overrideComposeId
@@ -1065,7 +1061,7 @@ const refreshOrgAppHome$ = command(
             db,
             overrideComposeId,
             orgId,
-            connection.vm0UserId,
+            connection.userId,
           )
         : undefined;
       const visibleDefaultAgent = defaultComposeId
@@ -1073,13 +1069,13 @@ const refreshOrgAppHome$ = command(
             db,
             defaultComposeId,
             orgId,
-            connection.vm0UserId,
+            connection.userId,
           )
         : undefined;
       const visibleOptions = await getVisibleAgentPickerOptions({
         db,
         orgId,
-        userId: connection.vm0UserId,
+        userId: connection.userId,
         defaultComposeId,
       });
       if (effectiveCompose.status === "resolved") {
@@ -1095,14 +1091,14 @@ const refreshOrgAppHome$ = command(
     const [metadata] = await db
       .select({ email: userCache.email })
       .from(userCache)
-      .where(eq(userCache.userId, connection.vm0UserId))
+      .where(eq(userCache.userId, connection.userId))
       .limit(1);
 
     await client.publishAppHome(
       slackUserId,
       buildAppHomeView({
         isLinked: true,
-        vm0UserId: connection.vm0UserId,
+        userId: connection.userId,
         userEmail: metadata?.email ?? undefined,
         agentName,
         isOverrideActive,
@@ -1141,7 +1137,7 @@ const commandSwitchResponse$ = command(
     const options = await getVisibleAgentPickerOptions({
       db,
       orgId: installation.orgId,
-      userId: connection.vm0UserId,
+      userId: connection.userId,
       defaultComposeId,
     });
     const visibleDefaultAgent = defaultComposeId
@@ -1149,7 +1145,7 @@ const commandSwitchResponse$ = command(
           db,
           defaultComposeId,
           installation.orgId,
-          connection.vm0UserId,
+          connection.userId,
         )
       : undefined;
     if (!visibleDefaultAgent && options.length === 0) {
@@ -1162,14 +1158,14 @@ const commandSwitchResponse$ = command(
       : null;
     const currentOverride = await getUserAgentPreference(
       db,
-      connection.vm0UserId,
+      connection.userId,
       installation.orgId,
     );
     const client = createSlackClient(
       await get(
         decryptSlackBotToken({
           installation,
-          userId: connection.vm0UserId,
+          userId: connection.userId,
         }),
       ),
     );
@@ -1222,7 +1218,7 @@ const commandModelResponse$ = command(
     const picker = await set(
       slackModelPickerState$,
       args.installation.orgId,
-      args.connection.vm0UserId,
+      args.connection.userId,
       signal,
     );
     if (!picker.enabled) {
@@ -1241,7 +1237,7 @@ const commandModelResponse$ = command(
       await get(
         decryptSlackBotToken({
           installation: args.installation,
-          userId: args.connection.vm0UserId,
+          userId: args.connection.userId,
         }),
       ),
     );
@@ -1456,7 +1452,7 @@ const handleMessagesTabOpened$ = command(
     const [connection] = await db
       .select({
         id: slackOrgConnections.id,
-        vm0UserId: slackOrgConnections.vm0UserId,
+        userId: slackOrgConnections.userId,
       })
       .from(slackOrgConnections)
       .where(
@@ -1493,7 +1489,7 @@ const handleMessagesTabOpened$ = command(
       await get(
         decryptSlackBotToken({
           installation,
-          userId: connection.vm0UserId,
+          userId: connection.userId,
         }),
       ),
     ).postMessage(
@@ -1824,7 +1820,7 @@ const handleAgentPickerSubmit$ = command(
     const botToken = await get(
       decryptSlackBotToken({
         installation: ctx.installation,
-        userId: ctx.connection.vm0UserId,
+        userId: ctx.connection.userId,
       }),
     );
     const channelId = parseViewChannelId(payload.view?.private_metadata);
@@ -1835,7 +1831,7 @@ const handleAgentPickerSubmit$ = command(
             db,
             defaultComposeId,
             ctx.orgId,
-            ctx.connection.vm0UserId,
+            ctx.connection.userId,
           )
         : undefined;
       if (!visibleDefaultAgent) {
@@ -1850,7 +1846,7 @@ const handleAgentPickerSubmit$ = command(
         visibleDefaultAgent.displayName ?? visibleDefaultAgent.name;
       await setUserAgentPreference({
         db,
-        vm0UserId: ctx.connection.vm0UserId,
+        userId: ctx.connection.userId,
         orgId: ctx.orgId,
         composeId: null,
       });
@@ -1870,7 +1866,7 @@ const handleAgentPickerSubmit$ = command(
       db,
       selected,
       ctx.orgId,
-      ctx.connection.vm0UserId,
+      ctx.connection.userId,
     );
     if (!agent || agent.id !== selected) {
       return jsonResponse({
@@ -1882,7 +1878,7 @@ const handleAgentPickerSubmit$ = command(
     }
     await setUserAgentPreference({
       db,
-      vm0UserId: ctx.connection.vm0UserId,
+      userId: ctx.connection.userId,
       orgId: ctx.orgId,
       composeId: agent.id,
     });
@@ -1928,7 +1924,7 @@ const handleModelPickerSubmit$ = command(
     const picker = await set(
       slackModelPickerState$,
       ctx.orgId,
-      ctx.connection.vm0UserId,
+      ctx.connection.userId,
       signal,
     );
     const option = picker.options.find((candidate) => {
@@ -1946,7 +1942,7 @@ const handleModelPickerSubmit$ = command(
       updateUserModelPreference$,
       {
         orgId: ctx.orgId,
-        userId: ctx.connection.vm0UserId,
+        userId: ctx.connection.userId,
         preference: { selectedModel: option.model, serviceTier: null },
       },
       signal,
@@ -1957,7 +1953,7 @@ const handleModelPickerSubmit$ = command(
         botToken: await get(
           decryptSlackBotToken({
             installation: ctx.installation,
-            userId: ctx.connection.vm0UserId,
+            userId: ctx.connection.userId,
           }),
         ),
         channel: channelId,
@@ -1987,7 +1983,7 @@ const handleHomeSwitchAgent$ = command(
     const options = await getVisibleAgentPickerOptions({
       db,
       orgId: ctx.orgId,
-      userId: ctx.connection.vm0UserId,
+      userId: ctx.connection.userId,
       defaultComposeId,
     });
     const visibleDefaultAgent = defaultComposeId
@@ -1995,7 +1991,7 @@ const handleHomeSwitchAgent$ = command(
           db,
           defaultComposeId,
           ctx.orgId,
-          ctx.connection.vm0UserId,
+          ctx.connection.userId,
         )
       : undefined;
     if (!visibleDefaultAgent && options.length === 0) {
@@ -2006,7 +2002,7 @@ const handleHomeSwitchAgent$ = command(
       : null;
     const currentOverride = await getUserAgentPreference(
       db,
-      ctx.connection.vm0UserId,
+      ctx.connection.userId,
       ctx.orgId,
     );
     await tapError(
@@ -2014,7 +2010,7 @@ const handleHomeSwitchAgent$ = command(
         await get(
           decryptSlackBotToken({
             installation: ctx.installation,
-            userId: ctx.connection.vm0UserId,
+            userId: ctx.connection.userId,
           }),
         ),
       ).openView(

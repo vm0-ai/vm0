@@ -123,7 +123,7 @@ async function loadAgentPhoneRouteBinding(
         ),
         eq(agentphoneChatThreadRoutes.rootMessageId, args.target.rootMessageId),
         eq(agentphoneChatThreadRoutes.chatThreadId, args.run.chatThreadId),
-        eq(agentphoneUserLinks.vm0UserId, args.run.userId),
+        eq(agentphoneUserLinks.userId, args.run.userId),
         eq(agentphoneUserLinks.orgId, args.run.orgId),
       ),
     )

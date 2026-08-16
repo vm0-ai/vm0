@@ -86,7 +86,7 @@ async function loadConnectedFeishuUsers(
             return installation.id;
           }),
         ),
-        eq(feishuOrgConnections.vm0UserId, userId),
+        eq(feishuOrgConnections.userId, userId),
       ),
     );
   const connectedRows = await Promise.all(
@@ -557,7 +557,7 @@ export const disconnectFeishuConnection$ = command(
                 return installation.id;
               }),
             ),
-            eq(feishuOrgConnections.vm0UserId, args.userId),
+            eq(feishuOrgConnections.userId, args.userId),
           ),
         )
         .returning({ id: feishuOrgConnections.id });

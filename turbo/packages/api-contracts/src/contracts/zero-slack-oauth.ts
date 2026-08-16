@@ -8,6 +8,8 @@ const jsonErrorSchema = z.object({ error: z.string() });
 
 export const zeroSlackOauthInstallQuerySchema = z.object({
   orgId: z.string().optional(),
+  userId: z.string().optional(),
+  // Remove in #27602 after the switched API and in-flight OAuth inputs drain.
   vm0UserId: z.string().optional(),
   reinstall: z.string().optional(),
   prompt: z.string().optional(),
@@ -15,6 +17,8 @@ export const zeroSlackOauthInstallQuerySchema = z.object({
 
 export const zeroSlackOauthConnectQuerySchema = z.object({
   orgId: z.string().optional(),
+  userId: z.string().optional(),
+  // Remove in #27602 after the switched API and in-flight OAuth inputs drain.
   vm0UserId: z.string().optional(),
   prompt: z.string().optional(),
 });

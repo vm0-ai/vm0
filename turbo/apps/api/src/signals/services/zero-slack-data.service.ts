@@ -52,7 +52,7 @@ function buildSlackInstallUrl(args: {
   }
   const url = new URL(`${env("VM0_WEB_URL")}/api/okou/slack/oauth/install`);
   url.searchParams.set("orgId", args.orgId);
-  url.searchParams.set("vm0UserId", args.userId);
+  url.searchParams.set("userId", args.userId);
   if (args.reinstall) {
     url.searchParams.set("reinstall", "1");
   }
@@ -69,7 +69,7 @@ function buildSlackConnectUrl(args: {
   }
   const url = new URL(`${env("VM0_WEB_URL")}/api/okou/slack/oauth/connect`);
   url.searchParams.set("orgId", args.orgId);
-  url.searchParams.set("vm0UserId", args.userId);
+  url.searchParams.set("userId", args.userId);
   return url.toString();
 }
 
@@ -165,7 +165,7 @@ export function zeroSlackOrgStatus(args: {
       .from(slackOrgConnections)
       .where(
         and(
-          eq(slackOrgConnections.vm0UserId, args.userId),
+          eq(slackOrgConnections.userId, args.userId),
           eq(
             slackOrgConnections.slackWorkspaceId,
             installation.slackWorkspaceId,

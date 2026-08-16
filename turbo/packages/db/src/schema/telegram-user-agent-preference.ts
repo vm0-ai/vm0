@@ -18,8 +18,9 @@ import { agentComposes } from "./agent-compose";
 export const telegramUserAgentPreferences = pgTable(
   "telegram_user_agent_preferences",
   {
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // Temporary compatibility field; remove in #27602 after the Contract gate.
+    legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     selectedComposeId: uuid("selected_compose_id").references(
       () => {
@@ -33,7 +34,7 @@ export const telegramUserAgentPreferences = pgTable(
   (table) => {
     return [
       primaryKey({
-        columns: [table.vm0UserId, table.orgId],
+        columns: [table.legacyUserId, table.orgId],
         name: "telegram_user_agent_preferences_pkey",
       }),
       uniqueIndex("idx_telegram_user_agent_preferences_user_org").on(

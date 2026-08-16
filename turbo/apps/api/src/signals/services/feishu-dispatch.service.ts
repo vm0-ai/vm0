@@ -99,7 +99,7 @@ export interface FeishuDispatchInstallation {
 
 export interface FeishuDispatchConnection {
   readonly id: string;
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly feishuUserName: string | null;
 }
 
@@ -315,7 +315,7 @@ async function getUserAgentPreference(args: {
     .from(feishuUserAgentPreferences)
     .where(
       and(
-        eq(feishuUserAgentPreferences.vm0UserId, args.userId),
+        eq(feishuUserAgentPreferences.userId, args.userId),
         eq(feishuUserAgentPreferences.orgId, args.orgId),
       ),
     )
@@ -332,13 +332,14 @@ async function setUserAgentPreference(args: {
   await args.db
     .insert(feishuUserAgentPreferences)
     .values({
-      vm0UserId: args.userId,
+      userId: args.userId,
+      legacyUserId: args.userId,
       orgId: args.orgId,
       selectedComposeId: args.composeId,
     })
     .onConflictDoUpdate({
       target: [
-        feishuUserAgentPreferences.vm0UserId,
+        feishuUserAgentPreferences.userId,
         feishuUserAgentPreferences.orgId,
       ],
       set: {
@@ -356,14 +357,14 @@ export async function resolveEffectiveFeishuAgent(args: {
   const preference = await getUserAgentPreference({
     db: args.db,
     orgId: args.installation.orgId,
-    userId: args.connection.vm0UserId,
+    userId: args.connection.userId,
   });
   if (preference) {
     const preferredAgent = await getVisibleAgent({
       db: args.db,
       composeId: preference,
       orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
+      userId: args.connection.userId,
     });
     if (preferredAgent) {
       return { status: "resolved", agent: preferredAgent };
@@ -374,7 +375,7 @@ export async function resolveEffectiveFeishuAgent(args: {
     db: args.db,
     composeId,
     orgId: args.installation.orgId,
-    userId: args.connection.vm0UserId,
+    userId: args.connection.userId,
   });
   if (agent) {
     return { status: "resolved", agent };
@@ -782,7 +783,7 @@ async function handleDisconnectCommand(
       tx,
       {
         orgId: args.installation.orgId,
-        userId: args.connection.vm0UserId,
+        userId: args.connection.userId,
         installationId: args.message.installationId,
       },
       signal,
@@ -793,14 +794,14 @@ async function handleDisconnectCommand(
     signal.throwIfAborted();
   });
   await publishCustomConnectorUserInvalidationAfterCommit(
-    args.connection.vm0UserId,
+    args.connection.userId,
     signal,
   );
   await publishFeishuOrgChanged(
     args.db,
     args.installation.orgId,
     args.installation.ownerUserId,
-    [args.connection.vm0UserId],
+    [args.connection.userId],
   );
   await replyNotice(
     {
@@ -868,18 +869,18 @@ async function handleSwitchCommand(
     getVisibleAgents({
       db: args.db,
       orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
+      userId: args.connection.userId,
     }),
     getVisibleAgent({
       db: args.db,
       composeId: args.installation.defaultAgentId,
       orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
+      userId: args.connection.userId,
     }),
     getUserAgentPreference({
       db: args.db,
       orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
+      userId: args.connection.userId,
     }),
   ]);
   signal.throwIfAborted();
@@ -912,7 +913,7 @@ async function handleSwitchCommand(
     await setUserAgentPreference({
       db: args.db,
       orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
+      userId: args.connection.userId,
       composeId: null,
     });
     signal.throwIfAborted();
@@ -952,7 +953,7 @@ async function handleSwitchCommand(
   await setUserAgentPreference({
     db: args.db,
     orgId: args.installation.orgId,
-    userId: args.connection.vm0UserId,
+    userId: args.connection.userId,
     composeId:
       selected.id === args.installation.defaultAgentId ? null : selected.id,
   });
@@ -978,7 +979,7 @@ const handleModelCommand$ = command(
     const picker = await set(
       feishuModelPickerState$,
       args.installation.orgId,
-      args.connection.vm0UserId,
+      args.connection.userId,
       signal,
     );
     signal.throwIfAborted();
@@ -1044,7 +1045,7 @@ const handleModelCommand$ = command(
       updateUserModelPreference$,
       {
         orgId: args.installation.orgId,
-        userId: args.connection.vm0UserId,
+        userId: args.connection.userId,
         preference: { selectedModel: selected.model, serviceTier: null },
       },
       signal,

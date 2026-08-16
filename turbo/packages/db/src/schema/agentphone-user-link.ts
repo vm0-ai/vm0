@@ -13,15 +13,16 @@ import {
  *
  * The shared AgentPhone number is global: one external handle (E.164 phone
  * for SMS/MMS, or phone or email Apple ID for iMessage) can connect to
- * exactly one active VM0 account/org at a time.
+ * exactly one active internal account/org at a time.
  */
 export const agentphoneUserLinks = pgTable(
   "agentphone_user_links",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     phoneHandle: varchar("phone_handle", { length: 254 }).notNull(),
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // Temporary compatibility field; remove in #27602 after the Contract gate.
+    legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -32,7 +33,7 @@ export const agentphoneUserLinks = pgTable(
         table.phoneHandle,
       ),
       uniqueIndex("idx_agentphone_user_links_vm0_org").on(
-        table.vm0UserId,
+        table.legacyUserId,
         table.orgId,
       ),
       uniqueIndex("idx_agentphone_user_links_user_org").on(

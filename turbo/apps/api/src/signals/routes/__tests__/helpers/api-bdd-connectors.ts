@@ -1569,7 +1569,7 @@ export function createConnectorBddApi(context: TestContext) {
       const install = await accept(
         client.install({
           query: {
-            vm0UserId: actor.userId,
+            userId: actor.userId,
             orgId: actor.orgId,
             composeId,
           },

@@ -341,7 +341,7 @@ const uninstallSlackIntegration$ = command(
     const connections = await args.db
       .select({
         slackUserId: slackOrgConnections.slackUserId,
-        vm0UserId: slackOrgConnections.vm0UserId,
+        userId: slackOrgConnections.userId,
       })
       .from(slackOrgConnections)
       .where(
@@ -397,7 +397,7 @@ const uninstallSlackIntegration$ = command(
         new Set([
           args.userId,
           ...connections.map((connection) => {
-            return connection.vm0UserId;
+            return connection.userId;
           }),
         ]),
       ),
@@ -442,7 +442,7 @@ const disconnectSlackIntegration$ = command(
       .from(slackOrgConnections)
       .where(
         and(
-          eq(slackOrgConnections.vm0UserId, args.userId),
+          eq(slackOrgConnections.userId, args.userId),
           eq(
             slackOrgConnections.slackWorkspaceId,
             installation.slackWorkspaceId,

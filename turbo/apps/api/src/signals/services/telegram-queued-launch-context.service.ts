@@ -134,7 +134,7 @@ async function loadTelegramLaunchContext(
       and(
         eq(chatTelegramContext.userLinkKind, "custom"),
         eq(telegramUserLinks.id, chatTelegramContext.userLinkId),
-        eq(telegramUserLinks.vm0UserId, args.userId),
+        eq(telegramUserLinks.userId, args.userId),
       ),
     )
     .leftJoin(
@@ -152,7 +152,7 @@ async function loadTelegramLaunchContext(
       and(
         eq(chatTelegramContext.userLinkKind, "official"),
         eq(telegramOfficialUserLinks.id, chatTelegramContext.userLinkId),
-        eq(telegramOfficialUserLinks.vm0UserId, args.userId),
+        eq(telegramOfficialUserLinks.userId, args.userId),
         eq(telegramOfficialUserLinks.orgId, args.orgId),
       ),
     )

@@ -296,7 +296,7 @@ const getStatus$ = command(async ({ get, set }, signal: AbortSignal) => {
     };
   }
   const [connection] = await db
-    .select({ vm0UserId: feishuOrgConnections.vm0UserId })
+    .select({ userId: feishuOrgConnections.userId })
     .from(feishuOrgConnections)
     .where(
       and(
@@ -306,11 +306,11 @@ const getStatus$ = command(async ({ get, set }, signal: AbortSignal) => {
     )
     .limit(1);
   signal.throwIfAborted();
-  if (connection && connection.vm0UserId !== auth.userId) {
+  if (connection && connection.userId !== auth.userId) {
     return conflict("This Feishu account is already connected");
   }
   const isConnected =
-    connection?.vm0UserId === auth.userId &&
+    connection?.userId === auth.userId &&
     (await hasFeishuCustomConnectorOAuthConnection(db, {
       orgId: auth.orgId,
       userId: auth.userId,

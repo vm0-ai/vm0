@@ -84,7 +84,7 @@ export const testTelegramStateSeedResponseSchema = z.object({
   ok: z.literal(true),
   bot_id: z.string(),
   org_id: z.string(),
-  vm0_user_id: z.string(),
+  user_id: z.string(),
   user_link_id: z.string().nullable(),
   default_agent_id: z.string(),
 });

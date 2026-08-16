@@ -87,7 +87,7 @@ describe("GET /api/zero/integrations/slack", () => {
       "https://www.vm0.ai/api/okou/slack/oauth/connect",
     );
     expect(connectUrl.searchParams.get("orgId")).toBe(orgId);
-    expect(connectUrl.searchParams.get("vm0UserId")).toBe(userId);
+    expect(connectUrl.searchParams.get("userId")).toBe(userId);
   });
 
   it("returns install URLs on the web origin when Slack is not installed", async () => {
@@ -112,7 +112,7 @@ describe("GET /api/zero/integrations/slack", () => {
       "https://www.vm0.ai/api/okou/slack/oauth/install",
     );
     expect(installUrl.searchParams.get("orgId")).toBe(orgId);
-    expect(installUrl.searchParams.get("vm0UserId")).toBe(userId);
+    expect(installUrl.searchParams.get("userId")).toBe(userId);
   });
 
   it("returns workspace info for connected user", async () => {
@@ -123,7 +123,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId: fixture.slackWorkspaceId, userId: userId },
       context.signal,
     );
     mocks.clerk.session(userId, orgId);
@@ -151,7 +151,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId: fixture.slackWorkspaceId, userId: userId },
       context.signal,
     );
     mocks.clerk.session(userId, orgId);
@@ -183,7 +183,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId: fixture.slackWorkspaceId, userId: userId },
       context.signal,
     );
     mocks.clerk.session(userId, orgId, "org:admin");
@@ -210,7 +210,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId: fixture.slackWorkspaceId, userId: userId },
       context.signal,
     );
     mocks.clerk.session(userId, orgId, "org:member");
@@ -237,7 +237,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId: fixture.slackWorkspaceId, userId: userId },
       context.signal,
     );
     await store.set(
@@ -293,7 +293,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId: fixture.slackWorkspaceId, userId: userId },
       context.signal,
     );
     mocks.clerk.session(userId, orgId, "org:admin");
@@ -325,7 +325,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId: fixture.slackWorkspaceId, userId: userId },
       context.signal,
     );
     mocks.clerk.session(userId, orgId, "org:admin");
@@ -360,7 +360,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId: fixture.slackWorkspaceId, userId: userId },
       context.signal,
     );
     mocks.clerk.session(userId, orgId, "org:admin");
@@ -391,7 +391,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId: fixture.slackWorkspaceId, userId: userId },
       context.signal,
     );
     mocks.clerk.session(userId, orgId, "org:member");

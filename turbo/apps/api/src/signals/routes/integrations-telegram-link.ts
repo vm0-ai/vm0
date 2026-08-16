@@ -27,8 +27,8 @@ import { logger } from "../../lib/log";
 import { tapError } from "../utils";
 import {
   formatTelegramUserDisplayName,
-  linkOfficialTelegramUserToVm0User$,
-  linkTelegramUserToVm0User$,
+  linkOfficialTelegramUser$,
+  linkTelegramUser$,
   telegramInstallationForLink,
   type TelegramInstallationForLink,
   verifyConnectSignature,
@@ -206,7 +206,7 @@ async function resolveOfficialConnectComposeId(
     .from(telegramUserAgentPreferences)
     .where(
       and(
-        eq(telegramUserAgentPreferences.vm0UserId, auth.userId),
+        eq(telegramUserAgentPreferences.userId, auth.userId),
         eq(telegramUserAgentPreferences.orgId, auth.orgId),
       ),
     )
@@ -262,7 +262,7 @@ const unlinkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       .delete(telegramOfficialUserLinks)
       .where(
         and(
-          eq(telegramOfficialUserLinks.vm0UserId, auth.userId),
+          eq(telegramOfficialUserLinks.userId, auth.userId),
           eq(telegramOfficialUserLinks.orgId, auth.orgId),
         ),
       )
@@ -287,7 +287,7 @@ const unlinkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .delete(telegramUserLinks)
     .where(
       and(
-        eq(telegramUserLinks.vm0UserId, auth.userId),
+        eq(telegramUserLinks.userId, auth.userId),
         inArray(telegramUserLinks.installationId, orgInstallations),
         botId ? eq(telegramUserLinks.installationId, botId) : undefined,
       ),
@@ -334,12 +334,12 @@ const linkOfficialInner$ = command(
 
       const telegramUserId = String(telegramAuth.id);
       const result = await set(
-        linkOfficialTelegramUserToVm0User$,
+        linkOfficialTelegramUser$,
         {
           telegramUserId,
           telegramUsername: telegramAuth.username,
           telegramDisplayName: formatTelegramUserDisplayName(telegramAuth),
-          vm0UserId: args.auth.userId,
+          userId: args.auth.userId,
           orgId: args.auth.orgId,
         },
         signal,
@@ -377,12 +377,12 @@ const linkOfficialInner$ = command(
       }
 
       const result = await set(
-        linkOfficialTelegramUserToVm0User$,
+        linkOfficialTelegramUser$,
         {
           telegramUserId: connectSignature.telegramUserId,
           telegramUsername: connectSignature.telegramUsername,
           telegramDisplayName: connectSignature.telegramDisplayName,
-          vm0UserId: args.auth.userId,
+          userId: args.auth.userId,
           orgId: args.auth.orgId,
         },
         signal,
@@ -430,13 +430,13 @@ const linkCustomWithTelegramAuth$ = command(
 
     const telegramUserId = String(telegramAuth.id);
     const result = await set(
-      linkTelegramUserToVm0User$,
+      linkTelegramUser$,
       {
         installationId: args.installation.telegramBotId,
         telegramUserId,
         telegramUsername: telegramAuth.username,
         telegramDisplayName: formatTelegramUserDisplayName(telegramAuth),
-        vm0UserId: args.auth.userId,
+        userId: args.auth.userId,
       },
       signal,
     );
@@ -483,13 +483,13 @@ const linkCustomWithConnectSignature$ = command(
     }
 
     const result = await set(
-      linkTelegramUserToVm0User$,
+      linkTelegramUser$,
       {
         installationId: args.installation.telegramBotId,
         telegramUserId: connectSignature.telegramUserId,
         telegramUsername: connectSignature.telegramUsername,
         telegramDisplayName: connectSignature.telegramDisplayName,
-        vm0UserId: args.auth.userId,
+        userId: args.auth.userId,
       },
       signal,
     );

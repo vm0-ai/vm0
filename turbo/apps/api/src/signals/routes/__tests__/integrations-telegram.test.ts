@@ -303,7 +303,7 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
         telegramUserId: "tg-owner",
         telegramUsername: "owner_tg",
         telegramDisplayName: "Owner Telegram",
-        vm0UserId: userId,
+        userId: userId,
       },
       context.signal,
     );
@@ -531,7 +531,7 @@ describe("GET /api/integrations/telegram", () => {
         telegramUserId: "tg-custom-user",
         telegramUsername: "custom_ada",
         telegramDisplayName: "Custom Ada",
-        vm0UserId: userId,
+        userId: userId,
       },
       context.signal,
     );
@@ -669,7 +669,7 @@ describe("GET /api/integrations/telegram", () => {
       {
         installationId: linkedInstall.telegramBotId,
         telegramUserId: "tg-linked-user",
-        vm0UserId: userId,
+        userId: userId,
       },
       context.signal,
     );
@@ -834,7 +834,7 @@ describe("GET /api/integrations/telegram/link", () => {
       {
         installationId: telegramBotId,
         telegramUserId: "tg-linked-user",
-        vm0UserId: userId,
+        userId: userId,
       },
       context.signal,
     );
@@ -879,7 +879,7 @@ describe("GET /api/integrations/telegram/link", () => {
       {
         installationId: linkedBotId,
         telegramUserId: "tg-linked-user",
-        vm0UserId: userId,
+        userId: userId,
       },
       context.signal,
     );
@@ -1375,7 +1375,7 @@ describe("POST /api/integrations/telegram/link", () => {
       {
         installationId: telegramBotId,
         telegramUserId: "99004",
-        vm0UserId: `user_${randomUUID()}`,
+        userId: `user_${randomUUID()}`,
       },
       context.signal,
     );
@@ -1401,7 +1401,7 @@ describe("POST /api/integrations/telegram/link", () => {
     );
   });
 
-  it("returns 409 when the VM0 user is already linked to another Telegram user for the same bot", async () => {
+  it("returns 409 when the internal user is already linked to another Telegram user for the same bot", async () => {
     const { token, orgId, userId } = await seedLinkContext();
     const telegramBotId = newTelegramBotId();
     const builder = makeTelegramFixtureBuilder(orgId);
@@ -1418,7 +1418,7 @@ describe("POST /api/integrations/telegram/link", () => {
       {
         installationId: telegramBotId,
         telegramUserId: "99009",
-        vm0UserId: userId,
+        userId: userId,
       },
       context.signal,
     );
@@ -1472,7 +1472,7 @@ describe("POST /api/integrations/telegram/link", () => {
       {
         installationId: firstBotId,
         telegramUserId: "99011",
-        vm0UserId: `user_${randomUUID()}`,
+        userId: `user_${randomUUID()}`,
       },
       context.signal,
     );
@@ -1502,7 +1502,7 @@ describe("POST /api/integrations/telegram/link", () => {
     });
   });
 
-  it("treats reconnecting the same Telegram user to the same VM0 user as idempotent", async () => {
+  it("treats reconnecting the same Telegram user to the same internal user as idempotent", async () => {
     const { token, orgId, userId } = await seedLinkContext();
     const telegramBotId = newTelegramBotId();
     const builder = makeTelegramFixtureBuilder(orgId);
@@ -1519,7 +1519,7 @@ describe("POST /api/integrations/telegram/link", () => {
       {
         installationId: telegramBotId,
         telegramUserId: "99012",
-        vm0UserId: userId,
+        userId: userId,
       },
       context.signal,
     );

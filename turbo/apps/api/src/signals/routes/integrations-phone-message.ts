@@ -55,7 +55,7 @@ const sendMessage$ = command(async ({ get, set }, signal: AbortSignal) => {
   const userLink = await resolveAgentPhoneUserLinkForOwner(db, {
     phoneHandle,
     channel: userChannel,
-    vm0UserId: auth.userId,
+    userId: auth.userId,
     orgId: auth.orgId,
   });
   signal.throwIfAborted();

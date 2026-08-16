@@ -52,12 +52,12 @@ async function upsertSlackConnection(
   args: {
     readonly slackUserId: string;
     readonly slackWorkspaceId: string;
-    readonly vm0UserId: string;
+    readonly userId: string;
   },
 ): Promise<string> {
   const [connection] = await writeDb
     .insert(slackOrgConnections)
-    .values(args)
+    .values({ ...args, legacyUserId: args.userId })
     .onConflictDoNothing({
       target: [
         slackOrgConnections.slackUserId,
@@ -102,7 +102,7 @@ async function resolveDefaultComposeId(
 
 async function getUserAgentPreference(
   db: Db,
-  vm0UserId: string,
+  userId: string,
   orgId: string,
 ): Promise<string | null> {
   const [preference] = await db
@@ -110,7 +110,7 @@ async function getUserAgentPreference(
     .from(slackUserAgentPreferences)
     .where(
       and(
-        eq(slackUserAgentPreferences.vm0UserId, vm0UserId),
+        eq(slackUserAgentPreferences.userId, userId),
         eq(slackUserAgentPreferences.orgId, orgId),
       ),
     )
@@ -120,10 +120,10 @@ async function getUserAgentPreference(
 
 async function resolveEffectiveComposeId(
   db: Db,
-  vm0UserId: string,
+  userId: string,
   orgId: string,
 ): Promise<string | null> {
-  const override = await getUserAgentPreference(db, vm0UserId, orgId);
+  const override = await getUserAgentPreference(db, userId, orgId);
   if (override) {
     const [agent] = await db
       .select({ id: zeroAgents.id })
@@ -216,12 +216,12 @@ async function refreshSlackAppHome(args: {
       await Promise.all([
         resolveEffectiveComposeId(
           args.db,
-          connection.vm0UserId,
+          connection.userId,
           args.installation.orgId,
         ),
         getUserAgentPreference(
           args.db,
-          connection.vm0UserId,
+          connection.userId,
           args.installation.orgId,
         ),
         resolveDefaultComposeId(args.db, args.installation.orgId),
@@ -241,11 +241,8 @@ async function refreshSlackAppHome(args: {
     buildAppHomeView({
       appUrl: env("APP_URL"),
       isLinked: true,
-      vm0UserId: connection.vm0UserId,
-      userEmail: await getPrimaryUserEmail(
-        args.clerkClient,
-        connection.vm0UserId,
-      ),
+      userId: connection.userId,
+      userEmail: await getPrimaryUserEmail(args.clerkClient, connection.userId),
       agentName,
       isOverrideActive,
       canSwitch,
@@ -279,7 +276,7 @@ export function zeroSlackConnectStatus(args: {
           .from(slackOrgConnections)
           .where(
             and(
-              eq(slackOrgConnections.vm0UserId, args.userId),
+              eq(slackOrgConnections.userId, args.userId),
               eq(
                 slackOrgConnections.slackWorkspaceId,
                 orgInstallation.slackWorkspaceId,
@@ -385,7 +382,7 @@ export const connectSlackWorkspace$ = command(
       const connectionId = await upsertSlackConnection(writeDb, {
         slackUserId: args.slackUserId,
         slackWorkspaceId: args.workspaceId,
-        vm0UserId: args.userId,
+        userId: args.userId,
       });
       signal.throwIfAborted();
 
@@ -407,7 +404,7 @@ export const connectSlackWorkspace$ = command(
     const connectionId = await upsertSlackConnection(writeDb, {
       slackUserId: args.slackUserId,
       slackWorkspaceId: args.workspaceId,
-      vm0UserId: args.userId,
+      userId: args.userId,
     });
     signal.throwIfAborted();
 

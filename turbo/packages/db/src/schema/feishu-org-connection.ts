@@ -24,8 +24,9 @@ export const feishuOrgConnections = pgTable(
         { onDelete: "cascade" },
       ),
     feishuOpenId: varchar("feishu_open_id", { length: 255 }).notNull(),
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // Temporary compatibility field; remove in #27602 after the Contract gate.
+    legacyUserId: text("vm0_user_id").notNull(),
     feishuUserName: varchar("feishu_user_name", { length: 255 }),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -38,7 +39,7 @@ export const feishuOrgConnections = pgTable(
         table.installationId,
       ),
       index("idx_feishu_org_connections_vm0_installation").on(
-        table.vm0UserId,
+        table.legacyUserId,
         table.installationId,
       ),
       index("idx_feishu_org_connections_user_id_installation").on(

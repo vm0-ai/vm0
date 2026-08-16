@@ -261,7 +261,7 @@ async function resolveUserOpenId(
     .where(
       and(
         eq(feishuOrgConnections.installationId, args.installationId),
-        eq(feishuOrgConnections.vm0UserId, args.userId),
+        eq(feishuOrgConnections.userId, args.userId),
       ),
     )
     .limit(1);
