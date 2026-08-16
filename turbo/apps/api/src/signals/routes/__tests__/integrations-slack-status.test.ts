@@ -13,7 +13,7 @@ import {
   seedSlackOrgConnection$,
   seedSlackOrgInstallation$,
   type SlackIntegrationFixture,
-} from "./helpers/zero-integrations-slack";
+} from "./helpers/integrations-slack";
 import {
   createFixtureTracker,
   createZeroRouteMocks,

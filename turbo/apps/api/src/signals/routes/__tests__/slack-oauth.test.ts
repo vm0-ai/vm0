@@ -14,7 +14,7 @@ import {
   findSlackOrgInstallation$,
   seedSlackConnectOrg$,
   type SlackConnectFixture,
-} from "./helpers/zero-slack-connect";
+} from "./helpers/slack-connect";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 

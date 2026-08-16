@@ -12,7 +12,7 @@ import { seedOrgMembership$ } from "./helpers/org-membership";
 import {
   seedSlackOrgConnection$,
   seedSlackOrgInstallation$,
-} from "./helpers/zero-integrations-slack";
+} from "./helpers/integrations-slack";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createRunsApi } from "./helpers/api-bdd-runs";

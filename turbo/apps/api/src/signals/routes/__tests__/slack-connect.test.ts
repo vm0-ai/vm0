@@ -18,7 +18,7 @@ import {
   findSlackOrgInstallation$,
   seedSlackConnectOrg$,
   type SlackConnectFixture,
-} from "./helpers/zero-slack-connect";
+} from "./helpers/slack-connect";
 import { slackConnectRoutes } from "../slack-connect";
 
 const TEST_APP_ROUTES = Object.freeze([...slackConnectRoutes]);

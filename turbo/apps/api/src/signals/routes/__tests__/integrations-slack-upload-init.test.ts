@@ -13,7 +13,7 @@ import {
   deleteSlackIntegrationFixture$,
   seedSlackOrgInstallation$,
   type SlackIntegrationFixture,
-} from "./helpers/zero-integrations-slack";
+} from "./helpers/integrations-slack";
 import { integrationsSlackUploadInitRoutes } from "../integrations-slack-upload-init";
 
 const context = testContext();
