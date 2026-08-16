@@ -49,16 +49,16 @@ import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { acquisitionAttributionRoutes } from "../../acquisition-attribution";
 import { zeroBankingRoutes } from "../../zero-banking";
-import { zeroBillingAutoRechargeRoutes } from "../../zero-billing-auto-recharge";
-import { zeroBillingCheckoutRoutes } from "../../zero-billing-checkout";
-import { zeroBillingCreditCheckoutRoutes } from "../../zero-billing-credit-checkout";
-import { zeroBillingDowngradeRoutes } from "../../zero-billing-downgrade";
-import { zeroBillingInvoicesRoutes } from "../../zero-billing-invoices";
-import { zeroBillingPortalRoutes } from "../../zero-billing-portal";
-import { zeroBillingRedeemRoutes } from "../../zero-billing-redeem";
-import { zeroBillingRedeemCodeRoutes } from "../../zero-billing-redeem-code";
-import { zeroBillingRestoreRoutes } from "../../zero-billing-restore";
-import { zeroBillingStatusRoutes } from "../../zero-billing-status";
+import { billingAutoRechargeRoutes } from "../../billing-auto-recharge";
+import { billingCheckoutRoutes } from "../../billing-checkout";
+import { billingCreditCheckoutRoutes } from "../../billing-credit-checkout";
+import { billingDowngradeRoutes } from "../../billing-downgrade";
+import { billingInvoicesRoutes } from "../../billing-invoices";
+import { billingPortalRoutes } from "../../billing-portal";
+import { billingRedeemRoutes } from "../../billing-redeem";
+import { billingRedeemCodeRoutes } from "../../billing-redeem-code";
+import { billingRestoreRoutes } from "../../billing-restore";
+import { billingStatusRoutes } from "../../billing-status";
 import { builtInGenerationRoutes } from "../../built-in-generation";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { imageIoGenerateRoutes } from "../../image-io-generate";
@@ -290,7 +290,7 @@ export function createBillingMediaApi(context: TestContext) {
     async readBillingStatus(
       actor: ApiTestUser,
     ): Promise<BillingStatusResponse> {
-      const client = setupApp({ context, routes: zeroBillingStatusRoutes })(
+      const client = setupApp({ context, routes: billingStatusRoutes })(
         zeroBillingStatusContract,
       );
       const response = await accept(
@@ -301,7 +301,7 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async startCheckout(actor: ApiTestUser, body: CheckoutBody) {
-      const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      const client = setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingCheckoutContract,
       );
       return await accept(
@@ -315,7 +315,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: CheckoutBody,
       statuses: readonly CheckoutStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      const client = setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingCheckoutContract,
       );
       return await accept(
@@ -329,7 +329,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: { readonly sessionId: string },
       statuses: readonly (200 | 400 | 401 | 403 | 500 | 503)[],
     ) {
-      const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      const client = setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingCheckoutContract,
       );
       return await accept(
@@ -341,7 +341,7 @@ export function createBillingMediaApi(context: TestContext) {
     async startCreditCheckout(actor: ApiTestUser, body: CreditCheckoutRequest) {
       const client = setupApp({
         context,
-        routes: zeroBillingCreditCheckoutRoutes,
+        routes: billingCreditCheckoutRoutes,
       })(zeroBillingCreditCheckoutContract);
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -356,7 +356,7 @@ export function createBillingMediaApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroBillingCreditCheckoutRoutes,
+        routes: billingCreditCheckoutRoutes,
       })(zeroBillingCreditCheckoutContract);
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -365,7 +365,7 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async openPortal(actor: ApiTestUser, body: PortalBody) {
-      const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      const client = setupApp({ context, routes: billingPortalRoutes })(
         zeroBillingPortalContract,
       );
       return await accept(
@@ -377,7 +377,7 @@ export function createBillingMediaApi(context: TestContext) {
     async readAutoRecharge(actor: ApiTestUser): Promise<AutoRechargeConfig> {
       const client = setupApp({
         context,
-        routes: zeroBillingAutoRechargeRoutes,
+        routes: billingAutoRechargeRoutes,
       })(zeroBillingAutoRechargeContract);
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
@@ -393,7 +393,7 @@ export function createBillingMediaApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroBillingAutoRechargeRoutes,
+        routes: billingAutoRechargeRoutes,
       })(zeroBillingAutoRechargeContract);
       return await accept(
         client.update({ headers: authenticate(actor), body }),
@@ -402,7 +402,7 @@ export function createBillingMediaApi(context: TestContext) {
     },
 
     async readInvoices(actor: ApiTestUser): Promise<BillingInvoicesResponse> {
-      const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      const client = setupApp({ context, routes: billingInvoicesRoutes })(
         zeroBillingInvoicesContract,
       );
       const response = await accept(
@@ -416,7 +416,7 @@ export function createBillingMediaApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context, routes: zeroBillingInvoicesRoutes })(
+      const client = setupApp({ context, routes: billingInvoicesRoutes })(
         zeroBillingInvoicesContract,
       );
       return await accept(
@@ -433,7 +433,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly BillingMutationStatus[],
     ) {
-      const client = setupApp({ context, routes: zeroBillingDowngradeRoutes })(
+      const client = setupApp({ context, routes: billingDowngradeRoutes })(
         zeroBillingDowngradeContract,
       );
       return await accept(
@@ -447,7 +447,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: { readonly returnUrl?: string },
       statuses: readonly (200 | 401 | 403 | 409 | 500 | 503)[],
     ) {
-      const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+      const client = setupApp({ context, routes: billingRestoreRoutes })(
         zeroBillingRestoreContract,
       );
       return await accept(
@@ -461,7 +461,7 @@ export function createBillingMediaApi(context: TestContext) {
       campaign: string,
       body: RedeemRequest,
     ) {
-      const client = setupApp({ context, routes: zeroBillingRedeemRoutes })(
+      const client = setupApp({ context, routes: billingRedeemRoutes })(
         zeroBillingRedeemContract,
       );
       return await accept(
@@ -479,7 +479,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: RedeemCodeRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 500 | 503)[],
     ) {
-      const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+      const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
         zeroBillingRedeemCodeContract,
       );
       return await accept(

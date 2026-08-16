@@ -19,7 +19,7 @@ import {
   testUsagePackSubscriptionStateContract,
   testUsagePackSubscriptionStateRoutes,
 } from "../test-usage-pack-subscription-state";
-import { zeroBillingUsagePackCreditsRoutes } from "../zero-billing-usage-pack-credits";
+import { billingUsagePackCreditsRoutes } from "../billing-usage-pack-credits";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -44,7 +44,7 @@ function authenticate(
 }
 
 function creditsClient() {
-  return setupApp({ context, routes: zeroBillingUsagePackCreditsRoutes })(
+  return setupApp({ context, routes: billingUsagePackCreditsRoutes })(
     zeroBillingUsagePackCreditsContract,
   );
 }

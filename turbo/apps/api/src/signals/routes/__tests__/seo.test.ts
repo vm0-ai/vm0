@@ -24,11 +24,11 @@ import {
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingStatusRoutes } from "../billing-status";
 import { seoRoutes } from "../seo";
 
 const context = testContext();
-const SEO_ROUTES = Object.freeze([...zeroBillingStatusRoutes, ...seoRoutes]);
+const SEO_ROUTES = Object.freeze([...billingStatusRoutes, ...seoRoutes]);
 const DATAFORSEO_BASE_URL = "https://api.dataforseo.com";
 
 type OrgApiTestUser = ApiTestUser & {

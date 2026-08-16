@@ -18,7 +18,7 @@ import {
   readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
+import { teamsConnectRoutes } from "../teams-connect";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -340,7 +340,7 @@ async function connectTeamsFixture(
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
   const client = setupApp({
     context,
-    routes: zeroTeamsConnectRoutes,
+    routes: teamsConnectRoutes,
   })(zeroTeamsConnectContract);
   await accept(
     client.connect({

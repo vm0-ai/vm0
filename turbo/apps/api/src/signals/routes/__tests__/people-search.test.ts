@@ -25,7 +25,7 @@ import {
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingStatusRoutes } from "../billing-status";
 import { peopleSearchRoutes } from "../people-search";
 import { webSearchRoutes } from "../web-search";
 import {
@@ -43,7 +43,7 @@ const PERPLEXITY_SEARCH_URL = "https://api.perplexity.ai/search";
 const MAX_PROVIDER_RESPONSE_BYTES = 512 * 1024;
 
 const peopleSearchTestRoutes: readonly RouteEntry[] = [
-  ...zeroBillingStatusRoutes,
+  ...billingStatusRoutes,
   ...peopleSearchRoutes,
 ];
 

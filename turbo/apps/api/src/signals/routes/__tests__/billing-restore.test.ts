@@ -18,8 +18,8 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { zeroBillingRestoreRoutes } from "../zero-billing-restore";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingRestoreRoutes } from "../billing-restore";
+import { billingStatusRoutes } from "../billing-status";
 
 const context = testContext();
 const store = createStore();
@@ -39,7 +39,7 @@ function mockSubscriptionWithPaymentMethod(
 
 async function readBillingStatus() {
   return await accept(
-    setupApp({ context, routes: zeroBillingStatusRoutes })(
+    setupApp({ context, routes: billingStatusRoutes })(
       zeroBillingStatusContract,
     ).get({
       headers: { authorization: "Bearer clerk-session" },
@@ -60,7 +60,7 @@ describe("POST /api/zero/billing/restore", () => {
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
 
-    const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+    const client = setupApp({ context, routes: billingRestoreRoutes })(
       zeroBillingRestoreContract,
     );
     const response = await accept(
@@ -80,7 +80,7 @@ describe("POST /api/zero/billing/restore", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+    const client = setupApp({ context, routes: billingRestoreRoutes })(
       zeroBillingRestoreContract,
     );
     const response = await accept(
@@ -100,7 +100,7 @@ describe("POST /api/zero/billing/restore", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+    const client = setupApp({ context, routes: billingRestoreRoutes })(
       zeroBillingRestoreContract,
     );
     const response = await accept(
@@ -125,7 +125,7 @@ describe("POST /api/zero/billing/restore", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+    const client = setupApp({ context, routes: billingRestoreRoutes })(
       zeroBillingRestoreContract,
     );
     const response = await accept(
@@ -160,7 +160,7 @@ describe("POST /api/zero/billing/restore", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+    const client = setupApp({ context, routes: billingRestoreRoutes })(
       zeroBillingRestoreContract,
     );
     const response = await accept(
@@ -200,7 +200,7 @@ describe("POST /api/zero/billing/restore", () => {
     mockSubscriptionWithPaymentMethod(subId, customerId);
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
-    const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+    const client = setupApp({ context, routes: billingRestoreRoutes })(
       zeroBillingRestoreContract,
     );
     const response = await accept(
@@ -249,7 +249,7 @@ describe("POST /api/zero/billing/restore", () => {
       id: scheduleId,
     });
 
-    const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+    const client = setupApp({ context, routes: billingRestoreRoutes })(
       zeroBillingRestoreContract,
     );
     const response = await accept(
@@ -307,7 +307,7 @@ describe("POST /api/zero/billing/restore", () => {
       url: checkoutUrl,
     });
 
-    const client = setupApp({ context, routes: zeroBillingRestoreRoutes })(
+    const client = setupApp({ context, routes: billingRestoreRoutes })(
       zeroBillingRestoreContract,
     );
     const response = await accept(

@@ -54,7 +54,7 @@ import { normalizeRunMetadata } from "../../services/agent-run-metadata-write.se
 import { seedUserModelProvider$ } from "./helpers/model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingStatusRoutes } from "../billing-status";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorsRoutes } from "../connectors";
 import { meModelProvidersListRoutes } from "../me-model-providers-list";
@@ -112,7 +112,7 @@ const userPreferencesClient = setupApp({
 })(userPreferencesContract);
 const billingStatusClient = setupApp({
   context,
-  routes: zeroBillingStatusRoutes,
+  routes: billingStatusRoutes,
 })(zeroBillingStatusContract);
 const orgClient = setupApp({ context, routes: orgReadRoutes })(zeroOrgContract);
 const personalModelProvidersClient = setupApp({

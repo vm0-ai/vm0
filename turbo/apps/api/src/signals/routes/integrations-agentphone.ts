@@ -967,7 +967,7 @@ const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
   return okText();
 });
 
-export const zeroIntegrationsAgentPhoneRoutes: readonly RouteEntry[] = [
+export const integrationsAgentPhoneRoutes: readonly RouteEntry[] = [
   {
     route: zeroIntegrationsAgentPhoneContract.connectAgentPhone,
     handler: authRoute(agentPhoneAuthOptions, connectAgentPhone$),

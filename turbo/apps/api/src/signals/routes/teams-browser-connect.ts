@@ -264,7 +264,7 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   return connectSuccess(query, result.installation);
 });
 
-export const zeroTeamsBrowserConnectRoutes: readonly RouteEntry[] = [
+export const teamsBrowserConnectRoutes: readonly RouteEntry[] = [
   {
     route: zeroTeamsBrowserConnectContract.connect,
     handler: browserConnect$,

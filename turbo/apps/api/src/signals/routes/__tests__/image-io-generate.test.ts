@@ -17,7 +17,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingStatusRoutes } from "../billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
 import { imageIoGenerateRoutes } from "../image-io-generate";
 import { usageRecordRoutes } from "../usage-record";
@@ -136,7 +136,7 @@ function createImageIoTestApp(
       ...builtInGenerationRoutes,
       ...imageIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
-      ...zeroBillingStatusRoutes,
+      ...billingStatusRoutes,
       ...usageRecordRoutes,
     ],
     usagePricingResolution,

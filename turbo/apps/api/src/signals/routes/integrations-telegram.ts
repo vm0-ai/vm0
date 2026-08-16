@@ -503,7 +503,7 @@ const getIntegrationTelegramAuthCallback$ = computed((): Response => {
   });
 });
 
-export const zeroIntegrationsTelegramRoutes: readonly RouteEntry[] = [
+export const integrationsTelegramRoutes: readonly RouteEntry[] = [
   ...integrationsTelegramLinkRoutes,
   ...integrationsTelegramBotIdRoutes,
   {

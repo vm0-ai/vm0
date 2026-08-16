@@ -62,19 +62,19 @@ import { agentInstructionsRoutes } from "./routes/agent-instructions";
 import { agentsRoutes } from "./routes/agents";
 import { artifactCatalogRoutes } from "./routes/artifact-catalog";
 import { acquisitionAttributionRoutes } from "./routes/acquisition-attribution";
-import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
-import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
-import { zeroBillingConcurrencyCheckoutRoutes } from "./routes/zero-billing-concurrency-checkout";
-import { zeroBillingConcurrencySubscriptionRoutes } from "./routes/zero-billing-concurrency-subscriptions";
-import { zeroBillingCreditCheckoutRoutes } from "./routes/zero-billing-credit-checkout";
-import { zeroBillingDowngradeRoutes } from "./routes/zero-billing-downgrade";
-import { zeroBillingInvoicesRoutes } from "./routes/zero-billing-invoices";
-import { zeroBillingPortalRoutes } from "./routes/zero-billing-portal";
-import { zeroBillingRedeemCodeRoutes } from "./routes/zero-billing-redeem-code";
-import { zeroBillingRedeemRoutes } from "./routes/zero-billing-redeem";
-import { zeroBillingRestoreRoutes } from "./routes/zero-billing-restore";
-import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
-import { zeroBillingUsagePackCreditsRoutes } from "./routes/zero-billing-usage-pack-credits";
+import { billingAutoRechargeRoutes } from "./routes/billing-auto-recharge";
+import { billingCheckoutRoutes } from "./routes/billing-checkout";
+import { billingConcurrencyCheckoutRoutes } from "./routes/billing-concurrency-checkout";
+import { billingConcurrencySubscriptionRoutes } from "./routes/billing-concurrency-subscriptions";
+import { billingCreditCheckoutRoutes } from "./routes/billing-credit-checkout";
+import { billingDowngradeRoutes } from "./routes/billing-downgrade";
+import { billingInvoicesRoutes } from "./routes/billing-invoices";
+import { billingPortalRoutes } from "./routes/billing-portal";
+import { billingRedeemCodeRoutes } from "./routes/billing-redeem-code";
+import { billingRedeemRoutes } from "./routes/billing-redeem";
+import { billingRestoreRoutes } from "./routes/billing-restore";
+import { billingStatusRoutes } from "./routes/billing-status";
+import { billingUsagePackCreditsRoutes } from "./routes/billing-usage-pack-credits";
 import { zeroBankingRoutes } from "./routes/zero-banking";
 import { chatThreadRoutes } from "./routes/chat-threads";
 import { chatEventsRoutes } from "./routes/chat-events";
@@ -138,7 +138,7 @@ import { workflowAutomationsRoutes } from "./routes/workflow-automations";
 import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
 import { strapiEventsRoutes } from "./routes/strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
-import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
+import { integrationsAgentPhoneRoutes } from "./routes/integrations-agentphone";
 import { integrationsPhoneDownloadFileRoutes } from "./routes/integrations-phone-download-file";
 import { integrationsPhoneMessageRoutes } from "./routes/integrations-phone-message";
 import { integrationsPhoneUploadCompleteRoutes } from "./routes/integrations-phone-upload-complete";
@@ -157,7 +157,7 @@ import { integrationsTeamsDownloadFileRoutes } from "./routes/integrations-teams
 import { integrationsTeamsMessageRoutes } from "./routes/integrations-teams-message";
 import { integrationsTeamsUploadCompleteRoutes } from "./routes/integrations-teams-upload-complete";
 import { integrationsTeamsUploadInitRoutes } from "./routes/integrations-teams-upload-init";
-import { zeroIntegrationsTelegramRoutes } from "./routes/zero-integrations-telegram";
+import { integrationsTelegramRoutes } from "./routes/integrations-telegram";
 import { integrationsTelegramMessageRoutes } from "./routes/integrations-telegram-message";
 import { integrationsTelegramUploadCompleteRoutes } from "./routes/integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "./routes/integrations-telegram-upload-init";
@@ -172,10 +172,10 @@ import { feishuConnectRoutes } from "./routes/feishu-connect";
 import { feishuEventsRoutes } from "./routes/feishu-events";
 import { feishuOauthRoutes } from "./routes/feishu-oauth";
 import { steamPlayerRoutes } from "./routes/steam-player";
-import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
-import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
-import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
-import { zeroTeamsOauthRoutes } from "./routes/zero-teams-oauth";
+import { teamsBrowserConnectRoutes } from "./routes/teams-browser-connect";
+import { teamsBotRoutes } from "./routes/teams-bot";
+import { teamsConnectRoutes } from "./routes/teams-connect";
+import { teamsOauthRoutes } from "./routes/teams-oauth";
 import { teamRoutes } from "./routes/team";
 import { uploadsCompleteRoutes } from "./routes/uploads-complete";
 import { uploadsMultipartRoutes } from "./routes/uploads-multipart";
@@ -254,19 +254,19 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentsRoutes,
   ...artifactCatalogRoutes,
   ...acquisitionAttributionRoutes,
-  ...zeroBillingAutoRechargeRoutes,
-  ...zeroBillingCheckoutRoutes,
-  ...zeroBillingConcurrencyCheckoutRoutes,
-  ...zeroBillingConcurrencySubscriptionRoutes,
-  ...zeroBillingCreditCheckoutRoutes,
-  ...zeroBillingDowngradeRoutes,
-  ...zeroBillingInvoicesRoutes,
-  ...zeroBillingPortalRoutes,
-  ...zeroBillingRedeemCodeRoutes,
-  ...zeroBillingRedeemRoutes,
-  ...zeroBillingRestoreRoutes,
-  ...zeroBillingStatusRoutes,
-  ...zeroBillingUsagePackCreditsRoutes,
+  ...billingAutoRechargeRoutes,
+  ...billingCheckoutRoutes,
+  ...billingConcurrencyCheckoutRoutes,
+  ...billingConcurrencySubscriptionRoutes,
+  ...billingCreditCheckoutRoutes,
+  ...billingDowngradeRoutes,
+  ...billingInvoicesRoutes,
+  ...billingPortalRoutes,
+  ...billingRedeemCodeRoutes,
+  ...billingRedeemRoutes,
+  ...billingRestoreRoutes,
+  ...billingStatusRoutes,
+  ...billingUsagePackCreditsRoutes,
   ...zeroBankingRoutes,
   ...chatThreadRoutes,
   ...chatEventsRoutes,
@@ -348,11 +348,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ...feishuConnectRoutes,
   ...feishuEventsRoutes,
   ...feishuOauthRoutes,
-  ...zeroTeamsBrowserConnectRoutes,
-  ...zeroTeamsBotRoutes,
-  ...zeroTeamsConnectRoutes,
-  ...zeroTeamsOauthRoutes,
-  ...zeroIntegrationsAgentPhoneRoutes,
+  ...teamsBrowserConnectRoutes,
+  ...teamsBotRoutes,
+  ...teamsConnectRoutes,
+  ...teamsOauthRoutes,
+  ...integrationsAgentPhoneRoutes,
   ...integrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneMessageRoutes,
   ...integrationsPhoneUploadCompleteRoutes,
@@ -373,7 +373,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsTeamsUploadInitRoutes,
   ...slackChannelsRoutes,
   ...steamPlayerRoutes,
-  ...zeroIntegrationsTelegramRoutes,
+  ...integrationsTelegramRoutes,
   ...integrationsTelegramMessageRoutes,
   ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,

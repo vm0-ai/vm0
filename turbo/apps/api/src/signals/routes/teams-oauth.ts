@@ -425,7 +425,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
 });
 
-export const zeroTeamsOauthRoutes: readonly RouteEntry[] = [
+export const teamsOauthRoutes: readonly RouteEntry[] = [
   {
     route: zeroTeamsOauthContract.connect,
     handler: connectOauth$,

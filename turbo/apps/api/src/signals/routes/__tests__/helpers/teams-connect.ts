@@ -11,7 +11,7 @@ import { createAppWithRoutes } from "../../../../app-factory-core";
 import { mockEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
-import { zeroTeamsBotRoutes } from "../../zero-teams-bot";
+import { teamsBotRoutes } from "../../teams-bot";
 
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
@@ -236,7 +236,7 @@ export async function postTeamsActivityForTest(args: {
   const appSignal = AbortSignal.any([args.signal]);
   const app = createAppWithRoutes({
     signal: appSignal,
-    routes: zeroTeamsBotRoutes,
+    routes: teamsBotRoutes,
   });
   return await app.request("http://api.test/api/zero/teams/bot", {
     method: "POST",

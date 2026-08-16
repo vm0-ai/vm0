@@ -50,7 +50,7 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: { url } };
 });
 
-export const zeroBillingPortalRoutes: readonly RouteEntry[] = [
+export const billingPortalRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingPortalContract.create,
     handler: authRoute(

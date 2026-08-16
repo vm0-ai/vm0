@@ -67,7 +67,7 @@ import { cronTelegramCleanupRoutes } from "../../cron-telegram-cleanup";
 import { runnersRoutes } from "../../runners";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
 import { agentsRoutes } from "../../agents";
-import { zeroBillingStatusRoutes } from "../../zero-billing-status";
+import { billingStatusRoutes } from "../../billing-status";
 import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroRunDetailRoutes } from "../../zero-run-detail";
@@ -153,7 +153,7 @@ const runRoutes = [
   ...cronTelegramCleanupRoutes,
   ...runnersRoutes,
   ...webhooksStripeRoutes,
-  ...zeroBillingStatusRoutes,
+  ...billingStatusRoutes,
   ...modelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroRunDetailRoutes,

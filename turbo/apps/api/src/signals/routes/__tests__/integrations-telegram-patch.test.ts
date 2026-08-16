@@ -19,7 +19,7 @@ import {
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { server } from "../../../mocks/server";
-import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
+import { integrationsTelegramRoutes } from "../integrations-telegram";
 
 const context = testContext();
 const store = createStore();
@@ -73,7 +73,7 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
   });
 
   function client() {
-    return setupApp({ context, routes: zeroIntegrationsTelegramRoutes })(
+    return setupApp({ context, routes: integrationsTelegramRoutes })(
       zeroIntegrationsTelegramContract,
     );
   }
