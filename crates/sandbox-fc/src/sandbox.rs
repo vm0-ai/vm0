@@ -3608,13 +3608,6 @@ struct BalloonSettleResult {
     telemetry_outcome: SandboxFinalExecParkSubstageOutcome,
 }
 
-#[cfg(test)]
-async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> SandboxParkOutcome {
-    wait_for_balloon_with_outcome(client, target_mib, log_id)
-        .await
-        .park_outcome
-}
-
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
 ///
 /// The guest needs running vCPUs to inflate, so this must be called

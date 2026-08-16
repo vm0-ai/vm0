@@ -4489,7 +4489,7 @@ async fn wait_for_balloon_rechecks_after_initial_25_ms_delay() {
     let guard = tracing::subscriber::set_default(subscriber);
     tracing::callsite::rebuild_interest_cache();
     tokio::time::pause();
-    let wait = wait_for_balloon(&client, target_mib, "fast-start");
+    let wait = wait_for_balloon_with_outcome(&client, target_mib, "fast-start");
     tokio::pin!(wait);
 
     loop {
@@ -4521,10 +4521,14 @@ async fn wait_for_balloon_rechecks_after_initial_25_ms_delay() {
 
     tokio::time::advance(Duration::from_millis(1)).await;
     tokio::time::resume();
-    let outcome = wait.await;
+    let settle_result = wait.await;
     drop(guard);
 
-    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    assert_eq!(settle_result.park_outcome, SandboxParkOutcome::Reusable);
+    assert_eq!(
+        settle_result.telemetry_outcome,
+        SandboxFinalExecParkSubstageOutcome::TargetReached
+    );
     requests.extend(api.drain_requests());
     assert_eq!(
         requests
