@@ -63,7 +63,7 @@ import type { Tx } from "../../lib/db-types";
 const COMPUTER_USE_HOST_CLOSED_AFTER_MS = 90 * 1000;
 const COMPUTER_USE_RUNNING_COMMAND_DEFAULT_TIMEOUT_MS = 120 * 1000;
 const COMPUTER_USE_HOSTS_CHANGED_TOPIC = "computerUseHostsChanged";
-const L = logger("ZeroComputerUse");
+const L = logger("ComputerUse");
 
 const COMPUTER_USE_READ_COMMANDS = [
   "apps.list",

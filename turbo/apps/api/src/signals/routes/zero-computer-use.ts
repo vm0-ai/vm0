@@ -32,7 +32,7 @@ import {
   listComputerUseHosts$,
   startComputerUseHost$,
   stopComputerUseHost$,
-} from "../services/zero-computer-use.service";
+} from "../services/computer-use.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 

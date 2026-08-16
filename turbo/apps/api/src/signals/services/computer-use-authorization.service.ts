@@ -24,7 +24,7 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import {
   computerUseHostIsOnline,
   listComputerUseHosts$,
-} from "./zero-computer-use.service";
+} from "./computer-use.service";
 
 const COMPUTER_USE_AUTHORIZATION_REQUEST_TTL_MS = 60 * 60 * 1000;
 const COMPUTER_USE_AUTHORIZATION_URL_PREFIX =
