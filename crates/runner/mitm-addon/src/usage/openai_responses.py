@@ -121,6 +121,7 @@ _ResponsesEventTypeClassification = Literal[
     "unresolved",
     "pending",
 ]
+_OpenAIResponsesClientRequestKind = Literal["create", "other", "unknown"]
 _RESPONSES_EVENT_TERMINAL: _ResponsesEventTypeClassification = "terminal"
 _RESPONSES_EVENT_KNOWN_NON_USAGE: _ResponsesEventTypeClassification = "known_non_usage"
 _RESPONSES_EVENT_UNKNOWN: _ResponsesEventTypeClassification = "unknown"
@@ -138,6 +139,7 @@ _RESPONSES_MAX_WORK_UNITS = 65_536
 _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
 _RESPONSES_CREATE_EVENT = "response.create"
 _RESPONSES_CREATED_EVENT = "response.created"
+_RESPONSES_ERROR_EVENT = "error"
 
 
 @dataclass(frozen=True)
@@ -146,6 +148,7 @@ class OpenAIResponsesClientEvent:
 
     event_type: str | None
     is_prewarm: bool
+    request_kind: _OpenAIResponsesClientRequestKind = "unknown"
 
 
 @dataclass(frozen=True)
@@ -154,10 +157,20 @@ class OpenAIResponsesServerLifecycle:
 
     event_type: str | None
     response_id: str | None
+    is_valid: bool = False
+    inspection_error: str | None = None
+
+    @property
+    def is_created(self) -> bool:
+        return self.event_type == _RESPONSES_CREATED_EVENT
 
     @property
     def is_terminal(self) -> bool:
         return self.event_type in _RESPONSES_TERMINAL_USAGE_EVENTS
+
+    @property
+    def is_error(self) -> bool:
+        return self.event_type == _RESPONSES_ERROR_EVENT
 
 
 @dataclass(frozen=True)
@@ -215,14 +228,22 @@ def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesCl
     extractor.feed(body)
     result = extractor.finish()
     if not result.complete:
-        return OpenAIResponsesClientEvent(observed_event_type, False)
+        return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
+
+    type_is_consistent = extractor.selected_scalar_values_are_consistent(("type",))
+    generate_is_consistent = extractor.selected_scalar_values_are_consistent(("generate",))
+    event_type = result.values.get(("type",))
+    if not type_is_consistent or not isinstance(event_type, str):
+        return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
+    if event_type != _RESPONSES_CREATE_EVENT:
+        return OpenAIResponsesClientEvent(observed_event_type, False, "other")
+    if not generate_is_consistent:
+        return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
 
     return OpenAIResponsesClientEvent(
         observed_event_type,
-        extractor.selected_scalar_values_are_consistent(("type",))
-        and extractor.selected_scalar_values_are_consistent(("generate",))
-        and result.values.get(("type",)) == _RESPONSES_CREATE_EVENT
-        and result.values.get(("generate",)) is False,
+        result.values.get(("generate",)) is False,
+        "create",
     )
 
 
@@ -250,10 +271,13 @@ def _inspect_openai_responses_event_type_json(body: bytes) -> str | None:
 def inspect_openai_responses_server_lifecycle(
     event: OpenAIResponsesEvent,
 ) -> OpenAIResponsesServerLifecycle:
-    """Inspect an exact created or terminal event for WebSocket correlation."""
-    relevant_event_types = _RESPONSES_TERMINAL_USAGE_EVENTS | {_RESPONSES_CREATED_EVENT}
+    """Inspect a bounded lifecycle boundary for WebSocket correlation."""
+    relevant_event_types = _RESPONSES_TERMINAL_USAGE_EVENTS | {
+        _RESPONSES_CREATED_EVENT,
+        _RESPONSES_ERROR_EVENT,
+    }
     if event.event_type is not None and event.event_type not in relevant_event_types:
-        return OpenAIResponsesServerLifecycle(event.event_type, None)
+        return OpenAIResponsesServerLifecycle(event.event_type, None, True)
 
     extractor = JsonSelectiveExtractor(
         scalar_fields=_RESPONSES_LIFECYCLE_SCALAR_FIELDS,
@@ -263,21 +287,24 @@ def inspect_openai_responses_server_lifecycle(
     extractor.feed(event._body)
     result = extractor.finish()
     if not result.complete:
-        return OpenAIResponsesServerLifecycle(event.event_type, None)
+        return OpenAIResponsesServerLifecycle(event.event_type, None, False, result.error)
     if not extractor.selected_scalar_values_are_consistent(("type",)):
-        return OpenAIResponsesServerLifecycle(event.event_type, None)
+        return OpenAIResponsesServerLifecycle(event.event_type, None, False)
     event_type = result.values.get(("type",))
     if not isinstance(event_type, str):
-        return OpenAIResponsesServerLifecycle(event.event_type, None)
+        return OpenAIResponsesServerLifecycle(event.event_type, None, False)
+    if event_type == _RESPONSES_ERROR_EVENT:
+        return OpenAIResponsesServerLifecycle(event_type, None, True)
+    if event_type not in relevant_event_types:
+        return OpenAIResponsesServerLifecycle(event_type, None, True)
     response_id = result.values.get(("response", "id"))
     if (
-        event_type not in relevant_event_types
-        or not extractor.selected_scalar_values_are_consistent(("response", "id"))
+        not extractor.selected_scalar_values_are_consistent(("response", "id"))
         or not isinstance(response_id, str)
         or not response_id
     ):
-        response_id = None
-    return OpenAIResponsesServerLifecycle(event_type, response_id)
+        return OpenAIResponsesServerLifecycle(event_type, None, False)
+    return OpenAIResponsesServerLifecycle(event_type, response_id, True)
 
 
 def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:

@@ -9,6 +9,7 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_streaming
 import usage
+from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import (
     make_openai_responses_websocket_flow,
     model_provider_usage_sources,
@@ -38,6 +39,17 @@ def _openai_websocket_created_frame(response_id: str) -> bytes:
             "response": {"id": response_id},
         }
     ).encode()
+
+
+def _correlation_entries(flow) -> list[dict]:
+    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    if not jsonl_exists_after_flush(proxy_log):
+        return []
+    return [
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log)
+        if entry.get("type") == "model_usage_correlation"
+    ]
 
 
 class TestModelProviderWebSocketPrewarmUsage:
@@ -116,6 +128,230 @@ class TestModelProviderWebSocketPrewarmUsage:
         assert model_provider_usage_sources(flow) == {}
         assert response_streaming.is_model_websocket_usage_enabled(flow) is False
         assert "_model_websocket_prewarm_state" not in flow.metadata
+
+    @pytest.mark.parametrize(
+        "client_requests",
+        [
+            pytest.param(
+                [
+                    {"type": "response.create"},
+                    {"type": "response.create", "generate": False},
+                ],
+                id="normal-then-prewarm",
+            ),
+            pytest.param(
+                [
+                    {"type": "response.create", "generate": False},
+                    {"type": "response.create"},
+                ],
+                id="prewarm-then-normal",
+            ),
+        ],
+    )
+    def test_model_websocket_overlapping_creates_fail_open(
+        self,
+        tmp_path,
+        real_flow,
+        client_requests: list[dict[str, object]],
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            for request in client_requests:
+                feed_websocket_client_message(flow, json.dumps(request).encode())
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("overlap-1"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("overlap-1", input_tokens=10, output_tokens=0),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("overlap-2"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("overlap-2", input_tokens=6, output_tokens=0),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 10),
+            ("gpt-5.5", "tokens.input", 6),
+        ]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+        [correlation_entry] = _correlation_entries(flow)
+        assert correlation_entry["reason"] == "overlapping_request"
+        assert correlation_entry["transport"] == "websocket"
+
+    def test_model_websocket_active_overlap_fails_open(self, tmp_path, real_flow):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create"}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("active-normal"))
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("active-normal", input_tokens=14, output_tokens=0),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("active-warm"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("active-warm", input_tokens=5, output_tokens=0),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 14),
+            ("gpt-5.5", "tokens.input", 5),
+        ]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+        [correlation_entry] = _correlation_entries(flow)
+        assert correlation_entry["reason"] == "overlapping_request"
+
+    def test_model_websocket_unknown_client_event_emits_one_content_free_diagnostic(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        marker = "unknown-client-sensitive-marker"
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "input": marker}).encode()[:-1],
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("unknown-1"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("unknown-1", input_tokens=8, output_tokens=0),
+            )
+            feed_websocket_client_message(flow, b"not-json")
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("unknown-2"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("unknown-2", input_tokens=7, output_tokens=0),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 8),
+            ("gpt-5.5", "tokens.input", 7),
+        ]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+        correlation_entries = _correlation_entries(flow)
+        assert len(correlation_entries) == 1
+        assert correlation_entries[0]["reason"] == "unknown_client_event"
+        assert marker not in json.dumps(correlation_entries)
+
+    def test_model_websocket_server_error_fails_open(self, tmp_path, real_flow):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, b'{"type":"error","error":{"code":"busy"}}')
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("error-1"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("error-1", input_tokens=9, output_tokens=0),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 9)]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+        [correlation_entry] = _correlation_entries(flow)
+        assert correlation_entry["reason"] == "server_error"
+
+    def test_model_websocket_correlation_cap_stays_bounded_and_fails_open(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            for request in (
+                {"type": "response.create"},
+                {"type": "response.create", "generate": False},
+                {"type": "response.create"},
+            ):
+                feed_websocket_client_message(flow, json.dumps(request).encode())
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("cap-1"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("cap-1", input_tokens=11, output_tokens=0),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 11)]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+        correlation_entries = _correlation_entries(flow)
+        assert len(correlation_entries) == 1
+        assert correlation_entries[0]["reason"] in {
+            "overlapping_request",
+            "correlation_cap",
+        }
 
     def test_model_websocket_unbound_prewarm_usage_fails_open(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
