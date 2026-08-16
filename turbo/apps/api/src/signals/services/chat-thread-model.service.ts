@@ -12,7 +12,7 @@ import { nowDate } from "../../lib/time";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
-} from "./zero-chat-thread-event.service";
+} from "./chat-thread-event.service";
 import {
   isCodexFastServiceTierSupported,
   resolveDefaultModelFirstPin,

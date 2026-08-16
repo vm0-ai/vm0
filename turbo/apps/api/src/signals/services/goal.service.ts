@@ -25,11 +25,11 @@ import { lockGoalThread } from "./goal-lock.service";
 import {
   appendChatThreadEvent,
   type ChatThreadEventTransaction,
-} from "./zero-chat-thread-event.service";
+} from "./chat-thread-event.service";
 import {
   chatThreadModelPinColumns,
   resolveRequiredDefaultChatThreadModelPin,
-} from "./zero-chat-thread-model.service";
+} from "./chat-thread-model.service";
 import { childAutonomyBudget } from "./autonomy-budget.service";
 import { threadGoalColumns } from "./autonomy-budget-schema.service";
 

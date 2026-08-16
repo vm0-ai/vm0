@@ -125,7 +125,7 @@ import {
   touchChatThreadLastMessageAt,
   type InsertAssistantEventsInput,
   visibleChatEventCondition,
-} from "./zero-chat-event-shared.service";
+} from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { loadWebChatIncompleteContext } from "./chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./chat-active-run.service";

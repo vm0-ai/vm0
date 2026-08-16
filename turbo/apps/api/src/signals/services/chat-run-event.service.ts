@@ -12,7 +12,7 @@ import { appendQueuedRunAssistantMarker } from "./chat-queue-marker.service";
 import {
   resolvePersistedChatThreadModel,
   type ResolvedPersistedChatThreadModel,
-} from "./zero-chat-thread-model.service";
+} from "./chat-thread-model.service";
 
 /**
  * Resolve a chat-derived run against the current canonical model policy.

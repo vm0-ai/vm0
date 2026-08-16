@@ -29,12 +29,12 @@ import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
 import { chatEventTextCondition } from "./chat-event-type.service";
-import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
+import { visibleChatEventCondition } from "./chat-event-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
   normalizeRecommendedFollowups,
 } from "./chat-recommended-followups.service";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "./chat-thread-event.service";
 import { queuedUserMessageExists } from "./chat-queued-event.service";
 import {
   projectUserMessage,

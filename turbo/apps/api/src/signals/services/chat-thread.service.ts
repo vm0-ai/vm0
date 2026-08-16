@@ -51,12 +51,12 @@ import {
 import { zodEnumDriverValueDecoder } from "../../lib/db-structured-result";
 import { now } from "../../lib/time";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
-import { inferMimetype } from "./zero-chat-event-shared.service";
+import { inferMimetype } from "./chat-event-shared.service";
 import { latestRunFinishEventSubquery } from "./chat-thread-read-state-query";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
-} from "./zero-chat-thread-event.service";
+} from "./chat-thread-event.service";
 import { cancelRun$, type CancelRunResult } from "./run-cancel.service";
 import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./chat-active-run.service";
@@ -203,7 +203,7 @@ function ownedChatThread(
   });
 }
 
-export function zeroChatThreadDraft(args: {
+export function chatThreadDraft(args: {
   readonly threadId: string;
   readonly userId: string;
 }): Computed<Promise<ChatThreadDraft | null>> {
@@ -229,7 +229,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 const INDICATOR_UNREAD_LIMIT = 50;
 const INDICATOR_UNREAD_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
-const zeroIndicatorDecoder = zodEnumDriverValueDecoder(zeroIndicatorSchema);
+const indicatorDecoder = zodEnumDriverValueDecoder(zeroIndicatorSchema);
 
 function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
   return notExists(
@@ -283,7 +283,7 @@ function ownedChatThreadDetail(
   });
 }
 
-export function zeroChatThreadDetail(args: {
+export function chatThreadDetail(args: {
   readonly threadId: string;
   readonly userId: string;
 }): Computed<Promise<ChatThreadDetail | null>> {
@@ -309,7 +309,7 @@ export function zeroChatThreadDetail(args: {
  * the latest run-finish marker. A thread is unread only when it has at least
  * one run-finish marker and that marker is newer than the read watermark.
  */
-export function zeroChatThreadUnreads(args: {
+export function chatThreadUnreads(args: {
   readonly userId: string;
   readonly agentComposeId: string;
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
@@ -349,7 +349,7 @@ export function zeroChatThreadUnreads(args: {
  * snapshot. Unread agent aggregates take precedence so unread actions remain
  * available while another thread for the same agent is active.
  */
-export function zeroChatIndicators(args: {
+export function chatIndicators(args: {
   readonly userId: string;
   readonly orgId: string;
 }): Computed<Promise<ZeroIndicators>> {
@@ -412,18 +412,14 @@ export function zeroChatIndicators(args: {
           .select({
             threadId: activeThreads.threadId,
             agentId: activeThreads.agentId,
-            indicator: sql`'active'`
-              .mapWith(zeroIndicatorDecoder)
-              .as("indicator"),
+            indicator: sql`'active'`.mapWith(indicatorDecoder).as("indicator"),
           })
           .from(activeThreads),
         db
           .select({
             threadId: unreadThreads.threadId,
             agentId: unreadThreads.agentId,
-            indicator: sql`'unread'`
-              .mapWith(zeroIndicatorDecoder)
-              .as("indicator"),
+            indicator: sql`'unread'`.mapWith(indicatorDecoder).as("indicator"),
           })
           .from(unreadThreads),
       ),
@@ -449,7 +445,7 @@ export function zeroChatIndicators(args: {
  * Thread ids owned by the user that currently hold an unsent composer draft
  * (a canonical user message with optional `draftAttachments`).
  */
-export function zeroChatThreadDraftIds(args: {
+export function chatThreadDraftIds(args: {
   readonly userId: string;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get): Promise<readonly string[]> => {
@@ -469,7 +465,7 @@ export function zeroChatThreadDraftIds(args: {
   });
 }
 
-function loadZeroChatThreadArtifactRows(
+function loadChatThreadArtifactRows(
   db: ReadonlyDb,
   args: { readonly threadId: string; readonly userId: string },
 ) {
@@ -517,7 +513,7 @@ function loadZeroChatThreadArtifactRows(
     .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
 }
 
-export function zeroChatThreadArtifacts(args: {
+export function chatThreadArtifacts(args: {
   readonly threadId: string;
   readonly userId: string;
 }): Computed<Promise<readonly ChatThreadArtifactRun[] | null>> {
@@ -529,7 +525,7 @@ export function zeroChatThreadArtifacts(args: {
       }
 
       const db = get(db$);
-      const rows = await loadZeroChatThreadArtifactRows(db, args);
+      const rows = await loadChatThreadArtifactRows(db, args);
 
       const hostedArtifactRunIds = new Set(
         rows

@@ -28,7 +28,7 @@ import { publishFirstAssistantEventCreatedSafely } from "./zero-chat-first-assis
 import {
   appendChatThreadEvent,
   type ChatThreadEventTransaction,
-} from "./zero-chat-thread-event.service";
+} from "./chat-thread-event.service";
 
 const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   png: "image/png",

@@ -57,7 +57,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { downloadS3Buffer, putS3Object } from "../external/s3";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "./chat-thread-event.service";
 import type { Tx } from "../../lib/db-types";
 
 const COMPUTER_USE_HOST_CLOSED_AFTER_MS = 90 * 1000;

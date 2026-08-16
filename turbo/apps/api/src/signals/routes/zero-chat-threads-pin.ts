@@ -10,7 +10,7 @@ import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
-import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "../services/chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {

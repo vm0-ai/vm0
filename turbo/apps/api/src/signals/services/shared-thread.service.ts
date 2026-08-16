@@ -17,7 +17,7 @@ import {
 } from "../../lib/shared-thread-artifact";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
+import { visibleChatEventCondition } from "./chat-event-shared.service";
 import { generateSharedThreadTitle } from "./zero-chat-title.service";
 import { projectUserMessageForPublicShare } from "./chat-user-message.service";
 import {
