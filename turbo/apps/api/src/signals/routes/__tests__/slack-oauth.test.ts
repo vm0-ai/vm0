@@ -6,7 +6,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { zeroSlackOauthRoutes } from "../zero-slack-oauth";
+import { slackOauthRoutes } from "../slack-oauth";
 import {
   countSlackOrgConnections$,
   deleteSlackConnectOrg$,
@@ -33,7 +33,7 @@ async function appRequest(
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: zeroSlackOauthRoutes,
+    routes: slackOauthRoutes,
   });
   return await app.request(`${options.origin ?? "http://api.test"}${path}`, {
     method: "GET",

@@ -648,7 +648,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
-export const zeroSlackOauthRoutes: readonly RouteEntry[] = [
+export const slackOauthRoutes: readonly RouteEntry[] = [
   {
     route: zeroSlackOauthContract.install,
     handler: installOauth$,

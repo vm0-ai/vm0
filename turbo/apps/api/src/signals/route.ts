@@ -147,7 +147,7 @@ import { integrationsGithubDownloadFileRoutes } from "./routes/integrations-gith
 import { integrationsGithubUploadCompleteRoutes } from "./routes/integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "./routes/integrations-github-upload-init";
 import { integrationsFeishuFileRoutes } from "./routes/integrations-feishu-files";
-import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
+import { integrationsSlackRoutes } from "./routes/integrations-slack";
 import { integrationsSlackMessageRoutes } from "./routes/integrations-slack-message";
 import { integrationsFeishuMessageRoutes } from "./routes/integrations-feishu-message";
 import { integrationsSlackUploadCompleteRoutes } from "./routes/integrations-slack-upload-complete";
@@ -163,14 +163,14 @@ import { integrationsTelegramUploadCompleteRoutes } from "./routes/integrations-
 import { integrationsTelegramUploadInitRoutes } from "./routes/integrations-telegram-upload-init";
 import { slackChannelsRoutes } from "./routes/slack-channels";
 import { slackCommandsRoutes } from "./routes/slack-commands";
-import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
+import { slackConnectRoutes } from "./routes/slack-connect";
 import { slackEventsRoutes } from "./routes/slack-events";
 import { slackInteractiveRoutes } from "./routes/slack-interactive";
-import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
-import { zeroFeishuBrowserConnectRoutes } from "./routes/zero-feishu-browser-connect";
-import { zeroFeishuConnectRoutes } from "./routes/zero-feishu-connect";
+import { slackOauthRoutes } from "./routes/slack-oauth";
+import { feishuBrowserConnectRoutes } from "./routes/feishu-browser-connect";
+import { feishuConnectRoutes } from "./routes/feishu-connect";
 import { feishuEventsRoutes } from "./routes/feishu-events";
-import { zeroFeishuOauthRoutes } from "./routes/zero-feishu-oauth";
+import { feishuOauthRoutes } from "./routes/feishu-oauth";
 import { steamPlayerRoutes } from "./routes/steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
@@ -339,15 +339,15 @@ export const ROUTES: readonly RouteEntry[] = [
   ...workflowAutomationsRoutes,
   ...strapiIntegrationsRoutes,
   ...integrationsGithubRoutes,
-  ...zeroSlackConnectRoutes,
-  ...zeroSlackOauthRoutes,
+  ...slackConnectRoutes,
+  ...slackOauthRoutes,
   ...slackCommandsRoutes,
   ...slackEventsRoutes,
   ...slackInteractiveRoutes,
-  ...zeroFeishuBrowserConnectRoutes,
-  ...zeroFeishuConnectRoutes,
+  ...feishuBrowserConnectRoutes,
+  ...feishuConnectRoutes,
   ...feishuEventsRoutes,
-  ...zeroFeishuOauthRoutes,
+  ...feishuOauthRoutes,
   ...zeroTeamsBrowserConnectRoutes,
   ...zeroTeamsBotRoutes,
   ...zeroTeamsConnectRoutes,
@@ -361,7 +361,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
   ...integrationsFeishuFileRoutes,
-  ...zeroIntegrationsSlackRoutes,
+  ...integrationsSlackRoutes,
   ...integrationsSlackMessageRoutes,
   ...integrationsFeishuMessageRoutes,
   ...integrationsSlackUploadCompleteRoutes,

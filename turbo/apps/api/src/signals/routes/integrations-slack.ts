@@ -687,7 +687,7 @@ const slackDownloadAuth = {
   requiredCapability: "slack:write",
 } as const;
 
-export const zeroIntegrationsSlackRoutes: readonly RouteEntry[] = [
+export const integrationsSlackRoutes: readonly RouteEntry[] = [
   {
     route: zeroIntegrationsSlackContract.getStatus,
     handler: authRoute(slackReadAuth, getSlackStatusInner$),
