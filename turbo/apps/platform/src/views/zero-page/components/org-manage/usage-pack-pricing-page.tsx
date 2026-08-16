@@ -1793,21 +1793,13 @@ function SubscriptionComparisonTable({
 
 function SubscriptionChangeNotice({
   description,
-  downgrade = false,
   effectiveAt,
 }: {
   readonly description: string;
-  readonly downgrade?: boolean;
   readonly effectiveAt: string;
 }) {
   return (
-    <div
-      className={
-        downgrade
-          ? `mb-5 mt-3 rounded-lg px-3 py-2 text-sm leading-relaxed ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS}`
-          : "mt-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-sm leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300"
-      }
-    >
+    <div className="mt-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-sm leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
       <p>{description}</p>
       <p className="mt-1 font-medium">
         {i18n.t(
@@ -1821,19 +1813,27 @@ function SubscriptionChangeNotice({
   );
 }
 
-function ScheduledUsagePackDowngradeNotice({
+function UsagePackDowngradeNotice({
+  className = "",
   effectiveAt,
+  scheduled = false,
 }: {
+  readonly className?: string;
   readonly effectiveAt: string;
+  readonly scheduled?: boolean;
 }) {
-  const title = i18n.t(($) => {
-    return $.billing.plans.usagePacks.management.scheduledDowngradeTitle;
-  });
+  const title = scheduled
+    ? i18n.t(($) => {
+        return $.billing.plans.usagePacks.management.scheduledDowngradeTitle;
+      })
+    : i18n.t(($) => {
+        return $.billing.plans.downgrade;
+      });
   return (
     <div
       role="status"
       aria-label={title}
-      className={`flex items-center gap-3 rounded-xl p-3 ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS}`}
+      className={`flex items-center gap-3 rounded-xl p-3 ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS} ${className}`}
     >
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-yellow-100/80 text-yellow-700 dark:bg-yellow-400/15 dark:text-yellow-300">
         <CalendarDays aria-hidden="true" className="size-4" />
@@ -2242,17 +2242,15 @@ function ManagedSubscriptionOrderSummary({
       className={scheduledDowngradeEffectiveAt ? "pb-5" : undefined}
     >
       {scheduledDowngradeEffectiveAt ? (
-        <ScheduledUsagePackDowngradeNotice
+        <UsagePackDowngradeNotice
           effectiveAt={scheduledDowngradeEffectiveAt}
+          scheduled
         />
       ) : (
         hasDowngrade &&
         management.currentPeriodEnd && (
-          <SubscriptionChangeNotice
-            description={i18n.t(($) => {
-              return $.billing.plans.usagePacks.management.downgradeDescription;
-            })}
-            downgrade
+          <UsagePackDowngradeNotice
+            className="mb-5 mt-3"
             effectiveAt={management.currentPeriodEnd}
           />
         )

@@ -981,7 +981,6 @@
           "comparisonDescription": "現在のサブスクリプションと今回の選択を並べて比較",
           "comparisonTitle": "サブスクリプションの比較",
           "current": "現在",
-          "downgradeDescription": "下位パッケージは次回請求日から開始します。既存のクレジットは有効期限まで利用できます。",
           "downgradesToDate": "{{date}}に{{package}}へダウングレードします。",
           "downgradesToPeriod": "次回請求日に{{package}}へダウングレードします。",
           "everyMonth": "毎月",

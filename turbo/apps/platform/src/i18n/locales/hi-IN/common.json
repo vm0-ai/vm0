@@ -981,7 +981,6 @@
           "comparisonDescription": "आपका मौजूदा सब्सक्रिप्शन और यह चयन, साथ-साथ",
           "comparisonTitle": "सब्सक्रिप्शन की तुलना",
           "current": "वर्तमान",
-          "downgradeDescription": "कम पैकेज अगली बिलिंग तारीख से शुरू होगा। मौजूदा क्रेडिट अपनी समाप्ति तक उपलब्ध रहेंगे।",
           "downgradesToDate": "{{date}} को {{package}} पर डाउनग्रेड होगा।",
           "downgradesToPeriod": "अगली बिलिंग तारीख पर {{package}} पर डाउनग्रेड होगा।",
           "everyMonth": "हर महीने",

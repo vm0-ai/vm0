@@ -2521,16 +2521,16 @@ describe("organization billing settings", () => {
         name: /Monthly total \$180\/month \$20\/month/u,
       }),
     ).toBeInTheDocument();
-    const downgradeDescription = within(orderSummary).getByText(
-      "The lower package starts at the next billing date. Existing credits remain available until they expire.",
-    );
-    expect(downgradeDescription.parentElement).toHaveClass(
-      "bg-yellow-50/70",
-      "mb-5",
+    const downgradeNotice = within(orderSummary).getByRole("status", {
+      name: "Downgrade",
+    });
+    expect(downgradeNotice).toHaveClass("bg-yellow-50/70", "mb-5");
+    expect(downgradeNotice).toHaveTextContent(
+      "Lower package starts Apr 1, 2026 · Existing credits remain available until they expire",
     );
     expect(
-      within(orderSummary).getByText("Scheduled for Apr 1, 2026"),
-    ).toBeInTheDocument();
+      downgradeNotice.firstElementChild?.querySelector("svg"),
+    ).not.toBeNull();
     click(buttonByText("Confirm", orderSummary));
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
