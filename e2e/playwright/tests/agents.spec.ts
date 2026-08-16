@@ -114,7 +114,22 @@ test("pinned agents use four equal columns without horizontal overflow", async (
   }
 
   await mockPinnedAgentGrid(page, defaultAgentId);
-  await page.reload();
+  await Promise.all([
+    ...[
+      "/api/okou/feature-switches",
+      "/api/okou/onboarding/status",
+      "/api/okou/team",
+      "/api/okou/user-preferences",
+    ].map((pathname) => {
+      return page.waitForResponse((response) => {
+        return (
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname === pathname
+        );
+      });
+    }),
+    page.reload(),
+  ]);
 
   const grid = page.getByTestId("pinned-agents-grid");
   const cards = grid.getByTestId("pinned-agent-card");
