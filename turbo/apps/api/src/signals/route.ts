@@ -104,8 +104,8 @@ import { zeroMailRoutes } from "./routes/zero-mail";
 import { mapsRoutes } from "./routes/maps";
 import { mcpConnectorsRoutes } from "./routes/mcp-connectors";
 import { weatherRoutes } from "./routes/weather";
-import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
-import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gateways";
+import { modelPoliciesRoutes } from "./routes/model-policies";
+import { modelProviderGatewayRoutes } from "./routes/model-provider-gateways";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { onboardingCompleteRoutes } from "./routes/onboarding-complete";
 import { onboardingStatusRoutes } from "./routes/onboarding-status";
@@ -123,11 +123,11 @@ import { translationRoutes } from "./routes/translation";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
-import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
-import { zeroMeModelProviderAccountRoutes } from "./routes/zero-me-model-provider-accounts";
-import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
-import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
-import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
+import { meModelProvidersDeleteRoutes } from "./routes/me-model-providers-delete";
+import { meModelProviderAccountRoutes } from "./routes/me-model-provider-accounts";
+import { meModelProvidersListRoutes } from "./routes/me-model-providers-list";
+import { meModelProvidersResetSubscriptionRoutes } from "./routes/me-model-providers-reset-subscription";
+import { meModelProvidersUpsertRoutes } from "./routes/me-model-providers-upsert";
 import { scrapeRoutes } from "./routes/scrape";
 import { peopleSearchRoutes } from "./routes/people-search";
 import { webSearchRoutes } from "./routes/web-search";
@@ -303,14 +303,14 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webSearchRoutes,
   ...browserRoutes,
   ...browserAuthorizationRoutes,
-  ...zeroModelPoliciesRoutes,
-  ...zeroModelProviderGatewayRoutes,
+  ...modelPoliciesRoutes,
+  ...modelProviderGatewayRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroMeModelProvidersDeleteRoutes,
-  ...zeroMeModelProviderAccountRoutes,
-  ...zeroMeModelProvidersListRoutes,
-  ...zeroMeModelProvidersResetSubscriptionRoutes,
-  ...zeroMeModelProvidersUpsertRoutes,
+  ...meModelProvidersDeleteRoutes,
+  ...meModelProviderAccountRoutes,
+  ...meModelProvidersListRoutes,
+  ...meModelProvidersResetSubscriptionRoutes,
+  ...meModelProvidersUpsertRoutes,
   ...voiceIoQuotaRoutes,
   ...voiceIoSpeechRoutes,
   ...voiceIoSttRoutes,

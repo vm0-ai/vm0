@@ -76,7 +76,7 @@ import { integrationsTelegramRoutes } from "../../integrations-telegram";
 import { integrationsTelegramMessageRoutes } from "../../integrations-telegram-message";
 import { integrationsTelegramUploadCompleteRoutes } from "../../integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "../../integrations-telegram-upload-init";
-import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { slackChannelsRoutes } from "../../slack-channels";
 import { slackCommandsRoutes } from "../../slack-commands";
@@ -106,7 +106,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,
   ...integrationsTelegramRoutes,
-  ...zeroModelPoliciesRoutes,
+  ...modelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...slackChannelsRoutes,
   ...slackCommandsRoutes,
@@ -1223,7 +1223,7 @@ export function createBddIntegrationApi(context: TestContext) {
         [200, 201],
       );
       await accept(
-        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+        setupApp({ context, routes: modelPoliciesRoutes })(
           zeroModelPoliciesMainContract,
         ).update({
           headers: authenticate(context, routeMocks, actor),

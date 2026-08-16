@@ -81,7 +81,7 @@ import { chatThreadRoutes } from "../../chat-threads";
 import { chatThreadUnpinRoutes } from "../../chat-threads-unpin";
 import { chatThreadsArtifactsSyncRoutes } from "../../chat-threads-artifacts-sync";
 import { hostRoutes } from "../../host";
-import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { modelPoliciesRoutes } from "../../model-policies";
 import { uploadsCompleteRoutes } from "../../uploads-complete";
 import { uploadsPrepareRoutes } from "../../uploads-prepare";
 import { userModelPreferenceRoutes } from "../../user-model-preference";
@@ -207,7 +207,7 @@ const chatFilesRoutes = [
   ...uploadsPrepareRoutes,
   ...uploadsCompleteRoutes,
   ...hostRoutes,
-  ...zeroModelPoliciesRoutes,
+  ...modelPoliciesRoutes,
   ...userModelPreferenceRoutes,
 ] as const;
 

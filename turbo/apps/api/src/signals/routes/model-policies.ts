@@ -68,7 +68,7 @@ const updateModelPoliciesInner$ = command(
   },
 );
 
-export const zeroModelPoliciesRoutes: readonly RouteEntry[] = [
+export const modelPoliciesRoutes: readonly RouteEntry[] = [
   {
     route: zeroModelPoliciesMainContract.list,
     handler: authRoute(

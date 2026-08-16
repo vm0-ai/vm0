@@ -62,7 +62,7 @@ const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: refreshed };
 });
 
-export const zeroMeModelProvidersListRoutes: readonly RouteEntry[] = [
+export const meModelProvidersListRoutes: readonly RouteEntry[] = [
   {
     route: zeroPersonalModelProvidersMainContract.list,
     handler: authRoute(

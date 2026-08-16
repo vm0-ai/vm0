@@ -57,14 +57,14 @@ import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 import { billingStatusRoutes } from "../billing-status";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorsRoutes } from "../connectors";
-import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
-import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
+import { meModelProvidersListRoutes } from "../me-model-providers-list";
+import { meModelProvidersUpsertRoutes } from "../me-model-providers-upsert";
 import { orgReadRoutes } from "../org-read";
 import { userPreferencesRoutes } from "../user-preferences";
 
 const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
-  ...zeroMeModelProvidersListRoutes,
-  ...zeroMeModelProvidersUpsertRoutes,
+  ...meModelProvidersListRoutes,
+  ...meModelProvidersUpsertRoutes,
 ]);
 
 // HTTP-level benchmarks for side-effect-free GET routes that showed elevated

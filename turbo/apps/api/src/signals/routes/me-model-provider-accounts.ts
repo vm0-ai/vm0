@@ -134,7 +134,7 @@ const auth = {
   missingOrganizationStatus: 401,
 } as const;
 
-export const zeroMeModelProviderAccountRoutes: readonly RouteEntry[] = [
+export const meModelProviderAccountRoutes: readonly RouteEntry[] = [
   {
     route: zeroPersonalModelProviderAccountsByIdContract.activate,
     handler: authRoute(auth, activateInner$),

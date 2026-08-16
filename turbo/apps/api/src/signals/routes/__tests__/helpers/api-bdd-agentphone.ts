@@ -30,7 +30,7 @@ import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-
 import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
 import { logsRoutes } from "../../logs";
-import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 
 const TEST_APP_ROUTES = Object.freeze([
@@ -38,7 +38,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...integrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
   ...logsRoutes,
-  ...zeroModelPoliciesRoutes,
+  ...modelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
 ]);
 
@@ -465,7 +465,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
         },
       ];
       await accept(
-        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+        setupApp({ context, routes: modelPoliciesRoutes })(
           zeroModelPoliciesMainContract,
         ).update({
           headers: authenticate(context, actor),

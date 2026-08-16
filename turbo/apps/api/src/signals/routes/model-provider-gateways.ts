@@ -117,7 +117,7 @@ const deleteConnectionInner$ = command(
   },
 );
 
-export const zeroModelProviderGatewayRoutes: readonly RouteEntry[] = [
+export const modelProviderGatewayRoutes: readonly RouteEntry[] = [
   {
     route: zeroModelProviderConnectionsMainContract.list,
     handler: authRoute(
