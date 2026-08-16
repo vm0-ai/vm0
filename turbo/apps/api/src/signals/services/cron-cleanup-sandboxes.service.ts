@@ -21,7 +21,7 @@ import {
   cleanupQueuedRunLaunchOrphans$,
   drainStaleQueues$,
   type QueuedRunMaintenanceTimeout,
-} from "./zero-run-queue.service";
+} from "./run-queue.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainStaleChatThreadQueues$ } from "./chat-thread-queue-drain.service";
 import type { QueueMarkerRevokeNotification } from "./chat-queue-marker.service";

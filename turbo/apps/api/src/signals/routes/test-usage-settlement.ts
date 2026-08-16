@@ -12,7 +12,7 @@ import type { RouteEntry } from "../route-entry";
 import { checkBillableOperationCredits$ } from "../services/billable-operation-admission.service";
 import { createUsagePackCreditGrant } from "../services/usage-pack-credit.service";
 import { processOrgUsageEvents$ } from "../services/credit-usage.service";
-import { checkOrgCreditsForRunAdmission } from "../services/zero-run-admission.service";
+import { checkOrgCreditsForRunAdmission } from "../services/run-admission.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,

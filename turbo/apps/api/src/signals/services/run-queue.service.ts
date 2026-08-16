@@ -42,7 +42,7 @@ import {
 } from "./agent-run-activation.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 
-const L = logger("ZeroRunQueue");
+const L = logger("RunQueue");
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_EXPIRED_REASON = "Queued run expired (exceeded queue TTL)";
