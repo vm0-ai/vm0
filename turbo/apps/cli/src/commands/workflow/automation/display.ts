@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { GmailNewMessageEventConfig } from "@okouai/api-contracts/contracts/zero-workflows";
-import type { ZeroWorkflowAutomationSummary } from "../../../lib/api/domains/zero-workflows";
+import type { WorkflowAutomationSummary } from "../../../lib/api/domains/workflows";
 import { formatRelativeTime } from "../../../lib/domain/relative-time";
 import { formatDurationSeconds } from "../../shared/duration";
 
@@ -34,22 +34,22 @@ const GMAIL_TEXT_FIELDS: readonly GmailTextField[] = [
 ];
 
 type WorkflowWebhookAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
 type WorkflowNotionChildPageAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "notion-child-page-created" }
 >;
 type WorkflowNotionDatabaseItemAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType: "notion-database-item-created";
   }
 >;
 type WorkflowNotionPageContentUpdatedAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType: "notion-page-content-updated";
@@ -68,15 +68,15 @@ function chatRunFinishedKindLabel(eventConfig: {
 }
 
 type WorkflowStrapiAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "strapi-entry-published" }
 >;
 type WorkflowStripeInvoicePaidAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "stripe-invoice-paid" }
 >;
 type WorkflowGoogleFormsAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType: "google-forms-response-submitted";
@@ -84,7 +84,7 @@ type WorkflowGoogleFormsAutomationSummary = Extract<
 >;
 
 function isWebhookAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is WorkflowWebhookAutomationSummary {
   return (
     automation.kind === "event" && automation.eventType === "webhook-received"
@@ -92,7 +92,7 @@ function isWebhookAutomation(
 }
 
 function isNotionChildPageAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is WorkflowNotionChildPageAutomationSummary {
   return (
     automation.kind === "event" &&
@@ -101,7 +101,7 @@ function isNotionChildPageAutomation(
 }
 
 function isNotionDatabaseItemAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is WorkflowNotionDatabaseItemAutomationSummary {
   return (
     automation.kind === "event" &&
@@ -110,7 +110,7 @@ function isNotionDatabaseItemAutomation(
 }
 
 function isNotionPageContentUpdatedAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is WorkflowNotionPageContentUpdatedAutomationSummary {
   return (
     automation.kind === "event" &&
@@ -128,9 +128,9 @@ function formatStrapiAutomation(
 }
 
 function isGoogleCalendarAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType:
@@ -148,7 +148,7 @@ function isGoogleCalendarAutomation(
 }
 
 function isGoogleFormsAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is WorkflowGoogleFormsAutomationSummary {
   return (
     automation.kind === "event" &&
@@ -157,7 +157,7 @@ function isGoogleFormsAutomation(
 }
 
 function isStripeInvoicePaidAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is WorkflowStripeInvoicePaidAutomationSummary {
   return (
     automation.kind === "event" &&
@@ -202,7 +202,7 @@ function printStripeDeliveryWarning(
 }
 
 function printStripeInvoicePaidAutomationDetails(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): void {
   if (!isStripeInvoicePaidAutomation(automation)) {
     return;
@@ -322,7 +322,7 @@ function formatNotionContentUpdatedScopeUrl(
 }
 
 function formatGoogleAutomationEntry(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string | null {
   if (automation.kind !== "event") {
     return null;
@@ -344,7 +344,7 @@ function formatGoogleAutomationEntry(
 }
 
 function formatWorkflowAutomationEntry(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
   options: WorkflowAutomationsTableOptions = {},
 ): string {
   if (
@@ -399,7 +399,7 @@ function formatRunTime(value: string | null): string {
 }
 
 function workflowAutomationKindLabel(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string {
   if (automation.kind !== "event") {
     return formatWorkflowAutomationEntry(automation);
@@ -444,7 +444,7 @@ function workflowAutomationKindLabel(
 }
 
 function googleAutomationKindLabel(
-  automation: Extract<ZeroWorkflowAutomationSummary, { kind: "event" }>,
+  automation: Extract<WorkflowAutomationSummary, { kind: "event" }>,
 ): string | null {
   switch (automation.eventType) {
     case "google-calendar-event-created":
@@ -480,7 +480,7 @@ function signedCurlExample(
 }
 
 export function printWorkflowAutomationsTable(
-  automations: readonly ZeroWorkflowAutomationSummary[],
+  automations: readonly WorkflowAutomationSummary[],
   options: WorkflowAutomationsTableOptions = {},
 ): void {
   const idWidth = Math.max(
@@ -539,7 +539,7 @@ export function printWorkflowAutomationsTable(
   }
 }
 
-function printGithubFilters(automation: ZeroWorkflowAutomationSummary): void {
+function printGithubFilters(automation: WorkflowAutomationSummary): void {
   if (automation.kind !== "event") {
     return;
   }
@@ -640,7 +640,7 @@ function stripeRecreateCommand(
 }
 
 function automationUpdateGuidance(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
   workflowId: string,
 ): {
   readonly label: string;
@@ -694,7 +694,7 @@ function automationUpdateGuidance(
 }
 
 function printManagementCommands(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
   options: WorkflowAutomationDetailsOptions,
 ): void {
   if (!options.workflowId) {
@@ -778,7 +778,7 @@ export function printWorkflowAutomationThreadModel(
 }
 
 function printGoogleFormsAutomationDetails(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): void {
   if (!isGoogleFormsAutomation(automation)) {
     return;
@@ -792,7 +792,7 @@ function printGoogleFormsAutomationDetails(
 }
 
 function printGithubPullRequestDetails(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): void {
   if (
     automation.kind !== "event" ||
@@ -816,7 +816,7 @@ function printGithubPullRequestDetails(
 }
 
 export function printWorkflowAutomationDetails(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
   options: WorkflowAutomationDetailsOptions = {},
 ): void {
   const status = automation.enabled

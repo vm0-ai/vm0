@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
-import { searchZeroChat } from "../../lib/api/domains/zero-chat";
+import { searchChat } from "../../lib/api/domains/chat";
 import type {
   ChatSearchMessage,
   ChatSearchResponse,
@@ -155,7 +155,7 @@ async function runChatSource(
       ? parseTime(options.since)
       : Date.now() - SEVEN_DAYS_MS;
 
-  const response = await searchZeroChat({
+  const response = await searchChat({
     keyword: query,
     agentId: options.agent,
     since,

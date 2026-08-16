@@ -3,7 +3,7 @@ import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export async function linkZeroMailDraft(args: {
+export async function linkMailDraft(args: {
   readonly threadId: string;
   readonly agentId: string;
   readonly gmailDraftId: string;

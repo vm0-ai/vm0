@@ -12,9 +12,9 @@ import {
   printBrowserPermissionGuidance,
 } from "./browser-guidance";
 import { ApiRequestError } from "../../lib/api/core/client-factory";
-import { createBrowserAuthorizationRequest } from "../../lib/api/domains/zero-browser";
-import { createComputerUseAuthorizationRequest } from "../../lib/api/domains/zero-computer-use";
-import { diagnoseConnectorCheck } from "../../lib/api/domains/zero-connectors";
+import { createBrowserAuthorizationRequest } from "../../lib/api/domains/browser";
+import { createComputerUseAuthorizationRequest } from "../../lib/api/domains/computer-use";
+import { diagnoseConnectorCheck } from "../../lib/api/domains/connectors";
 import { getOkouAgentId, getOkouToken } from "../../lib/okou-env";
 import {
   addRequestedCallbackSearchParams,

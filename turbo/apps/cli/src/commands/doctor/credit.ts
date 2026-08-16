@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
 
-import { getZeroBillingStatus } from "../../lib/api/domains/zero-billing";
-import { getZeroOrg } from "../../lib/api/domains/zero-orgs";
+import { getBillingStatus } from "../../lib/api/domains/billing";
+import { getOrg } from "../../lib/api/domains/orgs";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "./platform-url";
 import {
@@ -17,8 +17,8 @@ export const creditCommand = new Command()
   .action(
     withErrorHandler(async () => {
       const [org, billing, platformOrigin] = await Promise.all([
-        getZeroOrg(),
-        getZeroBillingStatus(),
+        getOrg(),
+        getBillingStatus(),
         getPlatformOrigin(),
       ]);
       const planCanBuyCredits = currentPlanCanBuyCredits(billing);

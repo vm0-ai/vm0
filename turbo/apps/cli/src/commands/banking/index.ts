@@ -2,9 +2,9 @@ import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
 import {
-  callZeroBanking,
-  type ZeroBankingResponse,
-} from "../../lib/api/domains/zero-banking";
+  callBanking,
+  type BankingResponse,
+} from "../../lib/api/domains/banking";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface JsonOption {
@@ -37,10 +37,7 @@ function parseDateOnly(value: string): string {
   return value;
 }
 
-function renderBankingResponse(
-  label: string,
-  response: ZeroBankingResponse,
-): void {
+function renderBankingResponse(label: string, response: BankingResponse): void {
   console.log(chalk.green(`✓ ${label}`));
   console.log(chalk.dim(`  Provider: ${response.provider}`));
 
@@ -61,7 +58,7 @@ async function runBankingRequest(
   payload: Record<string, unknown>,
   options: JsonOption,
 ): Promise<void> {
-  const response = await callZeroBanking(operation, payload);
+  const response = await callBanking(operation, payload);
   if (options.json) {
     console.log(JSON.stringify(response));
     return;

@@ -7,7 +7,7 @@ import {
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export async function getZeroBillingStatus(): Promise<BillingStatusResponse> {
+export async function getBillingStatus(): Promise<BillingStatusResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroBillingStatusContract, config);
 
@@ -18,7 +18,7 @@ export async function getZeroBillingStatus(): Promise<BillingStatusResponse> {
   handleError(result, "Failed to get billing status");
 }
 
-export async function createZeroCreditCheckout(body: {
+export async function createCreditCheckout(body: {
   readonly credits: number;
   readonly successUrl: string;
   readonly cancelUrl: string;

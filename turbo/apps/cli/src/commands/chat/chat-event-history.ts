@@ -13,9 +13,9 @@ import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-r
 import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 import {
-  getZeroChatEventSnapshot,
-  listZeroChatEventRows,
-} from "../../lib/api/domains/zero-chat";
+  getChatEventSnapshot,
+  listChatEventRows,
+} from "../../lib/api/domains/chat";
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
@@ -197,7 +197,7 @@ async function syncRows(args: {
 }): Promise<"complete" | "expired"> {
   let cursor = args.cursor;
   for (;;) {
-    const page = await listZeroChatEventRows(
+    const page = await listChatEventRows(
       cursor.lastEventId === null
         ? {
             threadId: args.threadId,
@@ -284,7 +284,7 @@ async function rebuildRawChatHistory(args: {
     join(args.outputDirectory, ".okou-chat-history-"),
   );
   try {
-    const snapshot = await getZeroChatEventSnapshot({
+    const snapshot = await getChatEventSnapshot({
       threadId: args.threadId,
     });
     let cursor: ChatEventCursor = {

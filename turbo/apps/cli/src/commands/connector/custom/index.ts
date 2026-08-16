@@ -5,9 +5,9 @@ import {
   getZeroAgentCustomConnectorGrants,
 } from "../../../lib/api/domains/zero-agents";
 import {
-  getZeroCustomConnector,
-  listZeroCustomConnectors,
-} from "../../../lib/api/domains/zero-connectors";
+  getCustomConnector,
+  listCustomConnectors,
+} from "../../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { getOkouAgentId } from "../../../lib/okou-env";
 import { createCustomConnectorCommand } from "./create";
@@ -60,7 +60,7 @@ const listCommand = new Command()
   .action(
     withErrorHandler(async (options: { agent?: string }) => {
       const [connectors, agentCtx] = await Promise.all([
-        listZeroCustomConnectors(),
+        listCustomConnectors(),
         resolveCustomAgentContext(options.agent),
       ]);
       const idWidth = Math.max(
@@ -113,7 +113,7 @@ const statusCommand = new Command()
     withErrorHandler(
       async (connectorId: string, options: { agent?: string }) => {
         const [connector, agentCtx] = await Promise.all([
-          getZeroCustomConnector(connectorId),
+          getCustomConnector(connectorId),
           resolveCustomAgentContext(options.agent),
         ]);
         if (!connector) {

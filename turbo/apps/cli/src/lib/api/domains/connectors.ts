@@ -40,20 +40,20 @@ import type {
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export type ZeroConnector = ConnectorResponse;
+export type Connector = ConnectorResponse;
 type ZeroConnectorListResponse = ConnectorListResponse;
-export type ZeroConnectorCatalogItem =
+export type ConnectorCatalogItem =
   PublicConnectorCatalogListResponse["connectors"][number];
-export type ZeroConnectorCatalogStatus = PublicConnectorCatalogStatusItem;
+export type ConnectorCatalogStatus = PublicConnectorCatalogStatusItem;
 type ZeroConnectorCatalogListResponse = PublicConnectorCatalogListResponse;
 type ZeroConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
-export type ZeroConnectorCatalogPermissionDetail =
+export type ConnectorCatalogPermissionDetail =
   PublicConnectorCatalogPermissionDetail;
 
 /**
  * List all connectors for the authenticated user (zero proxy)
  */
-export async function listZeroConnectors(): Promise<ZeroConnectorListResponse> {
+export async function listConnectors(): Promise<ZeroConnectorListResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroConnectorsMainContract, config);
 
@@ -66,7 +66,7 @@ export async function listZeroConnectors(): Promise<ZeroConnectorListResponse> {
   handleError(result, "Failed to list connectors");
 }
 
-export async function listZeroConnectorCatalog(): Promise<ZeroConnectorCatalogListResponse> {
+export async function listConnectorCatalog(): Promise<ZeroConnectorCatalogListResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroConnectorCatalogContract, config);
 
@@ -79,7 +79,7 @@ export async function listZeroConnectorCatalog(): Promise<ZeroConnectorCatalogLi
   handleError(result, "Failed to list connector catalog");
 }
 
-export async function listZeroConnectorCatalogStatus(): Promise<ZeroConnectorCatalogStatusResponse> {
+export async function listConnectorCatalogStatus(): Promise<ZeroConnectorCatalogStatusResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroConnectorCatalogContract, config);
 
@@ -92,9 +92,9 @@ export async function listZeroConnectorCatalogStatus(): Promise<ZeroConnectorCat
   handleError(result, "Failed to list connector catalog status");
 }
 
-export async function getZeroConnectorCatalogPermissions(
+export async function getConnectorCatalogPermissions(
   connectorSlug: string,
-): Promise<ZeroConnectorCatalogPermissionDetail | null> {
+): Promise<ConnectorCatalogPermissionDetail | null> {
   const config = await getClientConfig();
   const client = initClient(zeroConnectorCatalogContract, config);
 
@@ -144,9 +144,9 @@ export async function diagnoseConnectorCheck(
  * Get a connector by slug (zero proxy)
  * Returns null if not connected (404 response)
  */
-export async function getZeroConnector(
+export async function getConnector(
   connectorSlug: ConnectorSlug,
-): Promise<ZeroConnector | null> {
+): Promise<Connector | null> {
   const config = await getClientConfig();
   const client = initClient(zeroConnectorsBySlugContract, config);
 
@@ -165,11 +165,11 @@ export async function getZeroConnector(
   handleError(result, `Failed to get connector "${connectorSlug}"`);
 }
 
-export async function connectZeroConnectorManualGrant(
+export async function connectConnectorManualGrant(
   connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
   values: Record<string, string>,
-): Promise<ZeroConnector> {
+): Promise<Connector> {
   const config = await getClientConfig();
   const client = initClient(zeroConnectorManualGrantContract, config);
 
@@ -185,7 +185,7 @@ export async function connectZeroConnectorManualGrant(
   handleError(result, `Failed to connect connector "${connectorSlug}"`);
 }
 
-export async function listZeroCustomConnectors(): Promise<
+export async function listCustomConnectors(): Promise<
   CustomConnectorResponse[]
 > {
   const config = await getClientConfig();
@@ -199,7 +199,7 @@ export async function listZeroCustomConnectors(): Promise<
   handleError(result, "Failed to list custom connectors");
 }
 
-export async function listZeroRunMcpConnectors(): Promise<McpConnector[]> {
+export async function listRunMcpConnectors(): Promise<McpConnector[]> {
   const config = await getClientConfig();
   const client = initClient(mcpConnectorsContract, config);
 
@@ -211,7 +211,7 @@ export async function listZeroRunMcpConnectors(): Promise<McpConnector[]> {
   handleError(result, "Failed to list MCP connectors for this run");
 }
 
-export async function createZeroCustomConnector(
+export async function createCustomConnector(
   body: CreateCustomConnectorBody,
 ): Promise<CustomConnectorResponse> {
   const config = await getClientConfig();
@@ -225,7 +225,7 @@ export async function createZeroCustomConnector(
   handleError(result, "Failed to create custom connector");
 }
 
-export async function getZeroCustomConnector(
+export async function getCustomConnector(
   id: string,
 ): Promise<CustomConnectorResponse | null> {
   const config = await getClientConfig();
@@ -242,7 +242,7 @@ export async function getZeroCustomConnector(
   handleError(result, `Failed to get custom connector "${id}"`);
 }
 
-export async function updateZeroCustomConnector(
+export async function updateCustomConnector(
   id: string,
   body: UpdateCustomConnectorBody,
 ): Promise<CustomConnectorResponse> {

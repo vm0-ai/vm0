@@ -1,8 +1,8 @@
 import chalk from "chalk";
-import type { ZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
-import { getZeroBillingStatus } from "../../../lib/api/domains/zero-billing";
+import type { ConnectorCatalogStatus } from "../../../lib/api/domains/connectors";
+import { getBillingStatus } from "../../../lib/api/domains/billing";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
-import { listZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
+import { listConnectorCatalogStatus } from "../../../lib/api/domains/connectors";
 import { getPlatformOrigin } from "../../doctor/platform-url";
 import {
   currentPlanAllowsVideo,
@@ -347,8 +347,8 @@ function getGenerationContext(
 
 function getGenerationConnectors(
   generationType: ConnectorGenerationType,
-  connectors: readonly ZeroConnectorCatalogStatus[],
-): ZeroConnectorCatalogStatus[] {
+  connectors: readonly ConnectorCatalogStatus[],
+): ConnectorCatalogStatus[] {
   return connectors
     .filter((connector) => {
       return connector.generation.includes(generationType);
@@ -358,9 +358,7 @@ function getGenerationConnectors(
     });
 }
 
-function formatAccount(
-  connector: ZeroConnectorCatalogStatus,
-): string | undefined {
+function formatAccount(connector: ConnectorCatalogStatus): string | undefined {
   if (connector.connection?.externalUsername) {
     return `@${connector.connection.externalUsername}`;
   }
@@ -409,7 +407,7 @@ function getAction(
 }
 
 function toCandidate(params: {
-  connector: ZeroConnectorCatalogStatus;
+  connector: ConnectorCatalogStatus;
   authorizedConnectorSlugs: Set<string> | null;
   agentId: string | undefined;
   platformOrigin: string;
@@ -632,12 +630,12 @@ export async function runLister(
   const agentId = getOkouAgentId();
   const [catalog, enabledConnectorSlugs, platformOrigin, billing] =
     await Promise.all([
-      listZeroConnectorCatalogStatus(),
+      listConnectorCatalogStatus(),
       agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
       getPlatformOrigin(),
       (generationType === "video" || generationType === "avatar-video") &&
       currentTokenCanReadBilling()
-        ? getZeroBillingStatus()
+        ? getBillingStatus()
         : Promise.resolve(null),
     ]);
   const authorizedConnectorSlugs = enabledConnectorSlugs

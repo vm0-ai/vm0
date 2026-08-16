@@ -30,7 +30,7 @@ export async function createBrowserAuthorizationRequest(): Promise<BrowserAuthor
   handleError(result, "Failed to create cloud browser authorization request");
 }
 
-export async function createZeroBrowser(
+export async function createBrowser(
   body: ZeroBrowserCreateRequest,
 ): Promise<{ browser: ZeroBrowserSession; cdpUrl: string }> {
   const result = await (await client()).create({ headers: {}, body });
@@ -40,7 +40,7 @@ export async function createZeroBrowser(
   handleError(result, "Failed to create a new managed browser");
 }
 
-export async function useZeroBrowser(): Promise<{
+export async function useBrowser(): Promise<{
   browser: ZeroBrowserSession;
   cdpUrl: string;
 }> {
@@ -56,7 +56,7 @@ export async function useZeroBrowser(): Promise<{
   handleError(result, "Failed to open the managed browser");
 }
 
-export async function leaseZeroBrowser(): Promise<ZeroBrowserSession> {
+export async function leaseBrowser(): Promise<ZeroBrowserSession> {
   const result = await (
     await client()
   ).lease({
@@ -69,7 +69,7 @@ export async function leaseZeroBrowser(): Promise<ZeroBrowserSession> {
   handleError(result, "Failed to extend the managed browser lease");
 }
 
-export async function getCurrentZeroBrowser(): Promise<ZeroBrowserSession> {
+export async function getCurrentBrowser(): Promise<ZeroBrowserSession> {
   const result = await (await client()).current({ headers: {} });
   if (result.status === 200) {
     return result.body.browser;

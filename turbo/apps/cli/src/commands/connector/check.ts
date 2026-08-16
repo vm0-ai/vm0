@@ -9,8 +9,8 @@ import type {
 import { getApiUrl } from "../../lib/api/config";
 import {
   diagnoseConnectorCheck,
-  getZeroConnector,
-} from "../../lib/api/domains/zero-connectors";
+  getConnector,
+} from "../../lib/api/domains/connectors";
 import { getZeroAgentUserConnectors } from "../../lib/api/domains/zero-agents";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getOkouAgentId } from "../../lib/okou-env";
@@ -557,7 +557,7 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   console.log("");
 
   const [connector, enabledConnectorSlugs] = await Promise.all([
-    getZeroConnector(ctx.connectorSlug),
+    getConnector(ctx.connectorSlug),
     ctx.agentId
       ? getZeroAgentUserConnectors(ctx.agentId)
       : Promise.resolve(null),

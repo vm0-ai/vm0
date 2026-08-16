@@ -17,9 +17,9 @@ import {
 } from "@okouai/core/feature-switch";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
-  type ZeroWorkflowAutomationCreateRequest,
-  type ZeroWorkflowAutomationSummary,
-  type ZeroWorkflowAutomationUpdateRequest,
+  type WorkflowAutomationCreateRequest,
+  type WorkflowAutomationSummary,
+  type WorkflowAutomationUpdateRequest,
   createWorkflowAutomation,
   deleteWorkflowAutomation,
   disableWorkflowAutomation,
@@ -28,11 +28,11 @@ import {
   listWorkspaceWorkflowAutomations,
   listWorkflowAutomations,
   updateWorkflowAutomation,
-} from "../../../lib/api/domains/zero-workflows";
-import { getZeroChatThread } from "../../../lib/api/domains/zero-chat";
-import { listZeroModelPolicies } from "../../../lib/api/domains/zero-model-policies";
+} from "../../../lib/api/domains/workflows";
+import { getChatThread } from "../../../lib/api/domains/chat";
+import { listModelPolicies } from "../../../lib/api/domains/model-policies";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
+import { decodeSandboxTokenPayload } from "../../../lib/api/sandbox-token";
 import { parseDurationSeconds } from "../../shared/duration";
 import {
   resolveWorkflowRef,
@@ -172,7 +172,7 @@ const STRIPE_INVOICE_BILLING_REASONS: readonly StripeInvoiceBillingReason[] = [
 ];
 
 function strapiIntegrationEnabled(): boolean {
-  const payload = decodeZeroTokenPayload();
+  const payload = decodeSandboxTokenPayload();
   return isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
     userId: payload?.userId,
     orgId: payload?.orgId,
@@ -182,7 +182,7 @@ function strapiIntegrationEnabled(): boolean {
 function stripeInvoicePaidWorkflowAutomationsEnabled(
   overrides?: FeatureSwitchContext["overrides"],
 ): boolean {
-  const payload = decodeZeroTokenPayload();
+  const payload = decodeSandboxTokenPayload();
   return isFeatureEnabled(
     FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations,
     {
@@ -206,18 +206,17 @@ function automationKinds(
 }
 
 async function loadWorkflowAutomationThreadModel(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): Promise<WorkflowAutomationThreadModel | undefined> {
   if (!automation.chatThreadId) {
     return undefined;
   }
 
-  const thread = await getZeroChatThread({
+  const thread = await getChatThread({
     threadId: automation.chatThreadId,
   });
   const modelId =
-    thread.selectedModel ??
-    (await listZeroModelPolicies()).workspaceDefaultModel;
+    thread.selectedModel ?? (await listModelPolicies()).workspaceDefaultModel;
   if (!modelId) {
     throw new Error(
       `Chat thread "${automation.chatThreadId}" has no available model`,
@@ -232,7 +231,7 @@ async function loadWorkflowAutomationThreadModel(
 }
 
 async function tryLoadWorkflowAutomationThreadModel(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): Promise<WorkflowAutomationThreadModel | undefined> {
   try {
     return await loadWorkflowAutomationThreadModel(automation);
@@ -898,7 +897,7 @@ function parseGithubPullRequestMerged(
 function buildGithubPullRequestEventConfig(
   options: AddOptions | UpdateOptions,
   existing?: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     { readonly kind: "event"; readonly eventType: "github-pull-request" }
   >,
 ) {
@@ -1025,7 +1024,7 @@ function parseProductionEnvironment(
 function buildGithubWorkflowRunCompletedEventConfig(
   options: AddOptions | UpdateOptions,
   existing?: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     {
       readonly kind: "event";
       readonly eventType: "github-workflow-run-completed";
@@ -1062,7 +1061,7 @@ function buildGithubWorkflowRunCompletedEventConfig(
 function buildGithubWorkflowJobCompletedEventConfig(
   options: AddOptions | UpdateOptions,
   existing?: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     {
       readonly kind: "event";
       readonly eventType: "github-workflow-job-completed";
@@ -1103,7 +1102,7 @@ function buildGithubWorkflowJobCompletedEventConfig(
 function buildGithubPullRequestReviewSubmittedEventConfig(
   options: AddOptions | UpdateOptions,
   existing?: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     {
       readonly kind: "event";
       readonly eventType: "github-pull-request-review-submitted";
@@ -1142,7 +1141,7 @@ function buildGithubPullRequestReviewSubmittedEventConfig(
 function buildGithubDeploymentStatusCreatedEventConfig(
   options: AddOptions | UpdateOptions,
   existing?: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     {
       readonly kind: "event";
       readonly eventType: "github-deployment-status-created";
@@ -1183,7 +1182,7 @@ function buildGithubDeploymentStatusCreatedEventConfig(
 function buildGithubIssueCommentCreatedEventConfig(
   options: AddOptions | UpdateOptions,
   existing?: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     {
       readonly kind: "event";
       readonly eventType: "github-issue-comment-created";
@@ -1214,7 +1213,7 @@ function buildGithubIssueCommentCreatedEventConfig(
 
 function buildGmailNewMessageCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (hasGmailLabelOption(options)) {
     throw new Error("--label only applies to label-applied event automations");
@@ -1233,7 +1232,7 @@ function buildGmailNewMessageCreateRequest(
 
 function buildGmailLabelAppliedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (hasGmailAutomationOptions(options)) {
     throw new Error(
@@ -1254,7 +1253,7 @@ function buildGmailLabelAppliedCreateRequest(
 
 function buildGithubPullRequestCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (hasGmailAutomationOptions(options)) {
     throw new Error(
@@ -1282,7 +1281,7 @@ function buildGithubPullRequestCreateRequest(
 
 function buildGithubWorkflowRunCompletedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (hasGmailAutomationOptions(options) || hasGmailLabelOption(options)) {
     throw new Error(
@@ -1332,7 +1331,7 @@ function assertGithubWebhookCreateOptions(
 
 function buildGithubWorkflowJobCompletedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertGithubWebhookCreateOptions(options, [
     "repository",
     "workflow",
@@ -1351,7 +1350,7 @@ function buildGithubWorkflowJobCompletedCreateRequest(
 
 function buildGithubPullRequestReviewSubmittedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertGithubWebhookCreateOptions(options, [
     "repository",
     "reviewState",
@@ -1368,7 +1367,7 @@ function buildGithubPullRequestReviewSubmittedCreateRequest(
 
 function buildGithubDeploymentStatusCreatedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertGithubWebhookCreateOptions(options, [
     "repository",
     "environment",
@@ -1387,7 +1386,7 @@ function buildGithubDeploymentStatusCreatedCreateRequest(
 
 function buildGithubIssueCommentCreatedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertGithubWebhookCreateOptions(options, [
     "repository",
     "subject",
@@ -1407,7 +1406,7 @@ function buildGoogleCalendarEventCreateRequest(
     | "google-calendar-event-updated"
     | "google-calendar-event-cancelled",
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (
     hasGmailAutomationOptions(options) ||
@@ -1457,7 +1456,7 @@ function buildGoogleCalendarEventCreateRequest(
 
 function buildGoogleFormsResponseSubmittedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (
     hasGmailAutomationOptions(options) ||
@@ -1491,7 +1490,7 @@ function buildGoogleFormsResponseSubmittedCreateRequest(
 
 function buildGoogleMeetTranscriptGeneratedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (hasEventAddOptions(options)) {
     throw new Error(
@@ -1511,7 +1510,7 @@ function buildGoogleMeetTranscriptGeneratedCreateRequest(
 
 function buildNotionChildPageCreatedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (
     hasGmailAutomationOptions(options) ||
@@ -1551,7 +1550,7 @@ function buildNotionChildPageCreatedCreateRequest(
 
 function buildNotionDatabaseItemCreatedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (
     hasGmailAutomationOptions(options) ||
@@ -1591,7 +1590,7 @@ function buildNotionDatabaseItemCreatedCreateRequest(
 
 function buildNotionPageContentUpdatedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (
     hasGmailAutomationOptions(options) ||
@@ -1675,7 +1674,7 @@ function parseChatRunFinishedStatuses(
 
 function buildChatRunFinishedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (
     hasGmailAutomationOptions(options) ||
@@ -1716,7 +1715,7 @@ function buildChatRunFinishedCreateRequest(
 
 function buildWebhookCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (hasEventAddOptions(options)) {
     throw new Error("Event automation flags only apply to event automations");
@@ -1734,7 +1733,7 @@ function buildWebhookCreateRequest(
 
 function buildStrapiEntryPublishedCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (
     hasGmailAutomationOptions(options) ||
@@ -1802,7 +1801,7 @@ function parseStripeInvoiceBillingReasons(
 
 function buildStripeInvoicePaidCreateRequest(
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
   if (hasEventAddOptions(options)) {
     throw new Error(
@@ -1827,7 +1826,7 @@ function buildStripeInvoicePaidCreateRequest(
 function buildScheduleCreateRequest(
   kind: string,
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   if (hasEventAddOptions(options)) {
     throw new Error("Event automation flags only apply to event automations");
   }
@@ -1837,7 +1836,7 @@ function buildScheduleCreateRequest(
 function buildNonStripeCreateRequest(
   kind: string,
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   switch (kind) {
     case "gmail-new-message":
       return buildGmailNewMessageCreateRequest(options);
@@ -1885,7 +1884,7 @@ function buildNonStripeCreateRequest(
 function buildCreateRequest(
   kind: string,
   options: AddOptions,
-): ZeroWorkflowAutomationCreateRequest {
+): WorkflowAutomationCreateRequest {
   if (kind === "stripe-invoice-paid") {
     return buildStripeInvoicePaidCreateRequest(options);
   }
@@ -1899,8 +1898,8 @@ function buildCreateRequest(
 
 function buildGithubAutomationEventUpdate(
   options: UpdateOptions,
-  existing: Extract<ZeroWorkflowAutomationSummary, { readonly kind: "event" }>,
-): ZeroWorkflowAutomationUpdateRequest | undefined {
+  existing: Extract<WorkflowAutomationSummary, { readonly kind: "event" }>,
+): WorkflowAutomationUpdateRequest | undefined {
   switch (existing.eventType) {
     case "github-pull-request": {
       if (hasGmailAutomationOptions(options)) {
@@ -2053,8 +2052,8 @@ function buildGithubAutomationEventUpdate(
 
 function buildEventUpdate(
   options: UpdateOptions,
-  existing: Extract<ZeroWorkflowAutomationSummary, { readonly kind: "event" }>,
-): ZeroWorkflowAutomationUpdateRequest {
+  existing: Extract<WorkflowAutomationSummary, { readonly kind: "event" }>,
+): WorkflowAutomationUpdateRequest {
   const hasGmailOptions = hasGmailAutomationOptions(options);
   const hasLabelOption = hasGmailLabelOption(options);
   const hasGithubOptions = hasGithubAutomationOptions(options);
@@ -2115,7 +2114,7 @@ function buildEventUpdate(
 
 function buildScheduleUpdate(
   options: UpdateOptions,
-): ZeroWorkflowAutomationUpdateRequest {
+): WorkflowAutomationUpdateRequest {
   const hasGmailOptions = hasGmailAutomationOptions(options);
   const hasLabelOption = hasGmailLabelOption(options);
   if (hasGmailOptions || hasLabelOption) {
@@ -2141,8 +2140,8 @@ function buildScheduleUpdate(
 
 function buildUpdate(
   options: UpdateOptions,
-  existing: ZeroWorkflowAutomationSummary,
-): ZeroWorkflowAutomationUpdateRequest {
+  existing: WorkflowAutomationSummary,
+): WorkflowAutomationUpdateRequest {
   const hasEventOptions =
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||

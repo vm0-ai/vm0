@@ -7,16 +7,16 @@ import type {
   FirewallPolicyValue,
 } from "@okouai/connectors/firewall-types";
 import {
-  getZeroConnectorCatalogPermissions,
-  type ZeroConnectorCatalogPermissionDetail,
-} from "../../lib/api/domains/zero-connectors";
+  getConnectorCatalogPermissions,
+  type ConnectorCatalogPermissionDetail,
+} from "../../lib/api/domains/connectors";
 import type { ZeroUserPermissionGrant } from "../../lib/api/domains/zero-agents";
 
 export interface ConnectorPermissionInfo {
   readonly connectorSlug: string;
   readonly hasPermissions: boolean;
   readonly hasPolicyEntry: boolean;
-  readonly permissions: readonly ZeroConnectorCatalogPermissionDetail["permissions"][number][];
+  readonly permissions: readonly ConnectorCatalogPermissionDetail["permissions"][number][];
   readonly policies: Readonly<Record<string, FirewallPolicyValue>> | null;
   readonly unknownPolicy: FirewallPolicyValue;
   readonly allowed: number;
@@ -25,7 +25,7 @@ export interface ConnectorPermissionInfo {
 
 type PermissionMetadataBySlug = Map<
   string,
-  ZeroConnectorCatalogPermissionDetail | null
+  ConnectorCatalogPermissionDetail | null
 >;
 
 async function loadPermissionMetadataBySlug(
@@ -36,7 +36,7 @@ async function loadPermissionMetadataBySlug(
     uniqueConnectorSlugs.map(async (connectorSlug) => {
       return [
         connectorSlug,
-        await getZeroConnectorCatalogPermissions(connectorSlug),
+        await getConnectorCatalogPermissions(connectorSlug),
       ] as const;
     }),
   );
@@ -45,7 +45,7 @@ async function loadPermissionMetadataBySlug(
 
 function connectorPermissionInfo(args: {
   readonly connectorSlug: string;
-  readonly metadata: ZeroConnectorCatalogPermissionDetail | null;
+  readonly metadata: ConnectorCatalogPermissionDetail | null;
   readonly resolvedPolicies: FirewallPolicies | null;
 }): ConnectorPermissionInfo {
   if (!args.metadata) {

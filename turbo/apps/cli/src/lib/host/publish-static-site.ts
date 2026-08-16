@@ -1,8 +1,5 @@
 import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/zero-host";
-import {
-  completeHostedSite,
-  prepareHostedSite,
-} from "../api/domains/zero-host";
+import { completeHostedSite, prepareHostedSite } from "../api/domains/host";
 import { readStaticSiteFile, scanStaticSite } from "./static-site";
 
 interface PublishStaticSiteProgress {

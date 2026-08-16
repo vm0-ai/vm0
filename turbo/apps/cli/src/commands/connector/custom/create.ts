@@ -4,8 +4,8 @@ import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/ze
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { createZeroCustomConnector } from "../../../lib/api/domains/zero-connectors";
-import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
+import { createCustomConnector } from "../../../lib/api/domains/connectors";
+import { decodeSandboxTokenPayload } from "../../../lib/api/sandbox-token";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { getOkouAgentId } from "../../../lib/okou-env";
 import {
@@ -21,7 +21,7 @@ interface CreateOptions {
 }
 
 function requireCustomConnectorWriteCapability(): void {
-  const payload = decodeZeroTokenPayload();
+  const payload = decodeSandboxTokenPayload();
   if (payload && !payload.capabilities.includes("connector:write")) {
     throw new Error(
       "Custom connector creation is not enabled for this agent run",
@@ -177,7 +177,7 @@ Notes:
       const raw = await readFile(options.file, "utf8");
       const input: unknown = JSON.parse(raw);
       const definition = createCustomConnectorDefinitionFileSchema.parse(input);
-      const connector = await createZeroCustomConnector(definition);
+      const connector = await createCustomConnector(definition);
       await printCreateResult(connector, options.json ?? false);
     }),
   );

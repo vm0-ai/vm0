@@ -1,5 +1,5 @@
-import { listZeroConnectorCatalog } from "../../../lib/api/domains/zero-connectors";
-import type { ZeroConnectorCatalogItem } from "../../../lib/api/domains/zero-connectors";
+import { listConnectorCatalog } from "../../../lib/api/domains/connectors";
+import type { ConnectorCatalogItem } from "../../../lib/api/domains/connectors";
 import type { GenerationType } from "./lister";
 
 function toConnectorGenerationType(
@@ -31,9 +31,9 @@ function toConnectorGenerationType(
 }
 
 function findConnector(
-  connectors: readonly ZeroConnectorCatalogItem[],
+  connectors: readonly ConnectorCatalogItem[],
   provider: string,
-): ZeroConnectorCatalogItem | null {
+): ConnectorCatalogItem | null {
   const exact = connectors.find((connector) => {
     return connector.slug === provider;
   });
@@ -57,7 +57,7 @@ async function resolveConnector(
   provider: string,
   generationType: GenerationType,
 ): Promise<ConnectorGuidance | null> {
-  const catalog = await listZeroConnectorCatalog();
+  const catalog = await listConnectorCatalog();
   const connector = findConnector(catalog.connectors, provider);
   if (!connector) return null;
 

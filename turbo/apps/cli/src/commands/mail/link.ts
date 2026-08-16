@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 
-import { linkZeroMailDraft } from "../../lib/api/domains/zero-mail";
+import { linkMailDraft } from "../../lib/api/domains/mail";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getOkouChatThreadId } from "../../lib/okou-env";
 import {
@@ -83,7 +83,7 @@ ${callbackPromptNotes}  - The user reviews the draft and sends it from the linke
           agentId,
           callbackPrompt: opts.callbackPrompt,
         });
-        const result = await linkZeroMailDraft({
+        const result = await linkMailDraft({
           threadId,
           agentId,
           gmailDraftId,

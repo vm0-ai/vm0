@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { getVm0ModelPriceTier } from "@okouai/api-contracts/contracts/model-providers";
-import { listZeroModelPolicies } from "../../lib/api/domains/zero-model-policies";
+import { listModelPolicies } from "../../lib/api/domains/model-policies";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   formatModelPolicyStatus,
@@ -19,7 +19,7 @@ const listCommand = new Command()
   .description("List models allowed by the current organization")
   .action(
     withErrorHandler(async () => {
-      const result = await listZeroModelPolicies();
+      const result = await listModelPolicies();
 
       if (result.policies.length === 0) {
         console.log(chalk.dim("No models are allowed for this organization"));

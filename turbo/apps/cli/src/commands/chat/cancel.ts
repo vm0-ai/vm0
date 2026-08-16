@@ -4,9 +4,9 @@ import chalk from "chalk";
 import { Command } from "commander";
 
 import {
-  getZeroChatThreadAgentId,
-  sendZeroChatEvent,
-} from "../../lib/api/domains/zero-chat";
+  getChatThreadAgentId,
+  sendChatEvent,
+} from "../../lib/api/domains/chat";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { isUuid } from "../../lib/utils/uuid";
 import { printChatUsageError, resolveChatThreadId } from "./shared";
@@ -82,9 +82,9 @@ Notes:
     withErrorHandler(async (options: CancelOptions) => {
       const threadId = resolveChatThreadId(options.threadId);
       const target = resolveTarget(options);
-      const agentId = await getZeroChatThreadAgentId({ threadId });
+      const agentId = await getChatThreadAgentId({ threadId });
       const controlEventId = randomUUID();
-      const result = await sendZeroChatEvent(
+      const result = await sendChatEvent(
         target.kind === "run"
           ? {
               agentId,

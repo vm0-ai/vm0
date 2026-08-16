@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroModelPolicies } from "../../lib/api/domains/zero-model-policies";
+import { listModelPolicies } from "../../lib/api/domains/model-policies";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   formatModelPolicyStatus,
@@ -24,7 +24,7 @@ const listCommand = new Command()
   )
   .action(
     withErrorHandler(async () => {
-      const result = await listZeroModelPolicies();
+      const result = await listModelPolicies();
 
       if (result.policies.length === 0) {
         console.log(

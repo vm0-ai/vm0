@@ -217,7 +217,7 @@ function connectorManualGrantResponse(
 }
 
 export const apiHandlers = [
-  // GET /api/okou/connectors - listZeroConnectors
+  // GET /api/okou/connectors - listConnectors
   http.get("http://localhost:3000/api/okou/connectors", () => {
     return HttpResponse.json(
       {
@@ -313,7 +313,7 @@ export const apiHandlers = [
     },
   ),
 
-  // GET /api/okou/org - getZeroOrg
+  // GET /api/okou/org - getOrg
   http.get("http://localhost:3000/api/okou/org", () => {
     return HttpResponse.json(
       {

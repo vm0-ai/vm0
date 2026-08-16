@@ -13,20 +13,20 @@ import {
 } from "@okouai/core/chat-thread-event-replay";
 
 import {
-  getZeroChatThreadSnapshot,
-  listZeroChatThreadEvents,
-  type ZeroChatThreadEvent,
-  type ZeroChatThreadSnapshot,
-} from "../../lib/api/domains/zero-chat";
-import { decodeZeroTokenPayload, getApiUrl } from "../../lib/api/config";
+  getChatThreadSnapshot,
+  listChatThreadEvents,
+  type ChatThreadEvent,
+  type ChatThreadSnapshot,
+} from "../../lib/api/domains/chat";
+import { decodeSandboxTokenPayload, getApiUrl } from "../../lib/api/config";
 
 const CACHE_VERSION = 2;
 const MAX_EVENT_PAGES_PER_SYNC = 20;
 
 interface ChatThreadCache {
   readonly version: typeof CACHE_VERSION;
-  readonly snapshot: ZeroChatThreadSnapshot;
-  readonly events: readonly ZeroChatThreadEvent[];
+  readonly snapshot: ChatThreadSnapshot;
+  readonly events: readonly ChatThreadEvent[];
 }
 
 interface ChatThreadEventCursor {
@@ -91,7 +91,7 @@ function cacheRoot(): string {
 }
 
 async function cachePath(): Promise<string> {
-  const token = decodeZeroTokenPayload();
+  const token = decodeSandboxTokenPayload();
   if (!token) {
     throw new Error("OKOU_TOKEN does not contain a valid Zero cache scope");
   }
@@ -135,10 +135,10 @@ async function writeCache(path: string, cache: ChatThreadCache): Promise<void> {
 }
 
 function mergeEvents(
-  existing: readonly ZeroChatThreadEvent[],
-  incoming: readonly ZeroChatThreadEvent[],
-): ZeroChatThreadEvent[] {
-  const byId = new Map<string, ZeroChatThreadEvent>();
+  existing: readonly ChatThreadEvent[],
+  incoming: readonly ChatThreadEvent[],
+): ChatThreadEvent[] {
+  const byId = new Map<string, ChatThreadEvent>();
   for (const event of existing) {
     byId.set(event.id, event);
   }
@@ -153,7 +153,7 @@ function mergeEvents(
 async function freshCache(): Promise<ChatThreadCache> {
   return {
     version: CACHE_VERSION,
-    snapshot: await getZeroChatThreadSnapshot(),
+    snapshot: await getChatThreadSnapshot(),
     events: [],
   };
 }
@@ -188,7 +188,7 @@ export async function syncCachedChatThreads(): Promise<
   let cursor = latestEventCursor(cache);
 
   for (let page = 0; page < MAX_EVENT_PAGES_PER_SYNC; page++) {
-    const result = await listZeroChatThreadEvents({
+    const result = await listChatThreadEvents({
       sinceSeqId: cursor?.seqId,
     });
     if (result.kind === "expired") {

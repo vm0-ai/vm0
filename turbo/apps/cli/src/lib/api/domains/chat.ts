@@ -4,7 +4,7 @@ import {
   chatEventsContract,
   chatThreadEventsContract,
   chatThreadsContract,
-  type ChatThreadEvent,
+  type ChatThreadEvent as ApiChatThreadEvent,
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
   chatThreadRenameContract,
@@ -22,13 +22,13 @@ import {
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export interface ZeroChatThreadSnapshot {
+export interface ChatThreadSnapshot {
   readonly chatThreads: readonly ChatThreadSnapshotProjection[];
   readonly latestEventId: string | null;
   readonly latestSeqId: number | null;
 }
 
-export type ZeroChatThreadEvent = ChatThreadEvent;
+export type ChatThreadEvent = ApiChatThreadEvent;
 
 interface ZeroChatEventSnapshotDownload {
   readonly url: string;
@@ -76,12 +76,12 @@ interface ZeroChatEventSendResult {
 type ZeroChatThreadEventsResult =
   | {
       readonly kind: "page";
-      readonly events: readonly ZeroChatThreadEvent[];
+      readonly events: readonly ChatThreadEvent[];
       readonly hasMore: boolean;
     }
   | { readonly kind: "expired" };
 
-export async function searchZeroChat(options: {
+export async function searchChat(options: {
   keyword: string;
   agentId?: string;
   since?: number;
@@ -105,7 +105,7 @@ export async function searchZeroChat(options: {
   handleError(result, "Failed to search chat messages");
 }
 
-export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapshot> {
+export async function getChatThreadSnapshot(): Promise<ChatThreadSnapshot> {
   const config = await getClientConfig();
   const client = initClient(chatThreadsContract, config);
   const result = await client.snapshot();
@@ -119,7 +119,7 @@ export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapsho
   handleError(result, "Failed to get chat thread snapshot");
 }
 
-export async function listZeroChatThreadEvents(options: {
+export async function listChatThreadEvents(options: {
   sinceSeqId?: number;
 }): Promise<ZeroChatThreadEventsResult> {
   const config = await getClientConfig();
@@ -143,7 +143,7 @@ export async function listZeroChatThreadEvents(options: {
   handleError(result, "Failed to list chat thread events");
 }
 
-export async function createZeroChatThread(options: {
+export async function createChatThread(options: {
   agentId: string;
   title: string;
   model?: string;
@@ -174,7 +174,7 @@ export async function createZeroChatThread(options: {
   handleError(result, "Failed to create chat thread");
 }
 
-export async function renameZeroChatThread(options: {
+export async function renameChatThread(options: {
   threadId: string;
   title: string;
 }): Promise<{ threadId: string; title: string }> {
@@ -190,7 +190,7 @@ export async function renameZeroChatThread(options: {
   handleError(result, "Failed to rename chat thread");
 }
 
-export async function getZeroChatThread(options: {
+export async function getChatThread(options: {
   threadId: string;
 }): Promise<ChatThreadMetadata> {
   const config = await getClientConfig();
@@ -204,14 +204,14 @@ export async function getZeroChatThread(options: {
   handleError(result, "Failed to get chat thread");
 }
 
-export async function getZeroChatThreadAgentId(options: {
+export async function getChatThreadAgentId(options: {
   threadId: string;
 }): Promise<string> {
-  const thread = await getZeroChatThread(options);
+  const thread = await getChatThread(options);
   return thread.agentId;
 }
 
-export async function sendZeroChatEvent(
+export async function sendChatEvent(
   body: ChatEventSendBody,
 ): Promise<ZeroChatEventSendResult> {
   const config = await getClientConfig();
@@ -223,7 +223,7 @@ export async function sendZeroChatEvent(
   handleError(result, "Failed to send chat event");
 }
 
-export async function getZeroChatEventSnapshot(options: {
+export async function getChatEventSnapshot(options: {
   readonly threadId: string;
 }): Promise<ZeroChatEventSnapshotDownload | null> {
   const config = await getClientConfig();
@@ -246,7 +246,7 @@ export async function getZeroChatEventSnapshot(options: {
   handleError(result, "Failed to get chat event snapshot");
 }
 
-export async function listZeroChatEventRows(
+export async function listChatEventRows(
   options: {
     readonly threadId: string;
     readonly limit: number;
@@ -279,7 +279,7 @@ export async function listZeroChatEventRows(
   handleError(result, "Failed to list chat event rows");
 }
 
-export async function updateZeroChatThreadModelSelection(options: {
+export async function updateChatThreadModelSelection(options: {
   threadId: string;
   model: string | null;
 }): Promise<{ threadId: string; selectedModel: string | null }> {

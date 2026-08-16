@@ -7,7 +7,7 @@ import {
   listWebAvatarVideoAvatars,
   listWebAvatarVideoVoices,
 } from "../../lib/api/domains/web";
-import { getZeroBillingStatus } from "../../lib/api/domains/zero-billing";
+import { getBillingStatus } from "../../lib/api/domains/billing";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   currentPlanAllowsVideo,
@@ -274,7 +274,7 @@ async function ensureVideoPlan(): Promise<void> {
   if (!currentTokenCanReadBilling()) {
     return;
   }
-  const billing = await getZeroBillingStatus();
+  const billing = await getBillingStatus();
   if (!currentPlanAllowsVideo(billing)) {
     throw new ApiRequestError(
       "Built-in avatar video generation requires Pro, Team, or Custom workspace access.",

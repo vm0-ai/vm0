@@ -5,9 +5,9 @@ import { Command } from "commander";
 import { translateCommand } from "./commands/translate";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
-  decodeZeroTokenPayload,
-  type ZeroTokenPayload,
-} from "./lib/api/zero-token.js";
+  decodeSandboxTokenPayload,
+  type SandboxTokenPayload,
+} from "./lib/api/sandbox-token.js";
 import { getOkouToken } from "./lib/okou-env.js";
 
 interface CommandDefinition {
@@ -372,7 +372,7 @@ function buildDefaultCommands(): Command[] {
 
 function shouldHideCommand(
   name: string,
-  payload: ZeroTokenPayload | undefined,
+  payload: SandboxTokenPayload | undefined,
 ): boolean {
   if (name.startsWith("__")) return true;
   if (!payload) return RUN_ONLY_COMMANDS.has(name);
@@ -390,7 +390,7 @@ function shouldHideCommand(
 function addCommandWithVisibility(
   prog: Command,
   cmd: Command,
-  payload: ZeroTokenPayload | undefined,
+  payload: SandboxTokenPayload | undefined,
 ): void {
   const hidden = shouldHideCommand(cmd.name(), payload);
   prog.addCommand(cmd, hidden ? { hidden: true } : {});
@@ -439,13 +439,13 @@ async function loadRequestedCommand(
 function commandExampleIfVisible(
   name: string,
   example: string,
-  payload: ZeroTokenPayload | undefined,
+  payload: SandboxTokenPayload | undefined,
 ): string[] {
   return shouldHideCommand(name, payload) ? [] : [example];
 }
 
 export function buildHelpText(
-  payload: ZeroTokenPayload | undefined = decodeZeroTokenPayload(),
+  payload: SandboxTokenPayload | undefined = decodeSandboxTokenPayload(),
 ): string {
   const canReadHost = !payload || payload.capabilities.includes("host:read");
   const canWriteHost = !payload || payload.capabilities.includes("host:write");
@@ -572,7 +572,7 @@ export function buildHelpText(
  */
 export function registerCommands(prog: Command, commands?: Command[]): void {
   const token = getOkouToken();
-  const payload = token ? decodeZeroTokenPayload(token) : undefined;
+  const payload = token ? decodeSandboxTokenPayload(token) : undefined;
 
   for (const cmd of commands ?? buildDefaultCommands()) {
     addCommandWithVisibility(prog, cmd, payload);

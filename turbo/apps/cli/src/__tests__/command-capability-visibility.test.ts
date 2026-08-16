@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
 import { buildHelpText, registerCommands } from "../okou";
-import { decodeZeroTokenPayload } from "../lib/api/zero-token";
+import { decodeSandboxTokenPayload } from "../lib/api/sandbox-token";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -83,7 +83,7 @@ function registeredCommandNames(prog: Command): string[] {
   });
 }
 
-describe("decodeZeroTokenPayload", () => {
+describe("decodeSandboxTokenPayload", () => {
   it("should decode payload from a valid zero-scoped token", () => {
     const token = buildZeroToken({
       userId: "user-1",
@@ -94,7 +94,7 @@ describe("decodeZeroTokenPayload", () => {
       iat: 1000,
       exp: 2000,
     });
-    const payload = decodeZeroTokenPayload(token);
+    const payload = decodeSandboxTokenPayload(token);
     expect(payload).toEqual({
       userId: "user-1",
       runId: "run-1",
@@ -117,7 +117,7 @@ describe("decodeZeroTokenPayload", () => {
       exp: 2000,
     });
 
-    expect(decodeZeroTokenPayload(token)).toMatchObject({
+    expect(decodeSandboxTokenPayload(token)).toMatchObject({
       userId: "user-okou",
       scope: "okou",
       capabilities: ["agent:read"],
@@ -125,11 +125,13 @@ describe("decodeZeroTokenPayload", () => {
   });
 
   it("should return undefined for token without vm0_sandbox_ prefix", () => {
-    expect(decodeZeroTokenPayload("some-other-token")).toBeUndefined();
+    expect(decodeSandboxTokenPayload("some-other-token")).toBeUndefined();
   });
 
   it("should return undefined for malformed JWT (not 3 parts)", () => {
-    expect(decodeZeroTokenPayload("vm0_sandbox_only-one-part")).toBeUndefined();
+    expect(
+      decodeSandboxTokenPayload("vm0_sandbox_only-one-part"),
+    ).toBeUndefined();
   });
 
   it("should return undefined for non-zero scope", () => {
@@ -137,7 +139,7 @@ describe("decodeZeroTokenPayload", () => {
       scope: "sandbox",
       capabilities: ["agent:read"],
     });
-    expect(decodeZeroTokenPayload(token)).toBeUndefined();
+    expect(decodeSandboxTokenPayload(token)).toBeUndefined();
   });
 
   it("should return undefined when capabilities is not an array", () => {
@@ -145,12 +147,12 @@ describe("decodeZeroTokenPayload", () => {
       scope: "okou",
       capabilities: "not-an-array",
     });
-    expect(decodeZeroTokenPayload(token)).toBeUndefined();
+    expect(decodeSandboxTokenPayload(token)).toBeUndefined();
   });
 
   it("should return undefined for invalid base64 payload", () => {
     expect(
-      decodeZeroTokenPayload("vm0_sandbox_a.!!!invalid.c"),
+      decodeSandboxTokenPayload("vm0_sandbox_a.!!!invalid.c"),
     ).toBeUndefined();
   });
 });
@@ -775,7 +777,7 @@ describe("registerCommands", () => {
     });
     vi.stubEnv("OKOU_TOKEN", eligibleToken);
     expect(visibleCommandNames(buildProgram())).toContain("recognize");
-    expect(buildHelpText(decodeZeroTokenPayload(eligibleToken))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(eligibleToken))).toContain(
       "Recognize an image?",
     );
   });
@@ -803,7 +805,7 @@ describe("registerCommands", () => {
     });
     vi.stubEnv("OKOU_TOKEN", capableToken);
     expect(visibleCommandNames(buildProgram())).toContain("translate");
-    expect(buildHelpText(decodeZeroTokenPayload(capableToken))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(capableToken))).toContain(
       "Translate text?",
     );
   });
@@ -813,7 +815,7 @@ describe("registerCommands", () => {
       scope: "okou",
       capabilities: ["billing:read", "billing:write"],
     });
-    const help = buildHelpText(decodeZeroTokenPayload(token));
+    const help = buildHelpText(decodeSandboxTokenPayload(token));
 
     expect(help).toContain("Check credits?");
     expect(help).toContain("Buy credits?");
@@ -824,7 +826,7 @@ describe("registerCommands", () => {
       scope: "okou",
       capabilities: ["billing:read"],
     });
-    const help = buildHelpText(decodeZeroTokenPayload(token));
+    const help = buildHelpText(decodeSandboxTokenPayload(token));
 
     expect(help).toContain("Check credits?");
     expect(help).toContain("okou credit");
@@ -837,7 +839,7 @@ describe("registerCommands", () => {
       scope: "okou",
       capabilities: ["billing:write"],
     });
-    const help = buildHelpText(decodeZeroTokenPayload(token));
+    const help = buildHelpText(decodeSandboxTokenPayload(token));
 
     expect(help).not.toContain("Check credits?");
     expect(help).toContain("Buy credits?");
@@ -848,7 +850,7 @@ describe("registerCommands", () => {
       scope: "okou",
       capabilities: ["agent:read"],
     });
-    const help = buildHelpText(decodeZeroTokenPayload(token));
+    const help = buildHelpText(decodeSandboxTokenPayload(token));
 
     expect(help).not.toContain("Check credits?");
     expect(help).not.toContain("Buy credits?");
@@ -860,7 +862,7 @@ describe("registerCommands", () => {
       capabilities: ["maps:read"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Get directions?",
     );
   });
@@ -871,7 +873,7 @@ describe("registerCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Get directions?",
     );
   });
@@ -882,7 +884,7 @@ describe("registerCommands", () => {
       capabilities: ["weather:read"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Check weather?",
     );
   });
@@ -893,7 +895,7 @@ describe("registerCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Check weather?",
     );
   });
@@ -904,7 +906,7 @@ describe("registerCommands", () => {
       capabilities: ["scrape:read"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Scrape a web page?",
     );
   });
@@ -915,7 +917,7 @@ describe("registerCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Scrape a web page?",
     );
   });
@@ -926,7 +928,7 @@ describe("registerCommands", () => {
       capabilities: ["finance:read"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Get a market quote?",
     );
   });
@@ -937,7 +939,7 @@ describe("registerCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Get a market quote?",
     );
   });
@@ -952,10 +954,10 @@ describe("registerCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(visibleToken))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(visibleToken))).toContain(
       "Research SEO data?",
     );
-    expect(buildHelpText(decodeZeroTokenPayload(hiddenToken))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(hiddenToken))).not.toContain(
       "Research SEO data?",
     );
   });
@@ -966,7 +968,7 @@ describe("registerCommands", () => {
       capabilities: ["people-search:read"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Find a professional?",
     );
   });
@@ -977,7 +979,7 @@ describe("registerCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Find a professional?",
     );
   });
@@ -988,7 +990,7 @@ describe("registerCommands", () => {
       capabilities: ["banking:read"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Read bank data?",
     );
   });
@@ -999,7 +1001,7 @@ describe("registerCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Read bank data?",
     );
   });
@@ -1010,7 +1012,7 @@ describe("registerCommands", () => {
       capabilities: ["host:write"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Host a static site?",
     );
   });
@@ -1021,10 +1023,10 @@ describe("registerCommands", () => {
       capabilities: ["host:read"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Clone hosted site?",
     );
-    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Host a static site?",
     );
   });
@@ -1035,7 +1037,7 @@ describe("registerCommands", () => {
       capabilities: [],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Generate website?",
     );
   });
@@ -1058,10 +1060,10 @@ describe("registerCommands", () => {
       capabilities: ["file:write"],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Host a static site?",
     );
-    expect(buildHelpText(decodeZeroTokenPayload(token))).not.toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Clone hosted site?",
     );
   });
@@ -1072,10 +1074,10 @@ describe("registerCommands", () => {
       capabilities: [],
     });
 
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "List models?",
     );
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Model routing?",
     );
   });
@@ -1104,10 +1106,10 @@ describe("registerCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("teams");
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Send Teams?",
     );
-    expect(buildHelpText(decodeZeroTokenPayload(token))).toContain(
+    expect(buildHelpText(decodeSandboxTokenPayload(token))).toContain(
       "Download Teams?",
     );
   });
