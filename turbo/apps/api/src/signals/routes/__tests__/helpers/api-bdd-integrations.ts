@@ -61,7 +61,7 @@ import { githubOauthRoutes } from "../../github-oauth";
 import { integrationsGithubRoutes } from "../../integrations-github";
 import { testSlackStateRoutes } from "../../test-slack-state";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
-import { zeroIntegrationsAgentPhoneRoutes } from "../../zero-integrations-agentphone";
+import { integrationsAgentPhoneRoutes } from "../../integrations-agentphone";
 import { integrationsGithubUploadCompleteRoutes } from "../../integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "../../integrations-github-upload-init";
 import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
@@ -72,7 +72,7 @@ import { integrationsSlackRoutes } from "../../integrations-slack";
 import { integrationsSlackMessageRoutes } from "../../integrations-slack-message";
 import { integrationsSlackUploadCompleteRoutes } from "../../integrations-slack-upload-complete";
 import { integrationsSlackUploadInitRoutes } from "../../integrations-slack-upload-init";
-import { zeroIntegrationsTelegramRoutes } from "../../zero-integrations-telegram";
+import { integrationsTelegramRoutes } from "../../integrations-telegram";
 import { integrationsTelegramMessageRoutes } from "../../integrations-telegram-message";
 import { integrationsTelegramUploadCompleteRoutes } from "../../integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "../../integrations-telegram-upload-init";
@@ -91,7 +91,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...integrationsGithubRoutes,
   ...testSlackStateRoutes,
   ...zeroFeatureSwitchesRoutes,
-  ...zeroIntegrationsAgentPhoneRoutes,
+  ...integrationsAgentPhoneRoutes,
   ...integrationsGithubUploadCompleteRoutes,
   ...integrationsGithubUploadInitRoutes,
   ...integrationsPhoneDownloadFileRoutes,
@@ -105,7 +105,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...integrationsTelegramMessageRoutes,
   ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,
-  ...zeroIntegrationsTelegramRoutes,
+  ...integrationsTelegramRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...slackChannelsRoutes,
@@ -1347,7 +1347,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       return await accept(
         client.list({
@@ -1363,7 +1363,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(integrationsTelegramBotListContract);
       return await accept(
         client.listBots({
@@ -1376,7 +1376,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async readTelegramLinkStatus(actor: ApiTestUser, botId: string) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       const response = await accept(
         client.getLinkStatus({
@@ -1391,7 +1391,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestTelegramAuthCallback(statuses: readonly 200[]) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       return await accept(client.authCallback(), statuses);
     },
@@ -1404,7 +1404,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       return await accept(
         client.avatar({
@@ -1423,7 +1423,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       return await accept(
         client.link({
@@ -1441,7 +1441,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       return await accept(
         client.unlink({
@@ -1460,7 +1460,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       return await accept(
         client.updateBot({
@@ -1479,7 +1479,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       return await accept(
         client.disconnect({
@@ -1507,7 +1507,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       return await accept(
         client.register({
@@ -1525,7 +1525,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsTelegramRoutes,
+        routes: integrationsTelegramRoutes,
       })(zeroIntegrationsTelegramContract);
       return await accept(
         client.setupStatus({
@@ -1659,7 +1659,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async getAgentPhoneLinkStatus(actor: ApiTestUser) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsAgentPhoneRoutes,
+        routes: integrationsAgentPhoneRoutes,
       })(zeroIntegrationsAgentPhoneContract);
       const response = await accept(
         client.getLinkStatus({
@@ -1677,7 +1677,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsAgentPhoneRoutes,
+        routes: integrationsAgentPhoneRoutes,
       })(zeroIntegrationsAgentPhoneContract);
       return await accept(
         client.startLink({
@@ -1694,7 +1694,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsAgentPhoneRoutes,
+        routes: integrationsAgentPhoneRoutes,
       })(zeroIntegrationsAgentPhoneContract);
       return await accept(
         client.unlink({
@@ -1717,7 +1717,7 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroIntegrationsAgentPhoneRoutes,
+        routes: integrationsAgentPhoneRoutes,
       })(zeroIntegrationsAgentPhoneContract);
       return await accept(
         client.connectAgentPhone({

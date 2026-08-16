@@ -138,7 +138,7 @@ import { workflowAutomationsRoutes } from "./routes/workflow-automations";
 import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
 import { strapiEventsRoutes } from "./routes/strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
-import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
+import { integrationsAgentPhoneRoutes } from "./routes/integrations-agentphone";
 import { integrationsPhoneDownloadFileRoutes } from "./routes/integrations-phone-download-file";
 import { integrationsPhoneMessageRoutes } from "./routes/integrations-phone-message";
 import { integrationsPhoneUploadCompleteRoutes } from "./routes/integrations-phone-upload-complete";
@@ -157,7 +157,7 @@ import { integrationsTeamsDownloadFileRoutes } from "./routes/integrations-teams
 import { integrationsTeamsMessageRoutes } from "./routes/integrations-teams-message";
 import { integrationsTeamsUploadCompleteRoutes } from "./routes/integrations-teams-upload-complete";
 import { integrationsTeamsUploadInitRoutes } from "./routes/integrations-teams-upload-init";
-import { zeroIntegrationsTelegramRoutes } from "./routes/zero-integrations-telegram";
+import { integrationsTelegramRoutes } from "./routes/integrations-telegram";
 import { integrationsTelegramMessageRoutes } from "./routes/integrations-telegram-message";
 import { integrationsTelegramUploadCompleteRoutes } from "./routes/integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "./routes/integrations-telegram-upload-init";
@@ -172,10 +172,10 @@ import { feishuConnectRoutes } from "./routes/feishu-connect";
 import { feishuEventsRoutes } from "./routes/feishu-events";
 import { feishuOauthRoutes } from "./routes/feishu-oauth";
 import { steamPlayerRoutes } from "./routes/steam-player";
-import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
-import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
-import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
-import { zeroTeamsOauthRoutes } from "./routes/zero-teams-oauth";
+import { teamsBrowserConnectRoutes } from "./routes/teams-browser-connect";
+import { teamsBotRoutes } from "./routes/teams-bot";
+import { teamsConnectRoutes } from "./routes/teams-connect";
+import { teamsOauthRoutes } from "./routes/teams-oauth";
 import { teamRoutes } from "./routes/team";
 import { uploadsCompleteRoutes } from "./routes/uploads-complete";
 import { uploadsMultipartRoutes } from "./routes/uploads-multipart";
@@ -348,11 +348,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ...feishuConnectRoutes,
   ...feishuEventsRoutes,
   ...feishuOauthRoutes,
-  ...zeroTeamsBrowserConnectRoutes,
-  ...zeroTeamsBotRoutes,
-  ...zeroTeamsConnectRoutes,
-  ...zeroTeamsOauthRoutes,
-  ...zeroIntegrationsAgentPhoneRoutes,
+  ...teamsBrowserConnectRoutes,
+  ...teamsBotRoutes,
+  ...teamsConnectRoutes,
+  ...teamsOauthRoutes,
+  ...integrationsAgentPhoneRoutes,
   ...integrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneMessageRoutes,
   ...integrationsPhoneUploadCompleteRoutes,
@@ -373,7 +373,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsTeamsUploadInitRoutes,
   ...slackChannelsRoutes,
   ...steamPlayerRoutes,
-  ...zeroIntegrationsTelegramRoutes,
+  ...integrationsTelegramRoutes,
   ...integrationsTelegramMessageRoutes,
   ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,

@@ -164,7 +164,7 @@ const teamsConnectAuth = {
   missingOrganizationStatus: 401,
 } as const;
 
-export const zeroTeamsConnectRoutes: readonly RouteEntry[] = [
+export const teamsConnectRoutes: readonly RouteEntry[] = [
   {
     route: zeroTeamsConnectContract.getStatus,
     handler: authRoute(teamsConnectAuth, getTeamsConnectStatusInner$),

@@ -21,7 +21,7 @@ import {
   teamsMessageActivityForTest,
   type TeamsConnectFixture,
 } from "./helpers/teams-connect";
-import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
+import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -159,7 +159,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
 
@@ -177,7 +177,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     const fixture = teamsConnectFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
 
@@ -205,7 +205,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     mockEnv("VM0_API_BACKEND_URL", undefined);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
 
@@ -235,7 +235,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     await accept(
@@ -278,7 +278,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
   it("returns a Teams reinstall URL to admins when the installed app id is stale", async () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     await accept(
@@ -324,7 +324,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -378,7 +378,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     const response = await accept(
@@ -422,7 +422,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     const response = await accept(
@@ -447,7 +447,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
       "aad-member-user",
     );
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
@@ -480,7 +480,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
 
   it("rejects users from the wrong org with a clear error", async () => {
     const fixture = await seedTeamsInstallation(track);
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
 
@@ -509,7 +509,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     const first = await accept(
@@ -544,7 +544,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
     const welcomeRequests = teamsWelcomeHandlers(fixture);
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     const body = {
@@ -619,7 +619,7 @@ describe("DELETE /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     await accept(
@@ -655,7 +655,7 @@ describe("DELETE /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     await accept(

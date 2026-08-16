@@ -27,7 +27,7 @@ import {
 } from "./helpers/teams-connect";
 import { integrationsTeamsMessageRoutes } from "../integrations-teams-message";
 import { integrationsTeamsUploadCompleteRoutes } from "../integrations-teams-upload-complete";
-import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
+import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
 const store = createStore();
@@ -140,7 +140,7 @@ async function seedConnectedTeams(fixture: TeamsConnectFixture): Promise<void> {
   await installTeamsForTest(context.signal, fixture);
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+  const client = setupApp({ context, routes: teamsConnectRoutes })(
     zeroTeamsConnectContract,
   );
   await accept(

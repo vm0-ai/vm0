@@ -24,7 +24,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { integrationsTeamsDownloadFileRoutes } from "../integrations-teams-download-file";
-import { zeroTeamsBotRoutes } from "../zero-teams-bot";
+import { teamsBotRoutes } from "../teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -46,7 +46,7 @@ import {
 } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
-import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
+import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
 const callbackStore = createStore();
@@ -718,7 +718,7 @@ async function postTeamsActivity(
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal,
-    routes: zeroTeamsBotRoutes,
+    routes: teamsBotRoutes,
   });
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -800,7 +800,7 @@ async function connectTeamsFixture(
   fixture: TeamsConnectFixture,
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-  const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+  const client = setupApp({ context, routes: teamsConnectRoutes })(
     zeroTeamsConnectContract,
   );
   await accept(
@@ -1102,7 +1102,7 @@ describe("POST /api/zero/teams/bot", () => {
     expect(outboundRequests[0]?.body).not.toHaveProperty("text");
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     await accept(
@@ -3293,7 +3293,7 @@ describe("POST /api/zero/teams/bot", () => {
     });
     await flushWaitUntilForTest();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroTeamsConnectRoutes })(
+    const client = setupApp({ context, routes: teamsConnectRoutes })(
       zeroTeamsConnectContract,
     );
     await accept(

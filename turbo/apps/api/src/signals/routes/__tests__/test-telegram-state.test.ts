@@ -18,7 +18,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { testTelegramStateRoutes } from "../test-telegram-state";
-import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
+import { integrationsTelegramRoutes } from "../integrations-telegram";
 import { seedRun$ } from "./helpers/usage-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
@@ -57,7 +57,7 @@ function requestApp(path: string, init?: RequestInit): Promise<Response> {
     signal: context.signal,
     routes: [
       ...testTelegramStateRoutes,
-      ...zeroIntegrationsTelegramRoutes,
+      ...integrationsTelegramRoutes,
       ...testSlackStateRoutes,
     ],
   });

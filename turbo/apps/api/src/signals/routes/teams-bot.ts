@@ -430,7 +430,7 @@ const handleZeroTeamsBot$ = command(
   },
 );
 
-export const zeroTeamsBotRoutes: readonly RouteEntry[] = [
+export const teamsBotRoutes: readonly RouteEntry[] = [
   {
     route: zeroTeamsBotContract.post,
     handler: handleZeroTeamsBot$,
