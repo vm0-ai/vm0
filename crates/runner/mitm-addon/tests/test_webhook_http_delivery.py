@@ -311,13 +311,21 @@ def test_environment_proxy_rejects_unsafe_hostname_before_dns(
     mock_getaddrinfo.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "proxy_prefix",
+    [
+        pytest.param("http://", id="url"),
+        pytest.param("", id="authority"),
+    ],
+)
 def test_malformed_environment_proxy_does_not_expose_credentials_before_dns(
     tmp_path,
     sync_usage_executor,
+    proxy_prefix: str,
 ):
     password = "sensitive-proxy-password"
     proxy_environment = {
-        "http_proxy": f"http://proxy-user:{password}@proxy\uff1ahost:8123",
+        "http_proxy": f"{proxy_prefix}proxy-user:{password}@proxy\uff1ahost:8123",
         "HTTP_PROXY": "",
         "all_proxy": "",
         "ALL_PROXY": "",
