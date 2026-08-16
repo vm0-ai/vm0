@@ -89,10 +89,8 @@ export {
   agentComposeApiContentSchema,
   composeResponseSchema,
   createComposeResponseSchema,
-  composeListItemSchema,
   // Inferred types
   type ComposeResponse,
-  type ComposeListItem,
   type ArtifactConfig,
 } from "./composes";
 export {
@@ -1080,10 +1078,6 @@ export {
   type ZeroOrgInviteContract,
   type ZeroOrgMembershipRequestsContract,
 } from "./zero-org-members";
-export {
-  zeroComposesListContract,
-  type ZeroComposesListContract,
-} from "./zero-composes";
 export {
   zeroRunsByIdContract,
   zeroRunsCancelContract,

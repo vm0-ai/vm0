@@ -6,7 +6,6 @@ import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import { zeroComposesListContract } from "@okouai/api-contracts/contracts/zero-composes";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
@@ -25,7 +24,6 @@ import {
   chatThreadEventsContract,
   chatThreadArtifactsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ComposeListItem } from "@okouai/api-contracts/contracts/composes";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_TEAM: TeamComposeItem[] = [
@@ -50,32 +48,11 @@ export function resetMockTeam(): void {
   mockTeam = [...DEFAULT_TEAM];
 }
 
-const DEFAULT_COMPOSES_LIST: ComposeListItem[] = [
-  {
-    id: "c0000000-0000-4000-a000-000000000001",
-    name: "zero",
-    displayName: null,
-    description: null,
-    sound: null,
-    headVersionId: "version_1",
-    updatedAt: "2024-01-01T00:00:00Z",
-  },
-];
-
-let mockComposesList: ComposeListItem[] = [...DEFAULT_COMPOSES_LIST];
 const mockEnabledConnectorSlugsByAgent = new Map<string, string[]>();
 const mockCustomConnectorGrantsByAgent = new Map<
   string,
   AgentCustomConnectorGrant[]
 >();
-
-export function setMockComposesList(composes: ComposeListItem[]): void {
-  mockComposesList = composes;
-}
-
-export function resetMockComposesList(): void {
-  mockComposesList = [...DEFAULT_COMPOSES_LIST];
-}
 
 export function resetMockUserConnectors(): void {
   mockEnabledConnectorSlugsByAgent.clear();
@@ -131,11 +108,6 @@ export const apiAgentsHandlers = [
   // GET /api/okou/team
   mockApi(zeroTeamContract.list, ({ respond }) => {
     return respond(200, mockTeam);
-  }),
-
-  // GET /api/okou/composes/list
-  mockApi(zeroComposesListContract.list, ({ respond }) => {
-    return respond(200, { composes: mockComposesList });
   }),
 
   // GET /api/okou/agents/:id/user-connectors

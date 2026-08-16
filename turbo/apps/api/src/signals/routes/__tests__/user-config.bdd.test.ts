@@ -6,6 +6,10 @@ import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/co
 import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import {
+  createHistoricalAgentComposeFixture,
+  readHistoricalAgentComposeHeadFixture,
+} from "../../../test-fixtures/historical-agent-composes";
+import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
@@ -264,14 +268,24 @@ describe("AUTH-03 agent user connectors", () => {
     expect(readAfterRemoveAdd.enabledConnectorSlugs).toStrictEqual(["slack"]);
   });
 
-  it("recomposes a stale compose-target on user-connector updates through public APIs", async () => {
+  it("recomposes a stale compose-target on user-connector updates", async () => {
     const admin = api.user();
     await onboardAdmin(admin, { slug: slug("bdd-uc-b1c") });
+    if (!admin.orgId) {
+      throw new Error("Historical Compose fixtures require an organization");
+    }
     const composeName = slug("bdd-uc-compose");
-    const created = await api.createCompose(
-      admin,
-      api.composeContent(composeName),
-    );
+    // The current Agent API always creates a zero-agent row, so direct
+    // historical construction is required to exercise this stale Compose-only
+    // recompose arm.
+    const created = await createHistoricalAgentComposeFixture({
+      actor: { userId: admin.userId, orgId: admin.orgId },
+      content: {
+        version: "1",
+        agents: { [composeName]: { framework: "claude-code" } },
+      },
+      signal: context.signal,
+    });
 
     // A compose without a zero-agent row only accepts the empty replace
     // (user_connectors.agent_id FK references zero_agents); the empty set
@@ -283,7 +297,9 @@ describe("AUTH-03 agent user connectors", () => {
     );
     expect(updated.enabledConnectorSlugs).toStrictEqual([]);
 
-    const compose = await api.readComposeById(admin, created.composeId);
+    const compose = await readHistoricalAgentComposeHeadFixture(
+      created.composeId,
+    );
     expect(compose.headVersionId).not.toBe(created.versionId);
     expect(compose.headVersionId).toMatch(/^[a-f0-9]{64}$/);
 

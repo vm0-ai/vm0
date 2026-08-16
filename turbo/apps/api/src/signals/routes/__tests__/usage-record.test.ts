@@ -173,7 +173,7 @@ async function createUnthreadedRun(
   },
 ): Promise<{ readonly runId: string }> {
   const name = `bdd-usage-record-${randomUUID().slice(0, 8)}`;
-  const compose = await api.createCompose(actor, {
+  const compose = await api.createHistoricalCompose(actor, {
     version: "1.0",
     agents: {
       [name]: {

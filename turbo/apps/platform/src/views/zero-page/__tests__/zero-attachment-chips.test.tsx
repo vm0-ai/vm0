@@ -1258,7 +1258,6 @@ describe("zero attachment chips", () => {
       expect(new URL(request.url).searchParams.get("file_id")).toBe(fileId);
       return HttpResponse.json({ url: pageUrls[pageOwner] });
     });
-    context.mocks.data.composesList([]);
     context.mocks.api(logsListContract.list, ({ respond }) => {
       return respond(200, {
         data: [],

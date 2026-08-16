@@ -351,7 +351,7 @@ describe("workflow skill storage presigned URL cache", () => {
       versionId: prepared.versionId,
       files: [file],
     });
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         cache: {

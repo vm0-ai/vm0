@@ -9,6 +9,10 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
+import {
+  createHistoricalAgentComposeFixture,
+  readHistoricalAgentComposeHeadFixture,
+} from "../../../test-fixtures/historical-agent-composes";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import {
@@ -17,7 +21,6 @@ import {
 } from "./helpers/telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
-import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { integrationsTelegramMessageRoutes } from "../integrations-telegram-message";
 
@@ -26,7 +29,6 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
-const composes = createComposesBddApi(context);
 
 function uniqueBotId(): string {
   // 9-digit numeric matches parseTelegramBotId's /^\d+$/ check.
@@ -72,10 +74,11 @@ interface TelegramMessageFixture {
  * Seeds an org with a Telegram installation and a real run created through
  * the product agent + run APIs (agent label and selected model on the footer
  * both resolve from the run). Run admission needs org credits, granted via
- * the Stripe webhook product path. Without `withOrgModelProvider` the agent
- * compose declares an inline ANTHROPIC_API_KEY so the run records no
- * selected model; with it, the org model provider path records the
- * provider's selected model (claude-sonnet-5) on the run.
+ * the Stripe webhook product path. Without `withOrgModelProvider`, a narrow
+ * historical Compose fixture adds the legacy inline ANTHROPIC_API_KEY state
+ * that the current Agent API cannot express, so the run records no selected
+ * model. With it, the org model provider path records the provider's selected
+ * model (claude-sonnet-5).
  */
 async function seedSendableContext(args: {
   readonly agentName?: string;
@@ -126,19 +129,19 @@ async function seedSendableContext(args: {
     await api.ensureOrgModelProvider(actor);
     runRequest = { ...runRequest, modelProvider: "anthropic-api-key" };
   } else {
-    const composeRead = await composes.requestReadComposeById(
-      actor,
-      agent.agentId,
-      [200],
-    );
-    await api.createCompose(actor, {
-      version: "1.0",
-      agents: {
-        [composeRead.body.name]: {
-          framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+    const compose = await readHistoricalAgentComposeHeadFixture(agent.agentId);
+    await createHistoricalAgentComposeFixture({
+      actor: { userId, orgId },
+      content: {
+        version: "1.0",
+        agents: {
+          [compose.name]: {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+          },
         },
       },
+      signal: context.signal,
     });
   }
   const run = await api.createRun(actor, runRequest);

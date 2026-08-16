@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { createHistoricalAgentComposeFixture } from "../../../test-fixtures/historical-agent-composes";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -826,12 +827,21 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
     expect(defaultEntry?.headVersionId).toMatch(/^[a-f0-9]{64}$/);
     expect(typeof defaultEntry?.updatedAt).toBe("string");
 
-    // A compose without a zero-agent row never appears in the team list.
+    // The current Agent API always creates a zero-agent row, so direct
+    // historical construction is required to verify that a Compose-only row
+    // never appears in the Agent team list.
+    if (!admin.orgId) {
+      throw new Error("Historical Compose fixtures require an organization");
+    }
     const composeName = slug("bdd-r5-compose");
-    const compose = await api.createCompose(
-      admin,
-      api.composeContent(composeName),
-    );
+    const compose = await createHistoricalAgentComposeFixture({
+      actor: { userId: admin.userId, orgId: admin.orgId },
+      content: {
+        version: "1",
+        agents: { [composeName]: { framework: "claude-code" } },
+      },
+      signal: context.signal,
+    });
     const teamAfterCompose = await api.listTeam(admin);
     expect(
       teamAfterCompose.map((entry) => {

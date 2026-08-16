@@ -136,7 +136,7 @@ describe("low-credit email delivery", () => {
     ]);
 
     const agentName = `bdd-low-credit-${randomUUID().slice(0, 8)}`;
-    const compose = await runs.createCompose(actor, {
+    const compose = await runs.createHistoricalCompose(actor, {
       version: "1.0",
       agents: {
         [agentName]: {

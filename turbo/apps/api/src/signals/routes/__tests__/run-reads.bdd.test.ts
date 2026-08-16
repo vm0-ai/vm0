@@ -13,12 +13,12 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate, withMockNowForTest } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
+import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
 import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import {
   createRunsApi,
@@ -81,7 +81,7 @@ async function createClaudeCompose(
   prefix: string,
 ): Promise<{ readonly composeId: string; readonly name: string }> {
   const name = `${prefix}-${randomUUID().slice(0, 8)}`;
-  return await api.createCompose(actor, {
+  return await api.createHistoricalCompose(actor, {
     version: "1",
     agents: {
       [name]: {
@@ -905,7 +905,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.example.test");
     const actor = await entitledActor();
     const composeName = `bdd-gzip-resume-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -1010,7 +1010,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const actor = await entitledActor();
     const composeName = `bdd-zstd-resume-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -1335,7 +1335,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
 
     const composeName = `bdd-resume-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -3131,9 +3131,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       visibility: "private",
     });
     const testCompose = await createClaudeCompose(actor, "bdd-test-logs");
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const agentOneName = (
-      await authOrg.readComposeById(actor, agentOne.agentId)
+      await readHistoricalAgentComposeHeadFixture(agentOne.agentId)
     ).name;
 
     const webRun = await api.createRun(actor, {
@@ -3450,7 +3449,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
   });
 
   it("resolves zero log agent identity from the run session when compose versions are shared", async () => {
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const actor = await entitledActor();
     const foreignActor = bdd.user();
     await api.ensureOrgModelProvider(actor);
@@ -3459,15 +3457,14 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       description: "Owns the first shared compose version row.",
       visibility: "private",
     });
-    const foreignCompose = await authOrg.readComposeById(
-      foreignActor,
+    const foreignCompose = await readHistoricalAgentComposeHeadFixture(
       foreignAgent.agentId,
     );
     if (!foreignCompose.content || !foreignCompose.headVersionId) {
       throw new Error("Expected foreign zero agent compose content");
     }
 
-    const currentCompose = await authOrg.createCompose(
+    const currentCompose = await api.createHistoricalCompose(
       actor,
       foreignCompose.content,
     );

@@ -49,6 +49,10 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import {
+  zeroAgentsMainContract,
+  type ZeroAgentResponse,
+} from "@okouai/api-contracts/contracts/zero-agents";
+import {
   zeroHostContract,
   type HostedSiteCompleteResponse,
   type HostedSiteDeploymentsResponse,
@@ -66,7 +70,7 @@ import {
   buildArtifactKey,
   sanitizeArtifactFilename,
 } from "../../../../lib/file-url";
-import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
+import { agentsRoutes } from "../../agents";
 import { chatEventsRoutes } from "../../chat-events";
 import { artifactCatalogRoutes } from "../../artifact-catalog";
 import { chatThreadComputerUseHostRoutes } from "../../chat-threads-computer-use-host";
@@ -94,14 +98,6 @@ import { createZeroRouteMocks } from "./zero-route-test";
 
 interface AuthHeaders {
   readonly authorization?: string;
-}
-
-interface BddCompose {
-  readonly composeId: string;
-  readonly name: string;
-  readonly versionId: string;
-  readonly action: "created" | "existing";
-  readonly updatedAt: string;
 }
 
 type BddSendEventBody =
@@ -191,6 +187,7 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
 }
 
 const chatFilesRoutes = [
+  ...agentsRoutes,
   ...artifactCatalogRoutes,
   ...chatThreadRoutes,
   ...chatThreadCreateRoutes,
@@ -394,27 +391,16 @@ export function createChatFilesBddApi(context: TestContext) {
       mockObjectStorageObjectsExist(context);
     },
 
-    async createComposeForChatThread(
+    async createAgentForChatThread(
       actor: ApiTestUser,
-      agentName = `bdd-chat-${randomUUID().slice(0, 8)}`,
-    ): Promise<BddCompose> {
-      if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
-      }
+      displayName = `BDD chat ${randomUUID().slice(0, 8)}`,
+    ): Promise<ZeroAgentResponse> {
       const response = await accept(
-        createAgentComposeFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          content: {
-            version: "1.0",
-            agents: {
-              [agentName]: {
-                framework: "claude-code",
-              },
-            },
-          },
-          signal: context.signal,
+        chatFilesApp(context)(zeroAgentsMainContract).create({
+          headers: authenticate(context, actor),
+          body: { displayName, visibility: "private" },
         }),
-        [200, 201],
+        [201],
       );
       return response.body;
     },

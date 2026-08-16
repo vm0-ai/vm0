@@ -15,10 +15,7 @@ import {
   triggerAblyReauth,
   triggerAblyReconnect,
 } from "../../mocks/ably.ts";
-import {
-  setMockTeam,
-  setMockComposesList,
-} from "../../mocks/handlers/api-agents.ts";
+import { setMockTeam } from "../../mocks/handlers/api-agents.ts";
 import { setMockRedeemResponse } from "../../mocks/handlers/api-billing.ts";
 import { setMockConnectors } from "../../mocks/handlers/api-connectors.ts";
 import { setMockAgentPhoneIntegration } from "../../mocks/handlers/api-integrations-agentphone.ts";
@@ -175,9 +172,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
     data: {
       team: (...args: Parameters<typeof setMockTeam>) => {
         setMockTeam(...args);
-      },
-      composesList: (...args: Parameters<typeof setMockComposesList>) => {
-        setMockComposesList(...args);
       },
       org: (...args: Parameters<typeof setMockOrg>) => {
         setMockOrg(...args);

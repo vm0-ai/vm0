@@ -199,19 +199,6 @@ const createComposeResponseSchema = z.object({
   updatedAt: z.string(),
 });
 
-/**
- * Compose list item schema (used in list response)
- */
-const composeListItemSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  displayName: z.string().nullable().optional(),
-  description: z.string().nullable().optional(),
-  sound: z.string().nullable().optional(),
-  headVersionId: z.string().nullable(),
-  updatedAt: z.string(),
-});
-
 // Export schemas for reuse
 export {
   agentNameSchema,
@@ -223,10 +210,8 @@ export {
   agentComposeApiContentSchema,
   composeResponseSchema,
   createComposeResponseSchema,
-  composeListItemSchema,
 };
 
 // Export inferred types for consumers
 export type ComposeResponse = z.infer<typeof composeResponseSchema>;
-export type ComposeListItem = z.infer<typeof composeListItemSchema>;
 export type ArtifactConfig = z.infer<typeof artifactConfigSchema>;

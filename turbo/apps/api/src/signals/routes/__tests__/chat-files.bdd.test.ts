@@ -33,9 +33,9 @@ const api = createChatFilesBddApi(context);
 describe("CHAT-01 chat thread lifecycle", () => {
   it("creates, mutates, searches, and deletes a thread through visible APIs", async () => {
     const actor = bdd.user();
-    const compose = await api.createComposeForChatThread(actor);
+    const agent = await api.createAgentForChatThread(actor);
     const created = await api.createThread(actor, {
-      agentId: compose.composeId,
+      agentId: agent.agentId,
       title: "Launch notes",
     });
 
@@ -127,9 +127,9 @@ describe("CHAT-01 chat thread lifecycle", () => {
     const owner = bdd.user({ orgId });
     const peer = bdd.user({ orgId });
     const outsider = bdd.user();
-    const compose = await api.createComposeForChatThread(owner);
+    const agent = await api.createAgentForChatThread(owner);
     const thread = await api.createThread(owner, {
-      agentId: compose.composeId,
+      agentId: agent.agentId,
       title: "Private planning",
     });
 
@@ -626,9 +626,9 @@ describe("CHAT-02 chat messages and visible validation", () => {
   it("lists visible events and rejects invalid send requests without hidden fixtures", async () => {
     const actor = bdd.user();
     const peer = bdd.user({ orgId: actor.orgId });
-    const compose = await api.createComposeForChatThread(actor);
+    const agent = await api.createAgentForChatThread(actor);
     const thread = await api.createThread(actor, {
-      agentId: compose.composeId,
+      agentId: agent.agentId,
       title: "Message validation",
     });
 
@@ -682,9 +682,9 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     const peer = bdd.user({ orgId });
-    const compose = await api.createComposeForChatThread(owner);
+    const agent = await api.createAgentForChatThread(owner);
     const thread = await api.createThread(owner, {
-      agentId: compose.composeId,
+      agentId: agent.agentId,
       title: "Zero message boundary",
     });
 
@@ -718,9 +718,9 @@ describe("CHAT-02 chat messages and visible validation", () => {
 describe("CHAT-03 artifacts", () => {
   it("exposes empty artifact state through the list API", async () => {
     const actor = bdd.user();
-    const compose = await api.createComposeForChatThread(actor);
+    const agent = await api.createAgentForChatThread(actor);
     const thread = await api.createThread(actor, {
-      agentId: compose.composeId,
+      agentId: agent.agentId,
       title: "Artifacts",
     });
 

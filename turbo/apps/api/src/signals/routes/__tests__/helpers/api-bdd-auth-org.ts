@@ -5,11 +5,6 @@ import {
   cliAuthDeviceContract,
   cliAuthTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth";
-import {
-  type ComposeListItem,
-  type ComposeResponse,
-  agentComposeApiContentSchema,
-} from "@okouai/api-contracts/contracts/composes";
 import type {
   OrgResponse,
   UpdateOrgRequest,
@@ -39,7 +34,6 @@ import {
   type ZeroAgentRequest,
   type ZeroAgentResponse,
 } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroComposesListContract } from "@okouai/api-contracts/contracts/zero-composes";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorConnectionContract,
@@ -70,7 +64,6 @@ import {
   type UserPreferencesResponse,
 } from "@okouai/api-contracts/contracts/user-preferences";
 import { HttpResponse, http } from "msw";
-import type { z } from "zod";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -78,15 +71,9 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
 import { removeAgentLegacyVersionsFixture } from "../../../../test-fixtures/agent-deletion";
-import {
-  createAgentComposeFixture,
-  readAgentComposeByIdFixture,
-  readAgentComposeByNameFixture,
-} from "../../../../test-fixtures/agent-composes";
 import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
 import { agentsRoutes } from "../../agents";
-import { zeroComposesRoutes } from "../../zero-composes";
 import { customConnectorsRoutes } from "../../custom-connectors";
 import { customConnectorsCreateRoutes } from "../../custom-connectors-create";
 import { customConnectorsDeleteRoutes } from "../../custom-connectors-delete";
@@ -108,7 +95,6 @@ import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 type ApiOrgRole = "admin" | "member";
-type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -220,7 +206,6 @@ const authOrgRoutes = [
   ...orgLogoRoutes,
   ...teamRoutes,
   ...agentsRoutes,
-  ...zeroComposesRoutes,
   ...customConnectorsRoutes,
   ...customConnectorsCreateRoutes,
   ...customConnectorsGetRoutes,
@@ -367,18 +352,6 @@ function stringArrayValue(source: unknown, key: string): readonly string[] {
         return typeof item === "string";
       })
     : [];
-}
-
-function composeContent(name: string): ComposeContent {
-  return {
-    version: "1",
-    agents: {
-      [name]: {
-        framework: "claude-code",
-        description: "BDD compose agent",
-      },
-    },
-  };
 }
 
 function membershipDate(member: BddOrgMember): number {
@@ -1394,114 +1367,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         }),
         statuses,
       );
-    },
-
-    composeContent,
-
-    async createCompose(
-      actor: ApiTestUser,
-      content: ComposeContent,
-    ): Promise<{
-      readonly composeId: string;
-      readonly name: string;
-      readonly versionId: string;
-      readonly action: "created" | "existing";
-      readonly updatedAt: string;
-    }> {
-      if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
-      }
-      const response = await accept(
-        createAgentComposeFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          content,
-          signal: context.signal,
-        }),
-        [200, 201],
-      );
-      return response.body;
-    },
-
-    async requestCreateCompose(
-      actor: ApiTestUser,
-      content: ComposeContent,
-      statuses: readonly (200 | 201 | 400)[],
-    ) {
-      if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
-      }
-      return await accept(
-        createAgentComposeFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          content,
-          signal: context.signal,
-        }),
-        statuses,
-      );
-    },
-
-    async readComposeById(
-      actor: ApiTestUser,
-      composeId: string,
-    ): Promise<ComposeResponse> {
-      if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
-      }
-      const response = await accept(
-        readAgentComposeByIdFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          composeId,
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestReadComposeById(
-      actor: ApiTestUser,
-      composeId: string,
-      statuses: readonly (200 | 404)[],
-    ) {
-      if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
-      }
-      return await accept(
-        readAgentComposeByIdFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          composeId,
-        }),
-        statuses,
-      );
-    },
-
-    async readComposeByName(
-      actor: ApiTestUser,
-      name: string,
-    ): Promise<ComposeResponse> {
-      if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
-      }
-      const response = await accept(
-        readAgentComposeByNameFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          name,
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async listZeroComposes(
-      actor: ApiTestUser,
-    ): Promise<readonly ComposeListItem[]> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroComposesListContract,
-      );
-      const response = await accept(
-        client.list({ headers: authenticate(actor), query: {} }),
-        [200],
-      );
-      return response.body.composes;
     },
 
     async createCustomConnector(

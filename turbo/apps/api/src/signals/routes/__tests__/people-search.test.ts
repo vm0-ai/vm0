@@ -793,7 +793,7 @@ describe("okou people-search route", () => {
       webSearchPricing(),
     ]);
     configureProvider();
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1.0",
       agents: {
         [`people-search-${randomUUID().slice(0, 8)}`]: {

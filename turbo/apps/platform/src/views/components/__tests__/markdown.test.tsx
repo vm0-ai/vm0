@@ -87,7 +87,6 @@ function mockThread(
 }
 
 function mockAgentsPage(): void {
-  context.mocks.data.composesList([]);
   context.mocks.api(logsListContract.list, ({ respond }) => {
     return respond(200, {
       data: [],

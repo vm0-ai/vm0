@@ -55,7 +55,6 @@ import {
 } from "./api-integrations-github.ts";
 import {
   apiAgentsHandlers,
-  resetMockComposesList,
   resetMockTeam,
   resetMockUserConnectors,
 } from "./api-agents.ts";
@@ -142,7 +141,6 @@ export function resetAllMockHandlers(): void {
   resetMockSlackConnect();
   resetAblySubscriptions();
   resetMockUserPermissionGrants();
-  resetMockComposesList();
   resetMockOrg();
   resetMockOrgLogo();
   resetMockOrgMembers();

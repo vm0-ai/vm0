@@ -7,6 +7,10 @@ import { integrationsSlackMessageContract } from "@okouai/api-contracts/contract
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
+import {
+  createHistoricalAgentComposeFixture,
+  readHistoricalAgentComposeHeadFixture,
+} from "../../../test-fixtures/historical-agent-composes";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import {
@@ -14,7 +18,6 @@ import {
   seedSlackOrgInstallation$,
 } from "./helpers/integrations-slack";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { integrationsSlackMessageRoutes } from "../integrations-slack-message";
 
@@ -22,7 +25,6 @@ const context = testContext();
 const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
-const composes = createComposesBddApi(context);
 
 function zeroToken(args: {
   readonly userId: string;
@@ -103,9 +105,9 @@ describe("POST /api/okou/integrations/slack/message", () => {
    * Creates a real run for an agent named "My Assistant" through the product
    * agent + run APIs, so the message footer can resolve the agent label from
    * the run. Run admission needs org credits (Stripe webhook grant); the
-   * compose declares an inline ANTHROPIC_API_KEY so no org model provider is
-   * configured and the run records no selected model (matching runs whose
-   * provider carries no model selection).
+   * current Agent API cannot express the legacy inline ANTHROPIC_API_KEY
+   * state, so a narrow historical Compose fixture supplies it. This keeps the
+   * run free of a selected model, matching providers without model selection.
    */
   async function seedAgentRun(base: {
     readonly orgId: string;
@@ -123,19 +125,19 @@ describe("POST /api/okou/integrations/slack/message", () => {
       displayName: "My Assistant",
       visibility: "private",
     });
-    const composeRead = await composes.requestReadComposeById(
-      actor,
-      agent.agentId,
-      [200],
-    );
-    await api.createCompose(actor, {
-      version: "1.0",
-      agents: {
-        [composeRead.body.name]: {
-          framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+    const compose = await readHistoricalAgentComposeHeadFixture(agent.agentId);
+    await createHistoricalAgentComposeFixture({
+      actor: { userId: base.userId, orgId: base.orgId },
+      content: {
+        version: "1.0",
+        agents: {
+          [compose.name]: {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+          },
         },
       },
+      signal: context.signal,
     });
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
