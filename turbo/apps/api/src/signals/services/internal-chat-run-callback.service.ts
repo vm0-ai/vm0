@@ -160,7 +160,7 @@ import {
   scheduleChatThreadTitleGeneration,
 } from "./zero-chat-title.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
-import { loadActiveGoalForThread } from "./zero-goal.service";
+import { loadActiveGoalForThread } from "./goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
