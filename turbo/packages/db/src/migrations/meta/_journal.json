@@ -876,6 +876,13 @@
       "when": 1786891284819,
       "tag": "0932_lovely_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 933,
+      "version": "7",
+      "when": 1786899348553,
+      "tag": "0933_agent_run_launch_snapshot",
+      "breakpoints": true
     }
   ]
 }

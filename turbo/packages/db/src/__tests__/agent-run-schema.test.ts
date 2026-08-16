@@ -75,6 +75,8 @@ describe("agentRuns circular foreign keys", () => {
     expect(agentRuns.triggerSource.hasDefault).toBe(false);
     expect(agentRuns.autonomyBudget.notNull).toBe(false);
     expect(agentRuns.autonomyBudget.hasDefault).toBe(false);
+    expect(agentRuns.launchSnapshot.notNull).toBe(false);
+    expect(agentRuns.launchSnapshot.hasDefault).toBe(false);
 
     const metadataPresenceCheck = agentRunConfig.checks.find((check) => {
       return check.name === "agent_runs_metadata_presence_check";
@@ -119,6 +121,29 @@ describe("agentRuns circular foreign keys", () => {
         return check.name;
       }),
     ).toContain("agent_runs_autonomy_budget_check");
+
+    const launchSnapshotCheck = agentRunConfig.checks.find((check) => {
+      return check.name === "agent_runs_launch_snapshot_check";
+    });
+    expect(launchSnapshotCheck).toBeDefined();
+    if (!launchSnapshotCheck) {
+      throw new Error("Missing agent-run launch-snapshot check");
+    }
+    const launchSnapshotSql = new PgDialect().sqlToQuery(
+      launchSnapshotCheck.value,
+    ).sql;
+    expect(launchSnapshotSql).toContain(
+      '"agent_runs"."launch_snapshot" IS NULL',
+    );
+    expect(launchSnapshotSql).toContain("jsonb_typeof");
+    expect(launchSnapshotSql).toContain("schemaVersion");
+    expect(launchSnapshotSql).toContain("framework");
+    expect(launchSnapshotSql).toContain("runnerProfile");
+    expect(launchSnapshotSql).toContain("'claude-code'");
+    expect(launchSnapshotSql).toContain("'codex'");
+    expect(launchSnapshotSql).toContain("'pi'");
+    expect(launchSnapshotSql).toContain(">= 1");
+    expect(launchSnapshotSql).toContain("<= 255");
 
     const agentSessionRun = foreignKeyReference(
       chatThreads,
