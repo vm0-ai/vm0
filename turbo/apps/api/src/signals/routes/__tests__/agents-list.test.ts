@@ -5,7 +5,7 @@ import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-age
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroAgentsRoutes } from "../zero-agents";
+import { agentsRoutes } from "../agents";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -24,9 +24,7 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context, routes: zeroAgentsRoutes })(
-    zeroAgentsMainContract,
-  );
+  return setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract);
 }
 
 describe("GET /api/zero/agents", () => {

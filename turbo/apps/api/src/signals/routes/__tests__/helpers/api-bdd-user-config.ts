@@ -24,7 +24,7 @@ import {
   signSandboxJwtForTests,
 } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
-import { zeroAgentsRoutes } from "../../zero-agents";
+import { agentsRoutes } from "../../agents";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { userModelPreferenceRoutes } from "../../user-model-preference";
 import { userPreferencesRoutes } from "../../user-preferences";
@@ -104,7 +104,7 @@ const rawModelPreferenceContract = c.router({
 const userConfigRoutes = [
   ...healthAuthProbeRoutes,
   ...authMeRoutes,
-  ...zeroAgentsRoutes,
+  ...agentsRoutes,
   ...userModelPreferenceRoutes,
   ...pushSubscriptionsRoutes,
   ...userPreferencesRoutes,

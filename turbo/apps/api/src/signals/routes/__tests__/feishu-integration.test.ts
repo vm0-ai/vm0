@@ -59,7 +59,7 @@ import {
 } from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroAgentsRoutes } from "../zero-agents";
+import { agentsRoutes } from "../agents";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { customConnectorsRoutes } from "../custom-connectors";
 import { customConnectorsDeleteRoutes } from "../custom-connectors-delete";
@@ -2502,7 +2502,7 @@ describe("Feishu integration", () => {
       ),
       "Expected managed Feishu custom connector",
     );
-    const agentAccessClient = setupApp({ context, routes: zeroAgentsRoutes })(
+    const agentAccessClient = setupApp({ context, routes: agentsRoutes })(
       zeroAgentCustomConnectorsContract,
     );
     const selectedPermissions = ["messages:send-as-user"];
@@ -2797,7 +2797,7 @@ describe("Feishu integration", () => {
       owner: "organization",
     });
     const customConnectorGrants = await accept(
-      setupApp({ context, routes: zeroAgentsRoutes })(
+      setupApp({ context, routes: agentsRoutes })(
         zeroAgentCustomConnectorsContract,
       ).get({
         headers: { authorization: "Bearer clerk-session" },
@@ -2930,7 +2930,7 @@ describe("Feishu integration", () => {
       unknownPolicy: "deny",
     });
     const permissionGrant = await accept(
-      setupApp({ context, routes: zeroAgentsRoutes })(
+      setupApp({ context, routes: agentsRoutes })(
         zeroAgentCustomConnectorsContract,
       ).update({
         headers: { authorization: "Bearer clerk-session" },

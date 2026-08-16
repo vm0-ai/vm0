@@ -924,7 +924,7 @@ const agentDeleteAuth = {
   requiredCapability: "agent:delete",
 } as const;
 
-export const zeroAgentsRoutes: readonly RouteEntry[] = [
+export const agentsRoutes: readonly RouteEntry[] = [
   {
     route: zeroAgentsMainContract.create,
     handler: authRoute(agentWriteAuth, createAgentInner$),

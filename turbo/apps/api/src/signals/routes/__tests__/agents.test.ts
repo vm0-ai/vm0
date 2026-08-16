@@ -11,7 +11,7 @@ import {
   updateFeatureSwitchesForUser,
 } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroAgentsRoutes } from "../zero-agents";
+import { agentsRoutes } from "../agents";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -25,7 +25,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     context.mocks.s3.send.mockResolvedValue({});
 
     const created = await accept(
-      setupApp({ context, routes: zeroAgentsRoutes })(
+      setupApp({ context, routes: agentsRoutes })(
         zeroAgentsMainContract,
       ).create({
         headers: { authorization: "Bearer clerk-session" },
@@ -35,7 +35,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     );
     const agentId = created.body.agentId;
 
-    const client = setupApp({ context, routes: zeroAgentsRoutes })(
+    const client = setupApp({ context, routes: agentsRoutes })(
       zeroUserConnectorsContract,
     );
 
@@ -78,7 +78,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     const headers = { authorization: "Bearer clerk-session" };
 
     const created = await accept(
-      setupApp({ context, routes: zeroAgentsRoutes })(
+      setupApp({ context, routes: agentsRoutes })(
         zeroAgentsMainContract,
       ).create({
         headers,
@@ -86,7 +86,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
       }),
       [201],
     );
-    const client = setupApp({ context, routes: zeroAgentsRoutes })(
+    const client = setupApp({ context, routes: agentsRoutes })(
       zeroUserConnectorsContract,
     );
     const params = { id: created.body.agentId };
