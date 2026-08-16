@@ -9,7 +9,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   listOrgModelPolicies$,
   updateOrgModelPolicies$,
-} from "../services/zero-model-policy.service";
+} from "../services/model-policy.service";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

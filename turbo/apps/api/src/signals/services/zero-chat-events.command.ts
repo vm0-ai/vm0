@@ -67,7 +67,7 @@ import {
   type ModelFirstPin,
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
-} from "./zero-model-selection.service";
+} from "./model-selection.service";
 import {
   chatThreadModelPinColumns,
   persistedChatThreadModelSnapshotColumns,

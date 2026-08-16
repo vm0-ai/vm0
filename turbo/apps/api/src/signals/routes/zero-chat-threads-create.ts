@@ -19,7 +19,7 @@ import { zeroComposeExists } from "../services/zero-compose-data.service";
 import {
   resolveModelSelectionPin,
   validateCodexServiceTier,
-} from "../services/zero-model-selection.service";
+} from "../services/model-selection.service";
 import { chatThreadModelPinColumns } from "../services/zero-chat-thread-model.service";
 import { chatThreadServiceTierFromCodex } from "../services/zero-chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";

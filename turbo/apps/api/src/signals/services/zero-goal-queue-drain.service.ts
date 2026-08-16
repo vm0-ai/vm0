@@ -23,7 +23,7 @@ import {
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
-import type { ModelFirstPin } from "./zero-model-selection.service";
+import type { ModelFirstPin } from "./model-selection.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 
 const log = logger("api:zero-goal-queue-drain");

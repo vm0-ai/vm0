@@ -10,9 +10,9 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { listOrgModelPolicies$ } from "../services/zero-model-policy.service";
+import { listOrgModelPolicies$ } from "../services/model-policy.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
-import { isCodexFastServiceTierSupported } from "../services/zero-model-selection.service";
+import { isCodexFastServiceTierSupported } from "../services/model-selection.service";
 import {
   updateUserModelPreference$,
   userModelPreference,

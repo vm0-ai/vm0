@@ -40,7 +40,7 @@ import {
   upsertOrgModelProvider$,
   upsertUserModelProvider$,
   type ModelProviderInfo,
-} from "./zero-model-provider.service";
+} from "./model-provider.service";
 
 const CLAUDE_CODE_DEVICE_AUTH_AUTHORIZE_URL =
   "https://claude.com/cai/oauth/authorize";

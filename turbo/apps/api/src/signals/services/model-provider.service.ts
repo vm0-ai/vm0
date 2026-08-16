@@ -14,7 +14,7 @@ import {
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
-import { modelProviders } from "@okouai/db/schema/model-provider";
+import { modelProviders as modelProvidersTable } from "@okouai/db/schema/model-provider";
 import { modelProviderConnections } from "@okouai/db/schema/model-provider-gateway";
 import { secrets } from "@okouai/db/schema/secret";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -26,10 +26,10 @@ import { encryptStoredSecretValue } from "./crypto.utils";
 import { lockModelProviderState } from "./auth-state-lock.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
-const L = logger("zero-model-provider.service");
+const L = logger("model-provider.service");
 
 const ORG_SENTINEL_USER_ID = "__org__";
-type ModelProviderRow = typeof modelProviders.$inferSelect;
+type ModelProviderRow = typeof modelProvidersTable.$inferSelect;
 
 function hasUsableSecretValue(value: string | undefined): value is string {
   return value !== undefined && value.trim().length > 0;
@@ -79,37 +79,37 @@ function modelProviderResponse(row: {
   };
 }
 
-function zeroModelProvidersForUser(
+function modelProvidersForUser(
   orgId: string,
   ownerUserId: string,
 ): Computed<Promise<ModelProviderListResponse>> {
   return computed(async (get): Promise<ModelProviderListResponse> => {
     const rows = await get(db$)
       .select({
-        id: modelProviders.id,
-        type: modelProviders.type,
-        isDefault: modelProviders.isDefault,
-        selectedModel: modelProviders.selectedModel,
-        authMethod: modelProviders.authMethod,
+        id: modelProvidersTable.id,
+        type: modelProvidersTable.type,
+        isDefault: modelProvidersTable.isDefault,
+        selectedModel: modelProvidersTable.selectedModel,
+        authMethod: modelProvidersTable.authMethod,
         secretName: secrets.name,
-        workspaceName: modelProviders.workspaceName,
-        planType: modelProviders.planType,
-        subscriptionResetPeriod: modelProviders.subscriptionResetPeriod,
-        subscriptionNextResetAt: modelProviders.subscriptionNextResetAt,
-        needsReconnect: modelProviders.needsReconnect,
-        lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
-        createdAt: modelProviders.createdAt,
-        updatedAt: modelProviders.updatedAt,
+        workspaceName: modelProvidersTable.workspaceName,
+        planType: modelProvidersTable.planType,
+        subscriptionResetPeriod: modelProvidersTable.subscriptionResetPeriod,
+        subscriptionNextResetAt: modelProvidersTable.subscriptionNextResetAt,
+        needsReconnect: modelProvidersTable.needsReconnect,
+        lastRefreshErrorCode: modelProvidersTable.lastRefreshErrorCode,
+        createdAt: modelProvidersTable.createdAt,
+        updatedAt: modelProvidersTable.updatedAt,
       })
-      .from(modelProviders)
-      .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
+      .from(modelProvidersTable)
+      .leftJoin(secrets, eq(modelProvidersTable.secretId, secrets.id))
       .where(
         and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, ownerUserId),
+          eq(modelProvidersTable.orgId, orgId),
+          eq(modelProvidersTable.userId, ownerUserId),
         ),
       )
-      .orderBy(modelProviders.type);
+      .orderBy(modelProvidersTable.type);
 
     return {
       modelProviders: rows.flatMap((row) => {
@@ -120,17 +120,17 @@ function zeroModelProvidersForUser(
   });
 }
 
-export function zeroModelProviders(
+export function modelProviders(
   orgId: string,
 ): Computed<Promise<ModelProviderListResponse>> {
-  return zeroModelProvidersForUser(orgId, ORG_SENTINEL_USER_ID);
+  return modelProvidersForUser(orgId, ORG_SENTINEL_USER_ID);
 }
 
-export function zeroUserModelProviders(
+export function userModelProviders(
   orgId: string,
   userId: string,
 ): Computed<Promise<ModelProviderListResponse>> {
-  return zeroModelProvidersForUser(orgId, userId);
+  return modelProvidersForUser(orgId, userId);
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -171,17 +171,17 @@ export const deleteUserModelProvider$ = command(
 
       const [provider] = await tx
         .select({
-          id: modelProviders.id,
-          isDefault: modelProviders.isDefault,
-          secretId: modelProviders.secretId,
-          authMethod: modelProviders.authMethod,
+          id: modelProvidersTable.id,
+          isDefault: modelProvidersTable.isDefault,
+          secretId: modelProvidersTable.secretId,
+          authMethod: modelProvidersTable.authMethod,
         })
-        .from(modelProviders)
+        .from(modelProvidersTable)
         .where(
           and(
-            eq(modelProviders.orgId, args.orgId),
-            eq(modelProviders.userId, args.userId),
-            eq(modelProviders.type, args.type),
+            eq(modelProvidersTable.orgId, args.orgId),
+            eq(modelProvidersTable.userId, args.userId),
+            eq(modelProvidersTable.type, args.type),
           ),
         )
         .limit(1);
@@ -199,8 +199,8 @@ export const deleteUserModelProvider$ = command(
           .limit(1);
         if (gatewayReference) {
           await tx
-            .delete(modelProviders)
-            .where(eq(modelProviders.id, provider.id));
+            .delete(modelProvidersTable)
+            .where(eq(modelProvidersTable.id, provider.id));
         } else {
           await tx.delete(secrets).where(eq(secrets.id, provider.secretId));
         }
@@ -225,8 +225,8 @@ export const deleteUserModelProvider$ = command(
           }
         }
         await tx
-          .delete(modelProviders)
-          .where(eq(modelProviders.id, provider.id));
+          .delete(modelProvidersTable)
+          .where(eq(modelProvidersTable.id, provider.id));
         signal.throwIfAborted();
       }
 
@@ -417,7 +417,7 @@ interface EncryptedMultiAuthSecret {
   readonly description: string;
 }
 
-type MultiAuthInsertValues = typeof modelProviders.$inferInsert;
+type MultiAuthInsertValues = typeof modelProvidersTable.$inferInsert;
 
 function buildMultiAuthInsertValues(args: {
   type: ModelProviderType;
@@ -614,13 +614,13 @@ export const upsertUserModelProvider$ = command(
 
     // Pre-check: does a provider for this type already exist?
     const [existingProvider] = await writeDb
-      .select({ id: modelProviders.id })
-      .from(modelProviders)
+      .select({ id: modelProvidersTable.id })
+      .from(modelProvidersTable)
       .where(
         and(
-          eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, args.userId),
-          eq(modelProviders.type, args.type),
+          eq(modelProvidersTable.orgId, args.orgId),
+          eq(modelProvidersTable.userId, args.userId),
+          eq(modelProvidersTable.type, args.type),
         ),
       )
       .limit(1);
@@ -651,7 +651,7 @@ export const upsertUserModelProvider$ = command(
 
     // Atomic model provider upsert.
     const [provider] = await writeDb
-      .insert(modelProviders)
+      .insert(modelProvidersTable)
       .values({
         type: args.type,
         userId: args.userId,
@@ -667,9 +667,9 @@ export const upsertUserModelProvider$ = command(
       })
       .onConflictDoUpdate({
         target: [
-          modelProviders.orgId,
-          modelProviders.userId,
-          modelProviders.type,
+          modelProvidersTable.orgId,
+          modelProvidersTable.userId,
+          modelProvidersTable.type,
         ],
         set: buildSingleAuthConflictSet({
           secretId: upsertedSecret.id,
@@ -771,12 +771,12 @@ async function persistMultiAuthModelProvider(
     // Check if model provider already exists (needed for auth method switch cleanup).
     const [existingProvider] = await tx
       .select()
-      .from(modelProviders)
+      .from(modelProvidersTable)
       .where(
         and(
-          eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, args.userId),
-          eq(modelProviders.type, args.type),
+          eq(modelProvidersTable.orgId, args.orgId),
+          eq(modelProvidersTable.userId, args.userId),
+          eq(modelProvidersTable.type, args.type),
         ),
       )
       .limit(1);
@@ -820,13 +820,13 @@ async function persistMultiAuthModelProvider(
       metadata: args.metadata,
     });
     const [provider] = await tx
-      .insert(modelProviders)
+      .insert(modelProvidersTable)
       .values(insertValues)
       .onConflictDoUpdate({
         target: [
-          modelProviders.orgId,
-          modelProviders.userId,
-          modelProviders.type,
+          modelProvidersTable.orgId,
+          modelProvidersTable.userId,
+          modelProvidersTable.type,
         ],
         set: conflictSet,
       })
@@ -1050,20 +1050,20 @@ export const upsertOrgNoSecretModelProvider$ = command(
     });
 
     const [existingProvider] = await writeDb
-      .select({ id: modelProviders.id })
-      .from(modelProviders)
+      .select({ id: modelProvidersTable.id })
+      .from(modelProvidersTable)
       .where(
         and(
-          eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProviders.type, args.type),
+          eq(modelProvidersTable.orgId, args.orgId),
+          eq(modelProvidersTable.userId, ORG_SENTINEL_USER_ID),
+          eq(modelProvidersTable.type, args.type),
         ),
       )
       .limit(1);
     signal.throwIfAborted();
 
     const [provider] = await writeDb
-      .insert(modelProviders)
+      .insert(modelProvidersTable)
       .values({
         type: args.type,
         userId: ORG_SENTINEL_USER_ID,
@@ -1073,9 +1073,9 @@ export const upsertOrgNoSecretModelProvider$ = command(
       })
       .onConflictDoUpdate({
         target: [
-          modelProviders.orgId,
-          modelProviders.userId,
-          modelProviders.type,
+          modelProvidersTable.orgId,
+          modelProvidersTable.userId,
+          modelProvidersTable.type,
         ],
         set: {
           selectedModel: args.selectedModel ?? null,

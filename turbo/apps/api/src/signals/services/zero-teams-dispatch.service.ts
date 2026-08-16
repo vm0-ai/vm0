@@ -56,7 +56,7 @@ import {
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import { listOrgModelPolicies$ } from "./zero-model-policy.service";
+import { listOrgModelPolicies$ } from "./model-policy.service";
 import { ensureTeamsChatThreadRoute } from "./teams-chat-ingress.service";
 import { formatTeamsFileForContext } from "./teams-prompt";
 import type { TeamsFileTokenPayload } from "./teams-file-token";

@@ -10,7 +10,7 @@ import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat
 import type { SupportedFramework } from "@okouai/core/frameworks";
 
 import { writeDb$ } from "../external/db";
-import { resolveDefaultModelFirstPin } from "./zero-model-selection.service";
+import { resolveDefaultModelFirstPin } from "./model-selection.service";
 
 export interface IntegrationModelRoutePin {
   readonly modelProviderType: string;

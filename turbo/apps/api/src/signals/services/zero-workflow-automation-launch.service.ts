@@ -16,7 +16,7 @@ import {
   finalizeClaimedRunUserMessage,
   resolveRunChatThreadModelContext,
 } from "./chat-run-event.service";
-import type { ModelFirstPin } from "./zero-model-selection.service";
+import type { ModelFirstPin } from "./model-selection.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,

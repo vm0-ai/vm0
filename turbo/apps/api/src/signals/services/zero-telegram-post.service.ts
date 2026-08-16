@@ -64,7 +64,7 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
-import { listOrgModelPolicies$ } from "./zero-model-policy.service";
+import { listOrgModelPolicies$ } from "./model-policy.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import {

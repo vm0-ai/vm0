@@ -16,7 +16,7 @@ import {
   LIMITED_FREE_ONBOARDING_CREDITS,
   onboardingCreditsExpiresAt,
 } from "./onboarding-credit-grants.service";
-import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
+import { upsertOrgNoSecretModelProvider$ } from "./model-provider.service";
 import {
   DEFAULT_AGENT_AVATAR_URL,
   DEFAULT_AGENT_DISPLAY_NAME,

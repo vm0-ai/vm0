@@ -32,7 +32,7 @@ import { buildFeishuConnectUrl } from "./feishu-connect-token";
 import { publishCustomConnectorUserInvalidationAfterCommit } from "./connector-client-invalidation.service";
 import { disconnectFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";
 import { publishFeishuOrgChanged } from "./feishu-realtime.service";
-import { listOrgModelPolicies$ } from "./zero-model-policy.service";
+import { listOrgModelPolicies$ } from "./model-policy.service";
 import {
   updateUserModelPreference$,
   userModelPreference,

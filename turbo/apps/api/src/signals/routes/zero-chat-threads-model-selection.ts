@@ -20,7 +20,7 @@ import {
 import {
   resolveModelSelectionPin,
   validateCodexServiceTier,
-} from "../services/zero-model-selection.service";
+} from "../services/model-selection.service";
 import { chatThreadModelPinColumns } from "../services/zero-chat-thread-model.service";
 import type { RouteEntry } from "../route-entry";
 
