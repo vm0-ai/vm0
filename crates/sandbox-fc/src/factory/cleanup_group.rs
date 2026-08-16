@@ -19,6 +19,10 @@
 //!   runs in the caller only when that registration is awaited. Calling
 //!   `start_accepting` after shutdown reopens the group.
 //!
+//! Cleanup registration is concurrency-safe, but shutdown attempts must be
+//! serialized. The factory enforces this through its mutable shutdown lifecycle;
+//! after a shutdown future is cancelled, callers may start a later retry.
+//!
 //! Shutdown has one 30-second production cleanup window shared across its
 //! initial and late-registration batches. If the shutdown future is cancelled,
 //! dropping its current batch puts unfinished task handles back into the group
@@ -446,6 +450,9 @@ impl FactoryCleanupGroup {
     }
 
     /// Drain tracked cleanup and transition the group to closed.
+    ///
+    /// Callers must run only one shutdown attempt at a time. A cancelled attempt
+    /// may be followed by a new one after the first future has been dropped.
     ///
     /// Registrations accepted before the group closes are drained or aborted by
     /// the same call. The graceful batches share one timeout; after it expires,
