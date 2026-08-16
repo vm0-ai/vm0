@@ -81,8 +81,8 @@ import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
 import { sharedThreadRoutes } from "./routes/shared-threads";
 import { claudeCodeDeviceAuthRoutes } from "./routes/claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
-import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
-import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
+import { computerUseAuthorizationRoutes } from "./routes/computer-use-authorization";
+import { computerUseRoutes } from "./routes/computer-use";
 import { codexDeviceAuthRoutes } from "./routes/codex-device-auth";
 import { connectorCatalogRoutes } from "./routes/connector-catalog";
 import { connectorCheckRoutes } from "./routes/connector-check";
@@ -95,7 +95,7 @@ import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { financeRoutes } from "./routes/finance";
 import { seoRoutes } from "./routes/seo";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
-import { zeroHostRoutes } from "./routes/zero-host";
+import { hostRoutes } from "./routes/host";
 import { builtInGenerationRoutes } from "./routes/built-in-generation";
 import { imageIoGenerateRoutes } from "./routes/image-io-generate";
 import { imageShareXRoutes } from "./routes/image-share-x";
@@ -131,8 +131,8 @@ import { meModelProvidersUpsertRoutes } from "./routes/me-model-providers-upsert
 import { scrapeRoutes } from "./routes/scrape";
 import { peopleSearchRoutes } from "./routes/people-search";
 import { webSearchRoutes } from "./routes/web-search";
-import { zeroBrowserRoutes } from "./routes/zero-browser";
-import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
+import { browserRoutes } from "./routes/browser";
+import { browserAuthorizationRoutes } from "./routes/browser-authorization";
 import { workflowsRoutes } from "./routes/workflows";
 import { workflowAutomationsRoutes } from "./routes/workflow-automations";
 import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
@@ -273,8 +273,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...sharedThreadRoutes,
   ...claudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
-  ...zeroComputerUseAuthorizationRoutes,
-  ...zeroComputerUseRoutes,
+  ...computerUseAuthorizationRoutes,
+  ...computerUseRoutes,
   ...codexDeviceAuthRoutes,
   ...connectorCatalogRoutes,
   ...connectorCheckRoutes,
@@ -287,7 +287,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...financeRoutes,
   ...seoRoutes,
   ...zeroGoalsRoutes,
-  ...zeroHostRoutes,
+  ...hostRoutes,
   ...builtInGenerationRoutes,
   ...imageIoGenerateRoutes,
   ...imageShareXRoutes,
@@ -301,8 +301,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...scrapeRoutes,
   ...peopleSearchRoutes,
   ...webSearchRoutes,
-  ...zeroBrowserRoutes,
-  ...zeroBrowserAuthorizationRoutes,
+  ...browserRoutes,
+  ...browserAuthorizationRoutes,
   ...modelPoliciesRoutes,
   ...modelProviderGatewayRoutes,
   ...zeroModelProvidersRoutes,

@@ -632,7 +632,7 @@ const computerUseHostListAuthOptions = {
   requiredCapability: "computer-use:write",
 } as const;
 
-export const zeroComputerUseRoutes: readonly RouteEntry[] = [
+export const computerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseHostsContract.start,
     handler: authRoute(computerUseAuthOptions, hostStartInner$),

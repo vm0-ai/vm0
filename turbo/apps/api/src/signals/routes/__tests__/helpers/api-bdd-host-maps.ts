@@ -11,7 +11,7 @@ import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import type { RouteEntry } from "../../../route-entry";
-import { zeroHostRoutes } from "../../zero-host";
+import { hostRoutes } from "../../host";
 import { mapsRoutes } from "../../maps";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -105,10 +105,7 @@ function notFoundS3Error(key: string): Error {
   return error;
 }
 
-const hostMapsRoutes: readonly RouteEntry[] = [
-  ...zeroHostRoutes,
-  ...mapsRoutes,
-];
+const hostMapsRoutes: readonly RouteEntry[] = [...hostRoutes, ...mapsRoutes];
 
 export function createHostMapsBddApi(context: TestContext) {
   function hostClient() {

@@ -152,7 +152,7 @@ const deploymentsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result.body };
 });
 
-export const zeroHostRoutes: readonly RouteEntry[] = [
+export const hostRoutes: readonly RouteEntry[] = [
   {
     route: zeroHostContract.prepare,
     handler: authRoute(
