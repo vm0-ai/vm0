@@ -23,7 +23,7 @@ import {
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
 
-const log = logger("ZeroWorkflowQueueDrain");
+const log = logger("WorkflowQueueDrain");
 
 // Consecutive stale events or claims invalidated by concurrent queue changes
 // are retried per drain call; a successful run creation always stops the loop.
