@@ -9,6 +9,7 @@ struct RecordingFinalExecParkObserver {
         bool,
         Option<SandboxFinalExecParkSubstageOutcome>,
     )>,
+    substage_durations: Vec<(SandboxFinalExecParkSubstage, Duration)>,
 }
 
 impl SandboxFinalExecParkObserver for RecordingFinalExecParkObserver {
@@ -24,11 +25,12 @@ impl SandboxFinalExecParkObserver for RecordingFinalExecParkObserver {
     fn record_substage(
         &mut self,
         substage: SandboxFinalExecParkSubstage,
-        _duration: Duration,
+        duration: Duration,
         success: bool,
         outcome: Option<SandboxFinalExecParkSubstageOutcome>,
     ) {
         self.substages.push((substage, success, outcome));
+        self.substage_durations.push((substage, duration));
     }
 }
 
@@ -137,6 +139,14 @@ async fn operation_overrides_preserve_unrelated_sandbox_behavior() {
                 Some(SandboxFinalExecParkSubstageOutcome::Skipped),
             ),
             (SandboxFinalExecParkSubstage::VcpuPause, true, None),
+        ]
+    );
+    assert_eq!(
+        observer.substage_durations,
+        vec![
+            (SandboxFinalExecParkSubstage::BalloonSetup, Duration::ZERO),
+            (SandboxFinalExecParkSubstage::BalloonSettle, Duration::ZERO),
+            (SandboxFinalExecParkSubstage::VcpuPause, Duration::ZERO),
         ]
     );
 }

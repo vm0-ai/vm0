@@ -3612,17 +3612,6 @@ fn record_park_substage(
     events.record(substage, duration, success, outcome);
 }
 
-/// Wait until the guest balloon driver inflates close enough to `target_mib`.
-///
-/// The guest needs running vCPUs to inflate, so this must be called
-/// **before** pausing. Returns when `actual_mib >= target_mib`, when
-/// the remaining deficit is within [`balloon_settle_tolerance_mib`],
-/// when guest pressure indicates further reclaim is unsafe, or after
-/// [`BALLOON_SETTLE_TIMEOUT`]. A severe deficit that is still progressing with
-/// enough unused guest memory gets one bounded
-/// [`BALLOON_SETTLE_PROGRESS_GRACE`]. The returned outcome rejects only the
-/// existing severe-deficit classification. Errors from stats fetching are
-/// non-fatal — we log and proceed to pause.
 #[derive(Debug)]
 struct BalloonSettleResult {
     park_outcome: SandboxParkOutcome,
@@ -3636,6 +3625,17 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
         .park_outcome
 }
 
+/// Wait until the guest balloon driver inflates close enough to `target_mib`.
+///
+/// The guest needs running vCPUs to inflate, so this must be called
+/// **before** pausing. Returns when `actual_mib >= target_mib`, when
+/// the remaining deficit is within [`balloon_settle_tolerance_mib`],
+/// when guest pressure indicates further reclaim is unsafe, or after
+/// [`BALLOON_SETTLE_TIMEOUT`]. A severe deficit that is still progressing with
+/// enough unused guest memory gets one bounded
+/// [`BALLOON_SETTLE_PROGRESS_GRACE`]. The returned outcome rejects only the
+/// existing severe-deficit classification. Errors from stats fetching are
+/// non-fatal — we log and proceed to pause.
 async fn wait_for_balloon_with_outcome(
     client: &ApiClient,
     target_mib: u32,
