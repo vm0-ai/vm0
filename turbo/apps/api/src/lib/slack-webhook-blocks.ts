@@ -31,7 +31,7 @@ interface ModelPickerOption {
 interface AppHomeOptions {
   readonly isLinked: boolean;
   readonly isInstalled?: boolean;
-  readonly vm0UserId?: string;
+  readonly userId?: string;
   readonly userEmail?: string;
   readonly agentName?: string;
   readonly isOverrideActive?: boolean;
@@ -116,7 +116,7 @@ function buildAppHomeAccountBlock(options: AppHomeOptions): SlackBlocks {
       text: {
         type: "mrkdwn",
         text: `:white_check_mark: *Connected to Zero*\nAccount: ${
-          options.userEmail || options.vm0UserId
+          options.userEmail || options.userId
         }`,
       },
     },

@@ -559,7 +559,7 @@ export const deleteOrg$ = command(
           .delete(slackOrgConnections)
           .where(
             and(
-              eq(slackOrgConnections.vm0UserId, userId),
+              eq(slackOrgConnections.userId, userId),
               eq(
                 slackOrgConnections.slackWorkspaceId,
                 installation.slackWorkspaceId,

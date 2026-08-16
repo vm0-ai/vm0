@@ -346,7 +346,7 @@ describe("POST /api/okou/integrations/slack/message", () => {
     const { orgId, userId, slackWorkspaceId } = await seedWithInstallation();
     const { slackUserId } = await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId, userId: userId },
       context.signal,
     );
     const token = zeroToken({ userId, orgId, runId: "run-1" });
@@ -431,7 +431,7 @@ describe("POST /api/okou/integrations/slack/message", () => {
 
     const { slackUserId } = await store.set(
       seedSlackOrgConnection$,
-      { slackWorkspaceId, vm0UserId: userId },
+      { slackWorkspaceId, userId: userId },
       context.signal,
     );
 

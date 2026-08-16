@@ -234,7 +234,7 @@ async function seedTelegramFixture(
   const body = await readJson<TestTelegramStateSeedResponse>(response);
   const fixture = {
     botId: body.bot_id,
-    userId: body.vm0_user_id,
+    userId: body.user_id,
     orgId: body.org_id,
     telegramUserId,
     defaultAgentId: body.default_agent_id,
@@ -268,7 +268,7 @@ async function seedSlackFixture(args: {
   const fixture = {
     teamId,
     slackUserId,
-    userId: body.vm0_user_id,
+    userId: body.user_id,
     orgId: body.org_id,
     defaultAgentId: body.default_agent_id,
   };
@@ -492,7 +492,7 @@ describe("POST /api/test/telegram-state", () => {
       ok: true,
       bot_id: botId,
       org_id: orgId,
-      vm0_user_id: userId,
+      user_id: userId,
       default_agent_id: expect.any(String),
     });
     expect(body.user_link_id).toStrictEqual(expect.any(String));
@@ -512,7 +512,7 @@ describe("POST /api/test/telegram-state", () => {
     expect(state.links[0]).toMatchObject({
       id: body.user_link_id,
       telegramUserId,
-      vm0UserId: userId,
+      userId: userId,
     });
     expect(state.org_metadata).toMatchObject({
       orgId,
@@ -564,7 +564,7 @@ describe("POST /api/test/telegram-state", () => {
     expect(secondBody).toMatchObject({
       bot_id: botId,
       org_id: orgId,
-      vm0_user_id: userId,
+      user_id: userId,
       user_link_id: null,
       default_agent_id: firstBody.default_agent_id,
     });

@@ -11,8 +11,8 @@ import { telegramInstallations } from "./telegram-installation";
 
 /**
  * Telegram User Links table
- * Maps Telegram users to VM0 users for account linking.
- * Allows users to interact with VM0 agents via Telegram.
+ * Maps Telegram users to internal users for account linking.
+ * Allows users to interact with internal agents via Telegram.
  */
 export const telegramUserLinks = pgTable(
   "telegram_user_links",
@@ -29,23 +29,25 @@ export const telegramUserLinks = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    // VM0 user ID (Clerk user ID)
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
+    legacyUserId: text("vm0_user_id").notNull(),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
     return [
-      // Each Telegram user can only link to one VM0 user per bot
+      // Each Telegram user can only link to one internal user per bot
       uniqueIndex("idx_telegram_user_links_user_installation").on(
         table.telegramUserId,
         table.installationId,
       ),
-      // Each VM0 user can only link one Telegram account per bot
+      // Each internal user can only link one Telegram account per bot
       uniqueIndex("idx_telegram_user_links_vm0_installation").on(
-        table.vm0UserId,
+        table.legacyUserId,
         table.installationId,
       ),
       uniqueIndex("idx_telegram_user_links_user_id_installation").on(

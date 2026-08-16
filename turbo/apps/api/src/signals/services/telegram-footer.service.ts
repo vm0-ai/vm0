@@ -200,7 +200,7 @@ async function resolveRunUserLabel(
     .innerJoin(
       telegramUserLinks,
       and(
-        eq(telegramUserLinks.vm0UserId, agentRuns.userId),
+        eq(telegramUserLinks.userId, agentRuns.userId),
         eq(telegramUserLinks.installationId, args.botId),
       ),
     )

@@ -147,18 +147,18 @@ describe("Slack OAuth API routes", () => {
     it("includes platform state and truncates prompt by codepoint", async () => {
       const prompt = "\u{1F600}".repeat(600);
       const response = await appRequest(
-        `/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1&reinstall=1&prompt=${encodeURIComponent(prompt)}`,
+        `/api/zero/slack/oauth/install?orgId=org_1&userId=user_1&reinstall=1&prompt=${encodeURIComponent(prompt)}`,
       );
 
       const redirectUrl = new URL(response.headers.get("location")!);
       const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
         readonly orgId: string;
-        readonly vm0UserId: string;
+        readonly userId: string;
         readonly reinstall: boolean;
         readonly prompt: string;
       };
       expect(state.orgId).toBe("org_1");
-      expect(state.vm0UserId).toBe("user_1");
+      expect(state.userId).toBe("user_1");
       expect(state.reinstall).toBeTruthy();
       expect([...state.prompt]).toHaveLength(500);
       for (const char of state.prompt) {
@@ -166,9 +166,34 @@ describe("Slack OAuth API routes", () => {
       }
     });
 
+    it("accepts the legacy query key but writes only canonical state", async () => {
+      const response = await appRequest(
+        "/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1",
+      );
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      const state = JSON.parse(
+        redirectUrl.searchParams.get("state")!,
+      ) as Record<string, unknown>;
+      expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+      expect(state).not.toHaveProperty("vm0UserId");
+    });
+
+    it("fails closed when canonical and legacy query keys conflict", async () => {
+      const response = await appRequest(
+        "/api/zero/slack/oauth/install?userId=user_1&vm0UserId=user_2",
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toContain(
+        "/slack/failed?error=",
+      );
+    });
+
     it("includes the pending prompt in install state when provided", async () => {
       const response = await appRequest(
-        `/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1&prompt=${encodeURIComponent("summarize my inbox")}`,
+        `/api/zero/slack/oauth/install?orgId=org_1&userId=user_1&prompt=${encodeURIComponent("summarize my inbox")}`,
       );
 
       expect(response.status).toBe(307);
@@ -176,12 +201,12 @@ describe("Slack OAuth API routes", () => {
       const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
         readonly orgId: string;
         readonly prompt: string;
-        readonly vm0UserId: string;
+        readonly userId: string;
       };
       expect(state).toStrictEqual({
         orgId: "org_1",
         prompt: "summarize my inbox",
-        vm0UserId: "user_1",
+        userId: "user_1",
       });
     });
 
@@ -202,7 +227,7 @@ describe("Slack OAuth API routes", () => {
 
     it("omits prompt from install state when absent", async () => {
       const response = await appRequest(
-        "/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1",
+        "/api/zero/slack/oauth/install?orgId=org_1&userId=user_1",
       );
 
       expect(response.status).toBe(307);
@@ -242,13 +267,13 @@ describe("Slack OAuth API routes", () => {
 
     it("redirects direct API host install requests to the canonical web route", async () => {
       const response = await appRequest(
-        "/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1",
+        "/api/zero/slack/oauth/install?orgId=org_1&userId=user_1",
         { origin: API_ORIGIN },
       );
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1`,
+        `${WEB_ORIGIN}/api/zero/slack/oauth/install?orgId=org_1&userId=user_1`,
       );
     });
 
@@ -309,7 +334,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&vm0UserId=${fixture.userId}`,
+        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}`,
       );
 
       expect(response.status).toBe(307);
@@ -324,12 +349,12 @@ describe("Slack OAuth API routes", () => {
       const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
         readonly flow: string;
         readonly orgId: string;
-        readonly vm0UserId: string;
+        readonly userId: string;
       };
       expect(state).toMatchObject({
         flow: "connect",
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
       });
     });
 
@@ -339,7 +364,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&vm0UserId=${fixture.userId}`,
+        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}`,
         {
           origin: API_ORIGIN,
           headers: { "x-vm0-web-origin": WEB_ORIGIN },
@@ -359,7 +384,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&vm0UserId=${fixture.userId}&prompt=${encodeURIComponent("summarize my inbox")}`,
+        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&prompt=${encodeURIComponent("summarize my inbox")}`,
       );
 
       expect(response.status).toBe(307);
@@ -368,13 +393,13 @@ describe("Slack OAuth API routes", () => {
         readonly flow: string;
         readonly orgId: string;
         readonly prompt: string;
-        readonly vm0UserId: string;
+        readonly userId: string;
       };
       expect(state).toStrictEqual({
         flow: "connect",
         orgId: fixture.orgId,
         prompt: "summarize my inbox",
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
       });
     });
 
@@ -385,7 +410,7 @@ describe("Slack OAuth API routes", () => {
       const prompt = "x".repeat(1200);
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&vm0UserId=${fixture.userId}&prompt=${encodeURIComponent(prompt)}`,
+        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&prompt=${encodeURIComponent(prompt)}`,
       );
 
       expect(response.status).toBe(307);
@@ -403,7 +428,7 @@ describe("Slack OAuth API routes", () => {
       const prompt = "\u{1F600}".repeat(600);
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&vm0UserId=${fixture.userId}&prompt=${encodeURIComponent(prompt)}`,
+        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&prompt=${encodeURIComponent(prompt)}`,
       );
 
       expect(response.status).toBe(307);
@@ -423,7 +448,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&vm0UserId=${fixture.userId}`,
+        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}`,
       );
 
       expect(response.status).toBe(307);
@@ -436,30 +461,30 @@ describe("Slack OAuth API routes", () => {
 
     it("redirects direct API host connect requests to the canonical web route", async () => {
       const response = await appRequest(
-        "/api/zero/slack/oauth/connect?orgId=org_1&vm0UserId=user_1",
+        "/api/zero/slack/oauth/connect?orgId=org_1&userId=user_1",
         { origin: API_ORIGIN },
       );
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/connect?orgId=org_1&vm0UserId=user_1`,
+        `${WEB_ORIGIN}/api/zero/slack/oauth/connect?orgId=org_1&userId=user_1`,
       );
     });
 
-    it("returns 400 when orgId or vm0UserId is missing", async () => {
+    it("returns 400 when orgId or userId is missing", async () => {
       const response = await appRequest(
         "/api/zero/slack/oauth/connect?orgId=org_1",
       );
 
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toStrictEqual({
-        error: "Missing orgId or vm0UserId",
+        error: "Missing orgId or userId",
       });
     });
 
     it("returns 404 when no Slack installation exists for the org", async () => {
       const response = await appRequest(
-        "/api/zero/slack/oauth/connect?orgId=org_missing&vm0UserId=user_1",
+        "/api/zero/slack/oauth/connect?orgId=org_missing&userId=user_1",
       );
 
       expect(response.status).toBe(404);
@@ -472,7 +497,7 @@ describe("Slack OAuth API routes", () => {
       mockEnv("SLACK_OAUTH_CLIENT_ID", "");
 
       const response = await appRequest(
-        "/api/zero/slack/oauth/connect?orgId=org_1&vm0UserId=user_1",
+        "/api/zero/slack/oauth/connect?orgId=org_1&userId=user_1",
       );
 
       expect(response.status).toBe(503);
@@ -501,7 +526,7 @@ describe("Slack OAuth API routes", () => {
       });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
       });
 
       const response = await appRequest(
@@ -538,7 +563,7 @@ describe("Slack OAuth API routes", () => {
         },
         context.signal,
       );
-      expect(connection).toMatchObject({ vm0UserId: fixture.userId });
+      expect(connection).toMatchObject({ userId: fixture.userId });
     });
 
     it("uses the web rewrite origin for callback token exchange", async () => {
@@ -554,7 +579,7 @@ describe("Slack OAuth API routes", () => {
       mockOAuthSuccess({ teamId: fixture.slackWorkspaceId });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
       });
 
       const response = await appRequest(
@@ -635,7 +660,7 @@ describe("Slack OAuth API routes", () => {
       mockOAuthSuccess({ teamId: fixture.slackWorkspaceId });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
       });
 
       const response = await appRequest(
@@ -660,7 +685,7 @@ describe("Slack OAuth API routes", () => {
       mockOAuthSuccess({ teamId: fixture.slackWorkspaceId });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
       });
       context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
         { data: [] },
@@ -801,7 +826,7 @@ describe("Slack OAuth API routes", () => {
       });
       const state = JSON.stringify({
         orgId: requestingOrgId,
-        vm0UserId: requestingUserId,
+        userId: requestingUserId,
       });
 
       const response = await appRequest(
@@ -847,7 +872,7 @@ describe("Slack OAuth API routes", () => {
       });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
       });
 
       const response = await appRequest(
@@ -887,7 +912,7 @@ describe("Slack OAuth API routes", () => {
       await seedMembership(fixture.orgId, fixture.userId, "admin");
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
       });
       mockOAuthSuccess({
         teamId: fixture.slackWorkspaceId,
@@ -930,7 +955,7 @@ describe("Slack OAuth API routes", () => {
       });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
         prompt: "summarize my inbox",
       });
 
@@ -959,7 +984,7 @@ describe("Slack OAuth API routes", () => {
       });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
       });
 
       const response = await appRequest(
@@ -973,7 +998,7 @@ describe("Slack OAuth API routes", () => {
       ).toBeFalsy();
     });
 
-    it("connects an existing installed workspace through the connect flow", async () => {
+    it("accepts legacy in-flight state in the connect callback", async () => {
       const fixture = await track(
         store.set(seedSlackConnectOrg$, {}, context.signal),
       );
@@ -1006,10 +1031,29 @@ describe("Slack OAuth API routes", () => {
         },
         context.signal,
       );
-      expect(connection).toMatchObject({ vm0UserId: fixture.userId });
+      expect(connection).toMatchObject({ userId: fixture.userId });
 
       await flushWaitUntilForTest();
       expect(slackPostMessageContaining("summarize my inbox")).toBeTruthy();
+    });
+
+    it("fails closed when canonical and legacy callback state conflicts", async () => {
+      const state = JSON.stringify({
+        orgId: "org_conflict",
+        userId: "user_canonical",
+        vm0UserId: "user_legacy",
+        flow: "connect",
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toContain(
+        "/slack/failed?error=",
+      );
+      expect(context.mocks.slack.oauth.v2.access).not.toHaveBeenCalled();
     });
 
     it("does not send a pending prompt DM in the connect flow without a prompt", async () => {
@@ -1023,7 +1067,7 @@ describe("Slack OAuth API routes", () => {
       });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
         flow: "connect",
       });
 
@@ -1058,7 +1102,7 @@ describe("Slack OAuth API routes", () => {
     it("redirects connect flow OAuth exchange failures to the Slack settings error path", async () => {
       const state = JSON.stringify({
         orgId: "org_exchange_failure",
-        vm0UserId: "user_exchange_failure",
+        userId: "user_exchange_failure",
         flow: "connect",
       });
       context.mocks.slack.oauth.v2.access.mockResolvedValueOnce({
@@ -1081,7 +1125,7 @@ describe("Slack OAuth API routes", () => {
     it("redirects connect flow when no installation exists for the org", async () => {
       const state = JSON.stringify({
         orgId: "org_missing_installation",
-        vm0UserId: "user_missing_installation",
+        userId: "user_missing_installation",
         flow: "connect",
       });
       mockOAuthSuccess({ teamId: "T_MISSING", authedUserId: "U_MISSING" });
@@ -1108,7 +1152,7 @@ describe("Slack OAuth API routes", () => {
       });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
         flow: "connect",
       });
 
@@ -1135,7 +1179,7 @@ describe("Slack OAuth API routes", () => {
       });
       const state = JSON.stringify({
         orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
         reinstall: true,
       });
 

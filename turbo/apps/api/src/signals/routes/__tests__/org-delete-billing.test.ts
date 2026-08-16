@@ -718,7 +718,7 @@ test("does not delete the org when its proportional refund fails", async () => {
     ),
   ).resolves.toStrictEqual(
     expect.objectContaining({
-      vm0UserId: fixture.userId,
+      userId: fixture.userId,
       slackWorkspaceId: slackFixture.slackWorkspaceId,
     }),
   );

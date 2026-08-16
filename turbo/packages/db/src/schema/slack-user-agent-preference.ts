@@ -11,15 +11,18 @@ import { agentComposes } from "./agent-compose";
 /**
  * Per-user Slack agent preference.
  *
- * Overrides the org default agent for a single vm0 user across every Slack
+ * Overrides the org default agent for a single user across every Slack
  * workspace they are connected to in that org. A missing row (or
  * selected_compose_id = null) means "use org default".
  */
 export const slackUserAgentPreferences = pgTable(
   "slack_user_agent_preferences",
   {
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
+    legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     selectedComposeId: uuid("selected_compose_id").references(
       () => {
@@ -33,7 +36,7 @@ export const slackUserAgentPreferences = pgTable(
   (table) => {
     return [
       primaryKey({
-        columns: [table.vm0UserId, table.orgId],
+        columns: [table.legacyUserId, table.orgId],
         name: "slack_user_agent_preferences_pkey",
       }),
       uniqueIndex("idx_slack_user_agent_preferences_user_org").on(

@@ -27,7 +27,7 @@ export async function cleanupOrgMemberResources(
       .from(slackOrgConnections)
       .where(
         and(
-          eq(slackOrgConnections.vm0UserId, args.userId),
+          eq(slackOrgConnections.userId, args.userId),
           eq(
             slackOrgConnections.slackWorkspaceId,
             installation.slackWorkspaceId,

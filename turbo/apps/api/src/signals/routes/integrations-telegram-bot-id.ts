@@ -86,13 +86,14 @@ const updateOfficialBot$ = command(
     await writeDb
       .insert(telegramUserAgentPreferences)
       .values({
-        vm0UserId: args.auth.userId,
+        userId: args.auth.userId,
+        legacyUserId: args.auth.userId,
         orgId: args.auth.orgId,
         selectedComposeId: args.selectedAgentId,
       })
       .onConflictDoUpdate({
         target: [
-          telegramUserAgentPreferences.vm0UserId,
+          telegramUserAgentPreferences.userId,
           telegramUserAgentPreferences.orgId,
         ],
         set: {

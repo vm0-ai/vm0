@@ -85,7 +85,7 @@ function mockTeamsAPI(overrides: Partial<TeamsConnectStatus> = {}): void {
     isAdmin: true,
     installUrl:
       "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
-    connectUrl: "/api/okou/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
+    connectUrl: "/api/okou/teams/oauth/connect?orgId=org_1&userId=user_1",
   };
   context.mocks.api(zeroTeamsConnectContract.getStatus, ({ respond }) => {
     return respond(200, { ...defaults, ...overrides });
@@ -1142,7 +1142,7 @@ describe("works page", () => {
     const url = new URL(String(openedUrl), window.location.origin);
     expect(url.pathname).toBe("/api/okou/teams/oauth/connect");
     expect(url.searchParams.get("orgId")).toBe("org_1");
-    expect(url.searchParams.get("vm0UserId")).toBe("user_1");
+    expect(url.searchParams.get("userId")).toBe("user_1");
   });
 
   it("shows Microsoft Teams connect controls after installation", async () => {

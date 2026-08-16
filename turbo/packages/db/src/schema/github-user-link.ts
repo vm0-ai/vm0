@@ -10,8 +10,8 @@ import { githubInstallations } from "./github-installation";
 
 /**
  * GitHub User Links table
- * Maps GitHub users to VM0 users for account linking.
- * Allows multiple VM0 users to link to the same GitHub org installation.
+ * Maps GitHub users to internal users for account linking.
+ * Allows multiple internal users to link to the same GitHub org installation.
  */
 export const githubUserLinks = pgTable(
   "github_user_links",
@@ -26,14 +26,16 @@ export const githubUserLinks = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    // VM0 user ID (Clerk user ID)
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
+    legacyUserId: text("vm0_user_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
     return [
-      // Each GitHub user can only link to one VM0 user per installation
+      // Each GitHub user can only link to one internal user per installation
       uniqueIndex("idx_github_user_links_user_installation").on(
         table.githubUserId,
         table.installationId,

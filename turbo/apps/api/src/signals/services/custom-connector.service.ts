@@ -2954,7 +2954,7 @@ export const disconnectCustomConnector$ = command(
             .where(
               and(
                 eq(feishuOrgConnections.installationId, installation.id),
-                eq(feishuOrgConnections.vm0UserId, args.userId),
+                eq(feishuOrgConnections.userId, args.userId),
               ),
             );
         }

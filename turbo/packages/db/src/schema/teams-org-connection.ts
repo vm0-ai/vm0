@@ -13,7 +13,7 @@ import { teamsOrgInstallations } from "./teams-org-installation";
 
 /**
  * Org-aware Microsoft Teams connections table.
- * Maps a Teams user to a VM0 user within a specific Teams tenant.
+ * Maps a Teams user to an internal user within a specific Teams tenant.
  */
 export const teamsOrgConnections = pgTable(
   "teams_org_connections",
@@ -26,8 +26,11 @@ export const teamsOrgConnections = pgTable(
       .references(() => {
         return teamsOrgInstallations.teamsTenantId;
       }),
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
+    legacyUserId: text("vm0_user_id").notNull(),
     teamsUserDisplayName: varchar("teams_user_display_name", { length: 255 }),
     teamsUserPrincipalName: varchar("teams_user_principal_name", {
       length: 255,
@@ -45,7 +48,7 @@ export const teamsOrgConnections = pgTable(
         .on(table.teamsAadObjectId, table.teamsTenantId)
         .where(sql`teams_aad_object_id IS NOT NULL`),
       index("idx_teams_org_connections_vm0_tenant").on(
-        table.vm0UserId,
+        table.legacyUserId,
         table.teamsTenantId,
       ),
       index("idx_teams_org_connections_user_id_tenant").on(

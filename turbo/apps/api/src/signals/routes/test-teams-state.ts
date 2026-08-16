@@ -172,7 +172,7 @@ async function upsertTeamsConnection(
     readonly tenantId: string;
     readonly teamsUserId: string | null | undefined;
     readonly teamsAadObjectId: string | null | undefined;
-    readonly vm0UserId: string;
+    readonly userId: string;
     readonly displayName: string | null | undefined;
     readonly principalName: string | null | undefined;
   },
@@ -183,7 +183,8 @@ async function upsertTeamsConnection(
       teamsTenantId: args.tenantId,
       teamsUserId: args.teamsUserId ?? null,
       teamsAadObjectId: args.teamsAadObjectId ?? null,
-      vm0UserId: args.vm0UserId,
+      userId: args.userId,
+      legacyUserId: args.userId,
       teamsUserDisplayName: args.displayName ?? null,
       teamsUserPrincipalName: args.principalName ?? null,
     })
@@ -203,7 +204,8 @@ async function upsertTeamsConnection(
     .set({
       teamsUserId: args.teamsUserId ?? existing.teamsUserId,
       teamsAadObjectId: args.teamsAadObjectId ?? existing.teamsAadObjectId,
-      vm0UserId: args.vm0UserId,
+      userId: args.userId,
+      legacyUserId: args.userId,
       teamsUserDisplayName: args.displayName ?? existing.teamsUserDisplayName,
       teamsUserPrincipalName:
         args.principalName ?? existing.teamsUserPrincipalName,
@@ -510,7 +512,7 @@ function teamsConnections(db: ReadonlyDb, tenantId: string) {
       id: teamsOrgConnections.id,
       teamsUserId: teamsOrgConnections.teamsUserId,
       teamsAadObjectId: teamsOrgConnections.teamsAadObjectId,
-      vm0UserId: teamsOrgConnections.vm0UserId,
+      userId: teamsOrgConnections.userId,
       teamsUserDisplayName: teamsOrgConnections.teamsUserDisplayName,
       teamsUserPrincipalName: teamsOrgConnections.teamsUserPrincipalName,
       dmWelcomeSent: teamsOrgConnections.dmWelcomeSent,
@@ -797,13 +799,13 @@ async function maybeDeleteTeamsConnectionForPost(
   if (!body.delete_connection || !body.tenant_id) {
     return;
   }
-  if (body.vm0_user_id) {
+  if (body.user_id) {
     await db
       .delete(teamsOrgConnections)
       .where(
         and(
           eq(teamsOrgConnections.teamsTenantId, body.tenant_id),
-          eq(teamsOrgConnections.vm0UserId, body.vm0_user_id),
+          eq(teamsOrgConnections.userId, body.user_id),
         ),
       );
     return;
@@ -825,7 +827,7 @@ async function maybeSeedTeamsConnectionForPost(
     tenantId: body.tenant_id!,
     teamsUserId: body.teams_user_id,
     teamsAadObjectId: body.teams_aad_object_id,
-    vm0UserId: userId,
+    userId: userId,
     displayName: body.teams_user_display_name,
     principalName: body.teams_user_principal_name,
   });
@@ -869,14 +871,14 @@ const postTeamsState$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   let actor: { readonly orgId: string; readonly userId: string };
-  if (body.org_id && !body.vm0_user_id && !body.email) {
+  if (body.org_id && !body.user_id && !body.email) {
     actor = {
       orgId: body.org_id,
       userId: `user_${body.org_id.replace(/[^a-zA-Z0-9_]/g, "_")}`,
     };
   } else {
     const userId =
-      body.vm0_user_id ??
+      body.user_id ??
       (await set(
         testUserId$,
         { email: body.email ?? DEFAULT_TEST_EMAIL, refresh: false },
@@ -908,7 +910,7 @@ const postTeamsState$ = command(async ({ get, set }, signal: AbortSignal) => {
       ok: true as const,
       tenant_id: body.tenant_id ?? "",
       org_id: actor.orgId,
-      vm0_user_id: actor.userId,
+      user_id: actor.userId,
       connection_id: connectionId ?? null,
       default_agent_id: defaultAgent?.composeId ?? null,
     },

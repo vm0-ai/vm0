@@ -357,7 +357,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     expect(connection).toMatchObject({
       id: response.body.connectionId,
-      vm0UserId: fixture.userId,
+      userId: fixture.userId,
       slackWorkspaceId: fixture.slackWorkspaceId,
     });
   });

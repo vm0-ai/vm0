@@ -299,12 +299,12 @@ export function buildAgentPhoneConnectUrl(params: {
   return `${env("APP_URL").replace(/\/$/u, "")}/agentphone/connect?${query.toString()}`;
 }
 
-export async function linkAgentPhoneUserToVm0User(
+export async function linkAgentPhoneUser(
   db: Db,
   params: {
     readonly phoneHandle: string;
     readonly channel: AgentPhoneChannel;
-    readonly vm0UserId: string;
+    readonly userId: string;
     readonly orgId: string;
   },
 ): Promise<LinkAgentPhoneUserResult> {
@@ -320,7 +320,7 @@ export async function linkAgentPhoneUserToVm0User(
 
   if (existingPhoneLink) {
     if (
-      existingPhoneLink.vm0UserId === params.vm0UserId &&
+      existingPhoneLink.userId === params.userId &&
       existingPhoneLink.orgId === params.orgId
     ) {
       return {
@@ -341,24 +341,24 @@ export async function linkAgentPhoneUserToVm0User(
     };
   }
 
-  const [existingVm0OrgLink] = await db
+  const [existingUserOrgLink] = await db
     .select()
     .from(agentphoneUserLinks)
     .where(
       and(
-        eq(agentphoneUserLinks.vm0UserId, params.vm0UserId),
+        eq(agentphoneUserLinks.userId, params.userId),
         eq(agentphoneUserLinks.orgId, params.orgId),
       ),
     )
     .limit(1);
 
-  if (existingVm0OrgLink) {
-    if (existingVm0OrgLink.phoneHandle === phoneHandle) {
+  if (existingUserOrgLink) {
+    if (existingUserOrgLink.phoneHandle === phoneHandle) {
       return {
         ok: true,
         userLink: await touchAgentPhoneUserLink(
           db,
-          existingVm0OrgLink,
+          existingUserOrgLink,
           phoneHandle,
           params.channel,
         ),
@@ -368,7 +368,7 @@ export async function linkAgentPhoneUserToVm0User(
     return {
       ok: false,
       reason: "vm0-org-linked",
-      userLink: existingVm0OrgLink,
+      userLink: existingUserOrgLink,
     };
   }
 
@@ -376,7 +376,8 @@ export async function linkAgentPhoneUserToVm0User(
     .insert(agentphoneUserLinks)
     .values({
       phoneHandle,
-      vm0UserId: params.vm0UserId,
+      userId: params.userId,
+      legacyUserId: params.userId,
       orgId: params.orgId,
     })
     .onConflictDoNothing()
@@ -436,7 +437,7 @@ export async function resolveAgentPhoneUserLinkForOwner(
   params: {
     readonly phoneHandle: string;
     readonly channel: AgentPhoneChannel;
-    readonly vm0UserId: string;
+    readonly userId: string;
     readonly orgId: string;
   },
 ): Promise<AgentPhoneUserLink | null> {
@@ -453,7 +454,7 @@ export async function resolveAgentPhoneUserLinkForOwner(
     .where(
       and(
         eq(agentphoneUserLinks.phoneHandle, normalized),
-        eq(agentphoneUserLinks.vm0UserId, params.vm0UserId),
+        eq(agentphoneUserLinks.userId, params.userId),
         eq(agentphoneUserLinks.orgId, params.orgId),
       ),
     )
@@ -535,7 +536,7 @@ export async function storeInboundAgentPhoneMessage(
 
 async function getAgentPhoneUserAgentPreference(
   db: ReadonlyDb,
-  vm0UserId: string,
+  userId: string,
   orgId: string,
 ): Promise<string | null> {
   const [row] = await db
@@ -545,7 +546,7 @@ async function getAgentPhoneUserAgentPreference(
     .from(agentphoneUserAgentPreferences)
     .where(
       and(
-        eq(agentphoneUserAgentPreferences.vm0UserId, vm0UserId),
+        eq(agentphoneUserAgentPreferences.userId, userId),
         eq(agentphoneUserAgentPreferences.orgId, orgId),
       ),
     )
@@ -556,14 +557,10 @@ async function getAgentPhoneUserAgentPreference(
 
 async function resolveEffectiveAgentPhoneComposeId(
   db: ReadonlyDb,
-  vm0UserId: string,
+  userId: string,
   orgId: string,
 ): Promise<string | null> {
-  const preference = await getAgentPhoneUserAgentPreference(
-    db,
-    vm0UserId,
-    orgId,
-  );
+  const preference = await getAgentPhoneUserAgentPreference(db, userId, orgId);
   if (preference) {
     const [compose] = await db
       .select({ id: agentComposes.id })
@@ -614,7 +611,7 @@ async function resolveAgentPhoneAgent(
 ): Promise<WorkspaceAgent | undefined> {
   const composeId = await resolveEffectiveAgentPhoneComposeId(
     db,
-    userLink.vm0UserId,
+    userLink.userId,
     userLink.orgId,
   );
   if (!composeId) {
@@ -1397,7 +1394,7 @@ const dispatchAgentPhoneCommand$ = command(
           {
             event: args.event,
             orgId: args.userLink.orgId,
-            userId: args.userLink.vm0UserId,
+            userId: args.userLink.userId,
           },
           signal,
         );
@@ -1489,7 +1486,7 @@ async function persistAgentPhoneChatMessage(
     agentphoneUserLinkId: args.userLink.id,
     rootMessageId: args.rootMessageId,
     conversationId: args.event.conversationId,
-    userId: args.userLink.vm0UserId,
+    userId: args.userLink.userId,
     orgId: args.userLink.orgId,
     agentComposeId: args.agent.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
@@ -1635,11 +1632,11 @@ const runAgentForAgentPhone$ = command(
     }
 
     await publishChatThreadMessageCreatedSafely(
-      args.userLink.vm0UserId,
+      args.userLink.userId,
       persisted.chatThreadId,
     );
     signal.throwIfAborted();
-    await publishThreadListChanged(args.userLink.vm0UserId);
+    await publishThreadListChanged(args.userLink.userId);
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,
@@ -1726,7 +1723,7 @@ export const handleAgentPhoneMessage$ = command(
       resolveIntegrationModelRouteForUser$,
       {
         orgId: params.userLink.orgId,
-        userId: params.userLink.vm0UserId,
+        userId: params.userLink.userId,
       },
       signal,
     );

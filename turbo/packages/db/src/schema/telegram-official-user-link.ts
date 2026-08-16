@@ -13,7 +13,7 @@ import {
  * Official Telegram bot user links.
  *
  * The shared Zero bot is global: one Telegram user can connect to exactly one
- * VM0 account/org at a time. To reconnect somewhere else, they must
+ * internal account/org at a time. To reconnect somewhere else, they must
  * disconnect first.
  */
 export const telegramOfficialUserLinks = pgTable(
@@ -23,8 +23,11 @@ export const telegramOfficialUserLinks = pgTable(
     telegramUserId: varchar("telegram_user_id", { length: 255 }).notNull(),
     telegramUsername: varchar("telegram_username", { length: 255 }),
     telegramDisplayName: varchar("telegram_display_name", { length: 255 }),
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
+    legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -36,7 +39,7 @@ export const telegramOfficialUserLinks = pgTable(
         table.telegramUserId,
       ),
       uniqueIndex("idx_telegram_official_user_links_vm0_org").on(
-        table.vm0UserId,
+        table.legacyUserId,
         table.orgId,
       ),
       uniqueIndex("idx_telegram_official_user_links_user_org").on(

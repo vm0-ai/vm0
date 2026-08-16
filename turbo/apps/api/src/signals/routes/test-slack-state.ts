@@ -142,7 +142,7 @@ async function upsertSlackInstallation(
 interface UpsertSlackConnectionInput {
   readonly slackUserId: string;
   readonly slackWorkspaceId: string;
-  readonly vm0UserId: string;
+  readonly userId: string;
 }
 
 async function insertSlackConnectionIfMissing(
@@ -154,7 +154,8 @@ async function insertSlackConnectionIfMissing(
     .values({
       slackUserId: input.slackUserId,
       slackWorkspaceId: input.slackWorkspaceId,
-      vm0UserId: input.vm0UserId,
+      userId: input.userId,
+      legacyUserId: input.userId,
     })
     .onConflictDoNothing()
     .returning({ id: slackOrgConnections.id });
@@ -489,7 +490,7 @@ function slackConnections(db: ReadonlyDb, teamId: string) {
     .select({
       id: slackOrgConnections.id,
       slackUserId: slackOrgConnections.slackUserId,
-      vm0UserId: slackOrgConnections.vm0UserId,
+      userId: slackOrgConnections.userId,
       dmWelcomeSent: slackOrgConnections.dmWelcomeSent,
       createdAt: slackOrgConnections.createdAt,
     })
@@ -928,13 +929,13 @@ async function maybeDeleteSlackConnectionForPost(
   if (!body.delete_connection || !body.team_id) {
     return;
   }
-  if (body.vm0_user_id) {
+  if (body.user_id) {
     await db
       .delete(slackOrgConnections)
       .where(
         and(
           eq(slackOrgConnections.slackWorkspaceId, body.team_id),
-          eq(slackOrgConnections.vm0UserId, body.vm0_user_id),
+          eq(slackOrgConnections.userId, body.user_id),
         ),
       );
     return;
@@ -955,7 +956,7 @@ async function maybeSeedSlackConnectionForPost(
   return await insertSlackConnectionIfMissing(db, {
     slackUserId: body.slack_user_id!,
     slackWorkspaceId: body.team_id!,
-    vm0UserId: userId,
+    userId: userId,
   });
 }
 
@@ -1026,14 +1027,14 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   let actor: { readonly orgId: string; readonly userId: string };
-  if (body.org_id && !body.vm0_user_id && !body.email) {
+  if (body.org_id && !body.user_id && !body.email) {
     actor = {
       orgId: body.org_id,
       userId: `user_${body.org_id.replace(/[^a-zA-Z0-9_]/g, "_")}`,
     };
   } else {
     const userId =
-      body.vm0_user_id ??
+      body.user_id ??
       (await set(
         testUserId$,
         { email: body.email ?? DEFAULT_TEST_EMAIL, refresh: false },
@@ -1074,7 +1075,7 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
       ok: true as const,
       team_id: body.team_id ?? "",
       org_id: actor.orgId,
-      vm0_user_id: actor.userId,
+      user_id: actor.userId,
       connection_id: connectionId ?? null,
       default_agent_id: defaultAgent?.composeId ?? null,
     },

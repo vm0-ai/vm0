@@ -857,7 +857,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestSlackOauthInstall(
       query: {
         readonly orgId?: string;
-        readonly vm0UserId?: string;
+        readonly userId?: string;
         readonly reinstall?: string;
         readonly prompt?: string;
       },
@@ -1051,7 +1051,7 @@ export function createBddIntegrationApi(context: TestContext) {
             state: actor
               ? JSON.stringify({
                   orgId: actor.orgId,
-                  vm0UserId: actor.userId,
+                  userId: actor.userId,
                 })
               : undefined,
           },
@@ -1316,7 +1316,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestSlackOauthConnect(
       query: {
         readonly orgId?: string;
-        readonly vm0UserId?: string;
+        readonly userId?: string;
         readonly prompt?: string;
       },
       statuses: readonly (307 | 400 | 404 | 503)[],

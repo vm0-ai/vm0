@@ -222,7 +222,7 @@ export function telegramInstallationForLink(args: {
   });
 }
 
-export const linkTelegramUserToVm0User$ = command(
+export const linkTelegramUser$ = command(
   async (
     { set },
     params: {
@@ -230,7 +230,7 @@ export const linkTelegramUserToVm0User$ = command(
       readonly telegramUserId: string;
       readonly telegramUsername?: string | null;
       readonly telegramDisplayName?: string | null;
-      readonly vm0UserId: string;
+      readonly userId: string;
     },
     signal: AbortSignal,
   ): Promise<LinkTelegramUserResult> => {
@@ -248,7 +248,7 @@ export const linkTelegramUserToVm0User$ = command(
     signal.throwIfAborted();
 
     if (existingTelegramLink) {
-      if (existingTelegramLink.vm0UserId !== params.vm0UserId) {
+      if (existingTelegramLink.userId !== params.userId) {
         return {
           ok: false,
           reason: "telegram-user-linked",
@@ -263,39 +263,39 @@ export const linkTelegramUserToVm0User$ = command(
         .returning();
       signal.throwIfAborted();
 
-      await publishTelegramUserChanged(params.vm0UserId);
+      await publishTelegramUserChanged(params.userId);
       signal.throwIfAborted();
       return { ok: true, userLink: updated ?? existingTelegramLink };
     }
 
-    const [existingVm0Link] = await writeDb
+    const [existingUserLink] = await writeDb
       .select()
       .from(telegramUserLinks)
       .where(
         and(
           eq(telegramUserLinks.installationId, params.installationId),
-          eq(telegramUserLinks.vm0UserId, params.vm0UserId),
+          eq(telegramUserLinks.userId, params.userId),
         ),
       )
       .limit(1);
     signal.throwIfAborted();
 
-    if (existingVm0Link) {
-      if (existingVm0Link.telegramUserId === params.telegramUserId) {
+    if (existingUserLink) {
+      if (existingUserLink.telegramUserId === params.telegramUserId) {
         const [updated] = await writeDb
           .update(telegramUserLinks)
-          .set(telegramUserProfileUpdate(params, existingVm0Link))
-          .where(eq(telegramUserLinks.id, existingVm0Link.id))
+          .set(telegramUserProfileUpdate(params, existingUserLink))
+          .where(eq(telegramUserLinks.id, existingUserLink.id))
           .returning();
         signal.throwIfAborted();
 
-        await publishTelegramUserChanged(params.vm0UserId);
+        await publishTelegramUserChanged(params.userId);
         signal.throwIfAborted();
-        return { ok: true, userLink: updated ?? existingVm0Link };
+        return { ok: true, userLink: updated ?? existingUserLink };
       }
 
       if (
-        existingVm0Link.telegramUserId === PENDING_TELEGRAM_USER_ID &&
+        existingUserLink.telegramUserId === PENDING_TELEGRAM_USER_ID &&
         params.telegramUserId !== PENDING_TELEGRAM_USER_ID
       ) {
         const [updated] = await writeDb
@@ -310,19 +310,19 @@ export const linkTelegramUserToVm0User$ = command(
             ),
             updatedAt: nowDate(),
           })
-          .where(eq(telegramUserLinks.id, existingVm0Link.id))
+          .where(eq(telegramUserLinks.id, existingUserLink.id))
           .returning();
         signal.throwIfAborted();
 
-        await publishTelegramUserChanged(params.vm0UserId);
+        await publishTelegramUserChanged(params.userId);
         signal.throwIfAborted();
-        return { ok: true, userLink: updated ?? existingVm0Link };
+        return { ok: true, userLink: updated ?? existingUserLink };
       }
 
       return {
         ok: false,
         reason: "vm0-user-linked",
-        userLink: existingVm0Link,
+        userLink: existingUserLink,
       };
     }
 
@@ -335,14 +335,15 @@ export const linkTelegramUserToVm0User$ = command(
           params.telegramDisplayName,
         ),
         installationId: params.installationId,
-        vm0UserId: params.vm0UserId,
+        userId: params.userId,
+        legacyUserId: params.userId,
       })
       .onConflictDoNothing()
       .returning();
     signal.throwIfAborted();
 
     if (inserted) {
-      await publishTelegramUserChanged(params.vm0UserId);
+      await publishTelegramUserChanged(params.userId);
       signal.throwIfAborted();
       return { ok: true, userLink: inserted };
     }
@@ -351,14 +352,14 @@ export const linkTelegramUserToVm0User$ = command(
   },
 );
 
-export const linkOfficialTelegramUserToVm0User$ = command(
+export const linkOfficialTelegramUser$ = command(
   async (
     { set },
     params: {
       readonly telegramUserId: string;
       readonly telegramUsername?: string | null;
       readonly telegramDisplayName?: string | null;
-      readonly vm0UserId: string;
+      readonly userId: string;
       readonly orgId: string;
     },
     signal: AbortSignal,
@@ -375,7 +376,7 @@ export const linkOfficialTelegramUserToVm0User$ = command(
 
     if (existingTelegramLink) {
       if (
-        existingTelegramLink.vm0UserId !== params.vm0UserId ||
+        existingTelegramLink.userId !== params.userId ||
         existingTelegramLink.orgId !== params.orgId
       ) {
         return {
@@ -402,51 +403,51 @@ export const linkOfficialTelegramUserToVm0User$ = command(
         .returning();
       signal.throwIfAborted();
 
-      await publishTelegramUserChanged(params.vm0UserId);
+      await publishTelegramUserChanged(params.userId);
       signal.throwIfAborted();
       return { ok: true, userLink: updated ?? existingTelegramLink };
     }
 
-    const [existingVm0OrgLink] = await writeDb
+    const [existingUserOrgLink] = await writeDb
       .select()
       .from(telegramOfficialUserLinks)
       .where(
         and(
-          eq(telegramOfficialUserLinks.vm0UserId, params.vm0UserId),
+          eq(telegramOfficialUserLinks.userId, params.userId),
           eq(telegramOfficialUserLinks.orgId, params.orgId),
         ),
       )
       .limit(1);
     signal.throwIfAborted();
 
-    if (existingVm0OrgLink) {
-      if (existingVm0OrgLink.telegramUserId === params.telegramUserId) {
+    if (existingUserOrgLink) {
+      if (existingUserOrgLink.telegramUserId === params.telegramUserId) {
         const [updated] = await writeDb
           .update(telegramOfficialUserLinks)
           .set({
             telegramUsername:
               params.telegramUsername === undefined
-                ? existingVm0OrgLink.telegramUsername
+                ? existingUserOrgLink.telegramUsername
                 : normalizeTelegramUsername(params.telegramUsername),
             telegramDisplayName:
               params.telegramDisplayName === undefined
-                ? existingVm0OrgLink.telegramDisplayName
+                ? existingUserOrgLink.telegramDisplayName
                 : normalizeTelegramDisplayName(params.telegramDisplayName),
             updatedAt: nowDate(),
           })
-          .where(eq(telegramOfficialUserLinks.id, existingVm0OrgLink.id))
+          .where(eq(telegramOfficialUserLinks.id, existingUserOrgLink.id))
           .returning();
         signal.throwIfAborted();
 
-        await publishTelegramUserChanged(params.vm0UserId);
+        await publishTelegramUserChanged(params.userId);
         signal.throwIfAborted();
-        return { ok: true, userLink: updated ?? existingVm0OrgLink };
+        return { ok: true, userLink: updated ?? existingUserOrgLink };
       }
 
       return {
         ok: false,
         reason: "vm0-org-linked",
-        userLink: existingVm0OrgLink,
+        userLink: existingUserOrgLink,
       };
     }
 
@@ -458,7 +459,8 @@ export const linkOfficialTelegramUserToVm0User$ = command(
         telegramDisplayName: normalizeTelegramDisplayName(
           params.telegramDisplayName,
         ),
-        vm0UserId: params.vm0UserId,
+        userId: params.userId,
+        legacyUserId: params.userId,
         orgId: params.orgId,
       })
       .onConflictDoNothing()
@@ -466,7 +468,7 @@ export const linkOfficialTelegramUserToVm0User$ = command(
     signal.throwIfAborted();
 
     if (inserted) {
-      await publishTelegramUserChanged(params.vm0UserId);
+      await publishTelegramUserChanged(params.userId);
       signal.throwIfAborted();
       return { ok: true, userLink: inserted };
     }

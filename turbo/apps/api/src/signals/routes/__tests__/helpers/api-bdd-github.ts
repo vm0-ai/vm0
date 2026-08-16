@@ -457,7 +457,7 @@ export function createGithubBddApi(context: TestContext) {
       mockGithubInstallationsList([]);
 
       const installQuery = new URLSearchParams({
-        vm0UserId: actor.userId,
+        userId: actor.userId,
         orgId: actor.orgId,
         composeId,
       }).toString();

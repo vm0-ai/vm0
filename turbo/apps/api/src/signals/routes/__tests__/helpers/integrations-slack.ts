@@ -27,7 +27,7 @@ interface SeedSlackInstallationValues {
 
 interface SeedSlackConnectionValues {
   readonly slackWorkspaceId: string;
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly slackUserId?: string;
 }
 
@@ -123,7 +123,7 @@ export const seedSlackOrgConnection$ = command(
     await postSlackState(signal, {
       team_id: values.slackWorkspaceId,
       org_id: orgId,
-      vm0_user_id: values.vm0UserId,
+      user_id: values.userId,
       slack_user_id: slackUserId,
       seed_connection: true,
     });
@@ -140,7 +140,7 @@ export const seedSlackEnvironmentAgent$ = command(
   ): Promise<void> => {
     await postSlackState(signal, {
       org_id: args.orgId,
-      vm0_user_id: args.userId,
+      user_id: args.userId,
       seed_default_agent: true,
     });
   },

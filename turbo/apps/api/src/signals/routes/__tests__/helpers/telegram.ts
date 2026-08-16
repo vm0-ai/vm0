@@ -52,7 +52,7 @@ interface SeedOfficialUserLinkValues {
 interface SeedTelegramUserLinkValues {
   readonly installationId: string;
   readonly telegramUserId: string;
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly telegramUsername?: string | null;
   readonly telegramDisplayName?: string | null;
 }
@@ -186,7 +186,7 @@ export const seedTelegramUserLink$ = command(
       action: "seed-user-link",
       installation_id: values.installationId,
       telegram_user_id: values.telegramUserId,
-      vm0_user_id: values.vm0UserId,
+      user_id: values.userId,
       telegram_username: values.telegramUsername,
       telegram_display_name: values.telegramDisplayName,
     });

@@ -126,7 +126,7 @@ async function loadFeishuLaunchContext(
           feishuOrgConnections.installationId,
           chatFeishuContext.installationId,
         ),
-        eq(feishuOrgConnections.vm0UserId, args.userId),
+        eq(feishuOrgConnections.userId, args.userId),
       ),
     )
     .innerJoin(
