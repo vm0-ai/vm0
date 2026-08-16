@@ -11,7 +11,7 @@ import { writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { checkBillableOperationCredits$ } from "../services/billable-operation-admission.service";
 import { createUsagePackCreditGrant } from "../services/usage-pack-credit.service";
-import { processOrgUsageEvents$ } from "../services/zero-credit-usage.service";
+import { processOrgUsageEvents$ } from "../services/credit-usage.service";
 import { checkOrgCreditsForRunAdmission } from "../services/zero-run-admission.service";
 import {
   isTestEndpointAllowed,

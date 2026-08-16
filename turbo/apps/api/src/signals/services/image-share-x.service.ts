@@ -16,7 +16,7 @@ import {
   refreshConnectorCredentialAccess,
   type ConnectorCredentialConnection,
 } from "./connector-credential-runtime.service";
-import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import { processOrgUsageEvents$ } from "./credit-usage.service";
 
 const X_CONNECTOR_SLUG = "x";
 const X_ACCESS_TOKEN_ENVIRONMENT_NAME = "X_TOKEN";

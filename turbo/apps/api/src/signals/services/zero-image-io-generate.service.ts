@@ -18,7 +18,7 @@ import { db$, writeDb$ } from "../external/db";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
 import { storeGeneratedArtifactObject$ } from "./artifact-storage.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
-import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import { processOrgUsageEvents$ } from "./credit-usage.service";
 import {
   builtInGenerationUsageIdempotencyKey,
   type BuiltInGenerationUsageIdempotency,

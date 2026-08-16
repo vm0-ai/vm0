@@ -3,7 +3,7 @@ import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
-import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import { processOrgUsageEvents$ } from "./credit-usage.service";
 
 export const processStaleUsageEvents$ = command(
   async ({ set }, signal: AbortSignal): Promise<number> => {
