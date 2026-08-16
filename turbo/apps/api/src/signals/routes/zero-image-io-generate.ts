@@ -21,7 +21,7 @@ import {
   submitFalImageQueueGeneration,
   type ImageOptions,
   type ImagePricing,
-} from "../services/zero-image-io-generate.service";
+} from "../services/image-generation.service";
 import {
   builtInGenerationRequestWithInternal,
   createBuiltInGenerationJob$,
@@ -37,7 +37,7 @@ import {
   type RunBuiltInAdmission,
 } from "../services/run-built-in-admission.service";
 
-const L = logger("ZeroImageIoGenerate");
+const L = logger("ImageGeneration");
 const imageBody$ = bodyResultOf(zeroImageIoGenerateContract.post);
 
 interface GenerationError {

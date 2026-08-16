@@ -26,7 +26,7 @@ import {
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
 
-const L = logger("ZeroAvatarVideo");
+const L = logger("AvatarVideo");
 
 const JOGGAI_AVATAR_VIDEO_MODEL = "joggai-talking-avatar";
 const JOGGAI_AVATAR_VIDEO_PRICING_CATEGORY = "output_video_joggai_credits";

@@ -28,7 +28,7 @@ import {
   parseAvatarVideoOptions,
   submitJoggAiAvatarVideo,
   type AvatarVideoOptions,
-} from "../services/zero-avatar-video.service";
+} from "../services/avatar-video.service";
 import {
   builtInGenerationRequestWithInternal,
   createBuiltInGenerationJob$,
