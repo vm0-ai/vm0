@@ -2179,7 +2179,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).resolves.toContain(created.id);
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
-    await bdd.deleteAgent(member, agent.agentId);
+    await bdd.deleteVersionFreeAgent(member, agent.agentId);
   });
 
   it("removes OAuth tokens when manual credentials replace the connection", async () => {
@@ -2607,7 +2607,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     await connectorsApi.disconnectCustomConnector(member, created.id);
     await connectorsApi.deleteCustomConnector(admin, created.id);
-    await bdd.deleteAgent(member, agent.agentId);
+    await bdd.deleteVersionFreeAgent(member, agent.agentId);
   });
 
   it("updates OAuth settings and preserves member OAuth data as incompatible", async () => {
@@ -3191,7 +3191,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).toBeUndefined();
 
     await connectorsApi.deleteCustomConnector(otherAdmin, otherConnector.id);
-    await bdd.deleteAgent(admin, agent.agentId);
+    await bdd.deleteVersionFreeAgent(admin, agent.agentId);
   });
 
   it("lets an admin agent with an okou-scoped token create a manual definition that Connect can configure", async () => {
@@ -3981,7 +3981,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectNoVisibleSecret(listed, "proposal-secret");
 
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
-    await bdd.deleteAgent(admin, agent.agentId);
+    await bdd.deleteVersionFreeAgent(admin, agent.agentId);
   });
 
   it("preserves selected permissions when a proposal reauthorizes an existing connector", async () => {
@@ -4044,7 +4044,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).resolves.toStrictEqual([grant]);
 
     await connectorsApi.deleteCustomConnector(admin, connector.id);
-    await bdd.deleteAgent(admin, agent.agentId);
+    await bdd.deleteVersionFreeAgent(admin, agent.agentId);
   });
 
   it("authorizes a connector proposal before required values are configured", async () => {
@@ -4140,7 +4140,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       emptyComplete.connector.id,
     );
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
-    await bdd.deleteAgent(admin, agent.agentId);
+    await bdd.deleteVersionFreeAgent(admin, agent.agentId);
   });
 
   it("rejects connector proposal host variables that change URL structure", async () => {
@@ -4776,7 +4776,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({ connected: false });
     await connectorsApi.deleteCustomConnector(admin, created.id);
-    await bdd.deleteAgent(admin, agent.agentId);
+    await bdd.deleteVersionFreeAgent(admin, agent.agentId);
   });
 
   it("rejects unsafe MCP endpoints and protected transport headers", async () => {

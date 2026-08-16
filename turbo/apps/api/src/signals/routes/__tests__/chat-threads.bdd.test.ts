@@ -1028,7 +1028,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
 
     chat.mockObjectStorageObjectsExist();
-    await authOrg.deleteAgent(actor, deletedAgent.agentId);
+    await authOrg.deleteVersionFreeAgent(actor, deletedAgent.agentId);
 
     mockNow(incrementalSnapshotAt + DAY_MS);
     await compactChatThreadSnapshots();
