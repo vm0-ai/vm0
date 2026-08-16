@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.451.9](https://github.com/vm0-ai/vm0/compare/api-v1.451.8...api-v1.451.9) (2026-08-16)
+
+
+### Refactoring
+
+* **api:** neutralize standalone route shell naming ([#27594](https://github.com/vm0-ai/vm0/issues/27594)) ([921130f](https://github.com/vm0-ai/vm0/commit/921130f7411e9d10fdeab74b61ff4896e327456a))
+* **billing:** neutralize billing route shell naming ([#27588](https://github.com/vm0-ai/vm0/issues/27588)) ([99a3e4d](https://github.com/vm0-ai/vm0/commit/99a3e4d1a98fa38926f452135fc44857ddc41b15))
+* **compose:** remove retired compose list surface ([#27606](https://github.com/vm0-ai/vm0/issues/27606)) ([0679f11](https://github.com/vm0-ai/vm0/commit/0679f11c81fed8d6b3be5d8f9f666b654d54e8fd))
+* **integrations:** neutralize teams telegram and agentphone route shell naming ([#27593](https://github.com/vm0-ai/vm0/issues/27593)) ([6cc02e3](https://github.com/vm0-ai/vm0/commit/6cc02e358ad4c294fa75c18edb62ecf3fa5b9ad4))
+* **models:** neutralize account and policy route shell naming ([#27586](https://github.com/vm0-ai/vm0/issues/27586)) ([de4f7a8](https://github.com/vm0-ai/vm0/commit/de4f7a810949e4f98810dc3053e21ae4009f3081))
+* **org:** neutralize organization invite route shell ([#27596](https://github.com/vm0-ai/vm0/issues/27596)) ([212d041](https://github.com/vm0-ai/vm0/commit/212d0419bd86d82e7a909077879028b940ce2ad1))
+* **test:** neutralize api fixture helper naming ([#27595](https://github.com/vm0-ai/vm0/issues/27595)) ([dbf5944](https://github.com/vm0-ai/vm0/commit/dbf5944d85673b7646ce9b0185724a21bde9e507))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.8
+    * @okouai/core bumped to 8.562.5
+    * @okouai/db bumped to 1.200.8
+
 ## [1.451.8](https://github.com/vm0-ai/vm0/compare/api-v1.451.7...api-v1.451.8) (2026-08-16)
 
 
