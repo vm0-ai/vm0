@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.168.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.16...runner-rs-v0.168.17) (2026-08-16)
+
+
+### Performance Improvements
+
+* **runner:** attribute sandbox telemetry by runner name ([#27464](https://github.com/vm0-ai/vm0/issues/27464)) ([70b634b](https://github.com/vm0-ai/vm0/commit/70b634b39f2c1a71ce8c82855fb512e583b85668))
+
 ## [0.168.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.15...runner-rs-v0.168.16) (2026-08-15)
 
 
