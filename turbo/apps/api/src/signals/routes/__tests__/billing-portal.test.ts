@@ -21,7 +21,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { zeroBillingPortalRoutes } from "../zero-billing-portal";
+import { billingPortalRoutes } from "../billing-portal";
 
 const context = testContext();
 const store = createStore();
@@ -61,7 +61,7 @@ describe("POST /api/zero/billing/portal", () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+    const client = setupApp({ context, routes: billingPortalRoutes })(
       zeroBillingPortalContract,
     );
     const response = await accept(
@@ -81,7 +81,7 @@ describe("POST /api/zero/billing/portal", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+    const client = setupApp({ context, routes: billingPortalRoutes })(
       zeroBillingPortalContract,
     );
 
@@ -104,7 +104,7 @@ describe("POST /api/zero/billing/portal", () => {
   it("returns 400 when returnUrl is missing", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+    const client = setupApp({ context, routes: billingPortalRoutes })(
       zeroBillingPortalContract,
     );
     const response = await accept(
@@ -121,7 +121,7 @@ describe("POST /api/zero/billing/portal", () => {
   it("returns 400 when returnUrl is not a valid URL", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+    const client = setupApp({ context, routes: billingPortalRoutes })(
       zeroBillingPortalContract,
     );
     const response = await accept(
@@ -142,7 +142,7 @@ describe("POST /api/zero/billing/portal", () => {
       "org:member",
     );
 
-    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+    const client = setupApp({ context, routes: billingPortalRoutes })(
       zeroBillingPortalContract,
     );
     const response = await accept(
@@ -186,7 +186,7 @@ describe("POST /api/zero/billing/portal", () => {
       url: "https://billing.stripe.com/session/test",
     });
 
-    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+    const client = setupApp({ context, routes: billingPortalRoutes })(
       zeroBillingPortalContract,
     );
     const response = await accept(
@@ -231,7 +231,7 @@ describe("POST /api/zero/billing/portal", () => {
 
     const returnUrl = `${APP_ORIGIN}/settings/billing`;
     const response = await accept(
-      setupApp({ context, routes: zeroBillingPortalRoutes })(
+      setupApp({ context, routes: billingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
         body: { returnUrl },
@@ -274,7 +274,7 @@ describe("POST /api/zero/billing/portal", () => {
     });
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingPortalRoutes })(
+      setupApp({ context, routes: billingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
         body: { returnUrl },
@@ -353,7 +353,7 @@ describe("POST /api/zero/billing/portal", () => {
     });
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingPortalRoutes })(
+      setupApp({ context, routes: billingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
         body: {
@@ -415,7 +415,7 @@ describe("POST /api/zero/billing/portal", () => {
     });
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingPortalRoutes })(
+      setupApp({ context, routes: billingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
         body: {
@@ -449,7 +449,7 @@ describe("POST /api/zero/billing/portal", () => {
       "org:admin",
     );
 
-    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+    const client = setupApp({ context, routes: billingPortalRoutes })(
       zeroBillingPortalContract,
     );
     const response = await accept(

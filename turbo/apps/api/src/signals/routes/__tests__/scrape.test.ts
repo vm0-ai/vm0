@@ -21,7 +21,7 @@ import { createDeferredPromise } from "../../utils";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingStatusRoutes } from "../billing-status";
 import { scrapeRoutes } from "../scrape";
 import {
   createBddApi,
@@ -34,7 +34,7 @@ const context = testContext();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 
 const scrapeTestRoutes: readonly RouteEntry[] = [
-  ...zeroBillingStatusRoutes,
+  ...billingStatusRoutes,
   ...scrapeRoutes,
 ];
 

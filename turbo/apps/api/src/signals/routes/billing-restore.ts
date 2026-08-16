@@ -81,7 +81,7 @@ const restore$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
-export const zeroBillingRestoreRoutes: readonly RouteEntry[] = [
+export const billingRestoreRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingRestoreContract.create,
     handler: restore$,

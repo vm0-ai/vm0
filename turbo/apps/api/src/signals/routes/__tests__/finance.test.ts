@@ -17,12 +17,12 @@ import {
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingStatusRoutes } from "../billing-status";
 import { financeRoutes } from "../finance";
 
 const context = testContext();
 const FINANCE_ROUTES = Object.freeze([
-  ...zeroBillingStatusRoutes,
+  ...billingStatusRoutes,
   ...financeRoutes,
 ]);
 const APIDOJO_BASE_URL = "https://apidojo-yahoo-finance-v1.p.rapidapi.com";

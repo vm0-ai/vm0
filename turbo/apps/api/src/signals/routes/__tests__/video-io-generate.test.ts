@@ -18,7 +18,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingStatusRoutes } from "../billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
 import { videoIoGenerateRoutes } from "../video-io-generate";
 import {
@@ -231,7 +231,7 @@ function createVideoIoTestApp(
       ...builtInGenerationRoutes,
       ...videoIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
-      ...zeroBillingStatusRoutes,
+      ...billingStatusRoutes,
     ],
     usagePricingResolution,
   });

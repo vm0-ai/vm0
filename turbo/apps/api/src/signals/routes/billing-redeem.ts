@@ -123,7 +123,7 @@ const redeem$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
-export const zeroBillingRedeemRoutes: readonly RouteEntry[] = [
+export const billingRedeemRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingRedeemContract.create,
     handler: redeem$,

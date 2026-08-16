@@ -62,19 +62,19 @@ import { agentInstructionsRoutes } from "./routes/agent-instructions";
 import { agentsRoutes } from "./routes/agents";
 import { artifactCatalogRoutes } from "./routes/artifact-catalog";
 import { acquisitionAttributionRoutes } from "./routes/acquisition-attribution";
-import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
-import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
-import { zeroBillingConcurrencyCheckoutRoutes } from "./routes/zero-billing-concurrency-checkout";
-import { zeroBillingConcurrencySubscriptionRoutes } from "./routes/zero-billing-concurrency-subscriptions";
-import { zeroBillingCreditCheckoutRoutes } from "./routes/zero-billing-credit-checkout";
-import { zeroBillingDowngradeRoutes } from "./routes/zero-billing-downgrade";
-import { zeroBillingInvoicesRoutes } from "./routes/zero-billing-invoices";
-import { zeroBillingPortalRoutes } from "./routes/zero-billing-portal";
-import { zeroBillingRedeemCodeRoutes } from "./routes/zero-billing-redeem-code";
-import { zeroBillingRedeemRoutes } from "./routes/zero-billing-redeem";
-import { zeroBillingRestoreRoutes } from "./routes/zero-billing-restore";
-import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
-import { zeroBillingUsagePackCreditsRoutes } from "./routes/zero-billing-usage-pack-credits";
+import { billingAutoRechargeRoutes } from "./routes/billing-auto-recharge";
+import { billingCheckoutRoutes } from "./routes/billing-checkout";
+import { billingConcurrencyCheckoutRoutes } from "./routes/billing-concurrency-checkout";
+import { billingConcurrencySubscriptionRoutes } from "./routes/billing-concurrency-subscriptions";
+import { billingCreditCheckoutRoutes } from "./routes/billing-credit-checkout";
+import { billingDowngradeRoutes } from "./routes/billing-downgrade";
+import { billingInvoicesRoutes } from "./routes/billing-invoices";
+import { billingPortalRoutes } from "./routes/billing-portal";
+import { billingRedeemCodeRoutes } from "./routes/billing-redeem-code";
+import { billingRedeemRoutes } from "./routes/billing-redeem";
+import { billingRestoreRoutes } from "./routes/billing-restore";
+import { billingStatusRoutes } from "./routes/billing-status";
+import { billingUsagePackCreditsRoutes } from "./routes/billing-usage-pack-credits";
 import { zeroBankingRoutes } from "./routes/zero-banking";
 import { chatThreadRoutes } from "./routes/chat-threads";
 import { chatEventsRoutes } from "./routes/chat-events";
@@ -254,19 +254,19 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentsRoutes,
   ...artifactCatalogRoutes,
   ...acquisitionAttributionRoutes,
-  ...zeroBillingAutoRechargeRoutes,
-  ...zeroBillingCheckoutRoutes,
-  ...zeroBillingConcurrencyCheckoutRoutes,
-  ...zeroBillingConcurrencySubscriptionRoutes,
-  ...zeroBillingCreditCheckoutRoutes,
-  ...zeroBillingDowngradeRoutes,
-  ...zeroBillingInvoicesRoutes,
-  ...zeroBillingPortalRoutes,
-  ...zeroBillingRedeemCodeRoutes,
-  ...zeroBillingRedeemRoutes,
-  ...zeroBillingRestoreRoutes,
-  ...zeroBillingStatusRoutes,
-  ...zeroBillingUsagePackCreditsRoutes,
+  ...billingAutoRechargeRoutes,
+  ...billingCheckoutRoutes,
+  ...billingConcurrencyCheckoutRoutes,
+  ...billingConcurrencySubscriptionRoutes,
+  ...billingCreditCheckoutRoutes,
+  ...billingDowngradeRoutes,
+  ...billingInvoicesRoutes,
+  ...billingPortalRoutes,
+  ...billingRedeemCodeRoutes,
+  ...billingRedeemRoutes,
+  ...billingRestoreRoutes,
+  ...billingStatusRoutes,
+  ...billingUsagePackCreditsRoutes,
   ...zeroBankingRoutes,
   ...chatThreadRoutes,
   ...chatEventsRoutes,

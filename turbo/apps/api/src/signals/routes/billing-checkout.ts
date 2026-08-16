@@ -1334,7 +1334,7 @@ const checkoutComplete$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
-export const zeroBillingCheckoutRoutes: readonly RouteEntry[] = [
+export const billingCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingCheckoutContract.create,
     handler: checkout$,

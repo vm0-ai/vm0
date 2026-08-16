@@ -24,7 +24,7 @@ import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { artifactCatalogRoutes } from "../artifact-catalog";
 import { avatarVideoRoutes } from "../avatar-video";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingStatusRoutes } from "../billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/org-membership";
@@ -71,7 +71,7 @@ function createAvatarVideoTestApp(
       ...artifactCatalogRoutes,
       ...builtInGenerationRoutes,
       ...webhooksBuiltInGenerationRoutes,
-      ...zeroBillingStatusRoutes,
+      ...billingStatusRoutes,
     ],
     usagePricingResolution,
   });

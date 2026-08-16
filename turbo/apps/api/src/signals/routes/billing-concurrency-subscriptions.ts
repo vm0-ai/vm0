@@ -384,7 +384,7 @@ const restoreConcurrencySubscriptionRoute$ = command(
   },
 );
 
-export const zeroBillingConcurrencySubscriptionRoutes: readonly RouteEntry[] = [
+export const billingConcurrencySubscriptionRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingConcurrencySubscriptionContract.previewChange,
     handler: previewConcurrencySubscriptionChangeRoute$,

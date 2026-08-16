@@ -8,7 +8,7 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import type { RouteEntry } from "../../../route-entry";
-import { zeroBillingStatusRoutes } from "../../zero-billing-status";
+import { billingStatusRoutes } from "../../billing-status";
 import { mapsRoutes } from "../../maps";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -49,7 +49,7 @@ interface OsmRenderBody extends OsmAreaBody {
 }
 
 const mapsBillingRoutes: readonly RouteEntry[] = [
-  ...zeroBillingStatusRoutes,
+  ...billingStatusRoutes,
   ...mapsRoutes,
 ];
 

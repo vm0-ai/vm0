@@ -81,7 +81,7 @@ const downloadReceiptsInner$ = command(
   },
 );
 
-export const zeroBillingInvoicesRoutes: readonly RouteEntry[] = [
+export const billingInvoicesRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingInvoicesContract.get,
     handler: authRoute(

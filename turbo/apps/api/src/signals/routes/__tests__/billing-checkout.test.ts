@@ -57,12 +57,12 @@ import { webhooksStripeRoutes } from "../webhooks-stripe";
 import { readOrgAcquisitionAttributionFixture } from "../../../test-fixtures/org-metadata";
 import { webhooksClerkRoutes } from "../webhooks-clerk";
 import { testBillingReconciliationStateRoutes } from "../test-billing-reconciliation-state";
-import { zeroBillingCheckoutRoutes } from "../zero-billing-checkout";
-import { zeroBillingConcurrencyCheckoutRoutes } from "../zero-billing-concurrency-checkout";
-import { zeroBillingConcurrencySubscriptionRoutes } from "../zero-billing-concurrency-subscriptions";
-import { zeroBillingCreditCheckoutRoutes } from "../zero-billing-credit-checkout";
-import { zeroBillingUsagePackCreditsRoutes } from "../zero-billing-usage-pack-credits";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingCheckoutRoutes } from "../billing-checkout";
+import { billingConcurrencyCheckoutRoutes } from "../billing-concurrency-checkout";
+import { billingConcurrencySubscriptionRoutes } from "../billing-concurrency-subscriptions";
+import { billingCreditCheckoutRoutes } from "../billing-credit-checkout";
+import { billingUsagePackCreditsRoutes } from "../billing-usage-pack-credits";
+import { billingStatusRoutes } from "../billing-status";
 import { orgMembersRoutes } from "../org-members";
 import { zeroOrgInviteRoutes } from "../zero-org-invite";
 import { orgReadRoutes } from "../org-read";
@@ -255,7 +255,7 @@ async function readBillingStatus(
 ): Promise<BillingStatusResponse> {
   authenticateOrg(fixture);
   const response = await accept(
-    setupApp({ context, routes: zeroBillingStatusRoutes })(
+    setupApp({ context, routes: billingStatusRoutes })(
       zeroBillingStatusContract,
     ).get({
       headers: { authorization: "Bearer clerk-session" },
@@ -299,7 +299,7 @@ async function createStripeCustomerOrgForFixture(
   });
 
   await accept(
-    setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     ).create({
       headers: { authorization: "Bearer clerk-session" },
@@ -710,7 +710,7 @@ describe("POST /api/zero/billing/checkout", () => {
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -735,7 +735,7 @@ describe("POST /api/zero/billing/checkout", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -758,7 +758,7 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -779,7 +779,7 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
     const oversizedSuccessUrl = `${APP_ORIGIN}/billing?state=`.padEnd(
@@ -810,7 +810,7 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -847,7 +847,7 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/test",
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -904,7 +904,7 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/preview",
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -962,7 +962,7 @@ describe("POST /api/zero/billing/checkout", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -999,7 +999,7 @@ describe("POST /api/zero/billing/checkout", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1031,7 +1031,7 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedCustomSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1070,7 +1070,7 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/attributed",
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1163,7 +1163,7 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/trial",
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1210,7 +1210,7 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1239,7 +1239,7 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1268,7 +1268,7 @@ describe("POST /api/zero/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1302,7 +1302,7 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/so-trial",
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1328,7 +1328,7 @@ describe("POST /api/zero/billing/checkout", () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1355,7 +1355,7 @@ describe("POST /api/zero/billing/checkout", () => {
     // undefined and the route falls into the "Price not configured" branch.
     mockEnv("ZERO_PRICE_PRO", undefined);
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -1393,7 +1393,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     authenticateOrg(fixture);
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingUsagePackCatalogContract,
       ).get({
         headers: { authorization: "Bearer clerk-session" },
@@ -1418,7 +1418,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     });
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingUsagePackCatalogContract,
       ).get({
         headers: { authorization: "Bearer clerk-session" },
@@ -1466,7 +1466,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     const before = await readUsagePackState(fixture.orgId);
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingUsagePackCheckoutContract,
       ).create({
         body: {
@@ -1576,7 +1576,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     );
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingUsagePackCheckoutContract,
       ).create({
         body: {
@@ -1703,7 +1703,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     );
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingUsagePackCheckoutContract,
       ).create({
         body: {
@@ -2359,7 +2359,7 @@ describe("legacy subscription usage pack migration", () => {
   }
 
   function migrationClient() {
-    return setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    return setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackMigrationContract,
     );
   }
@@ -2532,7 +2532,7 @@ describe("legacy subscription usage pack migration", () => {
     await enableMigration(fixture);
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingUsagePackCheckoutContract,
       ).create({
         body: {
@@ -4375,7 +4375,7 @@ describe("usage pack allocation management", () => {
     mockUsagePackSubscriptionChangePreviews(8000, 16_000);
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingUsagePackManagementContract,
       ).previewSubscriptionChange({
         headers: { authorization: "Bearer clerk-session" },
@@ -4429,7 +4429,7 @@ describe("usage pack allocation management", () => {
       sourceSubscription,
     );
     mockUsagePackSubscriptionChangePreviews(8000, 16_000);
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const body = {
@@ -4556,7 +4556,7 @@ describe("usage pack allocation management", () => {
       id: scheduleId,
     });
     mockUsagePackSubscriptionChangePreviews(8000, 16_000);
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -4638,7 +4638,7 @@ describe("usage pack allocation management", () => {
       sourcePriceId: TEST_PRICE_USAGE_PACK_20,
       targetPriceId: TEST_PRICE_USAGE_PACK_50,
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const body = {
@@ -4687,7 +4687,7 @@ describe("usage pack allocation management", () => {
       proSubscription,
     );
     mockUsagePackSubscriptionChangePreviews(8000, 16_000);
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -4804,7 +4804,7 @@ describe("usage pack allocation management", () => {
       proSubscription,
     );
     mockUsagePackSubscriptionChangePreviews(8000, 16_000);
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -4908,7 +4908,7 @@ describe("usage pack allocation management", () => {
       sourcePriceId: TEST_PRICE_USAGE_PACK_20,
       targetPriceId: TEST_PRICE_USAGE_PACK_50,
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -4994,7 +4994,7 @@ describe("usage pack allocation management", () => {
       sourcePriceId: TEST_PRICE_USAGE_PACK_20,
       targetPriceId: TEST_PRICE_USAGE_PACK_50,
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -5143,7 +5143,7 @@ describe("usage pack allocation management", () => {
       nextRecurringAmountCents: 7000,
       targetPriceId: TEST_PRICE_USAGE_PACK_50,
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const management = await accept(
@@ -5276,7 +5276,7 @@ describe("usage pack allocation management", () => {
         ],
       },
     );
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
 
@@ -5326,7 +5326,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
       id: scheduleId,
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const downgradePreview = await accept(
@@ -5456,7 +5456,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
       id: scheduleId,
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const downgradePreview = await accept(
@@ -5638,7 +5638,7 @@ describe("usage pack allocation management", () => {
       sourcePriceId: TEST_PRICE_USAGE_PACK_20,
       targetPriceId: TEST_PRICE_USAGE_PACK_50,
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -5750,7 +5750,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
       id: "sub_sched_team_to_pro",
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
 
@@ -5837,7 +5837,7 @@ describe("usage pack allocation management", () => {
       ),
     );
     mockUsagePackChangePreviews(1500, 7000);
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
 
@@ -5883,7 +5883,7 @@ describe("usage pack allocation management", () => {
       oldSubscription,
     );
     mockUsagePackChangePreviews(1500, 5000);
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
 
@@ -6038,7 +6038,7 @@ describe("usage pack allocation management", () => {
       oldSubscription,
     );
     mockUsagePackChangePreviews(1500, 5000);
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -6105,7 +6105,7 @@ describe("usage pack allocation management", () => {
     const subscription = managedUsagePackSubscription(fixture, quantities);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(subscription);
     mockUsagePackChangePreviews(1500, 5000);
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -6179,7 +6179,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
       id: "sub_sched_usage_pack_downgrade",
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -6295,7 +6295,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptionSchedules.update
       .mockRejectedValueOnce(new Error("temporary Stripe failure"))
       .mockResolvedValue({ id: "sub_sched_usage_pack_retry" });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
     const preview = await accept(
@@ -6558,7 +6558,7 @@ describe("usage pack allocation management", () => {
     });
     const billingClient = setupApp({
       context,
-      routes: zeroBillingCheckoutRoutes,
+      routes: billingCheckoutRoutes,
     })(zeroBillingUsagePackManagementContract);
     const management = await accept(
       billingClient.get({
@@ -7302,7 +7302,7 @@ describe("usage pack allocation management", () => {
     });
     authenticateOrg(acceptedActor, "org:member");
     const credits = await accept(
-      setupApp({ context, routes: zeroBillingUsagePackCreditsRoutes })(
+      setupApp({ context, routes: billingUsagePackCreditsRoutes })(
         zeroBillingUsagePackCreditsContract,
       ).get({
         headers: { authorization: "Bearer clerk-session" },
@@ -7897,7 +7897,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       },
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -7949,7 +7949,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       },
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -8003,7 +8003,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       },
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -8051,7 +8051,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       },
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -8093,7 +8093,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       subscription: null,
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -8123,7 +8123,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       subscription: `sub_${randomUUID().slice(0, 8)}`,
     });
 
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
 
@@ -8186,7 +8186,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencyCheckoutRoutes,
+        routes: billingConcurrencyCheckoutRoutes,
       })(zeroBillingConcurrencyCheckoutContract).create({
         body: {
           quantity: 3,
@@ -8314,7 +8314,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencyCheckoutRoutes,
+      routes: billingConcurrencyCheckoutRoutes,
     })(zeroBillingConcurrencyCheckoutContract);
     const preview = await accept(
       client.preview({
@@ -8452,7 +8452,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencyCheckoutRoutes,
+        routes: billingConcurrencyCheckoutRoutes,
       })(zeroBillingConcurrencyCheckoutContract).preview({
         body: { quantity: 3 },
         headers: { authorization: "Bearer clerk-session" },
@@ -8537,7 +8537,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencyCheckoutRoutes,
+      routes: billingConcurrencyCheckoutRoutes,
     })(zeroBillingConcurrencyCheckoutContract);
     const preview = await accept(
       client.preview({
@@ -8648,7 +8648,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencyCheckoutRoutes,
+        routes: billingConcurrencyCheckoutRoutes,
       })(zeroBillingConcurrencyCheckoutContract).create({
         body: {
           quantity: 3,
@@ -8731,7 +8731,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencyCheckoutRoutes,
+        routes: billingConcurrencyCheckoutRoutes,
       })(zeroBillingConcurrencyCheckoutContract).create({
         body: {
           quantity: 1,
@@ -9038,7 +9038,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencyCheckoutRoutes,
+      routes: billingConcurrencyCheckoutRoutes,
     })(zeroBillingConcurrencyCheckoutContract);
     const successUrl = `${APP_ORIGIN}/billing?concurrency=success`;
     const cancelUrl = `${APP_ORIGIN}/billing?concurrency=canceled`;
@@ -9142,7 +9142,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
     const successUrl = `${APP_ORIGIN}/?concurrency=reduced`;
     const cancelUrl = `${APP_ORIGIN}/billing?concurrency=canceled`;
@@ -9219,7 +9219,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencySubscriptionRoutes,
+        routes: billingConcurrencySubscriptionRoutes,
       })(zeroBillingConcurrencySubscriptionContract).reduce({
         params: { subscriptionId },
         body: {
@@ -9255,7 +9255,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencySubscriptionRoutes,
+        routes: billingConcurrencySubscriptionRoutes,
       })(zeroBillingConcurrencySubscriptionContract).reduce({
         params: { subscriptionId },
         body: {
@@ -9372,7 +9372,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
 
     const preview = await accept(
@@ -9491,7 +9491,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const preview = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencySubscriptionRoutes,
+        routes: billingConcurrencySubscriptionRoutes,
       })(zeroBillingConcurrencySubscriptionContract).previewChange({
         params: { subscriptionId },
         body: { quantity: 3 },
@@ -9520,7 +9520,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const confirmed = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencySubscriptionRoutes,
+        routes: billingConcurrencySubscriptionRoutes,
       })(zeroBillingConcurrencySubscriptionContract).confirmChange({
         params: { subscriptionId },
         body: { quantity: 3 },
@@ -9630,7 +9630,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
     const preview = await accept(
       client.previewChange({
@@ -9744,7 +9744,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencySubscriptionRoutes,
+        routes: billingConcurrencySubscriptionRoutes,
       })(zeroBillingConcurrencySubscriptionContract).previewChange({
         params: { subscriptionId },
         body: { quantity: 3 },
@@ -9824,7 +9824,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
     const preview = await accept(
       client.previewChange({
@@ -9946,7 +9946,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     });
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
 
     await accept(
@@ -10187,7 +10187,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
     await accept(
       client.previewChange({
@@ -10346,7 +10346,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencySubscriptionRoutes,
+        routes: billingConcurrencySubscriptionRoutes,
       })(zeroBillingConcurrencySubscriptionContract).previewChange({
         params: { subscriptionId: `sub_${randomUUID()}` },
         body: { quantity: 2 },
@@ -10405,7 +10405,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencyCheckoutRoutes,
+        routes: billingConcurrencyCheckoutRoutes,
       })(zeroBillingConcurrencyCheckoutContract).create({
         body: {
           quantity: 1,
@@ -10445,7 +10445,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencySubscriptionRoutes,
+        routes: billingConcurrencySubscriptionRoutes,
       })(zeroBillingConcurrencySubscriptionContract).cancel({
         params: { subscriptionId },
         body: {},
@@ -10458,7 +10458,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const response = await accept(
       setupApp({
         context,
-        routes: zeroBillingConcurrencyCheckoutRoutes,
+        routes: billingConcurrencyCheckoutRoutes,
       })(zeroBillingConcurrencyCheckoutContract).create({
         body: {
           quantity: 1,
@@ -10629,7 +10629,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencyCheckoutRoutes,
+      routes: billingConcurrencyCheckoutRoutes,
     })(zeroBillingConcurrencyCheckoutContract);
 
     const response = await accept(
@@ -10665,7 +10665,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencyCheckoutRoutes,
+      routes: billingConcurrencyCheckoutRoutes,
     })(zeroBillingConcurrencyCheckoutContract);
     const response = await accept(
       client.create({
@@ -10698,7 +10698,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencyCheckoutRoutes,
+      routes: billingConcurrencyCheckoutRoutes,
     })(zeroBillingConcurrencyCheckoutContract);
 
     const response = await accept(
@@ -10736,7 +10736,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
 
     const response = await accept(
@@ -10781,7 +10781,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
 
     await accept(
@@ -10865,7 +10865,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     });
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
     context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
       id: scheduleId,
@@ -11097,7 +11097,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     });
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
 
     await accept(
@@ -11149,7 +11149,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
 
     const response = await accept(
@@ -11171,7 +11171,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingConcurrencySubscriptionRoutes,
+      routes: billingConcurrencySubscriptionRoutes,
     })(zeroBillingConcurrencySubscriptionContract);
 
     const response = await accept(
@@ -11278,7 +11278,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
@@ -11310,7 +11310,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
@@ -11343,7 +11343,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
@@ -11407,7 +11407,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     });
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCreditCheckoutRoutes })(
+      setupApp({ context, routes: billingCreditCheckoutRoutes })(
         zeroBillingCreditCheckoutContract,
       ).create({
         body: {
@@ -11467,7 +11467,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
     const preview = await accept(
       client.create({
@@ -11621,7 +11621,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
     const preview = await accept(
       client.create({
@@ -11728,7 +11728,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
     const preview = await accept(
       client.create({
@@ -11826,7 +11826,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
     const preview = await accept(
       client.create({
@@ -11948,7 +11948,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     });
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCreditCheckoutRoutes })(
+      setupApp({ context, routes: billingCreditCheckoutRoutes })(
         zeroBillingCreditCheckoutContract,
       ).create({
         body: {
@@ -11977,7 +11977,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCreditCheckoutRoutes })(
+      setupApp({ context, routes: billingCreditCheckoutRoutes })(
         zeroBillingCreditCheckoutContract,
       ).create({
         body: {
@@ -12020,7 +12020,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
@@ -12058,7 +12058,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(
@@ -12122,7 +12122,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
 
     const response = await accept(

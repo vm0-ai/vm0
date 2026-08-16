@@ -77,7 +77,7 @@ const getUsagePackCredits$ = command(async ({ get }, signal: AbortSignal) => {
   return { status: 200 as const, body: { ...body, hasUsagePack: true } };
 });
 
-export const zeroBillingUsagePackCreditsRoutes: readonly RouteEntry[] = [
+export const billingUsagePackCreditsRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingUsagePackCreditsContract.get,
     handler: authRoute(
