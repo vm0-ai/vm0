@@ -20,7 +20,7 @@ import {
   resolveModelFirstProviderAdmission,
   resolvePersistedModelFirstRoute,
   type ModelFirstPin,
-} from "./zero-model-selection.service";
+} from "./model-selection.service";
 import type { Tx } from "../../lib/db-types";
 
 export function chatThreadModelPinColumns(pin: ModelFirstPin): {

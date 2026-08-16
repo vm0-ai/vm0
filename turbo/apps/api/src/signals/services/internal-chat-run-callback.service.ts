@@ -169,7 +169,7 @@ import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
-import type { ModelFirstPin } from "./zero-model-selection.service";
+import type { ModelFirstPin } from "./model-selection.service";
 import {
   chatEventTextCondition,
   chatEventTypeIn,

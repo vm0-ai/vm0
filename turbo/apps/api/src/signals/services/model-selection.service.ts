@@ -29,7 +29,7 @@ import { and, eq, or } from "drizzle-orm";
 
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
-import { ensureOrgModelPolicies } from "./zero-model-policy.service";
+import { ensureOrgModelPolicies } from "./model-policy.service";
 import { checkOrgCreditsForRunAdmission } from "./run-admission.service";
 import {
   loadOrgPlanCapabilities,

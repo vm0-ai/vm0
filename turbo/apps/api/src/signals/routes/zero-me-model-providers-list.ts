@@ -10,7 +10,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { refreshPersonalModelProviderSubscriptionUsage$ } from "../services/model-provider-subscription-usage.service";
-import { zeroUserModelProviders } from "../services/zero-model-provider.service";
+import { userModelProviders } from "../services/model-provider.service";
 import { listPersonalModelProviderAccounts } from "../services/model-provider-account.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { writeDb$ } from "../external/db";
@@ -46,7 +46,7 @@ const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         userId: auth.userId,
         featureSwitchContext,
       })
-    : await get(zeroUserModelProviders(auth.orgId, auth.userId));
+    : await get(userModelProviders(auth.orgId, auth.userId));
   signal.throwIfAborted();
   const visible = visibleModelFirstProviders(result);
   const refreshed = await set(

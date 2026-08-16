@@ -18,9 +18,9 @@ import {
   upsertOrgModelProvider$,
   upsertOrgMultiAuthModelProvider$,
   upsertOrgNoSecretModelProvider$,
-  zeroModelProviders,
+  modelProviders,
   type ModelProviderInfo,
-} from "../services/zero-model-provider.service";
+} from "../services/model-provider.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -35,7 +35,7 @@ const adminRequired = Object.freeze({
 
 const listModelProvidersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const result = await get(zeroModelProviders(auth.orgId));
+  const result = await get(modelProviders(auth.orgId));
   return { status: 200 as const, body: result };
 });
 

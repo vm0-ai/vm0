@@ -20,7 +20,7 @@ import {
   upsertUserModelProvider$,
   upsertUserMultiAuthModelProvider$,
   type ModelProviderInfo,
-} from "../services/zero-model-provider.service";
+} from "../services/model-provider.service";
 import type { RouteEntry } from "../route-entry";
 import { writeDb$ } from "../external/db";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";

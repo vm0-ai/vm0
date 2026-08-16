@@ -5,7 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { isNotFoundResponse } from "../../lib/error";
-import { deleteUserModelProvider$ } from "../services/zero-model-provider.service";
+import { deleteUserModelProvider$ } from "../services/model-provider.service";
 import type { RouteEntry } from "../route-entry";
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {

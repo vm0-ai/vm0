@@ -37,7 +37,7 @@ import { userFeatureSwitchContext } from "./feature-switches.service";
 import {
   upsertOrgMultiAuthModelProvider$,
   upsertUserMultiAuthModelProvider$,
-} from "./zero-model-provider.service";
+} from "./model-provider.service";
 
 const CODEX_DEVICE_AUTH_ISSUER = "https://auth.openai.com";
 const CODEX_DEVICE_AUTH_API_BASE_URL = `${CODEX_DEVICE_AUTH_ISSUER}/api/accounts`;

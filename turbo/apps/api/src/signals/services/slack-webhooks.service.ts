@@ -52,7 +52,7 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
-import { listOrgModelPolicies$ } from "./zero-model-policy.service";
+import { listOrgModelPolicies$ } from "./model-policy.service";
 import {
   updateUserModelPreference$,
   userModelPreference,

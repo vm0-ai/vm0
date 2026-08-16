@@ -52,7 +52,7 @@ import {
 } from "./integration-model-route.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
-import { listOrgModelPolicies$ } from "./zero-model-policy.service";
+import { listOrgModelPolicies$ } from "./model-policy.service";
 import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import {

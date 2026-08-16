@@ -46,7 +46,7 @@ import {
   getConnectorRuntimeConnector,
   loadConnectorRuntimeSnapshot,
 } from "../services/connector-catalog-runtime.service";
-import { upsertOrgMultiAuthModelProvider$ } from "../services/zero-model-provider.service";
+import { upsertOrgMultiAuthModelProvider$ } from "../services/model-provider.service";
 import {
   isCodexAuthJsonFreePlanError,
   isCodexAuthJsonShapeError,
