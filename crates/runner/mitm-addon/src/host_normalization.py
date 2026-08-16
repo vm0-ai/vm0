@@ -10,7 +10,10 @@ The public helpers document caller-visible behavior only. Private tables and
 normalization steps are implementation details, not a complete WHATWG/IDNA API.
 """
 
+import ipaddress
 from unicodedata import bidirectional, category, normalize
+
+from authority_utils import has_ascii_space_or_control
 
 _ASCII_SPACE = " "
 _ASCII_DELETE = "\x7f"
@@ -52,6 +55,7 @@ _BIDI_RTL_END_CLASSES = _BIDI_RTL_CLASSES | frozenset((_BIDI_ARABIC_NUMBER, _BID
 _BIDI_ARABIC_NUMBER_END_CLASSES = _BIDI_RTL_CLASSES | frozenset((_BIDI_ARABIC_NUMBER,))
 _FORBIDDEN_NORMALIZED_LABEL_CHARS = frozenset("#%,/:<>?@[\\]^|[]")
 _FORBIDDEN_NORMALIZED_LABEL_DOTS = frozenset(".\u3002\uff0e\uff61")
+_FORBIDDEN_HOST_CHARS = frozenset("#%*,/<>?@[\\]^|{}")
 _FORBIDDEN_ASCII_LABEL_CHARS = _FORBIDDEN_NORMALIZED_LABEL_CHARS | frozenset((".",))
 _GREEK_CAPITAL_SIGMA = "\u03a3"
 _GREEK_COMBINING_YPOGEGRAMMENI = "\u0345"
@@ -461,3 +465,26 @@ def normalize_idna_hostname(host: str) -> str:
         return normalized
 
     return ".".join(_normalize_label(label) for label in normalized.split("."))
+
+
+def normalize_hostname(host: str) -> str:
+    """Normalize a hostname after caller-specific percent-decoding.
+
+    This neutral canonicalization accepts canonical IDNA/IPv4 hostnames and
+    compressed IPv6 literals. It does not percent-decode input or decide
+    whether a request authority or an auth.base target is allowed to reach a
+    caller; those trust-boundary policies remain with their owners.
+    """
+    if ":" in host:
+        if "%" in host:
+            raise ValueError("IPv6 scope identifiers are not allowed")
+        try:
+            parsed = ipaddress.ip_address(host)
+        except ValueError as exc:
+            raise ValueError("invalid IPv6 hostname") from exc
+        if isinstance(parsed, ipaddress.IPv6Address):
+            return parsed.compressed.lower()
+        raise ValueError("colon host must be IPv6")
+    if has_ascii_space_or_control(host) or any(char in _FORBIDDEN_HOST_CHARS for char in host):
+        raise ValueError("invalid hostname")
+    return normalize_idna_hostname(host)

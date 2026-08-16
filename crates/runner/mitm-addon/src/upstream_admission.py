@@ -12,7 +12,7 @@ import flow_metadata
 import matching
 import registry
 import upstream_destination_binding
-from url_utils import normalize_trusted_hostname
+from host_normalization import normalize_hostname
 
 TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
@@ -103,7 +103,7 @@ def _connected_verified_tls_destination_endpoint(
     if not isinstance(server_sni, str):
         return None
     try:
-        normalized_sni = normalize_trusted_hostname(server_sni)
+        normalized_sni = normalize_hostname(server_sni)
     except (UnicodeError, ValueError):
         return None
     if normalized_sni != host:
@@ -183,7 +183,7 @@ def _api_destination(
     else:
         return None
     try:
-        api_hostname = normalize_trusted_hostname(parsed_api.hostname)
+        api_hostname = normalize_hostname(parsed_api.hostname)
     except (UnicodeError, ValueError):
         return None
     api_port = parsed_api.port if parsed_api.port is not None else default_port

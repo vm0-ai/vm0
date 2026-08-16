@@ -10,7 +10,7 @@ from mitmproxy import http
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
-from url_utils import TrustedAuthority, get_trusted_authority
+from request_authority import TrustedAuthority, get_trusted_authority
 
 
 async def await_requestheaders_result(result: object) -> None:

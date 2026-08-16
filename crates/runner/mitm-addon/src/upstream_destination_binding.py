@@ -21,7 +21,7 @@ from mitmproxy import http
 
 import connection_endpoints
 import flow_metadata
-from url_utils import normalize_trusted_hostname
+from host_normalization import normalize_hostname
 
 # Public API used by mitm_addon hooks and tests. Private helpers encode the
 # endpoint matching details and are intentionally not exported.
@@ -88,7 +88,7 @@ def normalize_upstream_destination(
 ) -> NormalizedUpstreamDestination:
     """Normalize raw authority text for target-aware binding operations."""
     return NormalizedUpstreamDestination(
-        host=normalize_trusted_hostname(host),
+        host=normalize_hostname(host),
         port=port,
     )
 
@@ -322,7 +322,7 @@ def _address_matches(host: str, port: int, address: object) -> bool:
         return False
     address_host, address_port = address_pair
     try:
-        normalized_address_host = normalize_trusted_hostname(address_host)
+        normalized_address_host = normalize_hostname(address_host)
     except (UnicodeError, ValueError):
         return False
     return normalized_address_host == host and address_port == port
@@ -431,7 +431,7 @@ def diagnostic_snapshot_for_flow(
     normalized_host = None
     if trusted_host:
         try:
-            normalized_host = normalize_trusted_hostname(trusted_host)
+            normalized_host = normalize_hostname(trusted_host)
         except (UnicodeError, ValueError):
             normalized_host = None
     matching_client_bindings = (
@@ -565,7 +565,7 @@ def flow_matches_direct_bound_destination(
     if not trusted_host:
         return False
     try:
-        normalized_host = normalize_trusted_hostname(trusted_host)
+        normalized_host = normalize_hostname(trusted_host)
     except (UnicodeError, ValueError):
         return False
 
@@ -600,7 +600,7 @@ def bound_destination_endpoint_for_flow(
     if not trusted_host:
         return None
     try:
-        normalized_host = normalize_trusted_hostname(trusted_host)
+        normalized_host = normalize_hostname(trusted_host)
     except (UnicodeError, ValueError):
         return None
 

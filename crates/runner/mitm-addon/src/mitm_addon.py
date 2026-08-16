@@ -100,7 +100,7 @@ from logging_utils import (
     project_url_for_proxy_log,
     shutdown_log_writer,
 )
-from url_utils import AuthorityValidationError, TrustedAuthority, get_trusted_authority
+from request_authority import AuthorityValidationError, TrustedAuthority, get_trusted_authority
 
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401

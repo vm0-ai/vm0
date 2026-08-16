@@ -4,7 +4,7 @@ from collections.abc import Iterator
 
 import pytest
 
-import url_utils
+import auth_base_rewrite
 
 
 class _FailOnIterationQuery(str):
@@ -16,7 +16,7 @@ class TestBuildRewriteUrl:
     """Tests for build_rewrite_url pure URL construction."""
 
     def test_simple_base_no_rel_path(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://discord.com/api/webhooks/123/abc",
             "/",
             "",
@@ -24,7 +24,7 @@ class TestBuildRewriteUrl:
         assert url == "https://discord.com/api/webhooks/123/abc"
 
     def test_multi_segment_rel_path(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/base",
             "/a/b/c",
             "",
@@ -32,7 +32,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/base/a/b/c"
 
     def test_base_treats_single_terminal_slash_as_optional(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/base/",
             "/a",
             "",
@@ -40,7 +40,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/base/a"
 
     def test_base_preserves_repeated_terminal_empty_segments(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/base//",
             "/a",
             "",
@@ -48,7 +48,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/base//a"
 
     def test_root_base_preserves_repeated_terminal_empty_segments(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com//",
             "/a",
             "",
@@ -56,7 +56,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com//a"
 
     def test_base_with_query_no_orig_query(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=secret",
             "/",
             "",
@@ -64,7 +64,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret"
 
     def test_base_unicode_host_normalized_for_forwarding(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://bücher.example:8443/hook",
             "/sub",
             "",
@@ -72,7 +72,7 @@ class TestBuildRewriteUrl:
         assert url == "https://xn--bcher-kva.example:8443/hook/sub"
 
     def test_base_percent_encoded_host_normalized_for_forwarding(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://b%C3%BCcher.example/hook",
             "/sub",
             "",
@@ -80,7 +80,7 @@ class TestBuildRewriteUrl:
         assert url == "https://xn--bcher-kva.example/hook/sub"
 
     def test_base_explicit_default_port_preserved_for_forwarding(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com:443/hook",
             "/sub",
             "",
@@ -88,7 +88,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com:443/hook/sub"
 
     def test_base_unicode_path_and_query_are_encoded_for_forwarding(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook/路径?token=é",
             "/子",
             "from=请求",
@@ -99,7 +99,7 @@ class TestBuildRewriteUrl:
         )
 
     def test_existing_percent_encoded_path_and_query_are_not_double_encoded(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook/%E8%B7%AF%E5%BE%84?token=%C3%A9",
             "/%E5%AD%90",
             "from=%E8%AF%B7%E6%B1%82",
@@ -168,14 +168,14 @@ class TestBuildRewriteUrl:
     )
     def test_invalid_resolved_base_rejected(self, base, message):
         with pytest.raises(ValueError, match=message):
-            url_utils.build_rewrite_url(
+            auth_base_rewrite.build_rewrite_url(
                 base,
                 "/",
                 "",
             )
 
     def test_empty_orig_query_ignored(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook",
             "/",
             "",
@@ -197,7 +197,7 @@ class TestBuildRewriteUrl:
             "blank=&;duplicate=first&&duplicate=second;encoded=%E8%AF%B7%E6%B1%82&unicode=请求"
         )
 
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook",
             "/",
             query,
@@ -210,7 +210,7 @@ class TestBuildRewriteUrl:
         )
 
     def test_base_query_allows_raw_at_sign(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=a@b",
             "/",
             "",
@@ -218,7 +218,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=a@b"
 
     def test_base_query_allows_encoded_backslash(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?next=%5csecret",
             "/",
             "",
@@ -226,7 +226,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?next=%5csecret"
 
     def test_rel_path_with_both_queries_merged(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=abc",
             "/sub",
             "extra=1",
@@ -234,7 +234,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook/sub?token=abc&extra=1"
 
     def test_original_duplicate_query_key_dropped(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=secret",
             "/",
             "token=attacker&wait=true",
@@ -242,7 +242,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret&wait=true"
 
     def test_original_duplicate_query_key_followed_by_empty_segment_dropped(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=secret",
             "/",
             "token=attacker&&wait=true",
@@ -250,7 +250,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret&wait=true"
 
     def test_original_duplicate_query_key_preceded_by_empty_segment_dropped(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=secret",
             "/",
             "wait=true&&token=attacker",
@@ -258,7 +258,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret&wait=true"
 
     def test_all_original_duplicate_query_keys_dropped(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=secret",
             "/",
             "token=first&token=second",
@@ -266,7 +266,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret"
 
     def test_original_encoded_duplicate_query_key_dropped(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=secret",
             "/",
             "to%6ben=attacker&wait=true",
@@ -274,7 +274,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret&wait=true"
 
     def test_original_duplicate_of_encoded_trusted_base_query_key_dropped(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?to%6ben=secret",
             "/",
             "token=attacker&wait=true",
@@ -282,7 +282,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?to%6ben=secret&wait=true"
 
     def test_original_plus_encoded_duplicate_query_key_dropped(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?api+key=secret",
             "/",
             "api%20key=attacker&wait=true",
@@ -290,7 +290,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?api+key=secret&wait=true"
 
     def test_original_semicolon_duplicate_query_key_dropped(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=secret",
             "/",
             "wait=true;token=attacker",
@@ -298,7 +298,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret&wait=true"
 
     def test_original_semicolon_duplicate_before_kept_pair_uses_source_separator(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=secret",
             "/",
             "token=attacker;wait=true",
@@ -306,7 +306,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret&wait=true"
 
     def test_original_semicolon_duplicate_between_kept_pairs_uses_safe_separator(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=secret",
             "/",
             "keep=1;token=attacker;wait=true",
@@ -314,7 +314,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret&keep=1&wait=true"
 
     def test_duplicate_trusted_base_query_keys_preserved(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=first&token=second",
             "/",
             "token=attacker&wait=true",
@@ -322,7 +322,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=first&token=second&wait=true"
 
     def test_duplicate_trusted_base_query_keys_with_semicolon_preserved(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=first;token=second",
             "/",
             "token=attacker&wait=true",
@@ -330,7 +330,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=first;token=second&wait=true"
 
     def test_blank_trusted_base_query_value_is_authoritative(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token=",
             "/",
             "token=attacker&wait=true",
@@ -338,7 +338,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=&wait=true"
 
     def test_valueless_trusted_base_query_key_is_authoritative(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?token",
             "/",
             "token=attacker&wait=true",
@@ -346,7 +346,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token&wait=true"
 
     def test_empty_trusted_base_query_key_is_authoritative(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?=secret",
             "/",
             "=attacker&wait=true",
@@ -354,7 +354,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?=secret&wait=true"
 
     def test_empty_trusted_base_query_segments_do_not_block_empty_original_key(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?&&region=us",
             "/",
             "=agent&q=test",
@@ -362,7 +362,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?&&region=us&=agent&q=test"
 
     def test_auth_query_overrides_base_and_original_query(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?api_key=base&region=us",
             "/",
             "api_key=agent&q=test",
@@ -371,7 +371,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
 
     def test_auth_query_empty_key_overrides_base_and_original_empty_keys(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?=base&region=us",
             "/",
             "=agent&q=test",
@@ -380,7 +380,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?region=us&q=test&=trusted"
 
     def test_auth_query_overrides_base_query_without_leading_empty_segment(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?api_key=base&&region=us",
             "/",
             "q=test",
@@ -389,7 +389,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
 
     def test_auth_query_overrides_base_query_without_trailing_empty_segment(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?region=us&&api_key=base",
             "/",
             "q=test",
@@ -398,7 +398,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
 
     def test_auth_query_overrides_all_lower_priority_duplicates(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?api_key=base",
             "/",
             "api_key=agent",
@@ -407,7 +407,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?api_key=trusted+key"
 
     def test_auth_query_overrides_duplicate_trusted_base_query_keys(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?api_key=first&api_key=second&region=us",
             "/",
             "api_key=agent&q=test",
@@ -416,7 +416,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
 
     def test_auth_query_overrides_encoded_base_and_original_query_keys(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?api%5Fkey=base&region=us",
             "/",
             "api%5fkey=agent&q=test",
@@ -425,7 +425,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
 
     def test_auth_query_overrides_plus_encoded_lower_priority_keys(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?api+key=base&region=us",
             "/",
             "api%20key=agent&q=test",
@@ -434,7 +434,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?region=us&q=test&api+key=trusted+key"
 
     def test_auth_query_overrides_semicolon_base_without_prefixing_kept_pair(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?api_key=base;region=us",
             "/",
             "q=test",
@@ -443,7 +443,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
 
     def test_auth_query_overrides_semicolon_base_between_kept_pairs(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?tenant=one;api_key=base;region=us",
             "/",
             "q=test",
@@ -452,7 +452,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?tenant=one&region=us&q=test&api_key=trusted+key"
 
     def test_auth_query_filter_preserves_existing_semicolon_value(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook?redirect=a;b&api_key=base&region=us",
             "/",
             "q=test",
@@ -461,7 +461,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?redirect=a;b&region=us&q=test&api_key=trusted+key"
 
     def test_base_path_params_are_preserved(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook;v=1?token=abc",
             "/sub;mode=fast",
             "extra=1",
@@ -469,7 +469,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook;v=1/sub;mode=fast?token=abc&extra=1"
 
     def test_trailing_slash_on_base_deduped(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook/",
             "/sub",
             "",
@@ -477,7 +477,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook/sub"
 
     def test_root_rel_path_keeps_base_path(self):
-        url = url_utils.build_rewrite_url(
+        url = auth_base_rewrite.build_rewrite_url(
             "https://example.com/hook",
             "/",
             "",
@@ -518,7 +518,7 @@ class TestBuildRewriteUrl:
     )
     def test_unsafe_rel_path_is_rejected(self, rel_path):
         with pytest.raises(ValueError, match="Unsafe rewrite path"):
-            url_utils.build_rewrite_url(
+            auth_base_rewrite.build_rewrite_url(
                 "https://example.com/hook",
                 rel_path,
                 "",
