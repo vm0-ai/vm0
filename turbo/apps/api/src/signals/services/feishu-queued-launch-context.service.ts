@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import type { FeishuDeliveryTarget } from "./feishu-chat-callback-payload";
-import { buildFeishuSystemPrompt } from "./zero-feishu-dispatch.service";
+import { buildFeishuSystemPrompt } from "./feishu-dispatch.service";
 
 export interface FeishuQueuedLaunchMaterial {
   readonly prompt: string;

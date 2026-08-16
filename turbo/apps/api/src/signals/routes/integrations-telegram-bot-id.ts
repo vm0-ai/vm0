@@ -16,7 +16,7 @@ import { publishOrgSignal, publishUserSignal } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
-import { telegramIntegrationBotStatus } from "../services/zero-telegram-data.service";
+import { telegramIntegrationBotStatus } from "../services/telegram-data.service";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { bestEffort, tapError } from "../utils";

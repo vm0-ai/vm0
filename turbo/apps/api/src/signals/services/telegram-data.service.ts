@@ -193,7 +193,7 @@ function buildOfficialTelegramBot(args: {
   });
 }
 
-export function zeroTelegramBots(args: {
+export function telegramBots(args: {
   readonly orgId: string;
   readonly userId: string;
 }): Computed<Promise<readonly TelegramBotListItem[]>> {
@@ -603,7 +603,7 @@ export function telegramIntegrationLinkStatus(args: {
   });
 }
 
-export function zeroTelegramInstallation(args: {
+export function telegramInstallation(args: {
   readonly orgId: string;
   readonly botId: string;
 }): Computed<

@@ -9,8 +9,8 @@ import {
   getOfficialTelegramBotConfig,
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
-import { zeroTelegramInstallation } from "../services/zero-telegram-data.service";
-import { telegramMessageSendFooterText } from "../services/zero-telegram-footer.service";
+import { telegramInstallation } from "../services/telegram-data.service";
+import { telegramMessageSendFooterText } from "../services/telegram-footer.service";
 import { buildTelegramResponse } from "../../lib/telegram-format";
 import type { RouteEntry } from "../route-entry";
 
@@ -44,7 +44,7 @@ const sendMessageInner$ = command(async ({ get }, signal: AbortSignal) => {
     botToken = getOfficialTelegramBotConfig().botToken ?? undefined;
   } else {
     const installation = await get(
-      zeroTelegramInstallation({ orgId, botId: body.botId }),
+      telegramInstallation({ orgId, botId: body.botId }),
     );
     signal.throwIfAborted();
     botToken = installation?.botToken;

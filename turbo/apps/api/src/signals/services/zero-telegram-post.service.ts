@@ -80,7 +80,7 @@ import {
   chatEventTypeIn,
   chatInputPromptDispatchCondition,
 } from "./chat-event-type.service";
-import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
+import { telegramIntegrationBotStatus } from "./telegram-data.service";
 import {
   formatTelegramUserDisplayName,
   linkOfficialTelegramUserToVm0User$,
