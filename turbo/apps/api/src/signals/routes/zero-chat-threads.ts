@@ -28,9 +28,9 @@ import {
 } from "../services/zero-chat-thread.service";
 import { chatSearch } from "../services/chat-search.service";
 import {
-  zeroChatThreadEventRows,
-  zeroChatThreadEventSnapshot,
-} from "../services/zero-chat-event-snapshot.service";
+  chatThreadEventRows,
+  chatThreadEventSnapshot,
+} from "../services/chat-event-snapshot.service";
 import { resolveChatEventSchemaVersion } from "../services/chat-event-schema-version.service";
 import {
   getChatThreadEventsSince,
@@ -157,7 +157,7 @@ const getChatEventSnapshotInner$ = command(
       version.version.toString(),
     );
     const snapshot = await set(
-      zeroChatThreadEventSnapshot({
+      chatThreadEventSnapshot({
         threadId: params.threadId,
         userId: auth.userId,
       }),
@@ -207,7 +207,7 @@ const listChatEventRowsInner$ = command(
       version.version.toString(),
     );
     const page = await get(
-      zeroChatThreadEventRows({
+      chatThreadEventRows({
         threadId: params.threadId,
         userId: auth.userId,
         ...query,

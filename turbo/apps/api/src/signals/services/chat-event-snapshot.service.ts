@@ -115,7 +115,7 @@ async function validSnapshotCursor(
 }
 
 /** Resolve the current persisted Snapshot pointer. */
-export function zeroChatThreadEventSnapshot(args: {
+export function chatThreadEventSnapshot(args: {
   readonly threadId: string;
   readonly userId: string;
 }) {
@@ -177,7 +177,7 @@ export function zeroChatThreadEventSnapshot(args: {
  * Snapshot. `sinceSeqId: 0` remains the cold start for a thread that has never
  * had a Snapshot.
  */
-export function zeroChatThreadEventRows(
+export function chatThreadEventRows(
   args: ChatEventRowsArgs,
 ): Computed<Promise<ChatEventRowsPage>> {
   return computed(async (get) => {
