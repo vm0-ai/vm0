@@ -29,7 +29,7 @@ import {
   TooltipTrigger,
 } from "@okouai/ui/components/ui/tooltip";
 import {
-  CreditAdditionList,
+  CreditAdditionTable,
   CreditBalanceCard,
   formatCreditDate,
   type CreditAddition,
@@ -193,7 +193,7 @@ function UsagePackSegmentBar({
     <TooltipProvider delayDuration={100}>
       <div
         data-testid={`${testIdPrefix}-bar`}
-        className="flex h-2.5 w-full rounded-full bg-muted/40"
+        className="mt-4 flex h-2 w-full gap-[3px]"
       >
         {segments.map((segment) => {
           return (
@@ -201,7 +201,7 @@ function UsagePackSegmentBar({
               <TooltipTrigger asChild>
                 <div
                   data-testid={`${testIdPrefix}-${segment.key}`}
-                  className={`h-2.5 ${segment.color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
+                  className={`h-2 ${segment.color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
                   style={{
                     width: `${(segment.credits / totalCredits) * 100}%`,
                   }}
@@ -258,35 +258,13 @@ function UsagePackCreditDetails({
   return (
     <>
       {data.totalCredits > 0 && segments.length > 0 ? (
-        <div className="mt-3 flex flex-col gap-2">
-          <UsagePackSegmentBar
-            segments={segments}
-            testIdPrefix={testIdPrefix}
-            totalCredits={data.totalCredits}
-          />
-          {segments.length > 0 ? (
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {segments.map((segment) => {
-                return (
-                  <div
-                    key={segment.key}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                  >
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${segment.color}`}
-                    />
-                    <span>{segment.label}</span>
-                    <span className="tabular-nums">
-                      {formatLocalizedNumber(segment.credits)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
+        <UsagePackSegmentBar
+          segments={segments}
+          testIdPrefix={testIdPrefix}
+          totalCredits={data.totalCredits}
+        />
       ) : null}
-      <CreditAdditionList
+      <CreditAdditionTable
         grants={additions}
         testIdPrefix={`${testIdPrefix}-grants`}
       />
@@ -297,7 +275,7 @@ function UsagePackCreditDetails({
 function UsagePackCreditTitle() {
   const { t } = useTranslation();
   return (
-    <p className="text-sm font-medium text-foreground">
+    <p className="text-sm font-semibold text-foreground">
       {t(($) => {
         return $.billing.usage.usagePack.title;
       })}
@@ -313,12 +291,12 @@ function UsagePackCreditHeader({
   totalCredits: number;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex items-baseline justify-between gap-3">
       <div className="flex items-center gap-1">
         <UsagePackCreditTitle />
         {action}
       </div>
-      <p className="text-sm font-medium tabular-nums text-foreground">
+      <p className="text-xl font-medium tabular-nums text-foreground">
         {formatLocalizedNumber(totalCredits)}
       </p>
     </div>
@@ -671,8 +649,8 @@ function UsagePackCreditCard({ isAdmin }: { isAdmin: boolean }) {
     >
       {creditsLoadable.state === "loading" && !data ? (
         <div className="space-y-2">
-          <div className="h-4 w-40 animate-pulse rounded bg-muted/50" />
-          <div className="h-2.5 w-full animate-pulse rounded-full bg-muted/40" />
+          <div className="h-4 w-48 animate-pulse rounded bg-muted/50" />
+          <div className="h-2 w-full animate-pulse rounded-full bg-muted/40" />
         </div>
       ) : data ? (
         <>

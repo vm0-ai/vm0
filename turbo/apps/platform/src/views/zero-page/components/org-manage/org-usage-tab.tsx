@@ -501,7 +501,7 @@ function CreditAdditionItems({
   );
 }
 
-export function CreditAdditionList({
+function CreditAdditionList({
   grants,
   testIdPrefix = "credit-grants",
 }: {
@@ -548,7 +548,7 @@ export function CreditAdditionList({
 const GRANT_ROW_GRID =
   "grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] items-center gap-x-3 sm:grid-cols-[minmax(0,1fr)_7rem_7rem] sm:gap-x-4";
 
-function CreditAdditionTable({
+export function CreditAdditionTable({
   grants,
   testIdPrefix = "credit-grants",
 }: {
