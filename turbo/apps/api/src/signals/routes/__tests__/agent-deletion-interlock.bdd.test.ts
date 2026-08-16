@@ -23,6 +23,7 @@ import {
   setAgentLifecycleOrgFixture,
   setAgentRunStatusFixture,
 } from "../../../test-fixtures/agent-deletion";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -284,6 +285,7 @@ describe("DELETE /api/zero/agents/:id bounded deletion interlock", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(targetOwner, terminalRun.runId, [200]);
+    await flushWaitUntilForTest();
     await setAgentRunStatusFixture(queuedRun.runId, "queued");
     const survivorVersionId = await pointTargetAtSurvivorVersion({
       targetAgentId: target.agentId,
