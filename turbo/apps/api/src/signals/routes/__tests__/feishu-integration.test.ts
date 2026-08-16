@@ -37,9 +37,9 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../../lib/time";
 import { createDeferredPromise } from "../../utils";
-import { zeroFeishuBrowserConnectRoutes } from "../zero-feishu-browser-connect";
+import { feishuBrowserConnectRoutes } from "../feishu-browser-connect";
 import { feishuEventsRoutes } from "../feishu-events";
-import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
+import { feishuOauthRoutes } from "../feishu-oauth";
 import { integrationsFeishuFileRoutes } from "../integrations-feishu-files";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -67,7 +67,7 @@ import { customConnectorsGetRoutes } from "../custom-connectors-get";
 import { customConnectorOAuth2Routes } from "../custom-connectors-oauth2";
 import { customConnectorDisconnectRoutes } from "../custom-connectors-disconnect";
 import { customConnectorsUpdateRoutes } from "../custom-connectors-update";
-import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
+import { feishuConnectRoutes } from "../feishu-connect";
 
 const zeroCustomConnectorByIdTestRoutes = Object.freeze([
   ...customConnectorsDeleteRoutes,
@@ -351,7 +351,7 @@ async function requestFeishuConfigurationFailure(args: {
 }): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: zeroFeishuConnectRoutes,
+    routes: feishuConnectRoutes,
   });
   return await app.request(args.path, {
     method: args.method,
@@ -742,7 +742,7 @@ describe("Feishu integration", () => {
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     const configured = await accept(
@@ -827,7 +827,7 @@ describe("Feishu integration", () => {
     oauthUserOpenId = openId;
     const oauthApp = createAppWithRoutes({
       signal: context.signal,
-      routes: zeroFeishuOauthRoutes,
+      routes: feishuOauthRoutes,
     });
     const callbackResponse = await oauthApp.request(
       `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
@@ -876,7 +876,7 @@ describe("Feishu integration", () => {
     );
     const connectApp = createAppWithRoutes({
       signal: context.signal,
-      routes: zeroFeishuBrowserConnectRoutes,
+      routes: feishuBrowserConnectRoutes,
     });
     const response = await connectApp.request("/api/zero/feishu/connect", {
       method: "POST",
@@ -1003,7 +1003,7 @@ describe("Feishu integration", () => {
       fixture.actor.orgId,
       fixture.actor.orgRole,
     );
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     await accept(
@@ -1058,7 +1058,7 @@ describe("Feishu integration", () => {
     await enableFeishuIntegration(doomed);
     await connectFixtureUser(fixture, doomed, "ou_feishu_doomed");
 
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     mocks.clerk.session(doomed.userId, doomed.orgId, "org:member");
@@ -1117,7 +1117,7 @@ describe("Feishu integration", () => {
       orgRole: "org:admin",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
 
@@ -1150,7 +1150,7 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     const configured = await accept(
@@ -1214,7 +1214,7 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
 
@@ -1312,7 +1312,7 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     const bothTokenRequestsStarted = createDeferredPromise<void>(
@@ -1400,7 +1400,7 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     context.mocks.s3.send.mockRejectedValue(
@@ -1524,7 +1524,7 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     const configured = await accept(
@@ -1620,7 +1620,7 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
 
@@ -1733,7 +1733,7 @@ describe("Feishu integration", () => {
     });
     mockAuthoritativeOrganizationMembers([admin, member]);
     mocks.clerk.session(admin.userId, admin.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     clearConnectorInvalidationMocks();
@@ -1889,7 +1889,7 @@ describe("Feishu integration", () => {
     });
     const oauthApp = createAppWithRoutes({
       signal: context.signal,
-      routes: zeroFeishuOauthRoutes,
+      routes: feishuOauthRoutes,
     });
     clearConnectorInvalidationMocks();
     const customConnectorCallback = await oauthApp.request(
@@ -2242,7 +2242,7 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     const configured = await accept(
@@ -2327,7 +2327,7 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     const configured = await accept(
@@ -2405,7 +2405,7 @@ describe("Feishu integration", () => {
   it("deduplicates unconnected messages, connects, welcomes, and rejects account rebinding", async () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, appId, callbackUrl, defaultAgentId } = fixture;
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
 
@@ -2445,7 +2445,7 @@ describe("Feishu integration", () => {
 
     const connectApp = createAppWithRoutes({
       signal: context.signal,
-      routes: zeroFeishuBrowserConnectRoutes,
+      routes: feishuBrowserConnectRoutes,
     });
     failedSendTargets.push("ou_feishu_user");
     context.mocks.ably.publish.mockClear();
@@ -2685,7 +2685,7 @@ describe("Feishu integration", () => {
     const fixture = await setupFeishuRunFixture();
     const { appId, callbackUrl } = fixture;
     await connectFixtureUser(fixture);
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     for (const command of [
@@ -3342,7 +3342,7 @@ describe("Feishu integration", () => {
     );
     expect(removedReactions).toHaveLength(1);
 
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     await accept(
@@ -3377,7 +3377,7 @@ describe("Feishu integration", () => {
       assistantText: "Continued Feishu DM answer",
     });
 
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     await accept(
@@ -3434,7 +3434,7 @@ describe("Feishu integration", () => {
       });
     expect(completedQuotedReply?.replyInThread).toBeFalsy();
 
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     await accept(
@@ -3482,7 +3482,7 @@ describe("Feishu integration", () => {
     await runsApi.requestCancelRun(actor, switchedAgentRun.id, [200]);
     await flushWaitUntilForTest();
 
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     await accept(
@@ -3556,7 +3556,7 @@ describe("Feishu integration", () => {
     await runsApi.requestCancelRun(actor, mainDmRun.id, [200]);
     await flushWaitUntilForTest();
 
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     await accept(
@@ -3655,7 +3655,7 @@ describe("Feishu integration", () => {
     await runsApi.requestCancelRun(actor, threadFollowUpRun.id, [200]);
     await flushWaitUntilForTest();
 
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     await accept(
@@ -3723,7 +3723,7 @@ describe("Feishu integration", () => {
       await runsApi.requestCancelRun(actor, run.id, [200]);
     }
     await flushWaitUntilForTest();
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     await accept(
@@ -4152,7 +4152,7 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
     await accept(

@@ -19,9 +19,9 @@ import {
   seedSlackConnectOrg$,
   type SlackConnectFixture,
 } from "./helpers/zero-slack-connect";
-import { zeroSlackConnectRoutes } from "../zero-slack-connect";
+import { slackConnectRoutes } from "../slack-connect";
 
-const TEST_APP_ROUTES = Object.freeze([...zeroSlackConnectRoutes]);
+const TEST_APP_ROUTES = Object.freeze([...slackConnectRoutes]);
 
 const context = testContext();
 const store = createStore();
@@ -94,7 +94,7 @@ describe("GET /api/zero/integrations/slack/connect", () => {
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
 
@@ -114,7 +114,7 @@ describe("GET /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, null);
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
 
@@ -139,7 +139,7 @@ describe("GET /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
 
@@ -166,7 +166,7 @@ describe("GET /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
 
@@ -191,7 +191,7 @@ describe("GET /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
 
@@ -211,7 +211,7 @@ describe("GET /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
 
@@ -246,7 +246,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
 
@@ -304,7 +304,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     const response = await accept(
@@ -332,7 +332,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     const response = await accept(
@@ -368,7 +368,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     const response = await accept(
@@ -391,7 +391,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     await accept(
@@ -423,7 +423,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     await accept(
@@ -484,7 +484,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     await accept(
@@ -540,7 +540,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       }),
     );
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     await accept(
@@ -586,7 +586,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     const response = await accept(
@@ -620,7 +620,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     const response = await accept(
@@ -649,7 +649,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     const response = await accept(
@@ -686,7 +686,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     const response = await accept(
@@ -711,7 +711,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    const client = setupApp({ context, routes: zeroSlackConnectRoutes })(
+    const client = setupApp({ context, routes: slackConnectRoutes })(
       zeroSlackConnectContract,
     );
     const first = await accept(

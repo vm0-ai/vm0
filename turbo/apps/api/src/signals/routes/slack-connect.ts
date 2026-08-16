@@ -124,7 +124,7 @@ const slackConnectWriteAuth = {
   requiredCapability: "slack:write",
 } as const;
 
-export const zeroSlackConnectRoutes: readonly RouteEntry[] = [
+export const slackConnectRoutes: readonly RouteEntry[] = [
   {
     route: zeroSlackConnectContract.getStatus,
     handler: authRoute(slackConnectAuth, getSlackConnectStatusInner$),

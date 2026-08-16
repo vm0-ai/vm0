@@ -327,7 +327,7 @@ const getStatus$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroFeishuBrowserConnectRoutes: readonly RouteEntry[] = [
+export const feishuBrowserConnectRoutes: readonly RouteEntry[] = [
   {
     route: zeroFeishuBrowserConnectContract.connect,
     handler: connect$,

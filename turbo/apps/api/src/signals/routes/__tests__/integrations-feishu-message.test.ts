@@ -27,14 +27,14 @@ import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
-import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
+import { feishuConnectRoutes } from "../feishu-connect";
+import { feishuOauthRoutes } from "../feishu-oauth";
 import { integrationsFeishuFileRoutes } from "../integrations-feishu-files";
 import { integrationsFeishuMessageRoutes } from "../integrations-feishu-message";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...zeroFeishuConnectRoutes,
-  ...zeroFeishuOauthRoutes,
+  ...feishuConnectRoutes,
+  ...feishuOauthRoutes,
   ...integrationsFeishuFileRoutes,
   ...integrationsFeishuMessageRoutes,
 ]);
@@ -121,7 +121,7 @@ async function setupFeishuInstallation(
     visibility: "public",
   });
   mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-  const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+  const client = setupApp({ context, routes: feishuConnectRoutes })(
     zeroFeishuConnectContract,
   );
   const setup = await accept(
@@ -164,7 +164,7 @@ function requireTestValue<T>(value: T | null | undefined, message: string): T {
 }
 
 async function connectCurrentFeishuUser(actor: FeishuTestActor): Promise<void> {
-  const statusClient = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+  const statusClient = setupApp({ context, routes: feishuConnectRoutes })(
     zeroFeishuConnectContract,
   );
   const status = await accept(
@@ -182,7 +182,7 @@ async function connectCurrentFeishuUser(actor: FeishuTestActor): Promise<void> {
     "Expected Feishu OAuth state",
   );
   mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-  const oauthClient = setupApp({ context, routes: zeroFeishuOauthRoutes })(
+  const oauthClient = setupApp({ context, routes: feishuOauthRoutes })(
     zeroFeishuOauthContract,
   );
   await accept(
