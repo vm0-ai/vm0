@@ -514,11 +514,8 @@ function PlanScheduleNotice({
   if (!changeDate) {
     return null;
   }
-  const noticeClassName = `mb-5 rounded-lg border px-3 py-2 text-[12px] leading-relaxed ${
-    scheduledChange?.type === "downgrade" || isDowngradeTarget
-      ? "border-yellow-200/70 bg-yellow-50/70 text-yellow-800 dark:border-yellow-400/20 dark:bg-yellow-400/10 dark:text-yellow-200"
-      : "border-amber-200/70 bg-amber-50/70 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300"
-  }`;
+  const noticeClassName =
+    "mb-5 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[12px] leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300";
 
   if (scheduledChange?.type === "cancel" && isCurrent) {
     return (
@@ -901,7 +898,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
         </DialogHeader>
 
         {isTeam && isLockedTarget && (
-          <p className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
+          <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
             {i18n.t(
               ($) => {
                 return $.billing.downgrade.teamWarning;
@@ -912,7 +909,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
         )}
 
         {!isTeam && (
-          <p className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
+          <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
             {i18n.t(($) => {
               return $.billing.downgrade.proWarning;
             })}
@@ -2836,7 +2833,7 @@ export function OrgBillingTab() {
                 <>
                   <div className="h-0 zero-border-t mx-5" />
                   <div className="px-5 py-3">
-                    <p className="text-[13px] text-yellow-700 dark:text-yellow-300">
+                    <p className="text-[13px] text-amber-600 dark:text-amber-400">
                       {t(
                         ($) => {
                           return $.billing.plans.downgradeNotice;

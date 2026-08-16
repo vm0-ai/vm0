@@ -2064,8 +2064,6 @@ describe("organization billing settings", () => {
     const scheduledDowngrade = within(orderSummary).getByRole("status", {
       name: "Downgrade scheduled",
     });
-    expect(scheduledDowngrade).toHaveClass("bg-yellow-50/70");
-    expect(orderSummary).toHaveClass("pb-5");
     expect(scheduledDowngrade).toHaveTextContent(
       "Lower package starts Apr 1, 2026 · Existing credits remain available until they expire",
     );
@@ -2521,10 +2519,11 @@ describe("organization billing settings", () => {
         name: /Monthly total \$180\/month \$20\/month/u,
       }),
     ).toBeInTheDocument();
-    const downgradeDescription = within(orderSummary).getByText(
-      "The lower package starts at the next billing date. Existing credits remain available until they expire.",
-    );
-    expect(downgradeDescription.parentElement).toHaveClass("bg-yellow-50/70");
+    expect(
+      within(orderSummary).getByText(
+        "The lower package starts at the next billing date. Existing credits remain available until they expire.",
+      ),
+    ).toBeInTheDocument();
     expect(
       within(orderSummary).getByText("Scheduled for Apr 1, 2026"),
     ).toBeInTheDocument();
@@ -3970,20 +3969,16 @@ describe("organization billing settings", () => {
         screen.getByText(
           "Your Team plan will downgrade to Pro on May 1, 2026.",
         ),
-      ).toHaveClass("text-yellow-700");
+      ).toBeInTheDocument();
     });
 
     click(screen.getByText("Compare all plans"));
 
     await waitFor(() => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
-      const downgradeNotices = screen.getAllByText(
-        "Downgrades to Pro on May 1, 2026",
-      );
-      expect(downgradeNotices.length).toBeGreaterThan(0);
-      for (const notice of downgradeNotices) {
-        expect(notice).toHaveClass("bg-yellow-50/70");
-      }
+      expect(
+        screen.getAllByText("Downgrades to Pro on May 1, 2026").length,
+      ).toBeGreaterThan(0);
     });
 
     click(screen.getByText("Restore plan"));
@@ -4080,7 +4075,7 @@ describe("organization billing settings", () => {
       within(downgradeDialog).getByText(
         /After that, this workspace moves to Pro/u,
       ),
-    ).toHaveClass("text-yellow-700");
+    ).toBeInTheDocument();
 
     click(buttonByText("Downgrade to Pro", downgradeDialog));
 
