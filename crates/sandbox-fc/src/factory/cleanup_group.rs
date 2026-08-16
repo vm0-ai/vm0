@@ -1,9 +1,9 @@
 //! Factory-owned asynchronous cleanup.
 //!
-//! `FactoryCleanupGroup` owns destroy and create-rollback cleanup after it is
-//! registered, independently of the caller waiting for that cleanup. Dropping
-//! or cancelling the returned waiter therefore does not cancel the spawned
-//! task. Its handle stays under group or shutdown-batch ownership until the task
+//! While it is not closed, `FactoryCleanupGroup` owns registered destroy and
+//! create-rollback cleanup independently of the caller waiting for it. Dropping
+//! or cancelling the returned waiter therefore does not cancel the spawned task.
+//! Its handle stays under group or shutdown-batch ownership until the task
 //! finishes, unless bounded abort processing explicitly detaches it.
 //!
 //! The group has three lifecycle conditions:
@@ -447,7 +447,7 @@ impl FactoryCleanupGroup {
 
     /// Drain tracked cleanup and transition the group to closed.
     ///
-    /// Registrations made while shutdown is running are drained or aborted by
+    /// Registrations accepted before the group closes are drained or aborted by
     /// the same call. The graceful batches share one timeout; after it expires,
     /// unfinished and late tasks are aborted, briefly observed, and detached if
     /// necessary. Cancelling this future before completion returns unfinished
