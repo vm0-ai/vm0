@@ -97,7 +97,7 @@ import { connectorCheckRoutes } from "../connector-check";
 import { connectorsRoutes } from "../connectors";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 import { steamPlayerRoutes } from "../steam-player";
-import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
+import { userPermissionGrantsRoutes } from "../user-permission-grants";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { workflowsRoutes } from "../workflows";
 
@@ -111,7 +111,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...connectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...steamPlayerRoutes,
-  ...zeroUserPermissionGrantsRoutes,
+  ...userPermissionGrantsRoutes,
   ...workflowAutomationsRoutes,
   ...workflowsRoutes,
 ]);
@@ -2807,7 +2807,7 @@ describe("connector catalog valid lifecycle", () => {
       "https://api.example.test/custom/",
     ]);
     const grants = await accept(
-      setupApp({ context, routes: zeroUserPermissionGrantsRoutes })(
+      setupApp({ context, routes: userPermissionGrantsRoutes })(
         zeroUserPermissionGrantsContract,
       ).apply({
         headers: { authorization: "Bearer clerk-session" },

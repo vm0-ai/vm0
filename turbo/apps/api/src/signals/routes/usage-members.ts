@@ -45,7 +45,7 @@ const getUsageMembersInner$ = command(
   },
 );
 
-export const zeroUsageMembersRoutes: readonly RouteEntry[] = [
+export const usageMembersRoutes: readonly RouteEntry[] = [
   {
     route: zeroUsageMembersContract.get,
     handler: authRoute(

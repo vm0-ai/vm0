@@ -20,9 +20,9 @@ import {
   seedUsageStateFixture$,
   type UsageStateFixture,
 } from "./helpers/usage-state";
-import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
+import { userPermissionGrantsRoutes } from "../user-permission-grants";
 
-const TEST_APP_ROUTES = Object.freeze([...zeroUserPermissionGrantsRoutes]);
+const TEST_APP_ROUTES = Object.freeze([...userPermissionGrantsRoutes]);
 
 const context = testContext();
 const store = createStore();
@@ -68,7 +68,7 @@ async function seedAgent(args: {
 }
 
 function client() {
-  return setupApp({ context, routes: zeroUserPermissionGrantsRoutes })(
+  return setupApp({ context, routes: userPermissionGrantsRoutes })(
     zeroUserPermissionGrantsContract,
   );
 }
@@ -267,7 +267,7 @@ describe("zero user permission grants", () => {
 
     const client = setupApp({
       context,
-      routes: zeroUserPermissionGrantsRoutes,
+      routes: userPermissionGrantsRoutes,
     })(zeroUserPermissionGrantsContract);
 
     mocks.clerk.session(owner.userId, owner.orgId, "org:member");
@@ -328,7 +328,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({
       context,
-      routes: zeroUserPermissionGrantsRoutes,
+      routes: userPermissionGrantsRoutes,
     })(zeroUserPermissionGrantsContract);
 
     const malformedConnector = await accept(
@@ -608,7 +608,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({
       context,
-      routes: zeroUserPermissionGrantsRoutes,
+      routes: userPermissionGrantsRoutes,
     })(zeroUserPermissionGrantsContract);
 
     const invalidConnector = await accept(
@@ -727,7 +727,7 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(sameOrgUserId, owner.orgId, "org:member");
     const client = setupApp({
       context,
-      routes: zeroUserPermissionGrantsRoutes,
+      routes: userPermissionGrantsRoutes,
     })(zeroUserPermissionGrantsContract);
 
     const response = await accept(

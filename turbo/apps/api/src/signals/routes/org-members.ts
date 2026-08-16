@@ -70,7 +70,7 @@ const removeMemberInner$ = command(
   },
 );
 
-export const zeroOrgMembersRoutes: readonly RouteEntry[] = [
+export const orgMembersRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgMembersContract.updateRole,
     handler: authRoute(

@@ -95,7 +95,7 @@ const rejectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroOrgMembershipRequestsRoutes: readonly RouteEntry[] = [
+export const orgMembershipRequestsRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgMembershipRequestsContract.accept,
     handler: authRoute(

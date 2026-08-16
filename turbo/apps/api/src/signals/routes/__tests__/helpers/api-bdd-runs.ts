@@ -78,7 +78,7 @@ import {
   zeroRunFixtureRoutes,
 } from "../../test-zero-run-fixture";
 import { testBillingReconciliationStateRoutes } from "../../test-billing-reconciliation-state";
-import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
+import { userPermissionGrantsRoutes } from "../../user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -161,7 +161,7 @@ const runRoutes = [
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
   ...agentsRoutes,
-  ...zeroUserPermissionGrantsRoutes,
+  ...userPermissionGrantsRoutes,
 ] as const;
 
 function runApp(context: TestContext) {
