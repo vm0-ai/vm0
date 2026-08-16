@@ -58,7 +58,7 @@ import {
   dispatchCancelSideEffects$,
   shouldDispatchCancelSideEffects,
   type CancelRunResult,
-} from "./zero-run-cancel.service";
+} from "./run-cancel.service";
 import { scheduleChatThreadTitleGeneration } from "./zero-chat-title.service";
 import { generateAndPersistInitialThinkingMessage } from "./zero-chat-initial-thinking.service";
 import {

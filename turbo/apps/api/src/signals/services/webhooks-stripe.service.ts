@@ -44,7 +44,7 @@ import {
 } from "./billing-payment-method.service";
 import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
 import { publishBillingChangedForOrg } from "./billing-realtime.service";
-import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
+import { drainOrgQueueToCapacity$ } from "./run-queue.service";
 import {
   CONCURRENCY_SUBSCRIPTION_PURPOSE,
   isConcurrencyPriceId,

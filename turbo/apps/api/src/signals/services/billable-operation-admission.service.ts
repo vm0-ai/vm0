@@ -2,7 +2,7 @@ import { command } from "ccstate";
 
 import { writeDb$ } from "../external/db";
 import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
-import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
+import { resolveOrgCreditAvailability } from "./run-admission.service";
 
 export const checkBillableOperationCredits$ = command(
   async (

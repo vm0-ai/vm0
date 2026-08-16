@@ -22,9 +22,9 @@ import {
 } from "./agent-run-callback.service";
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
-import { drainOrgQueue$ } from "./zero-run-queue.service";
+import { drainOrgQueue$ } from "./run-queue.service";
 
-const L = logger("ZeroRunCancel");
+const L = logger("RunCancel");
 
 export interface CancelRunResult {
   readonly apiStartTime: number;
@@ -251,7 +251,7 @@ async function publishRunnerCancellation(
  *    deduction succeeds) is preserved by `processOrgUsageEvents$`.
  *
  * Deferrals (each tracked under #12290):
- *  - `dispatchQueuedZeroRun` (drain dispatch path) — Stage 4
+ *  - queued-run dispatch (drain dispatch path) — Stage 4
  *    run-creation migration.
  *  - `triggerAutoRecharge` (Stripe top-up) — sibling follow-up.
  *

@@ -10,7 +10,7 @@ import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { deleteChatThread$ } from "../services/zero-chat-thread.service";
 import { stopThreadZeroBrowsers$ } from "../services/zero-browser.service";
-import { dispatchCancelSideEffects$ } from "../services/zero-run-cancel.service";
+import { dispatchCancelSideEffects$ } from "../services/run-cancel.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 

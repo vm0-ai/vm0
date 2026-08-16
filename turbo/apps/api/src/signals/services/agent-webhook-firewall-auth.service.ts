@@ -84,7 +84,7 @@ import {
   lockModelProviderState,
 } from "./auth-state-lock.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
+import { resolveOrgCreditAvailability } from "./run-admission.service";
 import { resolveUsageAllowanceAvailabilityForRun } from "./usage-allowance.service";
 import {
   connectorRuntimeCredentialStatusForAccess,
