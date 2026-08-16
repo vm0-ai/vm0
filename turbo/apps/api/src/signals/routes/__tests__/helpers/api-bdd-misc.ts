@@ -46,7 +46,7 @@ import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { orgLogoRoutes } from "../../org-logo";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { userPreferencesRoutes } from "../../user-preferences";
-import { zeroWorkflowsRoutes } from "../../zero-workflows";
+import { workflowsRoutes } from "../../workflows";
 
 const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
   ...zeroMeModelProvidersListRoutes,
@@ -325,7 +325,7 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async listWorkflows(actor: ApiTestUser) {
       return await accept(
-        setupApp({ context, routes: zeroWorkflowsRoutes })(
+        setupApp({ context, routes: workflowsRoutes })(
           zeroWorkflowsCollectionContract,
         ).list({
           headers: authenticate(context, actor),
@@ -345,7 +345,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 409)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroWorkflowsRoutes })(
+        setupApp({ context, routes: workflowsRoutes })(
           zeroWorkflowsCollectionContract,
         ).create({
           headers: authenticate(context, actor),
@@ -368,7 +368,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (400 | 401 | 403 | 409)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroWorkflowsRoutes })(
+        setupApp({ context, routes: workflowsRoutes })(
           zeroWorkflowsCollectionContract,
         ).create({
           headers: authenticate(context, actor),
@@ -390,7 +390,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroWorkflowsRoutes })(
+        setupApp({ context, routes: workflowsRoutes })(
           zeroWorkflowsDetailContract,
         ).get({
           headers: authenticate(context, actor),
@@ -407,7 +407,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroWorkflowsRoutes })(
+        setupApp({ context, routes: workflowsRoutes })(
           zeroWorkflowsDetailContract,
         ).update({
           headers: authenticate(context, actor),
@@ -424,7 +424,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (204 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroWorkflowsRoutes })(
+        setupApp({ context, routes: workflowsRoutes })(
           zeroWorkflowsDetailContract,
         ).delete({
           headers: authenticate(context, actor),

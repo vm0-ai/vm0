@@ -21,13 +21,13 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { strapiIntegrationsRoutes } from "../strapi-integrations";
 import { strapiEventsRoutes } from "../strapi-events";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { workflowAutomationsRoutes } from "../workflow-automations";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...testWorkflowAutomationExecutionRoutes,
   ...strapiEventsRoutes,
   ...strapiIntegrationsRoutes,
-  ...zeroWorkflowAutomationsRoutes,
+  ...workflowAutomationsRoutes,
 ]);
 
 const context = testContext();
@@ -115,7 +115,7 @@ function integrationsClient() {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

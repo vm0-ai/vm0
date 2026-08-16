@@ -26,7 +26,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testStripeAutomationEventRoutes } from "../test-stripe-automation-events";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksStripeAutomationEventsRoutes } from "../webhooks-stripe-automation-events";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { workflowAutomationsRoutes } from "../workflow-automations";
 
 const context = testContext();
 const connectors = createConnectorBddApi(context);
@@ -66,7 +66,7 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

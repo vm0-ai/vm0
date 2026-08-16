@@ -21,12 +21,12 @@ import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGoogleFormsRoutes } from "../webhooks-google-forms";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...webhooksGoogleFormsRoutes,
-  ...zeroWorkflowAutomationsRoutes,
+  ...workflowAutomationsRoutes,
 ]);
 
 const context = testContext();
@@ -58,7 +58,7 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

@@ -32,14 +32,14 @@ import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { zeroAgentsRoutes } from "../zero-agents";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
-import { zeroWorkflowsRoutes } from "../zero-workflows";
+import { workflowAutomationsRoutes } from "../workflow-automations";
+import { workflowsRoutes } from "../workflows";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...testWorkflowAutomationExecutionRoutes,
   ...zeroAgentsRoutes,
-  ...zeroWorkflowAutomationsRoutes,
-  ...zeroWorkflowsRoutes,
+  ...workflowAutomationsRoutes,
+  ...workflowsRoutes,
 ]);
 
 const context = testContext();
@@ -68,7 +68,7 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

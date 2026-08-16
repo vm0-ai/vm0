@@ -20,12 +20,12 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGithubRoutes } from "../webhooks-github";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...webhooksGithubRoutes,
-  ...zeroWorkflowAutomationsRoutes,
+  ...workflowAutomationsRoutes,
 ]);
 
 const context = testContext();
@@ -42,7 +42,7 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

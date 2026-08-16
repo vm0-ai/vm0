@@ -49,7 +49,7 @@ import {
 import { zeroChatEventsRoutes } from "../zero-chat-events";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { workflowAutomationsRoutes } from "../workflow-automations";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 
@@ -59,7 +59,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroChatEventsRoutes,
   ...zeroChatThreadRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroWorkflowAutomationsRoutes,
+  ...workflowAutomationsRoutes,
 ]);
 
 const context = testContext();
@@ -86,7 +86,7 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+  return setupApp({ context, routes: workflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
 }

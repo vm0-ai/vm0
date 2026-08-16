@@ -98,8 +98,8 @@ import { zeroConnectorsRoutes } from "../zero-connectors";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 import { steamPlayerRoutes } from "../steam-player";
 import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
-import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
-import { zeroWorkflowsRoutes } from "../zero-workflows";
+import { workflowAutomationsRoutes } from "../workflow-automations";
+import { workflowsRoutes } from "../workflows";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...connectorsSlugCallbackRoutes,
@@ -112,8 +112,8 @@ const TEST_APP_ROUTES = Object.freeze([
   ...zeroFeatureSwitchesRoutes,
   ...steamPlayerRoutes,
   ...zeroUserPermissionGrantsRoutes,
-  ...zeroWorkflowAutomationsRoutes,
-  ...zeroWorkflowsRoutes,
+  ...workflowAutomationsRoutes,
+  ...workflowsRoutes,
 ]);
 
 const context = testContext();
@@ -4044,7 +4044,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     created.agentId = agent.agentId;
     const workflow = await accept(
-      setupApp({ context, routes: zeroWorkflowsRoutes })(
+      setupApp({ context, routes: workflowsRoutes })(
         zeroWorkflowsCollectionContract,
       ).create({
         headers,
@@ -4058,7 +4058,7 @@ describe("connector catalog valid lifecycle", () => {
     );
     created.workflowId = workflow.body.id;
     await accept(
-      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+      setupApp({ context, routes: workflowAutomationsRoutes })(
         zeroWorkflowAutomationsContract,
       ).create({
         headers,
@@ -4134,7 +4134,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const callsBeforeReadiness = context.mocks.s3.send.mock.calls.length;
     const readiness = await accept(
-      setupApp({ context, routes: zeroWorkflowsRoutes })(
+      setupApp({ context, routes: workflowsRoutes })(
         zeroWorkflowsDetailContract,
       ).connectorReadiness({
         headers,
@@ -4244,7 +4244,7 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const workflow = await accept(
-      setupApp({ context, routes: zeroWorkflowsRoutes })(
+      setupApp({ context, routes: workflowsRoutes })(
         zeroWorkflowsCollectionContract,
       ).create({
         headers,
@@ -4295,7 +4295,7 @@ describe("connector catalog valid lifecycle", () => {
     );
 
     const firstCreate = accept(
-      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+      setupApp({ context, routes: workflowAutomationsRoutes })(
         zeroWorkflowAutomationsContract,
       ).create({
         headers,
@@ -4339,7 +4339,7 @@ describe("connector catalog valid lifecycle", () => {
     });
 
     await accept(
-      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+      setupApp({ context, routes: workflowAutomationsRoutes })(
         zeroWorkflowAutomationsContract,
       ).create({
         headers,
