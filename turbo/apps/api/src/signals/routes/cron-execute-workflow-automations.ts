@@ -5,7 +5,7 @@ import type { RouteEntry } from "../route-entry";
 import { executeDueNotionAutomationEvents$ } from "../services/notion-automation-event.service";
 import { executeDueStrapiAutomationEvents$ } from "../services/strapi-automation-event.service";
 import { executeDueStripeAutomationEvents$ } from "../services/stripe-automation-event.service";
-import { executeDueWorkflowAutomations$ } from "../services/zero-workflow-automation-poller.service";
+import { executeDueWorkflowAutomations$ } from "../services/workflow-automation-poller.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 // The cron tick polls the zero_workflow_automations table; runs carry generic
