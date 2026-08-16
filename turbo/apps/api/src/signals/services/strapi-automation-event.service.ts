@@ -25,7 +25,7 @@ import { now, nowDate } from "../../lib/time";
 import { safeJsonParse, settle } from "../utils";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
-import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import type {
   AutomationRow,
   RunFailure,

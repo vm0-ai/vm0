@@ -41,7 +41,7 @@ import type {
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
-import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 
 const log = logger("api:stripe-automation-event");
 
