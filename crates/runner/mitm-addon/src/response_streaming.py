@@ -135,6 +135,9 @@ def _mark_websocket_correlation_ambiguous(
     """Disable prewarm exclusion after ownership can no longer be proven."""
     state.ambiguous = True
     _clear_websocket_correlation_candidate(state)
+    # Fail-open is sticky for the rest of the flow.  A previously ignored ID
+    # must not remain capable of suppressing usage after that transition.
+    state.ignored_response_id = None
     if state.ambiguity_diagnostic_emitted:
         return
     log_proxy_entry(
@@ -260,6 +263,10 @@ def _observe_websocket_server_lifecycle(
                     state,
                     _lifecycle_ambiguity_reason(lifecycle),
                 )
+            return
+        if lifecycle.response_id == state.ignored_response_id:
+            # A duplicate terminal for an already ignored source is known even
+            # when another request is currently pending or active.
             return
         if (
             state.active_intent is None
@@ -770,10 +777,7 @@ def feed_model_websocket_usage(
                     prewarm_state.ignored_diagnostic_emitted = True
                 prewarm_state.ignored_response_id = message_id
                 suppressed = True
-            elif (
-                prewarm_state.active_intent is None
-                and prewarm_state.ignored_response_id == message_id
-            ):
+            elif not prewarm_state.ambiguous and prewarm_state.ignored_response_id == message_id:
                 suppressed = True
         if (
             not suppressed

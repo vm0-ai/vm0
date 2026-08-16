@@ -129,6 +129,94 @@ class TestModelProviderWebSocketPrewarmUsage:
         assert response_streaming.is_model_websocket_usage_enabled(flow) is False
         assert "_model_websocket_prewarm_state" not in flow.metadata
 
+    def test_model_websocket_ignored_id_fails_open_after_ambiguity(self, tmp_path, real_flow):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("warm-ambiguous"))
+            duplicate_terminal = openai_websocket_usage_frame(
+                "warm-ambiguous",
+                input_tokens=5,
+                output_tokens=0,
+            )
+            feed_websocket_server_message(flow, duplicate_terminal)
+
+            feed_websocket_client_message(flow, b"not-json")
+            feed_websocket_server_message(flow, duplicate_terminal)
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 5)]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        source_entries = model_usage_source_entries(flow)
+        ignored_entries = [
+            entry for entry in source_entries if entry.get("disposition") == "ignored"
+        ]
+        assert len(ignored_entries) == 1
+        reported_entries = [
+            entry
+            for entry in source_entries
+            if entry.get("disposition") != "ignored"
+            and entry.get("provider_response_id") == "warm-ambiguous"
+        ]
+        assert len(reported_entries) == 1
+        [correlation_entry] = _correlation_entries(flow)
+        assert correlation_entry["reason"] == "unknown_client_event"
+
+    def test_model_websocket_duplicate_terminal_stays_idempotent_with_active_request(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("warm-duplicate"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("warm-duplicate", input_tokens=5, output_tokens=0),
+            )
+
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create"}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("normal-active"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("warm-duplicate", input_tokens=5, output_tokens=0),
+            )
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("normal-active", input_tokens=4, output_tokens=0),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 4)]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not _correlation_entries(flow)
+
     @pytest.mark.parametrize(
         "client_requests",
         [
