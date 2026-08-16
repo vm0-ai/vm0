@@ -1100,6 +1100,7 @@ function PricingStepDialog({
   onBack,
   onClose,
   step,
+  title,
   total,
 }: {
   readonly children: ReactNode;
@@ -1107,6 +1108,7 @@ function PricingStepDialog({
   readonly onBack?: () => void;
   readonly onClose: () => void;
   readonly step: PricingStep;
+  readonly title?: string;
   readonly total: PricingStepTotal;
 }) {
   const { t } = useTranslation();
@@ -1130,7 +1132,7 @@ function PricingStepDialog({
         <DialogHeader className="h-14 flex-row shrink-0 items-center gap-3 space-y-0 border-b-[0.7px] border-[hsl(var(--gray-200))] py-0 pl-6 pr-4 text-left">
           {onBack && <PricingBackButton inDialogHeader onBack={onBack} />}
           <DialogTitle className="min-w-0 flex-1 text-base font-medium leading-none">
-            {pricingStepTitle(step)}
+            {title ?? pricingStepTitle(step)}
           </DialogTitle>
           <PricingStepIndicator current={step} total={total} />
           <DialogClose
@@ -2364,6 +2366,7 @@ function PackageConfigurationStep({
 
 function MigrationOrderSummary({
   effectiveAt,
+  inDialog = false,
   members,
   plan,
   selections,
@@ -2371,6 +2374,7 @@ function MigrationOrderSummary({
   totals,
 }: {
   readonly effectiveAt: string;
+  readonly inDialog?: boolean;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly plan: UsagePackPlan;
   readonly selections: Readonly<Record<string, MemberUsageSelection>>;
@@ -2391,79 +2395,94 @@ function MigrationOrderSummary({
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
-      className="rounded-xl bg-card p-4 zero-border"
+      className={inDialog ? undefined : "rounded-xl bg-card p-4 zero-border"}
     >
-      <h4 className="text-sm font-medium text-foreground">
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.orderSummary;
-        })}
-      </h4>
-      <MigrationPlanComparison
-        currentAmountCents={currentMonthlyTotal * 100}
-        nextAmountCents={monthlyTotal * 100}
-        nextTotals={totals}
-        sourceTier={sourceTier}
-        targetTier={plan.tier}
-      />
+      {!inDialog && (
+        <>
+          <h4 className="text-sm font-medium text-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.orderSummary;
+            })}
+          </h4>
+          <MigrationPlanComparison
+            currentAmountCents={currentMonthlyTotal * 100}
+            nextAmountCents={monthlyTotal * 100}
+            nextTotals={totals}
+            sourceTier={sourceTier}
+            targetTier={plan.tier}
+          />
+        </>
+      )}
       <SubscriptionChangeNotice
         description={i18n.t(($) => {
           return $.billing.plans.usagePacks.migration.confirmDescription;
         })}
         effectiveAt={effectiveAt}
       />
-      {previewError && (
-        <p className="mt-3 text-xs text-destructive">
+      <div className={inDialog ? STEP_ACTION_BAR : undefined}>
+        {previewError && (
+          <p
+            className={
+              inDialog
+                ? "text-sm text-destructive"
+                : "mt-3 text-xs text-destructive"
+            }
+          >
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.error;
+            })}
+          </p>
+        )}
+        <Button
+          type="button"
+          className={`${inDialog ? "" : "mt-4 "}h-10 w-full text-sm font-medium`}
+          disabled={!members || previewing}
+          onClick={() => {
+            if (!members) {
+              return;
+            }
+            detach(
+              previewMigration(
+                {
+                  targetTier: plan.tier,
+                  memberUsagePacks: checkoutMemberUsagePacks(
+                    members,
+                    selections,
+                  ),
+                },
+                pageSignal,
+              ),
+              Reason.DomCallback,
+            );
+          }}
+        >
           {i18n.t(($) => {
-            return $.billing.plans.usagePacks.migration.error;
+            return $.billing.plans.usagePacks.migration.review;
           })}
-        </p>
-      )}
-      <Button
-        type="button"
-        className="mt-4 h-10 w-full text-sm font-medium"
-        disabled={!members || previewing}
-        onClick={() => {
-          if (!members) {
-            return;
-          }
-          detach(
-            previewMigration(
-              {
-                targetTier: plan.tier,
-                memberUsagePacks: checkoutMemberUsagePacks(members, selections),
-              },
-              pageSignal,
-            ),
-            Reason.DomCallback,
-          );
-        }}
-      >
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.migration.review;
-        })}
-      </Button>
+        </Button>
+      </div>
     </section>
   );
 }
 
 function MigrationRevisionOrderSummary({
-  catalog,
-  configuration,
   effectiveAt,
+  hasConfigurationChange,
+  inDialog = false,
   members,
   migrationId,
   plan,
-  selections,
-  totals,
+  requested,
+  rows,
 }: {
-  readonly catalog: readonly UsagePackCatalogItem[];
-  readonly configuration: UsagePackMigrationConfiguration;
   readonly effectiveAt: string;
+  readonly hasConfigurationChange: boolean;
+  readonly inDialog?: boolean;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly migrationId: string;
   readonly plan: UsagePackPlan;
-  readonly selections: Readonly<Record<string, MemberUsageSelection>>;
-  readonly totals: MemberUsageTotals;
+  readonly requested: readonly MemberUsagePack[];
+  readonly rows: readonly SubscriptionComparisonRow[];
 }) {
   const pageSignal = useGet(pageSignal$);
   const [previewLoadable, previewRevision] = useLoadableSet(
@@ -2472,82 +2491,82 @@ function MigrationRevisionOrderSummary({
   const preview = useGet(usagePackMigrationRevisionPreview$);
   const previewing = previewLoadable.state === "loading" || preview !== null;
   const previewError = previewLoadable.state === "hasError";
-  const currentPlan = usagePackPlan(configuration.tier);
-  const currentTotals = migrationConfigurationTotals(configuration, catalog);
-  const requested = members
-    ? checkoutMemberUsagePacks(members, selections)
-    : [];
-  const hasConfigurationChange =
-    members !== undefined &&
-    migrationConfigurationChanged(configuration, plan.tier, requested);
-  const rows = managedSubscriptionComparisonRows({
-    currentPlan,
-    currentTotals,
-    plan,
-    totals,
-  });
   return (
     <section
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
-      className="rounded-xl bg-card p-4 zero-border"
+      className={inDialog ? undefined : "rounded-xl bg-card p-4 zero-border"}
     >
-      <h4 className="text-sm font-medium text-foreground">
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.orderSummary;
-        })}
-      </h4>
-      <SubscriptionComparisonTable rows={rows} />
+      {!inDialog && (
+        <>
+          <h4 className="text-sm font-medium text-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.orderSummary;
+            })}
+          </h4>
+          <SubscriptionComparisonTable rows={rows} />
+        </>
+      )}
       <SubscriptionChangeNotice
         description={i18n.t(($) => {
           return $.billing.plans.usagePacks.migration.confirmDescription;
         })}
         effectiveAt={effectiveAt}
       />
-      {previewError && (
-        <p className="mt-3 text-xs text-destructive">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.migration.error;
-          })}
-        </p>
-      )}
-      <Button
-        type="button"
-        className="mt-4 h-10 w-full text-sm font-medium"
-        disabled={!hasConfigurationChange || previewing}
-        onClick={() => {
-          if (!members) {
-            return;
-          }
-          detach(
-            previewRevision(
-              {
-                migrationId,
-                targetTier: plan.tier,
-                memberUsagePacks: requested,
-              },
-              pageSignal,
-            ),
-            Reason.DomCallback,
-          );
-        }}
-      >
-        {hasConfigurationChange
-          ? i18n.t(($) => {
+      {hasConfigurationChange && (
+        <div className={inDialog ? STEP_ACTION_BAR : undefined}>
+          {previewError && (
+            <p
+              className={
+                inDialog
+                  ? "text-sm text-destructive"
+                  : "mt-3 text-xs text-destructive"
+              }
+            >
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.migration.error;
+              })}
+            </p>
+          )}
+          <Button
+            type="button"
+            className={`${inDialog ? "" : "mt-4 "}h-10 w-full text-sm font-medium`}
+            disabled={!members || previewing}
+            onClick={() => {
+              if (!members) {
+                return;
+              }
+              detach(
+                previewRevision(
+                  {
+                    migrationId,
+                    targetTier: plan.tier,
+                    memberUsagePacks: requested,
+                  },
+                  pageSignal,
+                ),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {i18n.t(($) => {
               return $.billing.plans.usagePacks.migration.review;
-            })
-          : i18n.t(($) => {
-              return $.billing.plans.currentPlan;
             })}
-      </Button>
+          </Button>
+        </div>
+      )}
     </section>
   );
 }
 
 function MigrationReviewDialog({
+  inDialog = false,
+  onComplete,
   totals,
 }: {
+  readonly inDialog?: boolean;
+  readonly onComplete?: () => void;
   readonly totals: MemberUsageTotals;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -2563,7 +2582,19 @@ function MigrationReviewDialog({
       return;
     }
     await confirmMigration(preview.migrationId, pageSignal);
+    onComplete?.();
   };
+  if (inDialog) {
+    return preview ? (
+      <MigrationReviewStepContent
+        confirming={confirming}
+        error={error}
+        onConfirm={handleConfirm}
+        preview={preview}
+        totals={totals}
+      />
+    ) : null;
+  }
   return (
     <Dialog
       open={preview !== null}
@@ -2627,13 +2658,17 @@ function MigrationReviewDialog({
 }
 
 function MigrationRevisionReviewDialog({
+  inDialog = false,
   members,
   migrationId,
+  onComplete,
   selections,
   totals,
 }: {
+  readonly inDialog?: boolean;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly migrationId: string;
+  readonly onComplete?: () => void;
   readonly selections: Readonly<Record<string, MemberUsageSelection>>;
   readonly totals: MemberUsageTotals;
 }) {
@@ -2657,7 +2692,19 @@ function MigrationRevisionReviewDialog({
       },
       pageSignal,
     );
+    onComplete?.();
   };
+  if (inDialog) {
+    return preview && members ? (
+      <MigrationReviewStepContent
+        confirming={confirming}
+        error={error}
+        onConfirm={handleConfirm}
+        preview={preview}
+        totals={totals}
+      />
+    ) : null;
+  }
   return (
     <Dialog
       open={preview !== null}
@@ -2720,6 +2767,58 @@ function MigrationRevisionReviewDialog({
   );
 }
 
+function MigrationReviewStepContent({
+  confirming,
+  error,
+  onConfirm,
+  preview,
+  totals,
+}: {
+  readonly confirming: boolean;
+  readonly error: boolean;
+  readonly onConfirm: () => Promise<void>;
+  readonly preview:
+    | UsagePackMigrationPreviewResponse
+    | UsagePackMigrationRevisionPreviewResponse;
+  readonly totals: MemberUsageTotals;
+}) {
+  return (
+    <div className="flex flex-1 flex-col gap-5">
+      <p className="text-[13px] text-muted-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.migration.reviewDescription;
+        })}
+      </p>
+      <MigrationPreviewDetails preview={preview} totals={totals} />
+      <div className={STEP_ACTION_BAR}>
+        {error && (
+          <p className="text-sm text-destructive">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.error;
+            })}
+          </p>
+        )}
+        <Button
+          type="button"
+          className="h-10 w-full text-sm font-medium"
+          disabled={confirming}
+          onClick={() => {
+            detach(onConfirm(), Reason.DomCallback);
+          }}
+        >
+          {confirming
+            ? i18n.t(($) => {
+                return $.billing.common.updating;
+              })
+            : i18n.t(($) => {
+                return $.billing.common.confirm;
+              })}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function MigrationPreviewDetails({
   preview,
   totals,
@@ -2751,19 +2850,21 @@ function MigrationPreviewDetails({
   );
 }
 
-function MigrationPlanComparison({
-  currentAmountCents,
-  nextAmountCents,
-  nextTotals,
-  sourceTier,
-  targetTier,
-}: {
+interface MigrationPlanComparisonProps {
   readonly currentAmountCents: number;
   readonly nextAmountCents: number;
   readonly nextTotals: MemberUsageTotals;
   readonly sourceTier: UsagePackPlanTier;
   readonly targetTier: UsagePackPlanTier;
-}) {
+}
+
+function migrationPlanComparisonRows({
+  currentAmountCents,
+  nextAmountCents,
+  nextTotals,
+  sourceTier,
+  targetTier,
+}: MigrationPlanComparisonProps): readonly SubscriptionComparisonRow[] {
   const rows: readonly SubscriptionComparisonRow[] = [
     {
       label: i18n.t(($) => {
@@ -2839,7 +2940,13 @@ function MigrationPlanComparison({
     },
   ];
 
-  return <SubscriptionComparisonTable rows={rows} />;
+  return rows;
+}
+
+function MigrationPlanComparison(props: MigrationPlanComparisonProps) {
+  return (
+    <SubscriptionComparisonTable rows={migrationPlanComparisonRows(props)} />
+  );
 }
 
 export function UsagePackMigrationPlanSelectionPage({
@@ -2933,12 +3040,173 @@ export function UsagePackMigrationPlanSelectionPage({
   );
 }
 
+interface MigrationConfigurationViewState {
+  readonly comparisonRows: readonly SubscriptionComparisonRow[] | undefined;
+  readonly hasConfigurationChange: boolean;
+  readonly requested: readonly MemberUsagePack[];
+  readonly revisionRows: readonly SubscriptionComparisonRow[];
+  readonly revising: boolean;
+}
+
+function migrationConfigurationViewState({
+  catalog,
+  configuration,
+  members,
+  migrationId,
+  plan,
+  selections,
+  sourceTier,
+  totals,
+}: {
+  readonly catalog: readonly UsagePackCatalogItem[] | null;
+  readonly configuration: UsagePackMigrationConfiguration | null;
+  readonly members: readonly MemberDisplay[] | undefined;
+  readonly migrationId: string | null;
+  readonly plan: UsagePackPlan;
+  readonly selections: Readonly<Record<string, MemberUsageSelection>>;
+  readonly sourceTier: UsagePackPlanTier;
+  readonly totals: MemberUsageTotals;
+}): MigrationConfigurationViewState {
+  const requested = members
+    ? checkoutMemberUsagePacks(members, selections)
+    : [];
+  if (!configuration || !migrationId) {
+    return {
+      comparisonRows: migrationPlanComparisonRows({
+        currentAmountCents: (sourceTier === "pro" ? 20 : 200) * 100,
+        nextAmountCents: (plan.basePriceUsd + totals.totalUsd) * 100,
+        nextTotals: totals,
+        sourceTier,
+        targetTier: plan.tier,
+      }),
+      hasConfigurationChange: false,
+      requested,
+      revisionRows: [],
+      revising: false,
+    };
+  }
+  const hasConfigurationChange =
+    members !== undefined &&
+    migrationConfigurationChanged(configuration, plan.tier, requested);
+  const revisionRows = catalog
+    ? managedSubscriptionComparisonRows({
+        currentPlan: usagePackPlan(configuration.tier),
+        currentTotals: migrationConfigurationTotals(configuration, catalog),
+        plan,
+        totals,
+      })
+    : [];
+  return {
+    comparisonRows: hasConfigurationChange ? revisionRows : undefined,
+    hasConfigurationChange,
+    requested,
+    revisionRows,
+    revising: true,
+  };
+}
+
+function UsagePackMigrationConfigurationStep({
+  catalog,
+  configuration,
+  effectiveAt,
+  inDialog,
+  members,
+  migrationId,
+  onBack,
+  plan,
+  selections,
+  sourceTier,
+  totals,
+  viewState,
+}: {
+  readonly catalog: readonly UsagePackCatalogItem[] | null;
+  readonly configuration: UsagePackMigrationConfiguration | null;
+  readonly effectiveAt: string;
+  readonly inDialog: boolean;
+  readonly members: readonly MemberDisplay[] | undefined;
+  readonly migrationId: string | null;
+  readonly onBack: () => void;
+  readonly plan: UsagePackPlan;
+  readonly selections: Readonly<Record<string, MemberUsageSelection>>;
+  readonly sourceTier: UsagePackPlanTier;
+  readonly totals: MemberUsageTotals;
+  readonly viewState: MigrationConfigurationViewState;
+}) {
+  const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
+  return (
+    <div
+      className={`flex flex-col gap-5 outline-none ${inDialog ? "flex-1" : ""}`}
+      ref={usagePackPricingPageRef}
+      role="group"
+      tabIndex={-1}
+    >
+      {!catalog ? (
+        <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
+      ) : (
+        <>
+          {!inDialog && <PricingPageHeader onBack={onBack} step={2} />}
+          <MemberUsageConfiguration
+            catalog={catalog}
+            {...(inDialog && viewState.comparisonRows
+              ? { comparisonRows: viewState.comparisonRows }
+              : {})}
+            management={null}
+            members={members}
+            plan={plan}
+            totals={totals}
+          />
+          {configuration && migrationId ? (
+            <>
+              <div className={inDialog ? "mt-auto" : undefined}>
+                <MigrationRevisionOrderSummary
+                  effectiveAt={effectiveAt}
+                  hasConfigurationChange={viewState.hasConfigurationChange}
+                  inDialog={inDialog}
+                  members={members}
+                  migrationId={migrationId}
+                  plan={plan}
+                  requested={viewState.requested}
+                  rows={viewState.revisionRows}
+                />
+              </div>
+              {!inDialog && (
+                <MigrationRevisionReviewDialog
+                  members={members}
+                  migrationId={migrationId}
+                  selections={selections}
+                  totals={totals}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              <div className={inDialog ? "mt-auto" : undefined}>
+                <MigrationOrderSummary
+                  effectiveAt={effectiveAt}
+                  inDialog={inDialog}
+                  members={members}
+                  plan={plan}
+                  selections={selections}
+                  sourceTier={sourceTier}
+                  totals={totals}
+                />
+              </div>
+              {!inDialog && <MigrationReviewDialog totals={totals} />}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function UsagePackMigrationPage({
   configuration,
   effectiveAt,
   inDialog = false,
   migrationId,
   onBack,
+  onComplete,
   sourceTier,
   targetTier,
 }: {
@@ -2947,12 +3215,14 @@ export function UsagePackMigrationPage({
   readonly inDialog?: boolean;
   readonly migrationId: string | null;
   readonly onBack: () => void;
+  readonly onComplete?: () => void;
   readonly sourceTier: UsagePackPlanTier;
   readonly targetTier: UsagePackPlanTier;
 }) {
   const selections = useGet(memberUsageSelections$);
   const members = useUsagePackMembers();
-  const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
+  const migrationPreview = useGet(usagePackMigrationPreview$);
+  const migrationRevisionPreview = useGet(usagePackMigrationRevisionPreview$);
   const catalogLoadable = useLoadable(usagePackCatalogAsync$);
   const catalog =
     catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
@@ -2965,62 +3235,54 @@ export function UsagePackMigrationPage({
   const totals = catalog
     ? memberUsageTotals(members ?? [], selections, catalog)
     : { bonusCredits: 0, totalCredits: 0, totalUsd: 0 };
+  const viewState = migrationConfigurationViewState({
+    catalog,
+    configuration,
+    members,
+    migrationId,
+    plan,
+    selections,
+    sourceTier,
+    totals,
+  });
+  const complete = onComplete ?? onBack;
+  if (
+    inDialog &&
+    viewState.revising &&
+    migrationId &&
+    migrationRevisionPreview
+  ) {
+    return (
+      <MigrationRevisionReviewDialog
+        inDialog
+        members={members}
+        migrationId={migrationId}
+        onComplete={complete}
+        selections={selections}
+        totals={totals}
+      />
+    );
+  }
+  if (inDialog && !viewState.revising && migrationPreview) {
+    return (
+      <MigrationReviewDialog inDialog onComplete={complete} totals={totals} />
+    );
+  }
   return (
-    <div
-      className={`flex flex-col gap-5 outline-none ${
-        inDialog ? "flex-1 pb-5" : ""
-      }`}
-      ref={usagePackPricingPageRef}
-      role="group"
-      tabIndex={-1}
-    >
-      {!catalog ? (
-        <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
-      ) : (
-        <>
-          {!inDialog && <PricingPageHeader onBack={onBack} step={2} />}
-          <MemberUsageConfiguration
-            catalog={catalog}
-            management={null}
-            members={members}
-            plan={plan}
-            totals={totals}
-          />
-          {configuration && migrationId ? (
-            <>
-              <MigrationRevisionOrderSummary
-                catalog={catalog}
-                configuration={configuration}
-                effectiveAt={effectiveAt}
-                members={members}
-                migrationId={migrationId}
-                plan={plan}
-                selections={selections}
-                totals={totals}
-              />
-              <MigrationRevisionReviewDialog
-                members={members}
-                migrationId={migrationId}
-                selections={selections}
-                totals={totals}
-              />
-            </>
-          ) : (
-            <>
-              <MigrationOrderSummary
-                effectiveAt={effectiveAt}
-                members={members}
-                plan={plan}
-                selections={selections}
-                sourceTier={sourceTier}
-                totals={totals}
-              />
-              <MigrationReviewDialog totals={totals} />
-            </>
-          )}
-        </>
-      )}
-    </div>
+    <UsagePackMigrationConfigurationStep
+      catalog={catalog}
+      configuration={configuration}
+      effectiveAt={effectiveAt}
+      inDialog={inDialog}
+      members={members}
+      migrationId={migrationId}
+      onBack={onBack}
+      plan={plan}
+      selections={selections}
+      sourceTier={sourceTier}
+      totals={totals}
+      viewState={viewState}
+    />
   );
 }
 
@@ -3040,6 +3302,12 @@ export function UsagePackMigrationDialogs({
   readonly onSelect: (tier: UsagePackPlanTier) => void;
 }) {
   const resetPricing = useSet(resetUsagePackPricing$);
+  const migrationPreview = useGet(usagePackMigrationPreview$);
+  const migrationRevisionPreview = useGet(usagePackMigrationRevisionPreview$);
+  const closeMigrationPreview = useSet(closeUsagePackMigrationPreview$);
+  const closeMigrationRevisionPreview = useSet(
+    closeUsagePackMigrationRevisionPreview$,
+  );
   const configurationStep =
     migrationOpen &&
     migrationTargetTier !== null &&
@@ -3050,16 +3318,38 @@ export function UsagePackMigrationDialogs({
         }
       : null;
   const configuring = configurationStep !== null;
+  const revising =
+    (migration.configuration ?? null) !== null &&
+    migration.migrationId !== null;
+  const reviewing =
+    configuring &&
+    (revising ? migrationRevisionPreview !== null : migrationPreview !== null);
+  const closeFlow = () => {
+    resetPricing();
+    onClose();
+  };
   return (
     <PricingStepDialog
       flush={!configuring}
-      step={configuring ? 2 : 1}
-      total={2}
-      onBack={configuring ? onBack : undefined}
-      onClose={() => {
-        resetPricing();
-        onClose();
-      }}
+      step={reviewing ? 3 : configuring ? 2 : 1}
+      title={
+        reviewing
+          ? i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.reviewTitle;
+            })
+          : undefined
+      }
+      total={3}
+      onBack={
+        reviewing
+          ? revising
+            ? closeMigrationRevisionPreview
+            : closeMigrationPreview
+          : configuring
+            ? onBack
+            : undefined
+      }
+      onClose={closeFlow}
     >
       {configurationStep ? (
         <UsagePackMigrationPage
@@ -3068,6 +3358,7 @@ export function UsagePackMigrationDialogs({
           inDialog
           migrationId={migration.migrationId}
           onBack={onBack}
+          onComplete={closeFlow}
           sourceTier={migration.tier}
           targetTier={configurationStep.targetTier}
         />

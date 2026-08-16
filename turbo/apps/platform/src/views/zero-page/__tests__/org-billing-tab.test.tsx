@@ -955,7 +955,7 @@ describe("organization billing settings", () => {
       name: "Choose a plan",
     });
     expect(
-      within(choosePlanDialog).getByText("Step 1 of 2"),
+      within(choosePlanDialog).getByText("Step 1 of 3"),
     ).toBeInTheDocument();
     expect(screen.getByText("Legacy")).toBeInTheDocument();
     const proPlan = within(choosePlanDialog).getByRole("article", {
@@ -981,14 +981,22 @@ describe("organization billing settings", () => {
       name: "Configure member packages",
     });
     expect(
-      within(configurePackagesDialog).getByText("Step 2 of 2"),
+      within(configurePackagesDialog).getByText("Step 2 of 3"),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Choose a plan" }),
     ).not.toBeInTheDocument();
-    const comparison = screen.getByRole("table", {
-      name: "Current and new subscription comparison",
-    });
+    expect(
+      screen.queryByRole("table", {
+        name: "Current and new subscription comparison",
+      }),
+    ).not.toBeInTheDocument();
+    const comparison = within(await hoverSubscriptionComparison()).getByRole(
+      "table",
+      {
+        name: "Current and new subscription comparison",
+      },
+    );
     expect(
       within(comparison).getByRole("row", {
         name: /Plan Team Legacy Pro/u,
@@ -1328,6 +1336,9 @@ describe("organization billing settings", () => {
       name: "Configure member packages",
     });
     expect(
+      within(configurePackagesDialog).getByText("Step 2 of 3"),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole("heading", { name: "Choose a plan" }),
     ).not.toBeInTheDocument();
     const memberUsage = screen.getByRole("group", { name: "Member usage" });
@@ -1348,7 +1359,14 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    const orderComparison = within(orderSummary).getByRole("table", {
+    expect(
+      within(orderSummary).queryByRole("table", {
+        name: "Current and new subscription comparison",
+      }),
+    ).not.toBeInTheDocument();
+    const orderComparison = within(
+      await hoverSubscriptionComparison(),
+    ).getByRole("table", {
       name: "Current and new subscription comparison",
     });
     expect(
@@ -1396,8 +1414,11 @@ describe("organization billing settings", () => {
     const reviewDialog = await screen.findByRole("dialog", {
       name: "Review plan conversion",
     });
-    expect(reviewConversionButton).toHaveTextContent("Review conversion");
-    expect(reviewConversionButton).toBeDisabled();
+    expect(within(reviewDialog).getByText("Step 3 of 3")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Configure member packages" }),
+    ).not.toBeInTheDocument();
+    expect(queryButtonByText("Review conversion")).toBeUndefined();
     expect(
       within(reviewDialog).queryByRole("table", {
         name: "Current and new subscription comparison",
@@ -1424,26 +1445,46 @@ describe("organization billing settings", () => {
       within(reviewDialog).getByText("Scheduled for Sep 1, 2026"),
     ).toBeInTheDocument();
 
-    click(buttonByText("Confirm", reviewDialog));
-    await waitFor(() => {
-      expect(buttonByText("Current plan")).toBeInTheDocument();
+    click(within(reviewDialog).getByLabelText("Back"));
+    const returnedPackagesDialog = await screen.findByRole("dialog", {
+      name: "Configure member packages",
     });
+    expect(
+      within(returnedPackagesDialog).getByText("Step 2 of 3"),
+    ).toBeInTheDocument();
+    click(buttonByText("Review conversion", returnedPackagesDialog));
+    const returnedReviewDialog = await screen.findByRole("dialog", {
+      name: "Review plan conversion",
+    });
+    click(buttonByText("Confirm", returnedReviewDialog));
+    await expect(
+      screen.findByText("Switches to Team on Sep 1, 2026"),
+    ).resolves.toBeVisible();
     expect(
       screen.queryByText(
         "Conversion scheduled for Sep 1, 2026. Your current plan and entitlements remain active until then.",
       ),
     ).not.toBeInTheDocument();
-
-    click(within(configurePackagesDialog).getByLabelText("Back"));
-    const returnedChoosePlanDialog = await screen.findByRole("dialog", {
-      name: "Choose a plan",
-    });
-    click(within(returnedChoosePlanDialog).getByLabelText("Close"));
-    await screen.findByText("Team plan");
     expect(screen.getByText("Legacy")).toBeInTheDocument();
-    expect(screen.getByText("Switches to Team on Sep 1, 2026")).toBeVisible();
 
     click(buttonByText("Downgrade"));
+    const unchangedChoosePlanDialog = await screen.findByRole("dialog", {
+      name: "Choose a plan",
+    });
+    const teamPlan = within(unchangedChoosePlanDialog).getByRole("article", {
+      name: "Team plan",
+    });
+    click(buttonByText("Manage", teamPlan));
+    const unchangedPackagesDialog = await screen.findByRole("dialog", {
+      name: "Configure member packages",
+    });
+    expect(
+      within(unchangedPackagesDialog).getByText("Step 2 of 3"),
+    ).toBeInTheDocument();
+    expect(queryButtonByText("Current plan")).toBeUndefined();
+    expect(queryButtonByText("Review conversion")).toBeUndefined();
+
+    click(within(unchangedPackagesDialog).getByLabelText("Back"));
     const revisionChoosePlanDialog = await screen.findByRole("dialog", {
       name: "Choose a plan",
     });
@@ -1454,23 +1495,20 @@ describe("organization billing settings", () => {
     const revisionPackagesDialog = await screen.findByRole("dialog", {
       name: "Configure member packages",
     });
-    const reviewRevisionButton = buttonByText("Review conversion");
+    expect(
+      within(revisionPackagesDialog).getByText("Step 2 of 3"),
+    ).toBeInTheDocument();
+    const reviewRevisionButton = buttonByText(
+      "Review conversion",
+      revisionPackagesDialog,
+    );
     click(reviewRevisionButton);
     const revisionDialog = await screen.findByRole("dialog", {
-      name: "Review package change",
+      name: "Review plan conversion",
     });
-    expect(reviewRevisionButton).toHaveTextContent("Review conversion");
-    expect(reviewRevisionButton).toBeDisabled();
+    expect(within(revisionDialog).getByText("Step 3 of 3")).toBeInTheDocument();
+    expect(queryButtonByText("Review conversion")).toBeUndefined();
     click(buttonByText("Confirm", revisionDialog));
-    await waitFor(() => {
-      expect(buttonByText("Current plan")).toBeDisabled();
-    });
-
-    click(within(revisionPackagesDialog).getByLabelText("Back"));
-    const returnedRevisionPlanDialog = await screen.findByRole("dialog", {
-      name: "Choose a plan",
-    });
-    click(within(returnedRevisionPlanDialog).getByLabelText("Close"));
     await expect(
       screen.findByText("Switches to Pro on Sep 1, 2026"),
     ).resolves.toBeVisible();
