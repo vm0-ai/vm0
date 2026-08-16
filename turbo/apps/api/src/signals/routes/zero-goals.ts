@@ -14,7 +14,7 @@ import {
 import { logger } from "../../lib/log";
 import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { bootstrapGoalRun$ } from "../services/zero-goal-continuation.service";
+import { bootstrapGoalRun$ } from "../services/goal-continuation.service";
 import {
   blockCurrentGoal,
   clearCurrentGoal,
@@ -27,7 +27,7 @@ import {
   pauseGoalForChatThread,
   resumeCurrentGoal,
   type GoalResult,
-} from "../services/zero-goal.service";
+} from "../services/goal.service";
 import type { RouteEntry } from "../route-entry";
 import type { AuthContext } from "../../types/auth";
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";

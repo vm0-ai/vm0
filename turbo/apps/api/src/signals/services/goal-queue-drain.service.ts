@@ -26,7 +26,7 @@ import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalizatio
 import type { ModelFirstPin } from "./zero-model-selection.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 
-const log = logger("api:zero-goal-queue-drain");
+const log = logger("api:goal-queue-drain");
 const MAX_DRAIN_ATTEMPTS = 5;
 const GOAL_CONTINUATION_PROMPT = "Continue the active thread goal.";
 

@@ -12,9 +12,9 @@ import {
   loadActiveGoalForThread,
   pauseActiveGoalForThread,
   type GoalBootstrap,
-} from "./zero-goal.service";
+} from "./goal.service";
 
-const log = logger("api:zero-goal-continuation");
+const log = logger("api:goal-continuation");
 
 type TerminalRunStatus = "completed" | "failed" | "timeout" | "cancelled";
 
