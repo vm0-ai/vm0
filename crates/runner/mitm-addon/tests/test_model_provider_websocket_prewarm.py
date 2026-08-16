@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
@@ -41,7 +42,7 @@ def _openai_websocket_created_frame(response_id: str) -> bytes:
     ).encode()
 
 
-def _correlation_entries(flow) -> list[dict]:
+def _correlation_entries(flow: http.HTTPFlow) -> list[dict[str, object]]:
     proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
     if not jsonl_exists_after_flush(proxy_log):
         return []

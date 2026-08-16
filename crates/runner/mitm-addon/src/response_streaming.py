@@ -111,7 +111,6 @@ _WEBSOCKET_LIFECYCLE_EVENT_TYPES = frozenset(
         "error",
     )
 )
-_JSON_WORK_LIMIT_EXCEEDED = "work limit exceeded"
 
 
 def _clear_websocket_correlation_candidate(state: _OpenAIResponsesPrewarmState) -> None:
@@ -123,7 +122,7 @@ def _clear_websocket_correlation_candidate(state: _OpenAIResponsesPrewarmState) 
 def _lifecycle_ambiguity_reason(
     lifecycle: usage.OpenAIResponsesServerLifecycle,
 ) -> _WebSocketCorrelationReason:
-    if lifecycle.inspection_error == _JSON_WORK_LIMIT_EXCEEDED:
+    if lifecycle.work_limit_exceeded:
         return "correlation_cap"
     return "invalid_lifecycle"
 
@@ -217,9 +216,7 @@ def observe_model_websocket_client_event(
 
     if event.request_kind == "unknown":
         reason: _WebSocketCorrelationReason = (
-            "correlation_cap"
-            if event.inspection_error == _JSON_WORK_LIMIT_EXCEEDED
-            else "unknown_client_event"
+            "correlation_cap" if event.work_limit_exceeded else "unknown_client_event"
         )
         _mark_websocket_correlation_ambiguous(flow, state, reason)
         return

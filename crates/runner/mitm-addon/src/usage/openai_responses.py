@@ -149,7 +149,7 @@ class OpenAIResponsesClientEvent:
     event_type: str | None
     is_prewarm: bool
     request_kind: _OpenAIResponsesClientRequestKind = "unknown"
-    inspection_error: str | None = None
+    work_limit_exceeded: bool = False
 
 
 @dataclass(frozen=True)
@@ -159,7 +159,7 @@ class OpenAIResponsesServerLifecycle:
     event_type: str | None
     response_id: str | None
     is_valid: bool = False
-    inspection_error: str | None = None
+    work_limit_exceeded: bool = False
 
     @property
     def is_created(self) -> bool:
@@ -233,7 +233,7 @@ def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesCl
             observed_event_type,
             False,
             "unknown",
-            result.error,
+            result.error == JSON_WORK_LIMIT_EXCEEDED,
         )
 
     type_is_consistent = extractor.selected_scalar_values_are_consistent(("type",))
@@ -293,7 +293,12 @@ def inspect_openai_responses_server_lifecycle(
     extractor.feed(event._body)
     result = extractor.finish()
     if not result.complete:
-        return OpenAIResponsesServerLifecycle(event.event_type, None, False, result.error)
+        return OpenAIResponsesServerLifecycle(
+            event.event_type,
+            None,
+            False,
+            result.error == JSON_WORK_LIMIT_EXCEEDED,
+        )
     if not extractor.selected_scalar_values_are_consistent(("type",)):
         return OpenAIResponsesServerLifecycle(event.event_type, None, False)
     event_type = result.values.get(("type",))
