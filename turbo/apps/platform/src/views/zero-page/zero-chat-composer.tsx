@@ -885,9 +885,7 @@ function toVideoGenerationTemplate(
     type: "video",
     selection: {
       stylePresetId: item.id,
-      // Only a non-default model is worth storing; the rest follows the
-      // catalog so a later change of default is picked up.
-      ...(model === DEFAULT_VIDEO_MODEL ? {} : { videoOptions: { model } }),
+      ...(model !== DEFAULT_VIDEO_MODEL ? { videoOptions: { model } } : {}),
     },
   };
 }
@@ -4889,6 +4887,7 @@ function TemplatePickerDialog({
   const videoModel = useGet(signals.template.videoTemplateModel$);
   const setVideoModel = useSet(signals.template.setVideoTemplateModel$);
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
+  const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
   const illustrationVariantIndex = useGet(
     signals.template.illustrationVariantIndex$,
   );
@@ -4932,10 +4931,13 @@ function TemplatePickerDialog({
   });
   const showTemplatePickerSearch = selectedCategory === "workflow";
   const showAvatarPickerToolbar = selectedCategory === "avatar" && hasAvatarTab;
-  // Video generation is the expensive decision, so the model sits in the
-  // dialog's own header band rather than in the scrolling template area.
+  // Preserve the old template-level picker only while the run-model switch is
+  // disabled. The enabled experience owns the model in the composer picker.
   const showVideoModelPicker =
-    selectedCategory === "video" && hasVideoTab && videoOptionsEnabled;
+    selectedCategory === "video" &&
+    hasVideoTab &&
+    videoOptionsEnabled &&
+    !videoModelSelectionEnabled;
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {

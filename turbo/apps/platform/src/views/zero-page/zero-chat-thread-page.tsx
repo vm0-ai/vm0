@@ -133,12 +133,13 @@ import { ChatConversationLocator } from "./chat-conversation-locator.tsx";
 import {
   customConnectorMcpEnabled$,
   featureSwitch$,
+  videoModelSelectionEnabled$,
   videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
+  legacyVideoTemplateSpecText,
   videoTemplateSpec,
   videoTemplateSpecText,
-  type VideoTemplateSpec,
 } from "../../signals/zero-page/video-template-spec.ts";
 import { openSentTemplateDetail$ } from "../../signals/zero-page/sent-template-detail.ts";
 import { SentTemplateDetailDialog } from "./sent-template-detail-dialog.tsx";
@@ -6868,10 +6869,10 @@ const STRUCTURED_INLINE_LINK_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_CL
  * Read-only echo of the parameters a sent video used. Rendered only inside
  * the wide-viewport chip variant, which owns the responsive visibility.
  */
-function SentVideoTemplateSpec({ spec }: { readonly spec: VideoTemplateSpec }) {
+function SentVideoTemplateSpec({ text }: { readonly text: string }) {
   return (
     <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
-      {videoTemplateSpecText(spec)}
+      {text}
     </span>
   );
 }
@@ -6891,6 +6892,7 @@ function UserMessageTemplateReference({
 }) {
   const typeLabel = generationTemplateTypeLabel(part.template);
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
+  const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
   const openDetail = useSet(openSentTemplateDetail$);
   const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
   const label = `${typeLabel ?? part.template.type} · ${part.titleSnapshot}`;
@@ -6906,6 +6908,9 @@ function UserMessageTemplateReference({
       </span>
     );
   }
+  const specText = videoModelSelectionEnabled
+    ? videoTemplateSpecText(spec)
+    : legacyVideoTemplateSpecText(part.template);
   return (
     <>
       <span
@@ -6913,11 +6918,11 @@ function UserMessageTemplateReference({
         // The spec is as wide as the chip's old fixed cap on its own, so a
         // spec-bearing chip trades the cap for the full message width.
         className={`hidden max-w-full sm:inline-flex ${STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS}`}
-        title={`${label} · ${videoTemplateSpecText(spec)}`}
+        title={`${label} · ${specText}`}
       >
         <SwatchBook size={13} className="shrink-0" />
         <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-        <SentVideoTemplateSpec spec={spec} />
+        <SentVideoTemplateSpec text={specText} />
       </span>
       <button
         type="button"

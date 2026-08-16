@@ -15,15 +15,14 @@ function makeMessage(params: {
   content: string;
   role?: "user" | "assistant";
   createdAt?: string;
-  messageId?: string;
+  seqId?: number;
 }) {
   return {
-    messageId: params.messageId ?? "msg-1",
     chatThreadId: "thread-1",
     role: params.role ?? "user",
     content: params.content,
     createdAt: params.createdAt ?? "2024-01-15T10:30:00Z",
-    sequenceNumber: null,
+    seqId: params.seqId ?? 1,
     runId: null,
   };
 }

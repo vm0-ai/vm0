@@ -1,9 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { zeroVideoIoGenerateContract } from "@okouai/api-contracts/contracts/zero-video-io-generate";
+import {
+  zeroVideoIoGenerateContract,
+  type ZeroVideoIoGenerateRequest,
+} from "@okouai/api-contracts/contracts/zero-video-io-generate";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { VIDEO_MODEL_CONFIGS } from "@okouai/core/video-model-catalog";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   isVideoModelId,
@@ -103,6 +107,52 @@ async function loadEnforcedRunVideoModel(
   const runVideoModel = await loadRunVideoModel(db, runId);
   signal.throwIfAborted();
   return runVideoModel;
+}
+
+/**
+ * Swap in the run's pinned model and drop any caller parameter the pin cannot
+ * honour.
+ *
+ * The caller picks aspect ratio, duration, and resolution to match the model it
+ * asked for. Enforcement replaces that model, so those values can be valid for
+ * the request and invalid for the pin — a caller asking for
+ * `dreamina-seedance-2.0-fast` at 720p against a `MiniMax-H3` pin used to get
+ * `Unsupported video resolution for minimax-h3: 720p`, an error about a model
+ * it never named. Dropping the field lets the pinned model's own default apply
+ * instead of failing a request the caller could not have written correctly.
+ *
+ * The effective values come back on the response, so the caller can report what
+ * was actually used.
+ */
+function withEnforcedRunVideoModel(
+  body: ZeroVideoIoGenerateRequest,
+  runVideoModel: VideoModelId,
+): ZeroVideoIoGenerateRequest {
+  const config = VIDEO_MODEL_CONFIGS[runVideoModel];
+  const honours = <T>(
+    supported: readonly T[],
+    value: string | undefined,
+  ): boolean => {
+    return (
+      value !== undefined &&
+      supported.some((entry) => {
+        return entry === (value as T);
+      })
+    );
+  };
+  return {
+    ...body,
+    model: runVideoModel,
+    ...(honours(config.aspectRatios, body.aspectRatio)
+      ? {}
+      : { aspectRatio: undefined }),
+    ...(honours(config.durations, body.duration)
+      ? {}
+      : { duration: undefined }),
+    ...(honours(config.resolutions, body.resolution)
+      ? {}
+      : { resolution: undefined }),
+  };
 }
 
 interface GenerationError {
@@ -378,7 +428,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const options = parseVideoOptions(
     runVideoModel === null
       ? bodyResult.data
-      : { ...bodyResult.data, model: runVideoModel },
+      : withEnforcedRunVideoModel(bodyResult.data, runVideoModel),
   );
   if ("status" in options) {
     return options;

@@ -48,6 +48,10 @@ import {
 } from "./test-agent-run-metadata-stage-2-final";
 import { validateAgentRunMetadataStage2Lock } from "./test-agent-run-metadata-stage-2-lock";
 import { validateAgentRunMetadataStage2Preflight } from "./test-agent-run-metadata-stage-2-preflight";
+import {
+  AgentComposeProvenanceSchemaUnavailableError,
+  deleteClerkAgentLifecycleData,
+} from "../../../apps/api/src/signals/services/agent-compose-provenance-lifecycle.service";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -1033,6 +1037,697 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
+const INTEGRATION_USER_ID_EXPANSION_PREVIOUS_MIGRATION = "0929_cold_azazel";
+const INTEGRATION_USER_ID_EXPANSION_MIGRATION = "0930_past_jetstream";
+const INTEGRATION_USER_ID_SYNC_FUNCTION = "sync_integration_user_identity_0930";
+
+const INTEGRATION_USER_ID_TABLES = [
+  {
+    tableName: "agentphone_user_agent_preferences",
+    triggerName: "sync_agentphone_user_agent_preferences_identity_0930",
+  },
+  {
+    tableName: "agentphone_user_links",
+    triggerName: "sync_agentphone_user_links_identity_0930",
+  },
+  {
+    tableName: "feishu_org_connections",
+    triggerName: "sync_feishu_org_connections_identity_0930",
+  },
+  {
+    tableName: "feishu_user_agent_preferences",
+    triggerName: "sync_feishu_user_agent_preferences_identity_0930",
+  },
+  {
+    tableName: "github_user_links",
+    triggerName: "sync_github_user_links_identity_0930",
+  },
+  {
+    tableName: "slack_org_connections",
+    triggerName: "sync_slack_org_connections_identity_0930",
+  },
+  {
+    tableName: "slack_user_agent_preferences",
+    triggerName: "sync_slack_user_agent_preferences_identity_0930",
+  },
+  {
+    tableName: "teams_org_connections",
+    triggerName: "sync_teams_org_connections_identity_0930",
+  },
+  {
+    tableName: "teams_user_agent_preferences",
+    triggerName: "sync_teams_user_agent_preferences_identity_0930",
+  },
+  {
+    tableName: "telegram_official_user_links",
+    triggerName: "sync_telegram_official_user_links_identity_0930",
+  },
+  {
+    tableName: "telegram_user_agent_preferences",
+    triggerName: "sync_telegram_user_agent_preferences_identity_0930",
+  },
+  {
+    tableName: "telegram_user_links",
+    triggerName: "sync_telegram_user_links_identity_0930",
+  },
+] as const;
+
+const INTEGRATION_USER_ID_INDEXES = [
+  {
+    definition:
+      "CREATE UNIQUE INDEX idx_agentphone_user_agent_preferences_user_org ON public.agentphone_user_agent_preferences USING btree (user_id, org_id)",
+    isUnique: true,
+    name: "idx_agentphone_user_agent_preferences_user_org",
+  },
+  {
+    definition:
+      "CREATE UNIQUE INDEX idx_agentphone_user_links_user_org ON public.agentphone_user_links USING btree (user_id, org_id)",
+    isUnique: true,
+    name: "idx_agentphone_user_links_user_org",
+  },
+  {
+    definition:
+      "CREATE INDEX idx_feishu_org_connections_user_id_installation ON public.feishu_org_connections USING btree (user_id, installation_id)",
+    isUnique: false,
+    name: "idx_feishu_org_connections_user_id_installation",
+  },
+  {
+    definition:
+      "CREATE UNIQUE INDEX idx_feishu_user_agent_preferences_user_org ON public.feishu_user_agent_preferences USING btree (user_id, org_id)",
+    isUnique: true,
+    name: "idx_feishu_user_agent_preferences_user_org",
+  },
+  {
+    definition:
+      "CREATE INDEX idx_slack_org_connections_user_id_workspace ON public.slack_org_connections USING btree (user_id, slack_workspace_id)",
+    isUnique: false,
+    name: "idx_slack_org_connections_user_id_workspace",
+  },
+  {
+    definition:
+      "CREATE UNIQUE INDEX idx_slack_user_agent_preferences_user_org ON public.slack_user_agent_preferences USING btree (user_id, org_id)",
+    isUnique: true,
+    name: "idx_slack_user_agent_preferences_user_org",
+  },
+  {
+    definition:
+      "CREATE INDEX idx_teams_org_connections_user_id_tenant ON public.teams_org_connections USING btree (user_id, teams_tenant_id)",
+    isUnique: false,
+    name: "idx_teams_org_connections_user_id_tenant",
+  },
+  {
+    definition:
+      "CREATE UNIQUE INDEX idx_teams_user_agent_preferences_user_org ON public.teams_user_agent_preferences USING btree (user_id, org_id)",
+    isUnique: true,
+    name: "idx_teams_user_agent_preferences_user_org",
+  },
+  {
+    definition:
+      "CREATE UNIQUE INDEX idx_telegram_official_user_links_user_org ON public.telegram_official_user_links USING btree (user_id, org_id)",
+    isUnique: true,
+    name: "idx_telegram_official_user_links_user_org",
+  },
+  {
+    definition:
+      "CREATE UNIQUE INDEX idx_telegram_user_agent_preferences_user_org ON public.telegram_user_agent_preferences USING btree (user_id, org_id)",
+    isUnique: true,
+    name: "idx_telegram_user_agent_preferences_user_org",
+  },
+  {
+    definition:
+      "CREATE UNIQUE INDEX idx_telegram_user_links_user_id_installation ON public.telegram_user_links USING btree (user_id, installation_id)",
+    isUnique: true,
+    name: "idx_telegram_user_links_user_id_installation",
+  },
+] as const;
+
+const INTEGRATION_USER_ID_PREFERENCE_TABLES = [
+  "agentphone_user_agent_preferences",
+  "feishu_user_agent_preferences",
+  "slack_user_agent_preferences",
+  "teams_user_agent_preferences",
+  "telegram_user_agent_preferences",
+] as const;
+
+async function assertIntegrationIdentityInvariant(
+  client: Client,
+): Promise<void> {
+  for (const { tableName } of INTEGRATION_USER_ID_TABLES) {
+    const result = await client.query<{
+      invalidCount: number;
+      totalCount: number;
+    }>(`
+      SELECT
+        count(*)::integer AS "totalCount",
+        count(*) FILTER (
+          WHERE "user_id" IS NULL
+            OR "vm0_user_id" IS NULL
+            OR "user_id" IS DISTINCT FROM "vm0_user_id"
+        )::integer AS "invalidCount"
+      FROM "${tableName}"
+    `);
+    assert.equal(result.rows.length, 1);
+    assert.ok((result.rows[0]?.totalCount ?? 0) > 0);
+    assert.equal(result.rows[0]?.invalidCount, 0);
+  }
+}
+
+async function validateIntegrationUserIdExpansion(): Promise<void> {
+  console.log("=== Validate integration user identity expansion ===\n");
+  const testDb = "migration_integration_user_identity_expand_test";
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  try {
+    const migrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${INTEGRATION_USER_ID_EXPANSION_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
+    assert.ok(!migrationSql.includes(NON_TRANSACTIONAL_MIGRATION_MARKER));
+    assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/iu);
+    assert.doesNotMatch(migrationSql, /\bRENAME\s+COLUMN\b/iu);
+    assert.doesNotMatch(migrationSql, /\bSET\s+LOCAL\b/iu);
+
+    await applyMigrationsUpToTag(
+      client,
+      INTEGRATION_USER_ID_EXPANSION_PREVIOUS_MIGRATION,
+    );
+    await client.query(`
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES (
+        '00000000-0000-4000-8000-000000093001',
+        'user-0930-parent',
+        'migration-0930-parent',
+        'org-0930-parent'
+      );
+
+      INSERT INTO "feishu_org_installations" (
+        "id", "org_id", "app_id", "encrypted_app_secret",
+        "encrypted_verification_token", "encrypted_encrypt_key",
+        "default_compose_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093002',
+        'org-0930-parent',
+        'app-0930',
+        'secret-0930',
+        'verification-0930',
+        'encrypt-key-0930',
+        '00000000-0000-4000-8000-000000093001'
+      );
+
+      INSERT INTO "github_installations" (
+        "id", "org_id", "default_compose_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093003',
+        'org-0930-parent',
+        '00000000-0000-4000-8000-000000093001'
+      );
+
+      INSERT INTO "slack_org_installations" (
+        "slack_workspace_id", "org_id", "encrypted_bot_token", "bot_user_id"
+      ) VALUES (
+        'workspace-0930',
+        'org-0930-slack-installation',
+        'slack-token-0930',
+        'slack-bot-0930'
+      );
+
+      INSERT INTO "teams_org_installations" ("teams_tenant_id", "org_id")
+      VALUES ('tenant-0930', 'org-0930-teams-installation');
+
+      INSERT INTO "telegram_installations" (
+        "telegram_bot_id", "encrypted_bot_token", "webhook_secret",
+        "default_compose_id", "owner_user_id", "org_id"
+      ) VALUES (
+        'bot-0930',
+        'telegram-token-0930',
+        'telegram-webhook-0930',
+        '00000000-0000-4000-8000-000000093001',
+        'user-0930-parent',
+        'org-0930-parent'
+      );
+
+      INSERT INTO "agentphone_user_agent_preferences" (
+        "vm0_user_id", "org_id"
+      ) VALUES ('backfill-agentphone-preference', 'org-backfill-agentphone');
+      INSERT INTO "agentphone_user_links" (
+        "id", "phone_handle", "vm0_user_id", "org_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093101',
+        '+15550009301',
+        'backfill-agentphone-link',
+        'org-backfill-agentphone-link'
+      );
+      INSERT INTO "feishu_org_connections" (
+        "id", "installation_id", "feishu_open_id", "vm0_user_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093102',
+        '00000000-0000-4000-8000-000000093002',
+        'feishu-open-backfill-0930',
+        'backfill-feishu-connection'
+      );
+      INSERT INTO "feishu_user_agent_preferences" (
+        "vm0_user_id", "org_id"
+      ) VALUES ('backfill-feishu-preference', 'org-backfill-feishu');
+      INSERT INTO "github_user_links" (
+        "id", "github_user_id", "installation_id", "vm0_user_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093103',
+        'github-backfill-0930',
+        '00000000-0000-4000-8000-000000093003',
+        'backfill-github-link'
+      );
+      INSERT INTO "slack_org_connections" (
+        "id", "slack_user_id", "slack_workspace_id", "vm0_user_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093104',
+        'slack-backfill-0930',
+        'workspace-0930',
+        'backfill-slack-connection'
+      );
+      INSERT INTO "slack_user_agent_preferences" (
+        "vm0_user_id", "org_id"
+      ) VALUES ('backfill-slack-preference', 'org-backfill-slack');
+      INSERT INTO "teams_org_connections" (
+        "id", "teams_user_id", "teams_tenant_id", "vm0_user_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093105',
+        'teams-backfill-0930',
+        'tenant-0930',
+        'backfill-teams-connection'
+      );
+      INSERT INTO "teams_user_agent_preferences" (
+        "vm0_user_id", "org_id"
+      ) VALUES ('backfill-teams-preference', 'org-backfill-teams');
+      INSERT INTO "telegram_official_user_links" (
+        "id", "telegram_user_id", "vm0_user_id", "org_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093106',
+        'telegram-official-backfill-0930',
+        'backfill-telegram-official-link',
+        'org-backfill-telegram-official'
+      );
+      INSERT INTO "telegram_user_agent_preferences" (
+        "vm0_user_id", "org_id"
+      ) VALUES ('backfill-telegram-preference', 'org-backfill-telegram');
+      INSERT INTO "telegram_user_links" (
+        "id", "telegram_user_id", "installation_id", "vm0_user_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093107',
+        'telegram-backfill-0930',
+        'bot-0930',
+        'backfill-telegram-link'
+      );
+    `);
+
+    await applyMigrationsUpToTag(
+      client,
+      INTEGRATION_USER_ID_EXPANSION_MIGRATION,
+    );
+    await assertIntegrationIdentityInvariant(client);
+
+    const columns = await client.query<{
+      columnName: string;
+      isNullable: "NO" | "YES";
+      tableName: string;
+    }>(
+      `
+      SELECT
+        "table_name" AS "tableName",
+        "column_name" AS "columnName",
+        "is_nullable" AS "isNullable"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = ANY($1::text[])
+        AND "column_name" IN ('user_id', 'vm0_user_id')
+      ORDER BY "table_name", "column_name"
+    `,
+      [
+        INTEGRATION_USER_ID_TABLES.map(({ tableName }) => {
+          return tableName;
+        }),
+      ],
+    );
+    assert.deepEqual(
+      columns.rows,
+      INTEGRATION_USER_ID_TABLES.flatMap(({ tableName }) => {
+        return [
+          { columnName: "user_id", isNullable: "YES", tableName },
+          { columnName: "vm0_user_id", isNullable: "NO", tableName },
+        ];
+      }),
+    );
+
+    await client.query(`SET search_path TO public, pg_catalog`);
+    const triggers = await client.query<{
+      definition: string;
+      tableName: string;
+      triggerName: string;
+    }>(
+      `
+      SELECT
+        "relation"."relname" AS "tableName",
+        "trigger"."tgname" AS "triggerName",
+        pg_get_triggerdef("trigger"."oid") AS "definition"
+      FROM "pg_trigger" AS "trigger"
+      INNER JOIN "pg_class" AS "relation"
+        ON "relation"."oid" = "trigger"."tgrelid"
+      WHERE NOT "trigger"."tgisinternal"
+        AND "trigger"."tgname" = ANY($1::text[])
+      ORDER BY "relation"."relname"
+    `,
+      [
+        INTEGRATION_USER_ID_TABLES.map(({ triggerName }) => {
+          return triggerName;
+        }),
+      ],
+    );
+    assert.deepEqual(
+      triggers.rows,
+      INTEGRATION_USER_ID_TABLES.map(({ tableName, triggerName }) => {
+        return {
+          definition:
+            `CREATE TRIGGER ${triggerName} BEFORE INSERT OR UPDATE OF ` +
+            `vm0_user_id, user_id ON public.${tableName} FOR EACH ROW ` +
+            `EXECUTE FUNCTION ${INTEGRATION_USER_ID_SYNC_FUNCTION}()`,
+          tableName,
+          triggerName,
+        };
+      }),
+    );
+
+    const functions = await client.query<{
+      bodyHash: string;
+      functionName: string;
+      languageName: string;
+      resultType: string;
+    }>(
+      `
+      SELECT
+        "function"."proname" AS "functionName",
+        "language"."lanname" AS "languageName",
+        pg_get_function_result("function"."oid") AS "resultType",
+        md5("function"."prosrc") AS "bodyHash"
+      FROM "pg_proc" AS "function"
+      INNER JOIN "pg_language" AS "language"
+        ON "language"."oid" = "function"."prolang"
+      WHERE "function"."pronamespace" = 'public'::regnamespace
+        AND "function"."proname" = $1
+    `,
+      [INTEGRATION_USER_ID_SYNC_FUNCTION],
+    );
+    assert.deepEqual(functions.rows, [
+      {
+        bodyHash: "a2fdd6127c4d3efea23d729aecea2198",
+        functionName: INTEGRATION_USER_ID_SYNC_FUNCTION,
+        languageName: "plpgsql",
+        resultType: "trigger",
+      },
+    ]);
+
+    const indexes = await client.query<{
+      definition: string;
+      isUnique: boolean;
+      name: string;
+    }>(
+      `
+      SELECT
+        "index_class"."relname" AS "name",
+        "index"."indisunique" AS "isUnique",
+        pg_get_indexdef("index"."indexrelid") AS "definition"
+      FROM "pg_index" AS "index"
+      INNER JOIN "pg_class" AS "index_class"
+        ON "index_class"."oid" = "index"."indexrelid"
+      WHERE "index_class"."relname" = ANY($1::text[])
+      ORDER BY "index_class"."relname"
+    `,
+      [
+        INTEGRATION_USER_ID_INDEXES.map(({ name }) => {
+          return name;
+        }),
+      ],
+    );
+    assert.deepEqual(indexes.rows, INTEGRATION_USER_ID_INDEXES);
+
+    await client.query(`
+      INSERT INTO "agentphone_user_agent_preferences" ("vm0_user_id", "org_id")
+      VALUES ('legacy-agentphone-preference', 'org-legacy-agentphone');
+      INSERT INTO "agentphone_user_links" (
+        "phone_handle", "vm0_user_id", "org_id"
+      ) VALUES (
+        '+15550009311', 'legacy-agentphone-link', 'org-legacy-agentphone-link'
+      );
+      INSERT INTO "feishu_org_connections" (
+        "installation_id", "feishu_open_id", "vm0_user_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093002',
+        'feishu-open-legacy-0930',
+        'legacy-feishu-connection'
+      );
+      INSERT INTO "feishu_user_agent_preferences" ("vm0_user_id", "org_id")
+      VALUES ('legacy-feishu-preference', 'org-legacy-feishu');
+      INSERT INTO "github_user_links" (
+        "github_user_id", "installation_id", "vm0_user_id"
+      ) VALUES (
+        'github-legacy-0930',
+        '00000000-0000-4000-8000-000000093003',
+        'legacy-github-link'
+      );
+      INSERT INTO "slack_org_connections" (
+        "slack_user_id", "slack_workspace_id", "vm0_user_id"
+      ) VALUES (
+        'slack-legacy-0930', 'workspace-0930', 'legacy-slack-connection'
+      );
+      INSERT INTO "slack_user_agent_preferences" ("vm0_user_id", "org_id")
+      VALUES ('legacy-slack-preference', 'org-legacy-slack');
+      INSERT INTO "teams_org_connections" (
+        "teams_user_id", "teams_tenant_id", "vm0_user_id"
+      ) VALUES (
+        'teams-legacy-0930', 'tenant-0930', 'legacy-teams-connection'
+      );
+      INSERT INTO "teams_user_agent_preferences" ("vm0_user_id", "org_id")
+      VALUES ('legacy-teams-preference', 'org-legacy-teams');
+      INSERT INTO "telegram_official_user_links" (
+        "telegram_user_id", "vm0_user_id", "org_id"
+      ) VALUES (
+        'telegram-official-legacy-0930',
+        'legacy-telegram-official-link',
+        'org-legacy-telegram-official'
+      );
+      INSERT INTO "telegram_user_agent_preferences" (
+        "vm0_user_id", "org_id"
+      ) VALUES ('legacy-telegram-preference', 'org-legacy-telegram');
+      INSERT INTO "telegram_user_links" (
+        "telegram_user_id", "installation_id", "vm0_user_id"
+      ) VALUES (
+        'telegram-legacy-0930', 'bot-0930', 'legacy-telegram-link'
+      );
+
+      INSERT INTO "agentphone_user_agent_preferences" ("user_id", "org_id")
+      VALUES ('canonical-agentphone-preference', 'org-canonical-agentphone');
+      INSERT INTO "agentphone_user_links" (
+        "phone_handle", "user_id", "org_id"
+      ) VALUES (
+        '+15550009312',
+        'canonical-agentphone-link',
+        'org-canonical-agentphone-link'
+      );
+      INSERT INTO "feishu_org_connections" (
+        "installation_id", "feishu_open_id", "user_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000093002',
+        'feishu-open-canonical-0930',
+        'canonical-feishu-connection'
+      );
+      INSERT INTO "feishu_user_agent_preferences" ("user_id", "org_id")
+      VALUES ('canonical-feishu-preference', 'org-canonical-feishu');
+      INSERT INTO "github_user_links" (
+        "github_user_id", "installation_id", "user_id"
+      ) VALUES (
+        'github-canonical-0930',
+        '00000000-0000-4000-8000-000000093003',
+        'canonical-github-link'
+      );
+      INSERT INTO "slack_org_connections" (
+        "slack_user_id", "slack_workspace_id", "user_id"
+      ) VALUES (
+        'slack-canonical-0930', 'workspace-0930', 'canonical-slack-connection'
+      );
+      INSERT INTO "slack_user_agent_preferences" ("user_id", "org_id")
+      VALUES ('canonical-slack-preference', 'org-canonical-slack');
+      INSERT INTO "teams_org_connections" (
+        "teams_user_id", "teams_tenant_id", "user_id"
+      ) VALUES (
+        'teams-canonical-0930', 'tenant-0930', 'canonical-teams-connection'
+      );
+      INSERT INTO "teams_user_agent_preferences" ("user_id", "org_id")
+      VALUES ('canonical-teams-preference', 'org-canonical-teams');
+      INSERT INTO "telegram_official_user_links" (
+        "telegram_user_id", "user_id", "org_id"
+      ) VALUES (
+        'telegram-official-canonical-0930',
+        'canonical-telegram-official-link',
+        'org-canonical-telegram-official'
+      );
+      INSERT INTO "telegram_user_agent_preferences" ("user_id", "org_id")
+      VALUES ('canonical-telegram-preference', 'org-canonical-telegram');
+      INSERT INTO "telegram_user_links" (
+        "telegram_user_id", "installation_id", "user_id"
+      ) VALUES (
+        'telegram-canonical-0930', 'bot-0930', 'canonical-telegram-link'
+      );
+    `);
+    await assertIntegrationIdentityInvariant(client);
+
+    await client.query(`
+      UPDATE "agentphone_user_links"
+      SET "vm0_user_id" = 'legacy-update-agentphone-link'
+      WHERE "id" = '00000000-0000-4000-8000-000000093101'
+    `);
+    let updated = await client.query<{
+      userId: string;
+      vm0UserId: string;
+    }>(`
+      SELECT "user_id" AS "userId", "vm0_user_id" AS "vm0UserId"
+      FROM "agentphone_user_links"
+      WHERE "id" = '00000000-0000-4000-8000-000000093101'
+    `);
+    assert.deepEqual(updated.rows, [
+      {
+        userId: "legacy-update-agentphone-link",
+        vm0UserId: "legacy-update-agentphone-link",
+      },
+    ]);
+
+    await client.query(`
+      UPDATE "agentphone_user_links"
+      SET "user_id" = 'canonical-update-agentphone-link'
+      WHERE "id" = '00000000-0000-4000-8000-000000093101'
+    `);
+    updated = await client.query<{
+      userId: string;
+      vm0UserId: string;
+    }>(`
+      SELECT "user_id" AS "userId", "vm0_user_id" AS "vm0UserId"
+      FROM "agentphone_user_links"
+      WHERE "id" = '00000000-0000-4000-8000-000000093101'
+    `);
+    assert.deepEqual(updated.rows, [
+      {
+        userId: "canonical-update-agentphone-link",
+        vm0UserId: "canonical-update-agentphone-link",
+      },
+    ]);
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "conflicting integration identities",
+      query: `
+        INSERT INTO "agentphone_user_links" (
+          "phone_handle", "vm0_user_id", "user_id", "org_id"
+        ) VALUES (
+          '+15550009313',
+          'conflicting-legacy-agentphone-link',
+          'conflicting-canonical-agentphone-link',
+          'org-conflicting-agentphone-link'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "conflicting integration identities",
+      query: `
+        UPDATE "agentphone_user_links"
+        SET
+          "vm0_user_id" = 'conflicting-legacy-update',
+          "user_id" = 'conflicting-canonical-update'
+        WHERE "id" = '00000000-0000-4000-8000-000000093101'
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23502",
+      messageIncludes: "integration identity cannot be null",
+      query: `
+        INSERT INTO "agentphone_user_links" ("phone_handle", "org_id")
+        VALUES ('+15550009314', 'org-null-agentphone-link')
+      `,
+    });
+
+    for (const tableName of INTEGRATION_USER_ID_PREFERENCE_TABLES) {
+      const userId = `canonical-conflict-${tableName}`;
+      const orgId = `org-canonical-conflict-${tableName}`;
+      await client.query(
+        `
+          INSERT INTO "${tableName}" ("user_id", "org_id")
+          VALUES ($1, $2)
+          ON CONFLICT ("user_id", "org_id") DO NOTHING
+        `,
+        [userId, orgId],
+      );
+      await client.query(
+        `
+          INSERT INTO "${tableName}" ("user_id", "org_id")
+          VALUES ($1, $2)
+          ON CONFLICT ("user_id", "org_id") DO NOTHING
+        `,
+        [userId, orgId],
+      );
+      const rows = await client.query<{ count: number }>(
+        `
+          SELECT count(*)::integer AS "count"
+          FROM "${tableName}"
+          WHERE "user_id" = $1 AND "org_id" = $2
+        `,
+        [userId, orgId],
+      );
+      assert.deepEqual(rows.rows, [{ count: 1 }]);
+
+      const legacyUserId = `legacy-conflict-${tableName}`;
+      const legacyOrgId = `org-legacy-conflict-${tableName}`;
+      await client.query(
+        `
+          INSERT INTO "${tableName}" ("vm0_user_id", "org_id")
+          VALUES ($1, $2)
+          ON CONFLICT ("vm0_user_id", "org_id") DO NOTHING
+        `,
+        [legacyUserId, legacyOrgId],
+      );
+      await client.query(
+        `
+          INSERT INTO "${tableName}" ("vm0_user_id", "org_id")
+          VALUES ($1, $2)
+          ON CONFLICT ("vm0_user_id", "org_id") DO NOTHING
+        `,
+        [legacyUserId, legacyOrgId],
+      );
+      const legacyRows = await client.query<{ count: number }>(
+        `
+          SELECT count(*)::integer AS "count"
+          FROM "${tableName}"
+          WHERE "vm0_user_id" = $1 AND "org_id" = $2
+        `,
+        [legacyUserId, legacyOrgId],
+      );
+      assert.deepEqual(legacyRows.rows, [{ count: 1 }]);
+    }
+
+    await assertIntegrationIdentityInvariant(client);
+    console.log("   ✅ all 12 legacy identity columns backfill canonically");
+    console.log(
+      "   ✅ legacy and canonical writes synchronize both directions",
+    );
+    console.log("   ✅ conflicting and null identities fail closed");
+    console.log("   ✅ canonical lookup and conflict-target indexes match\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 const MCP_CUSTOM_CONNECTOR_READERS_PREVIOUS_MIGRATION =
   "0872_curious_yellow_claw";
 const MCP_CUSTOM_CONNECTOR_READERS_MIGRATION =
@@ -1851,6 +2546,92 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
+  // Expand-phase integration identity compatibility. Remove in #27602 only
+  // after the Switch release and rollback/callback windows have drained.
+  {
+    definition:
+      "CREATE TRIGGER sync_agentphone_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.agentphone_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "agentphone_user_agent_preferences",
+    triggerName: "sync_agentphone_user_agent_preferences_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_agentphone_user_links_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.agentphone_user_links FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "agentphone_user_links",
+    triggerName: "sync_agentphone_user_links_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_feishu_org_connections_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.feishu_org_connections FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "feishu_org_connections",
+    triggerName: "sync_feishu_org_connections_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_feishu_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.feishu_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "feishu_user_agent_preferences",
+    triggerName: "sync_feishu_user_agent_preferences_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_github_user_links_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.github_user_links FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "github_user_links",
+    triggerName: "sync_github_user_links_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_slack_org_connections_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.slack_org_connections FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "slack_org_connections",
+    triggerName: "sync_slack_org_connections_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_slack_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.slack_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "slack_user_agent_preferences",
+    triggerName: "sync_slack_user_agent_preferences_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_teams_org_connections_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.teams_org_connections FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "teams_org_connections",
+    triggerName: "sync_teams_org_connections_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_teams_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.teams_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "teams_user_agent_preferences",
+    triggerName: "sync_teams_user_agent_preferences_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_telegram_official_user_links_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.telegram_official_user_links FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "telegram_official_user_links",
+    triggerName: "sync_telegram_official_user_links_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_telegram_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.telegram_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "telegram_user_agent_preferences",
+    triggerName: "sync_telegram_user_agent_preferences_identity_0930",
+  },
+  {
+    definition:
+      "CREATE TRIGGER sync_telegram_user_links_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.telegram_user_links FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
+    schemaName: "public",
+    tableName: "telegram_user_links",
+    triggerName: "sync_telegram_user_links_identity_0930",
+  },
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
@@ -1977,6 +2758,36 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
   },
+  // Temporary #26938 Stage 0 transition objects. Remove only in Stage 8
+  // after the ~102-minute mixed-revision window and rollback drain close.
+  {
+    definition:
+      "CREATE TRIGGER agent_composes_delete_lock_timeout_transition BEFORE DELETE ON public.agent_composes FOR EACH STATEMENT EXECUTE FUNCTION set_agent_compose_delete_lock_timeout_transition()",
+    schemaName: "public",
+    tableName: "agent_composes",
+    triggerName: "agent_composes_delete_lock_timeout_transition",
+  },
+  {
+    definition:
+      "CREATE TRIGGER agent_compose_versions_delete_veto BEFORE DELETE ON public.agent_compose_versions FOR EACH STATEMENT EXECUTE FUNCTION veto_agent_compose_version_delete_transition()",
+    schemaName: "public",
+    tableName: "agent_compose_versions",
+    triggerName: "agent_compose_versions_delete_veto",
+  },
+  {
+    definition:
+      "CREATE TRIGGER agent_compose_versions_write_provenance BEFORE INSERT OR UPDATE OF created_by ON public.agent_compose_versions FOR EACH ROW EXECUTE FUNCTION enforce_agent_compose_version_write_transition()",
+    schemaName: "public",
+    tableName: "agent_compose_versions",
+    triggerName: "agent_compose_versions_write_provenance",
+  },
+  {
+    definition:
+      "CREATE TRIGGER users_clerk_cleanup_transition_guard BEFORE DELETE ON public.users FOR EACH STATEMENT EXECUTE FUNCTION guard_clerk_user_cleanup_transition()",
+    schemaName: "public",
+    tableName: "users",
+    triggerName: "users_clerk_cleanup_transition_guard",
+  },
   // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
   // Previous API revisions explicitly insert NULL for omitted avatars. Remove
   // in #27356 after those writers and their rollback window drain.
@@ -1990,6 +2801,15 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
+  // Same expand-phase integration identity compatibility and #27602 gate as
+  // the 12 synchronization triggers above.
+  {
+    bodyHash: "a2fdd6127c4d3efea23d729aecea2198",
+    functionName: "sync_integration_user_identity_0930",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -2050,6 +2870,36 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "903925177de13d29257fec494957b1cd",
     functionName: "ensure_legacy_org_metadata_plan_entitlement",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  // Temporary #26938 Stage 0 transition functions. Their paired triggers and
+  // the concrete Stage 8 removal gate are inventoried above.
+  {
+    bodyHash: "7acddca0ae85d270f257cb5518ff3bda",
+    functionName: "enforce_agent_compose_version_write_transition",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "c801cd71b6f37934943027f281cabc51",
+    functionName: "guard_clerk_user_cleanup_transition",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "b3f0552e3f7bbb14443665ea8e312427",
+    functionName: "set_agent_compose_delete_lock_timeout_transition",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "186bcd97e887d8c241cfba4c810a47d5",
+    functionName: "veto_agent_compose_version_delete_transition",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -9675,6 +10525,769 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
   }
 }
 
+const AGENT_COMPOSE_PROVENANCE_PREVIOUS_MIGRATION = "0930_past_jetstream";
+const AGENT_COMPOSE_PROVENANCE_MIGRATION =
+  "0931_agent_compose_nullable_provenance";
+const AGENT_COMPOSE_PROVENANCE_FIXTURE = {
+  completeWriterVersionId: "3".repeat(64),
+  crossAgentContent: {
+    version: "1",
+    agents: { cross: { framework: "claude-code" } },
+  },
+  crossAgentVersionId: "2".repeat(64),
+  noAgentUserId: "migration-provenance-no-agent-user",
+  sourceAgentId: "00000000-0000-4000-8000-000000093001",
+  sourceContent: {
+    version: "1",
+    agents: { source: { framework: "claude-code" } },
+  },
+  sourceUserId: "migration-provenance-source-user",
+  sourceVersionId: "1".repeat(64),
+  survivorAgentId: "00000000-0000-4000-8000-000000093002",
+  survivorUserId: "migration-provenance-survivor-user",
+} as const;
+
+async function seedPreviousAgentComposeProvenanceSchema(
+  client: Client,
+): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  await client.query(
+    `
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES
+        ($1, $2, 'provenance source', 'provenance-org'),
+        ($3, $4, 'provenance survivor', 'provenance-org')
+    `,
+    [
+      fixture.sourceAgentId,
+      fixture.sourceUserId,
+      fixture.survivorAgentId,
+      fixture.survivorUserId,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_compose_versions" (
+        "id", "compose_id", "content", "created_by"
+      ) VALUES
+        ($1, $2, $3::jsonb, $4),
+        ($5, $6, $7::jsonb, $8)
+    `,
+    [
+      fixture.sourceVersionId,
+      fixture.sourceAgentId,
+      JSON.stringify(fixture.sourceContent),
+      fixture.sourceUserId,
+      fixture.crossAgentVersionId,
+      fixture.survivorAgentId,
+      JSON.stringify(fixture.crossAgentContent),
+      fixture.noAgentUserId,
+    ],
+  );
+}
+
+async function validateIncomingLifecycleOnPreviousProvenanceSchema(
+  client: Client,
+): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  const previousApiDatabase = drizzle(client);
+  for (const scope of [
+    { kind: "organization", orgId: "provenance-org" },
+    { kind: "user", userId: fixture.sourceUserId },
+  ] as const) {
+    await assert.rejects(
+      deleteClerkAgentLifecycleData(previousApiDatabase, scope),
+      (error: unknown) => {
+        return error instanceof AgentComposeProvenanceSchemaUnavailableError;
+      },
+    );
+  }
+  const retained = await client.query<{ composes: number; versions: number }>(`
+    SELECT
+      (SELECT count(*)::integer FROM "agent_composes") AS "composes",
+      (SELECT count(*)::integer FROM "agent_compose_versions") AS "versions"
+  `);
+  assert.deepEqual(retained.rows, [{ composes: 2, versions: 2 }]);
+}
+
+async function readAgentComposeVersionRelationIdentity(
+  client: Client,
+): Promise<readonly { readonly relfilenode: string }[]> {
+  const relation = await client.query<{ relfilenode: string }>(`
+    SELECT "relfilenode"::text AS "relfilenode"
+    FROM "pg_class"
+    WHERE "oid" = 'public.agent_compose_versions'::regclass
+  `);
+  assert.equal(relation.rows.length, 1);
+  return relation.rows;
+}
+
+async function readAgentComposeProvenanceMigrationSql(): Promise<string> {
+  return await fs.readFile(
+    path.join(MIGRATIONS_DIR, `${AGENT_COMPOSE_PROVENANCE_MIGRATION}.sql`),
+    "utf8",
+  );
+}
+
+function validateAgentComposeProvenanceMigrationSql(
+  migrationSql: string,
+): void {
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(migrationSql.match(/^BEGIN;$/gmu)?.length, 2);
+  assert.match(migrationSql, /SET LOCAL lock_timeout = '1s'/u);
+  assert.match(migrationSql, /NOT VALID/u);
+  assert.match(migrationSql, /VALIDATE CONSTRAINT/u);
+  assert.doesNotMatch(migrationSql, /LOCK\s+TABLE/iu);
+  assert.doesNotMatch(
+    migrationSql,
+    /ALTER\s+COLUMN[^;]+(?:TYPE|SET\s+DATA\s+TYPE)/iu,
+  );
+}
+
+async function validateAgentComposeProvenanceCatalog(
+  client: Client,
+  relationBefore: readonly { readonly relfilenode: string }[],
+): Promise<void> {
+  assert.deepEqual(
+    await readAgentComposeVersionRelationIdentity(client),
+    relationBefore,
+  );
+  const columns = await client.query<{
+    columnName: string;
+    isNullable: "NO" | "YES";
+  }>(`
+    SELECT "column_name" AS "columnName", "is_nullable" AS "isNullable"
+    FROM "information_schema"."columns"
+    WHERE "table_schema" = 'public'
+      AND "table_name" = 'agent_compose_versions'
+      AND "column_name" IN ('compose_id', 'created_by')
+    ORDER BY "column_name"
+  `);
+  assert.deepEqual(columns.rows, [
+    { columnName: "compose_id", isNullable: "YES" },
+    { columnName: "created_by", isNullable: "YES" },
+  ]);
+
+  const foreignKey = await client.query<{
+    definition: string;
+    validated: boolean;
+  }>(`
+    SELECT pg_get_constraintdef("oid") AS "definition",
+      "convalidated" AS "validated"
+    FROM "pg_constraint"
+    WHERE "conname" =
+      'agent_compose_versions_compose_id_agent_composes_id_fk'
+  `);
+  assert.equal(foreignKey.rows.length, 1);
+  assert.equal(foreignKey.rows[0]?.validated, true);
+  assert.match(
+    foreignKey.rows[0]?.definition ?? "",
+    /FOREIGN KEY \(compose_id\) REFERENCES agent_composes\(id\) ON DELETE SET NULL/u,
+  );
+
+  const indexes = await client.query<{ indexName: string }>(`
+    SELECT "indexname" AS "indexName"
+    FROM "pg_indexes"
+    WHERE "schemaname" = 'public'
+      AND "tablename" = 'agent_compose_versions'
+    ORDER BY "indexname"
+  `);
+  assert.deepEqual(
+    indexes.rows.map((row) => {
+      return row.indexName;
+    }),
+    ["agent_compose_versions_pkey", "idx_agent_compose_versions_compose_id"],
+  );
+}
+
+async function validateAgentComposeProvenanceWriteContract(
+  client: Client,
+): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  await client.query(
+    `
+      INSERT INTO "agent_compose_versions" (
+        "id", "compose_id", "content", "created_by"
+      ) VALUES ($1, $2, $3::jsonb, $4)
+    `,
+    [
+      fixture.completeWriterVersionId,
+      fixture.survivorAgentId,
+      JSON.stringify({
+        version: "1",
+        agents: { complete: { framework: "claude-code" } },
+      }),
+      fixture.survivorUserId,
+    ],
+  );
+  const missingProvenanceCases = [
+    {
+      query: `
+        INSERT INTO "agent_compose_versions" ("id", "content", "created_by")
+        VALUES ($1, '{}'::jsonb, $2)
+      `,
+      values: ["4".repeat(64), fixture.sourceUserId],
+    },
+    {
+      query: `
+        INSERT INTO "agent_compose_versions" ("id", "compose_id", "content")
+        VALUES ($1, $2, '{}'::jsonb)
+      `,
+      values: ["5".repeat(64), fixture.survivorAgentId],
+    },
+    {
+      query: `
+        INSERT INTO "agent_compose_versions" ("id", "content")
+        VALUES ($1, '{}'::jsonb)
+      `,
+      values: ["6".repeat(64)],
+    },
+  ] as const;
+  for (const testCase of missingProvenanceCases) {
+    await expectDatabaseError(client, {
+      code: "23502",
+      messageIncludes:
+        "agent_compose_versions INSERT requires compose_id and created_by",
+      query: testCase.query,
+      values: [...testCase.values],
+    });
+  }
+  await client.query(
+    `
+      UPDATE "agent_compose_versions"
+      SET "compose_id" = NULL, "created_by" = NULL
+      WHERE "id" = $1
+    `,
+    [fixture.completeWriterVersionId],
+  );
+}
+
+async function validateAgentComposeVersionDeleteVeto(
+  client: Client,
+): Promise<void> {
+  for (const testCase of [
+    {
+      query: `DELETE FROM "agent_compose_versions" WHERE "id" = $1`,
+      values: ["f".repeat(64)],
+    },
+    {
+      query: `
+        DELETE FROM "agent_compose_versions"
+        WHERE "compose_id" IN (
+          SELECT "id" FROM "agent_composes" WHERE "user_id" = $1
+        )
+      `,
+      values: [AGENT_COMPOSE_PROVENANCE_FIXTURE.sourceUserId],
+    },
+  ]) {
+    await expectDatabaseError(client, {
+      code: "55000",
+      messageIncludes:
+        "agent_compose_versions DELETE is disabled during bounded retention",
+      query: testCase.query,
+      values: testCase.values,
+    });
+  }
+}
+
+async function validateSameUserProvenanceWriterConcurrency(
+  testDbUrl: string,
+): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  const writerA = new Client({ connectionString: testDbUrl });
+  const writerB = new Client({ connectionString: testDbUrl });
+  await writerA.connect();
+  await writerB.connect();
+  try {
+    await writerA.query("BEGIN");
+    await writerB.query("BEGIN");
+    await writerA.query(`SELECT set_config('lock_timeout', '100ms', true)`);
+    await writerB.query(`SELECT set_config('lock_timeout', '100ms', true)`);
+    await writerA.query(
+      `
+        INSERT INTO "agent_compose_versions" (
+          "id", "compose_id", "content", "created_by"
+        ) VALUES ($1, $2, '{}'::jsonb, $3)
+      `,
+      ["9".repeat(64), fixture.survivorAgentId, fixture.survivorUserId],
+    );
+    await writerB.query(
+      `
+        INSERT INTO "agent_compose_versions" (
+          "id", "compose_id", "content", "created_by"
+        ) VALUES ($1, $2, '{}'::jsonb, $3)
+      `,
+      ["a".repeat(64), fixture.survivorAgentId, fixture.survivorUserId],
+    );
+    await writerA.query("ROLLBACK");
+    await writerB.query("ROLLBACK");
+  } finally {
+    await writerA.query("ROLLBACK").catch(() => {});
+    await writerB.query("ROLLBACK").catch(() => {});
+    await writerA.end();
+    await writerB.end();
+  }
+}
+
+async function setMarkedAgentComposeUserCleanup(
+  client: Client,
+  userId: string,
+): Promise<void> {
+  await client.query(`SELECT set_config('lock_timeout', '100ms', true)`);
+  await client.query(
+    `SELECT set_config('vm0.clerk_user_cleanup_revision', $1, true)`,
+    ["stage0_nullable_provenance"],
+  );
+  await client.query(
+    `SELECT set_config('vm0.clerk_deleted_user_id', $1, true)`,
+    [userId],
+  );
+}
+
+async function runMarkedAgentComposeUserCleanup(
+  client: Client,
+  userId: string,
+): Promise<void> {
+  await client.query("BEGIN");
+  try {
+    await setMarkedAgentComposeUserCleanup(client, userId);
+    await client.query(
+      `
+        UPDATE "agent_compose_versions"
+        SET "created_by" = NULL
+        WHERE "created_by" = $1
+      `,
+      [userId],
+    );
+    await client.query(`DELETE FROM "users" WHERE "id" = $1`, [userId]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
+async function validateLegacyAgentComposeUserCleanupGuard(
+  client: Client,
+): Promise<void> {
+  const userId = AGENT_COMPOSE_PROVENANCE_FIXTURE.noAgentUserId;
+  const canonicalRows = await client.query<{
+    userCacheCount: number;
+    usersCount: number;
+  }>(
+    `
+      SELECT
+        (SELECT count(*)::integer FROM "user_cache" WHERE "user_id" = $1)
+          AS "userCacheCount",
+        (SELECT count(*)::integer FROM "users" WHERE "id" = $1)
+          AS "usersCount"
+    `,
+    [userId],
+  );
+  assert.deepEqual(canonicalRows.rows, [{ userCacheCount: 0, usersCount: 0 }]);
+  const composeJobId = "00000000-0000-4000-8000-000000093003";
+  await client.query(
+    `
+      INSERT INTO "compose_jobs" ("id", "user_id", "status")
+      VALUES ($1, $2, 'completed')
+    `,
+    [composeJobId, userId],
+  );
+  // The outgoing API reaches users last, so this earlier idempotent deletion
+  // can commit before the universal zero-row guard fails closed.
+  await client.query(`DELETE FROM "compose_jobs" WHERE "user_id" = $1`, [
+    userId,
+  ]);
+  await expectDatabaseError(client, {
+    code: "55000",
+    messageIncludes:
+      "legacy Clerk user cleanup is disabled during bounded retention",
+    query: `DELETE FROM "users" WHERE "id" = $1`,
+    values: [userId],
+  });
+  const partialCleanup = await client.query<{ count: number }>(
+    `SELECT count(*)::integer AS "count" FROM "compose_jobs" WHERE "id" = $1`,
+    [composeJobId],
+  );
+  assert.deepEqual(partialCleanup.rows, [{ count: 0 }]);
+
+  await client.query("BEGIN");
+  await setMarkedAgentComposeUserCleanup(client, userId);
+  await expectDatabaseError(client, {
+    code: "55000",
+    messageIncludes:
+      "Clerk user cleanup requires complete version de-identification",
+    query: `DELETE FROM "users" WHERE "id" = $1`,
+    values: [userId],
+  });
+  await client.query("ROLLBACK");
+}
+
+async function validateProvenanceWriterBlocksUserCleanup(
+  client: Client,
+  testDbUrl: string,
+): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  const writer = new Client({ connectionString: testDbUrl });
+  await writer.connect();
+  try {
+    await writer.query("BEGIN");
+    await writer.query(
+      `
+        INSERT INTO "agent_compose_versions" (
+          "id", "compose_id", "content", "created_by"
+        ) VALUES ($1, $2, '{}'::jsonb, $3)
+      `,
+      ["7".repeat(64), fixture.survivorAgentId, fixture.noAgentUserId],
+    );
+    await client.query("BEGIN");
+    await setMarkedAgentComposeUserCleanup(client, fixture.noAgentUserId);
+    await client.query(
+      `
+        UPDATE "agent_compose_versions"
+        SET "created_by" = NULL
+        WHERE "created_by" = $1
+      `,
+      [fixture.noAgentUserId],
+    );
+    const startedAt = Date.now();
+    await expectDatabaseError(client, {
+      code: "55P03",
+      messageIncludes: "Clerk user cleanup conflicts with a provenance writer",
+      query: `DELETE FROM "users" WHERE "id" = $1`,
+      values: [fixture.noAgentUserId],
+    });
+    assert.ok(Date.now() - startedAt < 2_000);
+    await client.query("ROLLBACK");
+    await writer.query("ROLLBACK");
+  } finally {
+    await client.query("ROLLBACK").catch(() => {});
+    await writer.query("ROLLBACK").catch(() => {});
+    await writer.end();
+  }
+  const retained = await client.query<{ createdBy: string | null }>(
+    `
+      SELECT "created_by" AS "createdBy"
+      FROM "agent_compose_versions"
+      WHERE "id" = $1
+    `,
+    [fixture.crossAgentVersionId],
+  );
+  assert.deepEqual(retained.rows, [{ createdBy: fixture.noAgentUserId }]);
+}
+
+async function validateUserCleanupBlocksProvenanceWriter(
+  client: Client,
+  testDbUrl: string,
+): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  const writer = new Client({ connectionString: testDbUrl });
+  await writer.connect();
+  try {
+    await client.query("BEGIN");
+    await setMarkedAgentComposeUserCleanup(client, fixture.noAgentUserId);
+    await client.query(
+      `
+        UPDATE "agent_compose_versions"
+        SET "created_by" = NULL
+        WHERE "created_by" = $1
+      `,
+      [fixture.noAgentUserId],
+    );
+    await client.query(`DELETE FROM "users" WHERE "id" = $1`, [
+      fixture.noAgentUserId,
+    ]);
+    await expectDatabaseError(writer, {
+      code: "55P03",
+      messageIncludes:
+        "agent_compose_versions provenance write conflicts with user cleanup",
+      query: `
+        INSERT INTO "agent_compose_versions" (
+          "id", "compose_id", "content", "created_by"
+        ) VALUES ($1, $2, '{}'::jsonb, $3)
+      `,
+      values: ["8".repeat(64), fixture.survivorAgentId, fixture.noAgentUserId],
+    });
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    await writer.end();
+  }
+}
+
+async function validateCrossAgentCreatorScrub(client: Client): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  const version = await client.query<{
+    composeId: string | null;
+    content: unknown;
+    createdBy: string | null;
+    id: string;
+  }>(
+    `
+      SELECT "id", "compose_id" AS "composeId",
+        "created_by" AS "createdBy", "content"
+      FROM "agent_compose_versions"
+      WHERE "id" = $1
+    `,
+    [fixture.crossAgentVersionId],
+  );
+  assert.deepEqual(version.rows, [
+    {
+      id: fixture.crossAgentVersionId,
+      composeId: fixture.survivorAgentId,
+      createdBy: null,
+      content: fixture.crossAgentContent,
+    },
+  ]);
+}
+
+async function validateAgentComposeDeleteContention(
+  client: Client,
+  testDbUrl: string,
+): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  const timeoutBefore = await client.query<{ lockTimeout: string }>(`
+    SELECT current_setting('lock_timeout') AS "lockTimeout"
+  `);
+  const holder = new Client({ connectionString: testDbUrl });
+  await holder.connect();
+  try {
+    await holder.query("BEGIN");
+    await holder.query(
+      `
+        SELECT "id" FROM "agent_compose_versions"
+        WHERE "id" = $1
+        FOR UPDATE
+      `,
+      [fixture.sourceVersionId],
+    );
+    const startedAt = Date.now();
+    await expectDatabaseError(client, {
+      code: "55P03",
+      query: `DELETE FROM "agent_composes" WHERE "id" = $1`,
+      values: [fixture.sourceAgentId],
+    });
+    assert.ok(Date.now() - startedAt < 2_000);
+    await holder.query("ROLLBACK");
+  } finally {
+    await holder.query("ROLLBACK").catch(() => {});
+    await holder.end();
+  }
+  const sourceAgent = await client.query<{ count: number }>(
+    `
+      SELECT count(*)::integer AS "count" FROM "agent_composes"
+      WHERE "id" = $1
+    `,
+    [fixture.sourceAgentId],
+  );
+  assert.deepEqual(sourceAgent.rows, [{ count: 1 }]);
+  const timeoutAfter = await client.query<{ lockTimeout: string }>(`
+    SELECT current_setting('lock_timeout') AS "lockTimeout"
+  `);
+  assert.deepEqual(timeoutAfter.rows, timeoutBefore.rows);
+}
+
+async function validateOrganizationProvenanceRetention(
+  client: Client,
+): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+    fixture.sourceAgentId,
+  ]);
+  await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+    fixture.sourceAgentId,
+  ]);
+  const version = await client.query<{
+    composeId: string | null;
+    content: unknown;
+    createdBy: string | null;
+    id: string;
+  }>(
+    `
+      SELECT "id", "compose_id" AS "composeId",
+        "created_by" AS "createdBy", "content"
+      FROM "agent_compose_versions"
+      WHERE "id" = $1
+    `,
+    [fixture.sourceVersionId],
+  );
+  assert.deepEqual(version.rows, [
+    {
+      id: fixture.sourceVersionId,
+      composeId: null,
+      createdBy: fixture.sourceUserId,
+      content: fixture.sourceContent,
+    },
+  ]);
+}
+
+async function validateAgentComposeProvenanceMigrationRetry(
+  client: Client,
+  migrationSql: string,
+): Promise<void> {
+  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
+  await client.query(migrationSql);
+  const retained = await client.query(
+    `
+      SELECT "id", "compose_id", "created_by", "content"
+      FROM "agent_compose_versions"
+      WHERE "id" = $1
+    `,
+    [fixture.sourceVersionId],
+  );
+  assert.equal(retained.rows.length, 1);
+  assert.equal(retained.rows[0]?.id, fixture.sourceVersionId);
+  assert.equal(retained.rows[0]?.compose_id, null);
+  assert.equal(retained.rows[0]?.created_by, fixture.sourceUserId);
+  assert.deepEqual(retained.rows[0]?.content, fixture.sourceContent);
+}
+
+async function validateAgentComposeProvenanceMigration(): Promise<void> {
+  console.log("=== Validate Agent Compose transition provenance ===\n");
+  const testDb = "migration_agent_compose_provenance";
+  const testDbUrl = createTestDbUrl(testDb);
+  const userId = AGENT_COMPOSE_PROVENANCE_FIXTURE.noAgentUserId;
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      AGENT_COMPOSE_PROVENANCE_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await seedPreviousAgentComposeProvenanceSchema(client);
+      await validateIncomingLifecycleOnPreviousProvenanceSchema(client);
+
+      const relationBefore =
+        await readAgentComposeVersionRelationIdentity(client);
+
+      await applyMigrationsUpToTag(client, AGENT_COMPOSE_PROVENANCE_MIGRATION);
+
+      const migrationSql = await readAgentComposeProvenanceMigrationSql();
+      validateAgentComposeProvenanceMigrationSql(migrationSql);
+      await validateAgentComposeProvenanceCatalog(client, relationBefore);
+
+      await validateAgentComposeProvenanceWriteContract(client);
+
+      await validateSameUserProvenanceWriterConcurrency(testDbUrl);
+
+      await validateAgentComposeVersionDeleteVeto(client);
+
+      await validateLegacyAgentComposeUserCleanupGuard(client);
+
+      await validateProvenanceWriterBlocksUserCleanup(client, testDbUrl);
+
+      await runMarkedAgentComposeUserCleanup(client, userId);
+      await runMarkedAgentComposeUserCleanup(client, userId);
+
+      await validateUserCleanupBlocksProvenanceWriter(client, testDbUrl);
+      await validateCrossAgentCreatorScrub(client);
+
+      await validateAgentComposeDeleteContention(client, testDbUrl);
+      await validateOrganizationProvenanceRetention(client);
+      await validateAgentComposeProvenanceMigrationRetry(client, migrationSql);
+
+      console.log(
+        "   ✅ nullable columns and SET NULL FK preserve row identity",
+      );
+      console.log(
+        "   ✅ incoming user/org lifecycle DML fails closed on canonical 0930",
+      );
+      console.log("   ✅ catalog-only DDL does not rewrite the version table");
+      console.log("   ✅ complete old/new writers pass and NULL inserts fail");
+      console.log("   ✅ lifecycle UPDATEs may clear either provenance field");
+      console.log(
+        "   ✅ every direct version DELETE fails closed before rows change",
+      );
+      console.log(
+        "   ✅ no-Agent and absent-cache old cleanup reaches the zero-row users guard",
+      );
+      console.log(
+        "   ✅ partial old cleanup and marked duplicate retries converge",
+      );
+      console.log(
+        "   ✅ creator writes and the final scrub serialize fail closed",
+      );
+      console.log("   ✅ same-user creator writes retain shared concurrency");
+      console.log("   ✅ org deletion preserves the active creator exactly");
+      console.log("   ✅ FK row-lock contention is bounded at 100ms");
+      console.log(
+        "   ✅ migration retry preserves retained rows and content\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+async function validateFreshAgentComposeProvenanceSchema(
+  dbUrl: string,
+): Promise<void> {
+  console.log("=== Phase 2.5.2: Validate fresh Agent provenance schema ===\n");
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+  const agentId = "00000000-0000-4000-8000-000000093011";
+  const versionId = "a".repeat(64);
+  try {
+    await client.query(
+      `
+        INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+        VALUES ($1, 'fresh-provenance-user', 'fresh provenance', 'fresh-provenance-org')
+      `,
+      [agentId],
+    );
+    await client.query(
+      `
+        INSERT INTO "agent_compose_versions" (
+          "id", "compose_id", "content", "created_by"
+        ) VALUES ($1, $2, '{}'::jsonb, 'fresh-provenance-user')
+      `,
+      [versionId, agentId],
+    );
+    await expectDatabaseError(client, {
+      code: "23502",
+      messageIncludes:
+        "agent_compose_versions INSERT requires compose_id and created_by",
+      query: `
+        INSERT INTO "agent_compose_versions" ("id", "content")
+        VALUES ($1, '{}'::jsonb)
+      `,
+      values: ["b".repeat(64)],
+    });
+    await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+      agentId,
+    ]);
+    const retained = await client.query<{
+      composeId: string | null;
+      createdBy: string | null;
+      id: string;
+    }>(
+      `
+        SELECT
+          "id",
+          "compose_id" AS "composeId",
+          "created_by" AS "createdBy"
+        FROM "agent_compose_versions"
+        WHERE "id" = $1
+      `,
+      [versionId],
+    );
+    assert.deepEqual(retained.rows, [
+      { id: versionId, composeId: null, createdBy: "fresh-provenance-user" },
+    ]);
+    console.log(
+      "   ✅ clean migration chain enforces the transition contract\n",
+    );
+  } finally {
+    await client.end();
+  }
+}
+
 const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREVIOUS_MIGRATION =
   "0927_backfill_zero_agent_default_avatar";
 const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION =
@@ -9911,6 +11524,7 @@ async function main(): Promise<void> {
     // Step 0.5: Validate timestamp ordering
     await validateTimestampOrdering();
 
+    await validateIntegrationUserIdExpansion();
     await validateRunEventSequenceNumberRollout();
     await validateGoalOnlyRunGroupsCleanup();
     await validateTeamsMessageFileScopeBackfill();
@@ -9929,6 +11543,7 @@ async function main(): Promise<void> {
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
     await validateChatEventSnapshotContraction();
+    await validateAgentComposeProvenanceMigration();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();
@@ -9952,6 +11567,7 @@ async function main(): Promise<void> {
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validateFreshAgentComposeProvenanceSchema(dbUrl1);
     await validateZeroAgentDefaultAvatarCompatibility(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);

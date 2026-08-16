@@ -382,6 +382,18 @@ export function detach(
   }
 }
 
+export function acknowledgeDetachedForTest(promise: Promise<unknown>): void {
+  if (!IN_VITEST) {
+    return;
+  }
+
+  // Domain-level test synchronization may acknowledge only work it has
+  // explicitly observed. Everything else remains owned by global teardown.
+  tracker().collected.delete(promise);
+  tracker().mechanisms.delete(promise);
+  tracker().descriptions.delete(promise);
+}
+
 export function createDeferredPromise<T>(signal: AbortSignal): {
   readonly promise: Promise<T>;
   readonly resolve: (value: T) => void;

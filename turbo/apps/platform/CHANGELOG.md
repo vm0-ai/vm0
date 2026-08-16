@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.759.2](https://github.com/vm0-ai/vm0/compare/app-v0.759.1...app-v0.759.2) (2026-08-16)
+
+
+### Refactoring
+
+* **api:** remove chat search identity fallbacks ([#27611](https://github.com/vm0-ai/vm0/issues/27611)) ([ae20072](https://github.com/vm0-ai/vm0/commit/ae200726ce6fe7a0e2b970844a695c59b1aacab3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.9
+    * @okouai/core bumped to 8.562.6
+
+## [0.759.1](https://github.com/vm0-ai/vm0/compare/app-v0.759.0...app-v0.759.1) (2026-08-16)
+
+
+### Refactoring
+
+* **compose:** remove retired compose list surface ([#27606](https://github.com/vm0-ai/vm0/issues/27606)) ([0679f11](https://github.com/vm0-ai/vm0/commit/0679f11c81fed8d6b3be5d8f9f666b654d54e8fd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.8
+    * @okouai/core bumped to 8.562.5
+
 ## [0.759.0](https://github.com/vm0-ai/vm0/compare/app-v0.758.0...app-v0.759.0) (2026-08-16)
 
 

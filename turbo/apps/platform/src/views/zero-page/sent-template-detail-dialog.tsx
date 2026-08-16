@@ -17,6 +17,7 @@ import {
   closeSentTemplateDetail$,
   sentTemplateDetail$,
 } from "../../signals/zero-page/sent-template-detail.ts";
+import { videoModelSelectionEnabled$ } from "../../signals/external/feature-switch.ts";
 
 function SentVideoTemplateDetail({
   titleSnapshot,
@@ -26,6 +27,7 @@ function SentVideoTemplateDetail({
   readonly template: Extract<GenerationTemplateRequest, { type: "video" }>;
 }) {
   const { t } = useTranslation();
+  const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
   const item = findVideoTemplateItem(template.selection.stylePresetId);
   const resolved = resolveVideoGenerationOptions(
     template.selection.videoOptions,
@@ -39,12 +41,16 @@ function SentVideoTemplateDetail({
         return $.chat.templates.videoSpecAudioOff;
       });
   const rows: readonly { label: string; value: string }[] = [
-    {
-      label: t(($) => {
-        return $.chat.templates.videoOptionsModel;
-      }),
-      value: config.label,
-    },
+    ...(videoModelSelectionEnabled
+      ? []
+      : [
+          {
+            label: t(($) => {
+              return $.chat.templates.videoOptionsModel;
+            }),
+            value: config.label,
+          },
+        ]),
     {
       label: t(($) => {
         return $.chat.templates.videoOptionsRatio;

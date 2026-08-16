@@ -392,8 +392,26 @@ impl Sandbox for MockSandbox {
             }
         };
         let physical_park_started = Instant::now();
+        observer.record_substage(
+            SandboxFinalExecParkSubstage::BalloonSetup,
+            Duration::ZERO,
+            true,
+            Some(SandboxFinalExecParkSubstageOutcome::Skipped),
+        );
+        observer.record_substage(
+            SandboxFinalExecParkSubstage::BalloonSettle,
+            Duration::ZERO,
+            true,
+            Some(SandboxFinalExecParkSubstageOutcome::Skipped),
+        );
         let park_outcome = match self.park().await {
             Ok(park_outcome) => {
+                observer.record_substage(
+                    SandboxFinalExecParkSubstage::VcpuPause,
+                    Duration::ZERO,
+                    true,
+                    None,
+                );
                 observer.record_stage(
                     SandboxFinalExecParkStage::PhysicalPark,
                     physical_park_started.elapsed(),
@@ -402,6 +420,12 @@ impl Sandbox for MockSandbox {
                 park_outcome
             }
             Err(error) => {
+                observer.record_substage(
+                    SandboxFinalExecParkSubstage::VcpuPause,
+                    Duration::ZERO,
+                    false,
+                    Some(SandboxFinalExecParkSubstageOutcome::Failed),
+                );
                 observer.record_stage(
                     SandboxFinalExecParkStage::PhysicalPark,
                     physical_park_started.elapsed(),

@@ -480,6 +480,74 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("leaves the video model to the run picker when its switch is enabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = VIDEO_TEMPLATE_ITEMS[0]!;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedTemplate = sentInlineTemplate(body.userMessage);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await user.click(tabByText("Video"));
+
+    expect(
+      screen.queryByLabelText("Video model Seedance 2.0 fast"),
+    ).not.toBeInTheDocument();
+    await user.click(
+      await screen.findByLabelText(`Select video template ${template.title}`),
+    );
+
+    const spec = await screen.findByLabelText(
+      "Video options 16:9 \u00b7 8s \u00b7 720p",
+    );
+    spec.focus();
+    await user.keyboard("{Enter}");
+
+    const popover = await screen.findByLabelText("Video options");
+    expect(within(popover).queryByText("Model")).not.toBeInTheDocument();
+    expect(
+      within(popover).getByRole("radiogroup", { name: "Ratio" }),
+    ).toBeInTheDocument();
+    expect(
+      within(popover).getByRole("slider", { name: "Duration" }),
+    ).toBeInTheDocument();
+    expect(within(popover).getByText("Resolution")).toBeInTheDocument();
+    expect(
+      within(popover).getByRole("switch", { name: "Generate audio" }),
+    ).toBeInTheDocument();
+
+    const ratio = within(popover).getByRole("radiogroup", { name: "Ratio" });
+    await user.click(within(ratio).getByRole("radio", { name: "9:16" }));
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submittedTemplate).toStrictEqual({
+        type: "video",
+        selection: {
+          stylePresetId: template.id,
+          videoOptions: { aspectRatio: "9:16" },
+        },
+      });
+    });
+  });
+
   it("replaces a selected inline template instead of inserting another", async () => {
     const user = userEvent.setup({ delay: null });
     const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;

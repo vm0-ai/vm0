@@ -89,14 +89,12 @@ describe("GET /api/okou/chat/search durable reader", () => {
       throw new Error("Expected one durable chat search result");
     }
 
-    expect(result.matchedMessage).toStrictEqual({
-      messageId: `${source.threadId}:${second.prompt.seqId}`,
+    expect(result.matchedMessage).toMatchObject({
       chatThreadId: source.threadId,
       role: "user",
       content: `find ${keyword}`,
       createdAt: expect.any(String),
       seqId: second.prompt.seqId,
-      sequenceNumber: null,
       runId: null,
     });
     expect(
@@ -111,24 +109,21 @@ describe("GET /api/okou/chat/search durable reader", () => {
     ).toStrictEqual(["context assistant after"]);
 
     expect(result.contextBefore[0]).toMatchObject({
-      messageId: `${source.threadId}:${first.prompt.seqId}`,
+      chatThreadId: source.threadId,
       role: "user",
       seqId: first.prompt.seqId,
-      sequenceNumber: null,
       runId: null,
     });
     expect(result.contextBefore[1]).toMatchObject({
-      messageId: `${source.threadId}:${first.assistant.seqId}`,
+      chatThreadId: source.threadId,
       role: "assistant",
       seqId: first.assistant.seqId,
-      sequenceNumber: null,
       runId: first.assistantRunId,
     });
     expect(result.contextAfter[0]).toMatchObject({
-      messageId: `${source.threadId}:${second.assistant.seqId}`,
+      chatThreadId: source.threadId,
       role: "assistant",
       seqId: second.assistant.seqId,
-      sequenceNumber: null,
       runId: second.assistantRunId,
     });
 
@@ -176,7 +171,7 @@ describe("GET /api/okou/chat/search durable reader", () => {
       chatThreadId: primary.threadId,
       agentName: currentAgentName,
       matchedMessage: {
-        messageId: `${primary.threadId}:${prompt.seqId}`,
+        chatThreadId: primary.threadId,
         seqId: prompt.seqId,
       },
     });

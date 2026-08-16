@@ -211,6 +211,80 @@ describe("user messages", () => {
     });
   });
 
+  it("hides historical template model labels when the run picker owns the model", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000751";
+    const templateItem = VIDEO_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Run-owned video model",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000751",
+          role: "user",
+          content: "Make the clip",
+          runId: "d0000000-0000-4000-a000-000000000751",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: templateItem.title,
+                template: {
+                  type: "video",
+                  selection: {
+                    stylePresetId: templateItem.id,
+                    videoOptions: {
+                      model: "MiniMax-H3",
+                      aspectRatio: "9:16",
+                    },
+                  },
+                },
+              },
+              { type: "text", text: "Make the clip" },
+            ],
+          },
+          createdAt: "2026-08-07T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+      },
+    });
+
+    const reference = await screen.findByTitle(
+      `Video \u00b7 ${templateItem.title} \u00b7 9:16 \u00b7 8s \u00b7 2k`,
+    );
+    expect(reference).toHaveTextContent("9:16 \u00b7 8s \u00b7 2k");
+    expect(reference).not.toHaveTextContent("MiniMax H3");
+
+    const chipButton = queryAllByRoleFast("button").find((element) => {
+      return element.textContent === templateItem.title;
+    });
+    expect(chipButton).toBeInstanceOf(HTMLButtonElement);
+    await user.click(chipButton!);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByText("Model")).not.toBeInTheDocument();
+    const rows = [
+      ["Ratio", "9:16"],
+      ["Duration", "8s"],
+      ["Resolution", "2k"],
+      ["Generate audio", "Audio"],
+    ] as const;
+    for (const [label, value] of rows) {
+      expect(within(dialog).getByText(label).parentElement).toHaveTextContent(
+        value,
+      );
+    }
+  });
+
   it("renders ordered canonical snapshots with literal Markdown text", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000741";
     const referencedThreadId = "b0000000-0000-4000-a000-000000000742";

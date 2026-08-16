@@ -31,6 +31,7 @@ export const telegramUserLinks = pgTable(
       ),
     // VM0 user ID (Clerk user ID)
     vm0UserId: text("vm0_user_id").notNull(),
+    userId: text("user_id"),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -45,6 +46,10 @@ export const telegramUserLinks = pgTable(
       // Each VM0 user can only link one Telegram account per bot
       uniqueIndex("idx_telegram_user_links_vm0_installation").on(
         table.vm0UserId,
+        table.installationId,
+      ),
+      uniqueIndex("idx_telegram_user_links_user_id_installation").on(
+        table.userId,
         table.installationId,
       ),
     ];

@@ -32,6 +32,7 @@ import {
 } from "@okouai/core/video-model-catalog";
 import { useTranslation } from "react-i18next";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
+import { videoModelSelectionEnabled$ } from "../../signals/external/feature-switch.ts";
 
 /**
  * Only the values the user actually chose are persisted, so a template written
@@ -42,7 +43,7 @@ function toVideoOptionsPatch(
   modelDefaults: ResolvedVideoGenerationOptions,
 ): VideoGenerationOptions {
   return {
-    ...(next.model === DEFAULT_VIDEO_MODEL ? {} : { model: next.model }),
+    ...(next.model !== DEFAULT_VIDEO_MODEL ? { model: next.model } : {}),
     ...(next.aspectRatio === modelDefaults.aspectRatio
       ? {}
       : { aspectRatio: next.aspectRatio }),
@@ -376,27 +377,29 @@ export function VideoModelPickerRow({
 function VideoSettingsPane({
   resolved,
   config,
+  showLegacyModel,
   onChange,
 }: {
   readonly resolved: ResolvedVideoGenerationOptions;
   readonly config: VideoModelConfig;
+  readonly showLegacyModel: boolean;
   readonly onChange: (next: ResolvedVideoGenerationOptions) => void;
 }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1.5">
-      {/* The model stays visible here as context — it is edited from its own
-          zone on the chip, so this pane never nests a second picker. */}
-      <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
-        <span className="text-[13px] text-muted-foreground">
-          {t(($) => {
-            return $.chat.templates.videoOptionsModel;
-          })}
-        </span>
-        <span className="truncate text-[13px] font-medium text-foreground">
-          {config.label}
-        </span>
-      </div>
+      {showLegacyModel && (
+        <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
+          <span className="text-[13px] text-muted-foreground">
+            {t(($) => {
+              return $.chat.templates.videoOptionsModel;
+            })}
+          </span>
+          <span className="truncate text-[13px] font-medium text-foreground">
+            {config.label}
+          </span>
+        </div>
+      )}
       <SettingsPanel>
         <VideoOptionField
           label={t(($) => {
@@ -459,12 +462,17 @@ function VideoSettingsPane({
   );
 }
 
-export function VideoTemplateOptionsPopover({
-  signals,
-  onChange,
-}: {
+interface VideoTemplateOptionsPopoverProps {
   readonly signals: ComposerSignals;
   readonly onChange: (next: GenerationTemplateRequest) => void;
+}
+
+function VideoTemplateOptionsPopoverContent({
+  signals,
+  onChange,
+  showLegacyModel,
+}: VideoTemplateOptionsPopoverProps & {
+  readonly showLegacyModel: boolean;
 }) {
   const { t } = useTranslation();
   const anchor = useGet(signals.template.videoTemplateOptionsAnchor$);
@@ -528,9 +536,22 @@ export function VideoTemplateOptionsPopover({
         <VideoSettingsPane
           resolved={resolved}
           config={config}
+          showLegacyModel={showLegacyModel}
           onChange={apply}
         />
       </PopoverContent>
     </Popover>
+  );
+}
+
+export function VideoTemplateOptionsPopover(
+  props: VideoTemplateOptionsPopoverProps,
+) {
+  const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
+  return (
+    <VideoTemplateOptionsPopoverContent
+      {...props}
+      showLegacyModel={!videoModelSelectionEnabled}
+    />
   );
 }

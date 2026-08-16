@@ -266,12 +266,6 @@ async function deleteUsageStateFixture(
   const composeIds = composeRows.map((row) => {
     return row.id;
   });
-  if (composeIds.length > 0) {
-    await db
-      .delete(agentComposeVersions)
-      .where(inArray(agentComposeVersions.composeId, composeIds));
-    signal.throwIfAborted();
-  }
 
   await db.delete(chatThreads).where(eq(chatThreads.userId, userId));
   signal.throwIfAborted();

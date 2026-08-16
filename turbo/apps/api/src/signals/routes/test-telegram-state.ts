@@ -1086,10 +1086,6 @@ async function deleteTelegramPostFixtureForAction(
   signal.throwIfAborted();
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
   signal.throwIfAborted();
-  await db
-    .delete(agentComposeVersions)
-    .where(eq(agentComposeVersions.composeId, composeId));
-  signal.throwIfAborted();
   await db.delete(zeroAgents).where(eq(zeroAgents.id, composeId));
   signal.throwIfAborted();
   await db.delete(agentComposes).where(eq(agentComposes.id, composeId));

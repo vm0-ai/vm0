@@ -3,7 +3,12 @@ import { waitUntil as vercelWaitUntil } from "@vercel/functions";
 
 import { env } from "../../lib/env";
 import { singleton } from "../../lib/singleton";
-import { detach, isAbortError, Mechanism } from "../utils";
+import {
+  acknowledgeDetachedForTest,
+  detach,
+  isAbortError,
+  Mechanism,
+} from "../utils";
 
 const shouldTrackWaitUntil = env("VITEST") === "true";
 
@@ -55,6 +60,7 @@ export async function flushWaitUntilForTest(): Promise<void> {
           }
         },
       );
+      acknowledgeDetachedForTest(promise);
     }
   }
 

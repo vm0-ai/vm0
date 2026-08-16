@@ -28,6 +28,7 @@ export const githubUserLinks = pgTable(
       ),
     // VM0 user ID (Clerk user ID)
     vm0UserId: text("vm0_user_id").notNull(),
+    userId: text("user_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

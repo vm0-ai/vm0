@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.562.6](https://github.com/vm0-ai/vm0/compare/core-v8.562.5...core-v8.562.6) (2026-08-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.9
+
+## [8.562.5](https://github.com/vm0-ai/vm0/compare/core-v8.562.4...core-v8.562.5) (2026-08-16)
+
+
+### Refactoring
+
+* **compose:** remove retired compose list surface ([#27606](https://github.com/vm0-ai/vm0/issues/27606)) ([0679f11](https://github.com/vm0-ai/vm0/commit/0679f11c81fed8d6b3be5d8f9f666b654d54e8fd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.8
+
 ## [8.562.4](https://github.com/vm0-ai/vm0/compare/core-v8.562.3...core-v8.562.4) (2026-08-16)
 
 
