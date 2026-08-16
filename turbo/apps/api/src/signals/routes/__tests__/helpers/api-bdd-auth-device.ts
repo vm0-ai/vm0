@@ -44,7 +44,7 @@ import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
 import { cliAuthTestRoutes } from "../../cli-auth-test";
 import { desktopAuthRoutes } from "../../desktop-auth";
-import { zeroAgentsRoutes } from "../../zero-agents";
+import { agentsRoutes } from "../../agents";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { claudeCodeDeviceAuthRoutes } from "../../claude-code-device-auth";
 import { codexDeviceAuthRoutes } from "../../codex-device-auth";
@@ -82,7 +82,7 @@ const authDeviceRoutes: readonly RouteEntry[] = [
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
-  ...zeroAgentsRoutes,
+  ...agentsRoutes,
   ...zeroBillingStatusRoutes,
   ...claudeCodeDeviceAuthRoutes,
   ...codexDeviceAuthRoutes,

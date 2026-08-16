@@ -84,7 +84,7 @@ import {
 } from "../../../../test-fixtures/agent-composes";
 import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
-import { zeroAgentsRoutes } from "../../zero-agents";
+import { agentsRoutes } from "../../agents";
 import { zeroComposesRoutes } from "../../zero-composes";
 import { customConnectorsRoutes } from "../../custom-connectors";
 import { customConnectorsCreateRoutes } from "../../custom-connectors-create";
@@ -218,7 +218,7 @@ const authOrgRoutes = [
   ...zeroOrgMembershipRequestsRoutes,
   ...orgLogoRoutes,
   ...zeroTeamRoutes,
-  ...zeroAgentsRoutes,
+  ...agentsRoutes,
   ...zeroComposesRoutes,
   ...customConnectorsRoutes,
   ...customConnectorsCreateRoutes,

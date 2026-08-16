@@ -31,13 +31,13 @@ import {
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
-import { zeroAgentsRoutes } from "../zero-agents";
+import { agentsRoutes } from "../agents";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { workflowsRoutes } from "../workflows";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...testWorkflowAutomationExecutionRoutes,
-  ...zeroAgentsRoutes,
+  ...agentsRoutes,
   ...workflowAutomationsRoutes,
   ...workflowsRoutes,
 ]);
@@ -365,7 +365,7 @@ describe("okou workflow automation scheduler", () => {
     mockGmailConnectorOAuth({ email: "automation-user@example.com" });
     await wf.connectConnector(scenario.actor, "gmail");
     await accept(
-      setupApp({ context, routes: zeroAgentsRoutes })(
+      setupApp({ context, routes: agentsRoutes })(
         zeroUserConnectorsContract,
       ).update({
         headers: authHeaders(),
@@ -541,9 +541,7 @@ describe("okou workflow automation scheduler", () => {
     mocks.clerk.session(member.userId, scenario.orgId, "org:member");
     const apiKey = await runsApi.createCliToken(member);
     await accept(
-      setupApp({ context, routes: zeroAgentsRoutes })(
-        zeroAgentsMainContract,
-      ).list({
+      setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract).list({
         headers: { authorization: `Bearer ${apiKey.token}` },
       }),
       [200],
@@ -566,7 +564,7 @@ describe("okou workflow automation scheduler", () => {
     // The agent owner flips the agent private, hiding it from the member.
     mocks.clerk.session(scenario.userId, scenario.orgId);
     await accept(
-      setupApp({ context, routes: zeroAgentsRoutes })(
+      setupApp({ context, routes: agentsRoutes })(
         zeroAgentsByIdContract,
       ).updateMetadata({
         headers: authHeaders(),
@@ -581,7 +579,7 @@ describe("okou workflow automation scheduler", () => {
     // Restore visibility so the member's product reads work again; the skip
     // already happened during the tick above.
     await accept(
-      setupApp({ context, routes: zeroAgentsRoutes })(
+      setupApp({ context, routes: agentsRoutes })(
         zeroAgentsByIdContract,
       ).updateMetadata({
         headers: authHeaders(),

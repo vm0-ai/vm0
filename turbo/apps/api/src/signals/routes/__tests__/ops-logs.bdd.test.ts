@@ -40,7 +40,7 @@ import {
 } from "./helpers/model-stats-state";
 import { commitMemoryVersion } from "./helpers/memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
-import { zeroAgentInstructionsRoutes } from "../zero-agent-instructions";
+import { agentInstructionsRoutes } from "../agent-instructions";
 
 /* BILL-02 model stats and OPS-01 user export. */
 
@@ -1320,7 +1320,7 @@ describe("OPS-01: user data export", () => {
       visibility: "private",
     });
     await accept(
-      setupApp({ context, routes: zeroAgentInstructionsRoutes })(
+      setupApp({ context, routes: agentInstructionsRoutes })(
         zeroAgentInstructionsContract,
       ).update({
         params: { id: agent.agentId },

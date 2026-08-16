@@ -16,7 +16,7 @@ import {
   manualHttpCustomConnectorCreateBody,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { zeroAgentsRoutes } from "../zero-agents";
+import { agentsRoutes } from "../agents";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -28,7 +28,7 @@ function currentSecond(): number {
 }
 
 function agentCustomConnectorsClient() {
-  return setupApp({ context, routes: zeroAgentsRoutes })(
+  return setupApp({ context, routes: agentsRoutes })(
     zeroAgentCustomConnectorsContract,
   );
 }
