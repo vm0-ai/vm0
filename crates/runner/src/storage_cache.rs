@@ -57,7 +57,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::object_download_policy::{
     OBJECT_DOWNLOAD_MAX_ATTEMPTS, OBJECT_DOWNLOAD_TIMEOUT, is_retryable_http_status,
-    is_retryable_reqwest_error, object_download_retry_delay,
+    is_retryable_reqwest_error, sleep_object_download_retry_delay,
 };
 use crate::paths::{HomePaths, short_digest, touch_mtime};
 use crate::storage_plan::{ArchiveHandle, StoragePlan};
@@ -2637,10 +2637,7 @@ where
                         exhausted_retry: retryable && attempt >= OBJECT_DOWNLOAD_MAX_ATTEMPTS,
                     });
                 }
-                let delay = object_download_retry_delay();
-                if !delay.is_zero() {
-                    tokio::time::sleep(delay).await;
-                }
+                sleep_object_download_retry_delay().await;
                 attempt += 1;
             }
         }

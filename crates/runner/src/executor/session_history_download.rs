@@ -36,7 +36,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::object_download_policy::{
     OBJECT_DOWNLOAD_MAX_ATTEMPTS, OBJECT_DOWNLOAD_TIMEOUT, is_retryable_http_status,
-    is_retryable_reqwest_error, object_download_retry_delay,
+    is_retryable_reqwest_error, sleep_object_download_retry_delay,
 };
 use crate::restored_session_identity::RestoredSessionHistoryPrefixAttribution;
 use crate::telemetry::{
@@ -901,7 +901,7 @@ async fn download_body(
                     _ = cancel.cancelled() => {
                         return Err(session_history_download_cancelled_error());
                     }
-                    _ = tokio::time::sleep(object_download_retry_delay()) => {}
+                    _ = sleep_object_download_retry_delay() => {}
                 }
                 attempt += 1;
             }

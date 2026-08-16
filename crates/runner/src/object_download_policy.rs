@@ -32,6 +32,14 @@ pub(crate) const fn object_download_retry_delay() -> Duration {
     }
 }
 
+/// Wait between retries while avoiding a timer dependency when tests disable the delay.
+pub(crate) async fn sleep_object_download_retry_delay() {
+    let delay = object_download_retry_delay();
+    if !delay.is_zero() {
+        tokio::time::sleep(delay).await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
