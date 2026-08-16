@@ -7727,6 +7727,46 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(videoWithSelectionEnabledPrompt).not.toContain("--model");
     await cancelChatRun(actor, videoWithSelectionEnabled.runId);
 
+    // Run options are the composer's channel for video parameters now. They
+    // ride one message, reach no table, and only enter the prompt when the
+    // user moved a value off the effective model's default.
+    const videoRunOptions = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a clip from this brief",
+      runOptions: {
+        video: {
+          aspectRatio: "9:16",
+          duration: "6s",
+          resolution: "480p",
+          generateAudio: false,
+        },
+      },
+    });
+    const videoRunOptionsPrompt =
+      (await api.readRun(actor, videoRunOptions.runId)).appendSystemPrompt ??
+      "";
+    expect(videoRunOptionsPrompt).toContain("# Video Generation Settings");
+    expect(videoRunOptionsPrompt).toContain("- Aspect ratio: 9:16");
+    expect(videoRunOptionsPrompt).toContain("- Duration: 6s");
+    expect(videoRunOptionsPrompt).toContain("- Resolution: 480p");
+    expect(videoRunOptionsPrompt).toContain("- Audio: off");
+    expect(videoRunOptionsPrompt).toContain(
+      "`--aspect-ratio 9:16 --duration 6s --resolution 480p --no-audio` verbatim",
+    );
+    await cancelChatRun(actor, videoRunOptions.runId);
+
+    // Most runs never generate a video, so a send that set nothing carries no
+    // trace of the block at all.
+    const withoutVideoRunOptions = await sendChatRun(actor, {
+      agentId,
+      prompt: "answer a plain question",
+    });
+    expect(
+      (await api.readRun(actor, withoutVideoRunOptions.runId))
+        .appendSystemPrompt ?? "",
+    ).not.toContain("# Video Generation Settings");
+    await cancelChatRun(actor, withoutVideoRunOptions.runId);
+
     const avatarId = 81;
     const avatarVoiceId = "en-US-ChristopherNeural";
     const avatar = await sendChatRun(actor, {

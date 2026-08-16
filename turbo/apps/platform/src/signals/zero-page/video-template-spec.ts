@@ -24,6 +24,11 @@ export interface VideoTemplateSpec {
 /**
  * Talking-avatar templates share the "video" envelope but take none of these
  * parameters, so they have no spec.
+ *
+ * Neither does a template with nothing stored on it. The composer no longer
+ * writes these parameters — they belong to the run — so a message sent today
+ * carries none, and resolving the catalog defaults for it would advertise a
+ * model and a duration the run never actually agreed to.
  */
 export function videoTemplateSpec(
   template: GenerationTemplateRequest,
@@ -33,6 +38,9 @@ export function videoTemplateSpec(
   }
   const { selection } = template;
   if (parseAvatarTemplateStylePresetId(selection.stylePresetId) !== undefined) {
+    return null;
+  }
+  if (selection.videoOptions === undefined) {
     return null;
   }
   const resolved = resolveVideoGenerationOptions(selection.videoOptions);
@@ -46,9 +54,4 @@ export function videoTemplateSpec(
 
 export function videoTemplateSpecText(spec: VideoTemplateSpec): string {
   return [spec.model, ...spec.core, ...spec.rest].join(" · ");
-}
-
-/** Everything the chip's settings zone shows, with the model left to its own zone. */
-export function videoTemplateSettingsText(spec: VideoTemplateSpec): string {
-  return [...spec.core, ...spec.rest].join(" · ");
 }

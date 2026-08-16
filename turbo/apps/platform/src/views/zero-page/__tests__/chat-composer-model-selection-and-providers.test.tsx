@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import {
   chatThreadsContract,
   chatThreadVideoModelContract,
+  type ChatRunOptionsRequest,
   type ChatThreadEvent,
   type ChatThreadServiceTier,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -3705,5 +3706,99 @@ describe("chat composer video model", () => {
     await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
     expect(desktopVideoModelButton()).toBeUndefined();
     expect(videoPanelButton("Manage more models")).toBeUndefined();
+  });
+
+  it("sends the video parameters chosen on the composer chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    let runOptions: ChatRunOptionsRequest | undefined;
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "claude-fable-5",
+      onRunCreate(body) {
+        runOptions = body.runOptions;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    // Chat mode owns the composer until the video control is chosen.
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(screen.queryByLabelText(/^Video options /)).not.toBeInTheDocument();
+
+    await user.click(await findDesktopVideoModelButton());
+
+    // Seedance 2.0 fast is the system default, and the chip states what that
+    // model would use before anything is touched.
+    const chip = await screen.findByLabelText(
+      "Video options 16:9 \u00b7 8s \u00b7 720p",
+    );
+    await user.click(chip);
+    await user.click(
+      within(
+        await screen.findByRole("radiogroup", { name: "Ratio" }),
+      ).getByRole("radio", { name: "9:16" }),
+    );
+    await user.click(
+      within(
+        await screen.findByRole("radiogroup", { name: "Resolution" }),
+      ).getByRole("radio", { name: "480p" }),
+    );
+    await screen.findByLabelText("Video options 9:16 \u00b7 8s \u00b7 480p");
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Make me a clip",
+    );
+
+    // Only what the user moved off the model's default travels with the send,
+    // and it travels as a run option rather than as persisted state.
+    await waitFor(() => {
+      expect(runOptions).toStrictEqual({
+        video: { aspectRatio: "9:16", resolution: "480p" },
+      });
+    });
+  });
+
+  it("offers the pinned model's own values on the composer chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    mockVideoModelThread("MiniMax-H3");
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findDesktopVideoModelButton());
+
+    // MiniMax H3 accepts neither 720p nor 1080p, so the chip reads its own
+    // default instead and the panel never offers a value it would reject.
+    const chip = await screen.findByLabelText(
+      "Video options 16:9 \u00b7 8s \u00b7 2k",
+    );
+    await user.click(chip);
+    const resolutions = await screen.findByRole("radiogroup", {
+      name: "Resolution",
+    });
+    expect(
+      within(resolutions)
+        .getAllByRole("radio")
+        .map((option) => {
+          return option.textContent;
+        }),
+    ).toStrictEqual(["768p", "2k"]);
+    expect(
+      within(resolutions).queryByRole("radio", { name: "720p" }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -2673,6 +2673,10 @@ const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
       priorContext: "",
       context: {
         generationTemplatePrompt: "",
+        // A queued message is dispatched from its persisted chat event, and
+        // run options are deliberately never persisted, so there is nothing to
+        // replay here.
+        videoRunOptions: null,
         computerUseHostDisplayName: null,
         agentRunSource: args.agentRunSource,
       },

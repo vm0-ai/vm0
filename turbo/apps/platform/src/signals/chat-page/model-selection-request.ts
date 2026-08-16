@@ -1,5 +1,6 @@
 import type {
   ChatRunOptionsRequest,
+  ChatRunVideoOptionsRequest,
   ChatThreadServiceTier,
   CodexServiceTier,
   UserMessageDocument,
@@ -33,13 +34,23 @@ export function withSelectedModelAnnotation(
   };
 }
 
+/**
+ * Run options travel with one message and are never persisted, which is what
+ * makes this the channel for both the Codex tier and the video parameters:
+ * neither is a property of the thread.
+ */
 export function runOptionsFromModelProviderSelection(
   value: ModelProviderSelection | null,
   codexFastModeEnabled: boolean,
+  videoRunOptions?: ChatRunVideoOptionsRequest,
 ): ChatRunOptionsRequest | undefined {
-  return codexFastModeEnabled && value?.codexServiceTier === "fast"
-    ? { codexServiceTier: "fast" }
-    : undefined;
+  const runOptions: ChatRunOptionsRequest = {
+    ...(codexFastModeEnabled && value?.codexServiceTier === "fast"
+      ? { codexServiceTier: "fast" as const }
+      : {}),
+    ...(videoRunOptions === undefined ? {} : { video: videoRunOptions }),
+  };
+  return Object.keys(runOptions).length > 0 ? runOptions : undefined;
 }
 
 export function threadCodexServiceTierFromSelection(

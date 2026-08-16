@@ -10,7 +10,10 @@ import { delay, timeout } from "signal-timers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
-import type { VideoModel } from "@okouai/core/video-model-catalog";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@okouai/core/video-model-catalog";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
 import { onRef, onRejection, resetSignal, setLoop, settle } from "../utils.ts";
@@ -54,6 +57,7 @@ import {
   chatThreadArtifactsContract,
   resolveChatEventRecommendedFollowups,
   type ChatRunOptionsRequest,
+  type ChatRunVideoOptionsRequest,
   type GenerationTemplateRequest,
   type ChatEvent as PersistedChatEvent,
   type FeedbackNotePart,
@@ -81,6 +85,7 @@ import {
   imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
+import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -566,6 +571,21 @@ function createVideoModelSelection(
     return selected !== null && isVideoModelId(selected) ? selected : null;
   });
 
+  // Same three steps the API resolves a run's video model through, so the
+  // composer's parameter panel offers what that run would accept.
+  const effectiveVideoModel$ = computed(async (get): Promise<VideoModel> => {
+    const pinned = get(selectedVideoModel$);
+    if (pinned !== null) {
+      return pinned;
+    }
+    const preferred = (await get(userModelPreference$)).selectedVideoModel;
+    return preferred !== null &&
+      preferred !== undefined &&
+      isVideoModelId(preferred)
+      ? preferred
+      : DEFAULT_VIDEO_MODEL;
+  });
+
   const setVideoModelSelection$ = command(
     async ({ set }, value: VideoModel | null, signal: AbortSignal) => {
       await set(
@@ -577,7 +597,7 @@ function createVideoModelSelection(
     },
   );
 
-  return { selectedVideoModel$, setVideoModelSelection$ };
+  return { selectedVideoModel$, effectiveVideoModel$, setVideoModelSelection$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -2733,11 +2753,15 @@ function queueUserMessage(
 function sendRuntimeOptions(
   features: Partial<Record<FeatureSwitchKey, boolean>>,
   modelSelection: ModelProviderSelection | null,
+  videoRunOptions: ChatRunVideoOptionsRequest | undefined,
 ) {
   return {
     runOptions: runOptionsFromModelProviderSelection(
       modelSelection,
       features[FeatureSwitchKey.CodexFastMode] ?? false,
+      (features[FeatureSwitchKey.VideoModelSelection] ?? false)
+        ? videoRunOptions
+        : undefined,
     ),
     realAgentInPreviewEnabled:
       features[FeatureSwitchKey.RealAgentInPreview] ?? false,
@@ -2876,6 +2900,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       const { runOptions, realAgentInPreviewEnabled } = sendRuntimeOptions(
         get(featureSwitch$),
         request.modelSelection,
+        request.options?.videoRunOptions,
       );
       const [, sendResult] = await Promise.all([
         flushDraftForSend(request.options?.forward, () => {
@@ -3004,6 +3029,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       const { runOptions, realAgentInPreviewEnabled } = sendRuntimeOptions(
         features,
         modelSelection,
+        options.videoRunOptions,
       );
       await Promise.all([
         options.forward ? Promise.resolve() : set(flushDraftClear$, signal),
@@ -3700,6 +3726,9 @@ function createThreadSubmitMessageSignal(
                 cloudBrowserEnabled: explicit ? cloudBrowserEnabled : undefined,
                 generationTemplate: submission.generationTemplate,
                 editorDocument: submission.editorDocument,
+                ...(submission.videoRunOptions === undefined
+                  ? {}
+                  : { videoRunOptions: submission.videoRunOptions }),
                 ...(options.forward ? { forward: options.forward } : {}),
                 ...(options.onOptimisticSend
                   ? { onOptimisticSend: options.onOptimisticSend }
@@ -3715,6 +3744,9 @@ function createThreadSubmitMessageSignal(
                 ...(explicit ? { cloudBrowserEnabled } : {}),
                 generationTemplate: submission.generationTemplate,
                 editorDocument: submission.editorDocument,
+                ...(submission.videoRunOptions === undefined
+                  ? {}
+                  : { videoRunOptions: submission.videoRunOptions }),
                 ...(options.forward ? { forward: options.forward } : {}),
                 ...(options.onOptimisticSend
                   ? { onOptimisticSend: options.onOptimisticSend }
@@ -3791,6 +3823,7 @@ function createChatThreadComposerSignals(
     configureSelectedModel$: modelSelection.configureSelectedModel$,
     videoModel: {
       selectedVideoModel$: options.videoModelSelection.selectedVideoModel$,
+      effectiveVideoModel$: options.videoModelSelection.effectiveVideoModel$,
       setVideoModel$: options.videoModelSelection.setVideoModelSelection$,
     },
     computerUseHostId$: computerUseHostSelection.computerUseHostId$,
