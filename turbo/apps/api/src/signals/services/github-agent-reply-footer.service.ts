@@ -27,7 +27,7 @@ function displayLabel(row: {
   if (agentName) {
     return agentName;
   }
-  return row.composeName.trim() || "zero";
+  return row.composeName.trim() || "Okou";
 }
 
 async function resolveComposeLabel(
