@@ -317,7 +317,7 @@ async function entitledDirectRunActor(): Promise<{
   await api.grantProEntitlement(actor);
   await api.ensureOrgModelProvider(actor);
   const composeName = `system-cache-${randomUUID().slice(0, 8)}`;
-  const compose = await api.createCompose(actor, {
+  const compose = await api.createHistoricalCompose(actor, {
     version: "1",
     agents: {
       [composeName]: {

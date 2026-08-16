@@ -87,7 +87,6 @@ function activityEvent(): AgentEvent {
 
 describe("activity retained diagnostic data", () => {
   it("renders not found when the activity is missing or inaccessible", async () => {
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(404, {
         error: { code: "NOT_FOUND", message: "Log not found" },
@@ -103,7 +102,6 @@ describe("activity retained diagnostic data", () => {
 
   it("downloads events with metadata, context, and network data", async () => {
     const downloads = context.mocks.browser.blobDownload();
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, logDetail());
     });
@@ -168,7 +166,6 @@ describe("activity retained diagnostic data", () => {
 
   it("keeps downloads available when context is unavailable", async () => {
     const downloads = context.mocks.browser.blobDownload();
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, logDetail());
     });

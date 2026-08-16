@@ -80,7 +80,6 @@ import { chatThreadRoutes } from "./routes/chat-threads";
 import { chatEventsRoutes } from "./routes/chat-events";
 import { sharedThreadRoutes } from "./routes/shared-threads";
 import { claudeCodeDeviceAuthRoutes } from "./routes/claude-code-device-auth";
-import { zeroComposesRoutes } from "./routes/zero-composes";
 import { computerUseAuthorizationRoutes } from "./routes/computer-use-authorization";
 import { computerUseRoutes } from "./routes/computer-use";
 import { codexDeviceAuthRoutes } from "./routes/codex-device-auth";
@@ -272,7 +271,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...chatEventsRoutes,
   ...sharedThreadRoutes,
   ...claudeCodeDeviceAuthRoutes,
-  ...zeroComposesRoutes,
   ...computerUseAuthorizationRoutes,
   ...computerUseRoutes,
   ...codexDeviceAuthRoutes,

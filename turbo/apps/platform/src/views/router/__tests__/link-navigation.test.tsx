@@ -21,7 +21,6 @@ beforeEach(async () => {
 });
 
 function mockAPIs(): void {
-  context.mocks.data.composesList([]);
   context.mocks.data.team([
     {
       id: "c0000000-0000-4000-a000-000000000001",

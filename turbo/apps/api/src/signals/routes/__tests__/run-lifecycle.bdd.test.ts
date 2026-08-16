@@ -59,17 +59,16 @@ import {
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
+import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
 import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { seedUserSecret, seedUserVariable } from "./helpers/user-config-state";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
@@ -1951,7 +1950,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await bdd.updateUserTimezone(actor, "Asia/Shanghai");
     const prompt = "direct service dispatch timing should not leak prompt";
     const composeName = `bdd-direct-service-timing-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -2190,7 +2189,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const composeName = `bdd-manifest-shape-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       volumes: {
         cache: {
@@ -2498,7 +2497,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const composeName = `bdd-exact-candidate-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       volumes: {
         primary: { name: storageName, version: prepared.versionId },
@@ -2581,7 +2580,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const api = createRunsApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
     const composeName = `bdd-storage-manifest-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -2682,7 +2681,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       headVersionId: preparedPinnedArtifact.versionId,
     });
     const composeName = `bdd-storage-persistence-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       volumes: {
         checkpoint: {
@@ -2926,7 +2925,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const webhooks = createWebhookCallbackApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
     const composeName = `bdd-legacy-storage-state-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -2983,7 +2982,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const storages = createStoragesBddApi(context);
     const { actor } = await entitledRunActor();
     const composeName = `bdd-artifact-head-commit-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -3189,7 +3188,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const { actor } = await entitledRunActor();
     const prompt = "version timing should not leak prompt";
     const composeName = `bdd-version-timing-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -3598,7 +3597,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiError(emptySupport.body);
 
     const composeName = `bdd-runner-profile-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -6897,7 +6896,7 @@ describe("RUN-02: persisted run environment resolution", () => {
     });
 
     const composeName = `bdd-persisted-environment-${suffix.toLowerCase()}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -6938,7 +6937,7 @@ describe("RUN-02: persisted run environment resolution", () => {
     expect(cancelled.status).toBe("cancelled");
 
     const variableOnlyComposeName = `bdd-persisted-vars-${suffix.toLowerCase()}`;
-    const variableOnlyCompose = await api.createCompose(actor, {
+    const variableOnlyCompose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [variableOnlyComposeName]: {
@@ -7062,12 +7061,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
-    const compose = await createComposesBddApi(context).requestReadComposeById(
-      actor,
-      agentId,
-      [200],
-    );
-    const agentComposeVersionId = compose.body.headVersionId;
+    const compose = await readHistoricalAgentComposeHeadFixture(agentId);
+    const agentComposeVersionId = compose.headVersionId;
     if (!agentComposeVersionId) {
       throw new Error("Expected the Zero-backed agent compose to have a head");
     }
@@ -7295,7 +7290,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       refreshToken: "x-bdd-overridden-refresh",
     });
     const composeName = `bdd-overridden-connector-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -7394,7 +7389,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       host: "gitlab.example.com",
     });
     const composeName = `bdd-compose-overrides-connector-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -7445,7 +7440,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       refreshToken: "test-oauth-bdd-refresh",
     });
     const composeName = `bdd-connector-var-alias-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -7494,7 +7489,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       refreshToken: "incompatible-refresh",
     });
     const composeName = `bdd-incompatible-connector-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -8023,7 +8018,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.grantProEntitlement(actor);
     const kms = useSecretKmsProbe();
     const composeName = `bdd-secret-refs-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -8086,7 +8081,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
     const kms = useSecretKmsProbe();
     const composeName = `bdd-secret-fallback-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -12032,7 +12027,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
   it("preserves session agent identity when compose versions are shared", async () => {
     const bdd = createBddApi(context);
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
     const foreignActor = bdd.user();
@@ -12065,11 +12059,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(agentId).not.toBe(foreignAgentId);
 
-    const foreignCompose = await authOrg.readComposeById(
-      foreignActor,
-      foreignAgentId,
-    );
-    const currentCompose = await authOrg.readComposeById(actor, agentId);
+    const foreignCompose =
+      await readHistoricalAgentComposeHeadFixture(foreignAgentId);
+    const currentCompose = await readHistoricalAgentComposeHeadFixture(agentId);
     expect(foreignCompose.headVersionId).toStrictEqual(expect.any(String));
     expect(currentCompose.headVersionId).toBe(foreignCompose.headVersionId);
 
@@ -12233,7 +12225,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       accessToken: "cloudflare-direct-bdd-token",
     });
     const composeName = `bdd-cloudflare-direct-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -12332,19 +12324,15 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const appUrl = "https://app.writer-stop.example.test";
     mockEnv("APP_URL", appUrl);
     const api = createRunsApi(context);
-    const composes = createComposesBddApi(context);
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
     if (!actor.orgId) {
       throw new Error("The legacy compose fixture requires an organization");
     }
 
-    const canonicalCompose = await composes.requestReadComposeById(
-      actor,
-      agentId,
-      [200],
-    );
+    const canonicalCompose =
+      await readHistoricalAgentComposeHeadFixture(agentId);
     const canonicalAgent = Object.values(
-      canonicalCompose.body.content?.agents ?? {},
+      canonicalCompose.content?.agents ?? {},
     )[0];
     expect(canonicalAgent?.environment).toStrictEqual({
       OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
@@ -12355,10 +12343,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
       ZERO_TOKEN: `\${{ secrets.ZERO_TOKEN }}`,
     };
-    const legacyCompose = await api.createCompose(actor, {
+    const legacyCompose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
-        [canonicalCompose.body.name]: {
+        [canonicalCompose.name]: {
           framework: "claude-code",
           environment: legacyEnvironment,
         },
@@ -12416,15 +12404,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     ).toBeFalsy();
     await api.requestCancelRun(actor, current.runId, [200]);
 
-    const unchangedCompose = await composes.requestReadComposeById(
-      actor,
-      agentId,
-      [200],
-    );
-    expect(unchangedCompose.body.headVersionId).toBe(legacyCompose.versionId);
+    const unchangedCompose =
+      await readHistoricalAgentComposeHeadFixture(agentId);
+    expect(unchangedCompose.headVersionId).toBe(legacyCompose.versionId);
     expect(
-      Object.values(unchangedCompose.body.content?.agents ?? {})[0]
-        ?.environment,
+      Object.values(unchangedCompose.content?.agents ?? {})[0]?.environment,
     ).toStrictEqual(legacyEnvironment);
   });
 
@@ -13624,7 +13608,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     // provider, or connector secrets, so no encrypted secrets map is stored
     // with the queued job.
     const composeName = `bdd-no-secrets-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -13665,7 +13649,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
 
     // A compose pinned to a non-vm0 runner group fails dispatch at creation.
     const foreignName = `bdd-foreign-${randomUUID().slice(0, 8)}`;
-    const foreignCompose = await api.createCompose(actor, {
+    const foreignCompose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [foreignName]: {
@@ -15846,7 +15830,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     // Direct compose runs created without vars leave the stored vars null,
     // and their zero-run rows carry no model provider or pinned model.
     const composeName = `bdd-null-vars-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [composeName]: {

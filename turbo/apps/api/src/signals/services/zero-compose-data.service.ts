@@ -1,5 +1,4 @@
 import { command, computed, type Computed } from "ccstate";
-import type { ComposeListItem } from "@okouai/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
@@ -7,13 +6,12 @@ import {
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { storages } from "@okouai/db/schema/storage";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import {
   getInstructionsStorageName,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
 import type { Tx } from "../../lib/db-types";
@@ -41,41 +39,6 @@ export function zeroComposeExists(args: {
       .limit(1);
 
     return Boolean(row);
-  });
-}
-
-export function zeroComposeList(
-  orgId: string,
-): Computed<Promise<{ readonly composes: readonly ComposeListItem[] }>> {
-  return computed(async (get) => {
-    const rows = await get(db$)
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-        updatedAt: agentComposes.updatedAt,
-        displayName: zeroAgents.displayName,
-        description: zeroAgents.description,
-        sound: zeroAgents.sound,
-      })
-      .from(agentComposes)
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .where(eq(agentComposes.orgId, orgId))
-      .orderBy(desc(agentComposes.updatedAt));
-
-    return {
-      composes: rows.map((row) => {
-        return {
-          id: row.id,
-          name: row.name,
-          displayName: row.displayName,
-          description: row.description,
-          sound: row.sound,
-          headVersionId: row.headVersionId,
-          updatedAt: row.updatedAt.toISOString(),
-        };
-      }),
-    };
   });
 }
 

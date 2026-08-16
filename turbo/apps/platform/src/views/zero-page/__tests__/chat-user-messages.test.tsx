@@ -652,7 +652,6 @@ describe("user messages", () => {
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
-    context.mocks.data.composesList([]);
     context.mocks.api(logsListContract.list, ({ respond }) => {
       return respond(200, {
         data: [],
@@ -744,7 +743,6 @@ describe("user messages", () => {
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
-    context.mocks.data.composesList([]);
     context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
       return respond(404, {
         error: { code: "BROWSER_NOT_FOUND", message: "Browser not found" },

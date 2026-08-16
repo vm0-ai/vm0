@@ -60,7 +60,6 @@ describe("activity paged events", () => {
     const releaseSecondPage = context.mocks.deferred<void>();
     let secondPageStartedResolved = false;
 
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
@@ -130,7 +129,6 @@ describe("activity paged events", () => {
   });
 
   it("loads every paged event", async () => {
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
@@ -178,7 +176,6 @@ describe("activity paged events", () => {
       cursor: string | undefined;
     }[] = [];
 
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
@@ -235,7 +232,6 @@ describe("activity paged events", () => {
     let requestCount = 0;
     const requestedSequences: (number | undefined)[] = [];
 
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, makeLogDetail({ status: "running" }));
     });
@@ -285,7 +281,6 @@ describe("activity paged events", () => {
     let requestCount = 0;
     const requestedSequences: (number | undefined)[] = [];
 
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, makeLogDetail({ status: "running" }));
     });
@@ -326,7 +321,6 @@ describe("activity paged events", () => {
     let requestCount = 0;
     const requestedSequences: (number | undefined)[] = [];
 
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
@@ -363,7 +357,6 @@ describe("activity paged events", () => {
   });
 
   it("keeps activity details visible when event loading fails", async () => {
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
@@ -400,7 +393,6 @@ describe("activity paged events", () => {
     const secondRunId = "a0000000-0000-4000-a000-000000000100";
     let secondRunRequestCount = 0;
 
-    context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
       return respond(
         200,

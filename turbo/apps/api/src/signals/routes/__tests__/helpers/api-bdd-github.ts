@@ -1,7 +1,6 @@
 import { Buffer } from "node:buffer";
 import { generateKeyPairSync, randomInt } from "node:crypto";
 
-import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import {
   integrationsGithubContract,
   type GithubConnectUserBody,
@@ -11,15 +10,10 @@ import { zeroConnectorsBySlugContract } from "@okouai/api-contracts/contracts/ze
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
-import { z } from "zod";
 
 import { createApp } from "../../../../app-factory";
 import { mockOptionalEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
-import {
-  createAgentComposeFixture,
-  readAgentComposeByIdFixture,
-} from "../../../../test-fixtures/agent-composes";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser } from "./api-bdd";
@@ -43,8 +37,6 @@ const GITHUB_APP_CLIENT_SECRET = "github-app-client-secret";
 
 const GITHUB_APP_ID = "123456";
 const DEFAULT_TEST_ORIGIN = "http://localhost:3000";
-
-type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 
 interface GithubBearerAuth {
   readonly bearer: string;
@@ -432,41 +424,6 @@ export function createGithubBddApi(context: TestContext) {
         }),
         [200],
       );
-    },
-
-    async createCompose(
-      actor: ApiTestUser,
-      content: ComposeContent,
-    ): Promise<{ readonly composeId: string; readonly name: string }> {
-      if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
-      }
-      const response = await accept(
-        createAgentComposeFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          content,
-          signal: context.signal,
-        }),
-        [200, 201],
-      );
-      return { composeId: response.body.composeId, name: response.body.name };
-    },
-
-    async readComposeName(
-      actor: ApiTestUser,
-      composeId: string,
-    ): Promise<string> {
-      if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
-      }
-      const response = await accept(
-        readAgentComposeByIdFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          composeId,
-        }),
-        [200],
-      );
-      return response.body.name;
     },
 
     /**

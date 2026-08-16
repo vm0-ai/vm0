@@ -13,7 +13,6 @@ import {
   cliAuthTestEnableConnectorContract,
   cliAuthTestTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth-test";
-import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
@@ -38,7 +37,6 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
-import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import type { RouteEntry } from "../../../route-entry";
 import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
@@ -75,8 +73,6 @@ type SeedTestEnableConnectorBody = z.infer<
 type SeedTestCodexOauthBody = z.infer<
   (typeof cliAuthTestCodexOauthContract.create)["body"]
 >;
-type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
-
 const authDeviceRoutes: readonly RouteEntry[] = [
   ...authMeRoutes,
   ...cliAuthRoutes,
@@ -574,21 +570,6 @@ export function createAuthDeviceApiActions(context: TestContext) {
 
     async requestTestCodexOauthRaw(rawBody: string) {
       return await postRawJson("/api/cli/auth/test-codex-oauth", rawBody);
-    },
-
-    async createCompose(actor: ApiTestUser, content: ComposeContent) {
-      if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
-      }
-      const response = await accept(
-        createAgentComposeFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          content,
-          signal: context.signal,
-        }),
-        [200, 201],
-      );
-      return response.body;
     },
 
     async readUserConnectors(actor: ApiTestUser, agentId: string) {

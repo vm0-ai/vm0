@@ -56,9 +56,9 @@ async function projectOwnedChatEventSearch(chatThreadIds: readonly string[]) {
 
 async function createProjectionThread(): Promise<string> {
   const actor = bdd.user();
-  const compose = await chat.createComposeForChatThread(actor);
+  const agent = await chat.createAgentForChatThread(actor);
   const thread = await chat.createThread(actor, {
-    agentId: compose.composeId,
+    agentId: agent.agentId,
     title: `Projection ${randomUUID()}`,
   });
   return thread.id;
@@ -177,9 +177,9 @@ describe("GET /api/cron/project-chat-event-search", () => {
 
   it("skips a thread whose deletion commits during projection", async () => {
     const actor = bdd.user();
-    const compose = await chat.createComposeForChatThread(actor);
+    const agent = await chat.createAgentForChatThread(actor);
     const thread = await chat.createThread(actor, {
-      agentId: compose.composeId,
+      agentId: agent.agentId,
       title: `Projection deletion ${randomUUID()}`,
     });
     await insertChatSearchProjectionCoverageFixture({

@@ -253,7 +253,7 @@ describe("okou web-search route", () => {
     const pricing = await setupConfiguredWebSearchPricing();
     configureProvider();
     const name = `web-search-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createCompose(actor, {
+    const compose = await api.createHistoricalCompose(actor, {
       version: "1.0",
       agents: {
         [name]: {

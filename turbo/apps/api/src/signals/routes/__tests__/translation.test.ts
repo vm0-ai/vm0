@@ -83,7 +83,7 @@ async function seedActor(): Promise<TranslationActor> {
   });
   const api = createRunsApi(context);
   const name = `translation-${randomUUID().slice(0, 8)}`;
-  const compose = await api.createCompose(actor, {
+  const compose = await api.createHistoricalCompose(actor, {
     version: "1.0",
     agents: {
       [name]: {

@@ -40,12 +40,12 @@ async function createSearchThread(
   actor: ApiTestUser,
   agentName: string,
 ): Promise<{ readonly agentId: string; readonly threadId: string }> {
-  const compose = await chat.createComposeForChatThread(actor, agentName);
+  const agent = await chat.createAgentForChatThread(actor, agentName);
   const thread = await chat.createThread(actor, {
-    agentId: compose.composeId,
+    agentId: agent.agentId,
     title: `Search reader ${randomUUID()}`,
   });
-  return { agentId: compose.composeId, threadId: thread.id };
+  return { agentId: agent.agentId, threadId: thread.id };
 }
 
 describe("GET /api/okou/chat/search durable reader", () => {
@@ -146,7 +146,7 @@ describe("GET /api/okou/chat/search durable reader", () => {
       owner,
       `projected-primary-${randomUUID().slice(0, 8)}`,
     );
-    const replacement = await chat.createComposeForChatThread(
+    const replacement = await chat.createAgentForChatThread(
       owner,
       `source-replacement-${randomUUID().slice(0, 8)}`,
     );
@@ -165,7 +165,7 @@ describe("GET /api/okou/chat/search durable reader", () => {
     await updateChatSearchSourceThreadFixture({
       chatThreadId: primary.threadId,
       userId: peer.userId,
-      agentComposeId: replacement.composeId,
+      agentComposeId: replacement.agentId,
     });
 
     const byProjectedAgent = await chat.searchChat(owner, keyword, {
@@ -182,7 +182,7 @@ describe("GET /api/okou/chat/search durable reader", () => {
     });
 
     const bySourceThreadAgent = await chat.searchChat(owner, keyword, {
-      agentId: replacement.composeId,
+      agentId: replacement.agentId,
     });
     expect(bySourceThreadAgent.results).toStrictEqual([]);
     const peerSearch = await chat.searchChat(peer, keyword);

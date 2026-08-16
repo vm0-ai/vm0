@@ -14,11 +14,14 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import {
+  createHistoricalAgentComposeFixture,
+  readHistoricalAgentComposeHeadFixture,
+} from "../../../test-fixtures/historical-agent-composes";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { integrationsGithubUploadCompleteRoutes } from "../integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "../integrations-github-upload-init";
@@ -35,7 +38,6 @@ const mocks = createZeroRouteMocks(context);
 const github = createGithubBddApi(context);
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
-const composes = createComposesBddApi(context);
 
 interface GitHubFileFixture {
   readonly orgId: string;
@@ -107,28 +109,30 @@ describe("GitHub file integration routes", () => {
   /**
    * Creates a real run for the fixture agent through the test-only adapter.
    * Run admission needs org credits, granted through the Stripe webhook
-   * product path; the agent compose head is updated (through the product
-   * compose upsert) to declare an inline ANTHROPIC_API_KEY so run creation
-   * does not require an org model provider.
+   * product path. The current Agent API cannot express the legacy inline
+   * ANTHROPIC_API_KEY state, so a narrow historical Compose fixture supplies
+   * it and run creation does not require an org model provider.
    */
   async function seedRunForFixture(
     fixture: GitHubFileFixture,
   ): Promise<{ readonly runId: string }> {
     bdd.acceptAgentStorageWrites();
     await api.grantProEntitlement(fixture.actor);
-    const composeRead = await composes.requestReadComposeById(
-      fixture.actor,
+    const compose = await readHistoricalAgentComposeHeadFixture(
       fixture.composeId,
-      [200],
     );
-    await api.createCompose(fixture.actor, {
-      version: "1.0",
-      agents: {
-        [composeRead.body.name]: {
-          framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+    await createHistoricalAgentComposeFixture({
+      actor: { userId: fixture.userId, orgId: fixture.orgId },
+      content: {
+        version: "1.0",
+        agents: {
+          [compose.name]: {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+          },
         },
       },
+      signal: context.signal,
     });
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();

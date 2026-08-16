@@ -544,18 +544,6 @@ describe("CLI-TEST: test-connector", () => {
 describe("CLI-TEST: test-enable-connector", () => {
   const ZERO_COMPOSE_ID = "00000000-0000-0000-0000-000000000000";
 
-  function composeContent(name: string) {
-    return {
-      version: "1",
-      agents: {
-        [name]: {
-          framework: "claude-code" as const,
-          description: "BDD cli-auth compose agent",
-        },
-      },
-    };
-  }
-
   it("hides test-enable-connector in production", async () => {
     mockEnv("ENV", "production");
     const response = await authDevice.requestTestEnableConnector(
@@ -627,31 +615,31 @@ describe("CLI-TEST: test-enable-connector", () => {
     });
   });
 
-  it("enables connectors on a compose visible through the agent user-connectors API", async () => {
+  it("enables connectors on an agent visible through the user-connectors API", async () => {
     const actor = bdd.user();
     await authDevice.provisionTestOrg(actor);
-    const compose = await authDevice.createCompose(
-      actor,
-      composeContent(`cli-auth-bdd-enable-${actor.userId.slice(-12)}`),
-    );
+    const agent = await bdd.createAgent(actor, {
+      displayName: `CLI auth BDD enable ${actor.userId.slice(-12)}`,
+      visibility: "private",
+    });
 
     const enabled = await authDevice.requestTestEnableConnector(
       { email: actor.email },
-      { composeId: compose.composeId, connectorSlugs: ["github", "slack"] },
+      { composeId: agent.agentId, connectorSlugs: ["github", "slack"] },
       [200],
     );
     expect(enabled.body).toStrictEqual({
       ok: true,
-      composeId: compose.composeId,
+      composeId: agent.agentId,
       connectorSlugs: ["github", "slack"],
     });
 
-    const agent = await bdd.readAgent(actor, compose.composeId);
-    expect(agent.visibility).toBe("private");
+    const updatedAgent = await bdd.readAgent(actor, agent.agentId);
+    expect(updatedAgent.visibility).toBe("private");
 
     const userConnectors = await authDevice.readUserConnectors(
       actor,
-      compose.composeId,
+      agent.agentId,
     );
     expect([...userConnectors.enabledConnectorSlugs].sort()).toStrictEqual([
       "github",
@@ -671,13 +659,13 @@ describe("CLI-TEST: test-enable-connector", () => {
     expect(updatedPublicAgent.visibility).toBe("private");
     expect(updatedPublicAgent.displayName).toBe(publicAgent.displayName);
 
-    const customEmailCompose = await authDevice.createCompose(
-      actor,
-      composeContent(`cli-auth-bdd-custom-${actor.userId.slice(-12)}`),
-    );
+    const customEmailAgent = await bdd.createAgent(actor, {
+      displayName: `CLI auth BDD custom ${actor.userId.slice(-12)}`,
+      visibility: "private",
+    });
     await authDevice.requestTestEnableConnector(
       { email: "custom@test.com" },
-      { composeId: customEmailCompose.composeId, connectorSlugs: ["github"] },
+      { composeId: customEmailAgent.agentId, connectorSlugs: ["github"] },
       [200],
     );
     expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
@@ -685,33 +673,33 @@ describe("CLI-TEST: test-enable-connector", () => {
     });
   });
 
-  it("does not enable connectors for another test user's compose", async () => {
+  it("does not enable connectors for another test user's agent", async () => {
     const owner = bdd.user();
     await authDevice.provisionTestOrg(owner);
-    const compose = await authDevice.createCompose(
-      owner,
-      composeContent(`cli-auth-bdd-owner-${owner.userId.slice(-12)}`),
-    );
+    const agent = await bdd.createAgent(owner, {
+      displayName: `CLI auth BDD owner ${owner.userId.slice(-12)}`,
+      visibility: "private",
+    });
 
     const other = bdd.user();
     await authDevice.provisionTestOrg(other);
     const response = await authDevice.requestTestEnableConnector(
       { email: other.email },
-      { composeId: compose.composeId, connectorSlugs: ["github"] },
+      { composeId: agent.agentId, connectorSlugs: ["github"] },
       [404],
     );
     expect(response.body).toStrictEqual({
-      error: `Compose not found: ${compose.composeId}`,
+      error: `Compose not found: ${agent.agentId}`,
     });
   });
 
   it("allows protected preview rewrites for enable-connector", async () => {
     const actor = bdd.user();
     await authDevice.provisionTestOrg(actor);
-    const compose = await authDevice.createCompose(
-      actor,
-      composeContent(`cli-auth-bdd-preview-${actor.userId.slice(-12)}`),
-    );
+    const agent = await bdd.createAgent(actor, {
+      displayName: `CLI auth BDD preview ${actor.userId.slice(-12)}`,
+      visibility: "private",
+    });
 
     mockEnv("ENV", "preview");
     mockOptionalEnv("USE_MOCK_CLAUDE", "true");
@@ -719,12 +707,12 @@ describe("CLI-TEST: test-enable-connector", () => {
 
     const enabled = await authDevice.requestTestEnableConnector(
       { email: actor.email },
-      { composeId: compose.composeId, connectorSlugs: ["github"] },
+      { composeId: agent.agentId, connectorSlugs: ["github"] },
       [200],
     );
     expect(enabled.body).toStrictEqual({
       ok: true,
-      composeId: compose.composeId,
+      composeId: agent.agentId,
       connectorSlugs: ["github"],
     });
   });

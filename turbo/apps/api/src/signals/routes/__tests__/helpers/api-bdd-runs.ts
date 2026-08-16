@@ -50,7 +50,7 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now, withNowScopeForTest } from "../../../../lib/time";
-import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
+import { createHistoricalAgentComposeFixture } from "../../../../test-fixtures/historical-agent-composes";
 import {
   createDirectRunFixture,
   listAgentRunsFixture,
@@ -703,7 +703,11 @@ export function createRunsApi(context: TestContext) {
       });
     },
 
-    async createCompose(
+    /**
+     * Constructs legacy Compose/version content that the current Agent API
+     * cannot express. Tests needing only a current Agent use createAgent().
+     */
+    async createHistoricalCompose(
       actor: ApiTestUser,
       content: ComposeContent,
     ): Promise<{
@@ -714,19 +718,11 @@ export function createRunsApi(context: TestContext) {
       if (!actor.orgId) {
         throw new Error("Compose fixtures require an org-scoped actor");
       }
-      const response = await accept(
-        createAgentComposeFixture({
-          actor: { userId: actor.userId, orgId: actor.orgId },
-          content,
-          signal: context.signal,
-        }),
-        [200, 201],
-      );
-      return {
-        composeId: response.body.composeId,
-        name: response.body.name,
-        versionId: response.body.versionId,
-      };
+      return await createHistoricalAgentComposeFixture({
+        actor: { userId: actor.userId, orgId: actor.orgId },
+        content,
+        signal: context.signal,
+      });
     },
 
     async createDirectRun(actor: ApiTestUser, body: DirectRunRequest) {
