@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.760.0](https://github.com/vm0-ai/vm0/compare/app-v0.759.2...app-v0.760.0) (2026-08-16)
+
+
+### Features
+
+* **app:** add desktop video model switch ([#27607](https://github.com/vm0-ai/vm0/issues/27607)) ([a5b77b8](https://github.com/vm0-ai/vm0/commit/a5b77b8ae22991012cb3b6c9da19d4dbd06fa469))
+
+
+### Refactoring
+
+* **identity:** switch integration ownership to user id ([#27618](https://github.com/vm0-ai/vm0/issues/27618)) ([1900732](https://github.com/vm0-ai/vm0/commit/1900732575de90a2e3a5169e819f6a9f60d025a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.10
+    * @okouai/core bumped to 8.562.7
+
 ## [0.759.2](https://github.com/vm0-ai/vm0/compare/app-v0.759.1...app-v0.759.2) (2026-08-16)
 
 

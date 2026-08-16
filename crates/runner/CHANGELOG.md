@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.168.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.19...runner-rs-v0.168.20) (2026-08-16)
+
+
+### Bug Fixes
+
+* **runner:** fail open on overlapping websocket prewarm correlation ([#27584](https://github.com/vm0-ai/vm0/issues/27584)) ([fc52c8b](https://github.com/vm0-ai/vm0/commit/fc52c8b5b57cf47c8170b4e4db622d1fdc6abdb2))
+
 ## [0.168.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.18...runner-rs-v0.168.19) (2026-08-16)
 
 
