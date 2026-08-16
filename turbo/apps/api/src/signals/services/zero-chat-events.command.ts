@@ -60,7 +60,7 @@ import {
   type CancelRunResult,
 } from "./zero-run-cancel.service";
 import { scheduleChatThreadTitleGeneration } from "./zero-chat-title.service";
-import { generateAndPersistInitialThinkingMessage } from "./zero-chat-initial-thinking.service";
+import { generateAndPersistInitialThinkingMessage } from "./chat-initial-thinking.service";
 import {
   isCodexFastServiceTierSupported,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -96,7 +96,7 @@ import {
   loadNextUnclaimedQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessageId,
   lockUserMessageQueueThread,
-} from "./zero-chat-queued-event.service";
+} from "./chat-queued-event.service";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
@@ -117,7 +117,7 @@ import {
 import {
   buildWebChatAppendSystemPrompt,
   type WebChatSessionPromptContext,
-} from "./zero-web-chat-session-prompt.service";
+} from "./web-chat-session-prompt.service";
 import { bestEffort } from "../utils";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";

@@ -127,7 +127,7 @@ import {
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
-import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
+import { loadWebChatIncompleteContext } from "./chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import {
   agentRunSourceAnnotation,
@@ -135,7 +135,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./chat-user-message.service";
-import { buildWebChatAppendSystemPrompt } from "./zero-web-chat-session-prompt.service";
+import { buildWebChatAppendSystemPrompt } from "./web-chat-session-prompt.service";
 import { appendQueuedRunAssistantMarker } from "./chat-queue-marker.service";
 import {
   integrationCompletionFallbackEventIdForRun,
@@ -149,7 +149,7 @@ import {
   type QueuedUserMessageContextType,
   type QueuedUserMessageTriggerSource,
   type QueuedUserMessage,
-} from "./zero-chat-queued-event.service";
+} from "./chat-queued-event.service";
 import { handleMorningBriefEmailInternalCallback } from "./internal-morning-brief-run-callback.service";
 import { sendUserPushNotifications } from "./push-notifications.service";
 import {
@@ -167,7 +167,7 @@ import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
 import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
-import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
+import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
 import {

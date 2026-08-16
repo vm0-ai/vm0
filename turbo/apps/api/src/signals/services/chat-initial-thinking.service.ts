@@ -26,7 +26,7 @@ import {
 } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
-import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
+import { queuedUserMessageExists } from "./chat-queued-event.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
@@ -37,7 +37,7 @@ import {
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
 
-const log = logger("api:zero:chat-initial-thinking");
+const log = logger("api:chat-initial-thinking");
 
 const FAST_CHAT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const INITIAL_THINKING_RUN_EVENT_ID = "thinking:initial";

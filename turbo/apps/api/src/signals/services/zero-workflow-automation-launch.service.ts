@@ -15,7 +15,7 @@ import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   finalizeClaimedRunUserMessage,
   resolveRunChatThreadModelContext,
-} from "./zero-chat-run-event.service";
+} from "./chat-run-event.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
 import {
   ApiDispatchTimingCollector,
