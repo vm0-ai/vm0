@@ -29,7 +29,7 @@ import { addUserCustomConnector } from "../services/user-connectors.service";
 import { commitConnectorRuntimeMutation } from "../services/connector-runtime-wakeup.service";
 import { publishCustomConnectorUserInvalidationAfterCommit as publishCustomUserInvalidation } from "../services/connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "../services/custom-connector-mcp-feature.service";
-import { getCustomConnectorById } from "../services/zero-custom-connector.service";
+import { getCustomConnectorById } from "../services/custom-connector.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {

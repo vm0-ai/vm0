@@ -39,7 +39,7 @@ import {
   type ConnectorRuntimeConnector,
   type ConnectorRuntimeSnapshot,
 } from "../services/connector-catalog-runtime.service";
-import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
+import { upsertConnectorTokenConnection$ } from "../services/connector-data.service";
 import {
   linkGithubVm0User,
   loadActiveGithubInstallationForOrg,

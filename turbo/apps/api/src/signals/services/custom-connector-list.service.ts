@@ -8,7 +8,7 @@ import { db$ } from "../external/db";
 import {
   normaliseCustomConnectorRow,
   serialiseCustomConnector,
-} from "./zero-custom-connector.service";
+} from "./custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import {
   customConnectorDefinitionHasConnectedConnection,

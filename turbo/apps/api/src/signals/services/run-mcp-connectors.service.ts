@@ -18,7 +18,7 @@ import {
 import {
   normaliseCustomConnectorRow,
   serialiseCustomConnector,
-} from "./zero-custom-connector.service";
+} from "./custom-connector.service";
 
 export function runMcpConnectorList(args: {
   readonly orgId: string;

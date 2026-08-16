@@ -7,7 +7,7 @@ import { pathParamsOf } from "../context/request";
 import {
   getCustomConnectorPermissionBundle,
   getCustomConnectorResponse,
-} from "../services/zero-custom-connector.service";
+} from "../services/custom-connector.service";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 

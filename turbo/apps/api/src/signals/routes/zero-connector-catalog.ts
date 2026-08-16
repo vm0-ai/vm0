@@ -18,7 +18,7 @@ import {
   listPublicConnectorCatalog,
   listPublicConnectorCatalogStatus,
 } from "../services/connector-catalog-reader.service";
-import { zeroConnectorList } from "../services/zero-connector-data.service";
+import { connectorList } from "../services/connector-data.service";
 import { notFound, providerUnavailable } from "../../lib/error";
 import { settle } from "../utils";
 
@@ -114,7 +114,7 @@ const listConnectorCatalogStatusInner$ = command(
 
     const connectorState = await settleConnectorCatalogRead(
       get(
-        zeroConnectorList({
+        connectorList({
           orgId: auth.orgId,
           userId: auth.userId,
         }),
@@ -154,7 +154,7 @@ const discoverConnectorCatalogInner$ = command(
 
     const connectorState = await settleConnectorCatalogRead(
       get(
-        zeroConnectorList({
+        connectorList({
           orgId: auth.orgId,
           userId: auth.userId,
         }),
@@ -204,7 +204,7 @@ const getConnectorCatalogInner$ = command(
 
     const connectorState = await settleConnectorCatalogRead(
       get(
-        zeroConnectorList({
+        connectorList({
           orgId: auth.orgId,
           userId: auth.userId,
         }),

@@ -8,7 +8,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   applyUserPermissionGrants$,
   listUserPermissionGrants$,
-} from "../services/zero-user-permission-grants.service";
+} from "../services/user-permission-grants.service";
 
 const userPermissionGrantAuthOptions = {
   requireOrganization: true,

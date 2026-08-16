@@ -4,7 +4,7 @@ import { zeroCustomConnectorProposalContract } from "@okouai/api-contracts/contr
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { saveCustomConnectorProposal$ } from "../services/zero-custom-connector.service";
+import { saveCustomConnectorProposal$ } from "../services/custom-connector.service";
 import type { RouteEntry } from "../route-entry";
 
 const saveProposalInner$ = command(

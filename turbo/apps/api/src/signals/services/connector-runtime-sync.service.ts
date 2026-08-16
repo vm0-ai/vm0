@@ -20,8 +20,8 @@ import {
 } from "./agent-run-create.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { resolveActiveNetworkPolicyRefreshes } from "./zero-user-permission-grants.service";
-import { loadCustomConnectorRuntimeData } from "./zero-custom-connector.service";
+import { resolveActiveNetworkPolicyRefreshes } from "./user-permission-grants.service";
+import { loadCustomConnectorRuntimeData } from "./custom-connector.service";
 
 const L = logger("connector-runtime-sync");
 

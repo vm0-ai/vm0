@@ -46,8 +46,8 @@ import {
 } from "./connector-action-resolver.service";
 import {
   upsertConnectorTokenConnection$,
-  zeroConnectorBySlug,
-} from "./zero-connector-data.service";
+  connectorBySlug,
+} from "./connector-data.service";
 import {
   authorizeConnectedConnector$,
   connectorAgentAuthorizationRequested,
@@ -633,7 +633,7 @@ const completedExternalCodeSessionResponse$ = command(
       {
         connectorLoader: () => {
           return get(
-            zeroConnectorBySlug({
+            connectorBySlug({
               orgId: args.orgId,
               userId: args.userId,
               connectorSlug: args.method.connectorSlug,

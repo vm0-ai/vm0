@@ -36,7 +36,7 @@ import type { SlackView } from "../external/slack-block-kit";
 import { createSlackClient } from "../external/slack-message-client";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { zeroConnectorList } from "../services/zero-connector-data.service";
+import { connectorList } from "../services/connector-data.service";
 import { userSecrets, userVariables } from "../services/user-data.service";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
@@ -130,7 +130,7 @@ const getSlackEnvironment$ = computed(
     const [userSecretList, userVarList, userConnectors] = await Promise.all([
       get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),
       get(userVariables({ orgId: auth.orgId, userId: auth.userId })),
-      get(zeroConnectorList({ orgId: auth.orgId, userId: auth.userId })),
+      get(connectorList({ orgId: auth.orgId, userId: auth.userId })),
     ]);
 
     const existingSecretNames = new Set([

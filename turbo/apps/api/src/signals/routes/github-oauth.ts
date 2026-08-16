@@ -48,7 +48,7 @@ import {
   verifyGithubConnectSignature,
 } from "../services/github-oauth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
-import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
+import { upsertConnectorTokenConnection$ } from "../services/connector-data.service";
 import { settle } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {

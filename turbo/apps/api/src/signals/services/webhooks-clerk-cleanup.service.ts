@@ -65,9 +65,9 @@ import {
   deleteUserUsageData,
 } from "./usage-event-cleanup.service";
 import {
-  deleteZeroConnectorLocalState$,
+  deleteConnectorLocalState$,
   loadStoredConnectorRuntimeSnapshot,
-} from "./zero-connector-data.service";
+} from "./connector-data.service";
 import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
 
 const L = logger("WebhookClerkCleanup");
@@ -398,7 +398,7 @@ const revokeOrgConnectorTokens$ = command(
 
     for (const row of rows) {
       await set(
-        deleteZeroConnectorLocalState$,
+        deleteConnectorLocalState$,
         {
           orgId,
           userId: row.userId,
@@ -435,7 +435,7 @@ const revokeUserConnectorTokens$ = command(
 
     for (const row of rows) {
       await set(
-        deleteZeroConnectorLocalState$,
+        deleteConnectorLocalState$,
         {
           orgId: row.orgId,
           userId,
