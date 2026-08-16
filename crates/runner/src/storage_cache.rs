@@ -55,6 +55,10 @@ use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
+use crate::object_download_policy::{
+    OBJECT_DOWNLOAD_MAX_ATTEMPTS, OBJECT_DOWNLOAD_TIMEOUT, is_retryable_http_status,
+    is_retryable_reqwest_error, object_download_retry_delay,
+};
 use crate::paths::{HomePaths, short_digest, touch_mtime};
 use crate::storage_plan::{ArchiveHandle, StoragePlan};
 use crate::telemetry::{JobTelemetry, SandboxOpRecord, SandboxOpReporter};
@@ -85,12 +89,6 @@ const GUEST_STAGE_BATCH_MAX_BYTES: usize = 15 * 1024 * 1024;
 const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
-/// Storage cache fetches are best-effort and capped to small archives, so a
-/// slow full GET should fall back to guest-download instead of holding the
-/// per-version cache lock for minutes across retry attempts.
-const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
-const CACHE_HTTP_MAX_ATTEMPTS: usize = 3;
-const CACHE_HTTP_RETRY_DELAY: Duration = Duration::from_millis(200);
 const STORAGE_CACHE_STAGE_TOTAL: &str = "storage_cache_stage_total";
 const STORAGE_CACHE_STAGE_BATCH_WRITE: &str = "storage_cache_stage_batch_write";
 const STORAGE_CACHE_STAGE_FAILED: &str = "storage-cache-stage-failed";
@@ -2003,6 +2001,8 @@ pub(crate) async fn prepare_fresh_archive_delivery(
     Ok(delivery)
 }
 
+/// Fresh storage delivery uses the shared bounded timeout and falls back to
+/// guest-download when its best-effort request cannot complete successfully.
 async fn fetch_fresh_archive(
     http: &Client,
     archive_url: &str,
@@ -2010,7 +2010,7 @@ async fn fetch_fresh_archive(
 ) -> Result<(Bytes, FreshArchiveSizeSource), &'static str> {
     let mut response = http
         .get(archive_url)
-        .timeout(DOWNLOAD_TIMEOUT)
+        .timeout(OBJECT_DOWNLOAD_TIMEOUT)
         .send()
         .await
         .map_err(|error| {
@@ -2523,7 +2523,7 @@ impl CacheHttpError {
         if let Some(status) = error.status() {
             return Self::status(phase, status);
         }
-        let retryable = reqwest_error_is_retryable(&error);
+        let retryable = is_retryable_reqwest_error(&error);
         Self::Transport {
             phase,
             detail: reqwest_error(error),
@@ -2547,9 +2547,7 @@ impl fmt::Display for CacheHttpError {
 impl CacheRetryableError for CacheHttpError {
     fn is_retryable(&self) -> bool {
         match self {
-            Self::Status { status, .. } => {
-                *status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
-            }
+            Self::Status { status, .. } => is_retryable_http_status(*status),
             Self::UnexpectedStatus { .. } => false,
             Self::Transport { retryable, .. } => *retryable,
         }
@@ -2631,33 +2629,21 @@ where
             Ok(value) => return Ok(value),
             Err(error) => {
                 let retryable = error.is_retryable();
-                let should_retry = retryable && attempt < CACHE_HTTP_MAX_ATTEMPTS;
+                let should_retry = retryable && attempt < OBJECT_DOWNLOAD_MAX_ATTEMPTS;
                 if !should_retry {
                     return Err(CacheRetryError {
                         error,
                         attempts: attempt,
-                        exhausted_retry: retryable && attempt >= CACHE_HTTP_MAX_ATTEMPTS,
+                        exhausted_retry: retryable && attempt >= OBJECT_DOWNLOAD_MAX_ATTEMPTS,
                     });
                 }
-                sleep_cache_retry_delay().await;
+                let delay = object_download_retry_delay();
+                if !delay.is_zero() {
+                    tokio::time::sleep(delay).await;
+                }
                 attempt += 1;
             }
         }
-    }
-}
-
-async fn sleep_cache_retry_delay() {
-    let delay = cache_http_retry_delay();
-    if !delay.is_zero() {
-        tokio::time::sleep(delay).await;
-    }
-}
-
-fn cache_http_retry_delay() -> Duration {
-    if cfg!(test) {
-        Duration::ZERO
-    } else {
-        CACHE_HTTP_RETRY_DELAY
     }
 }
 
@@ -2718,12 +2704,6 @@ async fn probe_size(http: &Client, url: &str) -> Result<SizeProbe, CacheHttpErro
 
 fn reqwest_error(e: reqwest::Error) -> String {
     e.without_url().to_string()
-}
-
-fn reqwest_error_is_retryable(e: &reqwest::Error) -> bool {
-    // Truncated/protocol-level body reads can surface as decode-style errors
-    // without a status, and those should retry like other transient cache fetches.
-    !(e.is_builder() || e.is_redirect())
 }
 
 /// Parse the total size from the response to our `Range: bytes=0-0` probe.
@@ -2790,7 +2770,7 @@ async fn download_tarball(
 ) -> Result<DownloadBody, CacheDownloadError> {
     let mut resp = http
         .get(url)
-        .timeout(DOWNLOAD_TIMEOUT)
+        .timeout(OBJECT_DOWNLOAD_TIMEOUT)
         .send()
         .await
         .map_err(|e| CacheHttpError::from_reqwest("GET", e))?;
@@ -6361,7 +6341,7 @@ mod tests {
                 .unwrap();
 
         probe.assert_async().await;
-        full.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS).await;
+        full.assert_calls_async(OBJECT_DOWNLOAD_MAX_ATTEMPTS).await;
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
         assert!(
@@ -6383,7 +6363,8 @@ mod tests {
         .err()
         .expect("503 downloads should exhaust retries")
         .to_string();
-        full.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS * 2).await;
+        full.assert_calls_async(OBJECT_DOWNLOAD_MAX_ATTEMPTS * 2)
+            .await;
         assert!(
             reason.contains("retry exhausted after 3 attempts") && reason.contains("503"),
             "unexpected retry exhaustion reason: {reason}"
@@ -7171,7 +7152,7 @@ mod tests {
                 .await
                 .unwrap();
 
-        probe.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS).await;
+        probe.assert_calls_async(OBJECT_DOWNLOAD_MAX_ATTEMPTS).await;
 
         // archive_url untouched — guest-download will retry via the original URL.
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
@@ -7185,7 +7166,9 @@ mod tests {
             .await
             .unwrap_err()
             .to_string();
-        probe.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS * 2).await;
+        probe
+            .assert_calls_async(OBJECT_DOWNLOAD_MAX_ATTEMPTS * 2)
+            .await;
         assert!(
             error.contains("retry exhausted after 3 attempts") && error.contains("500"),
             "unexpected retry exhaustion reason: {error}"
@@ -7205,7 +7188,7 @@ mod tests {
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
-        let responses = vec![Vec::new(); CACHE_HTTP_MAX_ATTEMPTS * 2];
+        let responses = vec![Vec::new(); OBJECT_DOWNLOAD_MAX_ATTEMPTS * 2];
         let (url, handle) = raw_http_sequence_url(responses).await;
 
         let original = format!("{url}?X-Amz-Signature=secret&X-Amz-Credential=credential");
@@ -8224,7 +8207,7 @@ mod tests {
                 .unwrap();
 
         failed_probe
-            .assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS)
+            .assert_calls_async(OBJECT_DOWNLOAD_MAX_ATTEMPTS)
             .await;
         failed_full.assert_calls_async(0).await;
         successful_probe.assert_async().await;
@@ -8374,10 +8357,10 @@ mod tests {
                 .unwrap();
 
         failed_probe_a
-            .assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS)
+            .assert_calls_async(OBJECT_DOWNLOAD_MAX_ATTEMPTS)
             .await;
         failed_probe_b
-            .assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS)
+            .assert_calls_async(OBJECT_DOWNLOAD_MAX_ATTEMPTS)
             .await;
         failed_full_a.assert_calls_async(0).await;
         failed_full_b.assert_calls_async(0).await;
