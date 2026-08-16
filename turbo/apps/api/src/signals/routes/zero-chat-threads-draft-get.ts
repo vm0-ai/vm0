@@ -5,14 +5,14 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { notFound } from "../../lib/error";
-import { zeroChatThreadDraft } from "../services/zero-chat-thread.service";
+import { chatThreadDraft } from "../services/chat-thread.service";
 import type { RouteEntry } from "../route-entry";
 
 const getThreadDraftInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadDraftContract.get));
   const draft = await get(
-    zeroChatThreadDraft({ threadId: params.id, userId: auth.userId }),
+    chatThreadDraft({ threadId: params.id, userId: auth.userId }),
   );
   if (!draft) {
     return notFound("Chat thread not found");

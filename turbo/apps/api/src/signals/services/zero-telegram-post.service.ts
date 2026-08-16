@@ -72,7 +72,7 @@ import {
   ensureTelegramChatThreadRoute,
   type TelegramOwnerLink,
 } from "./telegram-chat-ingress.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
+import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./chat-user-message.service";

@@ -30,7 +30,7 @@ import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
-import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
+import { visibleChatEventCondition } from "./chat-event-shared.service";
 
 interface ChatEventSearchProjectionStats {
   readonly threads: number;

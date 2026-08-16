@@ -73,8 +73,8 @@ import {
   persistedChatThreadModelSnapshotColumns,
   resolvePersistedChatThreadModel,
   type PersistedChatThreadModelResolutionPath,
-} from "./zero-chat-thread-model.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
+} from "./chat-thread-model.service";
+import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import {
   revokeChatEvent,
   insertChatEvent,
@@ -100,7 +100,7 @@ import {
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
-} from "./zero-chat-thread-event.service";
+} from "./chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { registerCanonicalWebInputAssets } from "./canonical-asset.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
@@ -3087,7 +3087,7 @@ const createNormalChatRun$ = command(
       createQueueFirstZeroRun$,
       {
         ...createRunArgs,
-        apiStartTime: queuedMessage.createdAt.getTime(),
+        apiStartTime: args.apiStartTime,
         zeroRunMetadata: {
           autonomyBudget: queuedMessage.autonomyBudget.autonomyBudget,
         },

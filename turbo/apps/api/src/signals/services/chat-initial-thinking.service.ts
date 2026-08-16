@@ -23,7 +23,7 @@ import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import {
   goalIdForRun,
   visibleChatEventCondition,
-} from "./zero-chat-event-shared.service";
+} from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
 import { queuedUserMessageExists } from "./chat-queued-event.service";

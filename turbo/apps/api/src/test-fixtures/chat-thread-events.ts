@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
-import { appendChatThreadEvent } from "../signals/services/zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "../signals/services/chat-thread-event.service";
 import { createDeferredPromise } from "../signals/utils";
 
 const databasePidRowSchema = z.object({ pid: z.int() });

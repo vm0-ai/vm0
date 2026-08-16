@@ -8,7 +8,7 @@ import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "./chat-thread-event.service";
 
 const BROWSER_AUTHORIZATION_REQUEST_TTL_MS = 60 * 60 * 1000;
 const BROWSER_AUTHORIZATION_URL_PREFIX = "vm0_browser_authorization_request";

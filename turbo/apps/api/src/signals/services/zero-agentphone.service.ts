@@ -53,7 +53,7 @@ import {
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { listOrgModelPolicies$ } from "./model-policy.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
+import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import {
   chatEventTypeIn,

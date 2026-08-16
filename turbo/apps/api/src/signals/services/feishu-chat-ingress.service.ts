@@ -9,7 +9,7 @@ import { feishuOrgEvents } from "@okouai/db/schema/feishu-org-event";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "./chat-thread-event.service";
 
 interface FeishuChatThreadRouteKey {
   readonly connectionId: string;

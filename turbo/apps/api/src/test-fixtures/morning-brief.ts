@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
 import { insertChatEvent } from "../signals/services/chat-event.service";
-import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-event-shared.service";
+import { touchChatThreadLastMessageAt } from "../signals/services/chat-event-shared.service";
 import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
 
 export async function readMorningBriefDeliveryFixture(args: {

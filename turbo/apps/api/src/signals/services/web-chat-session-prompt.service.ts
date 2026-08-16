@@ -23,7 +23,7 @@ import type { Db } from "../external/db";
 import { BEFORE_DISPATCH_CANCELLED_ERROR } from "./agent-run-create.service";
 import type { ChatThreadSessionResolutionAction } from "./chat-session-continuity.service";
 import { loadWebChatIncompleteContext } from "./chat-incomplete-context.service";
-import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
+import { visibleChatEventCondition } from "./chat-event-shared.service";
 import {
   chatEventTextCondition,
   chatEventTypeIn,

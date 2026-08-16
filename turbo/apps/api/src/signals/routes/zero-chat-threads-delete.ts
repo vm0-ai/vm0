@@ -8,7 +8,7 @@ import { waitUntil } from "../context/wait-until";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { deleteChatThread$ } from "../services/zero-chat-thread.service";
+import { deleteChatThread$ } from "../services/chat-thread.service";
 import { stopThreadZeroBrowsers$ } from "../services/zero-browser.service";
 import { dispatchCancelSideEffects$ } from "../services/run-cancel.service";
 import { tapError } from "../utils";

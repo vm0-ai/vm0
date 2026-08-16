@@ -7,16 +7,16 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
-  deleteZeroMailDraft$,
-  getZeroMailDraftAttachment$,
-  getZeroMailDraft$,
-  linkZeroMailDraft$,
-  sendZeroMailDraft$,
-  type ZeroMailDraftLinkMutationResult,
-  type ZeroMailDraftMutationResult,
-} from "../services/zero-mail.service";
+  deleteMailDraft$,
+  getMailDraftAttachment$,
+  getMailDraft$,
+  linkMailDraft$,
+  sendMailDraft$,
+  type MailDraftLinkMutationResult,
+  type MailDraftMutationResult,
+} from "../services/mail-draft.service";
 
-function mutationResponse(result: ZeroMailDraftMutationResult) {
+function mutationResponse(result: MailDraftMutationResult) {
   switch (result.kind) {
     case "ok": {
       return {
@@ -37,7 +37,7 @@ function mutationResponse(result: ZeroMailDraftMutationResult) {
   }
 }
 
-function linkMutationResponse(result: ZeroMailDraftLinkMutationResult) {
+function linkMutationResponse(result: MailDraftLinkMutationResult) {
   switch (result.kind) {
     case "ok": {
       return {
@@ -66,7 +66,7 @@ const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   const result = await set(
-    linkZeroMailDraft$,
+    linkMailDraft$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -82,7 +82,7 @@ const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   return mutationResponse(
     await set(
-      getZeroMailDraft$,
+      getMailDraft$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -111,7 +111,7 @@ const getAttachmentInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const result = await set(
-      getZeroMailDraftAttachment$,
+      getMailDraftAttachment$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -151,7 +151,7 @@ const deleteDraftParams$ = pathParamsOf(zeroMailContract.deleteDraft);
 const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const result = await set(
-    deleteZeroMailDraft$,
+    deleteMailDraft$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -170,7 +170,7 @@ const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   return mutationResponse(
     await set(
-      sendZeroMailDraft$,
+      sendMailDraft$,
       {
         orgId: auth.orgId,
         userId: auth.userId,

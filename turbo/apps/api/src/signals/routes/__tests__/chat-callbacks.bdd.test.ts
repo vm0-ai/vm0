@@ -1292,7 +1292,7 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("uses the queued event creation time when a message auto-sends", async () => {
+  it("starts queued chat startup timing at message admission", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1350,11 +1350,28 @@ describe("CHAT-02: completed chat callback", () => {
     if (!queuedMessage) {
       throw new Error("Expected the original queued Web message");
     }
-    const apiStartedAt = Date.parse(queuedMessage.createdAt);
+    const queuedMessageCreatedAt = Date.parse(queuedMessage.createdAt);
+    const apiStartedAt = dequeuedAt;
 
     const acknowledgedAt = dequeuedAt + 7000;
     const secondClaim = await claimChatRunJob(runnerGroup, claimed.runId);
     expect(secondClaim.apiStartTime).toBe(apiStartedAt);
+    const timingEvents = await expectChatCallbackPreCreateTimingActions(
+      claimed.runId,
+      ["api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age"],
+    );
+    expect(
+      timingEventsForAction(
+        timingEvents,
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
+      ),
+    ).toStrictEqual([
+      expect.objectContaining({
+        duration_ms: dequeuedAt - queuedMessageCreatedAt,
+        op_type:
+          "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
+      }),
+    ]);
     const secondHeaders = {
       authorization: `Bearer ${secondClaim.sandboxToken}`,
     };
@@ -1643,6 +1660,7 @@ describe("CHAT-02: completed chat callback", () => {
       "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
@@ -3172,6 +3190,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
@@ -4687,6 +4706,7 @@ describe("CHAT-02: auto-send after failures", () => {
         "api_dispatch_pre_create_zero_chat_callback_prepare_failed",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",

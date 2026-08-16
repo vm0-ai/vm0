@@ -10,7 +10,7 @@ import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "../services/chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const renameBody$ = bodyResultOf(chatThreadRenameContract.rename);

@@ -30,7 +30,7 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
+import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { chatInputPromptDispatchCondition } from "./chat-event-type.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";

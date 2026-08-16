@@ -10,7 +10,7 @@ import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { badRequestMessage, notFound } from "../../lib/error";
-import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
+import { appendChatThreadEvent } from "../services/chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
 async function threadExists(params: {

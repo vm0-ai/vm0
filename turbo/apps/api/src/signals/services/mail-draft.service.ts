@@ -37,7 +37,7 @@ import {
   type ConnectorCredentialConnection,
 } from "./connector-credential-runtime.service";
 
-const L = logger("api:zero-mail");
+const L = logger("api:mail-draft");
 
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS = 60 * 60 * 1000;
@@ -123,7 +123,7 @@ interface MailDraftLinkResult {
   readonly mailDraftUrl: string;
 }
 
-interface MailDraftAttachmentResult {
+interface MailDraftAttachmentSuccess {
   readonly kind: "ok";
   readonly content: Uint8Array;
   readonly contentType: string;
@@ -135,16 +135,14 @@ interface MailDraftErrorResult {
   readonly message: string;
 }
 
-export type ZeroMailDraftMutationResult =
-  | MailDraftResult
-  | MailDraftErrorResult;
+export type MailDraftMutationResult = MailDraftResult | MailDraftErrorResult;
 
-export type ZeroMailDraftLinkMutationResult =
+export type MailDraftLinkMutationResult =
   | MailDraftLinkResult
   | MailDraftErrorResult;
 
-type ZeroMailDraftAttachmentResult =
-  | MailDraftAttachmentResult
+type MailDraftAttachmentResult =
+  | MailDraftAttachmentSuccess
   | MailDraftErrorResult;
 
 const reconnectMailError = Object.freeze({
@@ -1208,7 +1206,7 @@ async function getMailDraft(
     readonly row: MailDraftRow;
   },
   signal: AbortSignal,
-): Promise<ZeroMailDraftMutationResult> {
+): Promise<MailDraftMutationResult> {
   if (args.row.status === "deleted") {
     return okResult(
       args.row.id,
@@ -1479,7 +1477,7 @@ async function sendGmailDraftWithAccess(
     : { kind: "missing" };
 }
 
-export const linkZeroMailDraft$ = command(
+export const linkMailDraft$ = command(
   async (
     { get, set },
     args: {
@@ -1490,7 +1488,7 @@ export const linkZeroMailDraft$ = command(
       readonly gmailDraftId: string;
     },
     signal: AbortSignal,
-  ): Promise<ZeroMailDraftLinkMutationResult> => {
+  ): Promise<MailDraftLinkMutationResult> => {
     const db = get(db$);
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
@@ -1599,7 +1597,7 @@ export const linkZeroMailDraft$ = command(
   },
 );
 
-export const getZeroMailDraft$ = command(
+export const getMailDraft$ = command(
   async (
     { get, set },
     args: {
@@ -1608,7 +1606,7 @@ export const getZeroMailDraft$ = command(
       readonly mailDraftId: string;
     },
     signal: AbortSignal,
-  ): Promise<ZeroMailDraftMutationResult> => {
+  ): Promise<MailDraftMutationResult> => {
     const db = get(db$);
     const row = await loadOwnedMailDraft({ db, ...args });
     signal.throwIfAborted();
@@ -1631,7 +1629,7 @@ export const getZeroMailDraft$ = command(
   },
 );
 
-export const getZeroMailDraftAttachment$ = command(
+export const getMailDraftAttachment$ = command(
   async (
     { get, set },
     args: {
@@ -1641,7 +1639,7 @@ export const getZeroMailDraftAttachment$ = command(
       readonly partId: string;
     },
     signal: AbortSignal,
-  ): Promise<ZeroMailDraftAttachmentResult> => {
+  ): Promise<MailDraftAttachmentResult> => {
     const db = get(db$);
     const row = await loadOwnedMailDraft({ db, ...args });
     signal.throwIfAborted();
@@ -1735,7 +1733,7 @@ export const getZeroMailDraftAttachment$ = command(
   },
 );
 
-export const deleteZeroMailDraft$ = command(
+export const deleteMailDraft$ = command(
   async (
     { get, set },
     args: {
@@ -1744,7 +1742,7 @@ export const deleteZeroMailDraft$ = command(
       readonly mailDraftId: string;
     },
     signal: AbortSignal,
-  ): Promise<ZeroMailDraftMutationResult> => {
+  ): Promise<MailDraftMutationResult> => {
     const db = get(db$);
     const row = await loadOwnedMailDraft({ db, ...args });
     signal.throwIfAborted();
@@ -1805,7 +1803,7 @@ export const deleteZeroMailDraft$ = command(
   },
 );
 
-export const sendZeroMailDraft$ = command(
+export const sendMailDraft$ = command(
   async (
     { get, set },
     args: {
@@ -1814,7 +1812,7 @@ export const sendZeroMailDraft$ = command(
       readonly mailDraftId: string;
     },
     signal: AbortSignal,
-  ): Promise<ZeroMailDraftMutationResult> => {
+  ): Promise<MailDraftMutationResult> => {
     const db = get(db$);
     const row = await loadOwnedMailDraft({ db, ...args });
     signal.throwIfAborted();

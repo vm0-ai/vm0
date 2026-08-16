@@ -14,14 +14,14 @@ import { bodyResultOf } from "../context/request";
 import { type Db, writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { badRequestMessage, notFound } from "../../lib/error";
-import { createChatThread$ } from "../services/zero-chat-thread.service";
+import { createChatThread$ } from "../services/chat-thread.service";
 import { zeroComposeExists } from "../services/zero-compose-data.service";
 import {
   resolveModelSelectionPin,
   validateCodexServiceTier,
 } from "../services/model-selection.service";
-import { chatThreadModelPinColumns } from "../services/zero-chat-thread-model.service";
-import { chatThreadServiceTierFromCodex } from "../services/zero-chat-thread-event.service";
+import { chatThreadModelPinColumns } from "../services/chat-thread-model.service";
+import { chatThreadServiceTierFromCodex } from "../services/chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const createBody$ = bodyResultOf(chatThreadsContract.create);

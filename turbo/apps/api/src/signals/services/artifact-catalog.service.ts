@@ -43,7 +43,7 @@ import {
   SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
 } from "../../lib/shared-thread-artifact";
 import { writeDb$, type Db } from "../external/db";
-import { inferMimetype } from "./zero-chat-event-shared.service";
+import { inferMimetype } from "./chat-event-shared.service";
 import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 
 const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
