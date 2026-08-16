@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import {
   TRANSLATION_MAX_SOURCE_TEXT_CHARS,
   translationContract,

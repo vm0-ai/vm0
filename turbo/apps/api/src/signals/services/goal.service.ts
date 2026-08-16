@@ -1,4 +1,4 @@
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import type {
   ZeroGoalResponse,
   ZeroGoalStatus,

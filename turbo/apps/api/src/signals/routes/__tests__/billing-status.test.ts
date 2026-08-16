@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import { createStore } from "ccstate";
 import { onTestFinished } from "vitest";
 

@@ -30,7 +30,7 @@ import {
 } from "../services/goal.service";
 import type { RouteEntry } from "../route-entry";
 import type { AuthContext } from "../../types/auth";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 
 const log = logger("ZeroGoals");
 

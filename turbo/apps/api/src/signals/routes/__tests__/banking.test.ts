@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";

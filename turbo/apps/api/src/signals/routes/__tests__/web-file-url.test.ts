@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 
 import { accept, testContext } from "../../../__tests__/test-context";

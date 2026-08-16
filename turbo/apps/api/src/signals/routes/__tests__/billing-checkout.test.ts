@@ -20,7 +20,7 @@ import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
 } from "@okouai/api-contracts/contracts/zero-org-members";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/composes";
+import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isStaffOrg } from "@okouai/core/staff-org";
