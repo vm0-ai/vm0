@@ -12,7 +12,8 @@
 //!   tracked normally.
 //! - **Shutting down:** `shutdown` marks the lifecycle as shutting down while it
 //!   drains tracked tasks. Registrations made while this condition remains are
-//!   still spawned and tracked for the in-progress shutdown.
+//!   still spawned and tracked for the current shutdown, or for a later retry
+//!   if that shutdown is cancelled.
 //! - **Closed:** shutdown has exhausted tracked work. Later registrations are
 //!   not spawned; their cleanup future remains in the returned registration and
 //!   runs in the caller only when that registration is awaited. Calling
@@ -176,8 +177,9 @@ pub(super) struct FactoryCleanupGroup {
 struct FactoryCleanupGroupState {
     /// Whether the group is in its normal accepting condition.
     ///
-    /// When this and `closed` are both false, shutdown is in progress but new
-    /// registrations are still tracked for that shutdown.
+    /// When this and `closed` are both false, shutdown has begun but may have
+    /// been cancelled; new registrations remain tracked for the current or a
+    /// later shutdown attempt.
     accepting: bool,
     /// Whether shutdown has exhausted tracked work.
     ///
