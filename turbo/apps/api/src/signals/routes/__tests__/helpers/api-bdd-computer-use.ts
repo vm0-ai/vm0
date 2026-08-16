@@ -36,8 +36,8 @@ import { signSandboxJwtForTests } from "../../../auth/tokens";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { cronComputerUseScreenshotCleanupRoutesForTest } from "../../cron-computer-use-screenshot-cleanup";
-import { zeroComputerUseRoutes } from "../../zero-computer-use";
-import { zeroComputerUseAuthorizationRoutes } from "../../zero-computer-use-authorization";
+import { computerUseRoutes } from "../../computer-use";
+import { computerUseAuthorizationRoutes } from "../../computer-use-authorization";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -358,49 +358,49 @@ export function createComputerUseBddApi(context: TestContext) {
   }
 
   function hostsClient() {
-    return setupApp({ context, routes: zeroComputerUseRoutes })(
+    return setupApp({ context, routes: computerUseRoutes })(
       zeroComputerUseHostsContract,
     );
   }
 
   function heartbeatClient() {
-    return setupApp({ context, routes: zeroComputerUseRoutes })(
+    return setupApp({ context, routes: computerUseRoutes })(
       zeroComputerUseHeartbeatContract,
     );
   }
 
   function commandClient() {
-    return setupApp({ context, routes: zeroComputerUseRoutes })(
+    return setupApp({ context, routes: computerUseRoutes })(
       zeroComputerUseCommandContract,
     );
   }
 
   function writeCommandClient() {
-    return setupApp({ context, routes: zeroComputerUseRoutes })(
+    return setupApp({ context, routes: computerUseRoutes })(
       zeroComputerUseWriteCommandContract,
     );
   }
 
   function pluginCommandClient() {
-    return setupApp({ context, routes: zeroComputerUseRoutes })(
+    return setupApp({ context, routes: computerUseRoutes })(
       zeroComputerUsePluginCommandContract,
     );
   }
 
   function hostCommandsClient() {
-    return setupApp({ context, routes: zeroComputerUseRoutes })(
+    return setupApp({ context, routes: computerUseRoutes })(
       zeroComputerUseHostCommandsContract,
     );
   }
 
   function auditEventsClient() {
-    return setupApp({ context, routes: zeroComputerUseRoutes })(
+    return setupApp({ context, routes: computerUseRoutes })(
       zeroComputerUseAuditEventsContract,
     );
   }
 
   function authorizationRequestsClient() {
-    return setupApp({ context, routes: zeroComputerUseAuthorizationRoutes })(
+    return setupApp({ context, routes: computerUseAuthorizationRoutes })(
       zeroComputerUseAuthorizationRequestsContract,
     );
   }

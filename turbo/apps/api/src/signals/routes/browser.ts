@@ -274,7 +274,7 @@ const browserCurrentAuth = Object.freeze({
   accept: Object.freeze(["zero"] as const),
 });
 
-export const zeroBrowserRoutes: readonly RouteEntry[] = [
+export const browserRoutes: readonly RouteEntry[] = [
   {
     route: zeroBrowserContract.create,
     handler: authRoute(browserWriteAuth, createBrowserInner$),

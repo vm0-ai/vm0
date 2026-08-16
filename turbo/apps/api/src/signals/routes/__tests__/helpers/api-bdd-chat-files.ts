@@ -80,7 +80,7 @@ import { zeroChatThreadRenameRoutes } from "../../zero-chat-threads-rename";
 import { zeroChatThreadRoutes } from "../../zero-chat-threads";
 import { zeroChatThreadUnpinRoutes } from "../../zero-chat-threads-unpin";
 import { zeroChatThreadsArtifactsSyncRoutes } from "../../zero-chat-threads-artifacts-sync";
-import { zeroHostRoutes } from "../../zero-host";
+import { hostRoutes } from "../../host";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { uploadsCompleteRoutes } from "../../uploads-complete";
 import { uploadsPrepareRoutes } from "../../uploads-prepare";
@@ -206,7 +206,7 @@ const chatFilesRoutes = [
   ...zeroChatEventsRoutes,
   ...uploadsPrepareRoutes,
   ...uploadsCompleteRoutes,
-  ...zeroHostRoutes,
+  ...hostRoutes,
   ...zeroModelPoliciesRoutes,
   ...userModelPreferenceRoutes,
 ] as const;

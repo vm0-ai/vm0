@@ -1,14 +1,14 @@
 import { command } from "ccstate";
-import { zeroBrowserAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-browser";
+import { zeroComputerUseAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import {
-  applyBrowserAuthorizationRequest$,
-  createBrowserAuthorizationRequest$,
-  readBrowserAuthorizationRequest$,
-} from "../services/browser-authorization.service";
+  applyComputerUseAuthorizationRequest$,
+  createComputerUseAuthorizationRequest$,
+  readComputerUseAuthorizationRequest$,
+} from "../services/computer-use-authorization.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 
@@ -17,7 +17,7 @@ function expired() {
     status: 410 as const,
     body: {
       error: {
-        message: "Cloud browser authorization request expired",
+        message: "Computer Use authorization request expired",
         code: "GONE",
       },
     },
@@ -25,25 +25,29 @@ function expired() {
 }
 
 const unsupportedContext = conflict(
-  "Cloud browser authorization links are only available from chat thread runs",
+  "Computer Use authorization links are only available from web chat and Slack thread runs",
 );
 
 const createBody$ = bodyResultOf(
-  zeroBrowserAuthorizationRequestsContract.create,
+  zeroComputerUseAuthorizationRequestsContract.create,
 );
-const getParams$ = pathParamsOf(zeroBrowserAuthorizationRequestsContract.get);
+const getParams$ = pathParamsOf(
+  zeroComputerUseAuthorizationRequestsContract.get,
+);
 const applyParams$ = pathParamsOf(
-  zeroBrowserAuthorizationRequestsContract.apply,
+  zeroComputerUseAuthorizationRequestsContract.apply,
 );
-const applyBody$ = bodyResultOf(zeroBrowserAuthorizationRequestsContract.apply);
+const applyBody$ = bodyResultOf(
+  zeroComputerUseAuthorizationRequestsContract.apply,
+);
 
-const browserAuthorizationAuthOptions = {
+const computerUseAuthorizationAuthOptions = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
 } as const;
 
-const browserAuthorizationCreateAuthOptions = {
-  ...browserAuthorizationAuthOptions,
+const computerUseAuthorizationCreateAuthOptions = {
+  ...computerUseAuthorizationAuthOptions,
   acceptAnySandboxCapability: true,
   accept: ["zero", "sandbox"],
 } as const;
@@ -56,28 +60,32 @@ const createAuthorizationRequestInner$ = command(
     if (!body.ok) {
       return body.response;
     }
+
     if (auth.tokenType !== "zero" && auth.tokenType !== "sandbox") {
       return badRequestMessage(
-        "Cloud browser authorization requires a run token",
+        "Computer Use authorization requires a run token",
       );
     }
 
     const result = await set(
-      createBrowserAuthorizationRequest$,
+      createComputerUseAuthorizationRequest$,
       { orgId: auth.orgId, userId: auth.userId, runId: auth.runId },
       signal,
     );
     signal.throwIfAborted();
+
     if (result.status === "run_not_found") {
       return notFound("Run not found");
     }
     if (result.status === "unsupported_context") {
       return unsupportedContext;
     }
+
     return {
       status: 200 as const,
       body: {
         authorizationUrl: result.authorizationUrl,
+        source: result.source,
         expiresAt: result.expiresAt,
       },
     };
@@ -87,28 +95,34 @@ const createAuthorizationRequestInner$ = command(
 const getAuthorizationRequestInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const params = get(getParams$);
+
     const result = await set(
-      readBrowserAuthorizationRequest$,
+      readComputerUseAuthorizationRequest$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        requestToken: get(getParams$).requestToken,
+        requestToken: params.requestToken,
       },
       signal,
     );
     signal.throwIfAborted();
+
     if (result.status === "not_found") {
-      return notFound("Cloud browser authorization request not found");
+      return notFound("Computer Use authorization request not found");
     }
     if (result.status === "expired") {
       return expired();
     }
+
     return {
       status: 200 as const,
       body: {
+        source: result.source,
         expiresAt: result.expiresAt,
         completedAt: result.completedAt,
-        cloudBrowserEnabled: result.cloudBrowserEnabled,
+        computerUseHostId: result.computerUseHostId,
+        hosts: result.hosts,
       },
     };
   },
@@ -117,56 +131,68 @@ const getAuthorizationRequestInner$ = command(
 const applyAuthorizationRequestInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const params = get(applyParams$);
     const body = await get(applyBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
+
     const result = await set(
-      applyBrowserAuthorizationRequest$,
+      applyComputerUseAuthorizationRequest$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        requestToken: get(applyParams$).requestToken,
+        requestToken: params.requestToken,
+        computerUseHostId: body.data.computerUseHostId,
       },
       signal,
     );
     signal.throwIfAborted();
+
     if (result.status === "not_found") {
-      return notFound("Cloud browser authorization request not found");
+      return notFound("Computer Use authorization request not found");
     }
     if (result.status === "expired") {
       return expired();
     }
-    if (result.status === "scope_not_found") {
-      return notFound("Cloud browser authorization scope not found");
+    if (result.status === "host_not_found") {
+      return notFound("Computer-use host not found");
     }
+    if (result.status === "scope_not_found") {
+      return notFound("Computer Use authorization scope not found");
+    }
+
     return {
       status: 200 as const,
-      body: { ok: true as const, cloudBrowserEnabled: true as const },
+      body: {
+        ok: true as const,
+        source: result.source,
+        computerUseHostId: result.computerUseHostId,
+      },
     };
   },
 );
 
-export const zeroBrowserAuthorizationRoutes: readonly RouteEntry[] = [
+export const computerUseAuthorizationRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBrowserAuthorizationRequestsContract.create,
+    route: zeroComputerUseAuthorizationRequestsContract.create,
     handler: authRoute(
-      browserAuthorizationCreateAuthOptions,
+      computerUseAuthorizationCreateAuthOptions,
       createAuthorizationRequestInner$,
     ),
   },
   {
-    route: zeroBrowserAuthorizationRequestsContract.get,
+    route: zeroComputerUseAuthorizationRequestsContract.get,
     handler: authRoute(
-      browserAuthorizationAuthOptions,
+      computerUseAuthorizationAuthOptions,
       getAuthorizationRequestInner$,
     ),
   },
   {
-    route: zeroBrowserAuthorizationRequestsContract.apply,
+    route: zeroComputerUseAuthorizationRequestsContract.apply,
     handler: authRoute(
-      browserAuthorizationAuthOptions,
+      computerUseAuthorizationAuthOptions,
       applyAuthorizationRequestInner$,
     ),
   },
